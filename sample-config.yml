@@ -1,0 +1,16 @@
+nulsexplorer:
+  host: 127.0.0.1
+  port: 8080
+
+nuls:
+  chain_id: 8964
+  packing_node: True
+  private_key: YOUR_PRIVATE_KEY_HERE
+
+mongodb:
+  uri: "mongodb://127.0.0.1"
+  database: alephtest
+
+ipfs:
+  host: 127.0.0.1
+  port: 5001
