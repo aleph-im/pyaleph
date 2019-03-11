@@ -31,7 +31,7 @@ cors = aiohttp_cors.setup(app, defaults={
         )
 })
 
-tpl_path = pkg_resources.resource_filename('pyaleph.web', 'templates')
+tpl_path = pkg_resources.resource_filename('aleph.web', 'templates')
 JINJA_LOADER = jinja2.ChoiceLoader([jinja2.FileSystemLoader(tpl_path),])
 aiohttp_jinja2.setup(app,
     loader=JINJA_LOADER)

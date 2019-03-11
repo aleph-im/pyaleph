@@ -20,7 +20,7 @@ import argparse
 import sys
 import logging
 
-from pyaleph import __version__
+from aleph import __version__
 
 __author__ = "Moshe Malawach"
 __copyright__ = "Moshe Malawach"
