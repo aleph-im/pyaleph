@@ -18,6 +18,7 @@ import asyncio
 from configmanager import Config
 
 from aleph import __version__
+from aleph.chains import start_connector
 from aleph.web import app, init_cors
 from aleph.config import get_defaults
 from aleph.network import setup_listeners
@@ -71,7 +72,7 @@ def setup_logging(loglevel):
     Args:
       loglevel (int): minimum loglevel for emitting messages
     """
-    logformat = "%(asctime)s [%(levelname)s] %(name)s:%(message)s"
+    logformat = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
     logging.basicConfig(level=loglevel, stream=sys.stdout,
                         format=logformat, datefmt="%Y-%m-%d %H:%M:%S")
 
@@ -99,6 +100,7 @@ def main(args):
     init_cors()
 
     setup_listeners(config)
+    start_connector(config)
 
     loop = asyncio.get_event_loop()
     handler = app.make_handler()

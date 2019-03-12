@@ -1,5 +1,11 @@
-from aleph.chains.common import incoming, validates
+
+import logging
 import binascii
+import asyncio
+import aiohttp
+import time
+import json
+from aleph.chains.common import incoming, invalidate
 
 LOGGER = logging.getLogger('chains.nuls')
 CHAIN_NAME = 'NULS'
@@ -12,11 +18,11 @@ async def get_last_height():
     """
     return 0 # for now, request everything (bad!) TODO: Change that!
 
-async def request_transactions(session, start_height):
+async def request_transactions(config, session, start_height):
     """ Continuously request data from the NULS blockchain.
     TODO: setup a websocket and push system.
     """
-    check_url = '{}/transactions.json'.format(await get_base_url())
+    check_url = '{}/transactions.json'.format(await get_base_url(config))
 
     async with session.get(check_url, params={
         'type': '10',
@@ -50,14 +56,14 @@ async def check_incoming(config):
 
     async with aiohttp.ClientSession() as session:
         while True:
-            async for tx in request_transactions(session, last_stored_height):
+            async for tx in request_transactions(config, session, last_stored_height):
                 for hash in tx['hashes']:
                     await incoming(CHAIN_NAME, hash)
 
                 if tx['height'] > last_stored_height:
                     last_stored_height = tx['height']
 
-            time.sleep(10) # wait 10 seconds (typical time between 2 blocks)
+            await asyncio.sleep(10) # wait 10 seconds (typical time between 2 blocks)
 
 
 
