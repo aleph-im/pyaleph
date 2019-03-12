@@ -1,6 +1,5 @@
 nulsexplorer:
-  host: 127.0.0.1
-  port: 8080
+  url: https://testnet.nuls.world
 
 nuls:
   chain_id: 8964

@@ -10,8 +10,7 @@ def get_defaults():
             'port': 8080
         },
         'nulsexplorer': {
-            'host': '127.0.0.1',
-            'port': 8080
+            'url': 'http://127.0.0.1:8080'
         },
         'nuls': {
           'chain_id': 8964,
