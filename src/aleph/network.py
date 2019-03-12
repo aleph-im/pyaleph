@@ -3,12 +3,11 @@ import base64
 import base58
 import json
 import asyncio
-
+from aleph.storage import get_base_url
 import logging
 LOGGER = logging.getLogger("NETWORK")
 
-async def get_base_url(config):
-    return 'http://{}:{}'.format(config.ipfs.host.value, config.ipfs.port.value)
+
 
 async def decode_msg(msg):
     return {

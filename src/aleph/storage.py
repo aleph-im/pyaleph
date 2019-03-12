@@ -6,6 +6,9 @@ import ipfsapi
 import asyncio
 import aiohttp
 
+async def get_base_url(config):
+    return 'http://{}:{}'.format(config.ipfs.host.value, config.ipfs.port.value)
+
 async def get_ipfs_api():
     from aleph.web import app
     host = app['config'].ipfs.host.value
@@ -27,11 +30,17 @@ async def add_json(value):
         None, api.add_json, value)
     return result
 
+async def pin(hash):
+    loop = asyncio.get_event_loop()
+    api = await get_ipfs_api()
+    result = await loop.run_in_executor(
+        None, api.pin, hash)
+    return result
+
 async def add_file(fileobject, filename):
     async with aiohttp.ClientSession() as session:
         from nulsexplorer.web import app
-        url = "http://%s:%d/api/v0/add" % (app['config'].ipfs.host.value,
-                                 app['config'].ipfs.port.value)
+        url = "%s/api/v0/add" % (await get_base_url(app['config']))
         data = aiohttp.FormData()
         data.add_field('path',
                        fileobject,
