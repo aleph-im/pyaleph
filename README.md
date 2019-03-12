@@ -1,5 +1,6 @@
-# pyaleph
-Next generation network of decentralized big data applications
+# PyAleph (Python node for the Aleph network)
+
+Next generation network of decentralized big data applications. Developement follows the [Aleph Whitepaper](https://github.com/moshemalawach/aleph-whitepaper).
 
 ## Dependencies
 
