@@ -1,6 +1,24 @@
 # pyaleph
 Next generation network of decentralized big data applications
 
+## Dependencies
+
+PyAleph requires Python v3.6+ (it won't work with older python versions).
+
+## Installation
+
+You need to install the requirements, ideally in an empty virtualenv (I let
+that part to you):
+
+`$ python setup.py develop`
+
+Then, once it's installed, you need to copy the sample-config.yaml file elsewhere,
+and edit it to your liking (see configuration section).
+
+To run PyAleph, run this command:
+
+`$ nulsexplorer -c config.yaml` (where config.yaml is your configuration file you
+edited earlier)
 
 ## Running services required
 
@@ -21,3 +39,7 @@ For maximum security, run your own with your own local NULS wallet.
 ### Mongodb
 
 A local running mongodb instance is required.
+
+## Configuration
+
+TODO

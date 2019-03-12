@@ -2,47 +2,31 @@
 # -*- coding: utf-8 -*-
 """
 This is a skeleton file that can serve as a starting point for a Python
-console script. To run this script uncomment the following lines in the
-[options.entry_points] section in setup.cfg:
+console script.
 
-    console_scripts =
-         fibonacci = pyaleph.skeleton:run
-
-Then run `python setup.py install` which will install the command `fibonacci`
+Then run `python setup.py install` which will install the command `pyaleph`
 inside your current environment.
 Besides console scripts, the header (i.e. until _logger...) of this file can
 also be used as template for Python modules.
-
-Note: This skeleton file can be safely removed if not needed!
 """
 
 import argparse
+import configparser
 import sys
 import logging
+import asyncio
+from configmanager import Config
 
 from aleph import __version__
+from aleph.web import app, init_cors
+from aleph.config import get_defaults
+from aleph.network import setup_listeners
 
 __author__ = "Moshe Malawach"
 __copyright__ = "Moshe Malawach"
 __license__ = "mit"
 
-_logger = logging.getLogger(__name__)
-
-
-def fib(n):
-    """Fibonacci example function
-
-    Args:
-      n (int): integer
-
-    Returns:
-      int: n-th Fibonacci number
-    """
-    assert n > 0
-    a, b = 1, 1
-    for i in range(n-1):
-        a, b = b, a+b
-    return a
+LOGGER = logging.getLogger(__name__)
 
 
 def parse_args(args):
@@ -63,6 +47,7 @@ def parse_args(args):
         version='pyaleph {ver}'.format(ver=__version__))
     parser.add_argument('-c', '--config', action="store", dest="config_file")
     parser.add_argument('-p', '--port', action="store", type=int, dest="port", default=8080)
+    parser.add_argument('--host', action="store", type=str, dest="host", default="127.0.0.1")
     parser.add_argument(
         '-v',
         '--verbose',
@@ -99,10 +84,30 @@ def main(args):
     """
     args = parse_args(args)
     setup_logging(args.loglevel)
-    _logger.debug("Starting crazy calculations...")
-    print("The {}-th Fibonacci number is {}".format(args.n, fib(args.n)))
-    _logger.info("Script ends here")
+    LOGGER.info("Starting up.")
 
+    config = Config(schema=get_defaults())
+    app['config'] = config
+    app.config = config
+
+    config.aleph.port.value = args.port
+    config.aleph.host.value = args.host
+
+    if args.config_file is not None:
+        app['config'].yaml.load(args.config_file)
+
+    init_cors()
+
+    setup_listeners(config)
+
+    loop = asyncio.get_event_loop()
+    handler = app.make_handler()
+    f = loop.create_server(handler,
+                           config.aleph.host.value,
+                           config.aleph.port.value)
+    srv = loop.run_until_complete(f)
+    LOGGER.info('Serving on %s', srv.sockets[0].getsockname())
+    loop.run_forever()
 
 def run():
     """Entry point for console_scripts
