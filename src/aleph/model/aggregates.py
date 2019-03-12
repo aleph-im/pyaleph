@@ -4,11 +4,11 @@ import pymongo
 import logging
 LOGGER = logging.getLogger('model.posts')
 
-class Post(BaseClass):
-    COLLECTION = "posts"
+class AggregateEntries(BaseClass):
+    COLLECTION = "aggregate_entries"
 
     INDEXES = [Index("hash", unique=True), #IPFS hash
-               Index("sender"),
+               Index("address"),
                Index("time", pymongo.DESCENDING),
                Index("time", pymongo.ASCENDING),
                Index("confirmation_height", pymongo.ASCENDING),
