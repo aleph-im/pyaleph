@@ -26,6 +26,17 @@ async def incoming(chain_name, message):
         # TODO: verify signature before (in chain-specific stage?)
         await pin(hash)
 
+        # TODO: verify if search key is ok... do we need an unique key for messages?
+        existing = Message.collection.find_one({
+            'item_hash': hash,
+            'chain': chain_name
+        })
+        if existing:
+            Message.collection.update_one({
+                'item_hash': hash,
+                'chain': chain_name
+            }, {})
+
     except Exception as exc:
         LOGGER.exception("Can't get content of object %r" % hash)
         return
