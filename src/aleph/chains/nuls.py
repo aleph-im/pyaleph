@@ -1,4 +1,3 @@
-
 import logging
 import binascii
 import asyncio
@@ -39,8 +38,7 @@ async def request_transactions(config, session, start_height):
                     continue
                 if jdata.get('version', None) != 1:
                     continue # unsupported protocol version
-
-                yield dict(height=tx['blockHeight'], hashes=jdata['content']['hashes'])
+                yield dict(height=tx['blockHeight'], messages=jdata['content']['messages'])
 
             except Exception as exc:
                 LOGGER.exception("Can't decode incoming logic data %r" % ldata)
@@ -57,8 +55,10 @@ async def check_incoming(config):
     async with aiohttp.ClientSession() as session:
         while True:
             async for tx in request_transactions(config, session, last_stored_height):
-                for hash in tx['hashes']:
-                    await incoming(CHAIN_NAME, hash)
+                # TODO: handle big message list stored in IPFS case (if too much messages, an ipfs hash is stored here).
+                for message in tx['messages']:
+                    # TODO: verify NULS signatures here. CRITICAL
+                    await incoming(CHAIN_NAME, message)
 
                 if tx['height'] > last_stored_height:
                     last_stored_height = tx['height']

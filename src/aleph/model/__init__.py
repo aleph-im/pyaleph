@@ -28,5 +28,5 @@ def init_db(config, ensure_indexes=True):
     sync_db = sync_connection[config.mongodb.database.value]
 
     if ensure_indexes:
-        from aleph.model.posts import Post
-        Post.ensure_indexes(sync_db)
+        from aleph.model.messages import Message
+        Message.ensure_indexes(sync_db)
