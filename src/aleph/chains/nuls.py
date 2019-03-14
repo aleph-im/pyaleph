@@ -6,8 +6,20 @@ import time
 import json
 from aleph.chains.common import incoming, invalidate
 
+
+# TODO: move this to another project
+from nulsexplorer.protocol.data import NulsSignature
+
 LOGGER = logging.getLogger('chains.nuls')
 CHAIN_NAME = 'NULS'
+
+async def verify_signature(signature, hash):
+    """ Verifies a signature of a hash and returns the address that signed it.
+    """
+    empty = PublicKey(flags=ALL_FLAGS)
+    sig_raw = bytes(bytearray.fromhex(signature))
+    sig = empty.ecdsa_recoverable_deserialize(sig_raw, args.recid)
+    pubkey = empty.ecdsa_recover(args.message, sig)
 
 async def get_base_url(config):
     return config.nulsexplorer.url.value
