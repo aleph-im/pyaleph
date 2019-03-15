@@ -1,7 +1,13 @@
 from aleph.storage import get_json, pin
 from aleph.model.messages import Message
 
+
 LOGGER = logging.getLogger('chains.common')
+
+async def get_verification_buffer(message):
+    """ Returns a serialized string to verify the message integrity (this is was it signed)
+    """
+    return '{chain}\n{sender}\n{type}\n{item_hash}'.format(**message)
 
 async def mark_confirmed(chain_name, object_hash, height):
     """ Mark a particular hash as confirmed in underlying chain.

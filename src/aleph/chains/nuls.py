@@ -4,7 +4,7 @@ import asyncio
 import aiohttp
 import time
 import json
-from aleph.chains.common import incoming, invalidate
+from aleph.chains.common import incoming, invalidate, get_verification_buffer
 
 
 # TODO: move this to another project
@@ -13,13 +13,15 @@ from nulsexplorer.protocol.data import NulsSignature
 LOGGER = logging.getLogger('chains.nuls')
 CHAIN_NAME = 'NULS'
 
-async def verify_signature(signature, hash):
+
+
+async def verify_signature(message):
     """ Verifies a signature of a hash and returns the address that signed it.
     """
-    empty = PublicKey(flags=ALL_FLAGS)
-    sig_raw = bytes(bytearray.fromhex(signature))
-    sig = empty.ecdsa_recoverable_deserialize(sig_raw, args.recid)
-    pubkey = empty.ecdsa_recover(args.message, sig)
+    sig_raw = bytes(bytearray.fromhex(message['signature']))
+    sig = NulsSignature(sig_raw)
+    verification = await get_verification_buffer(message)
+    return sig.verify(verification)
 
 async def get_base_url(config):
     return config.nulsexplorer.url.value
@@ -69,15 +71,15 @@ async def check_incoming(config):
             async for tx in request_transactions(config, session, last_stored_height):
                 # TODO: handle big message list stored in IPFS case (if too much messages, an ipfs hash is stored here).
                 for message in tx['messages']:
-                    # TODO: verify NULS signatures here. CRITICAL
-                    await incoming(CHAIN_NAME, message)
+                    # TODO: handle other chain signatures here
+                    signed = await verify_signature(message)
+                    if signed:
+                        await incoming(CHAIN_NAME, message)
 
                 if tx['height'] > last_stored_height:
                     last_stored_height = tx['height']
 
             await asyncio.sleep(10) # wait 10 seconds (typical time between 2 blocks)
-
-
 
 async def nuls_incoming_worker(config):
     while True:
