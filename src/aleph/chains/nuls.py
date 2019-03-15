@@ -5,6 +5,7 @@ import time
 import json
 from operator import itemgetter
 from aleph.chains.common import incoming, invalidate, get_verification_buffer
+from aleph.chains.register import register_verifier, register_incoming_worker
 
 
 # TODO: move this to another project
@@ -28,6 +29,9 @@ async def verify_signature(message, tx=None):
     verification = await get_verification_buffer(message)
     return sig.verify(verification)
 
+register_verifier(CHAIN_NAME, verify_signature)
+
+
 async def get_base_url(config):
     return config.nulsexplorer.url.value
 
@@ -45,7 +49,7 @@ async def request_transactions(config, session, start_height):
     async with session.get(check_url, params={
         'business_ipfs': 1,
         'sort_order': 1,
-        'startHeight': start_height,
+        'startHeight': start_height+1,
         'pagination': 100000 # TODO: handle pagination correctly!
     }) as resp:
         jres = await resp.json()
@@ -70,7 +74,7 @@ async def request_transactions(config, session, start_height):
                     LOGGER.info('Got unknown extended object in tx %s' % tx['hash'])
                     continue
 
-                yield dict(type="native-single", time=tx['time']/1000, height=tx['blockHeight'], messages=[message])
+                yield dict(type="native-single", time=tx['time']/1000, tx_hash=tx['hash'], height=tx['blockHeight'], messages=[message])
 
             else:
                 ldata = tx['info'].get('logicData')
@@ -84,7 +88,7 @@ async def request_transactions(config, session, start_height):
                         LOGGER.info('Got an unsupported version object in tx %s' % tx['hash'])
                         continue # unsupported protocol version
 
-                    yield dict(type="aleph", time=tx['time']/1000, height=tx['blockHeight'], messages=jdata['content']['messages'])
+                    yield dict(type="aleph", time=tx['time']/1000, tx_hash=tx['hash'], height=tx['blockHeight'], messages=jdata['content']['messages'])
 
                 except Exception as exc:
                     LOGGER.exception("Can't decode incoming logic data %r" % ldata)
@@ -100,17 +104,17 @@ async def check_incoming(config):
 
     async with aiohttp.ClientSession() as session:
         while True:
-            async for tx in request_transactions(config, session, last_stored_height):
+            async for txi in request_transactions(config, session, last_stored_height):
                 # TODO: handle big message list stored in IPFS case (if too much messages, an ipfs hash is stored here).
-                for message in tx['messages']:
-                    message['time'] = tx['time']
+                for message in txi['messages']:
+                    message['time'] = txi['time']
                     # TODO: handle other chain signatures here
-                    signed = await verify_signature(message, tx=tx)
+                    signed = await verify_signature(message, tx=txi)
                     if signed:
-                        await incoming(CHAIN_NAME, message)
+                        await incoming(CHAIN_NAME, message, txi['tx_hash'], txi['height'])
 
-                if tx['height'] > last_stored_height:
-                    last_stored_height = tx['height']
+                if txi['height'] > last_stored_height:
+                    last_stored_height = txi['height']
 
             await asyncio.sleep(10) # wait 10 seconds (typical time between 2 blocks)
 
@@ -121,3 +125,5 @@ async def nuls_incoming_worker(config):
         except:
             LOGGER.exception("ERROR, relaunching in 10 seconds")
             await asyncio.sleep(10)
+
+register_incoming_worker(CHAIN_NAME, nuls_incoming_worker)

@@ -4,6 +4,8 @@ from aleph.model.messages import Message
 import logging
 LOGGER = logging.getLogger('chains.common')
 
+
+
 async def get_verification_buffer(message):
     """ Returns a serialized string to verify the message integrity (this is was it signed)
     """
@@ -14,7 +16,7 @@ async def mark_confirmed(chain_name, object_hash, height):
     """
     pass
 
-async def incoming(chain_name, message):
+async def incoming(chain_name, message, tx_hash, height):
     """ New incoming message from underlying chain.
     Will be marked as confirmed if existing in database, created if not.
     """
@@ -44,23 +46,29 @@ async def incoming(chain_name, message):
     # TODO: verify if search key is ok... do we need an unique key for messages?
     existing = Message.collection.find_one({
         'item_hash': hash,
-        'chain': chain_name,
+        'chain': message['chain'],
         'sender': message['sender'],
         'type': message['type']
     })
+    new_values = {
+        'confirmed': True,
+        'confirmations': [ # TODO: we should add the current one there
+                           # and not replace it.
+            {'chain': chain_name,
+             'height': height,
+             'hash': tx_hash}
+    ]}
     if existing:
         Message.collection.update_one({
             'item_hash': hash,
             'chain': chain_name
         }, {
-            '$set': {
-                'confirmed': True
-            }
+            '$set': new_values
         })
     else:
         LOGGER.info("New message to store.")
-
-    dbmsg = Message.collection.find_one()
+        message.update(new_values)
+        await Message.collection.insert(message)
 
 
 
