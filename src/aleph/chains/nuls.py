@@ -1,15 +1,16 @@
-import logging
 import binascii
 import asyncio
 import aiohttp
 import time
 import json
+from operator import itemgetter
 from aleph.chains.common import incoming, invalidate, get_verification_buffer
 
 
 # TODO: move this to another project
 from nulsexplorer.protocol.data import NulsSignature
 
+import logging
 LOGGER = logging.getLogger('chains.nuls')
 CHAIN_NAME = 'NULS'
 
@@ -43,15 +44,18 @@ async def request_transactions(config, session, start_height):
         'pagination': 100000 # TODO: handle pagination correctly!
     }) as resp:
         jres = await resp.json()
-        for tx in jres['transactions']:
+        for tx in sorted(jres['transactions'], key=itemgetter('blockHeight')):
             ldata = tx['info'].get('logicData')
             try:
                 ddata = binascii.unhexlify(ldata).decode('utf-8')
                 jdata = json.loads(ddata)
                 if jdata.get('protocol', None) != 'aleph':
+                    LOGGER.info('Got unknown protocol object in tx %s' % tx['hash'])
                     continue
                 if jdata.get('version', None) != 1:
+                    LOGGER.info('Got an unsupported version object in tx %s' % tx['hash'])
                     continue # unsupported protocol version
+
                 yield dict(height=tx['blockHeight'], messages=jdata['content']['messages'])
 
             except Exception as exc:

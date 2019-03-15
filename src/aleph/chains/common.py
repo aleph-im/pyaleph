@@ -1,7 +1,7 @@
 from aleph.storage import get_json, pin
 from aleph.model.messages import Message
 
-
+import logging
 LOGGER = logging.getLogger('chains.common')
 
 async def get_verification_buffer(message):
