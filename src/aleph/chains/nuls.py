@@ -16,9 +16,13 @@ CHAIN_NAME = 'NULS'
 
 
 
-async def verify_signature(message):
+async def verify_signature(tx, message):
     """ Verifies a signature of a hash and returns the address that signed it.
     """
+    if tx['type'] == 'native-single':
+        return True # we expect it to be true as the tx is signed...
+                    # we should ideally reserialize the tx and control it.
+
     sig_raw = bytes(bytearray.fromhex(message['signature']))
     sig = NulsSignature(sig_raw)
     verification = await get_verification_buffer(message)
@@ -39,27 +43,51 @@ async def request_transactions(config, session, start_height):
     check_url = '{}/transactions.json'.format(await get_base_url(config))
 
     async with session.get(check_url, params={
-        'type': '10',
+        'business_ipfs': 1,
+        'sort_order': 1,
         'startHeight': start_height,
         'pagination': 100000 # TODO: handle pagination correctly!
     }) as resp:
         jres = await resp.json()
         for tx in sorted(jres['transactions'], key=itemgetter('blockHeight')):
-            ldata = tx['info'].get('logicData')
-            try:
-                ddata = binascii.unhexlify(ldata).decode('utf-8')
-                jdata = json.loads(ddata)
-                if jdata.get('protocol', None) != 'aleph':
-                    LOGGER.info('Got unknown protocol object in tx %s' % tx['hash'])
+            if tx['info'].get('type', False) == 'ipfs':
+                # Legacy remark-based message
+                parts = tx['remark'].split(';')
+                message = {}
+                message["chain"] = CHAIN_NAME
+                message["signature"] = tx["scriptSig"]
+                message["tx_hash"] = tx["hash"]
+                message["sender"] = tx["inputs"][0]["address"]
+                if parts[1] == "A":
+                    # Ok, we have an aggregate.
+                    # Maybe check object size to avoid ddos attack ?
+                    message["type"] = "AGGREGATE"
+                    message["item_hash"] = parts[2]
+                elif parts[1] == "P":
+                    message["type"] = "POST"
+                    message["item_hash"] = parts[2]
+                else:
+                    LOGGER.info('Got unknown extended object in tx %s' % tx['hash'])
                     continue
-                if jdata.get('version', None) != 1:
-                    LOGGER.info('Got an unsupported version object in tx %s' % tx['hash'])
-                    continue # unsupported protocol version
 
-                yield dict(height=tx['blockHeight'], messages=jdata['content']['messages'])
+                yield dict(type="native-single", time=tx['time']/1000, height=tx['blockHeight'], messages=[message])
 
-            except Exception as exc:
-                LOGGER.exception("Can't decode incoming logic data %r" % ldata)
+            else:
+                ldata = tx['info'].get('logicData')
+                try:
+                    ddata = binascii.unhexlify(ldata).decode('utf-8')
+                    jdata = json.loads(ddata)
+                    if jdata.get('protocol', None) != 'aleph':
+                        LOGGER.info('Got unknown protocol object in tx %s' % tx['hash'])
+                        continue
+                    if jdata.get('version', None) != 1:
+                        LOGGER.info('Got an unsupported version object in tx %s' % tx['hash'])
+                        continue # unsupported protocol version
+
+                    yield dict(type="aleph", time=tx['time']/1000, height=tx['blockHeight'], messages=jdata['content']['messages'])
+
+                except Exception as exc:
+                    LOGGER.exception("Can't decode incoming logic data %r" % ldata)
 
 async def check_incoming(config):
     last_stored_height = await get_last_height()
@@ -75,8 +103,9 @@ async def check_incoming(config):
             async for tx in request_transactions(config, session, last_stored_height):
                 # TODO: handle big message list stored in IPFS case (if too much messages, an ipfs hash is stored here).
                 for message in tx['messages']:
+                    message['time'] = tx['time']
                     # TODO: handle other chain signatures here
-                    signed = await verify_signature(message)
+                    signed = await verify_signature(tx, message)
                     if signed:
                         await incoming(CHAIN_NAME, message)
 
