@@ -16,10 +16,10 @@ CHAIN_NAME = 'NULS'
 
 
 
-async def verify_signature(tx, message):
+async def verify_signature(message, tx=None):
     """ Verifies a signature of a hash and returns the address that signed it.
     """
-    if tx['type'] == 'native-single':
+    if tx is not None and tx['type'] == 'native-single':
         return True # we expect it to be true as the tx is signed...
                     # we should ideally reserialize the tx and control it.
 
@@ -105,7 +105,7 @@ async def check_incoming(config):
                 for message in tx['messages']:
                     message['time'] = tx['time']
                     # TODO: handle other chain signatures here
-                    signed = await verify_signature(tx, message)
+                    signed = await verify_signature(message, tx=tx)
                     if signed:
                         await incoming(CHAIN_NAME, message)
 
