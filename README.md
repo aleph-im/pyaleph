@@ -18,7 +18,7 @@ and edit it to your liking (see configuration section).
 
 To run PyAleph, run this command:
 
-`$ nulsexplorer -c config.yaml` (where config.yaml is your configuration file you
+`$ pyaelph -c config.yaml` (where config.yaml is your configuration file you
 edited earlier)
 
 ## Running services required

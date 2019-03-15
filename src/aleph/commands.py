@@ -22,6 +22,7 @@ from aleph.chains import start_connector
 from aleph.web import app, init_cors
 from aleph.config import get_defaults
 from aleph.network import setup_listeners
+from aleph import model
 
 __author__ = "Moshe Malawach"
 __copyright__ = "Moshe Malawach"
@@ -49,6 +50,7 @@ def parse_args(args):
     parser.add_argument('-c', '--config', action="store", dest="config_file")
     parser.add_argument('-p', '--port', action="store", type=int, dest="port", default=8080)
     parser.add_argument('--host', action="store", type=str, dest="host", default="127.0.0.1")
+    parser.add_argument('--debug', action="store_true", dest="debug", default=False)
     parser.add_argument(
         '-v',
         '--verbose',
@@ -96,6 +98,9 @@ def main(args):
 
     if args.config_file is not None:
         app['config'].yaml.load(args.config_file)
+
+    model.init_db(config, ensure_indexes=(not args.debug))
+    LOGGER.info("Database initialized.")
 
     init_cors()
 

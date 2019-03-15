@@ -98,7 +98,7 @@ class BaseClass(SerializerObject):
 
     def get_collection(self, db=None):
         if db is None:
-            from nulsexplorer import model
+            from aleph import model
             db = model.db
         return db[self._collection_name]
 
