@@ -30,16 +30,16 @@ async def add_json(value):
         None, api.add_json, value)
     return result
 
-async def pin(hash):
+async def pin_add(hash):
     loop = asyncio.get_event_loop()
     api = await get_ipfs_api()
     result = await loop.run_in_executor(
-        None, api.pin, hash)
+        None, api.pin_add, hash)
     return result
 
 async def add_file(fileobject, filename):
     async with aiohttp.ClientSession() as session:
-        from nulsexplorer.web import app
+        from aleph.web import app
         url = "%s/api/v0/add" % (await get_base_url(app['config']))
         data = aiohttp.FormData()
         data.add_field('path',
