@@ -1,8 +1,5 @@
 from logging import getLogger
 
-log = getLogger(__name__)
-
-import pymongo
 try:
     from pymongo import MongoClient
 except ImportError:  # pragma: no cover
@@ -10,6 +7,8 @@ except ImportError:  # pragma: no cover
     from pymongo import Connection as MongoClient
 
 from motor.motor_asyncio import AsyncIOMotorClient
+
+LOGGER = getLogger(__name__)
 
 db_backend = None
 
@@ -24,7 +23,7 @@ def init_db(config, ensure_indexes=True):
                                     tz_aware=True)
     db = connection[config.mongodb.database.value]
     sync_connection = MongoClient(config.mongodb.uri.value,
-                                    tz_aware=True)
+                                  tz_aware=True)
     sync_db = sync_connection[config.mongodb.database.value]
 
     if ensure_indexes:

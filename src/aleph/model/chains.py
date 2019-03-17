@@ -1,4 +1,4 @@
-""" 
+"""
 """
 
 from aleph.model.base import BaseClass, Index

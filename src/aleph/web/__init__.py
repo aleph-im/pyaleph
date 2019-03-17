@@ -3,19 +3,11 @@ import aiohttp_cors
 import aiohttp_jinja2
 import jinja2
 
-from aiohttp_session import setup, get_session, session_middleware
-from aiohttp_session.cookie_storage import EncryptedCookieStorage
-
-#from bottle import Jinja2Template, url
-
 import pkg_resources
 
 import time
-import json
-from bson import json_util
 import pprint
 
-import configparser
 from datetime import date, datetime, timedelta
 
 app = web.Application()
@@ -32,9 +24,9 @@ cors = aiohttp_cors.setup(app, defaults={
 })
 
 tpl_path = pkg_resources.resource_filename('aleph.web', 'templates')
-JINJA_LOADER = jinja2.ChoiceLoader([jinja2.FileSystemLoader(tpl_path),])
+JINJA_LOADER = jinja2.ChoiceLoader([jinja2.FileSystemLoader(tpl_path), ])
 aiohttp_jinja2.setup(app,
-    loader=JINJA_LOADER)
+                     loader=JINJA_LOADER)
 env = aiohttp_jinja2.get_env(app)
 env.globals.update({
     'app': app,
