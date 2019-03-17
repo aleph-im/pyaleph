@@ -1,14 +1,14 @@
-from aleph import model
 from aleph.model.base import BaseClass, Index
 import pymongo
 import logging
 LOGGER = logging.getLogger('model.posts')
 
+
 class Message(BaseClass):
     COLLECTION = "messages"
 
-    INDEXES = [#Index("hash", unique=True),
-               Index("item_hash"), # Content IPFS hash
+    INDEXES = [  # Index("hash", unique=True),
+               Index("item_hash"),  # Content IPFS hash
                Index("sender"),
                Index("content.address"),
                Index("content.ref"),
