@@ -2,7 +2,7 @@ nulsexplorer:
   url: https://testnet.nuls.world
 
 nuls:
-  chain_id: 8964
+  chain_id: 261
   packing_node: True
   private_key: YOUR_PRIVATE_KEY_HERE
 
@@ -15,4 +15,4 @@ ipfs:
   port: 5001
 
 aleph:
-  queue_topic: ALEPH-QUEUE
+  queue_topic: ALEPH-TEST
