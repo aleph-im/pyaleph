@@ -18,7 +18,7 @@ from configmanager import Config
 
 from aleph import __version__
 from aleph.chains import start_connector
-from aleph.web import app, init_cors
+from aleph.web import app, init_cors, controllers
 from aleph.config import get_defaults
 from aleph.network import setup_listeners
 from aleph import model
