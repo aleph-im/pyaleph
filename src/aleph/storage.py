@@ -6,8 +6,11 @@ import ipfsapi
 import asyncio
 import aiohttp
 
+
 async def get_base_url(config):
-    return 'http://{}:{}'.format(config.ipfs.host.value, config.ipfs.port.value)
+    return 'http://{}:{}'.format(config.ipfs.host.value,
+                                 config.ipfs.port.value)
+
 
 async def get_ipfs_api():
     from aleph.web import app
@@ -16,12 +19,14 @@ async def get_ipfs_api():
 
     return ipfsapi.connect(host, port)
 
+
 async def get_json(hash):
     loop = asyncio.get_event_loop()
     api = await get_ipfs_api()
     result = await loop.run_in_executor(
         None, api.get_json, hash)
     return result
+
 
 async def add_json(value):
     loop = asyncio.get_event_loop()
@@ -30,12 +35,14 @@ async def add_json(value):
         None, api.add_json, value)
     return result
 
+
 async def pin_add(hash):
     loop = asyncio.get_event_loop()
     api = await get_ipfs_api()
     result = await loop.run_in_executor(
         None, api.pin_add, hash)
     return result
+
 
 async def add_file(fileobject, filename):
     async with aiohttp.ClientSession() as session:

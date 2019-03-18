@@ -1,7 +1,4 @@
 # settings.py
-import pathlib
-import yaml
-
 def get_defaults():
     return {
         'aleph': {

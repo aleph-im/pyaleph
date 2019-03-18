@@ -37,6 +37,7 @@ async def sub(base_url, topic):
                         mvalue = await decode_msg(mvalue)
                         LOGGER.debug("New message received", mvalue)
                         yield mvalue
+
                     except Exception as exc:
                         LOGGER.exception("Can't decode message JSON")
                 else:
@@ -48,6 +49,7 @@ async def incoming_channel(config, topic):
         try:
             async for message in sub(await get_base_url(config), topic):
                 print(message)
+
         except Exception as exc:
             LOGGER.exception("Exception in IPFS pubsub, reconnecting.")
 

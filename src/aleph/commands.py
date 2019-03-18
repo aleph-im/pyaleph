@@ -11,7 +11,6 @@ also be used as template for Python modules.
 """
 
 import argparse
-import configparser
 import sys
 import logging
 import asyncio
@@ -48,9 +47,12 @@ def parse_args(args):
         action='version',
         version='pyaleph {ver}'.format(ver=__version__))
     parser.add_argument('-c', '--config', action="store", dest="config_file")
-    parser.add_argument('-p', '--port', action="store", type=int, dest="port", default=8080)
-    parser.add_argument('--host', action="store", type=str, dest="host", default="127.0.0.1")
-    parser.add_argument('--debug', action="store_true", dest="debug", default=False)
+    parser.add_argument('-p', '--port', action="store", type=int, dest="port",
+                        default=8080)
+    parser.add_argument('--host', action="store", type=str, dest="host",
+                        default="127.0.0.1")
+    parser.add_argument('--debug', action="store_true", dest="debug",
+                        default=False)
     parser.add_argument(
         '-v',
         '--verbose',
@@ -115,6 +117,7 @@ def main(args):
     srv = loop.run_until_complete(f)
     LOGGER.info('Serving on %s', srv.sockets[0].getsockname())
     loop.run_forever()
+
 
 def run():
     """Entry point for console_scripts
