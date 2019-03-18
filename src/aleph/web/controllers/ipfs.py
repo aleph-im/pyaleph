@@ -1,5 +1,6 @@
 from aleph.storage import add_json, add_file
 from aleph.web import app
+from aleph.network import pub
 from aiohttp import web
 
 
@@ -32,3 +33,18 @@ async def ipfs_add_file(request):
     return web.json_response(output)
 
 app.router.add_post('/api/v0/ipfs/add_file', ipfs_add_file)
+
+
+async def ipfs_pub_json(request):
+    """ Forward the message to IPFS server as a pubsub message
+    """
+    data = await request.json()
+
+    await pub(data.get('topic'), data.get('data'))
+
+    output = {
+        'status': 'success'
+    }
+    return web.json_response(output)
+
+app.router.add_post('/api/v0/ipfs/pubsub/pub', ipfs_pub_json)

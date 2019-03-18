@@ -45,7 +45,11 @@ async def incoming_check(ipfs_pubsub_message):
                          % ipfs_pubsub_message.get('data', ''))
 
 
-async def sub(base_url, topic):
+async def sub(topic, base_url=None):
+    if base_url is None:
+        from aleph.web import app
+        base_url = await get_base_url(app['config'])
+
     async with aiohttp.ClientSession(read_timeout=0) as session:
         async with session.get('%s/api/v0/pubsub/sub' % base_url,
                                params={'arg': topic,
@@ -76,10 +80,22 @@ async def sub(base_url, topic):
                     rest_value = value
 
 
+async def pub(topic, message, base_url=None):
+    if base_url is None:
+        from aleph.web import app
+        base_url = await get_base_url(app['config'])
+
+    async with aiohttp.ClientSession(read_timeout=0) as session:
+        async with session.get('%s/api/v0/pubsub/pub' % base_url,
+                               params=(('arg', topic),
+                                       ('arg', message))) as resp:
+            assert resp.status == 200
+
+
 async def incoming_channel(config, topic):
     while True:
         try:
-            async for message in sub(await get_base_url(config), topic):
+            async for message in sub(topic, base_url=await get_base_url(config)):
                 print(message)
 
         except Exception:
@@ -119,5 +135,5 @@ def setup_listeners(config):
 
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(sub('http://localhost:5001', 'blah'))
+    loop.run_until_complete(sub('blah', base_url='http://localhost:5001'))
     loop.close()
