@@ -12,13 +12,20 @@ async def get_verification_buffer(message):
     return '{chain}\n{sender}\n{type}\n{item_hash}'.format(**message)
 
 
-async def mark_confirmed(chain_name, object_hash, height):
-    """ Mark a particular hash as confirmed in underlying chain.
+async def mark_confirmed_data(chain_name, tx_hash, height):
+    """ Returns data required to mark a particular hash as confirmed
+    in underlying chain.
     """
-    pass
+    return {
+        'confirmed': True,
+        'confirmations': [  # TODO: we should add the current one there
+                            # and not replace it.
+            {'chain': chain_name,
+             'height': height,
+             'hash': tx_hash}]}
 
 
-async def incoming(chain_name, message, tx_hash, height):
+async def incoming(message, chain_name=None, tx_hash=None, height=None):
     """ New incoming message from underlying chain.
     Will be marked as confirmed if existing in database, created if not.
     """
@@ -27,7 +34,7 @@ async def incoming(chain_name, message, tx_hash, height):
     message['chain'] = message.get('chain', chain_name)
     try:
         content = await get_json(hash)
-    except Exception as exc:
+    except Exception:
         LOGGER.exception("Can't get content of object %r" % hash)
         return
 
@@ -45,22 +52,21 @@ async def incoming(chain_name, message, tx_hash, height):
 
     # since it's on-chain, we need to keep that content.
     # TODO: verify signature before (in chain-specific stage?)
+    LOGGER.debug("Pining hash %s" % hash)
     await pin_add(hash)
 
     # TODO: verify if search key is ok. do we need an unique key for messages?
-    existing = Message.collection.find_one({
+    existing = await Message.collection.find_one({
         'item_hash': hash,
         'chain': message['chain'],
         'sender': message['sender'],
         'type': message['type']
     })
-    new_values = {
-        'confirmed': True,
-        'confirmations': [  # TODO: we should add the current one there
-                            # and not replace it.
-            {'chain': chain_name,
-             'height': height,
-             'hash': tx_hash}]}
+
+    new_values = {}
+    if chain_name and tx_hash and height:
+        # We are getting a confirmation here
+        new_values = await mark_confirmed_data(chain_name, tx_hash, height)
 
     if existing:
         Message.collection.update_one({
@@ -71,8 +77,9 @@ async def incoming(chain_name, message, tx_hash, height):
         })
 
     else:
-        LOGGER.info("New message to store.")
+        LOGGER.info("New message to store for %s." % hash)
         message.update(new_values)
+        message['content'] = content
         await Message.collection.insert(message)
 
 

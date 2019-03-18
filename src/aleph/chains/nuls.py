@@ -3,6 +3,7 @@ import asyncio
 import aiohttp
 import json
 from operator import itemgetter
+from aleph.network import check_message
 from aleph.chains.common import incoming, get_verification_buffer
 from aleph.chains.register import register_verifier, register_incoming_worker
 
@@ -15,14 +16,9 @@ LOGGER = logging.getLogger('chains.nuls')
 CHAIN_NAME = 'NULS'
 
 
-async def verify_signature(message, tx=None):
+async def verify_signature(message):
     """ Verifies a signature of a hash and returns the address that signed it.
     """
-    if tx is not None and tx['type'] == 'native-single':
-        # we expect it to be true as the tx is signed...
-        # we should ideally reserialize the tx and control it.
-        return True
-
     sig_raw = bytes(bytearray.fromhex(message['signature']))
     sig = NulsSignature(sig_raw)
     verification = await get_verification_buffer(message)
@@ -90,15 +86,21 @@ async def request_transactions(config, session, start_height):
                                     % tx['hash'])
                         continue
                     if jdata.get('version', None) != 1:
-                        LOGGER.info('Got an unsupported version object in tx %s'
-                                    % tx['hash'])
+                        LOGGER.info(
+                            'Got an unsupported version object in tx %s'
+                            % tx['hash'])
                         continue  # unsupported protocol version
 
                     yield dict(type="aleph", time=tx['time']/1000,
                                tx_hash=tx['hash'], height=tx['blockHeight'],
                                messages=jdata['content']['messages'])
 
-                except Exception as exc:
+                except json.JSONDecodeError:
+                    # if it's not valid json, just ignore it...
+                    LOGGER.info("Incoming logic data is not JSON, ignoring. %r"
+                                % ldata)
+
+                except Exception:
                     LOGGER.exception("Can't decode incoming logic data %r"
                                      % ldata)
 
@@ -118,12 +120,21 @@ async def check_incoming(config):
                 # TODO: handle big message list stored in IPFS case
                 # (if too much messages, an ipfs hash is stored here).
                 for message in txi['messages']:
+                    message = await check_message(
+                        message, from_chain=True,
+                        trusted=(txi['type'] == 'native-single'))
+                    if message is None:
+                        # message got discarded at check stage.
+                        continue
+
                     message['time'] = txi['time']
                     # TODO: handle other chain signatures here
-                    signed = await verify_signature(message, tx=txi)
-                    if signed:
-                        await incoming(CHAIN_NAME, message, txi['tx_hash'],
-                                       txi['height'])
+                    # now handled in check_message
+                    # signed = await verify_signature(message, tx=txi)
+
+                    await incoming(message, chain_name=CHAIN_NAME,
+                                   tx_hash=txi['tx_hash'],
+                                   height=txi['height'])
 
                 if txi['height'] > last_stored_height:
                     last_stored_height = txi['height']
@@ -137,7 +148,7 @@ async def nuls_incoming_worker(config):
         try:
             await check_incoming(config)
 
-        except Exception as exc:
+        except Exception:
             LOGGER.exception("ERROR, relaunching in 10 seconds")
             await asyncio.sleep(10)
 
