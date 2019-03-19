@@ -2,15 +2,21 @@ import binascii
 import asyncio
 import aiohttp
 import json
+import time
 from operator import itemgetter
 from aleph.network import check_message
 from aleph.chains.common import incoming, get_verification_buffer
-from aleph.chains.register import register_verifier, register_incoming_worker
+from aleph.chains.register import (
+    register_verifier, register_incoming_worker, register_outgoing_worker)
 from aleph.model.chains import Chain
+from aleph.model.messages import Message
 
 
 # TODO: move this to another project
-from nulsexplorer.protocol.data import NulsSignature
+from nulsexplorer.protocol.data import (
+    NulsSignature, public_key_to_hash, address_from_hash, hash_from_address,
+    CHEAP_UNIT_FEE)
+from nulsexplorer.protocol.transaction import Transaction
 
 import logging
 LOGGER = logging.getLogger('chains.nuls')
@@ -160,7 +166,110 @@ async def nuls_incoming_worker(config):
             await check_incoming(config)
 
         except Exception:
-            LOGGER.exception("ERROR, relaunching in 10 seconds")
+            LOGGER.exception("ERROR, relaunching incoming in 10 seconds")
             await asyncio.sleep(10)
 
 register_incoming_worker(CHAIN_NAME, nuls_incoming_worker)
+
+
+async def prepare_businessdata_tx(address, utxo, content):
+    # we take the first 10, hoping it's enough... bad, bad, bad!
+    # TODO: do a real utxo management here
+    # tx = transaction.Transaction()
+    tx = await Transaction.from_dict({
+      "type": 10,
+      "time": int(time.time() * 1000),
+      "blockHeight": None,
+      "fee": 0,
+      "remark": b"",
+      "scriptSig": b"",
+      "info": {
+          "logicData": binascii.hexlify(content)
+      },
+      "inputs": [{'fromHash': inp['hash'],
+                  'fromIndex': inp['idx'],
+                  'value': inp['value'],
+                  'localTime': inp['lockTime']} for inp in utxo],
+      "outputs": [
+          {"address": hash_from_address(address),
+           "value": sum([inp['value'] for inp in utxo]),
+           "lockTime": 0}
+      ]
+    })
+    tx.coin_data.outputs[0].na = (
+        sum([inp['value'] for inp in utxo])
+        - (await tx.calculate_fee()))
+    return tx
+
+
+async def get_content_to_broadcast():
+    messages = await Message.get_unconfirmed_raw()
+    return {'protocol': 'aleph',
+            'version': 1,
+            'content': {
+                'messages': [message async for message in messages]
+            }}
+
+
+async def nuls_packer(config):
+    from secp256k1 import PrivateKey
+
+    pri_key = binascii.unhexlify(config.nuls.private_key.value)
+    privkey = PrivateKey(pri_key, raw=True)
+    pub_key = privkey.pubkey.serialize()
+    address = await get_address(pub_key, config.nuls.chain_id.value)
+    LOGGER.info("NULS Connector set up with address %s" % address)
+
+    while True:
+        utxo = await get_utxo(config, address)
+        selected_utxo = utxo[:10]
+        content = await get_content_to_broadcast()
+        content = json.dumps(content)
+        tx = await prepare_businessdata_tx(address, selected_utxo,
+                                           content.encode('UTF-8'))
+        await tx.sign_tx(pri_key)
+        tx_hex = (await tx.serialize()).hex()
+        LOGGER.info("Broadcasting TX")
+        await broadcast(config, tx_hex)
+
+        await asyncio.sleep(11)
+
+
+async def nuls_outgoing_worker(config):
+    if config.nuls.packing_node.value:
+        while True:
+            try:
+                await nuls_packer(config)
+
+            except Exception:
+                LOGGER.exception("ERROR, relaunching outgoing in 10 seconds")
+                await asyncio.sleep(10)
+
+register_outgoing_worker(CHAIN_NAME, nuls_outgoing_worker)
+
+
+async def get_address(pubkey, chain_id):
+    phash = public_key_to_hash(pubkey, chain_id=chain_id)
+    address = address_from_hash(phash)
+    return address
+
+
+async def broadcast(config, tx_hex):
+    broadcast_url = '{}/broadcast'.format(
+        await get_base_url(config))
+    data = {'txHex': tx_hex}
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(broadcast_url, json=data) as resp:
+            jres = await resp.text()
+            print(jres)
+
+
+async def get_utxo(config, address):
+    check_url = '{}/addresses/outputs/{}.json'.format(
+        await get_base_url(config), address)
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(check_url) as resp:
+            jres = await resp.json()
+            return jres['outputs']
