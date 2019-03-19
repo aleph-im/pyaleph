@@ -189,7 +189,7 @@ async def prepare_businessdata_tx(address, utxo, content):
       "inputs": [{'fromHash': inp['hash'],
                   'fromIndex': inp['idx'],
                   'value': inp['value'],
-                  'localTime': inp['lockTime']} for inp in utxo],
+                  'lockTime': inp['lockTime']} for inp in utxo],
       "outputs": [
           {"address": hash_from_address(address),
            "value": sum([inp['value'] for inp in utxo]),
@@ -219,9 +219,14 @@ async def nuls_packer(config):
     pub_key = privkey.pubkey.serialize()
     address = await get_address(pub_key, config.nuls.chain_id.value)
     LOGGER.info("NULS Connector set up with address %s" % address)
-
+    utxo = await get_utxo(config, address)
+    i = 0
     while True:
-        utxo = await get_utxo(config, address)
+        if (i >= 100) or (utxo[0]['value'] < CHEAP_UNIT_FEE):
+            await asyncio.sleep(11)
+            utxo = await get_utxo(config, address)
+            i = 0
+
         selected_utxo = utxo[:10]
         content = await get_content_to_broadcast()
         content = json.dumps(content)
@@ -229,10 +234,19 @@ async def nuls_packer(config):
                                            content.encode('UTF-8'))
         await tx.sign_tx(pri_key)
         tx_hex = (await tx.serialize()).hex()
+        # tx_hash = await tx.get_hash()
         LOGGER.info("Broadcasting TX")
-        await broadcast(config, tx_hex)
+        tx_hash = await broadcast(config, tx_hex)
+        utxo = [{
+            'hash': tx_hash,
+            'idx': 0,
+            'lockTime': 0,
+            'value': tx.coin_data.outputs[0].na
+        }]
 
-        await asyncio.sleep(11)
+        await asyncio.sleep(5)
+
+        i += 1
 
 
 async def nuls_outgoing_worker(config):
@@ -261,7 +275,8 @@ async def broadcast(config, tx_hex):
 
     async with aiohttp.ClientSession() as session:
         async with session.post(broadcast_url, json=data) as resp:
-            jres = await resp.text()
+            jres = (await resp.json())['value']
+            return jres
 
 
 async def get_utxo(config, address):
