@@ -262,7 +262,6 @@ async def broadcast(config, tx_hex):
     async with aiohttp.ClientSession() as session:
         async with session.post(broadcast_url, json=data) as resp:
             jres = await resp.text()
-            print(jres)
 
 
 async def get_utxo(config, address):
