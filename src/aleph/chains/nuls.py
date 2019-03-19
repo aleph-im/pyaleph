@@ -117,6 +117,7 @@ async def request_transactions(config, session, start_height):
         if last_height:
             await Chain.set_last_height(CHAIN_NAME, last_height)
 
+
 async def check_incoming(config):
     last_stored_height = await get_last_height()
 

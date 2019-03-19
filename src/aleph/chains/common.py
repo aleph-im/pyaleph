@@ -63,7 +63,7 @@ async def incoming(message, chain_name=None, tx_hash=None, height=None):
         'type': message['type']
     })
 
-    new_values = {'confirmed': False} # this should be our default.
+    new_values = {'confirmed': False}  # this should be our default.
     if chain_name and tx_hash and height:
         # We are getting a confirmation here
         new_values = await mark_confirmed_data(chain_name, tx_hash, height)
