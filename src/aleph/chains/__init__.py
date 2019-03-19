@@ -1,7 +1,13 @@
 import asyncio
-from aleph.chains.nuls import nuls_incoming_worker
+from aleph.chains.register import OUTGOING_WORKERS, INCOMING_WORKERS
+from aleph.chains import nuls
 
 
 def start_connector(config):
     loop = asyncio.get_event_loop()
-    loop.create_task(nuls_incoming_worker(config))
+
+    for worker in INCOMING_WORKERS.values():
+        loop.create_task(worker(config))
+
+    for worker in OUTGOING_WORKERS.values():
+        loop.create_task(worker(config))
