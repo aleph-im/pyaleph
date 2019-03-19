@@ -1,7 +1,12 @@
 from aleph.model.base import BaseClass, Index
+from aleph.network import INCOMING_MESSAGE_AUTHORIZED_FIELDS
 import pymongo
 import logging
 LOGGER = logging.getLogger('model.posts')
+
+RAW_MSG_PROJECTION = {field: 1 for field
+                      in INCOMING_MESSAGE_AUTHORIZED_FIELDS}
+RAW_MSG_PROJECTION.update({'_id': 0})
 
 
 class Message(BaseClass):
@@ -22,6 +27,14 @@ class Message(BaseClass):
                Index("confirmations.height", pymongo.ASCENDING),
                Index("confirmations.height", pymongo.DESCENDING),
                Index("confirmed")]
+
+    @classmethod
+    async def get_unconfirmed_raw(cls, limit=100):
+        """ Return raw unconfirmed txs, ready for broadcast.
+        """
+        return cls.collection.find(
+            {'confirmed': False},
+            projection=RAW_MSG_PROJECTION).sort([('time', 1)]).limit(limit)
 
 
 async def get_computed_address_aggregates(address_list=None, key_list=None):
