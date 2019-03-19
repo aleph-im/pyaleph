@@ -6,6 +6,7 @@ from operator import itemgetter
 from aleph.network import check_message
 from aleph.chains.common import incoming, get_verification_buffer
 from aleph.chains.register import register_verifier, register_incoming_worker
+from aleph.model.chains import Chain
 
 
 # TODO: move this to another project
@@ -34,7 +35,12 @@ async def get_base_url(config):
 async def get_last_height():
     """ Returns the last height for which we already have the nuls data.
     """
-    return 0  # for now, request everything (bad!) TODO: Change that!
+    last_height = await Chain.get_last_height(CHAIN_NAME)
+
+    if last_height is None:
+        last_height = -1
+
+    return last_height
 
 
 async def request_transactions(config, session, start_height):
@@ -47,10 +53,12 @@ async def request_transactions(config, session, start_height):
         'business_ipfs': 1,
         'sort_order': 1,
         'startHeight': start_height+1,
-        'pagination': 100000  # TODO: handle pagination correctly!
+        'pagination': 5000
     }) as resp:
         jres = await resp.json()
+        last_height = 0
         for tx in sorted(jres['transactions'], key=itemgetter('blockHeight')):
+            last_height = tx['blockHeight']
             if tx['info'].get('type', False) == 'ipfs':
                 # Legacy remark-based message
                 parts = tx['remark'].split(';')
@@ -104,17 +112,19 @@ async def request_transactions(config, session, start_height):
                     LOGGER.exception("Can't decode incoming logic data %r"
                                      % ldata)
 
+        # Since we got no critical exception, save last received object
+        # block height to do next requests from there.
+        if last_height:
+            await Chain.set_last_height(CHAIN_NAME, last_height)
 
 async def check_incoming(config):
     last_stored_height = await get_last_height()
-    # last_height = -1
-    if last_stored_height is None:
-        last_stored_height = -1
 
     LOGGER.info("Last block is #%d" % last_stored_height)
 
     async with aiohttp.ClientSession() as session:
         while True:
+            last_stored_height = await get_last_height()
             async for txi in request_transactions(config, session,
                                                   last_stored_height):
                 # TODO: handle big message list stored in IPFS case
@@ -136,8 +146,8 @@ async def check_incoming(config):
                                    tx_hash=txi['tx_hash'],
                                    height=txi['height'])
 
-                if txi['height'] > last_stored_height:
-                    last_stored_height = txi['height']
+                # if txi['height'] > last_stored_height:
+                #    last_stored_height = txi['height']
 
             # wait 10 seconds (typical time between 2 blocks)
             await asyncio.sleep(10)

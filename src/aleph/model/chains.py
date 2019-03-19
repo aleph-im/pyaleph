@@ -17,7 +17,10 @@ class Chain(BaseClass):
         obj = await cls.collection.find_one(
             {'name': chain},
             projection={'last_commited_height': 1})
-        return obj['last_commited_height']
+        if obj is None:
+            return None
+
+        return obj.get('last_commited_height', None)
 
     @classmethod
     async def set_last_height(cls, chain, height):
