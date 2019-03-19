@@ -95,7 +95,8 @@ async def pub(topic, message, base_url=None):
 async def incoming_channel(config, topic):
     while True:
         try:
-            async for message in sub(topic, base_url=await get_base_url(config)):
+            async for message in sub(topic,
+                                     base_url=await get_base_url(config)):
                 print(message)
 
         except Exception:
