@@ -14,6 +14,7 @@ import argparse
 import sys
 import logging
 import asyncio
+import uvloop
 from configmanager import Config
 
 from aleph import __version__
@@ -87,6 +88,8 @@ def main(args):
     Args:
       args ([str]): command line parameter list
     """
+
+    uvloop.install()
     args = parse_args(args)
     setup_logging(args.loglevel)
     LOGGER.info("Starting up.")
