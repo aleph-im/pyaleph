@@ -33,28 +33,6 @@ async def incoming(message, chain_name=None, tx_hash=None, height=None):
     hash = message['item_hash']
     # we set the incoming chain as default for signature
     message['chain'] = message.get('chain', chain_name)
-    try:
-        content = await get_json(hash)
-    except Exception:
-        LOGGER.exception("Can't get content of object %r" % hash)
-        return
-
-    if content.get('address', None) is None:
-        content['address'] = message['sender']
-
-    if content.get('time', None) is None:
-        content['time'] = message['time']
-
-    # for now, only support direct signature
-    # (no 3rd party or multiple address signing)
-    if message['sender'] != content['address']:
-        LOGGER.warn("Invalid sender for %s" % hash)
-        return
-
-    # since it's on-chain, we need to keep that content.
-    # TODO: verify signature before (in chain-specific stage?)
-    LOGGER.debug("Pining hash %s" % hash)
-    await pin_add(hash)
 
     # TODO: verify if search key is ok. do we need an unique key for messages?
     existing = await Message.collection.find_one({
@@ -78,10 +56,32 @@ async def incoming(message, chain_name=None, tx_hash=None, height=None):
         })
 
     else:
+        try:
+            content = await get_json(hash)
+        except Exception:
+            LOGGER.exception("Can't get content of object %r" % hash)
+            return
+
+        if content.get('address', None) is None:
+            content['address'] = message['sender']
+
+        if content.get('time', None) is None:
+            content['time'] = message['time']
+
+        # for now, only support direct signature
+        # (no 3rd party or multiple address signing)
+        if message['sender'] != content['address']:
+            LOGGER.warn("Invalid sender for %s" % hash)
+            return
+
         LOGGER.info("New message to store for %s." % hash)
         message.update(new_values)
         message['content'] = content
         await Message.collection.insert(message)
+
+        # since it's on-chain, we need to keep that content.
+        LOGGER.debug("Pining hash %s" % hash)
+        await pin_add(hash)
 
 
 async def invalidate(chain_name, block_height):
