@@ -106,7 +106,9 @@ async def get_merged_posts(filters, sort=None, limit=100,
         }},
         {'$lookup': {
             'from': 'messages',
-            'let': {'item_hash': "$item_hash", 'tx_hash': "$tx_hash"},
+            'let': {'item_hash': "$item_hash",
+                    'tx_hash': "$tx_hash",
+                    'address': '$content.address'},
             'pipeline': [
                 {'$match': {
                     '$and': [
@@ -115,10 +117,14 @@ async def get_merged_posts(filters, sort=None, limit=100,
                         # {'content.ref': {'$in': ['$$item_hash',
                         #                         '$$tx_hash']}}
                         {'$expr':
-                            {'$or': [
-                                {'$eq': ['$content.ref', '$$item_hash']},
-                                {'$eq': ['$content.ref', '$$tx_hash']},
-                            ]}}
+                            {'$and': [
+                                {'$or': [
+                                    {'$eq': ['$content.ref', '$$item_hash']},
+                                    {'$eq': ['$content.ref', '$$tx_hash']},
+                                ]},
+                                {'$eq': ['$content.address', '$$address']}
+                            ]}
+                         }
                     ]
                 }},
                 {'$sort': {'confirmed': -1,
