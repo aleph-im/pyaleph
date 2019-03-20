@@ -14,6 +14,7 @@ class Message(BaseClass):
 
     INDEXES = [  # Index("hash", unique=True),
                Index("item_hash"),  # Content IPFS hash
+               Index("tx_hash"),  # TX Hash (if there is one)
                Index("sender"),
                Index("content.address"),
                Index("content.ref"),
@@ -26,7 +27,7 @@ class Message(BaseClass):
                Index("confirmations.chain", pymongo.ASCENDING),
                Index("confirmations.height", pymongo.ASCENDING),
                Index("confirmations.height", pymongo.DESCENDING),
-               Index("confirmed")]
+               Index("confirmed", pymongo.DESCENDING)]
 
     @classmethod
     async def get_unconfirmed_raw(cls, limit=100):
@@ -82,3 +83,55 @@ async def get_computed_address_aggregates(address_list=None, key_list=None):
 
     return {result['address']: result['contents']
             async for result in results}
+
+
+async def get_merged_posts(filters, sort=None, limit=100,
+                           skip=0, amend_limit=1):
+    if sort is None:
+        sort = {'confirmed': -1,
+                'confirmations.height': -1,
+                'time': -1}
+
+    aggregate = [
+        {'$match': {
+            'type': 'POST',
+            **filters
+        }},
+        {'$sort': sort},
+        {'$skip': skip},
+        {'$limit': limit},
+        {'$addFields': {
+            'original_item_hash': '$item_hash',
+            'original_signature': '$signature'
+        }},
+        {'$lookup': {
+            'from': 'messages',
+            'let': {'item_hash': "$item_hash", 'tx_hash': "$tx_hash"},
+            'pipeline': [
+                {'$match': {
+                    '$and': [
+                        {'type': 'POST'},
+                        {'content.type': 'amend'},
+                        # {'content.ref': {'$in': ['$$item_hash',
+                        #                         '$$tx_hash']}}
+                        {'$expr':
+                            {'$or': [
+                                {'$eq': ['$content.ref', '$$item_hash']},
+                                {'$eq': ['$content.ref', '$$tx_hash']},
+                            ]}}
+                    ]
+                }},
+                {'$sort': {'confirmed': -1,
+                           'confirmations.height': -1,
+                           'time': -1}},
+                {'$limit': amend_limit}
+            ],
+            'as': 'amends'
+        }},
+        {'$replaceRoot': {
+            'newRoot': {'$mergeObjects': ["$$ROOT",
+                                          {'$arrayElemAt': ["$amends", 0]}]}}},
+        {'$project': {'amends': 0}}
+    ]
+
+    return Message.collection.aggregate(aggregate)

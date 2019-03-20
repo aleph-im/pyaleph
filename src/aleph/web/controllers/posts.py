@@ -2,7 +2,7 @@ from aleph.web import app
 from aleph.web.controllers.utils import (Pagination,
                                          cond_output, prepare_date_filters,
                                          prepare_block_height_filters)
-from aleph.model.messages import Message
+from aleph.model.messages import Message, get_merged_posts
 
 
 async def view_posts_list(request):
@@ -12,7 +12,7 @@ async def view_posts_list(request):
 
     find_filters = {}
     filters = [
-        {'type': request.query.get('msgType', 'POST')}
+        # {'type': request.query.get('msgType', 'POST')}
     ]
 
     query_string = request.query_string
@@ -73,10 +73,13 @@ async def view_posts_list(request):
                   sender=msg['sender'],
                   **msg['content'])
              async for msg
-             in Message.collection.find(find_filters,
-                                        limit=pagination_per_page,
-                                        skip=pagination_skip,
-                                        sort=[('time', -1)])]
+             in await get_merged_posts(find_filters,
+                                       limit=pagination_per_page,
+                                       skip=pagination_skip)]
+    # in Message.collection.find(find_filters,
+    #                            limit=pagination_per_page,
+    #                            skip=pagination_skip,
+    #                            sort=[('time', -1)])]
 
     context = {
         'posts': posts
