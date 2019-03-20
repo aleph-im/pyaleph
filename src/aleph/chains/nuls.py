@@ -156,8 +156,9 @@ async def check_incoming(config):
                 # if txi['height'] > last_stored_height:
                 #    last_stored_height = txi['height']
 
-            # wait 10 seconds (typical time between 2 blocks)
-            await asyncio.sleep(10)
+            if (i < 10):  # if there was less than 10 items, not a busy time
+                # wait 5 seconds (half of typical time between 2 blocks)
+                await asyncio.sleep(5)
 
 
 async def nuls_incoming_worker(config):
@@ -246,7 +247,7 @@ async def nuls_packer(config):
                 'value': tx.coin_data.outputs[0].na
             }]
 
-        await asyncio.sleep(9.9)
+        await asyncio.sleep(11)
 
         i += 1
 
