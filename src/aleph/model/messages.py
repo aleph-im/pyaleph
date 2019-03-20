@@ -88,7 +88,7 @@ async def get_computed_address_aggregates(address_list=None, key_list=None):
 async def get_merged_posts(filters, sort=None, limit=100,
                            skip=0, amend_limit=1):
     if sort is None:
-        sort = {'confirmed': -1,
+        sort = {'confirmed': 1,
                 'confirmations.height': -1,
                 'time': -1}
 
@@ -127,7 +127,7 @@ async def get_merged_posts(filters, sort=None, limit=100,
                          }
                     ]
                 }},
-                {'$sort': {'confirmed': -1,
+                {'$sort': {'confirmed': 1,
                            'confirmations.height': -1,
                            'time': -1}},
                 {'$limit': amend_limit}
