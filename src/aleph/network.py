@@ -38,6 +38,7 @@ async def incoming_check(ipfs_pubsub_message):
 
     try:
         message = json.loads(ipfs_pubsub_message.get('data', ''))
+        LOGGER.debug("New message! %r" % message)
         message = await check_message(message, from_network=True)
         return message
     except json.JSONDecodeError:
@@ -93,11 +94,12 @@ async def pub(topic, message, base_url=None):
 
 
 async def incoming_channel(config, topic):
+    from aleph.chains.common import incoming
     while True:
         try:
             async for message in sub(topic,
                                      base_url=await get_base_url(config)):
-                print(message)
+                await incoming(message)
 
         except Exception:
             LOGGER.exception("Exception in IPFS pubsub, reconnecting.")
