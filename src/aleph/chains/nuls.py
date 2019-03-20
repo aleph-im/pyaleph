@@ -202,12 +202,11 @@ async def prepare_businessdata_tx(address, utxo, content):
     return tx
 
 
-async def get_content_to_broadcast():
-    messages = await Message.get_unconfirmed_raw()
+async def get_content_to_broadcast(messages):
     return {'protocol': 'aleph',
             'version': 1,
             'content': {
-                'messages': [message async for message in messages]
+                'messages': messages
             }}
 
 
@@ -223,28 +222,31 @@ async def nuls_packer(config):
     i = 0
     while True:
         if (i >= 100) or (utxo[0]['value'] < CHEAP_UNIT_FEE):
-            await asyncio.sleep(11)
+            await asyncio.sleep(30)  # wait three (!!) blocks
             utxo = await get_utxo(config, address)
             i = 0
 
         selected_utxo = utxo[:10]
-        content = await get_content_to_broadcast()
-        content = json.dumps(content)
-        tx = await prepare_businessdata_tx(address, selected_utxo,
-                                           content.encode('UTF-8'))
-        await tx.sign_tx(pri_key)
-        tx_hex = (await tx.serialize()).hex()
-        # tx_hash = await tx.get_hash()
-        LOGGER.info("Broadcasting TX")
-        tx_hash = await broadcast(config, tx_hex)
-        utxo = [{
-            'hash': tx_hash,
-            'idx': 0,
-            'lockTime': 0,
-            'value': tx.coin_data.outputs[0].na
-        }]
+        messages = [message async for message
+                    in (await Message.get_unconfirmed_raw())]
+        if len(messages):
+            content = await get_content_to_broadcast(messages)
+            content = json.dumps(content)
+            tx = await prepare_businessdata_tx(address, selected_utxo,
+                                               content.encode('UTF-8'))
+            await tx.sign_tx(pri_key)
+            tx_hex = (await tx.serialize()).hex()
+            # tx_hash = await tx.get_hash()
+            LOGGER.info("Broadcasting TX")
+            tx_hash = await broadcast(config, tx_hex)
+            utxo = [{
+                'hash': tx_hash,
+                'idx': 0,
+                'lockTime': 0,
+                'value': tx.coin_data.outputs[0].na
+            }]
 
-        await asyncio.sleep(5)
+        await asyncio.sleep(9.9)
 
         i += 1
 
