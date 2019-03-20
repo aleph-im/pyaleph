@@ -48,6 +48,7 @@ async def incoming(message, chain_name=None, tx_hash=None, height=None):
         new_values = await mark_confirmed_data(chain_name, tx_hash, height)
 
     if existing:
+        LOGGER.info("Updating %s." % hash)
         Message.collection.update_one({
             'item_hash': hash,
             'chain': chain_name

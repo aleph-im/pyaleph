@@ -132,8 +132,10 @@ async def check_incoming(config):
     async with aiohttp.ClientSession() as session:
         while True:
             last_stored_height = await get_last_height()
+            i = 0
             async for txi in request_transactions(config, session,
                                                   last_stored_height):
+                i += 1
                 # TODO: handle big message list stored in IPFS case
                 # (if too much messages, an ipfs hash is stored here).
                 for message in txi['messages']:
