@@ -19,7 +19,7 @@ class Message(BaseClass):
                Index("content.address"),
                Index("content.ref"),
                Index("content.type"),
-               Index("content.tags"),
+               Index("content.content.tags"),
                Index("content.time"),
                Index("time", pymongo.DESCENDING),
                Index("time", pymongo.ASCENDING),

@@ -51,7 +51,7 @@ async def view_posts_list(request):
         filters.append({'content.ref': {'$in': refs}})
 
     if tags is not None:
-        filters.append({'content.tags': {'$elemMatch': {'$in': tags}}})
+        filters.append({'content.content.tags': {'$elemMatch': {'$in': tags}}})
 
     if hashes is not None:
         filters.append({'$or': [
@@ -74,7 +74,7 @@ async def view_posts_list(request):
         pagination_per_page = 0
     if pagination_skip is None:
         pagination_skip = 0
-        
+
     posts = [msg
              async for msg
              in await get_merged_posts(find_filters,
