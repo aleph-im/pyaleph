@@ -9,7 +9,8 @@ async def get_verification_buffer(message):
     """ Returns a serialized string to verify the message integrity
     (this is was it signed)
     """
-    return '{chain}\n{sender}\n{type}\n{item_hash}'.format(**message)
+    return '{chain}\n{sender}\n{type}\n{item_hash}'.format(**message)\
+        .encode('utf-8')
 
 
 async def mark_confirmed_data(chain_name, tx_hash, height):
