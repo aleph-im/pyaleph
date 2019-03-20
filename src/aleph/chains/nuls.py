@@ -228,7 +228,7 @@ async def nuls_packer(config):
 
         selected_utxo = utxo[:10]
         messages = [message async for message
-                    in (await Message.get_unconfirmed_raw())]
+                    in (await Message.get_unconfirmed_raw(limit=600))]
         if len(messages):
             content = await get_content_to_broadcast(messages)
             content = json.dumps(content)
