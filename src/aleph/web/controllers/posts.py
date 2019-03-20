@@ -74,22 +74,12 @@ async def view_posts_list(request):
         pagination_per_page = 0
     if pagination_skip is None:
         pagination_skip = 0
-
-    posts = [dict(hash=msg['item_hash'],
-                  tx_hash=msg.get('tx_hash', None),
-                  chain=msg['chain'],
-                  signature=msg['signature'],
-                  channel=msg.get('channel', None),
-                  sender=msg['sender'],
-                  **msg['content'])
+        
+    posts = [msg
              async for msg
              in await get_merged_posts(find_filters,
                                        limit=pagination_per_page,
                                        skip=pagination_skip)]
-    # in Message.collection.find(find_filters,
-    #                            limit=pagination_per_page,
-    #                            skip=pagination_skip,
-    #                            sort=[('time', -1)])]
 
     context = {
         'posts': posts

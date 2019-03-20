@@ -139,7 +139,9 @@ async def get_merged_posts(filters, sort=None, limit=100,
         {'$replaceRoot': {
             'newRoot': {'$mergeObjects': ["$$ROOT",
                                           {'$arrayElemAt': ["$amends", 0]}]}}},
-        {'$project': {'amends': 0}}
+        {'$project': {'amends': 0}},
+        {'$replaceRoot': {
+            'newRoot': {'$mergeObjects': ["$$ROOT", "$content"]}}}
     ]
 
     return Message.collection.aggregate(aggregate)
