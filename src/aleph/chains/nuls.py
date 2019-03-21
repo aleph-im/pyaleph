@@ -62,7 +62,7 @@ async def request_transactions(config, session, start_height):
         'business_ipfs': 1,
         'sort_order': 1,
         'startHeight': start_height+1,
-        'pagination': 5000
+        'pagination': 500
     }) as resp:
         jres = await resp.json()
         last_height = 0
@@ -137,6 +137,7 @@ async def check_incoming(config):
         while True:
             last_stored_height = await get_last_height()
             i = 0
+            j = 0
 
             tasks = []
             seen_ids = []
@@ -146,6 +147,7 @@ async def check_incoming(config):
                 # TODO: handle big message list stored in IPFS case
                 # (if too much messages, an ipfs hash is stored here).
                 for message in txi['messages']:
+                    j += 1
                     message = await check_message(
                         message, from_chain=True,
                         trusted=(txi['type'] == 'native-single'))
@@ -171,8 +173,16 @@ async def check_incoming(config):
                     #                tx_hash=txi['tx_hash'],
                     #                height=txi['height'])
 
-                # if txi['height'] > last_stored_height:
-                #    last_stored_height = txi['height']
+                    # if txi['height'] > last_stored_height:
+                    #    last_stored_height = txi['height']
+
+                    # let's join every 50 messages...
+                    if (j > 50):
+                        for task in tasks:
+                            await task
+                        j = 0
+                        seen_ids = []
+                        tasks = []
 
             for task in tasks:
                 await task  # let's wait for all tasks to end.
