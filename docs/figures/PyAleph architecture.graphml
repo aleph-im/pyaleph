@@ -474,7 +474,7 @@ PubSub]]></y:Label.Text>
 				</x:List>
 			</data>
 			<data key="d4">
-				<y:RectD X="885" Y="-435" Width="120" Height="30"/>
+				<y:RectD X="885" Y="-435" Width="525" Height="30"/>
 			</data>
 			<data key="d6">
 				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 3}" fill="{y:GraphMLReference 4}" shape="ROUND_RECTANGLE"/>
@@ -492,7 +492,7 @@ PubSub]]></y:Label.Text>
 				</x:List>
 			</data>
 			<data key="d4">
-				<y:RectD X="885" Y="-480" Width="120" Height="30"/>
+				<y:RectD X="885" Y="-525" Width="525" Height="30"/>
 			</data>
 			<data key="d6">
 				<yjs:ShapeNodeStyle stroke="#FF2E7D32" fill="#FF2E7D32" shape="ROUND_RECTANGLE"/>
@@ -550,6 +550,78 @@ PubSub]]></y:Label.Text>
 			</data>
 			<data key="d6">
 				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 11}" fill="{y:GraphMLReference 12}" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n26">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text>Messages</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="885" Y="-480" Width="120" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="#FF336699" fill="#FF336699" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n27">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text>Posts</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="1020" Y="-480" Width="120" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="#FF336699" fill="#FF336699" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n28">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text>Addresses</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="1155" Y="-480" Width="120" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="#FF336699" fill="#FF336699" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n29">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text>States</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="1290" Y="-480" Width="120" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="#FF336699" fill="#FF336699" shape="ROUND_RECTANGLE"/>
 			</data>
 		</node>
 		<edge id="e0" source="n9" target="n6" sourceport="p0" targetport="p0">
