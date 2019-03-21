@@ -1,0 +1,581 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!--Created by yFiles for HTML 2.2-EAP6-->
+<graphml xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://www.yworks.com/xml/schema/graphml.html/2.0/ygraphml.xsd " xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:demostyle="http://www.yworks.com/yFilesHTML/demos/FlatDemoStyle/1.0" xmlns:bpmn="http://www.yworks.com/xml/yfiles-for-html/bpmn/2.0" xmlns:demotablestyle="http://www.yworks.com/yFilesHTML/demos/FlatDemoTableStyle/1.0" xmlns:uml="http://www.yworks.com/yFilesHTML/demos/UMLDemoStyle/1.0" xmlns:compat="http://www.yworks.com/xml/yfiles-compat-arrows/1.0" xmlns:GraphvizNodeStyle="http://www.yworks.com/yFilesHTML/graphviz-node-style/1.0" xmlns:VuejsNodeStyle="http://www.yworks.com/demos/yfiles-vuejs-node-style/1.0" xmlns:y="http://www.yworks.com/xml/yfiles-common/3.0" xmlns:x="http://www.yworks.com/xml/yfiles-common/markup/3.0" xmlns:yjs="http://www.yworks.com/xml/yfiles-for-html/2.0/xaml" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+	<key id="d0" for="node" attr.type="boolean" attr.name="Expanded" y:attr.uri="http://www.yworks.com/xml/yfiles-common/2.0/folding/Expanded">
+		<default>true</default>
+	</key>
+	<key id="d1" for="node" attr.type="string" attr.name="url"/>
+	<key id="d2" for="node" attr.type="string" attr.name="description"/>
+	<key id="d3" for="node" attr.name="NodeLabels" y:attr.uri="http://www.yworks.com/xml/yfiles-common/2.0/NodeLabels"/>
+	<key id="d4" for="node" attr.name="NodeGeometry" y:attr.uri="http://www.yworks.com/xml/yfiles-common/2.0/NodeGeometry"/>
+	<key id="d5" for="all" attr.name="UserTags" y:attr.uri="http://www.yworks.com/xml/yfiles-common/2.0/UserTags"/>
+	<key id="d6" for="node" attr.name="NodeStyle" y:attr.uri="http://www.yworks.com/xml/yfiles-common/2.0/NodeStyle"/>
+	<key id="d7" for="node" attr.name="NodeViewState" y:attr.uri="http://www.yworks.com/xml/yfiles-common/2.0/folding/1.1/NodeViewState"/>
+	<key id="d8" for="edge" attr.type="string" attr.name="url"/>
+	<key id="d9" for="edge" attr.type="string" attr.name="description"/>
+	<key id="d10" for="edge" attr.name="EdgeLabels" y:attr.uri="http://www.yworks.com/xml/yfiles-common/2.0/EdgeLabels"/>
+	<key id="d11" for="edge" attr.name="EdgeGeometry" y:attr.uri="http://www.yworks.com/xml/yfiles-common/2.0/EdgeGeometry"/>
+	<key id="d12" for="edge" attr.name="EdgeStyle" y:attr.uri="http://www.yworks.com/xml/yfiles-common/2.0/EdgeStyle"/>
+	<key id="d13" for="edge" attr.name="EdgeViewState" y:attr.uri="http://www.yworks.com/xml/yfiles-common/2.0/folding/1.1/EdgeViewState"/>
+	<key id="d14" for="port" attr.name="PortLabels" y:attr.uri="http://www.yworks.com/xml/yfiles-common/2.0/PortLabels"/>
+	<key id="d15" for="port" attr.name="PortLocationParameter" y:attr.uri="http://www.yworks.com/xml/yfiles-common/2.0/PortLocationParameter">
+		<default>
+			<x:Static Member="y:FreeNodePortLocationModel.NodeCenterAnchored"/>
+		</default>
+	</key>
+	<key id="d16" for="port" attr.name="PortStyle" y:attr.uri="http://www.yworks.com/xml/yfiles-common/2.0/PortStyle">
+		<default>
+			<x:Static Member="y:VoidPortStyle.Instance"/>
+		</default>
+	</key>
+	<key id="d17" for="port" attr.name="PortViewState" y:attr.uri="http://www.yworks.com/xml/yfiles-common/2.0/folding/1.1/PortViewState"/>
+	<key id="d18" attr.name="SharedData" y:attr.uri="http://www.yworks.com/xml/yfiles-common/2.0/SharedData"/>
+	<data key="d18">
+		<y:SharedData>
+			<yjs:SolidColorFill x:Key="1" color="White"/>
+			<yjs:Font x:Key="2" fontSize="12" fontFamily="'Arial'"/>
+			<yjs:Stroke x:Key="3" fill="#FF336699"/>
+			<yjs:SolidColorFill x:Key="4" color="#FF336699"/>
+			<yjs:Stroke x:Key="5" fill="#FFFFFFFF"/>
+			<yjs:Stroke x:Key="6" fill="#FFFFFFFF"/>
+			<yjs:SolidColorFill x:Key="7" color="#FF336699"/>
+			<yjs:Stroke x:Key="8" fill="#FF2E7D32"/>
+			<yjs:SolidColorFill x:Key="9" color="#FF2E7D32"/>
+			<yjs:SolidColorFill x:Key="10" color="#FF2E7D32"/>
+			<yjs:Stroke x:Key="11" fill="#FF2E7D32"/>
+			<yjs:SolidColorFill x:Key="12" color="#FF2E7D32"/>
+			<yjs:Stroke x:Key="13" fill="#FF336699"/>
+			<yjs:PolylineEdgeStyle x:Key="14" stroke="{y:GraphMLReference 13}">
+				<yjs:PolylineEdgeStyle.targetArrow>
+					<yjs:Arrow type="TRIANGLE" scale="0.75" stroke="{y:GraphMLReference 13}" fill="#FF336699" cropLength="1"/>
+				</yjs:PolylineEdgeStyle.targetArrow>
+			</yjs:PolylineEdgeStyle>
+		</y:SharedData>
+	</data>
+	<graph id="G" edgedefault="directed">
+		<data key="d5">
+			<y:Json>{"version":"2.0.0","layout":"layout-organic-edge-router","config":{"noObf_minimumNodeDistance":10,"noObf_keepExistingBends":false,"noObf_routeOnlyNecessary":true,"noObf_allowMovingNodes":false,"noObf_selectionOnly":false}}</y:Json>
+		</data>
+		<node id="n0">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.North}">
+						<y:Label.Text>Network</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="-150" Y="-435" Width="90" Height="75"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 3}" fill="{y:GraphMLReference 4}" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n1">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text>Storage</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="210" Y="-435" Width="120" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 3}" fill="{y:GraphMLReference 4}" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n2">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text>Chains</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="345" Y="-435" Width="255" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 3}" fill="{y:GraphMLReference 4}" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n3">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text>Common</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="345" Y="-480" Width="255" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 3}" fill="{y:GraphMLReference 4}" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n4">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text>NULS</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="345" Y="-525" Width="120" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 3}" fill="{y:GraphMLReference 4}" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n5">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text>ETH</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="480" Y="-525" Width="120" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 3}" fill="{y:GraphMLReference 4}" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n6">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text>Incoming</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="-150" Y="-420" Width="90" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 5}" fill="{y:GraphMLReference 4}" shape="ROUND_RECTANGLE"/>
+			</data>
+			<port name="p0"/>
+		</node>
+		<node id="n7">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text>Outgoing</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="-150" Y="-390" Width="90" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 6}" fill="{y:GraphMLReference 7}" shape="ROUND_RECTANGLE"/>
+			</data>
+			<port name="p0">
+				<data key="d15">
+					<y:FreeNodePortLocationModelParameter Ratio="0.010869565217391297,0.5"/>
+				</data>
+			</port>
+		</node>
+		<node id="n8">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text><![CDATA[REST API]]></y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="615" Y="-480" Width="120" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 3}" fill="{y:GraphMLReference 4}" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n9">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text><![CDATA[IPFS
+PubSub]]></y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="-285" Y="-420" Width="90" Height="60"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 8}" fill="{y:GraphMLReference 9}" shape="ROUND_RECTANGLE"/>
+			</data>
+			<port name="p0">
+				<data key="d15">
+					<y:FreeNodePortLocationModelParameter Ratio="0.9891304347826086,0.5"/>
+				</data>
+			</port>
+			<port name="p1">
+				<data key="d15">
+					<y:FreeNodePortLocationModelParameter Ratio="0.9891304347826086,0.5"/>
+				</data>
+			</port>
+		</node>
+		<node id="n10">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.North}">
+						<y:Label.Text>Storage</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="-150" Y="-345" Width="90" Height="105"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 3}" fill="{y:GraphMLReference 4}" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n11">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text>Fetch</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="-150" Y="-330" Width="90" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 5}" fill="{y:GraphMLReference 4}" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n12">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text>Add</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="-150" Y="-300" Width="90" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 6}" fill="{y:GraphMLReference 7}" shape="ROUND_RECTANGLE"/>
+			</data>
+			<port name="p0">
+				<data key="d15">
+					<y:FreeNodePortLocationModelParameter Ratio="0.5,0.96875"/>
+				</data>
+			</port>
+		</node>
+		<node id="n13">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text><![CDATA[IPFS
+PubSub]]></y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="-285" Y="-330" Width="90" Height="60"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 8}" fill="{y:GraphMLReference 9}" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n14">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text>Pin</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="-150" Y="-270" Width="90" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 6}" fill="{y:GraphMLReference 7}" shape="ROUND_RECTANGLE"/>
+			</data>
+			<port name="p0">
+				<data key="d15">
+					<y:FreeNodePortLocationModelParameter Ratio="0.5,0.96875"/>
+				</data>
+			</port>
+		</node>
+		<node id="n15">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text>Network</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="75" Y="-435" Width="120" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 3}" fill="{y:GraphMLReference 4}" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n16">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.North}">
+						<y:Label.Text>Go-IPFS</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="75" Y="-495" Width="255" Height="45"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="#FF2E7D32" fill="#FF2E7D32" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n17">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text>Web</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="615" Y="-435" Width="255" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 3}" fill="{y:GraphMLReference 4}" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n18">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text>WebSocket</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="750" Y="-480" Width="120" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 3}" fill="{y:GraphMLReference 4}" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n19">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text>NULSExplorer</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="345" Y="-570" Width="120" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 11}" fill="{y:GraphMLReference 12}" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n20">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text>GEth</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="480" Y="-570" Width="120" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="#FF2E7D32" fill="#FF2E7D32" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n21">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text>Model</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="885" Y="-435" Width="120" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 3}" fill="{y:GraphMLReference 4}" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n22">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text>MongoDB</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="885" Y="-480" Width="120" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="#FF2E7D32" fill="#FF2E7D32" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n23">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text>Files</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="210" Y="-480" Width="120" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 6}" fill="{y:GraphMLReference 10}" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n24">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text>GossipSub</y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="75" Y="-480" Width="120" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 6}" fill="{y:GraphMLReference 10}" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<node id="n25">
+			<data key="d3">
+				<x:List>
+					<y:Label LayoutParameter="{x:Static y:InteriorStretchLabelModel.Center}">
+						<y:Label.Text><![CDATA[NULS Wallet]]></y:Label.Text>
+						<y:Label.Style>
+							<yjs:DefaultLabelStyle verticalTextAlignment="CENTER" horizontalTextAlignment="CENTER" wrapping="WORD_ELLIPSIS" font="{y:GraphMLReference 2}" textFill="{y:GraphMLReference 1}"/>
+						</y:Label.Style>
+					</y:Label>
+				</x:List>
+			</data>
+			<data key="d4">
+				<y:RectD X="345" Y="-615" Width="120" Height="30"/>
+			</data>
+			<data key="d6">
+				<yjs:ShapeNodeStyle stroke="{y:GraphMLReference 11}" fill="{y:GraphMLReference 12}" shape="ROUND_RECTANGLE"/>
+			</data>
+		</node>
+		<edge id="e0" source="n9" target="n6" sourceport="p0" targetport="p0">
+			<data key="d11">
+				<x:List>
+					<y:Bend Location="-180,-405"/>
+				</x:List>
+			</data>
+			<data key="d12">
+				<y:GraphMLReference ResourceKey="14"/>
+			</data>
+		</edge>
+		<edge id="e1" source="n7" target="n9" sourceport="p0" targetport="p1">
+			<data key="d11">
+				<x:List>
+					<y:Bend Location="-180,-375"/>
+				</x:List>
+			</data>
+			<data key="d12">
+				<y:GraphMLReference ResourceKey="14"/>
+			</data>
+		</edge>
+		<edge id="e2" source="n12" target="n14" sourceport="p0" targetport="p0">
+			<data key="d12">
+				<y:GraphMLReference ResourceKey="14"/>
+			</data>
+		</edge>
+	</graph>
+</graphml>

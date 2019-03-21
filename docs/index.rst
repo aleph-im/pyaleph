@@ -29,6 +29,8 @@ Contents
 .. toctree::
    :maxdepth: 2
 
+   architecture
+
    License <license>
    Authors <authors>
    Changelog <changelog>
