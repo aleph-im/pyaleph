@@ -128,11 +128,15 @@ async def check_incoming(config):
     last_stored_height = await get_last_height()
 
     LOGGER.info("Last block is #%d" % last_stored_height)
+    loop = asyncio.get_event_loop()
 
     async with aiohttp.ClientSession() as session:
         while True:
             last_stored_height = await get_last_height()
             i = 0
+
+            tasks = []
+            seen_ids = []
             async for txi in request_transactions(config, session,
                                                   last_stored_height):
                 i += 1
@@ -151,12 +155,24 @@ async def check_incoming(config):
                     # now handled in check_message
                     # signed = await verify_signature(message, tx=txi)
 
-                    await incoming(message, chain_name=CHAIN_NAME,
-                                   tx_hash=txi['tx_hash'],
-                                   height=txi['height'])
+                    # running those separately... a good/bad thing?
+                    # shouldn't do that for VMs.
+                    tasks.append(
+                        loop.create_task(incoming(
+                            message, chain_name=CHAIN_NAME,
+                            seen_ids=seen_ids,
+                            tx_hash=txi['tx_hash'],
+                            height=txi['height'])))
+
+                    # await incoming(message, chain_name=CHAIN_NAME,
+                    #                tx_hash=txi['tx_hash'],
+                    #                height=txi['height'])
 
                 # if txi['height'] > last_stored_height:
                 #    last_stored_height = txi['height']
+
+            for task in tasks:
+                await task  # let's wait for all tasks to end.
 
             if (i < 10):  # if there was less than 10 items, not a busy time
                 # wait 5 seconds (half of typical time between 2 blocks)
