@@ -26,11 +26,13 @@ async def mark_confirmed_data(chain_name, tx_hash, height):
              'hash': tx_hash}]}
 
 
-async def incoming(message, chain_name=None, tx_hash=None, height=None):
+async def incoming(message, chain_name=None,
+                   tx_hash=None, height=None, seen_ids=None):
     """ New incoming message from underlying chain.
     Will be marked as confirmed if existing in database, created if not.
     """
     hash = message['item_hash']
+
     # we set the incoming chain as default for signature
     message['chain'] = message.get('chain', chain_name)
 
@@ -42,14 +44,22 @@ async def incoming(message, chain_name=None, tx_hash=None, height=None):
         'type': message['type']
     })
 
-    new_values = {'confirmed': False}  # this should be our default.
+    # new_values = {'confirmed': False}  # this should be our default.
+    new_values = {}
     if chain_name and tx_hash and height:
         # We are getting a confirmation here
         new_values = await mark_confirmed_data(chain_name, tx_hash, height)
 
     if existing:
+        if seen_ids is not None:
+            if hash in seen_ids:
+                # is it really what we want here?
+                return
+            else:
+                seen_ids.append(hash)
+
         LOGGER.info("Updating %s." % hash)
-        Message.collection.update_one({
+        await Message.collection.update_many({
             'item_hash': hash,
             'chain': chain_name
         }, {
@@ -57,6 +67,9 @@ async def incoming(message, chain_name=None, tx_hash=None, height=None):
         })
 
     else:
+        if not (chain_name and tx_hash and height):
+            new_values = {'confirmed': False}  # this should be our default.
+
         try:
             content = await get_json(hash)
         except Exception:
@@ -74,6 +87,13 @@ async def incoming(message, chain_name=None, tx_hash=None, height=None):
         if message['sender'] != content['address']:
             LOGGER.warn("Invalid sender for %s" % hash)
             return
+
+        if seen_ids is not None:
+            if hash in seen_ids:
+                # is it really what we want here?
+                return
+            else:
+                seen_ids.append(hash)
 
         LOGGER.info("New message to store for %s." % hash)
         message.update(new_values)
