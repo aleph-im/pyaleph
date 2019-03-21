@@ -95,11 +95,26 @@ async def pub(topic, message, base_url=None):
 
 async def incoming_channel(config, topic):
     from aleph.chains.common import incoming
+    loop = asyncio.get_event_loop()
     while True:
         try:
+            i = 0
+            seen_ids = []
+            tasks = []
             async for message in sub(topic,
                                      base_url=await get_base_url(config)):
-                await incoming(message)
+                i += 1
+                tasks.append(
+                    loop.create_task(incoming(message, seen_ids=seen_ids)))
+
+                # await incoming(message, seen_ids=seen_ids)
+                if (i > 1000):
+                    # every 1000 message we check that all tasks finished
+                    # and we reset the seen_ids list.
+                    for task in tasks:
+                        await task
+                    seen_ids = []
+                    tasks = []
 
         except Exception:
             LOGGER.exception("Exception in IPFS pubsub, reconnecting.")
