@@ -226,9 +226,10 @@ async def nuls_packer(config):
     while True:
         if (i >= 100) or (utxo[0]['value'] < CHEAP_UNIT_FEE):
             await asyncio.sleep(30)  # wait three (!!) blocks
-            utxo = await get_utxo(config, address)
+            # utxo = await get_utxo(config, address)
             i = 0
 
+        utxo = await get_utxo(config, address)
         selected_utxo = utxo[:10]
         messages = [message async for message
                     in (await Message.get_unconfirmed_raw(limit=600))]
