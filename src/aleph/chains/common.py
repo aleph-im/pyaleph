@@ -33,6 +33,12 @@ async def incoming(message, chain_name=None,
     """
     hash = message['item_hash']
 
+    if hash in seen_ids:
+        # is it really what we want here?
+        return
+
+    LOGGER.info("Incoming %s." % hash)
+
     # we set the incoming chain as default for signature
     message['chain'] = message.get('chain', chain_name)
 
@@ -42,7 +48,7 @@ async def incoming(message, chain_name=None,
         'chain': message['chain'],
         'sender': message['sender'],
         'type': message['type']
-    })
+    }, projection={'confirmed': 1, 'confirmations': 1})
 
     # new_values = {'confirmed': False}  # this should be our default.
     new_values = {}
@@ -58,7 +64,12 @@ async def incoming(message, chain_name=None,
             else:
                 seen_ids.append(hash)
 
+        if (existing['confirmed'] and
+                chain_name in [c['chain'] for c in existing['confirmations']]):
+            return
+
         LOGGER.info("Updating %s." % hash)
+
         await Message.collection.update_many({
             'item_hash': hash,
             'chain': chain_name

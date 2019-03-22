@@ -1,4 +1,3 @@
-import binascii
 import asyncio
 import aiohttp
 import json
@@ -68,6 +67,7 @@ async def request_transactions(config, session, start_height):
         last_height = 0
         for tx in sorted(jres['transactions'], key=itemgetter('blockHeight')):
             last_height = tx['blockHeight']
+            LOGGER.info('Handling TX in block %s' % tx['blockHeight'])
             if tx['info'].get('type', False) == 'ipfs':
                 # Legacy remark-based message
                 parts = tx['remark'].split(';')
@@ -96,7 +96,7 @@ async def request_transactions(config, session, start_height):
             else:
                 ldata = tx['info'].get('logicData')
                 try:
-                    ddata = binascii.unhexlify(ldata).decode('utf-8')
+                    ddata = bytes.fromhex(ldata).decode('utf-8')
                     jdata = json.loads(ddata)
                     if jdata.get('protocol', None) != 'aleph':
                         LOGGER.info('Got unknown protocol object in tx %s'
@@ -177,7 +177,7 @@ async def check_incoming(config):
                     #    last_stored_height = txi['height']
 
                     # let's join every 50 messages...
-                    if (j > 50):
+                    if (j > 5000):
                         for task in tasks:
                             await task
                         j = 0
@@ -216,7 +216,7 @@ async def prepare_businessdata_tx(address, utxo, content):
       "remark": b"",
       "scriptSig": b"",
       "info": {
-          "logicData": binascii.hexlify(content)
+          "logicData": content.hex()
       },
       "inputs": [{'fromHash': inp['hash'],
                   'fromIndex': inp['idx'],
@@ -245,7 +245,7 @@ async def get_content_to_broadcast(messages):
 async def nuls_packer(config):
     from secp256k1 import PrivateKey
 
-    pri_key = binascii.unhexlify(config.nuls.private_key.value)
+    pri_key = bytes.fromhex(config.nuls.private_key.value)
     privkey = PrivateKey(pri_key, raw=True)
     pub_key = privkey.pubkey.serialize()
     address = await get_address(pub_key, config.nuls.chain_id.value)
