@@ -25,8 +25,18 @@ CHAIN_NAME = 'NULS'
 async def verify_signature(message):
     """ Verifies a signature of a hash and returns the address that signed it.
     """
+    from aleph.web import app
+    config = app.config
+
     sig_raw = bytes(bytearray.fromhex(message['signature']))
     sig = NulsSignature(sig_raw)
+    hash = public_key_to_hash(sig.pub_key, config.nuls.chain_id.value)
+    address = address_from_hash(hash)
+    if address != message['sender']:
+        LOGGER.warning('Received bad signature from %s for %s'
+                       % (address, message['sender']))
+        return False
+
     verification = await get_verification_buffer(message)
     # try:
     #     result = await loop.run_in_executor(
