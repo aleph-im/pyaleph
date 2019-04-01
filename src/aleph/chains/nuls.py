@@ -25,12 +25,16 @@ CHAIN_NAME = 'NULS'
 async def verify_signature(message):
     """ Verifies a signature of a hash and returns the address that signed it.
     """
-    loop = asyncio.get_event_loop()
     sig_raw = bytes(bytearray.fromhex(message['signature']))
     sig = NulsSignature(sig_raw)
     verification = await get_verification_buffer(message)
-    result = await loop.run_in_executor(
-        None, sig.verify, verification)
+    # try:
+    #     result = await loop.run_in_executor(
+    #         None, sig.verify, verification)
+    # except Exception:
+    #     LOGGER.exception("ARG")
+    #     result = False
+    result = sig.verify(verification)
     return result
 
 register_verifier(CHAIN_NAME, verify_signature)
