@@ -30,6 +30,13 @@ You need to have a running go IPFS instance running and linked in the configurat
 PubSub should be active and configured to use GossipSub.
 More info there: https://github.com/ipfs/go-ipfs/blob/master/docs/experimental-features.md#ipfs-pubsub
 
+You can add our bootstrap node and connect to it on your ipfs node to be connected to the aleph network faster:
+
+```
+$ ipfs bootstrap add /dnsaddr/bootstrap.aleph.im/ipfs/QmPR8m8WCmYKuuxg5Qnadd4LbnTCD2L93cV2zPW5XGVHTG
+$ ipfs swarm connect /dnsaddr/bootstrap.aleph.im/ipfs/QmPR8m8WCmYKuuxg5Qnadd4LbnTCD2L93cV2zPW5XGVHTG
+```
+
 ### NULS
 
 If you want to run with a local NULS instance (and not light client mode), you need to have a local fully synced NULS blockchain instance.
