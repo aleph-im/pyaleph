@@ -6,6 +6,13 @@ nuls:
   packing_node: True
   private_key: YOUR_PRIVATE_KEY_HERE
 
+ethereum:
+  enabled: True
+  api_url: http://127.0.0.1:8545
+  chain_id: 1
+  packing_node: True
+  private_key: YOUR_PRIVATE_KEY_HERE
+
 mongodb:
   uri: "mongodb://127.0.0.1"
   database: alephtest

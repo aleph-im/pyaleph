@@ -14,6 +14,13 @@ def get_defaults():
           'packing_node': False,
           'private_key': None
         },
+        'ethereum': {
+          'enabled': False,
+          'api_url': 'http://127.0.0.1:8545',
+          'packing_node': False,
+          'chain_id': 1,
+          'private_key': None
+        },
         'mongodb': {
           'uri': 'mongodb://127.0.0.1:27006',
           'database': 'aleph'
