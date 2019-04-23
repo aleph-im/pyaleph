@@ -72,7 +72,7 @@ async def incoming(message, chain_name=None,
 
         await Message.collection.update_many({
             'item_hash': hash,
-            'chain': chain_name
+            'chain': message['chain']
         }, {
             '$set': new_values
         })
