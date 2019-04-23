@@ -289,14 +289,3 @@ async def ethereum_outgoing_worker(config):
                 await asyncio.sleep(10)
 
 register_outgoing_worker(CHAIN_NAME, ethereum_outgoing_worker)
-
-
-async def broadcast(config, tx_hex):
-    broadcast_url = '{}/broadcast'.format(
-        await get_base_url(config))
-    data = {'txHex': tx_hex}
-
-    async with aiohttp.ClientSession() as session:
-        async with session.post(broadcast_url, json=data) as resp:
-            jres = (await resp.json())['value']
-            return jres
