@@ -102,7 +102,9 @@ async def request_transactions(config, web3, contract, start_height):
     last_height = 0
 
     for log in logs:
-        event_data = get_event_data(contract.events.SyncEvent._get_event_abi(), log)
+        event_data = get_event_data(contract.events.SyncEvent._get_event_abi(),
+                                    log)
+        LOGGER.info('Handling TX in block %s' % event_data.blockNumber)
         publisher = event_data.args.addr  # TODO: verify rights.
 
         last_height = event_data.blockNumber
@@ -114,6 +116,7 @@ async def request_transactions(config, web3, contract, start_height):
                 LOGGER.info('Got unknown protocol object in tx %s'
                             % event_data.transactionHash)
                 continue
+
             if jdata.get('version', None) != 1:
                 LOGGER.info(
                     'Got an unsupported version object in tx %s'
@@ -221,8 +224,9 @@ register_incoming_worker(CHAIN_NAME, ethereum_incoming_worker)
 
 def broadcast_content(config, contract, web3, account,
                       gas_price, nonce, content):
+    content = json.dumps(content)
     tx = contract.functions.doEmit(content).buildTransaction({
-            'chainId': config.ethere.chain_id.value,
+            'chainId': config.ethereum.chain_id.value,
             'gasPrice': gas_price,
             'nonce': nonce,
             })
@@ -264,12 +268,13 @@ async def ethereum_packer(config):
 
         if len(messages):
             content = await get_content_to_broadcast(messages)
-            response = loop.run_in_executor(None, broadcast_content,
-                                            config, contract, web3, account,
-                                            gas_price, nonce, content)
+            response = await loop.run_in_executor(None, broadcast_content,
+                                                  config, contract, web3,
+                                                  account, gas_price, nonce,
+                                                  content)
             LOGGER.info("Broadcasted %r on %s" % (response, CHAIN_NAME))
 
-        await asyncio.sleep(15)
+        await asyncio.sleep(35)
         i += 1
 
 
