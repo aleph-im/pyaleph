@@ -23,7 +23,7 @@ CHAIN_NAME = 'NULS'
 
 
 async def verify_signature(message):
-    """ Verifies a signature of a hash and returns the address that signed it.
+    """ Verifies a signature of a message, return True if verified, false if not
     """
     from aleph.web import app
     config = app.config
