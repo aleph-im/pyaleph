@@ -30,12 +30,17 @@ class Message(BaseClass):
                Index("confirmed", pymongo.DESCENDING)]
 
     @classmethod
-    async def get_unconfirmed_raw(cls, limit=100):
+    async def get_unconfirmed_raw(cls, limit=100, for_chain=None):
         """ Return raw unconfirmed txs, ready for broadcast.
         """
-        return cls.collection.find(
-            {'confirmed': False},
-            projection=RAW_MSG_PROJECTION).sort([('time', 1)]).limit(limit)
+        if for_chain is None:
+            return cls.collection.find(
+                {'confirmed': False},
+                projection=RAW_MSG_PROJECTION).sort([('time', 1)]).limit(limit)
+        else:
+            return cls.collection.find(
+                {'confirmations.chain': {'$ne': for_chain}},
+                projection=RAW_MSG_PROJECTION).sort([('time', 1)]).limit(limit)
 
 
 async def get_computed_address_aggregates(address_list=None, key_list=None):

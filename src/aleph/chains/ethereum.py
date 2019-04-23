@@ -264,7 +264,9 @@ async def ethereum_packer(config):
         nonce = web3.eth.getTransactionCount(account.address)
 
         messages = [message async for message
-                    in (await Message.get_unconfirmed_raw(limit=600))]
+                    in (await Message.get_unconfirmed_raw(
+                            limit=50,
+                            for_chain=CHAIN_NAME))]
 
         if len(messages):
             content = await get_content_to_broadcast(messages)

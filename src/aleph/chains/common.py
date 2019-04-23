@@ -70,12 +70,20 @@ async def incoming(message, chain_name=None,
 
         LOGGER.info("Updating %s." % hash)
 
-        await Message.collection.update_many({
-            'item_hash': hash,
-            'chain': message['chain']
-        }, {
-            '$set': new_values
-        })
+        if chain_name and tx_hash and height:
+            # we need to update messages adding the confirmation
+            await Message.collection.update_many({
+                'item_hash': hash,
+                'chain': message['chain'],
+                'sender': message['sender']
+            }, {
+                '$set': {
+                    'confirmed': True
+                },
+                '$addToSet': {
+                    'confirmations': new_values['confirmations'][0]
+                }
+            })
 
     else:
         if not (chain_name and tx_hash and height):
