@@ -9,7 +9,7 @@ nuls:
 ethereum:
   enabled: True
   api_url: http://127.0.0.1:8545
-  chain_id: 1
+  chain_id: 4
   packing_node: True
   private_key: YOUR_PRIVATE_KEY_HERE
 
