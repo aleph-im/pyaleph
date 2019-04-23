@@ -1,0 +1,33 @@
+[
+	{
+		"constant": false,
+		"inputs": [
+			{
+				"name": "message",
+				"type": "string"
+			}
+		],
+		"name": "doEmit",
+		"outputs": [],
+		"payable": false,
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": false,
+				"name": "addr",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"name": "message",
+				"type": "string"
+			}
+		],
+		"name": "SyncEvent",
+		"type": "event"
+	}
+]
