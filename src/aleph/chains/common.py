@@ -40,7 +40,7 @@ async def incoming(message, chain_name=None,
     LOGGER.info("Incoming %s." % hash)
 
     # we set the incoming chain as default for signature
-    # message['chain'] = message.get('chain', chain_name)
+    message['chain'] = message.get('chain', chain_name)
 
     # TODO: verify if search key is ok. do we need an unique key for messages?
     existing = await Message.collection.find_one({
