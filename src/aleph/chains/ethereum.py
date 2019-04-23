@@ -15,6 +15,7 @@ from web3 import Web3
 from web3.middleware import geth_poa_middleware
 from web3.utils.events import get_event_data
 from web3.contract import get_event_data
+from web3.gas_strategies.rpc import rpc_gas_price_strategy
 from eth_account.messages import defunct_hash_message
 from eth_account import Account
 from hexbytes import HexBytes
@@ -58,7 +59,7 @@ register_verifier(CHAIN_NAME, verify_signature)
 
 
 async def get_last_height():
-    """ Returns the last height for which we already have the nuls data.
+    """ Returns the last height for which we already have the ethereum data.
     """
     last_height = await Chain.get_last_height(CHAIN_NAME)
 
@@ -72,31 +73,36 @@ async def get_web3(config):
     web3 = Web3(Web3.HTTPProvider(config.ethereum.api_url.value))
     if config.ethereum.chain_id.value == 4:  # rinkeby
         web3.middleware_stack.inject(geth_poa_middleware, layer=0)
+    web3.eth.setGasPriceStrategy(rpc_gas_price_strategy)
 
     return web3
 
 
 async def get_contract_abi():
-    return pkg_resources.resource_string('aleph.chains',
-                                         'assets/ethereum_sc_api.json')
+    return json.loads(pkg_resources.resource_string(
+        'aleph.chains',
+        'assets/ethereum_sc_abi.json').decode('utf-8'))
 
 
 async def get_contract(config, web3):
-    return web3.contract(config.ethereum.sync_contract,
-                         abi=await get_contract_abi())
+    return web3.eth.contract(config.ethereum.sync_contract.value,
+                             abi=await get_contract_abi())
 
 
 async def request_transactions(config, web3, contract, start_height):
     """ Continuously request data from the Ethereum blockchain.
     TODO: support websocket API.
     """
+    loop = asyncio.get_event_loop()
+    logs = await loop.run_in_executor(None, web3.eth.getLogs,
+                                      {'address': contract.address,
+                                       'fromBlock': start_height+1,
+                                       'toBlock': 'latest'})
 
-    logs = web3.eth.getLogs(
-        {'address': contract.address,
-         'fromBlock': 0, 'toBlock': start_height+1})
+    last_height = 0
 
     for log in logs:
-        event_data = get_event_data(contract.events.Emit._get_event_abi(), log)
+        event_data = get_event_data(contract.events.SyncEvent._get_event_abi(), log)
         publisher = event_data.args.addr  # TODO: verify rights.
 
         last_height = event_data.blockNumber
@@ -201,7 +207,7 @@ async def check_incoming(config):
             await asyncio.sleep(5)
 
 
-async def nuls_incoming_worker(config):
+async def ethereum_incoming_worker(config):
     while True:
         try:
             await check_incoming(config)
@@ -210,37 +216,18 @@ async def nuls_incoming_worker(config):
             LOGGER.exception("ERROR, relaunching incoming in 10 seconds")
             await asyncio.sleep(10)
 
-register_incoming_worker(CHAIN_NAME, nuls_incoming_worker)
+register_incoming_worker(CHAIN_NAME, ethereum_incoming_worker)
 
 
-async def prepare_businessdata_tx(address, utxo, content):
-    # we take the first 10, hoping it's enough... bad, bad, bad!
-    # TODO: do a real utxo management here
-    # tx = transaction.Transaction()
-    tx = await Transaction.from_dict({
-      "type": 10,
-      "time": int(time.time() * 1000),
-      "blockHeight": None,
-      "fee": 0,
-      "remark": b"",
-      "scriptSig": b"",
-      "info": {
-          "logicData": content.hex()
-      },
-      "inputs": [{'fromHash': inp['hash'],
-                  'fromIndex': inp['idx'],
-                  'value': inp['value'],
-                  'lockTime': inp['lockTime']} for inp in utxo],
-      "outputs": [
-          {"address": hash_from_address(address),
-           "value": sum([inp['value'] for inp in utxo]),
-           "lockTime": 0}
-      ]
-    })
-    tx.coin_data.outputs[0].na = (
-        sum([inp['value'] for inp in utxo])
-        - (await tx.calculate_fee()))
-    return tx
+def broadcast_content(config, contract, web3, account,
+                      gas_price, nonce, content):
+    tx = contract.functions.doEmit(content).buildTransaction({
+            'chainId': config.ethere.chain_id.value,
+            'gasPrice': gas_price,
+            'nonce': nonce,
+            })
+    signed_tx = account.signTransaction(tx)
+    return web3.eth.sendRawTransaction(signed_tx.rawTransaction)
 
 
 async def get_content_to_broadcast(messages):
@@ -254,14 +241,22 @@ async def get_content_to_broadcast(messages):
 async def ethereum_packer(config):
     web3 = await get_web3(config)
     contract = await get_contract(config, web3)
+    loop = asyncio.get_event_loop()
 
     pri_key = HexBytes(config.ethereum.private_key.value)
     account = Account.privateKeyToAccount(pri_key)
     address = account.address
 
-    LOGGER.info("NULS Connector set up with address %s" % address)
+    LOGGER.info("Ethereum Connector set up with address %s" % address)
     i = 0
+    gas_price = web3.eth.generateGasPrice()
     while True:
+        if i >= 100:
+            await asyncio.sleep(30)  # wait three (!!) blocks
+            gas_price = web3.eth.generateGasPrice()
+            # utxo = await get_utxo(config, address)
+            i = 0
+
         nonce = web3.eth.getTransactionCount(account.address)
 
         messages = [message async for message
@@ -269,16 +264,11 @@ async def ethereum_packer(config):
 
         if len(messages):
             content = await get_content_to_broadcast(messages)
-            content = json.dumps(content)
+            response = loop.run_in_executor(None, broadcast_content,
+                                            config, contract, web3, account,
+                                            gas_price, nonce, content)
+            LOGGER.info("Broadcasted %r on %s" % (response, CHAIN_NAME))
 
-            tx = contract.functions.doEmit(content).buildTransaction({
-                    'chainId': config.ethere.chain_id.value,
-                    'gasPrice': web3.toWei('1', 'gwei'),
-                    'nonce': nonce,
-                    })
-            signed_tx = account.signTransaction(tx)
-            web3.eth.sendRawTransaction(signed_tx.rawTransaction)
-            
         await asyncio.sleep(15)
         i += 1
 
