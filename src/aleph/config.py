@@ -19,7 +19,8 @@ def get_defaults():
           'api_url': 'http://127.0.0.1:8545',
           'packing_node': False,
           'chain_id': 1,
-          'private_key': None
+          'private_key': None,
+          'sync_contract': None
         },
         'mongodb': {
           'uri': 'mongodb://127.0.0.1:27006',
