@@ -103,6 +103,7 @@ async def incoming_channel(config, topic):
             tasks = []
             async for message in sub(topic,
                                      base_url=await get_base_url(config)):
+                LOGGER.info("New message %r" % message)
                 i += 1
                 tasks.append(
                     loop.create_task(incoming(message, seen_ids=seen_ids)))
