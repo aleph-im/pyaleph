@@ -39,7 +39,8 @@ class Message(BaseClass):
                 projection=RAW_MSG_PROJECTION).sort([('time', 1)]).limit(limit)
         else:
             return cls.collection.find(
-                {'confirmations.chain': {'$ne': for_chain}},
+                {'confirmations.chain': {'$ne': for_chain},
+                 'tx_hash': {"$exists": False}},  # tx_hash means chain native
                 projection=RAW_MSG_PROJECTION).sort([('time', 1)]).limit(limit)
 
 
