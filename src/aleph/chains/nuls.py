@@ -4,7 +4,8 @@ import json
 import time
 from operator import itemgetter
 from aleph.network import check_message
-from aleph.chains.common import incoming, get_verification_buffer
+from aleph.chains.common import (incoming, get_verification_buffer,
+                                 get_content_to_broadcast)
 from aleph.chains.register import (
     register_verifier, register_incoming_worker, register_outgoing_worker)
 from aleph.model.chains import Chain
@@ -246,14 +247,6 @@ async def prepare_businessdata_tx(address, utxo, content):
         sum([inp['value'] for inp in utxo])
         - (await tx.calculate_fee()))
     return tx
-
-
-async def get_content_to_broadcast(messages):
-    return {'protocol': 'aleph',
-            'version': 1,
-            'content': {
-                'messages': messages
-            }}
 
 
 async def nuls_packer(config):

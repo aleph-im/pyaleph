@@ -5,7 +5,8 @@ import time
 import pkg_resources
 from operator import itemgetter
 from aleph.network import check_message
-from aleph.chains.common import incoming, get_verification_buffer
+from aleph.chains.common import (incoming, get_verification_buffer,
+                                 get_content_to_broadcast)
 from aleph.chains.register import (
     register_verifier, register_incoming_worker, register_outgoing_worker)
 from aleph.model.chains import Chain
@@ -232,14 +233,6 @@ def broadcast_content(config, contract, web3, account,
             })
     signed_tx = account.signTransaction(tx)
     return web3.eth.sendRawTransaction(signed_tx.rawTransaction)
-
-
-async def get_content_to_broadcast(messages):
-    return {'protocol': 'aleph',
-            'version': 1,
-            'content': {
-                'messages': messages
-            }}
 
 
 async def ethereum_packer(config):

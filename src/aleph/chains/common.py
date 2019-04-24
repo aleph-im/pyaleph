@@ -129,3 +129,11 @@ async def invalidate(chain_name, block_height):
     (in case of forks)
     """
     pass
+
+
+async def get_content_to_broadcast(messages):
+    return {'protocol': 'aleph',
+            'version': 1,
+            'content': {
+                'messages': messages
+            }}
