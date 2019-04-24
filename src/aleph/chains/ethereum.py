@@ -12,7 +12,7 @@ from aleph.model.messages import Message
 
 from web3 import Web3
 from web3.middleware import geth_poa_middleware
-from web3.utils.events import get_event_data
+from web3.contract import get_event_data
 from web3.gas_strategies.rpc import rpc_gas_price_strategy
 from eth_account.messages import defunct_hash_message
 from eth_account import Account
