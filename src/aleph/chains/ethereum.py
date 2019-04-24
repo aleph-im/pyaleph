@@ -32,7 +32,7 @@ async def verify_signature(message):
 
     verification = await get_verification_buffer(message)
 
-    message_hash = defunct_hash_message(text=verification)
+    message_hash = defunct_hash_message(text=verification.decode('utf-8'))
 
     verified = False
     try:
