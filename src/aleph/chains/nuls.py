@@ -5,7 +5,7 @@ import time
 from operator import itemgetter
 from aleph.network import check_message
 from aleph.chains.common import (incoming, get_verification_buffer,
-                                 get_content_to_broadcast)
+                                 get_chaindata, get_chaindata_messages)
 from aleph.chains.register import (
     register_verifier, register_incoming_worker, register_outgoing_worker)
 from aleph.model.chains import Chain
@@ -123,9 +123,17 @@ async def request_transactions(config, session, start_height):
                             % tx['hash'])
                         continue  # unsupported protocol version
 
+                    messages = await get_chaindata_messages(jdata, context={
+                        "tx_hash": tx['hash'],
+                        "height": tx['blockHeight'],
+                        "time": tx['time']/1000,
+                        "publisher": tx["inputs"][0]["address"]
+                    })
+
                     yield dict(type="aleph", time=tx['time']/1000,
                                tx_hash=tx['hash'], height=tx['blockHeight'],
-                               messages=jdata['content']['messages'])
+                               publisher=tx["inputs"][0]["address"],
+                               messages=messages)
 
                 except json.JSONDecodeError:
                     # if it's not valid json, just ignore it...
@@ -171,9 +179,6 @@ async def check_incoming(config):
                         continue
 
                     message['time'] = txi['time']
-                    # TODO: handle other chain signatures here
-                    # now handled in check_message
-                    # signed = await verify_signature(message, tx=txi)
 
                     # running those separately... a good/bad thing?
                     # shouldn't do that for VMs.
@@ -183,13 +188,6 @@ async def check_incoming(config):
                             seen_ids=seen_ids,
                             tx_hash=txi['tx_hash'],
                             height=txi['height'])))
-
-                    # await incoming(message, chain_name=CHAIN_NAME,
-                    #                tx_hash=txi['tx_hash'],
-                    #                height=txi['height'])
-
-                    # if txi['height'] > last_stored_height:
-                    #    last_stored_height = txi['height']
 
                     # let's join every 50 messages...
                     if (j > 5000):
@@ -269,9 +267,9 @@ async def nuls_packer(config):
         selected_utxo = utxo[:10]
         messages = [message async for message
                     in (await Message.get_unconfirmed_raw(
-                            limit=600, for_chain=CHAIN_NAME))]
+                            limit=5000, for_chain=CHAIN_NAME))]
         if len(messages):
-            content = await get_content_to_broadcast(messages)
+            content = await get_chaindata(messages, bulk_threshold=600)
             content = json.dumps(content)
             tx = await prepare_businessdata_tx(address, selected_utxo,
                                                content.encode('UTF-8'))

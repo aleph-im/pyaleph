@@ -3,7 +3,8 @@ import json
 import pkg_resources
 from aleph.network import check_message
 from aleph.chains.common import (incoming, get_verification_buffer,
-                                 get_content_to_broadcast)
+                                 get_chaindata,
+                                 get_chaindata_messages)
 from aleph.chains.register import (
     register_verifier, register_incoming_worker, register_outgoing_worker)
 from aleph.model.chains import Chain
@@ -109,21 +110,18 @@ async def request_transactions(config, web3, contract, start_height):
         message = event_data.args.message
         try:
             jdata = json.loads(message)
-            if jdata.get('protocol', None) != 'aleph':
-                LOGGER.info('Got unknown protocol object in tx %s'
-                            % event_data.transactionHash)
-                continue
 
-            if jdata.get('version', None) != 1:
-                LOGGER.info(
-                    'Got an unsupported version object in tx %s'
-                    % event_data.transactionHash)
-                continue  # unsupported protocol version
+            messages = await get_chaindata_messages(jdata, context={
+                "tx_hash": event_data.transactionHash,
+                "height": event_data.blockNumber,
+                "publisher": publisher
+            })
 
             yield dict(type="aleph",
                        tx_hash=event_data.transactionHash,
                        height=event_data.blockNumber,
-                       messages=jdata['content']['messages'])
+                       publisher=publisher,
+                       messages=messages)
 
         except json.JSONDecodeError:
             # if it's not valid json, just ignore it...
@@ -170,10 +168,7 @@ async def check_incoming(config):
                     # message got discarded at check stage.
                     continue
 
-                #message['time'] = txi['time']
-                # TODO: handle other chain signatures here
-                # now handled in check_message
-                # signed = await verify_signature(message, tx=txi)
+                # message['time'] = txi['time']
 
                 # running those separately... a good/bad thing?
                 # shouldn't do that for VMs.
@@ -183,13 +178,6 @@ async def check_incoming(config):
                         seen_ids=seen_ids,
                         tx_hash=txi['tx_hash'],
                         height=txi['height'])))
-
-                # await incoming(message, chain_name=CHAIN_NAME,
-                #                tx_hash=txi['tx_hash'],
-                #                height=txi['height'])
-
-                # if txi['height'] > last_stored_height:
-                #    last_stored_height = txi['height']
 
                 # let's join every 50 messages...
                 if (j > 5000):
@@ -254,11 +242,11 @@ async def ethereum_packer(config):
 
         messages = [message async for message
                     in (await Message.get_unconfirmed_raw(
-                            limit=50,
+                            limit=5000,
                             for_chain=CHAIN_NAME))]
 
         if len(messages):
-            content = await get_content_to_broadcast(messages)
+            content = await get_chaindata(messages)
             response = await loop.run_in_executor(None, broadcast_content,
                                                   config, contract, web3,
                                                   account, gas_price, nonce,

@@ -1,4 +1,4 @@
-from aleph.storage import get_json, pin_add
+from aleph.storage import get_json, pin_add, add_json
 from aleph.model.messages import Message
 
 import logging
@@ -131,9 +131,41 @@ async def invalidate(chain_name, block_height):
     pass
 
 
-async def get_content_to_broadcast(messages):
-    return {'protocol': 'aleph',
-            'version': 1,
-            'content': {
-                'messages': messages
-            }}
+async def get_chaindata(messages, bulk_threshold=20):
+    """ Returns content ready to be broadcasted on-chain (aka chaindata).
+
+    If message count is over bulk_threshold (default 20), store list in
+    IPFS and store the object hash instead of raw list.
+    """
+    chaindata = {
+        'protocol': 'aleph',
+        'version': 1,
+        'content': {
+            'messages': messages
+        }
+    }
+    if len(messages) > bulk_threshold:
+        ipfs_id = await add_json(chaindata)
+        return {'protocol': 'aleph-offchain',
+                'version': 1,
+                'content': ipfs_id}
+    else:
+        return chaindata
+
+
+async def get_chaindata_messages(chaindata, context):
+    protocol = chaindata.get('protocol', None)
+    version = chaindata.get('version', None)
+    if protocol == 'aleph' and version == 1:
+        return chaindata['content']['messages']
+    if protocol == 'aleph-offchain' and version == 1:
+        content = await get_json(chaindata['content'])
+        messages = await get_chaindata_messages(content, context)
+        if messages is not None:
+            LOGGER.info("Got bulk data with %d items" % len(messages))
+            await pin_add(chaindata['content'])
+            return messages
+    else:
+        LOGGER.info('Got unknown protocol/version object in tx %r'
+                    % context)
+        return None
