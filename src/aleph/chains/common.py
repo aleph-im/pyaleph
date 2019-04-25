@@ -39,13 +39,13 @@ async def incoming(message, chain_name=None,
         # is it really what we want here?
         return
 
-    if message is None:
-        return
-
     if check_message:
         # check/sanitize the message if needed
         message = await check_message_fn(message,
                                          from_chain=(chain_name is not None))
+
+    if message is None:
+        return
 
     LOGGER.info("Incoming %s." % hash)
 
