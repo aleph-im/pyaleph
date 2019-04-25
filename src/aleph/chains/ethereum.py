@@ -234,13 +234,19 @@ async def check_incoming(config):
                 # let's join every 500 messages...
                 if (j > 500):
                     for task in tasks:
-                        await task
+                        try:
+                            await task
+                        except Exception:
+                            LOGGER.exception("error in incoming task")
                     j = 0
                     seen_ids = []
                     tasks = []
 
         for task in tasks:
-            await task  # let's wait for all tasks to end.
+            try:
+                await task  # let's wait for all tasks to end.
+            except Exception:
+                LOGGER.exception("error in incoming task")
 
         if (i < 10):  # if there was less than 10 items, not a busy time
             # wait 5 seconds (half of typical time between 2 blocks)
