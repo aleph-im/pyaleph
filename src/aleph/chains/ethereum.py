@@ -164,11 +164,12 @@ async def request_transactions(config, web3, contract, start_height):
                     "publisher": publisher
                 })
 
-            yield dict(type="aleph",
-                       tx_hash=event_data.transactionHash,
-                       height=event_data.blockNumber,
-                       publisher=publisher,
-                       messages=messages)
+            if messages is not None:
+                yield dict(type="aleph",
+                           tx_hash=event_data.transactionHash,
+                           height=event_data.blockNumber,
+                           publisher=publisher,
+                           messages=messages)
 
         except json.JSONDecodeError:
             # if it's not valid json, just ignore it...

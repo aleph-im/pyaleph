@@ -129,11 +129,12 @@ async def request_transactions(config, session, start_height):
                         "time": tx['time']/1000,
                         "publisher": tx["inputs"][0]["address"]
                     })
-
-                    yield dict(type="aleph", time=tx['time']/1000,
-                               tx_hash=tx['hash'], height=tx['blockHeight'],
-                               publisher=tx["inputs"][0]["address"],
-                               messages=messages)
+                    
+                    if messages is not None:
+                        yield dict(type="aleph", time=tx['time']/1000,
+                                   tx_hash=tx['hash'], height=tx['blockHeight'],
+                                   publisher=tx["inputs"][0]["address"],
+                                   messages=messages)
 
                 except json.JSONDecodeError:
                     # if it's not valid json, just ignore it...
