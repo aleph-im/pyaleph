@@ -20,7 +20,7 @@ async def get_ipfs_api():
     return ipfsapi.connect(host, port)
 
 
-async def get_json(hash, timeout=10):
+async def get_json(hash, timeout=60):
     loop = asyncio.get_event_loop()
     api = await get_ipfs_api()
     future = loop.run_in_executor(
@@ -37,7 +37,7 @@ async def add_json(value):
     return result
 
 
-async def pin_add(hash, timeout=10):
+async def pin_add(hash, timeout=60):
     loop = asyncio.get_event_loop()
     api = await get_ipfs_api()
     future = loop.run_in_executor(
