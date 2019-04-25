@@ -26,6 +26,7 @@ CHAIN_NAME = 'ETH'
 async def verify_signature(message):
     """ Verifies a signature of a message, return True if verified, false if not
     """
+    loop = asyncio.get_event_loop()
     from aleph.web import app
     config = app.config
     w3 = await get_web3(config)
@@ -37,8 +38,11 @@ async def verify_signature(message):
     verified = False
     try:
         # we assume the signature is a valid string
-        address = w3.eth.account.recoverHash(message_hash,
+        address = await loop.run_in_executor(None, w3.eth.account.recoverHash,
+                                             message_hash,
                                              signature=message['signature'])
+        # address = w3.eth.account.recoverHash(message_hash,
+        #                                      signature=message['signature'])
         if address == message['sender']:
             verified = True
         else:
@@ -126,7 +130,8 @@ async def get_logs(config, web3, contract, start_height):
                 end_height = start_height + 1000
 
                 if start_height > last_block:
-                    return
+                    LOGGER.info("Ending big batch sync")
+                    break
 
             except ValueError as e:
                 if e.args[0]['code'] == -32005:
@@ -180,10 +185,10 @@ async def request_transactions(config, web3, contract, start_height):
             LOGGER.exception("Can't decode incoming logic data %r"
                              % message)
 
-    # Since we got no critical exception, save last received object
-    # block height to do next requests from there.
-    if last_height:
-        await Chain.set_last_height(CHAIN_NAME, last_height)
+        # Since we got no critical exception, save last received object
+        # block height to do next requests from there.
+        if last_height:
+            await Chain.set_last_height(CHAIN_NAME, last_height)
 
 
 async def check_incoming(config):
@@ -209,12 +214,10 @@ async def check_incoming(config):
             # (if too much messages, an ipfs hash is stored here).
             for message in txi['messages']:
                 j += 1
-                message = await check_message(
-                    message, from_chain=True,
-                    trusted=(txi['type'] == 'native-single'))
-                if message is None:
-                    # message got discarded at check stage.
-                    continue
+                # message = await check_message(message, from_chain=True)
+                # if message is None:
+                #     # message got discarded at check stage.
+                #     continue
 
                 # message['time'] = txi['time']
 
@@ -225,7 +228,8 @@ async def check_incoming(config):
                         message, chain_name=CHAIN_NAME,
                         seen_ids=seen_ids,
                         tx_hash=txi['tx_hash'],
-                        height=txi['height'])))
+                        height=txi['height'],
+                        check_message=True)))
 
                 # let's join every 50 messages...
                 if (j > 5000):

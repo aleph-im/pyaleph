@@ -1,4 +1,5 @@
 from aleph.storage import get_json, pin_add, add_json
+from aleph.network import check_message as check_message_fn
 from aleph.model.messages import Message
 
 import logging
@@ -27,7 +28,8 @@ async def mark_confirmed_data(chain_name, tx_hash, height):
 
 
 async def incoming(message, chain_name=None,
-                   tx_hash=None, height=None, seen_ids=None):
+                   tx_hash=None, height=None, seen_ids=None,
+                   check_message=False):
     """ New incoming message from underlying chain.
     Will be marked as confirmed if existing in database, created if not.
     """
@@ -36,6 +38,11 @@ async def incoming(message, chain_name=None,
     if hash in seen_ids:
         # is it really what we want here?
         return
+
+    if check_message:
+        # check/sanitize the message if needed
+        message = await check_message_fn(message,
+                                         from_chain=(chain_name is not None))
 
     LOGGER.info("Incoming %s." % hash)
 
