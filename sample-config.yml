@@ -13,6 +13,7 @@ ethereum:
   packing_node: True
   private_key: YOUR_PRIVATE_KEY_HERE
   sync_contract: "0xd1c53e2d39aA0D94E1738c926D439002c2016fb0"
+  start_height: 4200000
 
 mongodb:
   uri: "mongodb://127.0.0.1"
