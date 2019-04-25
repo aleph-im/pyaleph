@@ -17,6 +17,7 @@ from web3.gas_strategies.rpc import rpc_gas_price_strategy
 from eth_account.messages import defunct_hash_message
 from eth_account import Account
 from hexbytes import HexBytes
+import functools
 
 import logging
 LOGGER = logging.getLogger('chains.ethereum')
@@ -38,9 +39,10 @@ async def verify_signature(message):
     verified = False
     try:
         # we assume the signature is a valid string
-        address = await loop.run_in_executor(None, w3.eth.account.recoverHash,
-                                             message_hash,
-                                             signature=message['signature'])
+        address = await loop.run_in_executor(
+            None,
+            functools.partial(w3.eth.account.recoverHash, message_hash,
+                              signature=message['signature']))
         # address = w3.eth.account.recoverHash(message_hash,
         #                                      signature=message['signature'])
         if address == message['sender']:
