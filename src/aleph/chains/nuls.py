@@ -193,8 +193,8 @@ async def check_incoming(config):
                             height=txi['height'],
                             check_message=(txi['type'] != 'native-single'))))
 
-                    # let's join every 50 messages...
-                    if (j > 5000):
+                    # let's join every 500 messages...
+                    if (j > 500):
                         for task in tasks:
                             await task
                         j = 0
