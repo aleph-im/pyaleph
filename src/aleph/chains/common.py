@@ -153,12 +153,19 @@ async def get_chaindata(messages, bulk_threshold=20):
         return chaindata
 
 
-async def get_chaindata_messages(chaindata, context):
+async def get_chaindata_messages(chaindata, context, seen_ids=None):
     protocol = chaindata.get('protocol', None)
     version = chaindata.get('version', None)
     if protocol == 'aleph' and version == 1:
         return chaindata['content']['messages']
     if protocol == 'aleph-offchain' and version == 1:
+        if seen_ids is not None:
+            if chaindata['content'] in seen_ids:
+                # is it really what we want here?
+                return
+            else:
+                seen_ids.append(chaindata['content'])
+
         content = await get_json(chaindata['content'])
         messages = await get_chaindata_messages(content, context)
         if messages is not None:
