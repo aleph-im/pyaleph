@@ -118,7 +118,7 @@ async def get_logs(config, web3, contract, start_height):
         while True:
             try:
                 logs = get_logs_query(web3, contract,
-                                      start_height, start_height+1000)
+                                      start_height, end_height)
                 async for log in logs:
                     yield log
 
