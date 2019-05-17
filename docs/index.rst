@@ -3,6 +3,7 @@ pyaleph
 =======
 
 This is the documentation of **pyaleph**.
+**pyaleph** is the reference client node implementation of the Aleph.im protocol.
 
 .. note::
 
@@ -30,6 +31,7 @@ Contents
    :maxdepth: 2
 
    architecture
+   protocol/index
 
    License <license>
    Authors <authors>
