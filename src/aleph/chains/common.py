@@ -1,4 +1,5 @@
 from aleph.storage import get_json, pin_add, add_json
+from aleph.network import check_message as check_message_fn
 from aleph.model.messages import Message
 
 import logging
@@ -27,7 +28,8 @@ async def mark_confirmed_data(chain_name, tx_hash, height):
 
 
 async def incoming(message, chain_name=None,
-                   tx_hash=None, height=None, seen_ids=None):
+                   tx_hash=None, height=None, seen_ids=None,
+                   check_message=False):
     """ New incoming message from underlying chain.
     Will be marked as confirmed if existing in database, created if not.
     """
@@ -35,6 +37,14 @@ async def incoming(message, chain_name=None,
 
     if hash in seen_ids:
         # is it really what we want here?
+        return
+
+    if check_message:
+        # check/sanitize the message if needed
+        message = await check_message_fn(message,
+                                         from_chain=(chain_name is not None))
+
+    if message is None:
         return
 
     LOGGER.info("Incoming %s." % hash)
@@ -153,12 +163,19 @@ async def get_chaindata(messages, bulk_threshold=20):
         return chaindata
 
 
-async def get_chaindata_messages(chaindata, context):
+async def get_chaindata_messages(chaindata, context, seen_ids=None):
     protocol = chaindata.get('protocol', None)
     version = chaindata.get('version', None)
     if protocol == 'aleph' and version == 1:
         return chaindata['content']['messages']
     if protocol == 'aleph-offchain' and version == 1:
+        if seen_ids is not None:
+            if chaindata['content'] in seen_ids:
+                # is it really what we want here?
+                return
+            else:
+                seen_ids.append(chaindata['content'])
+
         content = await get_json(chaindata['content'])
         messages = await get_chaindata_messages(content, context)
         if messages is not None:

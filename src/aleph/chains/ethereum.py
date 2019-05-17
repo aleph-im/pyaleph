@@ -11,12 +11,13 @@ from aleph.model.chains import Chain
 from aleph.model.messages import Message
 
 from web3 import Web3
-from web3.middleware import geth_poa_middleware
+from web3.middleware import geth_poa_middleware, local_filter_middleware
 from web3.contract import get_event_data
 from web3.gas_strategies.rpc import rpc_gas_price_strategy
 from eth_account.messages import defunct_hash_message
 from eth_account import Account
 from hexbytes import HexBytes
+import functools
 
 import logging
 LOGGER = logging.getLogger('chains.ethereum')
@@ -26,19 +27,24 @@ CHAIN_NAME = 'ETH'
 async def verify_signature(message):
     """ Verifies a signature of a message, return True if verified, false if not
     """
+    loop = asyncio.get_event_loop()
     from aleph.web import app
     config = app.config
     w3 = await get_web3(config)
 
     verification = await get_verification_buffer(message)
 
-    message_hash = defunct_hash_message(text=verification)
+    message_hash = defunct_hash_message(text=verification.decode('utf-8'))
 
     verified = False
     try:
         # we assume the signature is a valid string
-        address = w3.eth.account.recoverHash(message_hash,
-                                             signature=message['signature'])
+        address = await loop.run_in_executor(
+            None,
+            functools.partial(w3.eth.account.recoverHash, message_hash,
+                              signature=message['signature']))
+        # address = w3.eth.account.recoverHash(message_hash,
+        #                                      signature=message['signature'])
         if address == message['sender']:
             verified = True
         else:
@@ -70,7 +76,8 @@ async def get_last_height():
 async def get_web3(config):
     web3 = Web3(Web3.HTTPProvider(config.ethereum.api_url.value))
     if config.ethereum.chain_id.value == 4:  # rinkeby
-        web3.middleware_stack.inject(geth_poa_middleware, layer=0)
+        web3.middleware_onion.inject(geth_poa_middleware, layer=0)
+    web3.middleware_onion.add(local_filter_middleware)
     web3.eth.setGasPriceStrategy(rpc_gas_price_strategy)
 
     return web3
@@ -87,19 +94,65 @@ async def get_contract(config, web3):
                              abi=await get_contract_abi())
 
 
+async def get_logs_query(web3, contract, start_height, end_height):
+    loop = asyncio.get_event_loop()
+    logs = await loop.run_in_executor(None, web3.eth.getLogs,
+                                      {'address': contract.address,
+                                       'fromBlock': start_height,
+                                       'toBlock': end_height})
+    for log in logs:
+        yield log
+
+
+async def get_logs(config, web3, contract, start_height):
+    try:
+        logs = get_logs_query(web3, contract,
+                              start_height+1, 'latest')
+        async for log in logs:
+            yield log
+    except ValueError as e:
+        # we got an error, let's try the pagination aware version.
+        if e.args[0]['code'] != -32005:
+            return
+
+        last_block = web3.eth.blockNumber
+        if (start_height < config.ethereum.start_height.value):
+            start_height = config.ethereum.start_height.value
+
+        end_height = start_height + 1000
+
+        while True:
+            try:
+                logs = get_logs_query(web3, contract,
+                                      start_height, end_height)
+                async for log in logs:
+                    yield log
+
+                start_height = end_height + 1
+                end_height = start_height + 1000
+
+                if start_height > last_block:
+                    LOGGER.info("Ending big batch sync")
+                    break
+
+            except ValueError as e:
+                if e.args[0]['code'] == -32005:
+                    end_height = start_height + 100
+                else:
+                    raise
+
+
 async def request_transactions(config, web3, contract, start_height):
     """ Continuously request data from the Ethereum blockchain.
     TODO: support websocket API.
     """
-    loop = asyncio.get_event_loop()
-    logs = await loop.run_in_executor(None, web3.eth.getLogs,
-                                      {'address': contract.address,
-                                       'fromBlock': start_height+1,
-                                       'toBlock': 'latest'})
 
     last_height = 0
+    seen_ids = []
 
-    for log in logs:
+    logs = get_logs(config, web3, contract, start_height+1)
+
+    async for log in logs:
         event_data = get_event_data(contract.events.SyncEvent._get_event_abi(),
                                     log)
         LOGGER.info('Handling TX in block %s' % event_data.blockNumber)
@@ -111,17 +164,19 @@ async def request_transactions(config, web3, contract, start_height):
         try:
             jdata = json.loads(message)
 
-            messages = await get_chaindata_messages(jdata, context={
-                "tx_hash": event_data.transactionHash,
-                "height": event_data.blockNumber,
-                "publisher": publisher
-            })
+            messages = await get_chaindata_messages(
+                jdata, seen_ids=seen_ids, context={
+                    "tx_hash": event_data.transactionHash,
+                    "height": event_data.blockNumber,
+                    "publisher": publisher
+                })
 
-            yield dict(type="aleph",
-                       tx_hash=event_data.transactionHash,
-                       height=event_data.blockNumber,
-                       publisher=publisher,
-                       messages=messages)
+            if messages is not None:
+                yield dict(type="aleph",
+                           tx_hash=event_data.transactionHash,
+                           height=event_data.blockNumber,
+                           publisher=publisher,
+                           messages=messages)
 
         except json.JSONDecodeError:
             # if it's not valid json, just ignore it...
@@ -132,10 +187,10 @@ async def request_transactions(config, web3, contract, start_height):
             LOGGER.exception("Can't decode incoming logic data %r"
                              % message)
 
-    # Since we got no critical exception, save last received object
-    # block height to do next requests from there.
-    if last_height:
-        await Chain.set_last_height(CHAIN_NAME, last_height)
+        # Since we got no critical exception, save last received object
+        # block height to do next requests from there.
+        if last_height:
+            await Chain.set_last_height(CHAIN_NAME, last_height)
 
 
 async def check_incoming(config):
@@ -161,12 +216,10 @@ async def check_incoming(config):
             # (if too much messages, an ipfs hash is stored here).
             for message in txi['messages']:
                 j += 1
-                message = await check_message(
-                    message, from_chain=True,
-                    trusted=(txi['type'] == 'native-single'))
-                if message is None:
-                    # message got discarded at check stage.
-                    continue
+                # message = await check_message(message, from_chain=True)
+                # if message is None:
+                #     # message got discarded at check stage.
+                #     continue
 
                 # message['time'] = txi['time']
 
@@ -177,18 +230,25 @@ async def check_incoming(config):
                         message, chain_name=CHAIN_NAME,
                         seen_ids=seen_ids,
                         tx_hash=txi['tx_hash'],
-                        height=txi['height'])))
+                        height=txi['height'],
+                        check_message=True)))
 
-                # let's join every 50 messages...
-                if (j > 5000):
+                # let's join every 500 messages...
+                if (j > 500):
                     for task in tasks:
-                        await task
+                        try:
+                            await task
+                        except Exception:
+                            LOGGER.exception("error in incoming task")
                     j = 0
                     seen_ids = []
                     tasks = []
 
         for task in tasks:
-            await task  # let's wait for all tasks to end.
+            try:
+                await task  # let's wait for all tasks to end.
+            except Exception:
+                LOGGER.exception("error in incoming task")
 
         if (i < 10):  # if there was less than 10 items, not a busy time
             # wait 5 seconds (half of typical time between 2 blocks)

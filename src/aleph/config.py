@@ -20,7 +20,8 @@ def get_defaults():
           'packing_node': False,
           'chain_id': 1,
           'private_key': None,
-          'sync_contract': None
+          'sync_contract': None,
+          'start_height': 4200000
         },
         'mongodb': {
           'uri': 'mongodb://127.0.0.1:27006',

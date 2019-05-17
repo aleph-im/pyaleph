@@ -26,6 +26,7 @@ CHAIN_NAME = 'NULS'
 async def verify_signature(message):
     """ Verifies a signature of a message, return True if verified, false if not
     """
+    loop = asyncio.get_event_loop()
     from aleph.web import app
     config = app.config
 
@@ -39,13 +40,13 @@ async def verify_signature(message):
         return False
 
     verification = await get_verification_buffer(message)
-    # try:
-    #     result = await loop.run_in_executor(
-    #         None, sig.verify, verification)
-    # except Exception:
-    #     LOGGER.exception("ARG")
-    #     result = False
-    result = sig.verify(verification)
+    try:
+        result = await loop.run_in_executor(
+            None, sig.verify, verification)
+    except Exception:
+        LOGGER.exception("ARG")
+        result = False
+    # result = sig.verify(verification)
     return result
 
 register_verifier(CHAIN_NAME, verify_signature)
@@ -130,10 +131,12 @@ async def request_transactions(config, session, start_height):
                         "publisher": tx["inputs"][0]["address"]
                     })
 
-                    yield dict(type="aleph", time=tx['time']/1000,
-                               tx_hash=tx['hash'], height=tx['blockHeight'],
-                               publisher=tx["inputs"][0]["address"],
-                               messages=messages)
+                    if messages is not None:
+                        yield dict(type="aleph", time=tx['time']/1000,
+                                   tx_hash=tx['hash'],
+                                   height=tx['blockHeight'],
+                                   publisher=tx["inputs"][0]["address"],
+                                   messages=messages)
 
                 except json.JSONDecodeError:
                     # if it's not valid json, just ignore it...
@@ -171,12 +174,12 @@ async def check_incoming(config):
                 # (if too much messages, an ipfs hash is stored here).
                 for message in txi['messages']:
                     j += 1
-                    message = await check_message(
-                        message, from_chain=True,
-                        trusted=(txi['type'] == 'native-single'))
-                    if message is None:
-                        # message got discarded at check stage.
-                        continue
+                    # message = await check_message(
+                    #     message, from_chain=True,
+                    #     trusted=(txi['type'] == 'native-single'))
+                    # if message is None:
+                    #     # message got discarded at check stage.
+                    #     continue
 
                     message['time'] = txi['time']
 
@@ -187,18 +190,25 @@ async def check_incoming(config):
                             message, chain_name=CHAIN_NAME,
                             seen_ids=seen_ids,
                             tx_hash=txi['tx_hash'],
-                            height=txi['height'])))
+                            height=txi['height'],
+                            check_message=(txi['type'] != 'native-single'))))
 
-                    # let's join every 50 messages...
-                    if (j > 5000):
+                    # let's join every 500 messages...
+                    if (j > 500):
                         for task in tasks:
-                            await task
+                            try:
+                                await task
+                            except Exception:
+                                LOGGER.exception("error in incoming task")
                         j = 0
                         seen_ids = []
                         tasks = []
 
             for task in tasks:
-                await task  # let's wait for all tasks to end.
+                try:
+                    await task # let's wait for all tasks to end.
+                except Exception:
+                    LOGGER.exception("error in incoming task")
 
             if (i < 10):  # if there was less than 10 items, not a busy time
                 # wait 5 seconds (half of typical time between 2 blocks)
