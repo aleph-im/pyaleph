@@ -1,6 +1,7 @@
 from aleph.storage import get_json, pin_add, add_json
 from aleph.network import check_message as check_message_fn
 from aleph.model.messages import Message
+from aleph.permissions import check_sender_authorization
 
 import logging
 LOGGER = logging.getLogger('chains.common')
@@ -111,9 +112,7 @@ async def incoming(message, chain_name=None,
         if content.get('time', None) is None:
             content['time'] = message['time']
 
-        # for now, only support direct signature
-        # (no 3rd party or multiple address signing)
-        if message['sender'] != content['address']:
+        if not await check_sender_authorization(message, content):
             LOGGER.warn("Invalid sender for %s" % hash)
             return
 
