@@ -43,6 +43,8 @@ aggregate_keys  optional. specific aggregate keys authorized
 .. note::
 
    If some filter is set, it is exclusive, only those will be accepted.
+   All filters specified must pass with one exclusion: type specific filters only apply
+   to this type (post_types only apply to POST, aggregate_keys only apply to AGGREGATE type)
 
    Example::
 
