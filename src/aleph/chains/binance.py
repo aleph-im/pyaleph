@@ -200,12 +200,12 @@ async def binance_incoming_worker(config):
 register_incoming_worker(CHAIN_NAME, binance_incoming_worker)
 
 
-def prepare_transfer_tx(wallet, memo_bytes):
+def prepare_transfer_tx(wallet, target_addr, memo_bytes):
     tx = TransferMsg(
         wallet=wallet,
         symbol='BNB',
         amount=0.0001,
-        to_address=wallet.address,  # send to ourselves
+        to_address=target_addr,  # send to target
         memo=memo_bytes
     )
     return tx
@@ -214,6 +214,7 @@ async def binance_packer(config):
     loop = asyncio.get_event_loop()
     # TODO: testnet perhaps? When we get testnet coins.
     env = BinanceEnvironment.get_production_env()
+    target_addr = config.binancechain.sync_address.value
 
     client = AsyncHttpApiClient(env=env)
     wallet = Wallet(config.binancechain.private_key.value, env=env)
@@ -240,7 +241,8 @@ async def binance_packer(config):
             content = await get_chaindata(messages, bulk_threshold=0)
             content = json.dumps(content)
             tx = await loop.run_in_executor(None, prepare_transfer_tx,
-                                            wallet, content.encode('utf-8'))
+                                            wallet, target_addr,
+                                            content.encode('utf-8'))
             # tx_hash = await tx.get_hash()
             LOGGER.info("Broadcasting TX")
             await client.broadcast_msg(tx, sync=True)
