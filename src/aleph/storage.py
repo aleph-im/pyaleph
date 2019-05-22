@@ -5,6 +5,7 @@ Basically manages the IPFS storage.
 import ipfsapi
 import asyncio
 import aiohttp
+import concurrent.futures
 
 
 async def get_base_url(config):
@@ -27,7 +28,8 @@ async def get_json(hash, timeout=60):
         None, api.get_json, hash)
     try:
         result = await asyncio.wait_for(future, timeout, loop=loop)
-    except ipfsapi.exceptions.DecodingError:
+    except (ipfsapi.exceptions.DecodingError,
+            concurrent.futures.TimeoutError):
         return None
     return result
 
