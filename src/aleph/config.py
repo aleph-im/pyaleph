@@ -27,7 +27,8 @@ def get_defaults():
           'enabled': False,
           'packing_node': False,
           'private_key': None,
-          'sync_address': None
+          'sync_address': None,
+          'start_time': None
         },
         'mongodb': {
           'uri': 'mongodb://127.0.0.1:27006',
