@@ -239,7 +239,7 @@ async def binance_packer(config):
                     in (await Message.get_unconfirmed_raw(
                             limit=500, for_chain=CHAIN_NAME))]
         if len(messages):
-            content = await get_chaindata(messages, bulk_threshold=0)
+            content = await get_chaindata(messages, bulk_threshold=1)
             content = json.dumps(content)
             tx = await loop.run_in_executor(None, prepare_transfer_tx,
                                             wallet, target_addr,
