@@ -23,6 +23,12 @@ def get_defaults():
           'sync_contract': None,
           'start_height': 4200000
         },
+        'binancechain': {
+          'enabled': False,
+          'packing_node': False,
+          'private_key': None,
+          'sync_address': None
+        },
         'mongodb': {
           'uri': 'mongodb://127.0.0.1:27006',
           'database': 'aleph'

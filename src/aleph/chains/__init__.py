@@ -1,6 +1,6 @@
 import asyncio
 from aleph.chains.register import OUTGOING_WORKERS, INCOMING_WORKERS
-from aleph.chains import nuls, ethereum
+from aleph.chains import nuls, ethereum, binance
 
 
 def start_connector(config):
