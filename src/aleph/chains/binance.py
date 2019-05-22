@@ -1,10 +1,11 @@
 import asyncio
 import json
 import math
-from datetime.datetime import timestamp
 import dateutil
+import dateutil.parser
+from datetime import datetime, timezone, timedelta
+from operator import itemgetter
 
-from binance_chain_python.Client import Client
 from binance_chain.wallet import Wallet
 from binance_chain.environment import BinanceEnvironment
 from binance_chain.http import AsyncHttpApiClient
@@ -43,54 +44,102 @@ async def get_last_height():
     return last_height
 
 
-async def get_transactions(client, start_time):
-    stime = int(timestamp(dateutil.parser.parse(start_time))*1000+1)
+async def prepare_timestamp(dt):
+    if dt is None:
+        return None
+
+    return int(datetime.timestamp(dt)*1000)
+
+
+async def get_transactions(config, client, target_addr,
+                           start_time, end_time=None):
+    if start_time is None:
+        start_time = config.binancechain.start_time.value
+        start_time = dateutil.parser.parse(start_time)
+
+    if end_time is None:
+        if (datetime.now(timezone.utc) - start_time) \
+                > timedelta(days=85):
+            end_time = start_time + timedelta(days=85)
+
     result = await client.get_transactions(
         target_addr, limit=PAGINATION,
-        start_time=stime)
+        start_time=(await prepare_timestamp(start_time))+1,
+        end_time=await prepare_timestamp(end_time))
 
-    for tx in result['tx']:
-        yield tx
+    if result['total'] >= PAGINATION:
+        if end_time is None:
+            # If we have no end_time, we ensure we have a non-slipping range
+            # while we iterate.
+            end_time = dateutil.parser.parse(result['tx'][0]['timeStamp'])
+
+        for i in reversed(range(math.ceil(result['total']/PAGINATION))):
+            nresult = await client.get_transactions(
+                target_addr, limit=PAGINATION, offset=i*PAGINATION,
+                start_time=(await prepare_timestamp(start_time))+1,
+                end_time=await prepare_timestamp(end_time))
+            for tx in sorted(nresult['tx'], key=itemgetter('blockHeight')):
+                yield tx
+    else:
+        for tx in sorted(result['tx'], key=itemgetter('blockHeight')):
+            yield tx
 
     if result['total'] >= PAGINATION:
         for i in range(1, math.ceil(result['total']/PAGINATION)):
-            nresult = await client.get_transactions(target_addr,
-                                                    limit=PAGINATION,
-                                                    offset=i*PAGINATION,
-                                                    start_time=stime)
+            nresult = await client.get_transactions(
+                target_addr, limit=PAGINATION, offset=i*PAGINATION,
+                start_time=prepare_timestamp(start_time)+1,
+                end_time=(end_time is not None and prepare_timestamp(end_time)
+                          or None))
             for tx in nresult['tx']:
                 yield tx
 
 
-
-async def request_transactions(config, start_time):
+async def request_transactions(config, client, start_time):
     loop = asyncio.get_event_loop()
     # TODO: testnet perhaps? When we get testnet coins.
-    env = BinanceEnvironment.get_production_env()
 
     target_addr = config.binancechain.sync_address.value
-    client = AsyncHttpApiClient(env=env)
 
-    while True:
-        last_time = 0
-        i = 0
-        async for tx in get_transactions(client, start_time):
-            if i == 0:
-                last_time = tx['timeStamp']
+    last_time = None
+    async for tx in get_transactions(config, client,
+                                     target_addr, start_time):
+        ldata = tx['memo']
+        try:
+            tx_time = dateutil.parser.parse(tx['timeStamp'])
+            last_time = tx_time
+            jdata = json.loads(ldata)
 
+            messages = await get_chaindata_messages(jdata, context={
+                "tx_hash": tx['txHash'],
+                "height": tx['blockHeight'],
+                "time": tx_time,
+                "publisher": tx["fromAddr"]
+            })
 
-            i += 1
+            if messages is not None:
+                yield dict(type="aleph", time=tx_time,
+                           tx_hash=tx['txHash'],
+                           height=tx['blockHeight'],
+                           publisher=tx["fromAddr"],
+                           messages=messages)
 
-        if last_time:
-            await Chain.set_last_time(CHAIN_NAME, last_time)
+        except json.JSONDecodeError:
+            # if it's not valid json, just ignore it...
+            LOGGER.info("Incoming logic data is not JSON, ignoring. %r"
+                        % ldata)
 
+    if last_time:
+        await Chain.set_last_time(CHAIN_NAME, last_time)
 
 
 async def check_incoming(config):
     last_stored_time = await Chain.get_last_time(CHAIN_NAME)
 
-    LOGGER.info("Last block is #%d" % last_stored_height)
+    LOGGER.info("Last time is %s" % last_stored_time)
     loop = asyncio.get_event_loop()
+    env = BinanceEnvironment.get_production_env()
+    client = AsyncHttpApiClient(env=env)
 
     while True:
         last_stored_time = await Chain.get_last_time(CHAIN_NAME)
@@ -99,20 +148,13 @@ async def check_incoming(config):
 
         tasks = []
         seen_ids = []
-        async for txi in request_transactions(config,
+        async for txi in request_transactions(config, client,
                                               last_stored_time):
             i += 1
             # TODO: handle big message list stored in IPFS case
             # (if too much messages, an ipfs hash is stored here).
             for message in txi['messages']:
                 j += 1
-                # message = await check_message(
-                #     message, from_chain=True,
-                #     trusted=(txi['type'] == 'native-single'))
-                # if message is None:
-                #     # message got discarded at check stage.
-                #     continue
-
                 message['time'] = txi['time']
 
                 # running those separately... a good/bad thing?
@@ -123,7 +165,7 @@ async def check_incoming(config):
                         seen_ids=seen_ids,
                         tx_hash=txi['tx_hash'],
                         height=txi['height'],
-                        check_message=(txi['type'] != 'native-single'))))
+                        check_message=True)))
 
                 # let's join every 500 messages...
                 if (j > 500):
@@ -138,16 +180,15 @@ async def check_incoming(config):
 
         for task in tasks:
             try:
-                await task # let's wait for all tasks to end.
+                await task  # let's wait for all tasks to end.
             except Exception:
                 LOGGER.exception("error in incoming task")
-
+        # print(i)
         if (i < 10):  # if there was less than 10 items, not a busy time
-            # wait 5 seconds (half of typical time between 2 blocks)
-            await asyncio.sleep(5)
+            await asyncio.sleep(2)
 
 
-async def nuls_incoming_worker(config):
+async def binance_incoming_worker(config):
     while True:
         try:
             await check_incoming(config)
@@ -156,7 +197,7 @@ async def nuls_incoming_worker(config):
             LOGGER.exception("ERROR, relaunching incoming in 10 seconds")
             await asyncio.sleep(10)
 
-register_incoming_worker(CHAIN_NAME, nuls_incoming_worker)
+register_incoming_worker(CHAIN_NAME, binance_incoming_worker)
 
 
 def prepare_transfer_tx(wallet, memo_bytes):
@@ -187,7 +228,7 @@ async def binance_packer(config):
 
         messages = [message async for message
                     in (await Message.get_unconfirmed_raw(
-                            limit=10, for_chain=CHAIN_NAME))]
+                            limit=5000, for_chain=CHAIN_NAME))]
         if len(messages):
             content = await get_chaindata(messages, bulk_threshold=0)
             content = json.dumps(content)

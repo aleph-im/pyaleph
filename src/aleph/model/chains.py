@@ -43,11 +43,11 @@ class Chain(BaseClass):
         return obj.get('last_commited_time', None)
 
     @classmethod
-    async def set_last_time(cls, chain, time):
+    async def set_last_time(cls, chain, stime):
         await cls.collection.update({'name': chain},
                                     {'$currentDate': {
                                         'last_update': True
                                      },
-                                     '$set': {"last_commited_time": height}
+                                     '$set': {"last_commited_time": stime}
                                      },
                                     upsert=True)
