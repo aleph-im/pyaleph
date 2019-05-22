@@ -163,6 +163,11 @@ async def get_chaindata(messages, bulk_threshold=20):
 
 
 async def get_chaindata_messages(chaindata, context, seen_ids=None):
+    if chaindata is None:
+        LOGGER.info('Got bad data in tx %r'
+                    % context)
+        return None
+
     protocol = chaindata.get('protocol', None)
     version = chaindata.get('version', None)
     if protocol == 'aleph' and version == 1:

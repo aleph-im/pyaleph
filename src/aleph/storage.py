@@ -25,7 +25,10 @@ async def get_json(hash, timeout=60):
     api = await get_ipfs_api()
     future = loop.run_in_executor(
         None, api.get_json, hash)
-    result = await asyncio.wait_for(future, timeout, loop=loop)
+    try:
+        result = await asyncio.wait_for(future, timeout, loop=loop)
+    except ipfsapi.exceptions.DecodingError:
+        return None
     return result
 
 
