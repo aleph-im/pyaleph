@@ -2,6 +2,8 @@
 
 Next generation network of decentralized big data applications. Developement follows the [Aleph Whitepaper](https://github.com/moshemalawach/aleph-whitepaper).
 
+Documentation (albeit still vastly incomplete as it is a work in progress) can be found at http://pyaleph.readthedocs.io/ or built from this repo with `$ python setup.py docs`
+
 ## Dependencies
 
 PyAleph requires Python v3.6+ (it won't work with older python versions).
