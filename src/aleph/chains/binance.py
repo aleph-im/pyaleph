@@ -218,11 +218,18 @@ async def binance_packer(config):
     client = AsyncHttpApiClient(env=env)
     wallet = Wallet(config.binancechain.private_key.value, env=env)
     LOGGER.info("BNB Connector set up with address %s" % wallet.address)
-    await loop.run_in_executor(None, wallet.reload_account_sequence)
+    try:
+        await loop.run_in_executor(None, wallet.reload_account_sequence)
+    except KeyError:
+        pass
+
     i = 0
     while True:
         if (i >= 100):
-            await loop.run_in_executor(None, wallet.reload_account_sequence)
+            try:
+                await loop.run_in_executor(None, wallet.reload_account_sequence)
+            except KeyError:
+                pass
             # utxo = await get_utxo(config, address)
             i = 0
 
