@@ -44,7 +44,7 @@ async def verify_signature(message):
         result = await loop.run_in_executor(
             None, sig.verify, verification)
     except Exception:
-        LOGGER.exception("ARG")
+        LOGGER.exception("NULS Signature verification error")
         result = False
     # result = sig.verify(verification)
     return result
@@ -114,15 +114,15 @@ async def request_transactions(config, session, start_height):
                 try:
                     ddata = bytes.fromhex(ldata).decode('utf-8')
                     jdata = json.loads(ddata)
-                    if jdata.get('protocol', None) != 'aleph':
-                        LOGGER.info('Got unknown protocol object in tx %s'
-                                    % tx['hash'])
-                        continue
-                    if jdata.get('version', None) != 1:
-                        LOGGER.info(
-                            'Got an unsupported version object in tx %s'
-                            % tx['hash'])
-                        continue  # unsupported protocol version
+                    # if jdata.get('protocol', None) != 'aleph':
+                    #     LOGGER.info('Got unknown protocol object in tx %s'
+                    #                 % tx['hash'])
+                    #     continue
+                    # if jdata.get('version', None) != 1:
+                    #     LOGGER.info(
+                    #         'Got an unsupported version object in tx %s'
+                    #         % tx['hash'])
+                    #     continue  # unsupported protocol version
 
                     messages = await get_chaindata_messages(jdata, context={
                         "tx_hash": tx['hash'],
