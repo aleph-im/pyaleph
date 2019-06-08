@@ -26,6 +26,7 @@ async def get_json(hash, timeout=60):
     api = await get_ipfs_api()
     result = await api.cat(hash)
     result = json.loads(result)
+    await api.close()
     # future = loop.run_in_executor(
     #     None, api.get_json, hash)
     # try:
@@ -40,6 +41,7 @@ async def add_json(value):
     # loop = asyncio.get_event_loop()
     api = await get_ipfs_api()
     result = await api.add_json(value)
+    await api.close()
     # result = await loop.run_in_executor(
     #     None, api.add_json, value)
     return result['Hash']
@@ -51,6 +53,7 @@ async def pin_add(hash, timeout=60):
     result = None
     async for ret in api.pin.add(hash):
         result = ret
+    await api.close()
     # future = loop.run_in_executor(
     #     None, api.pin_add, hash)
     # result = await asyncio.wait_for(future, timeout, loop=loop)
