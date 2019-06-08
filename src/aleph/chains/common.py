@@ -32,7 +32,9 @@ async def incoming(message, chain_name=None,
                    tx_hash=None, height=None, seen_ids=None,
                    check_message=False):
     """ New incoming message from underlying chain.
-    Will be marked as confirmed if existing in database, created if not.
+    
+    For regular messages it will be marked as confirmed
+    if existing in database, created if not.
     """
     hash = message['item_hash']
 

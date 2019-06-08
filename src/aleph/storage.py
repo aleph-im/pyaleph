@@ -2,7 +2,7 @@
 Basically manages the IPFS storage.
 """
 
-import ipfsapi
+import aioipfs
 import asyncio
 import aiohttp
 import concurrent.futures
@@ -18,36 +18,39 @@ async def get_ipfs_api():
     host = app['config'].ipfs.host.value
     port = app['config'].ipfs.port.value
 
-    return ipfsapi.connect(host, port)
+    return aioipfs.AsyncIPFS(host=host, port=port)
 
 
 async def get_json(hash, timeout=60):
-    loop = asyncio.get_event_loop()
+    # loop = asyncio.get_event_loop()
     api = await get_ipfs_api()
-    future = loop.run_in_executor(
-        None, api.get_json, hash)
-    try:
-        result = await asyncio.wait_for(future, timeout, loop=loop)
-    except (ipfsapi.exceptions.DecodingError,
-            concurrent.futures.TimeoutError):
-        return None
+    result = api.fetch_json(hash)
+    # future = loop.run_in_executor(
+    #     None, api.get_json, hash)
+    # try:
+    #     result = await asyncio.wait_for(future, timeout, loop=loop)
+    # except (ipfsapi.exceptions.DecodingError,
+    #         concurrent.futures.TimeoutError):
+    #     return None
     return result
 
 
 async def add_json(value):
-    loop = asyncio.get_event_loop()
+    # loop = asyncio.get_event_loop()
     api = await get_ipfs_api()
-    result = await loop.run_in_executor(
-        None, api.add_json, value)
+    result = await api.add_json(value)
+    # result = await loop.run_in_executor(
+    #     None, api.add_json, value)
     return result
 
 
 async def pin_add(hash, timeout=60):
-    loop = asyncio.get_event_loop()
+    # loop = asyncio.get_event_loop()
     api = await get_ipfs_api()
-    future = loop.run_in_executor(
-        None, api.pin_add, hash)
-    result = await asyncio.wait_for(future, timeout, loop=loop)
+    result = await api.pin.add(hash)
+    # future = loop.run_in_executor(
+    #     None, api.pin_add, hash)
+    # result = await asyncio.wait_for(future, timeout, loop=loop)
     return result
 
 
