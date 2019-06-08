@@ -48,8 +48,9 @@ async def add_json(value):
 async def pin_add(hash, timeout=60):
     # loop = asyncio.get_event_loop()
     api = await get_ipfs_api()
+    result = None
     async for ret in api.pin.add(hash):
-        continue
+        result = ret
     # future = loop.run_in_executor(
     #     None, api.pin_add, hash)
     # result = await asyncio.wait_for(future, timeout, loop=loop)
