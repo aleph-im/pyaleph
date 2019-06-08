@@ -24,7 +24,7 @@ async def get_ipfs_api():
 async def get_json(hash, timeout=60):
     # loop = asyncio.get_event_loop()
     api = await get_ipfs_api()
-    result = api.fetch_json(hash)
+    result = api.core.fetch_json(hash)
     # future = loop.run_in_executor(
     #     None, api.get_json, hash)
     # try:
