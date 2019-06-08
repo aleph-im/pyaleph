@@ -4,8 +4,8 @@ Basically manages the IPFS storage.
 
 import aioipfs
 import asyncio
+import json
 import aiohttp
-import concurrent.futures
 
 
 async def get_base_url(config):
@@ -24,7 +24,8 @@ async def get_ipfs_api():
 async def get_json(hash, timeout=60):
     # loop = asyncio.get_event_loop()
     api = await get_ipfs_api()
-    result = await api.core.fetch_json(hash)
+    result = await api.core.cat(hash)
+    result = json.loads(result)
     # future = loop.run_in_executor(
     #     None, api.get_json, hash)
     # try:
