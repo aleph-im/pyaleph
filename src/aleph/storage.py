@@ -42,7 +42,7 @@ async def add_json(value):
     result = await api.add_json(value)
     # result = await loop.run_in_executor(
     #     None, api.add_json, value)
-    return result
+    return result['Hash']
 
 
 async def pin_add(hash, timeout=60):
