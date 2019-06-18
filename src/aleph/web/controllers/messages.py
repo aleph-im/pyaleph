@@ -10,11 +10,11 @@ async def view_messages_list(request):
     """
 
     find_filters = {}
-    filters = [
-        {'type': request.query.get('msgType', 'POST')}
-    ]
 
     query_string = request.query_string
+    msg_type = request.query.get('msgType', None)
+
+    filters = []
     addresses = request.query.get('addresses', None)
     if addresses is not None:
         addresses = addresses.split(',')
@@ -33,6 +33,9 @@ async def view_messages_list(request):
 
     date_filters = prepare_date_filters(request, 'time')
     block_height_filters = prepare_block_height_filters(request, 'blockHeight')
+
+    if msg_type is not None:
+        filter.append({'type': msg_type})
 
     if addresses is not None:
         filters.append({
@@ -67,7 +70,9 @@ async def view_messages_list(request):
     messages = [msg async for msg
                 in Message.collection.find(
                     find_filters, limit=pagination_per_page,
-                    skip=pagination_skip, sort=[('time', -1)])]
+                    skip=pagination_skip,
+                    sort=[('time',
+                           int(request.query.get('sort_order', '-1')))])]
 
     context = {
         'messages': messages
