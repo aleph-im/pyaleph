@@ -61,7 +61,7 @@ async def incoming(message, chain_name=None,
         'chain': message['chain'],
         'sender': message['sender'],
         'type': message['type']
-    }, projection={'confirmed': 1, 'confirmations': 1})
+    }, projection={'confirmed': 1, 'confirmations': 1, 'time': 1})
 
     # new_values = {'confirmed': False}  # this should be our default.
     new_values = {}
@@ -91,7 +91,10 @@ async def incoming(message, chain_name=None,
                 'sender': message['sender']
             }, {
                 '$set': {
-                    'confirmed': True
+                    'confirmed': True,
+                },
+                '$min': {
+                    'time': message['time']
                 },
                 '$addToSet': {
                     'confirmations': new_values['confirmations'][0]
