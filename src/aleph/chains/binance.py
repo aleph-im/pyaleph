@@ -1,6 +1,7 @@
 import asyncio
 import json
 import math
+import pytz
 import dateutil
 import dateutil.parser
 from datetime import datetime, timezone, timedelta
@@ -108,7 +109,7 @@ async def request_transactions(config, client, start_time):
         LOGGER.info('Handling TX in block %s' % tx['blockHeight'])
         try:
             tx_time = dateutil.parser.parse(tx['timeStamp']).timestamp()
-            last_time = tx_time
+            last_time = dateutil.parser.parse(tx['timeStamp'])
             jdata = json.loads(ldata)
 
             messages = await get_chaindata_messages(jdata, context={
@@ -189,7 +190,9 @@ async def check_incoming(config):
             if join:
                 await join_tasks(tasks, seen_ids)
                 join = False
-                await Chain.set_last_time(CHAIN_NAME, txi['time'])
+                await Chain.set_last_time(
+                    CHAIN_NAME,
+                    datetime.fromtimestamp(txi['time'], tz=pytz.utc))
 
         await join_tasks(tasks, seen_ids)
         # print(i)
