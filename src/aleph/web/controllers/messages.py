@@ -35,7 +35,7 @@ async def view_messages_list(request):
     block_height_filters = prepare_block_height_filters(request, 'blockHeight')
 
     if msg_type is not None:
-        filter.append({'type': msg_type})
+        filters.append({'type': msg_type})
 
     if addresses is not None:
         filters.append({
