@@ -6,6 +6,7 @@ import aioipfs
 import asyncio
 import json
 import aiohttp
+import concurrent
 
 
 async def get_base_url(config):
@@ -27,15 +28,11 @@ async def get_json(hash, timeout=2):
     try:
         result = await api.cat(hash)
         result = json.loads(result)
+    except (concurrent.futures.TimeoutError, json.JSONDecodeError):
+        result = None
     finally:
         await api.close()
-    # future = loop.run_in_executor(
-    #     None, api.get_json, hash)
-    # try:
-    #     result = await asyncio.wait_for(future, timeout, loop=loop)
-    # except (ipfsapi.exceptions.DecodingError,
-    #         concurrent.futures.TimeoutError):
-    #     return None
+
     return result
 
 
@@ -46,12 +43,11 @@ async def add_json(value):
         result = await api.add_json(value)
     finally:
         await api.close()
-    # result = await loop.run_in_executor(
-    #     None, api.add_json, value)
+
     return result['Hash']
 
 
-async def pin_add(hash, timeout=2):
+async def pin_add(hash, timeout=5):
     # loop = asyncio.get_event_loop()
     api = await get_ipfs_api(timeout=timeout)
     try:
@@ -60,9 +56,7 @@ async def pin_add(hash, timeout=2):
             result = ret
     finally:
         await api.close()
-    # future = loop.run_in_executor(
-    #     None, api.pin_add, hash)
-    # result = await asyncio.wait_for(future, timeout, loop=loop)
+
     return result
 
 
