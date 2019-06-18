@@ -32,7 +32,7 @@ async def incoming(message, chain_name=None,
                    tx_hash=None, height=None, seen_ids=None,
                    check_message=False):
     """ New incoming message from underlying chain.
-    
+
     For regular messages it will be marked as confirmed
     if existing in database, created if not.
     """
@@ -105,6 +105,10 @@ async def incoming(message, chain_name=None,
         try:
             content = await get_json(hash)
         except Exception:
+            LOGGER.exception("Can't get content of object %r" % hash)
+            return
+
+        if content is None:
             LOGGER.exception("Can't get content of object %r" % hash)
             return
 
@@ -181,8 +185,13 @@ async def get_chaindata_messages(chaindata, context, seen_ids=None):
                 return
             else:
                 seen_ids.append(chaindata['content'])
+        try:
+            content = await get_json(chaindata['content'])
+        except Exception:
+            LOGGER.exception("Can't get content of offchain object %r"
+                             % chaindata['content'])
+            return None
 
-        content = await get_json(chaindata['content'])
         messages = await get_chaindata_messages(content, context)
         if messages is not None:
             LOGGER.info("Got bulk data with %d items" % len(messages))
