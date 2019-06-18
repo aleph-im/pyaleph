@@ -77,9 +77,12 @@ async def incoming(message, chain_name=None,
             else:
                 seen_ids.append(hash)
 
-        if (existing['confirmed'] and
-                chain_name in [c['chain'] for c in existing['confirmations']]):
-            return
+        # THIS CODE SHOULD BE HERE...
+        # But, if a race condition appeared, we might have the message twice.
+        # TODO: add key constraint for that case.
+        # if (existing['confirmed'] and
+        #         chain_name in [c['chain'] for c in existing['confirmations']]):
+        #     return
 
         LOGGER.info("Updating %s." % hash)
 
