@@ -13,20 +13,22 @@ async def get_base_url(config):
                                  config.ipfs.port.value)
 
 
-async def get_ipfs_api():
+async def get_ipfs_api(timeout=60):
     from aleph.web import app
     host = app['config'].ipfs.host.value
     port = app['config'].ipfs.port.value
 
-    return aioipfs.AsyncIPFS(host=host, port=port)
+    return aioipfs.AsyncIPFS(host=host, port=port, read_timeout=timeout)
 
 
-async def get_json(hash, timeout=60):
+async def get_json(hash, timeout=2):
     # loop = asyncio.get_event_loop()
-    api = await get_ipfs_api()
-    result = await api.cat(hash)
-    result = json.loads(result)
-    await api.close()
+    api = await get_ipfs_api(timeout=timeout)
+    try:
+        result = await api.cat(hash)
+        result = json.loads(result)
+    finally:
+        await api.close()
     # future = loop.run_in_executor(
     #     None, api.get_json, hash)
     # try:
@@ -40,20 +42,24 @@ async def get_json(hash, timeout=60):
 async def add_json(value):
     # loop = asyncio.get_event_loop()
     api = await get_ipfs_api()
-    result = await api.add_json(value)
-    await api.close()
+    try:
+        result = await api.add_json(value)
+    finally:
+        await api.close()
     # result = await loop.run_in_executor(
     #     None, api.add_json, value)
     return result['Hash']
 
 
-async def pin_add(hash, timeout=60):
+async def pin_add(hash, timeout=2):
     # loop = asyncio.get_event_loop()
-    api = await get_ipfs_api()
-    result = None
-    async for ret in api.pin.add(hash):
-        result = ret
-    await api.close()
+    api = await get_ipfs_api(timeout=timeout)
+    try:
+        result = None
+        async for ret in api.pin.add(hash):
+            result = ret
+    finally:
+        await api.close()
     # future = loop.run_in_executor(
     #     None, api.pin_add, hash)
     # result = await asyncio.wait_for(future, timeout, loop=loop)
