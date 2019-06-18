@@ -134,6 +134,16 @@ async def request_transactions(config, client, start_time):
         await Chain.set_last_time(CHAIN_NAME, last_time)
 
 
+async def join_tasks(tasks, seen_ids):
+    for task in tasks:
+        try:
+            await task
+        except Exception:
+            LOGGER.exception("error in incoming task")
+    seen_ids.clear()
+    tasks.clear()
+
+
 async def check_incoming(config):
     last_stored_time = await Chain.get_last_time(CHAIN_NAME)
 
@@ -149,6 +159,8 @@ async def check_incoming(config):
 
         tasks = []
         seen_ids = []
+        join = False
+
         async for txi in request_transactions(config, client,
                                               last_stored_time):
             i += 1
@@ -169,21 +181,17 @@ async def check_incoming(config):
                         check_message=True)))
 
                 # let's join every 500 messages...
-                if (j > 500):
-                    for task in tasks:
-                        try:
-                            await task
-                        except Exception:
-                            LOGGER.exception("error in incoming task")
+                if (j > 200):
+                    await join_tasks(tasks, seen_ids)
                     j = 0
-                    seen_ids = []
-                    tasks = []
+                    join = True
 
-        for task in tasks:
-            try:
-                await task  # let's wait for all tasks to end.
-            except Exception:
-                LOGGER.exception("error in incoming task")
+            if join:
+                await join_tasks(tasks, seen_ids)
+                join = False
+                await Chain.set_last_time(CHAIN_NAME, txi['time'])
+
+        await join_tasks(tasks, seen_ids)
         # print(i)
         if (i < 10):  # if there was less than 10 items, not a busy time
             await asyncio.sleep(2)
