@@ -107,7 +107,7 @@ async def request_transactions(config, client, start_time):
         ldata = tx['memo']
         LOGGER.info('Handling TX in block %s' % tx['blockHeight'])
         try:
-            tx_time = dateutil.parser.parse(tx['timeStamp'])
+            tx_time = dateutil.parser.parse(tx['timeStamp']).timestamp()
             last_time = tx_time
             jdata = json.loads(ldata)
 
