@@ -54,6 +54,8 @@ async def pin_add(hash, timeout=5):
         result = None
         async for ret in api.pin.add(hash):
             result = ret
+    except (concurrent.futures.TimeoutError, json.JSONDecodeError):
+        result = None
     finally:
         await api.close()
 
