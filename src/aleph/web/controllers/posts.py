@@ -1,7 +1,6 @@
 from aleph.web import app
 from aleph.web.controllers.utils import (Pagination,
-                                         cond_output, prepare_date_filters,
-                                         prepare_block_height_filters)
+                                         cond_output, prepare_date_filters)
 from aleph.model.messages import Message, get_merged_posts
 
 
@@ -37,7 +36,6 @@ async def view_posts_list(request):
         hashes = hashes.split(',')
 
     date_filters = prepare_date_filters(request, 'time')
-    block_height_filters = prepare_block_height_filters(request, 'blockHeight')
 
     if addresses is not None:
         filters.append({
@@ -61,9 +59,6 @@ async def view_posts_list(request):
 
     if date_filters is not None:
         filters.append(date_filters)
-
-    if block_height_filters is not None:
-        filters.append(block_height_filters)
 
     if len(filters) > 0:
         find_filters = {'$and': filters} if len(filters) > 1 else filters[0]

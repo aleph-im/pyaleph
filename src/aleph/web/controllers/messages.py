@@ -1,12 +1,11 @@
 from aleph.web import app
 from aleph.web.controllers.utils import (Pagination,
-                                         cond_output, prepare_date_filters,
-                                         prepare_block_height_filters)
+                                         cond_output, prepare_date_filters)
 from aleph.model.messages import Message
 
 
 async def view_messages_list(request):
-    """ Messages list view with filters (default type: POST)
+    """ Messages list view with filters
     """
 
     find_filters = {}
@@ -32,7 +31,6 @@ async def view_messages_list(request):
         tags = tags.split(',')
 
     date_filters = prepare_date_filters(request, 'time')
-    block_height_filters = prepare_block_height_filters(request, 'blockHeight')
 
     if msg_type is not None:
         filters.append({'type': msg_type})
@@ -53,9 +51,6 @@ async def view_messages_list(request):
 
     if date_filters is not None:
         filters.append(date_filters)
-
-    if block_height_filters is not None:
-        filters.append(block_height_filters)
 
     if len(filters) > 0:
         find_filters = {'$and': filters} if len(filters) > 1 else filters[0]
