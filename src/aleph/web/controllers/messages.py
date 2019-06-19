@@ -30,6 +30,10 @@ async def view_messages_list(request):
     if tags is not None:
         tags = tags.split(',')
 
+    hashes = request.query.get('hashes', None)
+    if hashes is not None:
+        hashes = hashes.split(',')
+
     date_filters = prepare_date_filters(request, 'time')
 
     if msg_type is not None:
@@ -51,6 +55,12 @@ async def view_messages_list(request):
 
     if tags is not None:
         filters.append({'content.tags': {'$elemMatch': {'$in': tags}}})
+
+    if hashes is not None:
+        filters.append({'$or': [
+            {'item_hash': {'$in': hashes}},
+            {'tx_hash': {'$in': hashes}}
+        ]})
 
     if date_filters is not None:
         filters.append(date_filters)
