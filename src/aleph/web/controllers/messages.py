@@ -22,9 +22,9 @@ async def view_messages_list(request):
     if refs is not None:
         refs = refs.split(',')
 
-    post_types = request.query.get('types', None)
-    if post_types is not None:
-        post_types = post_types.split(',')
+    content_types = request.query.get('contentTypes', None)
+    if content_types is not None:
+        content_types = content_types.split(',')
 
     tags = request.query.get('tags', None)
     if tags is not None:
