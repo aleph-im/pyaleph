@@ -40,12 +40,12 @@ async def view_messages_list(request):
         filters.append({'type': msg_type})
 
     if addresses is not None:
-        filters.append({
+        filters.append(
             {'$or': [
                 {'content.address': {'$in': addresses}},
                 {'sender': {'$in': addresses}},
             ]}
-        })
+        )
 
     if content_types is not None:
         filters.append({'content.type': {'$in': content_types}})
