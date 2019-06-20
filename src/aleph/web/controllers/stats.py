@@ -39,11 +39,11 @@ async def addresses_stats(check_time=None, address_list=None,
          {'$group': {'_id': 'content.address',
                      'messages': {'$sum': 1},
                      'posts': {'$sum': {"$cond": [
-                         {'type': 'POST'},
+                         {'$eq': ['$type', 'POST']},
                          1, 0
                         ]}},
                      'aggregates': {'$sum': {"$cond": [
-                         {'type': 'AGGREGATE'},
+                         {'$eq': ['$type', 'AGGREGATE']},
                          1, 0
                         ]}},
                      }},
