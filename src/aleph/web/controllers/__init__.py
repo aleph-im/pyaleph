@@ -1,1 +1,2 @@
-from aleph.web.controllers import main, ipfs, messages, aggregates, posts
+from aleph.web.controllers import (main, ipfs, messages, aggregates, posts,
+                                   stats)
