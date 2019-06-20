@@ -17,7 +17,7 @@ async def addresses_stats(check_time=None, address_list=None,
     if check_time is None:
         check_time = datetime.datetime.now()
 
-    matches = {'$match': {}}
+    matches = []
 
     if address_list is not None:
         if len(address_list) > 1:
