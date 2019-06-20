@@ -62,7 +62,7 @@ async def addresses_stats(check_time=None, address_list=None,
 
 @cached(ttl=60*10, cache=SimpleMemoryCache)  # 600 seconds or 10 minutes
 async def addresses_infos(check_time=None, address_list=None):
-    address_stats = await addresses_stats(check_time=None,
+    address_stats = await addresses_stats(check_time=check_time,
                                           address_list=address_list)
     return {info['address']: info
             for info in address_stats}
@@ -75,7 +75,7 @@ async def addresses_stats_view(request):
     addresses = request.query.getall('addresses[]', [])
     check_time = None
 
-    if len(addresses) and len(addresses) < 200:  # don't use cached values
+    if len(addresses) and (len(addresses) < 200):  # don't use cached values
         check_time = datetime.datetime.now()
 
     stats = await addresses_infos(address_list=addresses,
