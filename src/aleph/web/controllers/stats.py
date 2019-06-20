@@ -36,7 +36,7 @@ async def addresses_stats(check_time=None, address_list=None,
     aggregate = Message.collection.aggregate(
         matches +
         [
-         {'$group': {'_id': 'content.address',
+         {'$group': {'_id': '$content.address',
                      'messages': {'$sum': 1},
                      'posts': {'$sum': {"$cond": [
                          {'$eq': ['$type', 'POST']},
