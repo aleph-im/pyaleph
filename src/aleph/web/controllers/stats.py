@@ -19,7 +19,7 @@ async def addresses_stats(check_time=None, address_list=None,
 
     matches = []
 
-    if address_list is not None:
+    if address_list is not None and len(address_list):
         if len(address_list) > 1:
             matches.append(
                 {'$match': {'$or': [
