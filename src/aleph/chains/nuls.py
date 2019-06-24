@@ -295,7 +295,7 @@ async def nuls_packer(config):
                 'value': tx.coin_data.outputs[0].na
             }]
 
-        await asyncio.sleep(11)
+        await asyncio.sleep(config.nuls.commit_delay.value)
 
         i += 1
 

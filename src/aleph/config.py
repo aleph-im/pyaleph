@@ -12,7 +12,8 @@ def get_defaults():
         'nuls': {
           'chain_id': 8964,
           'packing_node': False,
-          'private_key': None
+          'private_key': None,
+          'commit_delay': 11
         },
         'ethereum': {
           'enabled': False,
@@ -21,14 +22,16 @@ def get_defaults():
           'chain_id': 1,
           'private_key': None,
           'sync_contract': None,
-          'start_height': 4200000
+          'start_height': 4200000,
+          'commit_delay': 35
         },
         'binancechain': {
           'enabled': False,
           'packing_node': False,
           'private_key': None,
           'sync_address': None,
-          'start_time': None
+          'start_time': None,
+          'commit_delay': 35
         },
         'mongodb': {
           'uri': 'mongodb://127.0.0.1:27006',

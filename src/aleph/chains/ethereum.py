@@ -313,7 +313,7 @@ async def ethereum_packer(config):
                                                   content)
             LOGGER.info("Broadcasted %r on %s" % (response, CHAIN_NAME))
 
-        await asyncio.sleep(35)
+        await asyncio.sleep(config.ethereum.commit_delay.value)
         i += 1
 
 

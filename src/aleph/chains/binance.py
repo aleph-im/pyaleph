@@ -259,7 +259,7 @@ async def binance_packer(config):
             LOGGER.info("Broadcasting TX")
             await client.broadcast_msg(tx, sync=True)
 
-        await asyncio.sleep(35)
+        await asyncio.sleep(config.binancechain.commit_delay.value)
 
         i += 1
 
