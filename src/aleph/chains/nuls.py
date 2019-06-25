@@ -295,12 +295,11 @@ async def nuls_packer(config):
                     'lockTime': 0,
                     'value': tx.coin_data.outputs[0].na
                 }]
+                await asyncio.sleep(config.nuls.commit_delay.value)
             else:
                 i = 0
-                await asyncio.sleep(30)  # wait three (!!) blocks
+                await asyncio.sleep(1)
                 utxo = await get_utxo(config, address)
-
-        await asyncio.sleep(config.nuls.commit_delay.value)
 
         i += 1
 
