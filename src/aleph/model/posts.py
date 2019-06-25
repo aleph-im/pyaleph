@@ -1,5 +1,5 @@
-from aleph.model.base import BaseClass, Index
-import pymongo
+from aleph.model.base import BaseClass
+from pymongo import ASCENDING, DESCENDING, IndexModel
 import logging
 LOGGER = logging.getLogger('model.posts')
 
@@ -7,10 +7,10 @@ LOGGER = logging.getLogger('model.posts')
 class Post(BaseClass):
     COLLECTION = "posts"
 
-    INDEXES = [Index("hash", unique=True),  # IPFS hash
-               Index("sender"),
-               Index("time", pymongo.DESCENDING),
-               Index("time", pymongo.ASCENDING),
-               Index("confirmation_height", pymongo.ASCENDING),
-               Index("confirmation_height", pymongo.DESCENDING),
-               Index("confirmed")]
+    INDEXES = [IndexModel([("hash", ASCENDING)], unique=True),  # IPFS hash
+               IndexModel([("sender", ASCENDING)]),
+               IndexModel([("time", DESCENDING)]),
+               IndexModel([("time", ASCENDING)]),
+               IndexModel([("confirmation_height", ASCENDING)]),
+               IndexModel([("confirmation_height", DESCENDING)]),
+               IndexModel([("confirmed", ASCENDING)])]

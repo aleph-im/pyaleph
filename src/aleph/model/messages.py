@@ -1,6 +1,6 @@
-from aleph.model.base import BaseClass, Index
+from aleph.model.base import BaseClass
 from aleph.network import INCOMING_MESSAGE_AUTHORIZED_FIELDS
-import pymongo
+from pymongo import ASCENDING, DESCENDING, IndexModel
 import logging
 LOGGER = logging.getLogger('model.posts')
 
@@ -13,21 +13,21 @@ class Message(BaseClass):
     COLLECTION = "messages"
 
     INDEXES = [  # Index("hash", unique=True),
-               Index("item_hash"),  # Content IPFS hash
-               Index("tx_hash"),  # TX Hash (if there is one)
-               Index("sender"),
-               Index("content.address"),
-               Index("content.ref"),
-               Index("content.type"),
-               Index("content.content.tags"),
-               Index("content.time"),
-               Index("time", pymongo.DESCENDING),
-               Index("time", pymongo.ASCENDING),
-               Index("chain", pymongo.ASCENDING),
-               Index("confirmations.chain", pymongo.ASCENDING),
-               Index("confirmations.height", pymongo.ASCENDING),
-               Index("confirmations.height", pymongo.DESCENDING),
-               Index("confirmed", pymongo.DESCENDING)]
+               IndexModel([("item_hash", ASCENDING)]),  # Content IPFS hash
+               IndexModel([("tx_hash", ASCENDING)]),  # TX Hash (if there is one)
+               IndexModel([("sender", ASCENDING)]),
+               IndexModel([("content.address", ASCENDING)]),
+               IndexModel([("content.ref", ASCENDING)]),
+               IndexModel([("content.type", ASCENDING)]),
+               IndexModel([("content.content.tags", ASCENDING)]),
+               IndexModel([("content.time", ASCENDING)]),
+               IndexModel([("time", DESCENDING)]),
+               IndexModel([("time", ASCENDING)]),
+               IndexModel([("chain", ASCENDING)]),
+               IndexModel([("confirmations.chain", ASCENDING)]),
+               IndexModel([("confirmations.height", ASCENDING)]),
+               IndexModel([("confirmations.height", DESCENDING)]),
+               IndexModel([("confirmed", DESCENDING)])]
 
     @classmethod
     async def get_unconfirmed_raw(cls, limit=100, for_chain=None):

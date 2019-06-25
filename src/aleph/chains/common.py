@@ -138,7 +138,7 @@ async def incoming(message, chain_name=None,
         LOGGER.info("New message to store for %s." % hash)
         message.update(new_values)
         message['content'] = content
-        await Message.collection.insert(message)
+        await Message.collection.insert_one(message)
 
         # since it's on-chain, we need to keep that content.
         LOGGER.debug("Pining hash %s" % hash)

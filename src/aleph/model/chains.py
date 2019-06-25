@@ -1,7 +1,8 @@
 """
 """
 
-from aleph.model.base import BaseClass, Index
+from aleph.model.base import BaseClass
+from pymongo import ASCENDING, DESCENDING, IndexModel
 import logging
 LOGGER = logging.getLogger('model.posts')
 
@@ -10,7 +11,7 @@ class Chain(BaseClass):
     """Holds information about the chains state."""
     COLLECTION = "chains"
 
-    INDEXES = [Index("name")]
+    INDEXES = [IndexModel([("name", ASCENDING)])]
 
     @classmethod
     async def get_last_height(cls, chain):

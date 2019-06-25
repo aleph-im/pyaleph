@@ -152,7 +152,7 @@ class BaseClass(SerializerObject):
     @classmethod
     async def count(cls, *args, **kwargs):
         # values = cls.collection.find(*args, **kwargs)
-        return await cls.collection.count(*args, **kwargs)
+        return await cls.collection.count_documents(*args, **kwargs)
 
     async def save(self):
         self._id = await self.collection.save(self._data)
@@ -181,5 +181,6 @@ class BaseClass(SerializerObject):
         if len(indexes) == 0:
             return
 
-        for index in indexes:
-            index.ensure(cls.get_collection(cls, db))
+        cls.get_collection(cls, db).create_indexes(indexes)
+        # for index in indexes:
+        #     index.ensure(cls.get_collection(cls, db))
