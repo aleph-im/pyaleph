@@ -13,7 +13,7 @@ def get_defaults():
           'chain_id': 8964,
           'packing_node': False,
           'private_key': None,
-          'commit_delay': 11
+          'commit_delay': 14
         },
         'ethereum': {
           'enabled': False,
