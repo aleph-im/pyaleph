@@ -274,7 +274,7 @@ async def nuls_packer(config):
             i = 0
 
         # utxo = await get_utxo(config, address)
-        selected_utxo = utxo[:10]
+        selected_utxo = utxo[:100]
         messages = [message async for message
                     in (await Message.get_unconfirmed_raw(
                             limit=5000, for_chain=CHAIN_NAME))]
@@ -288,12 +288,17 @@ async def nuls_packer(config):
             # tx_hash = await tx.get_hash()
             LOGGER.info("Broadcasting TX")
             tx_hash = await broadcast(config, tx_hex)
-            utxo = [{
-                'hash': tx_hash,
-                'idx': 0,
-                'lockTime': 0,
-                'value': tx.coin_data.outputs[0].na
-            }]
+            if tx_hash:
+                utxo = [{
+                    'hash': tx_hash,
+                    'idx': 0,
+                    'lockTime': 0,
+                    'value': tx.coin_data.outputs[0].na
+                }]
+            else:
+                i = 0
+                await asyncio.sleep(30)  # wait three (!!) blocks
+                utxo = await get_utxo(config, address)
 
         await asyncio.sleep(config.nuls.commit_delay.value)
 
