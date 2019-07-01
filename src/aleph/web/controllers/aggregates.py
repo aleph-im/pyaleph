@@ -10,7 +10,13 @@ async def address_aggregate(request):
     """
 
     address = request.match_info['address']
-    aggregates = await get_computed_address_aggregates(address_list=[address])
+
+    keys = request.query.get('keys', None)
+    if keys is not None:
+        keys = keys.split(',')
+
+    aggregates = await get_computed_address_aggregates(address_list=[address],
+                                                       key_list=keys)
 
     output = {
         'address': address,
