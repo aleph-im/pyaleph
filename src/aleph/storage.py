@@ -8,6 +8,7 @@ import json
 import aiohttp
 import concurrent
 
+API = None
 
 async def get_base_url(config):
     return 'http://{}:{}'.format(config.ipfs.host.value,
@@ -15,11 +16,17 @@ async def get_base_url(config):
 
 
 async def get_ipfs_api(timeout=60):
-    from aleph.web import app
-    host = app['config'].ipfs.host.value
-    port = app['config'].ipfs.port.value
+    global API
+    if API is None:
+        from aleph.web import app
+        host = app['config'].ipfs.host.value
+        port = app['config'].ipfs.port.value
 
-    return aioipfs.AsyncIPFS(host=host, port=port, read_timeout=timeout)
+        API = aioipfs.AsyncIPFS(host=host, port=port,
+                                read_timeout=timeout,
+                                conns_max=20)
+
+    return API
 
 
 async def get_json(hash, timeout=5, tries=3):
@@ -34,8 +41,8 @@ async def get_json(hash, timeout=5, tries=3):
             result = json.loads(result)
         except (concurrent.futures.TimeoutError, json.JSONDecodeError):
             result = None
-        finally:
-            await api.close()
+        # finally:
+        #     await api.close()
 
     return result
 
@@ -43,10 +50,10 @@ async def get_json(hash, timeout=5, tries=3):
 async def add_json(value):
     # loop = asyncio.get_event_loop()
     api = await get_ipfs_api()
-    try:
-        result = await api.add_json(value)
-    finally:
-        await api.close()
+    # try:
+    result = await api.add_json(value)
+    # finally:
+    #     await api.close()
 
     return result['Hash']
 
@@ -64,8 +71,8 @@ async def pin_add(hash, timeout=5, tries=3):
                 result = ret
         except (concurrent.futures.TimeoutError, json.JSONDecodeError):
             result = None
-        finally:
-            await api.close()
+        # finally:
+        #     await api.close()
 
     return result
 
