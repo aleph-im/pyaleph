@@ -234,7 +234,7 @@ async def check_incoming(config):
                         check_message=True)))
 
                 # let's join every 500 messages...
-                if (j > 100):
+                if (j > 20):
                     for task in tasks:
                         try:
                             await task
