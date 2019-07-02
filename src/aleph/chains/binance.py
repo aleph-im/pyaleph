@@ -141,7 +141,7 @@ async def join_tasks(tasks, seen_ids):
             await task
         except Exception:
             LOGGER.exception("error in incoming task")
-    seen_ids.clear()
+    # seen_ids.clear()
     tasks.clear()
 
 
