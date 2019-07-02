@@ -241,7 +241,7 @@ async def check_incoming(config):
                         except Exception:
                             LOGGER.exception("error in incoming task")
                     j = 0
-                    seen_ids = []
+                    # seen_ids = []
                     tasks = []
 
         for task in tasks:
