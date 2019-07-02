@@ -22,16 +22,20 @@ async def get_ipfs_api(timeout=60):
     return aioipfs.AsyncIPFS(host=host, port=port, read_timeout=timeout)
 
 
-async def get_json(hash, timeout=2):
+async def get_json(hash, timeout=5, tries=3):
     # loop = asyncio.get_event_loop()
-    api = await get_ipfs_api(timeout=timeout)
-    try:
-        result = await api.cat(hash)
-        result = json.loads(result)
-    except (concurrent.futures.TimeoutError, json.JSONDecodeError):
-        result = None
-    finally:
-        await api.close()
+    try_count = 0
+    result = None
+    while (result is None) and (try_count < tries):
+        try_count += 1
+        api = await get_ipfs_api(timeout=timeout)
+        try:
+            result = await api.cat(hash)
+            result = json.loads(result)
+        except (concurrent.futures.TimeoutError, json.JSONDecodeError):
+            result = None
+        finally:
+            await api.close()
 
     return result
 
@@ -47,17 +51,21 @@ async def add_json(value):
     return result['Hash']
 
 
-async def pin_add(hash, timeout=5):
+async def pin_add(hash, timeout=5, tries=3):
     # loop = asyncio.get_event_loop()
-    api = await get_ipfs_api(timeout=timeout)
-    try:
-        result = None
-        async for ret in api.pin.add(hash):
-            result = ret
-    except (concurrent.futures.TimeoutError, json.JSONDecodeError):
-        result = None
-    finally:
-        await api.close()
+    try_count = 0
+    result = None
+    while (result is None) and (try_count < tries):
+        try_count += 1
+        api = await get_ipfs_api(timeout=timeout)
+        try:
+            result = None
+            async for ret in api.pin.add(hash):
+                result = ret
+        except (concurrent.futures.TimeoutError, json.JSONDecodeError):
+            result = None
+        finally:
+            await api.close()
 
     return result
 
