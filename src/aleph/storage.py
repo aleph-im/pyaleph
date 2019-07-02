@@ -24,7 +24,7 @@ async def get_ipfs_api(timeout=60):
 
         API = aioipfs.AsyncIPFS(host=host, port=port,
                                 read_timeout=timeout,
-                                conns_max=20)
+                                conns_max=40)
 
     return API
 
