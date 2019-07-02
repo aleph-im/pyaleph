@@ -194,14 +194,14 @@ async def check_incoming(config):
                             check_message=(txi['type'] != 'native-single'))))
 
                     # let's join every 500 messages...
-                    if (j > 100):
+                    if (j > 250):
                         for task in tasks:
                             try:
                                 await task
                             except Exception:
                                 LOGGER.exception("error in incoming task")
                         j = 0
-                        seen_ids = []
+                        # seen_ids = []
                         tasks = []
 
             for task in tasks:
