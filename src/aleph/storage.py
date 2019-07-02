@@ -9,7 +9,7 @@ import aiohttp
 import concurrent
 
 API = None
-API_SEM = asyncio.Semaphore(50)
+API_SEM = asyncio.Semaphore(loop = asyncio.get_event_loop(), value=50)
 
 
 async def get_base_url(config):
