@@ -9,8 +9,6 @@ import aiohttp
 import concurrent
 
 API = None
-API_SEM = asyncio.Semaphore(loop = asyncio.get_event_loop(), value=50)
-
 
 async def get_base_url(config):
     return 'http://{}:{}'.format(config.ipfs.host.value,
@@ -26,71 +24,67 @@ async def get_ipfs_api(timeout=60):
 
         API = aioipfs.AsyncIPFS(host=host, port=port,
                                 read_timeout=timeout,
-                                conns_max=50)
+                                conns_max=100)
 
     return API
 
 
 async def get_json(hash, timeout=5, tries=3):
-    async with API_SEM:
-        # loop = asyncio.get_event_loop()
-        try_count = 0
-        result = None
-        while (result is None) and (try_count < tries):
-            try_count += 1
-            api = await get_ipfs_api(timeout=timeout)
-            try:
-                result = await api.cat(hash)
-                result = json.loads(result)
-            except (concurrent.futures.TimeoutError, json.JSONDecodeError):
-                result = None
-            # finally:
-            #     await api.close()
-
-        return result
-
-
-async def add_json(value):
-    async with API_SEM:
-        # loop = asyncio.get_event_loop()
-        api = await get_ipfs_api()
-        # try:
-        result = await api.add_json(value)
+    # loop = asyncio.get_event_loop()
+    try_count = 0
+    result = None
+    while (result is None) and (try_count < tries):
+        try_count += 1
+        api = await get_ipfs_api(timeout=timeout)
+        try:
+            result = await api.cat(hash)
+            result = json.loads(result)
+        except (concurrent.futures.TimeoutError, json.JSONDecodeError):
+            result = None
         # finally:
         #     await api.close()
 
-        return result['Hash']
+    return result
+
+
+async def add_json(value):
+    # loop = asyncio.get_event_loop()
+    api = await get_ipfs_api()
+    # try:
+    result = await api.add_json(value)
+    # finally:
+    #     await api.close()
+
+    return result['Hash']
 
 
 async def pin_add(hash, timeout=5, tries=3):
     # loop = asyncio.get_event_loop()
-    async with API_SEM:
-        try_count = 0
-        result = None
-        while (result is None) and (try_count < tries):
-            try_count += 1
-            api = await get_ipfs_api(timeout=timeout)
-            try:
-                result = None
-                async for ret in api.pin.add(hash):
-                    result = ret
-            except (concurrent.futures.TimeoutError, json.JSONDecodeError):
-                result = None
-            # finally:
-            #     await api.close()
+    try_count = 0
+    result = None
+    while (result is None) and (try_count < tries):
+        try_count += 1
+        api = await get_ipfs_api(timeout=timeout)
+        try:
+            result = None
+            async for ret in api.pin.add(hash):
+                result = ret
+        except (concurrent.futures.TimeoutError, json.JSONDecodeError):
+            result = None
+        # finally:
+        #     await api.close()
 
-        return result
+    return result
 
 
 async def add_file(fileobject, filename):
-    async with API_SEM:
-        async with aiohttp.ClientSession() as session:
-            from aleph.web import app
-            url = "%s/api/v0/add" % (await get_base_url(app['config']))
-            data = aiohttp.FormData()
-            data.add_field('path',
-                           fileobject,
-                           filename=filename)
+    async with aiohttp.ClientSession() as session:
+        from aleph.web import app
+        url = "%s/api/v0/add" % (await get_base_url(app['config']))
+        data = aiohttp.FormData()
+        data.add_field('path',
+                       fileobject,
+                       filename=filename)
 
-            resp = await session.post(url, data=data)
-            return await resp.json()
+        resp = await session.post(url, data=data)
+        return await resp.json()
