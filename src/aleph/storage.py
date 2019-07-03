@@ -39,7 +39,8 @@ async def get_json(hash, timeout=1, tries=10):
         try:
             result = await api.cat(hash)
             result = json.loads(result)
-        except (concurrent.futures.TimeoutError, json.JSONDecodeError):
+        except (concurrent.futures.CancelledError,
+                concurrent.futures.TimeoutError, json.JSONDecodeError):
             result = None
         # finally:
         #     await api.close()
@@ -69,7 +70,8 @@ async def pin_add(hash, timeout=5, tries=3):
             result = None
             async for ret in api.pin.add(hash):
                 result = ret
-        except (concurrent.futures.TimeoutError, json.JSONDecodeError):
+        except (concurrent.futures.CancelledError,
+                concurrent.futures.TimeoutError, json.JSONDecodeError):
             result = None
         # finally:
         #     await api.close()
