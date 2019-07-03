@@ -233,8 +233,8 @@ async def check_incoming(config):
                         height=txi['height'],
                         check_message=True)))
 
-                # let's join every 500 messages...
-                if (j > 100):
+                # let's join every 50 messages...
+                if (j > 50):
                     for task in tasks:
                         try:
                             await task
