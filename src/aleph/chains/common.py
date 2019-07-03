@@ -3,6 +3,7 @@ from aleph.network import check_message as check_message_fn
 from aleph.model.messages import Message
 from aleph.permissions import check_sender_authorization
 
+import asyncio
 import logging
 LOGGER = logging.getLogger('chains.common')
 
@@ -207,3 +208,12 @@ async def get_chaindata_messages(chaindata, context, seen_ids=None):
         LOGGER.info('Got unknown protocol/version object in tx %r'
                     % context)
         return None
+
+
+async def join_tasks(tasks, seen_ids):
+    try:
+        await asyncio.gather(*tasks)
+    except Exception:
+        LOGGER.exception("error in incoming task")
+    # seen_ids.clear()
+    tasks.clear()

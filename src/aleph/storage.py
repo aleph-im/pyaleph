@@ -29,7 +29,7 @@ async def get_ipfs_api(timeout=60):
     return API
 
 
-async def get_json(hash, timeout=5, tries=3):
+async def get_json(hash, timeout=1, tries=10):
     # loop = asyncio.get_event_loop()
     try_count = 0
     result = None

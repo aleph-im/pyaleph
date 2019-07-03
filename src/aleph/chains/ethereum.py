@@ -4,7 +4,7 @@ import pkg_resources
 from aleph.network import check_message
 from aleph.chains.common import (incoming, get_verification_buffer,
                                  get_chaindata,
-                                 get_chaindata_messages)
+                                 get_chaindata_messages, join_tasks)
 from aleph.chains.register import (
     register_verifier, register_incoming_worker, register_outgoing_worker)
 from aleph.model.chains import Chain
@@ -192,7 +192,6 @@ async def request_transactions(config, web3, contract, start_height):
         if last_height:
             await Chain.set_last_height(CHAIN_NAME, last_height)
 
-
 async def check_incoming(config):
     last_stored_height = await get_last_height()
 
@@ -226,29 +225,19 @@ async def check_incoming(config):
                 # running those separately... a good/bad thing?
                 # shouldn't do that for VMs.
                 tasks.append(
-                    loop.create_task(incoming(
+                    incoming(
                         message, chain_name=CHAIN_NAME,
                         seen_ids=seen_ids,
                         tx_hash=txi['tx_hash'],
                         height=txi['height'],
-                        check_message=True)))
+                        check_message=True))
 
                 # let's join every 50 messages...
-                if (j > 50):
-                    for task in tasks:
-                        try:
-                            await task
-                        except Exception:
-                            LOGGER.exception("error in incoming task")
+                if (j > 100):
+                    await join_tasks(tasks, seen_ids)
                     j = 0
-                    # seen_ids = []
-                    tasks = []
 
-        for task in tasks:
-            try:
-                await task  # let's wait for all tasks to end.
-            except Exception:
-                LOGGER.exception("error in incoming task")
+        await join_tasks(tasks, seen_ids)
 
         if (i < 10):  # if there was less than 10 items, not a busy time
             # wait 5 seconds (half of typical time between 2 blocks)
