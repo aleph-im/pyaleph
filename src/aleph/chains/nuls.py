@@ -195,7 +195,7 @@ async def check_incoming(config):
                             check_message=(txi['type'] != 'native-single')))
 
                     # let's join every 500 messages...
-                    if (j > 100):
+                    if (j > 200):
                         await join_tasks(tasks, seen_ids)
                         j = 0
                         # seen_ids = []
