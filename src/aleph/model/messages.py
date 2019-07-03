@@ -95,8 +95,8 @@ async def get_merged_posts(filters, sort=None, limit=100,
                            skip=0, amend_limit=1):
     if sort is None:
         sort = {'confirmed': 1,
-                'confirmations.height': -1,
-                'time': -1}
+                'time': -1,
+                'confirmations.height': -1}
 
     aggregate = [
         {'$match': {
