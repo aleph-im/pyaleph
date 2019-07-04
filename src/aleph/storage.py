@@ -10,6 +10,7 @@ import concurrent
 
 API = None
 
+
 async def get_base_url(config):
     return 'http://{}:{}'.format(config.ipfs.host.value,
                                  config.ipfs.port.value)
@@ -29,7 +30,7 @@ async def get_ipfs_api(timeout=60):
     return API
 
 
-async def get_json(hash, timeout=1, tries=10):
+async def get_json(hash, timeout=5, tries=3):
     # loop = asyncio.get_event_loop()
     try_count = 0
     result = None
@@ -43,6 +44,7 @@ async def get_json(hash, timeout=1, tries=10):
             result = None
         except concurrent.futures.CancelledError:
             try_count -= 1  # do not count as a try.
+            await asyncio.sleep(.1)
         # finally:
         #     await api.close()
 
@@ -75,6 +77,7 @@ async def pin_add(hash, timeout=5, tries=3):
             result = None
         except concurrent.futures.CancelledError:
             try_count -= 1  # do not count as a try.
+            await asyncio.sleep(.1)
         # finally:
         #     await api.close()
 
