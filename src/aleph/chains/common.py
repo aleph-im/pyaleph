@@ -1,6 +1,7 @@
 from aleph.storage import get_json, pin_add, add_json
 from aleph.network import check_message as check_message_fn
 from aleph.model.messages import Message
+from aleph.model.pending import PendingMessage
 from aleph.permissions import check_sender_authorization
 
 import asyncio
@@ -113,10 +114,18 @@ async def incoming(message, chain_name=None,
             content = await get_json(hash)
         except Exception:
             LOGGER.exception("Can't get content of object %r" % hash)
-            return
+            content = None
 
         if content is None:
-            LOGGER.exception("Can't get content of object %r" % hash)
+            LOGGER.warning("Can't get content of object %r, retrying later."
+                           % hash)
+            await PendingMessage.collection.insert_one({
+                'message': message,
+                'source': dict(
+                    chain_name=chain_name, tx_hash=tx_hash, height=height,
+                    check_message=check_message  # should we store this?
+                )
+            })
             return
 
         if content.get('address', None) is None:
