@@ -29,3 +29,5 @@ def init_db(config, ensure_indexes=True):
     if ensure_indexes:
         from aleph.model.messages import Message
         Message.ensure_indexes(sync_db)
+        from aleph.model.pending import PendingMessage
+        PendingMessage.ensure_indexes(sync_db)
