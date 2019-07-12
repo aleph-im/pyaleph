@@ -22,6 +22,7 @@ from aleph.chains import start_connector
 from aleph.web import app, init_cors, controllers
 from aleph.config import get_defaults
 from aleph.network import setup_listeners
+from aleph.jobs import start_jobs
 from aleph import model
 
 __author__ = "Moshe Malawach"
@@ -53,6 +54,10 @@ def parse_args(args):
     parser.add_argument('--host', action="store", type=str, dest="host",
                         default="127.0.0.1")
     parser.add_argument('--debug', action="store_true", dest="debug",
+                        default=False)
+    parser.add_argument('--no-commit', action="store_true", dest="no_commit",
+                        default=False)
+    parser.add_argument('--no-jobs', action="store_true", dest="no_jobs",
                         default=False)
     parser.add_argument(
         '-v',
@@ -110,7 +115,10 @@ def main(args):
     init_cors()
 
     setup_listeners(config)
-    start_connector(config)
+    start_connector(config, outgoing=(not args.no_commit))
+
+    if not args.no_jobs:
+        start_jobs()
 
     loop = asyncio.get_event_loop()
     handler = app.make_handler()

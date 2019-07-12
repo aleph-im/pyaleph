@@ -32,7 +32,7 @@ async def mark_confirmed_data(chain_name, tx_hash, height):
 
 async def incoming(message, chain_name=None,
                    tx_hash=None, height=None, seen_ids=None,
-                   check_message=False):
+                   check_message=False, retrying=False):
     """ New incoming message from underlying chain.
 
     For regular messages it will be marked as confirmed
@@ -50,9 +50,12 @@ async def incoming(message, chain_name=None,
                                          from_chain=(chain_name is not None))
 
     if message is None:
-        return
+        return True  # message handled.
 
-    LOGGER.info("Incoming %s." % hash)
+    if retrying:
+        LOGGER.info("Retrying %s." % hash)
+    else:
+        LOGGER.info("Incoming %s." % hash)
 
     # we set the incoming chain as default for signature
     message['chain'] = message.get('chain', chain_name)
@@ -119,13 +122,14 @@ async def incoming(message, chain_name=None,
         if content is None:
             LOGGER.warning("Can't get content of object %r, retrying later."
                            % hash)
-            await PendingMessage.collection.insert_one({
-                'message': message,
-                'source': dict(
-                    chain_name=chain_name, tx_hash=tx_hash, height=height,
-                    check_message=check_message  # should we store this?
-                )
-            })
+            if not retrying:
+                await PendingMessage.collection.insert_one({
+                    'message': message,
+                    'source': dict(
+                        chain_name=chain_name, tx_hash=tx_hash, height=height,
+                        check_message=check_message  # should we store this?
+                    )
+                })
             return
 
         if content.get('address', None) is None:
@@ -136,7 +140,7 @@ async def incoming(message, chain_name=None,
 
         if not await check_sender_authorization(message, content):
             LOGGER.warn("Invalid sender for %s" % hash)
-            return
+            return True  # message handled.
 
         if seen_ids is not None:
             if hash in seen_ids:
@@ -153,6 +157,8 @@ async def incoming(message, chain_name=None,
         # since it's on-chain, we need to keep that content.
         LOGGER.debug("Pining hash %s" % hash)
         await pin_add(hash)
+
+    return True  # message handled.
 
 
 async def invalidate(chain_name, block_height):
