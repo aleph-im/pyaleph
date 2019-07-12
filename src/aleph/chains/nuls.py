@@ -271,8 +271,8 @@ async def nuls_packer(config):
                     in (await Message.get_unconfirmed_raw(
                             limit=5000, for_chain=CHAIN_NAME))]
         if len(messages):
-            content = await get_chaindata(messages, bulk_threshold=600)
-            content = json.dumps(content)
+            content = await get_chaindata(messages, bulk_threshold=10000)
+            # content = json.dumps(content)
             tx = await prepare_businessdata_tx(address, selected_utxo,
                                                content.encode('UTF-8'))
             await tx.sign_tx(pri_key)

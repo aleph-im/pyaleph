@@ -258,7 +258,7 @@ register_incoming_worker(CHAIN_NAME, ethereum_incoming_worker)
 
 def broadcast_content(config, contract, web3, account,
                       gas_price, nonce, content):
-    content = json.dumps(content)
+    # content = json.dumps(content)
     tx = contract.functions.doEmit(content).buildTransaction({
             'chainId': config.ethereum.chain_id.value,
             'gasPrice': gas_price,

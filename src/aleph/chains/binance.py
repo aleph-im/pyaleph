@@ -241,7 +241,7 @@ async def binance_packer(config):
                             limit=5000, for_chain=CHAIN_NAME))]
         if len(messages):
             content = await get_chaindata(messages, bulk_threshold=0)
-            content = json.dumps(content)
+            # content = json.dumps(content)
             tx = await loop.run_in_executor(None, prepare_transfer_tx,
                                             wallet, target_addr,
                                             content.encode('utf-8'))

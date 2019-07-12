@@ -168,11 +168,11 @@ async def invalidate(chain_name, block_height):
     pass
 
 
-async def get_chaindata(messages, bulk_threshold=20):
+async def get_chaindata(messages, bulk_threshold=2000):
     """ Returns content ready to be broadcasted on-chain (aka chaindata).
 
-    If message count is over bulk_threshold (default 20), store list in
-    IPFS and store the object hash instead of raw list.
+    If message length is over bulk_threshold (default 2000 chars), store list
+    in IPFS and store the object hash instead of raw list.
     """
     chaindata = {
         'protocol': 'aleph',
@@ -181,13 +181,14 @@ async def get_chaindata(messages, bulk_threshold=20):
             'messages': messages
         }
     }
-    if len(messages) > bulk_threshold:
+    content = json.dumps(chaindata)
+    if len(content) > bulk_threshold:
         ipfs_id = await add_json(chaindata)
-        return {'protocol': 'aleph-offchain',
-                'version': 1,
-                'content': ipfs_id}
+        return json.dumps({'protocol': 'aleph-offchain',
+                           'version': 1,
+                           'content': ipfs_id})
     else:
-        return chaindata
+        return content
 
 
 async def get_chaindata_messages(chaindata, context, seen_ids=None):
