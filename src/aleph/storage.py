@@ -3,6 +3,7 @@ Basically manages the IPFS storage.
 """
 
 import aioipfs
+import aiohttp
 import asyncio
 import json
 import aiohttp
@@ -10,10 +11,15 @@ import concurrent
 
 API = None
 
-
 async def get_base_url(config):
     return 'http://{}:{}'.format(config.ipfs.host.value,
                                  config.ipfs.port.value)
+
+
+async def get_ipfs_gateway_url(config, hash):
+    return 'http://{}:{}/ipfs/{}'.format(
+        config.ipfs.host.value,
+        config.ipfs.gateway_port.value, hash)
 
 
 async def get_ipfs_api(timeout=60):
@@ -31,24 +37,27 @@ async def get_ipfs_api(timeout=60):
 
 
 async def get_json(hash, timeout=5, tries=3):
-    # loop = asyncio.get_event_loop()
-    try_count = 0
-    result = None
-    while (result is None) and (try_count < tries):
-        try_count += 1
-        api = await get_ipfs_api(timeout=timeout)
-        try:
-            result = await api.cat(hash)
-            result = json.loads(result)
-        except (concurrent.futures.TimeoutError, json.JSONDecodeError):
-            result = None
-        except concurrent.futures.CancelledError:
-            try_count -= 1  # do not count as a try.
-            await asyncio.sleep(.1)
-        # finally:
-        #     await api.close()
+    from aleph.web import app
+    async with aiohttp.ClientSession(read_timeout=timeout) as session:
+        uri = await get_ipfs_gateway_url(app['config'], hash)
+        try_count = 0
+        result = None
+        while (result is None) and (try_count < tries):
+            try_count += 1
+            try:
+                async with session.get(uri) as resp:
+                    result = await resp.json(content_type=None)
+                # result = await api.cat(hash)
+                # result = json.loads(result)
+            except (concurrent.futures.TimeoutError, json.JSONDecodeError):
+                result = None
+                await asyncio.sleep(.5)
+            except (concurrent.futures.CancelledError,
+                    aiohttp.client_exceptions.ClientConnectorError):
+                try_count -= 1  # do not count as a try.
+                await asyncio.sleep(.1)
 
-    return result
+        return result
 
 
 async def add_json(value):
