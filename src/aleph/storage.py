@@ -49,9 +49,12 @@ async def get_json(hash, timeout=5, tries=3):
                     result = await resp.json(content_type=None)
                 # result = await api.cat(hash)
                 # result = json.loads(result)
-            except (concurrent.futures.TimeoutError):  # , json.JSONDecodeError):
+            except (concurrent.futures.TimeoutError):
                 result = None
                 await asyncio.sleep(.5)
+            except json.JSONDecodeError:
+                result = None
+                break
             except (concurrent.futures.CancelledError,
                     aiohttp.client_exceptions.ClientConnectorError):
                 try_count -= 1  # do not count as a try.
