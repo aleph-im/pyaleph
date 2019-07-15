@@ -41,7 +41,7 @@ async def incoming(message, chain_name=None,
     """
     hash = message['item_hash']
 
-    if hash in seen_ids:
+    if seen_ids is not None and hash in seen_ids:
         # is it really what we want here?
         return
 
