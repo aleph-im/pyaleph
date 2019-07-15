@@ -53,7 +53,7 @@ async def get_json(hash, timeout=5, tries=3):
 
 async def add_json(value):
     # loop = asyncio.get_event_loop()
-    api = await get_ipfs_api()
+    api = await get_ipfs_api(timeout=5)
     # try:
     result = await api.add_json(value)
     # finally:
