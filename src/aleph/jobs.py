@@ -46,7 +46,7 @@ async def retry_job():
         i += 1
         tasks.append(handle_pending(pending, actions))
 
-        if (i > 200):
+        if (i > 1000):
             await join_pending_message_tasks(tasks, actions)
             i = 0
 
