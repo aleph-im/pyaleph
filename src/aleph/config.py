@@ -43,6 +43,8 @@ def get_defaults():
         },
         'ipfs': {
             'host': '127.0.0.1',
-            'port': 5001
+            'port': 5001,
+            'gateway_port': 8080,
+            'id': None
         }
     }
