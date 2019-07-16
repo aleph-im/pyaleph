@@ -23,6 +23,16 @@ To run PyAleph, run this command:
 `$ pyaelph -c config.yaml` (where config.yaml is your configuration file you
 edited earlier)
 
+## Running tests
+
+Install in develop with all extras:
+
+`$ pip install -e ".[bnb,testing]"`
+
+Then run the tests:
+
+`$ pytest`
+
 ## Running services required
 
 ### IPFS
