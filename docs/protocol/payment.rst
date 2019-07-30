@@ -2,7 +2,7 @@
 Payment
 *******
 
-.. warning::
+.. note::
 
   Currently being implemented.
 
@@ -20,12 +20,16 @@ The MVP network (current implementation of Aleph.im network code) has three prov
 
 - **ChannelEndorsement**: an address holding Aleph tokens in one of the underlying chains
   endorses this channel and incentivizes (X being the Aleph token count):
+
   - up to X post/aggregates messages (of up to 100kb each)
   - up to Xmb of files
+
 - **PersonalStorage**: and address holding aleph tokens can post itself (or someone on it behalf),
   messages with (X being the Aleph token count):
+
   - up to X POST/AGGREGATES messages (of up to 100kb each)
   - up to Xmb of files in STORE messages
+
 - **Core**: Core channels (dedicated to identity and security) have their messages free
   if they belong to correct types and pass "anti-spam" checks.
 
