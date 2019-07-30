@@ -2,10 +2,6 @@
 Authorizations
 **************
 
-.. warning::
-
-  Not implemented yet!
-
 Inside most message types there is an "address" field.
 This is the address for which the message applies (for which address apply this
 aggregate, who posted that item...).

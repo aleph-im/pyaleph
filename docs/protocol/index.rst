@@ -7,3 +7,4 @@ Protocol
 
    messages/index
    authorizations
+   payment
