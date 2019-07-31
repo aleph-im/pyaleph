@@ -1,4 +1,4 @@
-from aleph.storage import get_json, pin_add, add_json
+from aleph.storage import get_json, pin_add, add_json, get_content
 from aleph.network import check_message as check_message_fn
 from aleph.model.messages import Message
 from aleph.model.pending import PendingMessage
@@ -132,7 +132,7 @@ async def incoming(message, chain_name=None,
                     )
                 })
             return
-
+        
         if content == -1:
             LOGGER.warning("Can't get content of object %r, won't retry."
                            % hash)
