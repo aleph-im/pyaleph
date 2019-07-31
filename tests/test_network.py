@@ -1,4 +1,6 @@
 import pytest
+import hashlib
+import json
 import aleph.chains
 from aleph.network import check_message
 
@@ -11,7 +13,9 @@ __license__ = "mit"
 async def test_check_message_trusted():
     passed_msg = {'foo': 1, 'bar': 2}
     msg = await check_message(passed_msg, trusted=True)
-    assert len(msg.keys()) == 2, "same key count as object should be untouched"
+    assert len(msg.keys()) == 3, "same key count plus content_type"
+    print(msg)
+    assert msg['item_type'] == 'ipfs', "ipfs should be the default"
     assert msg is passed_msg, "same object should be returned"
 
 @pytest.mark.asyncio
@@ -71,6 +75,17 @@ async def test_extraneous_fields():
     message = await check_message(sample_message)
     # assert "type" not in message
     assert "foo" not in message
+
+@pytest.mark.asyncio
+async def test_inline_content():
+    content = json.dumps({'foo': 'bar'})
+    h = hashlib.sha256()
+    h.update(content.encode('utf-8'))
+    sample_message = {
+        "item_hash": h.hexdigest(),
+        "item_content": content
+    }
+    message = await check_message(sample_message)
 
 @pytest.mark.asyncio
 async def test_signature_fixture_called(mocker):

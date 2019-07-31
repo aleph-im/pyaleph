@@ -144,9 +144,9 @@ async def check_message(message, from_chain=False, from_network=False,
         
         if message.get('hash_type', 'sha256') == 'sha256':  # leave the door open.
             h = hashlib.sha256()
-            m.update(message['item_content'].encode('utf-8'))
+            h.update(message['item_content'].encode('utf-8'))
             
-            if message['item_hash'] != m.hexdigest():
+            if message['item_hash'] != h.hexdigest():
                 LOGGER.warn('Bad hash')
                 return None
         else:
