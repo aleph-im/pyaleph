@@ -121,6 +121,7 @@ async def incoming_channel(config, topic):
                         await task
                     seen_ids = []
                     tasks = []
+                    i = 0
 
         except Exception:
             LOGGER.exception("Exception in IPFS pubsub, reconnecting.")
