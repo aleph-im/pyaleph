@@ -35,6 +35,19 @@ async def get_ipfs_api(timeout=60):
 
     return API
 
+async def get_content(message):
+    item_type = message.get('item_type', 'ipfs')
+    
+    if item_type == 'ipfs':
+        return await get_json(message['item_hash'])
+    elif item_type == 'inline':
+        try:
+            item_content = json.loads(message['item_content'])
+        except (json.JSONDecodeError, KeyError):
+            return -1  # never retry, bogus data
+        return item_content
+    else:
+        return None  # unknown, could retry later? shouldn't have arrived this far though.
 
 async def get_json(hash, timeout=5, tries=3):
     from aleph.web import app
