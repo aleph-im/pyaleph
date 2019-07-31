@@ -61,6 +61,20 @@ async def test_invalid_signature_message():
     assert message is None
 
 @pytest.mark.asyncio
+async def test_invalid_signature_message_2():
+    sample_message = {
+        "item_hash": "QmfDkHXdGND7e8uwJr4yvXSAvbPc8rothM6UN5ABQPsLkF",
+        "chain": "NULS",
+        "channel": "SYSINFO",
+        "sender": "TTanii7eCT93f45g2UpKH81mxpVNcCYw",
+        "type": "AGGREGATE",
+        "time": 1563279102.3155158,
+        "signature": "2153041b0b357446927d2c8c62fdddd27910d82f665f16a4907a2be927b5901f5e6c004730450221009a54ecaff6869664e94ad68554525c79c21d4f63822864bd910f9916c32c1b5602201576053180d225ec173fb0b6e4af5efb2dc474ce6aa77a3bdd67fd14e1d806b4"
+    }
+    message = await check_message(sample_message)
+    assert message is None
+
+@pytest.mark.asyncio
 async def test_extraneous_fields():
     sample_message = {
         "item_hash": "QmfDkHXdGND7e8uwJr4yvXSAvbPc8rothM6UN5ABQPsLkF",
@@ -85,10 +99,8 @@ async def test_inline_content():
         "item_hash": h.hexdigest(),
         "item_content": content
     }
-    message = await check_message(sample_message)
-
-@pytest.mark.asyncio
-async def test_signature_fixture_called(mocker):
-    print("blah")
-    print(mocker)
-    raise ValueError("huhu")
+    message = await check_message(sample_message, trusted=True)
+    assert message is not None
+    assert message['item_hash'] == h.hexdigest()
+    assert message['item_content'] == content
+    assert message['item_type'] == 'inline'
