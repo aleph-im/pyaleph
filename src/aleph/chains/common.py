@@ -133,6 +133,11 @@ async def incoming(message, chain_name=None,
                 })
             return
 
+        if content == -1:
+            LOGGER.warning("Can't get content of object %r, won't retry."
+                           % hash)
+            return
+
         if content.get('address', None) is None:
             content['address'] = message['sender']
 
@@ -193,7 +198,7 @@ async def get_chaindata(messages, bulk_threshold=2000):
 
 
 async def get_chaindata_messages(chaindata, context, seen_ids=None):
-    if chaindata is None:
+    if chaindata is None or chaindata == -1:
         LOGGER.info('Got bad data in tx %r'
                     % context)
         return None

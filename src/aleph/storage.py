@@ -53,7 +53,7 @@ async def get_json(hash, timeout=5, tries=3):
                 result = None
                 await asyncio.sleep(.5)
             except json.JSONDecodeError:
-                result = None
+                result = -1
                 break
             except (concurrent.futures.CancelledError,
                     aiohttp.client_exceptions.ClientConnectorError):
