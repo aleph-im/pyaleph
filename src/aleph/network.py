@@ -132,7 +132,7 @@ async def check_message(message, from_chain=False, from_network=False,
     It also checks the data hash if it's not done by an external provider (ipfs)
     and the data length.
     Example of dangerous data: fake confirmations, fake tx_hash, bad times...
-
+    
     If a item_content is there, set the item_type to inline, else to ipfs (default).
 
     TODO: Implement it fully! Dangerous!
@@ -170,9 +170,12 @@ async def check_message(message, from_chain=False, from_network=False,
         if signer is None:
             LOGGER.warn('Unknown chain for validation %r' % chain)
             return None
-
-        if await signer(message):
-            return message
+        try:
+            if await signer(message):
+                return message
+        except ValueError:
+            LOGGER.warn('Signature validation error')
+            return None
 
 
 def setup_listeners(config):
