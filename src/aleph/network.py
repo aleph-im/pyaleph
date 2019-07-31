@@ -14,6 +14,7 @@ MAX_INLINE_SIZE = 100000 # 100kb max inline content size.
 INCOMING_MESSAGE_AUTHORIZED_FIELDS = [
     'item_hash',
     'item_content',
+    'item_type',
     'chain',
     'channel',
     'sender',
