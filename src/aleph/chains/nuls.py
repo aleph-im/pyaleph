@@ -2,6 +2,7 @@ import asyncio
 import aiohttp
 import json
 import time
+import struct
 from operator import itemgetter
 from aleph.network import check_message
 from aleph.chains.common import (incoming, get_verification_buffer,
@@ -28,12 +29,15 @@ async def verify_signature(message):
     """ Verifies a signature of a message, return True if verified, false if not
     """
     loop = asyncio.get_event_loop()
-    from aleph.web import app
-    config = app.config
 
     sig_raw = bytes(bytearray.fromhex(message['signature']))
     sig = NulsSignature(sig_raw)
-    hash = public_key_to_hash(sig.pub_key, config.nuls.chain_id.value)
+    
+    sender_hash = hash_from_address(message['sender'])
+    (sender_chain_id,) = struct.unpack('h', sender_hash[:2])
+    
+    hash = public_key_to_hash(sig.pub_key, sender_chain_id)
+    
     address = address_from_hash(hash)
     if address != message['sender']:
         LOGGER.warning('Received bad signature from %s for %s'
