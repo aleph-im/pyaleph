@@ -115,7 +115,7 @@ async def incoming(message, chain_name=None,
             new_values = {'confirmed': False}  # this should be our default.
 
         try:
-            content = await get_content(hash)
+            content = await get_content(message)
         except Exception:
             LOGGER.exception("Can't get content of object %r" % hash)
             content = None
