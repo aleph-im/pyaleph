@@ -245,13 +245,14 @@ async def check_incoming(config):
 
 
 async def ethereum_incoming_worker(config):
-    while True:
-        try:
-            await check_incoming(config)
+    if config.ethereum.enabled.value:
+        while True:
+            try:
+                await check_incoming(config)
 
-        except Exception:
-            LOGGER.exception("ERROR, relaunching incoming in 10 seconds")
-            await asyncio.sleep(10)
+            except Exception:
+                LOGGER.exception("ERROR, relaunching incoming in 10 seconds")
+                await asyncio.sleep(10)
 
 register_incoming_worker(CHAIN_NAME, ethereum_incoming_worker)
 

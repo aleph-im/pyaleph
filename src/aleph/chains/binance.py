@@ -191,13 +191,14 @@ async def check_incoming(config):
 
 
 async def binance_incoming_worker(config):
-    while True:
-        try:
-            await check_incoming(config)
+    if config.binancechain.enabled.value:
+        while True:
+            try:
+                await check_incoming(config)
 
-        except Exception:
-            LOGGER.exception("ERROR, relaunching incoming in 10 seconds")
-            await asyncio.sleep(10)
+            except Exception:
+                LOGGER.exception("ERROR, relaunching incoming in 10 seconds")
+                await asyncio.sleep(10)
 
 register_incoming_worker(CHAIN_NAME, binance_incoming_worker)
 

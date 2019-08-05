@@ -11,6 +11,7 @@ def get_defaults():
         },
         'nuls': {
           'chain_id': 8964,
+          'enabled': False,
           'packing_node': False,
           'private_key': None,
           'commit_delay': 14
