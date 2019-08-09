@@ -141,7 +141,7 @@ async def check_message(message, from_chain=False, from_network=False,
     """
     if message.get('item_content', None) is not None:
         if len('item_content') > MAX_INLINE_SIZE:
-            LOGGER.warn('Message too long')
+            LOGGER.warning('Message too long')
             return None
         
         if message.get('hash_type', 'sha256') == 'sha256':  # leave the door open.
@@ -149,10 +149,10 @@ async def check_message(message, from_chain=False, from_network=False,
             h.update(message['item_content'].encode('utf-8'))
             
             if message['item_hash'] != h.hexdigest():
-                LOGGER.warn('Bad hash')
+                LOGGER.warning('Bad hash')
                 return None
         else:
-            LOGGER.warn('Unknown hash type %s' % message['hash_type'])
+            LOGGER.warning('Unknown hash type %s' % message['hash_type'])
             return None
         
         message['item_type'] = 'inline'
@@ -170,13 +170,13 @@ async def check_message(message, from_chain=False, from_network=False,
         chain = message.get('chain', None)
         signer = VERIFIER_REGISTER.get(chain, None)
         if signer is None:
-            LOGGER.warn('Unknown chain for validation %r' % chain)
+            LOGGER.warning('Unknown chain for validation %r' % chain)
             return None
         try:
             if await signer(message):
                 return message
         except ValueError:
-            LOGGER.warn('Signature validation error')
+            LOGGER.warning('Signature validation error')
             return None
 
 
