@@ -1,9 +1,34 @@
 import pytest
 
 import aleph.chains
-from aleph.chains.register import VERIFIER_REGISTER, INCOMING_WORKERS, OUTGOING_WORKERS
+from aleph.chains import register
+from aleph.chains.register import (VERIFIER_REGISTER, INCOMING_WORKERS, OUTGOING_WORKERS,
+                                   register_verifier, register_incoming_worker, register_outgoing_worker)
 from aleph.chains import binance, ethereum, nuls
 
+@pytest.mark.asyncio
+async def test_register_verifier(monkeypatch):
+    monkeypatch.setattr(register, 'VERIFIER_REGISTER', dict())
+    curlen = len(register.VERIFIER_REGISTER.keys())
+    a = object()
+    register_verifier('TEST', a)
+    assert len(register.VERIFIER_REGISTER.keys()) == curlen + 1
+    assert register.VERIFIER_REGISTER['TEST'] is a
+
+@pytest.mark.asyncio
+async def test_register_verifier_twice(monkeypatch):
+    monkeypatch.setattr(register, 'VERIFIER_REGISTER', dict())
+    curlen = len(register.VERIFIER_REGISTER.keys())
+    a = dict()
+    a['a'] = 1
+    register_verifier('TEST', a)
+    b = dict()
+    b['a'] = 2
+    register_verifier('TEST', b)
+    assert len(register.VERIFIER_REGISTER.keys()) == curlen + 1
+    assert register.VERIFIER_REGISTER['TEST'] is not a
+    assert register.VERIFIER_REGISTER['TEST'] is b
+    assert register.VERIFIER_REGISTER['TEST']['a'] == 2
 
 @pytest.mark.asyncio
 async def test_verifiers():
@@ -17,6 +42,16 @@ async def test_verifiers():
 
 
 @pytest.mark.asyncio
+async def test_register_outgoing_worker(monkeypatch):
+    monkeypatch.setattr(register, 'OUTGOING_WORKERS', dict())
+    curlen = len(register.OUTGOING_WORKERS.keys())
+    a = object()
+    register_outgoing_worker('TEST', a)
+    assert len(register.OUTGOING_WORKERS.keys()) == curlen + 1
+    assert register.OUTGOING_WORKERS['TEST'] is a
+
+
+@pytest.mark.asyncio
 async def test_outgoing():
     assert len(OUTGOING_WORKERS.keys()) == 3  # 3 verifiers are included by default
     assert "BNB" in OUTGOING_WORKERS.keys()
@@ -26,6 +61,14 @@ async def test_outgoing():
     assert "NULS" in OUTGOING_WORKERS.keys()
     assert OUTGOING_WORKERS["NULS"] is nuls.nuls_outgoing_worker
 
+@pytest.mark.asyncio
+async def test_register_incoming_worker(monkeypatch):
+    monkeypatch.setattr(register, 'INCOMING_WORKERS', dict())
+    curlen = len(register.INCOMING_WORKERS.keys())
+    a = object()
+    register_incoming_worker('TEST', a)
+    assert len(register.INCOMING_WORKERS.keys()) == curlen + 1
+    assert register.INCOMING_WORKERS['TEST'] is a
 
 @pytest.mark.asyncio
 async def test_incoming():
