@@ -72,7 +72,7 @@ async def sub(topic, base_url=None):
                     try:
                         mvalue = json.loads(value)
                         mvalue = await decode_msg(mvalue)
-                        LOGGER.debug("New message received", mvalue)
+                        LOGGER.debug("New message received %r" % mvalue)
 
                         # we should check the sender here to avoid spam
                         # and such things...
