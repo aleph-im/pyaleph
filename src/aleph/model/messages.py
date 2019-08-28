@@ -47,7 +47,8 @@ class Message(BaseClass):
 async def get_computed_address_aggregates(address_list=None, key_list=None):
     aggregate = [
         {'$match': {
-            'type': 'AGGREGATE'
+            'type': 'AGGREGATE',
+            'content.content': {'$type': 3}
         }},
         {'$group': {
             '_id': {
