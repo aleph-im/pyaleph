@@ -58,7 +58,7 @@ async def get_computed_address_aggregates(address_list=None, key_list=None, limi
             'content.address': 1,
             'content.key': 1,
             'content.content': 1
-        }}
+        }},
         {'$sort': {'time': 1}},
         {'$group': {
             '_id': {
