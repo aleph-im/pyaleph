@@ -44,12 +44,15 @@ class Message(BaseClass):
                 projection=RAW_MSG_PROJECTION).sort([('time', 1)]).limit(limit)
 
 
-async def get_computed_address_aggregates(address_list=None, key_list=None):
+async def get_computed_address_aggregates(address_list=None, key_list=None, limit=1000):
     aggregate = [
         {'$match': {
             'type': 'AGGREGATE',
             'content.content': {'$type': 3}
         }},
+        {'$sort': {'time': -1}},
+        {'$limit': limit},
+        {'$sort': {'time': 1}},
         {'$group': {
             '_id': {
                 'address': '$content.address',

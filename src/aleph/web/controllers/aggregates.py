@@ -15,8 +15,12 @@ async def address_aggregate(request):
     if keys is not None:
         keys = keys.split(',')
 
+    limit = request.query.get('limit', '1000')
+    limit = int(limit)
+
     aggregates = await get_computed_address_aggregates(address_list=[address],
-                                                       key_list=keys)
+                                                       key_list=keys,
+                                                       limit=limit)
 
     output = {
         'address': address,
