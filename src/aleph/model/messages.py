@@ -23,6 +23,7 @@ class Message(BaseClass):
                IndexModel([("content.time", ASCENDING)]),
                IndexModel([("time", DESCENDING)]),
                IndexModel([("time", ASCENDING)]),
+               IndexModel([("type", ASCENDING)]),
                IndexModel([("chain", ASCENDING)]),
                IndexModel([("confirmations.chain", ASCENDING)]),
                IndexModel([("confirmations.height", ASCENDING)]),
