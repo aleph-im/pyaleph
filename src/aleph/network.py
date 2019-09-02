@@ -139,6 +139,26 @@ async def check_message(message, from_chain=False, from_network=False,
 
     TODO: Implement it fully! Dangerous!
     """
+    if not isinstance(message['item_hash'], str):
+        LOGGER.warning('Unknown hash %s' % message['item_hash'])
+        return None
+    
+    if not isinstance(message['chain'], str):
+        LOGGER.warning('Unknown chain %s' % message['chain'])
+        return None
+    
+    if not isinstance(message['channel'], str):
+        LOGGER.warning('Unknown channel %s' % message['channel'])
+        return None
+    
+    if not isinstance(message['sender'], str):
+        LOGGER.warning('Unknown sender %s' % message['sender'])
+        return None
+    
+    if not isinstance(message['signature'], str):
+        LOGGER.warning('Unknown signature %s' % message['signature'])
+        return None
+    
     if message.get('item_content', None) is not None:
         if len('item_content') > MAX_INLINE_SIZE:
             LOGGER.warning('Message too long')
