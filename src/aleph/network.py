@@ -1,7 +1,7 @@
 import aiohttp
 import base64
 import base58
-import json
+import orjson as json
 import asyncio
 import hashlib
 from aleph.storage import get_base_url

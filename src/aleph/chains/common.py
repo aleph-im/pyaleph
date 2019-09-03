@@ -3,7 +3,7 @@ from aleph.network import check_message as check_message_fn
 from aleph.model.messages import Message
 from aleph.model.pending import PendingMessage
 from aleph.permissions import check_sender_authorization
-import json
+import orjson as json
 
 import asyncio
 import logging

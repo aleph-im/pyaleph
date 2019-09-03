@@ -1,6 +1,6 @@
 import asyncio
 import aiohttp
-import json
+import orjson as json
 import time
 import struct
 from operator import itemgetter

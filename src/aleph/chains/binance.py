@@ -1,5 +1,5 @@
 import asyncio
-import json
+import orjson as json
 import math
 import pytz
 import dateutil

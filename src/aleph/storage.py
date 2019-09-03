@@ -5,7 +5,7 @@ Basically manages the IPFS storage.
 import aioipfs
 import aiohttp
 import asyncio
-import json
+import orjson as json
 import aiohttp
 import concurrent
 
