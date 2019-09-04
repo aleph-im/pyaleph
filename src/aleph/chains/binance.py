@@ -112,11 +112,11 @@ async def request_transactions(config, client, start_time):
             tx_time = dateutil.parser.parse(tx['timeStamp']).timestamp()
             last_time = dateutil.parser.parse(tx['timeStamp'])
             jdata = json.loads(ldata)
-
+            
             context = {"chain_name": CHAIN_NAME,
-                "tx_hash": tx['txHash'],
-                "height": tx['blockHeight'],
-                "time": tx_time,
+                       "tx_hash": tx['txHash'],
+                       "height": tx['blockHeight'],
+                       "time": tx_time,
                        "publisher": tx["fromAddr"]}
             yield (jdata, context)
 
@@ -140,15 +140,15 @@ async def check_incoming(config):
         last_stored_time = await Chain.get_last_time(CHAIN_NAME)
         i = 0
         j = 0
-
+        
         async for jdata, context in request_transactions(config, client,
                                               last_stored_time):
-
+            
             await incoming_chaindata(jdata, context)
-                await Chain.set_last_time(
-                    CHAIN_NAME,
+            await Chain.set_last_time(
+                CHAIN_NAME,
                 datetime.fromtimestamp(context['time'], tz=pytz.utc))
-
+            
         # print(i)
         if (i < 10):  # if there was less than 10 items, not a busy time
             await asyncio.sleep(2)

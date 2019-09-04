@@ -54,7 +54,7 @@ async def incoming(message, chain_name=None,
         return True  # message handled.
 
     if retrying:
-        LOGGER.info("Retrying %s." % hash)
+        LOGGER.info("(Re)trying %s." % hash)
     else:
         LOGGER.info("Incoming %s." % hash)
 
@@ -227,7 +227,7 @@ async def get_chaindata_messages(chaindata, context, seen_ids=None):
             LOGGER.exception("Can't get content of offchain object %r"
                              % chaindata['content'])
             return None
-
+        
         if content is None:
             return None
 
@@ -235,7 +235,7 @@ async def get_chaindata_messages(chaindata, context, seen_ids=None):
         if messages is not None and messages != -1:
             LOGGER.info("Got bulk data with %d items" % len(messages))
             await pin_add(chaindata['content'])
-            return messages
+        return messages
     else:
         LOGGER.info('Got unknown protocol/version object in tx %r'
                     % context)
