@@ -3,7 +3,7 @@ import orjson as json
 import pkg_resources
 from aleph.network import check_message
 from aleph.chains.common import (incoming, get_verification_buffer,
-                                 get_chaindata,
+                                 get_chaindata, incoming_chaindata,
                                  get_chaindata_messages, join_tasks)
 from aleph.chains.register import (
     register_verifier, register_incoming_worker, register_outgoing_worker)
@@ -149,34 +149,32 @@ async def request_transactions(config, web3, contract, start_height):
 
     last_height = 0
     seen_ids = []
+    loop = asyncio.get_event_loop()
 
     logs = get_logs(config, web3, contract, start_height+1)
+    abi = contract.events.SyncEvent._get_event_abi()
 
     async for log in logs:
-        event_data = get_event_data(contract.events.SyncEvent._get_event_abi(),
-                                    log)
+        event_data = await loop.run_in_executor(None, get_event_data,
+                                                abi, log)
+        # event_data = get_event_data(contract.events.SyncEvent._get_event_abi(),
+        #                             log)
         LOGGER.info('Handling TX in block %s' % event_data.blockNumber)
         publisher = event_data.args.addr  # TODO: verify rights.
 
         last_height = event_data.blockNumber
+        block = await loop.run_in_executor(None, web3.eth.getBlock, event_data.blockNumber)
+        timestamp = block.timestamp
 
         message = event_data.args.message
         try:
             jdata = json.loads(message)
-
-            messages = await get_chaindata_messages(
-                jdata, seen_ids=seen_ids, context={
-                    "tx_hash": event_data.transactionHash,
-                    "height": event_data.blockNumber,
-                    "publisher": publisher
-                })
-
-            if messages is not None:
-                yield dict(type="aleph",
-                           tx_hash=event_data.transactionHash,
-                           height=event_data.blockNumber,
-                           publisher=publisher,
-                           messages=messages)
+            context = {"chain_name": CHAIN_NAME,
+                       "tx_hash": event_data.transactionHash,
+                       "time": timestamp,
+                       "height": event_data.blockNumber,
+                       "publisher": publisher}
+            yield (jdata, context)
 
         except json.JSONDecodeError:
             # if it's not valid json, just ignore it...
@@ -192,6 +190,7 @@ async def request_transactions(config, web3, contract, start_height):
         if last_height:
             await Chain.set_last_height(CHAIN_NAME, last_height)
 
+
 async def check_incoming(config):
     last_stored_height = await get_last_height()
 
@@ -203,45 +202,9 @@ async def check_incoming(config):
 
     while True:
         last_stored_height = await get_last_height()
-        i = 0
-        j = 0
-
-        tasks = []
-        seen_ids = []
-        async for txi in request_transactions(config, web3, contract,
+        async for jdata, context in request_transactions(config, web3, contract,
                                               last_stored_height):
-            i += 1
-            # TODO: handle big message list stored in IPFS case
-            # (if too much messages, an ipfs hash is stored here).
-            for message in txi['messages']:
-                j += 1
-                # message = await check_message(message, from_chain=True)
-                # if message is None:
-                #     # message got discarded at check stage.
-                #     continue
-
-                # message['time'] = txi['time']
-
-                # running those separately... a good/bad thing?
-                # shouldn't do that for VMs.
-                tasks.append(
-                    incoming(
-                        message, chain_name=CHAIN_NAME,
-                        seen_ids=seen_ids,
-                        tx_hash=txi['tx_hash'],
-                        height=txi['height'],
-                        check_message=True))
-
-                # let's join every 50 messages...
-                if (j > 200):
-                    await join_tasks(tasks, seen_ids)
-                    j = 0
-
-        await join_tasks(tasks, seen_ids)
-
-        if (i < 10):  # if there was less than 10 items, not a busy time
-            # wait 5 seconds (half of typical time between 2 blocks)
-            await asyncio.sleep(5)
+            await incoming_chaindata(jdata, context)
 
 
 async def ethereum_incoming_worker(config):
