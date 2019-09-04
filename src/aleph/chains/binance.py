@@ -90,8 +90,8 @@ async def get_transactions(config, client, target_addr,
         for i in range(1, math.ceil(result['total']/PAGINATION)):
             nresult = await client.get_transactions(
                 target_addr, limit=PAGINATION, offset=i*PAGINATION,
-                start_time=prepare_timestamp(start_time)+1,
-                end_time=(end_time is not None and prepare_timestamp(end_time)
+                start_time=(await prepare_timestamp(start_time))+1,
+                end_time=(end_time is not None and (await prepare_timestamp(end_time))
                           or None))
             for tx in nresult['tx']:
                 yield tx
