@@ -202,12 +202,18 @@ async def get_chaindata_messages(chaindata, context, seen_ids=None):
     if chaindata is None or chaindata == -1:
         LOGGER.info('Got bad data in tx %r'
                     % context)
-        return None
+        return -1
 
     protocol = chaindata.get('protocol', None)
     version = chaindata.get('version', None)
     if protocol == 'aleph' and version == 1:
-        return chaindata['content']['messages']
+        messages = chaindata['content']['messages']
+        if not isinstance(messages, list):
+            LOGGER.info('Got bad data in tx %r'
+                        % context)
+            messages = -1
+        return messages
+    
     if protocol == 'aleph-offchain' and version == 1:
         if seen_ids is not None:
             if chaindata['content'] in seen_ids:
@@ -222,14 +228,19 @@ async def get_chaindata_messages(chaindata, context, seen_ids=None):
                              % chaindata['content'])
             return None
 
+        if content is None:
+            return None
+
         messages = await get_chaindata_messages(content, context)
-        if messages is not None:
+        if messages is not None and messages != -1:
             LOGGER.info("Got bulk data with %d items" % len(messages))
             await pin_add(chaindata['content'])
             return messages
     else:
         LOGGER.info('Got unknown protocol/version object in tx %r'
                     % context)
+        return -1
+
 
 async def incoming_chaindata(content, context):
     """ Incoming data from a chain.
