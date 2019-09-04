@@ -15,7 +15,7 @@ from binance_chain.websockets import BinanceChainSocketManager
 
 from aleph.chains.common import (incoming, get_verification_buffer,
                                  get_chaindata, get_chaindata_messages,
-                                 join_tasks)
+                                 join_tasks, incoming_chaindata)
 from aleph.chains.register import (
     register_verifier, register_incoming_worker, register_outgoing_worker)
 from aleph.model.chains import Chain
@@ -113,19 +113,12 @@ async def request_transactions(config, client, start_time):
             last_time = dateutil.parser.parse(tx['timeStamp'])
             jdata = json.loads(ldata)
 
-            messages = await get_chaindata_messages(jdata, context={
+            context = {"chain_name": CHAIN_NAME,
                 "tx_hash": tx['txHash'],
                 "height": tx['blockHeight'],
                 "time": tx_time,
-                "publisher": tx["fromAddr"]
-            })
-
-            if messages is not None:
-                yield dict(type="aleph", time=tx_time,
-                           tx_hash=tx['txHash'],
-                           height=tx['blockHeight'],
-                           publisher=tx["fromAddr"],
-                           messages=messages)
+                       "publisher": tx["fromAddr"]}
+            yield (jdata, context)
 
         except json.JSONDecodeError:
             # if it's not valid json, just ignore it...
@@ -148,43 +141,14 @@ async def check_incoming(config):
         i = 0
         j = 0
 
-        tasks = []
-        seen_ids = []
-        join = False
-
-        async for txi in request_transactions(config, client,
+        async for jdata, context in request_transactions(config, client,
                                               last_stored_time):
-            i += 1
-            # TODO: handle big message list stored in IPFS case
-            # (if too much messages, an ipfs hash is stored here).
-            for message in txi['messages']:
-                j += 1
-                message['time'] = txi['time']
 
-                # running those separately... a good/bad thing?
-                # shouldn't do that for VMs.
-                tasks.append(
-                    incoming(
-                        message, chain_name=CHAIN_NAME,
-                        seen_ids=seen_ids,
-                        tx_hash=txi['tx_hash'],
-                        height=txi['height'],
-                        check_message=True))
-
-                # let's join every 500 messages...
-                if (j > 200):
-                    await join_tasks(tasks, seen_ids)
-                    j = 0
-                    join = True
-
-            if join:
-                await join_tasks(tasks, seen_ids)
-                join = False
+            await incoming_chaindata(jdata, context)
                 await Chain.set_last_time(
                     CHAIN_NAME,
-                    datetime.fromtimestamp(txi['time'], tz=pytz.utc))
+                datetime.fromtimestamp(context['time'], tz=pytz.utc))
 
-        await join_tasks(tasks, seen_ids)
         # print(i)
         if (i < 10):  # if there was less than 10 items, not a busy time
             await asyncio.sleep(2)
