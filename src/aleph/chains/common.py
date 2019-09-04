@@ -1,7 +1,7 @@
 from aleph.storage import get_json, pin_add, add_json, get_content
 from aleph.network import check_message as check_message_fn
 from aleph.model.messages import Message
-from aleph.model.pending import PendingMessage
+from aleph.model.pending import PendingMessage, PendingTX
 from aleph.permissions import check_sender_authorization
 import orjson as json
 
@@ -230,7 +230,16 @@ async def get_chaindata_messages(chaindata, context, seen_ids=None):
     else:
         LOGGER.info('Got unknown protocol/version object in tx %r'
                     % context)
-        return None
+
+async def incoming_chaindata(content, context):
+    """ Incoming data from a chain.
+    Content can be inline of "offchain" through an ipfs hash.
+    For now we only add it to the database, it will be processed later.
+    """
+    await PendingTX.collection.insert_one({
+        'content': content,
+        'context': context
+    })
 
 
 async def join_tasks(tasks, seen_ids):
