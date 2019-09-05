@@ -3,7 +3,7 @@ import asyncio
 from aleph.chains.common import incoming, get_chaindata_messages
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.model.messages import Message
-from pymongo import DeleteOne, InsertOne
+from pymongo import DeleteOne, InsertOne, DeleteMany
 
 LOGGER = getLogger("JOBS")
 
@@ -16,7 +16,7 @@ async def handle_pending_message(pending, seen_ids, actions_list, messages_actio
         chain_name=pending['source'].get('chain_name'),
         tx_hash=pending['source'].get('tx_hash'),
         height=pending['source'].get('height'),
-        seen_ids=seen_ids[pending['source'].get('chain_name')],
+        seen_ids=seen_ids,
         check_message=pending['source'].get('check_message', True),
         retrying=True, bulk_operation=True)
 
@@ -47,24 +47,34 @@ async def retry_messages_job():
     """ Each few minutes, try to handle message that were added to the
     pending queue (Unavailable messages)."""
 
-    seen_ids = {
-        'NULS': [],
-        'ETH': [],
-        'BNB': []
-    }
+    seen_ids = {}
     actions = []
     messages_actions = []
     tasks = []
     i = 0
     while await PendingMessage.collection.count_documents({}):
-        async for pending in PendingMessage.collection.find().sort([('message.time', 1)]).limit(100000):
+        async for pending in PendingMessage.collection.find().sort([('message.time', 1)]).limit(2000):
             i += 1
             tasks.append(asyncio.shield(handle_pending_message(pending, seen_ids, actions, messages_actions)))
 
             if (i >= 2000):
                 await join_pending_message_tasks(tasks, actions, messages_actions)
                 i = 0
-            
+        
+
+        if await PendingMessage.collection.count_documents({}) > 100000:
+            LOGGER.info('Cleaning messages')
+            clean_actions = []
+            # big collection, try to remove dups.
+            for key, height in seen_ids.items():
+                clean_actions.append(DeleteMany({
+                    'message.item_hash': key[0],
+                    'message.sender': key[1],
+                    'source.chain_name': key[2],
+                    'source.height': {'$gt': height}
+                }))
+            result = await PendingMessage.collection.bulk_write(clean_actions)
+            LOGGER.info(repr(result))
     # async for pending in PendingMessage.collection.find(
     #     {'message.item_content': { "$exists": False } }).sort([('message.time', 1)]).limit(100):
     #     i += 1

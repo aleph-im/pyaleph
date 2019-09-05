@@ -42,10 +42,14 @@ async def incoming(message, chain_name=None,
     if existing in database, created if not.
     """
     hash = message['item_hash']
-
-    if seen_ids is not None and hash in seen_ids:
-        # is it really what we want here?
-        return True
+    sender = message['sender']
+    chain = chain_name
+    ids_key = (hash, sender, chain)
+    
+    if chain_name and tx_hash and height and seen_ids is not None:
+        if ids_key in seen_ids.keys():
+            if seen_ids[ids_key] > height:
+                return True
 
     if check_message:
         # check/sanitize the message if needed
@@ -103,11 +107,13 @@ async def incoming(message, chain_name=None,
     should_commit = False
     if existing:
         if seen_ids is not None:
-            if hash in seen_ids:
-                # is it really what we want here?
-                return
+            if ids_key in seen_ids.keys():
+                if seen_ids[ids_key] > height:
+                    return True
+                else:
+                    seen_ids[ids_key] = height
             else:
-                seen_ids.append(hash)
+                seen_ids[ids_key] = height
 
         # THIS CODE SHOULD BE HERE...
         # But, if a race condition appeared, we might have the message twice.
@@ -162,11 +168,13 @@ async def incoming(message, chain_name=None,
             return True  # message handled.
 
         if seen_ids is not None:
-            if hash in seen_ids:
-                # is it really what we want here?
-                return True
+            if ids_key in seen_ids.keys():
+                if seen_ids[ids_key] > height:
+                    return True
+                else:
+                    seen_ids[ids_key] = height
             else:
-                seen_ids.append(hash)
+                seen_ids[ids_key] = height
 
         LOGGER.info("New message to store for %s." % hash)
         # message.update(new_values)
