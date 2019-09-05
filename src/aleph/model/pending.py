@@ -9,7 +9,11 @@ class PendingMessage(BaseClass):
     content will be retrieved later. """
     COLLECTION = "pending_messages"
 
-    INDEXES = [IndexModel([("message.time", DESCENDING)]),
+    INDEXES = [IndexModel([("message.item_hash", ASCENDING)]),
+               IndexModel([("message.sender", ASCENDING)]),
+               IndexModel([("source.chain_name", ASCENDING)]),
+               IndexModel([("source.height", ASCENDING)]),
+               IndexModel([("message.time", DESCENDING)]),
                IndexModel([("message.time", ASCENDING)])]
 
 class PendingTX(BaseClass):
