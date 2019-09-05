@@ -2,6 +2,7 @@ from logging import getLogger
 import asyncio
 from aleph.chains.common import incoming, get_chaindata_messages
 from aleph.model.pending import PendingMessage, PendingTX
+from aleph.model.messages import Message
 from pymongo import DeleteOne, InsertOne
 
 LOGGER = getLogger("JOBS")
@@ -9,7 +10,7 @@ LOGGER = getLogger("JOBS")
 RETRY_LOCK = asyncio.Lock()
 
 
-async def handle_pending_message(pending, seen_ids, actions_list):
+async def handle_pending_message(pending, seen_ids, actions_list, messages_actions_list):
     result = await incoming(
         pending['message'],
         chain_name=pending['source'].get('chain_name'),
@@ -17,14 +18,16 @@ async def handle_pending_message(pending, seen_ids, actions_list):
         height=pending['source'].get('height'),
         seen_ids=seen_ids[pending['source'].get('chain_name')],
         check_message=pending['source'].get('check_message', True),
-        retrying=True)
+        retrying=True, bulk_operation=True)
 
-    if result is True:  # message handled (valid or not, we don't care)
+    if result is not None:  # message handled (valid or not, we don't care)
         # Is it valid to add to a list passed this way? to be checked.
+        if result is not True:
+            messages_actions_list.append(result)
         actions_list.append(DeleteOne({'_id': pending['_id']}))
 
 
-async def join_pending_message_tasks(tasks, actions_list):
+async def join_pending_message_tasks(tasks, actions_list, messages_actions_list):
     try:
         await asyncio.gather(*tasks)
     except Exception:
@@ -34,6 +37,10 @@ async def join_pending_message_tasks(tasks, actions_list):
     if len(actions_list):
         await PendingMessage.collection.bulk_write(actions_list)
         actions_list.clear()
+
+    if len(messages_actions_list):
+        await Message.collection.bulk_write(messages_actions_list)
+        messages_actions_list.clear()
 
 
 async def retry_messages_job():
@@ -46,17 +53,28 @@ async def retry_messages_job():
         'BNB': []
     }
     actions = []
+    messages_actions = []
     tasks = []
     i = 0
-    async for pending in PendingMessage.collection.find().sort([('time', 1)]).limit(1000):
+    async for pending in PendingMessage.collection.find(
+        {'message.item_content': { "$exists": True } }).sort([('message.time', 1)]).limit(500):
         i += 1
-        tasks.append(handle_pending_message(pending, seen_ids, actions))
+        tasks.append(asyncio.shield(handle_pending_message(pending, seen_ids, actions, messages_actions)))
 
-        if (i > 200):
-            await join_pending_message_tasks(tasks, actions)
+        if (i >= 50):
+            await join_pending_message_tasks(tasks, actions, messages_actions)
             i = 0
+            
+    # async for pending in PendingMessage.collection.find(
+    #     {'message.item_content': { "$exists": False } }).sort([('message.time', 1)]).limit(100):
+    #     i += 1
+    #     tasks.append(asyncio.shield(handle_pending_message(pending, seen_ids, actions)))
 
-    await join_pending_message_tasks(tasks, actions)
+    #     # if (i > 100):
+    #     #     await join_pending_message_tasks(tasks, actions)
+    #     #     i = 0
+
+    await join_pending_message_tasks(tasks, actions, messages_actions)
 
 
 async def retry_messages_task():
@@ -116,7 +134,7 @@ async def handle_txs_job():
     i = 0
     async for pending in PendingTX.collection.find().sort([('time', 1)]).limit(1000):
         i += 1
-        tasks.append(handle_pending_tx(pending, actions))
+        tasks.append(asyncio.shield(handle_pending_tx(pending, actions)))
 
         if (i > 100):
             await join_pending_txs_tasks(tasks, actions)
