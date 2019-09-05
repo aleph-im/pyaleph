@@ -3,6 +3,7 @@ from aleph.network import check_message as check_message_fn
 from aleph.model.messages import Message
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.permissions import check_sender_authorization
+from pymongo import UpdateOne
 import orjson as json
 
 import asyncio
@@ -33,7 +34,8 @@ async def mark_confirmed_data(chain_name, tx_hash, height):
 
 async def incoming(message, chain_name=None,
                    tx_hash=None, height=None, seen_ids=None,
-                   check_message=False, retrying=False):
+                   check_message=False, retrying=False,
+                   bulk_operation=False):
     """ New incoming message from underlying chain.
 
     For regular messages it will be marked as confirmed
@@ -60,21 +62,45 @@ async def incoming(message, chain_name=None,
 
     # we set the incoming chain as default for signature
     message['chain'] = message.get('chain', chain_name)
-
-    # TODO: verify if search key is ok. do we need an unique key for messages?
-    existing = await Message.collection.find_one({
+    
+    filters = {
         'item_hash': hash,
         'chain': message['chain'],
         'sender': message['sender'],
         'type': message['type']
-    }, projection={'confirmed': 1, 'confirmations': 1, 'time': 1})
+    }
 
-    # new_values = {'confirmed': False}  # this should be our default.
-    new_values = {}
+    # TODO: verify if search key is ok. do we need an unique key for messages?
+    existing = await Message.collection.find_one(
+        filters, projection={'confirmed': 1, 'confirmations': 1, 'time': 1})
+    
     if chain_name and tx_hash and height:
         # We are getting a confirmation here
         new_values = await mark_confirmed_data(chain_name, tx_hash, height)
+    
+        updates = {
+            '$set': {
+                'confirmed': True,
+            },
+            '$min': {
+                'time': message['time']
+            },
+            '$addToSet': {
+                'confirmations': new_values['confirmations'][0]
+            }
+        }
+    else:
+        updates = {
+            '$max': {
+                'confirmed': False,
+            },
+            '$min': {
+                'time': message['time']
+            }
+        }
 
+    # new_values = {'confirmed': False}  # this should be our default.
+    should_commit = False
     if existing:
         if seen_ids is not None:
             if hash in seen_ids:
@@ -94,25 +120,12 @@ async def incoming(message, chain_name=None,
 
         if chain_name and tx_hash and height:
             # we need to update messages adding the confirmation
-            await Message.collection.update_many({
-                'item_hash': hash,
-                'chain': message['chain'],
-                'sender': message['sender']
-            }, {
-                '$set': {
-                    'confirmed': True,
-                },
-                '$min': {
-                    'time': message['time']
-                },
-                '$addToSet': {
-                    'confirmations': new_values['confirmations'][0]
-                }
-            })
+            #await Message.collection.update_many(filters, updates)
+            should_commit = True
 
     else:
-        if not (chain_name and tx_hash and height):
-            new_values = {'confirmed': False}  # this should be our default.
+        # if not (chain_name and tx_hash and height):
+        #     new_values = {'confirmed': False}  # this should be our default.
 
         try:
             content = await get_content(message)
@@ -151,20 +164,33 @@ async def incoming(message, chain_name=None,
         if seen_ids is not None:
             if hash in seen_ids:
                 # is it really what we want here?
-                return
+                return True
             else:
                 seen_ids.append(hash)
 
         LOGGER.info("New message to store for %s." % hash)
-        message.update(new_values)
-        message['content'] = content
-        await Message.collection.insert_one(message)
+        # message.update(new_values)
+        updates['$set'] = {
+            'content': content,
+            'item_content': message.get('item_content'),
+            'item_type': message.get('item_type'),
+            'channel': message.get('channel'),
+            'signature': message.get('signature')
+        }
+        should_commit = True
+        #await Message.collection.insert_one(message)
 
         # since it's on-chain, we need to keep that content.
         LOGGER.debug("Pining hash %s" % hash)
         if message['item_type'] == 'ipfs':
             await pin_add(hash)
 
+    if should_commit:
+        action = UpdateOne(filters, updates, upsert=True)
+        if not bulk_operation:
+            await Message.collection.bulk_write([action])
+        else:
+            return action
     return True  # message handled.
 
 
