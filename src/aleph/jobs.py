@@ -29,7 +29,7 @@ async def handle_pending_message(pending, seen_ids, actions_list, messages_actio
 
 async def join_pending_message_tasks(tasks, actions_list, messages_actions_list):
     try:
-        await asyncio.gather(*tasks)
+        await asyncio.gather(*tasks, return_exceptions=True)
     except Exception:
         LOGGER.exception("error in incoming task")
     tasks.clear()
@@ -56,14 +56,14 @@ async def retry_messages_job():
     messages_actions = []
     tasks = []
     i = 0
-    async for pending in PendingMessage.collection.find(
-        {'message.item_content': { "$exists": True } }).sort([('message.time', 1)]).limit(500):
-        i += 1
-        tasks.append(asyncio.shield(handle_pending_message(pending, seen_ids, actions, messages_actions)))
+    while await PendingMessage.collection.count_documents({}):
+        async for pending in PendingMessage.collection.find().sort([('message.time', 1)]).limit(100000):
+            i += 1
+            tasks.append(asyncio.shield(handle_pending_message(pending, seen_ids, actions, messages_actions)))
 
-        if (i >= 50):
-            await join_pending_message_tasks(tasks, actions, messages_actions)
-            i = 0
+            if (i >= 2000):
+                await join_pending_message_tasks(tasks, actions, messages_actions)
+                i = 0
             
     # async for pending in PendingMessage.collection.find(
     #     {'message.item_content': { "$exists": False } }).sort([('message.time', 1)]).limit(100):
@@ -84,7 +84,7 @@ async def retry_messages_task():
         except Exception:
             LOGGER.exception("Error in pending messages retry job")
 
-        await asyncio.sleep(1)
+        await asyncio.sleep(.01)
         
 
 async def handle_pending_tx(pending, actions_list):
@@ -151,7 +151,7 @@ async def handle_txs_task():
         except Exception:
             LOGGER.exception("Error in pending txs job")
 
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.01)
 
 def start_jobs():
     LOGGER.info("starting jobs")
