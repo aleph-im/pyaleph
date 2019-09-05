@@ -147,9 +147,10 @@ async def check_message(message, from_chain=False, from_network=False,
         LOGGER.warning('Unknown chain %s' % message['chain'])
         return None
     
-    if not isinstance(message['channel'], str):
-        LOGGER.warning('Unknown channel %s' % message['channel'])
-        return None
+    if message.get('channel', None) is not None:
+        if not isinstance(message.get('channel', None), str):
+            LOGGER.warning('Unknown channel %s' % message['channel'])
+            return None
     
     if not isinstance(message['sender'], str):
         LOGGER.warning('Unknown sender %s' % message['sender'])
