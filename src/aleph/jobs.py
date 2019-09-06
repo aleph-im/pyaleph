@@ -4,6 +4,7 @@ from aleph.chains.common import incoming, get_chaindata_messages
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.model.messages import Message
 from pymongo import DeleteOne, InsertOne, DeleteMany
+from concurrent.futures import ProcessPoolExecutor
 
 LOGGER = getLogger("JOBS")
 
@@ -53,7 +54,7 @@ async def retry_messages_job():
     tasks = []
     i = 0
     while await PendingMessage.collection.count_documents({}):
-        async for pending in PendingMessage.collection.find().sort([('message.time', 1)]).limit(20000):
+        async for pending in PendingMessage.collection.find().sort([('message.time', 1)]):
             i += 1
             tasks.append(asyncio.shield(handle_pending_message(pending, seen_ids, actions, messages_actions)))
 
@@ -84,7 +85,7 @@ async def retry_messages_job():
     #     #     await join_pending_message_tasks(tasks, actions)
     #     #     i = 0
 
-    await join_pending_message_tasks(tasks, actions, messages_actions)
+        await join_pending_message_tasks(tasks, actions, messages_actions)
 
 
 async def retry_messages_task():
@@ -164,9 +165,41 @@ async def handle_txs_task():
             LOGGER.exception("Error in pending txs job")
 
         await asyncio.sleep(0.01)
+        
 
-def start_jobs():
+def prepare_loop(config_values):
+    from aleph.model import init_db
+    from aleph.web import app
+    from configmanager import Config
+    from aleph.config import get_defaults
+    from aleph.storage import get_ipfs_api
+    
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    config = Config(schema=get_defaults())
+    app['config'] = config
+    app.config = config
+    config.load_values(config_values)
+    
+    init_db(config, ensure_indexes=False)
+    loop.run_until_complete(get_ipfs_api(timeout=2, reset=True))
+    return loop
+
+def txs_task_loop(config_values):
+    loop = prepare_loop(config_values)
+    loop.run_until_complete(handle_txs_task())
+
+def messages_task_loop(config_values):
+    loop = prepare_loop(config_values)
+    loop.run_until_complete(retry_messages_task())
+
+def start_jobs(config):
     LOGGER.info("starting jobs")
+    executor = ProcessPoolExecutor()
     loop = asyncio.get_event_loop()
-    loop.create_task(retry_messages_task())
-    loop.create_task(handle_txs_task())
+    config_values = config.dump_values()
+    loop.run_in_executor(executor, messages_task_loop, config_values)
+    loop.run_in_executor(executor, txs_task_loop, config_values)
+    # loop.create_task(loop.run_in_executor(executor, messages_task_loop, config))
+    # loop.create_task()
