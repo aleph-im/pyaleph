@@ -48,7 +48,7 @@ async def incoming(message, chain_name=None,
     
     if chain_name and tx_hash and height and seen_ids is not None:
         if ids_key in seen_ids.keys():
-            if seen_ids[ids_key] > height:
+            if height > seen_ids[ids_key]:
                 return True
 
     if check_message:
@@ -108,7 +108,7 @@ async def incoming(message, chain_name=None,
     if existing:
         if seen_ids is not None:
             if ids_key in seen_ids.keys():
-                if seen_ids[ids_key] > height:
+                if height > seen_ids[ids_key]:
                     return True
                 else:
                     seen_ids[ids_key] = height
@@ -169,7 +169,7 @@ async def incoming(message, chain_name=None,
 
         if seen_ids is not None:
             if ids_key in seen_ids.keys():
-                if seen_ids[ids_key] > height:
+                if height > seen_ids[ids_key]:
                     return True
                 else:
                     seen_ids[ids_key] = height
