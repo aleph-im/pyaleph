@@ -161,10 +161,11 @@ async def request_transactions(config, web3, contract, start_height):
         #                             log)
         LOGGER.info('Handling TX in block %s' % event_data.blockNumber)
         publisher = event_data.args.addr  # TODO: verify rights.
+        timestamp = event_data.args.timestamp
 
         last_height = event_data.blockNumber
-        block = await loop.run_in_executor(None, web3.eth.getBlock, event_data.blockNumber)
-        timestamp = block.timestamp
+        #block = await loop.run_in_executor(None, web3.eth.getBlock, event_data.blockNumber)
+        #timestamp = block.timestamp
 
         message = event_data.args.message
         try:
