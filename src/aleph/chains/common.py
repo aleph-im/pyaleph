@@ -261,7 +261,6 @@ async def get_chaindata_messages(chaindata, context, seen_ids=None):
             LOGGER.exception("Can't get content of offchain object %r"
                              % chaindata['content'])
             return None
-        
         if content is None:
             return None
 

@@ -99,6 +99,7 @@ async def retry_messages_task():
 
 async def handle_pending_tx(pending, actions_list):
     messages = await get_chaindata_messages(pending['content'], pending['context'])
+    LOGGER.info("%s Handling TX in block %s" % (pending['context']['chain_name'], pending['context']['height']))
     if isinstance(messages, list):
         message_actions = list()
         for message in messages:
@@ -121,11 +122,12 @@ async def handle_pending_tx(pending, actions_list):
     if messages is not None:
         # bogus or handled, we remove it.
         actions_list.append(DeleteOne({'_id': pending['_id']}))
+    # LOGGER.info("%s Handled TX in block %s" % (pending['context']['chain_name'], pending['context']['height']))
         
 
 async def join_pending_txs_tasks(tasks, actions_list):
     try:
-        await asyncio.gather(*tasks)
+        await asyncio.gather(*tasks, return_exceptions=True)
     except Exception:
         LOGGER.exception("error in incoming txs task")
     tasks.clear()
