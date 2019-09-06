@@ -12,8 +12,8 @@ ethereum:
   chain_id: 4
   packing_node: True
   private_key: YOUR_PRIVATE_KEY_HERE
-  sync_contract: "0x608af68ed0789Fd93F9586A990B0C0429466Fd8A"
-  start_height: 5042250
+  sync_contract: "0x6adf64fc26d495445a3cab545ac808d66932ac15"
+  start_height: 5042280
 
 binancechain:
   enabled: True
