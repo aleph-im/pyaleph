@@ -54,11 +54,11 @@ async def retry_messages_job():
     tasks = []
     i = 0
     while await PendingMessage.collection.count_documents({}):
-        async for pending in PendingMessage.collection.find().sort([('message.time', 1)]):
+        async for pending in PendingMessage.collection.find().sort([('message.time', -1)]):
             i += 1
             tasks.append(asyncio.shield(handle_pending_message(pending, seen_ids, actions, messages_actions)))
 
-            if (i >= 2000):
+            if (i >= 10000):
                 await join_pending_message_tasks(tasks, actions, messages_actions)
                 i = 0
         

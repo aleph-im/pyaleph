@@ -22,9 +22,9 @@ async def get_ipfs_gateway_url(config, hash):
         config.ipfs.gateway_port.value, hash)
 
 
-async def get_ipfs_api(timeout=60):
+async def get_ipfs_api(timeout=60, reset=False):
     global API
-    if API is None:
+    if API is None or reset:
         from aleph.web import app
         host = app['config'].ipfs.host.value
         port = app['config'].ipfs.port.value
@@ -42,7 +42,8 @@ async def get_content(message):
         return await get_json(message['item_hash'])
     elif item_type == 'inline':
         try:
-            item_content = json.loads(message['item_content'])
+            loop = asyncio.get_event_loop()
+            item_content = await loop.run_in_executor(None, json.loads, message['item_content'])
         except (json.JSONDecodeError, KeyError):
             return -1  # never retry, bogus data
         return item_content

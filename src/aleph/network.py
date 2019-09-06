@@ -166,10 +166,11 @@ async def check_message(message, from_chain=False, from_network=False,
             return None
         
         if message.get('hash_type', 'sha256') == 'sha256':  # leave the door open.
+            loop = asyncio.get_event_loop()
             h = hashlib.sha256()
-            h.update(message['item_content'].encode('utf-8'))
+            await loop.run_in_executor(None, h.update, message['item_content'].encode('utf-8'))
             
-            if message['item_hash'] != h.hexdigest():
+            if message['item_hash'] != await loop.run_in_executor(None, h.hexdigest):
                 LOGGER.warning('Bad hash')
                 return None
         else:

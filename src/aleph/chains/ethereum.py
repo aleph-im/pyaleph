@@ -16,6 +16,7 @@ from web3.contract import get_event_data
 from web3.gas_strategies.rpc import rpc_gas_price_strategy
 from eth_account.messages import defunct_hash_message
 from eth_account import Account
+from eth_keys import keys
 from hexbytes import HexBytes
 import functools
 
@@ -30,11 +31,14 @@ async def verify_signature(message):
     loop = asyncio.get_event_loop()
     from aleph.web import app
     config = app.config
-    w3 = await get_web3(config)
+    w3 = await loop.run_in_executor(None, get_web3, config)
 
     verification = await get_verification_buffer(message)
 
-    message_hash = defunct_hash_message(text=verification.decode('utf-8'))
+    message_hash = await loop.run_in_executor(
+            None,
+            functools.partial(defunct_hash_message,
+                              text=verification.decode('utf-8')))
 
     verified = False
     try:
@@ -73,7 +77,7 @@ async def get_last_height():
     return last_height
 
 
-async def get_web3(config):
+def get_web3(config):
     web3 = Web3(Web3.HTTPProvider(config.ethereum.api_url.value))
     if config.ethereum.chain_id.value == 4:  # rinkeby
         web3.middleware_onion.inject(geth_poa_middleware, layer=0)
@@ -198,7 +202,7 @@ async def check_incoming(config):
     LOGGER.info("Last block is #%d" % last_stored_height)
     loop = asyncio.get_event_loop()
 
-    web3 = await get_web3(config)
+    web3 = await loop.run_in_executor(None, get_web3, config)
     contract = await get_contract(config, web3)
 
     while True:
@@ -234,7 +238,8 @@ def broadcast_content(config, contract, web3, account,
 
 
 async def ethereum_packer(config):
-    web3 = await get_web3(config)
+    loop = asyncio.get_event_loop()
+    web3 = await loop.run_in_executor(None, get_web3, config)
     contract = await get_contract(config, web3)
     loop = asyncio.get_event_loop()
 
