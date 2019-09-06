@@ -118,7 +118,7 @@ def main(args):
     start_connector(config, outgoing=(not args.no_commit))
 
     if not args.no_jobs:
-        start_jobs()
+        start_jobs(config)
 
     loop = asyncio.get_event_loop()
     handler = app.make_handler()
