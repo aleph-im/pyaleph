@@ -53,11 +53,11 @@ async def retry_messages_job():
     tasks = []
     i = 0
     while await PendingMessage.collection.count_documents({}):
-        async for pending in PendingMessage.collection.find().sort([('message.time', 1)]).limit(2000):
+        async for pending in PendingMessage.collection.find().sort([('message.time', 1)]).limit(20000):
             i += 1
             tasks.append(asyncio.shield(handle_pending_message(pending, seen_ids, actions, messages_actions)))
 
-            if (i >= 2000):
+            if (i >= 200):
                 await join_pending_message_tasks(tasks, actions, messages_actions)
                 i = 0
         
@@ -144,11 +144,11 @@ async def handle_txs_job():
     actions = []
     tasks = []
     i = 0
-    async for pending in PendingTX.collection.find().sort([('time', 1)]).limit(1000):
+    async for pending in PendingTX.collection.find().sort([('context.time', 1)]):
         i += 1
         tasks.append(asyncio.shield(handle_pending_tx(pending, actions)))
 
-        if (i > 100):
+        if (i > 200):
             await join_pending_txs_tasks(tasks, actions)
             i = 0
 
