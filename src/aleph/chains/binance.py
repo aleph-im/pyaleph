@@ -86,15 +86,15 @@ async def get_transactions(config, client, target_addr,
         for tx in sorted(result['tx'], key=itemgetter('blockHeight')):
             yield tx
 
-    if result['total'] >= PAGINATION:
-        for i in range(1, math.ceil(result['total']/PAGINATION)):
-            nresult = await client.get_transactions(
-                target_addr, limit=PAGINATION, offset=i*PAGINATION,
-                start_time=(await prepare_timestamp(start_time))+1,
-                end_time=(end_time is not None and (await prepare_timestamp(end_time))
-                          or None))
-            for tx in nresult['tx']:
-                yield tx
+    # if result['total'] >= PAGINATION:
+    #     for i in range(1, math.ceil(result['total']/PAGINATION)):
+    #         nresult = await client.get_transactions(
+    #             target_addr, limit=PAGINATION, offset=i*PAGINATION,
+    #             start_time=(await prepare_timestamp(start_time))+1,
+    #             end_time=(end_time is not None and (await prepare_timestamp(end_time))
+    #                       or None))
+    #         for tx in nresult['tx']:
+    #             yield tx
 
 
 async def request_transactions(config, client, start_time):
