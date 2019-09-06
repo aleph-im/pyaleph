@@ -1,9 +1,12 @@
-pragma solidity ^0.5.7;
+pragma solidity ^0.5.11;
 
 contract AlephSync{
-    event SyncEvent(address addr, string message);
 
+    event Emit(uint256 timestamp, address addr, string message); 
+    //emitter.doEmit("blah", {from: "[primary acc]", value: web3.toWei(100, "ether")});
+    
     function doEmit(string memory message) public {
-        emit SyncEvent(msg.sender, message);
+        emit Emit(block.timestamp, msg.sender, message);
     }
+
 }

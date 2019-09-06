@@ -3,6 +3,7 @@
 		"constant": false,
 		"inputs": [
 			{
+				"internalType": "string",
 				"name": "message",
 				"type": "string"
 			}
@@ -18,16 +19,24 @@
 		"inputs": [
 			{
 				"indexed": false,
+				"internalType": "uint256",
+				"name": "timestamp",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "address",
 				"name": "addr",
 				"type": "address"
 			},
 			{
 				"indexed": false,
+				"internalType": "string",
 				"name": "message",
 				"type": "string"
 			}
 		],
-		"name": "SyncEvent",
+		"name": "Emit",
 		"type": "event"
 	}
 ]
