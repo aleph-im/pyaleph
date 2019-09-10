@@ -47,8 +47,12 @@ async def get_content(message):
             loop = asyncio.get_event_loop()
             item_content = await loop.run_in_executor(None, json.loads, message['item_content'])
         except (json.JSONDecodeError, KeyError):
-            LOGGER.exception("Can't decode JSON")
-            return -1  # never retry, bogus data
+            try:
+                import json as njson
+                item_content = await loop.run_in_executor(None, njson.loads, message['item_content'])
+            except (json.JSONDecodeError, KeyError): 
+                LOGGER.exception("Can't decode JSON")
+                return -1  # never retry, bogus data
         return item_content
     else:
         return None  # unknown, could retry later? shouldn't have arrived this far though.
