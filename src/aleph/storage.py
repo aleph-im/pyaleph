@@ -8,8 +8,10 @@ import asyncio
 import orjson as json
 import aiohttp
 import concurrent
+import logging
 
 API = None
+LOGGER = logging.getLogger("STORAGE")
 
 async def get_base_url(config):
     return 'http://{}:{}'.format(config.ipfs.host.value,
@@ -45,6 +47,7 @@ async def get_content(message):
             loop = asyncio.get_event_loop()
             item_content = await loop.run_in_executor(None, json.loads, message['item_content'])
         except (json.JSONDecodeError, KeyError):
+            LOGGER.exception("Can't decode JSON")
             return -1  # never retry, bogus data
         return item_content
     else:
