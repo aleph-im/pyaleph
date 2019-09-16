@@ -1,8 +1,11 @@
 from logging import getLogger
 import asyncio
+import aioipfs
 from aleph.chains.common import incoming, get_chaindata_messages
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.model.messages import Message
+from aleph.model.p2p import get_peers
+from aleph.network import connect_peer
 from pymongo import DeleteOne, InsertOne, DeleteMany
 from concurrent.futures import ProcessPoolExecutor
 
@@ -194,12 +197,26 @@ def messages_task_loop(config_values):
     loop = prepare_loop(config_values)
     loop.run_until_complete(retry_messages_task())
 
+async def reconnect_job(config):
+    while True:
+        try:
+            LOGGER.info("Reconnecting to peers")
+            async for peer in get_peers():
+                try:
+                    await connect_peer(peer)
+                except aioipfs.APIError:
+                    LOGGER.exception("Can't reconnect to %s" % peer)
+                
+        except Exception:
+            LOGGER.exception("Error reconnecting to peers")
+
+        await asyncio.sleep(config.ipfs.reconnect_delay.value)
+
 def start_jobs(config):
     LOGGER.info("starting jobs")
     executor = ProcessPoolExecutor()
     loop = asyncio.get_event_loop()
     config_values = config.dump_values()
-    loop.run_in_executor(executor, messages_task_loop, config_values)
-    loop.run_in_executor(executor, txs_task_loop, config_values)
+    loop.create_task(reconnect_job(config))
     # loop.create_task(loop.run_in_executor(executor, messages_task_loop, config))
     # loop.create_task()

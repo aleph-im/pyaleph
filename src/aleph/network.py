@@ -4,7 +4,7 @@ import base58
 import orjson as json
 import asyncio
 import hashlib
-from aleph.storage import get_base_url
+from aleph.storage import get_base_url, get_ipfs_api
 from aleph.chains.register import VERIFIER_REGISTER
 import logging
 LOGGER = logging.getLogger("NETWORK")
@@ -200,6 +200,11 @@ async def check_message(message, from_chain=False, from_network=False,
         except ValueError:
             LOGGER.warning('Signature validation error')
             return None
+
+async def connect_peer(peer):
+    api = await get_ipfs_api(timeout=5)
+    result = await api.swarm.connect(peer)
+    return result
 
 
 def setup_listeners(config):
