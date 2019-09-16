@@ -46,6 +46,7 @@ def get_defaults():
             'host': '127.0.0.1',
             'port': 5001,
             'gateway_port': 8080,
-            'id': None
+            'id': None,
+            'reconnect_delay': 60
         }
     }
