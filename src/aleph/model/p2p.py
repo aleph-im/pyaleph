@@ -9,7 +9,7 @@ LOGGER = logging.getLogger('model.p2p')
 
 class Chain(BaseClass):
     """Holds information about the chains state."""
-    COLLECTION = "chains"
+    COLLECTION = "peers"
 
     INDEXES = [IndexModel([("address", ASCENDING)]),
                IndexModel([("last_seen", DESCENDING)])]
