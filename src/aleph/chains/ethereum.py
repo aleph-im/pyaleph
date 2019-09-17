@@ -14,7 +14,7 @@ from web3 import Web3
 from web3.middleware import geth_poa_middleware, local_filter_middleware
 from web3.contract import get_event_data
 from web3.gas_strategies.rpc import rpc_gas_price_strategy
-from eth_account.messages import defunct_hash_message
+from eth_account.messages import defunct_hash_message, encode_defunct
 from eth_account import Account
 from eth_keys import keys
 from hexbytes import HexBytes
@@ -31,13 +31,13 @@ async def verify_signature(message):
     loop = asyncio.get_event_loop()
     from aleph.web import app
     config = app.config
-    w3 = await loop.run_in_executor(None, get_web3, config)
+    # w3 = await loop.run_in_executor(None, get_web3, config)
 
     verification = await get_verification_buffer(message)
 
     message_hash = await loop.run_in_executor(
             None,
-            functools.partial(defunct_hash_message,
+            functools.partial(encode_defunct,
                               text=verification.decode('utf-8')))
 
     verified = False
@@ -45,8 +45,12 @@ async def verify_signature(message):
         # we assume the signature is a valid string
         address = await loop.run_in_executor(
             None,
-            functools.partial(w3.eth.account.recoverHash, message_hash,
+            functools.partial(Account.recover_message, message_hash,
                               signature=message['signature']))
+        # address = await loop.run_in_executor(
+        #     None,
+        #     functools.partial(w3.eth.account.recoverHash, message_hash,
+        #                       signature=message['signature']))
         # address = w3.eth.account.recoverHash(message_hash,
         #                                      signature=message['signature'])
         if address == message['sender']:
@@ -57,8 +61,8 @@ async def verify_signature(message):
             return False
 
     except Exception as e:
-        LOGGER.exception('Error processing signature from %s for %s'
-                         % (address, message['sender']))
+        LOGGER.exception('Error processing signature for %s'
+                         % message['sender'])
         verified = False
 
     return verified
