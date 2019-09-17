@@ -1,11 +1,12 @@
 from logging import getLogger
 import asyncio
 import aioipfs
+import uvloop
 from aleph.chains.common import incoming, get_chaindata_messages
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.model.messages import Message
 from aleph.model.p2p import get_peers
-from aleph.network import connect_peer
+from aleph.network import connect_peer, check_message
 from pymongo import DeleteOne, InsertOne, DeleteMany
 from concurrent.futures import ProcessPoolExecutor
 
@@ -55,10 +56,15 @@ async def retry_messages_job():
     actions = []
     messages_actions = []
     tasks = []
+    loop = asyncio.get_event_loop()
     i = 0
     while await PendingMessage.collection.count_documents({}):
-        async for pending in PendingMessage.collection.find().sort([('message.time', -1)]):
-            i += 1
+        async for pending in PendingMessage.collection.find().sort([('message.item_type', 1), ('message.time', 1)]).limit(10000):
+            if pending['message']['item_type'] == 'ipfs':
+                i += 25
+            else:
+                i += 1
+                
             tasks.append(asyncio.shield(handle_pending_message(pending, seen_ids, actions, messages_actions)))
 
             if (i >= 2000):
@@ -108,6 +114,10 @@ async def handle_pending_tx(pending, actions_list):
         message_actions = list()
         for message in messages:
             message['time'] = pending['context']['time']
+            
+            message = await check_message(message, trusted=True) # we don't check signatures yet.
+            if message is None:
+                continue
             
             # we add it to the message queue... bad idea? should we process it asap?
             message_actions.append(InsertOne({
@@ -177,6 +187,8 @@ def prepare_loop(config_values):
     from aleph.config import get_defaults
     from aleph.storage import get_ipfs_api
     
+    uvloop.install()
+    
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
@@ -201,9 +213,19 @@ async def reconnect_job(config):
     while True:
         try:
             LOGGER.info("Reconnecting to peers")
+            for peer in config.ipfs.peers.value:
+                try:
+                    ret = await connect_peer(peer)
+                    if 'Strings' in ret:
+                        LOGGER.info('\n'.join(ret['Strings']))
+                except aioipfs.APIError:
+                    LOGGER.exception("Can't reconnect to %s" % peer)
+                    
             async for peer in get_peers():
                 try:
-                    await connect_peer(peer)
+                    ret = await connect_peer(peer)
+                    if 'Strings' in ret:
+                        LOGGER.info('\n'.join(ret['Strings']))
                 except aioipfs.APIError:
                     LOGGER.exception("Can't reconnect to %s" % peer)
                 
@@ -214,7 +236,7 @@ async def reconnect_job(config):
 
 def start_jobs(config):
     LOGGER.info("starting jobs")
-    executor = ProcessPoolExecutor()
+    # executor = ProcessPoolExecutor()
     loop = asyncio.get_event_loop()
     config_values = config.dump_values()
     # loop.run_in_executor(executor, messages_task_loop, config_values)
