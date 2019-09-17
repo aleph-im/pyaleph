@@ -59,19 +59,19 @@ async def retry_messages_job():
     loop = asyncio.get_event_loop()
     i = 0
     while await PendingMessage.collection.count_documents({}):
-        async for pending in PendingMessage.collection.find().sort([('message.item_type', 1), ('message.time', 1)]).limit(10000):
+        async for pending in PendingMessage.collection.find().sort([('message.item_type', 1)]).limit(4000):
             if pending['message']['item_type'] == 'ipfs':
-                i += 25
+                i += 15
             else:
                 i += 1
                 
             tasks.append(asyncio.shield(handle_pending_message(pending, seen_ids, actions, messages_actions)))
 
-            if (i >= 2000):
+            if (i >= 64):
                 await join_pending_message_tasks(tasks, actions, messages_actions)
                 i = 0
+        await join_pending_message_tasks(tasks, actions, messages_actions)
         
-
         if await PendingMessage.collection.count_documents({}) > 100000:
             LOGGER.info('Cleaning messages')
             clean_actions = []
@@ -94,7 +94,6 @@ async def retry_messages_job():
     #     #     await join_pending_message_tasks(tasks, actions)
     #     #     i = 0
 
-        await join_pending_message_tasks(tasks, actions, messages_actions)
 
 
 async def retry_messages_task():
