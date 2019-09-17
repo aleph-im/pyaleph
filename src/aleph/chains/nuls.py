@@ -13,7 +13,7 @@ from aleph.chains.register import (
 from aleph.model.chains import Chain
 from aleph.model.messages import Message
 
-
+from aleph_client.chains.nuls1 import NulsSignature, hash_from_address, public_key_to_hash, address_from_hash
 # TODO: move this to another project
 # from nulsexplorer.protocol.data import (
 #     NulsSignature, public_key_to_hash, address_from_hash, hash_from_address,
