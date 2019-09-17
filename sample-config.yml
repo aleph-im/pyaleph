@@ -3,21 +3,21 @@ nulsexplorer:
 
 nuls:
   chain_id: 261
-  packing_node: True
+  packing_node: False
   private_key: YOUR_PRIVATE_KEY_HERE
 
 ethereum:
   enabled: True
   api_url: http://127.0.0.1:8545
   chain_id: 4
-  packing_node: True
+  packing_node: False
   private_key: YOUR_PRIVATE_KEY_HERE
   sync_contract: "0x6aDF64fC26D495445A3CAB545aC808d66932aC15"
   start_height: 5042280
 
 binancechain:
   enabled: True
-  packing_node: True
+  packing_node: False
   private_key: YOUR_PRIVATE_KEY_HERE
   sync_address: bnb1r3rf8cj9t2w6v0za3ufyp03as3nv6rjxteku6g
   start_time: "2019-05-22T00:00:00Z"
