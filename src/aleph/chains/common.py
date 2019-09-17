@@ -60,7 +60,7 @@ async def incoming(message, chain_name=None,
         return True  # message handled.
 
     if retrying:
-        LOGGER.info("(Re)trying %s." % hash)
+        LOGGER.debug("(Re)trying %s." % hash)
     else:
         LOGGER.info("Incoming %s." % hash)
 
