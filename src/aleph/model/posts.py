@@ -1,7 +1,5 @@
 from aleph.model.base import BaseClass
 from pymongo import ASCENDING, DESCENDING, IndexModel
-import logging
-LOGGER = logging.getLogger('model.posts')
 
 
 class Post(BaseClass):

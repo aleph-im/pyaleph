@@ -2,9 +2,6 @@
 from aleph.model.base import BaseClass
 from pymongo import ASCENDING, DESCENDING, IndexModel
 import pymongo
-import logging
-LOGGER = logging.getLogger('model.posts')
-
 
 class AggregateEntries(BaseClass):
     COLLECTION = "aggregate_entries"

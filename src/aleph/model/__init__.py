@@ -8,7 +8,6 @@ except ImportError:  # pragma: no cover
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
-LOGGER = getLogger(__name__)
 
 db_backend = None
 
