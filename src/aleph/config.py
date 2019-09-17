@@ -47,6 +47,10 @@ def get_defaults():
             'port': 5001,
             'gateway_port': 8080,
             'id': None,
-            'reconnect_delay': 60
+            'reconnect_delay': 60,
+            'peers': [
+              '/dnsaddr/bootstrap.aleph.im/ipfs/QmPR8m8WCmYKuuxg5Qnadd4LbnTCD2L93cV2zPW5XGVHTG',
+              '/dnsaddr/api1.aleph.im/ipfs/QmVrrTCdRhjEDE8gftXNw2TihcAUy6d2TXcuNUeivBFpcA'
+            ]
         }
     }
