@@ -10,8 +10,11 @@ RAW_MSG_PROJECTION.update({'_id': 0})
 
 class Message(BaseClass):
     COLLECTION = "messages"
-
     INDEXES = [  # Index("hash", unique=True),
+               IndexModel([("item_hash", ASCENDING),
+                           ("chain", ASCENDING),
+                           ("sender", ASCENDING),
+                           ("type", ASCENDING)], unique=True),
                IndexModel([("item_hash", ASCENDING)]),  # Content IPFS hash
                IndexModel([("tx_hash", ASCENDING)]),  # TX Hash (if there is one)
                IndexModel([("sender", ASCENDING)]),
