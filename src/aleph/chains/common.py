@@ -122,7 +122,7 @@ async def incoming(message, chain_name=None,
         #         chain_name in [c['chain'] for c in existing['confirmations']]):
         #     return
 
-        LOGGER.info("Updating %s." % hash)
+        LOGGER.debug("Updating %s." % hash)
 
         if chain_name and tx_hash and height:
             # we need to update messages adding the confirmation
@@ -176,7 +176,7 @@ async def incoming(message, chain_name=None,
             else:
                 seen_ids[ids_key] = height
 
-        LOGGER.info("New message to store for %s." % hash)
+        LOGGER.debug("New message to store for %s." % hash)
         # message.update(new_values)
         updates['$set'] = {
             'content': content,
