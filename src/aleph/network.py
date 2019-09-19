@@ -23,6 +23,21 @@ INCOMING_MESSAGE_AUTHORIZED_FIELDS = [
     'signature'
 ]
 
+HOST = None
+
+async def get_p2p_host(host=None, port=None, reset=False):
+    global HOST
+    if API is None or reset:
+        from aleph.web import app
+        host = app['config'].ipfs.host.value
+        port = app['config'].ipfs.port.value
+
+        API = aioipfs.AsyncIPFS(host=host, port=port,
+                                read_timeout=timeout,
+                                conns_max=100)
+
+    return API
+
 
 async def decode_msg(msg):
     return {
@@ -201,11 +216,10 @@ async def check_message(message, from_chain=False, from_network=False,
             LOGGER.warning('Signature validation error')
             return None
 
-async def connect_peer(peer):
+async def connect_ipfs_peer(peer):
     api = await get_ipfs_api(timeout=5)
     result = await api.swarm.connect(peer)
     return result
-
 
 def setup_listeners(config):
     # for now (1st milestone), we only listen on a single global topic...
