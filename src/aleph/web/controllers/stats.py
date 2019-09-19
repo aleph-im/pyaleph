@@ -22,16 +22,18 @@ async def addresses_stats(check_time=None, address_list=None,
     if address_list is not None and len(address_list):
         if len(address_list) > 1:
             matches.append(
-                {'$match': {'$or': [
+                {'$match': # {'$or': [
                     # {'sender': {'$in': address_list}},
-                    {'content.address': {'$in': address_list}}]
-                    }})
+                    {'content.address': {'$in': address_list}}
+                    #]}
+                })
         else:
             matches.append(
-                {'$match': {'$or': [
+                {'$match': #{'$or': [
                     # {'sender': address_list[0]},
-                    {'content.address': address_list[0]}]
-                    }})
+                    {'content.address': address_list[0]}
+                    #]}
+                })
 
     aggregate = Message.collection.aggregate(
         matches +
@@ -77,9 +79,27 @@ async def addresses_stats_view(request):
 
     if len(addresses) and (len(addresses) < 200):  # don't use cached values
         check_time = datetime.datetime.now()
-
-    stats = await addresses_infos(address_list=addresses,
-                                  check_time=check_time)
+        
+    if len(addresses) == 1:
+        stats = [
+            {
+                'address': addresses[0],
+                'messages': await Message.collection.count_documents({
+                    'content.address': addresses[0]
+                }),
+                'posts': await Message.collection.count_documents({
+                    'content.address': addresses[0],
+                    'type': 'POST'
+                }),
+                'aggregates': await Message.collection.count_documents({
+                    'content.address': addresses[0],
+                    'type': 'AGGREGATE'
+                })
+            }
+        ]
+    else:
+        stats = await addresses_infos(address_list=addresses,
+                                    check_time=check_time)
 
     output = {
         'data': stats

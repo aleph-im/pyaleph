@@ -51,7 +51,7 @@ async def join_pending_message_tasks(tasks, actions_list, messages_actions_list)
 async def retry_messages_job():
     """ Each few minutes, try to handle message that were added to the
     pending queue (Unavailable messages)."""
-
+    
     seen_ids = {}
     actions = []
     messages_actions = []
@@ -103,7 +103,7 @@ async def retry_messages_task():
         except Exception:
             LOGGER.exception("Error in pending messages retry job")
 
-        await asyncio.sleep(.01)
+        await asyncio.sleep(5)
         
 
 async def handle_pending_tx(pending, actions_list):
@@ -153,10 +153,14 @@ async def join_pending_txs_tasks(tasks, actions_list):
 async def handle_txs_job():
     """ Each few minutes, try to handle message that were added to the
     pending queue (Unavailable messages)."""
-
+    if not await PendingTX.collection.count_documents({}):
+        await asyncio.sleep(5)
+        return
+    
     actions = []
     tasks = []
     i = 0
+    LOGGER.info("handling TXs")
     async for pending in PendingTX.collection.find().sort([('context.time', 1)]):
         i += 1
         tasks.append(asyncio.shield(handle_pending_tx(pending, actions)))
@@ -171,7 +175,6 @@ async def handle_txs_job():
 async def handle_txs_task():
     while True:
         try:
-            LOGGER.info("handling TXs")
             await handle_txs_job()
         except Exception:
             LOGGER.exception("Error in pending txs job")
