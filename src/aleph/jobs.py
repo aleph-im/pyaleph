@@ -111,8 +111,8 @@ async def handle_pending_tx(pending, actions_list):
     LOGGER.info("%s Handling TX in block %s" % (pending['context']['chain_name'], pending['context']['height']))
     if isinstance(messages, list):
         message_actions = list()
-        for message in messages:
-            message['time'] = pending['context']['time']
+        for i, message in enumerate(messages):
+            message['time'] = pending['context']['time'] + (i/1000) # force order
             
             message = await check_message(message, trusted=True) # we don't check signatures yet.
             if message is None:
