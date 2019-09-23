@@ -58,6 +58,7 @@ async def retry_messages_job():
     tasks = []
     loop = asyncio.get_event_loop()
     i = 0
+    j = 0
     find_params = {}
     if await PendingTX.collection.count_documents({}) > 500:
         find_params = {'message.item_type': 'inline'}
@@ -66,10 +67,17 @@ async def retry_messages_job():
         async for pending in PendingMessage.collection.find(find_params).sort([('message.item_type', 1)]).limit(40000):
             if pending['message']['item_type'] == 'ipfs':
                 i += 15
+                j += 100
             else:
                 i += 1
+                j += 1
                 
             tasks.append(asyncio.shield(handle_pending_message(pending, seen_ids, actions, messages_actions)))
+            
+            if (j >= 10000):
+                await join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions)
+                i = 0
+                j = 0
 
             if (i >= 512):
                 await join_pending_message_tasks(tasks)
