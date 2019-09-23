@@ -32,18 +32,18 @@ async def handle_pending_message(pending, seen_ids, actions_list, messages_actio
         actions_list.append(DeleteOne({'_id': pending['_id']}))
 
 
-async def join_pending_message_tasks(tasks, actions_list, messages_actions_list):
+async def join_pending_message_tasks(tasks, actions_list=None, messages_actions_list=None):
     try:
         await asyncio.gather(*tasks, return_exceptions=True)
     except Exception:
         LOGGER.exception("error in incoming task")
     tasks.clear()
 
-    if len(actions_list):
+    if actions_list is not None and len(actions_list):
         await PendingMessage.collection.bulk_write(actions_list)
         actions_list.clear()
 
-    if len(messages_actions_list):
+    if actions_list is not None and len(messages_actions_list):
         await Message.collection.bulk_write(messages_actions_list)
         messages_actions_list.clear()
 
@@ -72,9 +72,9 @@ async def retry_messages_job():
             tasks.append(asyncio.shield(handle_pending_message(pending, seen_ids, actions, messages_actions)))
 
             if (i >= 512):
-                await join_pending_message_tasks(tasks, actions, messages_actions)
+                await join_pending_message_tasks(tasks)
                 i = 0
-        await join_pending_message_tasks(tasks, actions, messages_actions)
+        await join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions)
         
         if await PendingMessage.collection.count_documents(find_params) > 100000:
             LOGGER.info('Cleaning messages')
