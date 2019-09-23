@@ -256,7 +256,7 @@ async def get_chaindata_messages(chaindata, context, seen_ids=None):
             else:
                 seen_ids.append(chaindata['content'])
         try:
-            content = await get_json(chaindata['content'])
+            content = await get_json(chaindata['content'], timeout=2)
         except Exception:
             LOGGER.exception("Can't get content of offchain object %r"
                              % chaindata['content'])
