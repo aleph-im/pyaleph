@@ -67,7 +67,7 @@ async def retry_messages_job():
                 
             tasks.append(asyncio.shield(handle_pending_message(pending, seen_ids, actions, messages_actions)))
 
-            if (i >= 64):
+            if (i >= 512):
                 await join_pending_message_tasks(tasks, actions, messages_actions)
                 i = 0
         await join_pending_message_tasks(tasks, actions, messages_actions)
