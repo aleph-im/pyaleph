@@ -6,7 +6,7 @@ from aleph.chains.common import incoming, get_chaindata_messages
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.model.messages import Message
 from aleph.model.p2p import get_peers
-from aleph.network import connect_peer, check_message
+from aleph.network import connect_ipfs_peer, check_message
 from pymongo import DeleteOne, InsertOne, DeleteMany
 from concurrent.futures import ProcessPoolExecutor
 
@@ -217,7 +217,7 @@ async def reconnect_job(config):
             LOGGER.info("Reconnecting to peers")
             for peer in config.ipfs.peers.value:
                 try:
-                    ret = await connect_peer(peer)
+                    ret = await connect_ipfs_peer(peer)
                     if 'Strings' in ret:
                         LOGGER.info('\n'.join(ret['Strings']))
                 except aioipfs.APIError:
@@ -225,7 +225,7 @@ async def reconnect_job(config):
                     
             async for peer in get_peers():
                 try:
-                    ret = await connect_peer(peer)
+                    ret = await connect_ipfs_peer(peer)
                     if 'Strings' in ret:
                         LOGGER.info('\n'.join(ret['Strings']))
                 except aioipfs.APIError:

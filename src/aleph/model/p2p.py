@@ -13,7 +13,7 @@ class Chain(BaseClass):
                IndexModel([("address", ASCENDING)], unique=True),
                IndexModel([("last_seen", DESCENDING)])]
     
-async def get_peers(peer_type=none):
+async def get_peers(peer_type=None):
     """ Returns current peers.
     TODO: handle the last seen, channel preferences, and better way of avoiding "bad contacts".
     NOTE: Currently used in jobs.
