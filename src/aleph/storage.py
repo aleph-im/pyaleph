@@ -57,7 +57,7 @@ async def get_content(message):
     else:
         return None  # unknown, could retry later? shouldn't have arrived this far though.
 
-async def get_json(hash, timeout=1, tries=3):
+async def get_json(hash, timeout=1, tries=1):
     from aleph.web import app
     async with aiohttp.ClientSession(read_timeout=timeout) as session:
         uri = await get_ipfs_gateway_url(app['config'], hash)
@@ -95,7 +95,7 @@ async def add_json(value):
     return result['Hash']
 
 
-async def pin_add(hash, timeout=2, tries=3):
+async def pin_add(hash, timeout=2, tries=1):
     # loop = asyncio.get_event_loop()
     try_count = 0
     result = None
