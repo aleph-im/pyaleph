@@ -214,6 +214,7 @@ async def check_incoming(config):
         async for jdata, context in request_transactions(config, web3, contract,
                                               last_stored_height):
             await incoming_chaindata(jdata, context)
+        await asyncio.sleep(10)
 
 
 async def ethereum_incoming_worker(config):
@@ -265,7 +266,7 @@ async def ethereum_packer(config):
 
         messages = [message async for message
                     in (await Message.get_unconfirmed_raw(
-                            limit=5000,
+                            limit=100000,
                             for_chain=CHAIN_NAME))]
 
         if len(messages):
