@@ -62,7 +62,7 @@ async def retry_messages_job():
     if await PendingTX.collection.count_documents({}) > 500:
         find_params = {'message.item_type': 'inline'}
         
-    while await PendingMessage.collection.count_documents({}):
+    while await PendingMessage.collection.count_documents(find_params):
         async for pending in PendingMessage.collection.find(find_params).sort([('message.item_type', 1)]).limit(4000):
             if pending['message']['item_type'] == 'ipfs':
                 i += 15
@@ -76,7 +76,7 @@ async def retry_messages_job():
                 i = 0
         await join_pending_message_tasks(tasks, actions, messages_actions)
         
-        if await PendingMessage.collection.count_documents({}) > 100000:
+        if await PendingMessage.collection.count_documents(find_params) > 100000:
             LOGGER.info('Cleaning messages')
             clean_actions = []
             # big collection, try to remove dups.
