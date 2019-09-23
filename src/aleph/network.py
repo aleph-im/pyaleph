@@ -9,7 +9,7 @@ from aleph.chains.register import VERIFIER_REGISTER
 import logging
 LOGGER = logging.getLogger("NETWORK")
 
-MAX_INLINE_SIZE = 100000 # 100kb max inline content size.
+MAX_INLINE_SIZE = 200000 # 200kb max inline content size.
 
 INCOMING_MESSAGE_AUTHORIZED_FIELDS = [
     'item_hash',
