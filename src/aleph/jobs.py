@@ -238,13 +238,13 @@ async def reconnect_job(config):
 
 def start_jobs(config):
     LOGGER.info("starting jobs")
-    # executor = ProcessPoolExecutor()
+    executor = ProcessPoolExecutor()
     loop = asyncio.get_event_loop()
     config_values = config.dump_values()
-    # loop.run_in_executor(executor, messages_task_loop, config_values)
-    # loop.run_in_executor(executor, txs_task_loop, config_values)
-    loop.create_task(retry_messages_task())
-    loop.create_task(handle_txs_task())
+    loop.run_in_executor(executor, messages_task_loop, config_values)
+    loop.run_in_executor(executor, txs_task_loop, config_values)
+    # loop.create_task(retry_messages_task())
+    # loop.create_task(handle_txs_task())
     loop.create_task(reconnect_job(config))
     # loop.create_task(loop.run_in_executor(executor, messages_task_loop, config))
     # loop.create_task()
