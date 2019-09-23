@@ -58,8 +58,12 @@ async def retry_messages_job():
     tasks = []
     loop = asyncio.get_event_loop()
     i = 0
+    find_params = {}
+    if await PendingTX.collection.count_documents({}) > 500:
+        find_params = {'message.item_type': 'inline'}
+        
     while await PendingMessage.collection.count_documents({}):
-        async for pending in PendingMessage.collection.find().sort([('message.item_type', 1)]).limit(4000):
+        async for pending in PendingMessage.collection.find(find_params).sort([('message.item_type', 1)]).limit(4000):
             if pending['message']['item_type'] == 'ipfs':
                 i += 15
             else:
@@ -221,7 +225,7 @@ async def reconnect_job(config):
                     if 'Strings' in ret:
                         LOGGER.info('\n'.join(ret['Strings']))
                 except aioipfs.APIError:
-                    LOGGER.exception("Can't reconnect to %s" % peer)
+                    LOGGER.warning("Can't reconnect to %s" % peer)
                     
             async for peer in get_peers():
                 try:
@@ -229,7 +233,7 @@ async def reconnect_job(config):
                     if 'Strings' in ret:
                         LOGGER.info('\n'.join(ret['Strings']))
                 except aioipfs.APIError:
-                    LOGGER.exception("Can't reconnect to %s" % peer)
+                    LOGGER.warning("Can't reconnect to %s" % peer)
                 
         except Exception:
             LOGGER.exception("Error reconnecting to peers")
