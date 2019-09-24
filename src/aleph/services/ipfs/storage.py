@@ -20,6 +20,10 @@ async def get_json(hash, timeout=1, tries=1):
             try_count += 1
             try:
                 async with session.get(uri) as resp:
+                    if status != 200:
+                        result = None
+                        await asyncio.sleep(.5)
+                        continue
                     result = await resp.json(content_type=None)
                 # result = await api.cat(hash)
                 # result = json.loads(result)
