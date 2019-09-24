@@ -10,7 +10,7 @@ from .common import get_ipfs_gateway_url, get_ipfs_api
 LOGGER = logging.getLogger("IPFS.STORAGE")
 
 
-async def get_json(hash, timeout=1, tries=1):
+async def get_json(hash, timeout=1, tries=1, gateway_url):
     from aleph.web import app
     async with aiohttp.ClientSession(read_timeout=timeout) as session:
         uri = await get_ipfs_gateway_url(app['config'], hash)

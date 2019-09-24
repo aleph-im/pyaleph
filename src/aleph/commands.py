@@ -24,6 +24,7 @@ from aleph.config import get_defaults
 from aleph.network import setup_listeners
 from aleph.jobs import start_jobs
 from aleph import model
+from aleph.services import p2p
 
 __author__ = "Moshe Malawach"
 __copyright__ = "Moshe Malawach"
@@ -113,15 +114,17 @@ def main(args):
     LOGGER.info("Database initialized.")
 
     init_cors()
-
-    setup_listeners(config)
-    start_connector(config, outgoing=(not args.no_commit))
-
     if not args.no_jobs:
         start_jobs(config)
 
     loop = asyncio.get_event_loop()
     handler = app.make_handler()
+    f = p2p.init_p2p(config)
+    host = loop.run_until_complete(f)
+    
+    setup_listeners(config)
+    start_connector(config, outgoing=(not args.no_commit))
+    
     f = loop.create_server(handler,
                            config.aleph.host.value,
                            config.aleph.port.value)
