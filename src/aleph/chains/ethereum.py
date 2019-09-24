@@ -9,6 +9,7 @@ from aleph.chains.register import (
     register_verifier, register_incoming_worker, register_outgoing_worker)
 from aleph.model.chains import Chain
 from aleph.model.messages import Message
+from aleph.model.pending import pending_messages_count, pending_txs_count
 
 from web3 import Web3
 from web3.middleware import geth_poa_middleware, local_filter_middleware
@@ -256,6 +257,11 @@ async def ethereum_packer(config):
     i = 0
     gas_price = web3.eth.generateGasPrice()
     while True:
+        if (await pending_txs_count(chain=CHAIN_NAME)) \
+           or (await pending_messages_count(source_chain=CHAIN_NAME)):
+            await asyncio.sleep(30)
+            continue
+        
         if i >= 100:
             await asyncio.sleep(30)  # wait three (!!) blocks
             gas_price = web3.eth.generateGasPrice()
