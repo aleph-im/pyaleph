@@ -10,6 +10,10 @@ PyAleph requires Python v3.6+ (it won't work with older python versions).
 
 ## Installation
 
+To use the rocksdb dependency you will need to build it, here are the requirements on ubuntu:
+
+`$ sudo apt install python3-dev build-essential libsnappy-dev zlib1g-dev libbz2-dev libgflags-dev liblz4-dev librocksdb-dev`
+
 You need to install the requirements, ideally in an empty virtualenv (I let
 that part to you):
 
@@ -49,16 +53,10 @@ $ ipfs bootstrap add /dnsaddr/bootstrap.aleph.im/ipfs/QmPR8m8WCmYKuuxg5Qnadd4Lbn
 $ ipfs swarm connect /dnsaddr/bootstrap.aleph.im/ipfs/QmPR8m8WCmYKuuxg5Qnadd4LbnTCD2L93cV2zPW5XGVHTG
 ```
 
-### NULS
-
-If you want to run with a local NULS instance (and not light client mode), you need to have a local fully synced NULS blockchain instance.
-
-The first proof of concept uses a nulsexplorer instance, being a light client of it.
-For maximum security, run your own with your own local NULS wallet.
-
 ### Mongodb
 
-A local running mongodb instance is required.
+A local running mongodb instance is required, by default it's connected to localhost port 27017, you can change
+the configuration file if needed.
 
 ## Configuration
 
