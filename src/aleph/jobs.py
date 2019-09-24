@@ -189,6 +189,7 @@ async def handle_txs_task():
     while True:
         try:
             await handle_txs_job()
+            await asyncio.sleep(5)
         except Exception:
             LOGGER.exception("Error in pending txs job")
 
