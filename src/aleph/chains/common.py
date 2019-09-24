@@ -1,4 +1,4 @@
-from aleph.storage import get_json, pin_add, add_json, get_content
+from aleph.storage import get_json, pin_hash, add_json, get_content
 from aleph.network import check_message as check_message_fn
 from aleph.model.messages import Message
 from aleph.model.pending import PendingMessage, PendingTX
@@ -191,7 +191,7 @@ async def incoming(message, chain_name=None,
         # since it's on-chain, we need to keep that content.
         LOGGER.debug("Pining hash %s" % hash)
         if message['item_type'] == 'ipfs':
-            await pin_add(hash)
+            await pin_hash(hash)
 
     if should_commit:
         action = UpdateOne(filters, updates, upsert=True)
@@ -267,7 +267,7 @@ async def get_chaindata_messages(chaindata, context, seen_ids=None):
         messages = await get_chaindata_messages(content, context)
         if messages is not None and messages != -1:
             LOGGER.info("Got bulk data with %d items" % len(messages))
-            await pin_add(chaindata['content'])
+            await pin_hash(chaindata['content'])
         return messages
     else:
         LOGGER.info('Got unknown protocol/version object in tx %r'

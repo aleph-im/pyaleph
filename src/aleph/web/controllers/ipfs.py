@@ -1,6 +1,6 @@
-from aleph.storage import add_json, add_file
+from aleph.services.ipfs.storage import add_json, add_file
 from aleph.web import app
-from aleph.network import pub
+from aleph.services.ipfs.pubsub import pub
 from aiohttp import web
 
 

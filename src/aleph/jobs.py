@@ -6,7 +6,8 @@ from aleph.chains.common import incoming, get_chaindata_messages
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.model.messages import Message
 from aleph.model.p2p import get_peers
-from aleph.network import connect_ipfs_peer, check_message
+from aleph.services.ipfs.common import connect_ipfs_peer
+from aleph.network import check_message
 from pymongo import DeleteOne, InsertOne, DeleteMany
 from concurrent.futures import ProcessPoolExecutor
 
@@ -199,7 +200,7 @@ def prepare_loop(config_values):
     from aleph.web import app
     from configmanager import Config
     from aleph.config import get_defaults
-    from aleph.storage import get_ipfs_api
+    from aleph.services.ipfs.common import get_ipfs_api
     
     uvloop.install()
     
