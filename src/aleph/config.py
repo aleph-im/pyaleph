@@ -4,39 +4,44 @@ def get_defaults():
         'aleph': {
             'queue_topic': 'ALEPH-QUEUE',
             'host': '127.0.0.1',
-            'port': 8080
+            'port': 8080,
+            'p2p': {
+                'port': 4025,
+                'host': '0.0.0.0',
+                'key': None
+            }
         },
         'nulsexplorer': {
             'url': 'http://127.0.0.1:8080'
         },
         'nuls': {
-          'chain_id': 8964,
-          'enabled': False,
-          'packing_node': False,
-          'private_key': None,
-          'commit_delay': 14
+            'chain_id': 8964,
+            'enabled': False,
+            'packing_node': False,
+            'private_key': None,
+            'commit_delay': 14
         },
         'ethereum': {
-          'enabled': False,
-          'api_url': 'http://127.0.0.1:8545',
-          'packing_node': False,
-          'chain_id': 1,
-          'private_key': None,
-          'sync_contract': None,
-          'start_height': 4200000,
-          'commit_delay': 35
+            'enabled': False,
+            'api_url': 'http://127.0.0.1:8545',
+            'packing_node': False,
+            'chain_id': 1,
+            'private_key': None,
+            'sync_contract': None,
+            'start_height': 4200000,
+            'commit_delay': 35
         },
         'binancechain': {
-          'enabled': False,
-          'packing_node': False,
-          'private_key': None,
-          'sync_address': None,
-          'start_time': None,
-          'commit_delay': 35
+            'enabled': False,
+            'packing_node': False,
+            'private_key': None,
+            'sync_address': None,
+            'start_time': None,
+            'commit_delay': 35
         },
         'mongodb': {
-          'uri': 'mongodb://127.0.0.1:27006',
-          'database': 'aleph'
+            'uri': 'mongodb://127.0.0.1:27006',
+            'database': 'aleph'
         },
         'mail': {
             'email_sender': 'aleph@localhost.localdomain',
