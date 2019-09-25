@@ -24,7 +24,7 @@ from aleph.config import get_defaults
 from aleph.network import setup_listeners
 from aleph.jobs import start_jobs
 from aleph import model
-from aleph.services import p2p
+from aleph.services import p2p, filestore
 
 __author__ = "Moshe Malawach"
 __copyright__ = "Moshe Malawach"
@@ -112,6 +112,9 @@ def main(args):
 
     model.init_db(config, ensure_indexes=(not args.debug))
     LOGGER.info("Database initialized.")
+    
+    filestore.init_store(config)
+    LOGGER.info("File store initalized.")
 
     init_cors()
     if not args.no_jobs:
