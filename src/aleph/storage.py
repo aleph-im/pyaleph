@@ -47,15 +47,17 @@ async def get_json(hash, timeout=1, tries=1):
         content = await get_ipfs_content(hash, timeout=timeout, tries=tries)
     
         if content is not None and content != -1:
-            LOGGER.debug("Storing content of hash " + hash)
+            LOGGER.debug(f"Storing content for{hash}")
             set_value(hash, content)
     else:
-        LOGGER.info("Had it! " + hash)
+        LOGGER.debug(f"Using stored content for {hash}")
             
     if content is not None and content != -1:
         try:
-            # content = await loop.run_in_executor(None, json.loads, content)
-            content = json.loads(content)
+            if len(content) > 100000:
+                content = await loop.run_in_executor(None, json.loads, content)
+            else:
+                content = json.loads(content)
         except json.JSONDecodeError:
             try:
                 import json as njson

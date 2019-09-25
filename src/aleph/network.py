@@ -41,6 +41,10 @@ async def incoming_check(ipfs_pubsub_message):
         LOGGER.exception('Received non-json message %r'
                          % ipfs_pubsub_message.get('data', ''))
 
+def get_sha256(content):
+    h = hashlib.sha256()
+    h.update(content.encode('utf-8'))
+    return h.hexdigest()
 
 async def check_message(message, from_chain=False, from_network=False,
                         trusted=False):
@@ -76,18 +80,18 @@ async def check_message(message, from_chain=False, from_network=False,
         return None
     
     if message.get('item_content', None) is not None:
-        if len('item_content') > MAX_INLINE_SIZE:
+        if len(message['item_content']) > MAX_INLINE_SIZE:
             LOGGER.warning('Message too long')
             return None
         
         if message.get('hash_type', 'sha256') == 'sha256':  # leave the door open.
-            loop = asyncio.get_event_loop()
-            h = hashlib.sha256()
-            await loop.run_in_executor(None, h.update, message['item_content'].encode('utf-8'))
-            
-            if message['item_hash'] != await loop.run_in_executor(None, h.hexdigest):
-                LOGGER.warning('Bad hash')
-                return None
+            if not trusted:
+                loop = asyncio.get_event_loop()
+                item_hash = await loop.run_in_executor(None, get_sha256, message['item_content'])
+                
+                if message['item_hash'] != item_hash:
+                    LOGGER.warning('Bad hash')
+                    return None
         else:
             LOGGER.warning('Unknown hash type %s' % message['hash_type'])
             return None
