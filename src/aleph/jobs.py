@@ -260,14 +260,14 @@ async def reconnect_p2p_job(config):
     while True:
         try:
             LOGGER.info("Reconnecting to peers")
-            for peer in config.aleph.p2p.peers.value:
+            for peer in config.p2p.peers.value:
                 try:
                     await connect_peer(peer)
                 except aioipfs.APIError:
                     LOGGER.warning("Can't reconnect to %s" % peer)
                     
             async for peer in get_peers(peer_type='P2P'):
-                if peer in config.aleph.p2p.peers.value:
+                if peer in config.p2p.peers.value:
                     continue
                 
                 try:
@@ -278,7 +278,7 @@ async def reconnect_p2p_job(config):
         except Exception:
             LOGGER.exception("Error reconnecting to peers")
 
-        await asyncio.sleep(config.aleph.p2p.reconnect_delay.value)
+        await asyncio.sleep(config.p2p.reconnect_delay.value)
 
 def start_jobs(config):
     LOGGER.info("starting jobs")
