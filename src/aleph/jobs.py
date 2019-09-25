@@ -74,7 +74,7 @@ async def retry_messages_job():
                 i += 1
                 j += 1
                 
-            tasks.append(asyncio.shield(handle_pending_message(pending, seen_ids, actions, messages_actions)))
+            tasks.append(handle_pending_message(pending, seen_ids, actions, messages_actions))
             
             if (j >= 10000):
                 await join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions)
@@ -177,7 +177,7 @@ async def handle_txs_job():
     LOGGER.info("handling TXs")
     async for pending in PendingTX.collection.find().sort([('context.time', 1)]):
         i += 1
-        tasks.append(asyncio.shield(handle_pending_tx(pending, actions)))
+        tasks.append(handle_pending_tx(pending, actions))
 
         if (i > 200):
             await join_pending_txs_tasks(tasks, actions)
@@ -263,7 +263,7 @@ async def reconnect_p2p_job(config):
             for peer in config.p2p.peers.value:
                 try:
                     await connect_peer(peer)
-                except aioipfs.APIError:
+                except:
                     LOGGER.warning("Can't reconnect to %s" % peer)
                     
             async for peer in get_peers(peer_type='P2P'):
@@ -272,7 +272,7 @@ async def reconnect_p2p_job(config):
                 
                 try:
                     await connect_peer(peer)
-                except aioipfs.APIError:
+                except:
                     LOGGER.warning("Can't reconnect to %s" % peer)
                 
         except Exception:
@@ -282,13 +282,13 @@ async def reconnect_p2p_job(config):
 
 def start_jobs(config):
     LOGGER.info("starting jobs")
-    executor = ProcessPoolExecutor()
+    # executor = ProcessPoolExecutor()
     loop = asyncio.get_event_loop()
     config_values = config.dump_values()
-    loop.run_in_executor(executor, messages_task_loop, config_values)
-    loop.run_in_executor(executor, txs_task_loop, config_values)
-    # loop.create_task(retry_messages_task())
-    # loop.create_task(handle_txs_task())
+    # loop.run_in_executor(executor, messages_task_loop, config_values)
+    # loop.run_in_executor(executor, txs_task_loop, config_values)
+    loop.create_task(retry_messages_task())
+    loop.create_task(handle_txs_task())
     loop.create_task(reconnect_ipfs_job(config))
     loop.create_task(reconnect_p2p_job(config))
     # loop.create_task(loop.run_in_executor(executor, messages_task_loop, config))
