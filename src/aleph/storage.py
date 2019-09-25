@@ -48,7 +48,7 @@ async def get_json(hash, timeout=1, tries=1):
     
         if content is not None and content != -1:
             LOGGER.debug(f"Storing content for{hash}")
-            set_value(hash, content)
+            await set_value(hash, content)
     else:
         LOGGER.debug(f"Using stored content for {hash}")
             
