@@ -240,6 +240,9 @@ async def reconnect_ipfs_job(config):
                     LOGGER.warning("Can't reconnect to %s" % peer)
                     
             async for peer in get_peers(peer_type='IPFS'):
+                if peer in config.ipfs.peers.value:
+                    continue
+                
                 try:
                     ret = await connect_ipfs_peer(peer)
                     if 'Strings' in ret:
@@ -264,6 +267,9 @@ async def reconnect_p2p_job(config):
                     LOGGER.warning("Can't reconnect to %s" % peer)
                     
             async for peer in get_peers(peer_type='P2P'):
+                if peer in config.aleph.p2p.peers.value:
+                    continue
+                
                 try:
                     await connect_peer(peer)
                 except aioipfs.APIError:
