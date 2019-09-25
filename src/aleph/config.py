@@ -4,16 +4,16 @@ def get_defaults():
         'aleph': {
             'queue_topic': 'ALEPH-QUEUE',
             'host': '127.0.0.1',
-            'port': 8080,
-            'p2p': {
-                'port': 4025,
-                'host': '0.0.0.0',
-                'key': None,
-                'reconnect_delay': 60,
-                'peers': [
-                    '/ip4/195.154.83.186/tcp/4025/p2p/QmZkurbY2G2hWay59yiTgQNaQxHSNzKZFt2jbnwJhQcKgV'
-                ]
-            }
+            'port': 8080
+        },
+        'p2p': {
+            'port': 4025,
+            'host': '0.0.0.0',
+            'key': None,
+            'reconnect_delay': 60,
+            'peers': [
+                '/ip4/195.154.83.186/tcp/4025/p2p/QmZkurbY2G2hWay59yiTgQNaQxHSNzKZFt2jbnwJhQcKgV'
+            ]
         },
         'nuls': {
             'chain_id': 8964,
@@ -49,6 +49,7 @@ def get_defaults():
             'smtp_url': 'smtp://localhost'
         },
         'ipfs': {
+            'enabled': True,        
             'host': '127.0.0.1',
             'port': 5001,
             'gateway_port': 8080,
