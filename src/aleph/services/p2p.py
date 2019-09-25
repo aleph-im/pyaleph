@@ -1,17 +1,17 @@
 from libp2p import new_node
 import multiaddr
+import base64
+import base58
 from libp2p.peer.peerinfo import info_from_p2p_addr
 from libp2p.pubsub import floodsub, gossipsub
 from libp2p.pubsub.pubsub import Pubsub
 from libp2p import generate_new_rsa_identity, initialize_default_swarm
 import libp2p.security.secio.transport as secio
-import asyncio
-
 from Crypto.PublicKey.RSA import import_key
 from libp2p.crypto.rsa import RSAPrivateKey, KeyPair, create_new_key_pair
-
-import base64
-import base58
+import asyncio
+import orjson as json
+from .utils import get_IP
 
 import logging
 LOGGER = logging.getLogger()
@@ -19,8 +19,29 @@ LOGGER = logging.getLogger()
 FLOODSUB_PROTOCOL_ID = floodsub.PROTOCOL_ID
 GOSSIPSUB_PROTOCOL_ID = gossipsub.PROTOCOL_ID
 
+ALIVE_TOPIC = 'ALIVE'
+
 host = None
 pubsub = None
+
+async def publish_host(address, psub, topic=ALIVE_TOPIC, interests=None, delay=120):
+    """ Publish our multiaddress regularly, saying we are alive.
+    """
+    from aleph import __version__
+    msg = {
+        'address': address,
+        'interests': interests,
+        'version': __version__
+    }
+    msg = json.dumps(msg)
+    while True:
+        try:
+            LOGGER.debug("Publishing alive message on p2p gossipsub")
+            await psub.publish(topic, msg)
+        except Exception:
+            LOGGER.exception("Can't publish alive message")
+        await asyncio.sleep(delay)
+    
 
 async def get_host(host='0.0.0.0', port=4025, key=None, listen=True):
     if key is None:
@@ -40,6 +61,11 @@ async def get_host(host='0.0.0.0', port=4025, key=None, listen=True):
     psub = Pubsub(host, gossip, host.get_id())
     await host.get_network().listen(multiaddr.Multiaddr(transport_opt))
     LOGGER.info("Listening on " + f'{transport_opt}/p2p/{host.get_id()}')
+    ip = await get_IP()
+    public_address = f'/ip4/{ip}/tcp/{port}/p2p/{host.get_id()}'
+    LOGGER.info("Probable public on " + public_address)
+    # TODO: set correct interests and args here
+    asyncio.create_task(publish_host(public_address,psub))
     return (host, psub)
 
 async def init_p2p(config, listen=True, port_id=0):
