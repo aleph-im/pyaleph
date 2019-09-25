@@ -23,7 +23,6 @@ ALIVE_TOPIC = 'ALIVE'
 
 host = None
 pubsub = None
-alive_sub = None
 
 async def publish_host(address, psub, topic=ALIVE_TOPIC, interests=None, delay=10):
     """ Publish our multiaddress regularly, saying we are alive.
@@ -38,7 +37,7 @@ async def publish_host(address, psub, topic=ALIVE_TOPIC, interests=None, delay=1
     msg = json.dumps(msg)
     while True:
         try:
-            LOGGER.debug("Publishing alive message on p2p gossipsub")
+            LOGGER.debug("Publishing alive message on p2p pubsub")
             await psub.publish(topic, msg)
         except Exception:
             LOGGER.exception("Can't publish alive message")
@@ -63,22 +62,24 @@ async def get_host(host='0.0.0.0', port=4025, key=None, listen=True):
     # psub = Pubsub(host, gossip, host.get_id())
     flood = floodsub.FloodSub([FLOODSUB_PROTOCOL_ID])
     psub = Pubsub(host, flood, host.get_id())
-    await host.get_network().listen(multiaddr.Multiaddr(transport_opt))
-    LOGGER.info("Listening on " + f'{transport_opt}/p2p/{host.get_id()}')
-    ip = await get_IP()
-    public_address = f'/ip4/{ip}/tcp/{port}/p2p/{host.get_id()}'
-    LOGGER.info("Probable public on " + public_address)
-    # TODO: set correct interests and args here
-    asyncio.create_task(publish_host(public_address,psub))
+    if listen:
+        await host.get_network().listen(multiaddr.Multiaddr(transport_opt))
+        LOGGER.info("Listening on " + f'{transport_opt}/p2p/{host.get_id()}')
+        ip = await get_IP()
+        public_address = f'/ip4/{ip}/tcp/{port}/p2p/{host.get_id()}'
+        LOGGER.info("Probable public on " + public_address)
+        # TODO: set correct interests and args here
+        asyncio.create_task(publish_host(public_address,psub))
+        asyncio.create_task(monitor_hosts(psub))
+        
     return (host, psub)
 
 async def init_p2p(config, listen=True, port_id=0):
-    global host, pubsub, alive_sub
+    global host, pubsub
     pkey = config.aleph.p2p.key.value
     port = config.aleph.p2p.port.value + port_id
     host, pubsub = await get_host(host=config.aleph.p2p.host.value,
                                   port=port, key=pkey, listen=listen)
-    alive_sub = await pubsub.subscribe(ALIVE_TOPIC)
     
 
 async def decode_msg(msg):
@@ -88,6 +89,20 @@ async def decode_msg(msg):
         'seqno': base58.b58encode(msg.seqno),
         'topicIDs': msg.topicIDs
     }
+    
+async def monitor_hosts(psub):
+    from aleph.model.p2p import add_peer
+    alive_sub = await pubsub.subscribe(ALIVE_TOPIC)
+    while True:
+        try:
+            mvalue = await alive_sub.get()
+            mvalue = await decode_msg(mvalue)
+            LOGGER.debug("New message received %r" % mvalue)
+            content = json.loads(mvalue['data'])
+            # TODO: check message validity
+            await add_peer(address=content['address'], peer_type="P2P")
+        except Exception:
+            LOGGER.exception("Exception in pubsub peers monitoring")
     
 async def sub(topic):
     from aleph.network import incoming_check
