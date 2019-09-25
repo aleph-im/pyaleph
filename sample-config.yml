@@ -1,6 +1,3 @@
-nulsexplorer:
-  url: https://testnet.nuls.world
-
 nuls:
   chain_id: 261
   packing_node: False
@@ -33,3 +30,9 @@ ipfs:
 
 aleph:
   queue_topic: ALEPH-TEST
+
+p2p:
+  host: 0.0.0.0
+  port: 4025
+  key: null
+  reconnect_delay: 60
