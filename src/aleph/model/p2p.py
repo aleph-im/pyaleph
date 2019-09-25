@@ -3,7 +3,7 @@
 
 from aleph.model.base import BaseClass
 from pymongo import ASCENDING, DESCENDING, IndexModel
-
+from datetime import datetime
 
 class Chain(BaseClass):
     """Holds information about the chains state."""
@@ -20,3 +20,13 @@ async def get_peers(peer_type=None):
     """
     async for peer in Chain.collection.find({'type': peer_type}):
         yield peer['address']
+
+async def add_peer(address, peer_type):
+    Chain.collection.replace_one({
+        'address': address,
+        'type': peer_type
+    }, {
+        'address': address,
+        'type': peer_type,
+        'last_seen': datetime.now()
+    }, upsert=True)
