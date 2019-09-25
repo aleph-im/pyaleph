@@ -15,6 +15,9 @@ def get_defaults():
                 '/ip4/195.154.83.186/tcp/4025/p2p/QmZkurbY2G2hWay59yiTgQNaQxHSNzKZFt2jbnwJhQcKgV'
             ]
         },
+        'storage': {
+            'folder': './data/'
+        },
         'nuls': {
             'chain_id': 8964,
             'enabled': False,
