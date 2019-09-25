@@ -196,8 +196,8 @@ async def incoming(message, chain_name=None,
         #await Message.collection.insert_one(message)
 
         # since it's on-chain, we need to keep that content.
-        LOGGER.debug("Pining hash %s" % hash)
         if message['item_type'] == 'ipfs':
+            LOGGER.debug("Pining hash %s" % hash)
             await pin_hash(hash)
 
     if should_commit:
