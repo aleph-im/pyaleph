@@ -9,8 +9,7 @@ import logging
 from .common import get_ipfs_gateway_url, get_ipfs_api
 LOGGER = logging.getLogger("IPFS.STORAGE")
 
-
-async def get_json(hash, timeout=1, tries=1):
+async def get_ipfs_content(hash, timeout=1, tries=1):
     from aleph.web import app
     async with aiohttp.ClientSession(read_timeout=timeout) as session:
         uri = await get_ipfs_gateway_url(app['config'], hash)
@@ -24,15 +23,10 @@ async def get_json(hash, timeout=1, tries=1):
                         result = None
                         await asyncio.sleep(.5)
                         continue
-                    result = await resp.json(content_type=None)
-                # result = await api.cat(hash)
-                # result = json.loads(result)
+                    result = await resp.text()
             except (concurrent.futures.TimeoutError):
                 result = None
                 await asyncio.sleep(.5)
-            except json.JSONDecodeError:
-                result = -1
-                break
             except (concurrent.futures.CancelledError,
                     aiohttp.client_exceptions.ClientConnectorError):
                 try_count -= 1  # do not count as a try.
@@ -40,12 +34,36 @@ async def get_json(hash, timeout=1, tries=1):
 
         return result
 
+async def get_json(hash, timeout=1, tries=1):
+    result = await get_ipfs_content(hash, timeout=timeout, tries=tries)
+    if result is not None and result != -1:
+        try:
+            result = await loop.run_in_executor(None, json.loads, result)
+        except json.JSONDecodeError:
+            try:
+                import json as njson
+                result = await loop.run_in_executor(None, njson.loads, result)
+            except (json.JSONDecodeError, KeyError): 
+                LOGGER.exception("Can't decode JSON")
+                result = -1  # never retry, bogus data
+    return result
 
 async def add_json(value):
     # loop = asyncio.get_event_loop()
     api = await get_ipfs_api(timeout=5)
     # try:
     result = await api.add_json(value)
+    # finally:
+    #     await api.close()
+
+    return result['Hash']
+
+
+async def add_bytes(value):
+    # loop = asyncio.get_event_loop()
+    api = await get_ipfs_api(timeout=5)
+    # try:
+    result = await api.add_bytes(value)
     # finally:
     #     await api.close()
 
