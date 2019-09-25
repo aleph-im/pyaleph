@@ -23,6 +23,7 @@ ALIVE_TOPIC = 'ALIVE'
 
 host = None
 pubsub = None
+alive_sub = None
 
 async def publish_host(address, psub, topic=ALIVE_TOPIC, interests=None, delay=10):
     """ Publish our multiaddress regularly, saying we are alive.
@@ -72,11 +73,12 @@ async def get_host(host='0.0.0.0', port=4025, key=None, listen=True):
     return (host, psub)
 
 async def init_p2p(config, listen=True, port_id=0):
-    global host, pubsub
+    global host, pubsub, alive_sub
     pkey = config.aleph.p2p.key.value
     port = config.aleph.p2p.port.value + port_id
     host, pubsub = await get_host(host=config.aleph.p2p.host.value,
                                   port=port, key=pkey, listen=listen)
+    alive_sub = await pubsub.subscribe(ALIVE_TOPIC)
     
 
 async def decode_msg(msg):
