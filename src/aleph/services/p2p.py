@@ -14,7 +14,7 @@ import orjson as json
 from .utils import get_IP
 
 import logging
-LOGGER = logging.getLogger()
+LOGGER = logging.getLogger('P2P')
 
 FLOODSUB_PROTOCOL_ID = floodsub.PROTOCOL_ID
 GOSSIPSUB_PROTOCOL_ID = gossipsub.PROTOCOL_ID
@@ -24,9 +24,10 @@ ALIVE_TOPIC = 'ALIVE'
 host = None
 pubsub = None
 
-async def publish_host(address, psub, topic=ALIVE_TOPIC, interests=None, delay=120):
+async def publish_host(address, psub, topic=ALIVE_TOPIC, interests=None, delay=10):
     """ Publish our multiaddress regularly, saying we are alive.
     """
+    await asyncio.sleep(2)
     from aleph import __version__
     msg = {
         'address': address,
