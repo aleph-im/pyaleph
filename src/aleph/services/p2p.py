@@ -58,8 +58,10 @@ async def get_host(host='0.0.0.0', port=4025, key=None, listen=True):
     transport_opt = f"/ip4/{host}/tcp/{port}"
     host = await new_node(transport_opt=[transport_opt],
                           key_pair=keypair)
-    gossip = gossipsub.GossipSub([GOSSIPSUB_PROTOCOL_ID], 10, 9, 11, 30)
-    psub = Pubsub(host, gossip, host.get_id())
+    #gossip = gossipsub.GossipSub([GOSSIPSUB_PROTOCOL_ID], 10, 9, 11, 30)
+    # psub = Pubsub(host, gossip, host.get_id())
+    flood = floodsub.FloodSub([FLOODSUB_PROTOCOL_ID])
+    psub = Pubsub(host, flood, host.get_id())
     await host.get_network().listen(multiaddr.Multiaddr(transport_opt))
     LOGGER.info("Listening on " + f'{transport_opt}/p2p/{host.get_id()}')
     ip = await get_IP()
