@@ -129,5 +129,5 @@ async def incoming_channel(config, topic):
             LOGGER.exception("Exception in pubsub, reconnecting.")
             
 async def connect_peer(peer):
-    info = info_from_p2p_addr(peer)
+    info = info_from_p2p_addr(multiaddr.Multiaddr(peer))
     return await host.connect(info)
