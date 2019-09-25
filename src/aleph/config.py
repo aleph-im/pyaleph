@@ -8,11 +8,12 @@ def get_defaults():
             'p2p': {
                 'port': 4025,
                 'host': '0.0.0.0',
-                'key': None
+                'key': None,
+                'reconnect_delay': 60,
+                'peers': [
+                    '/ip4/195.154.83.186/tcp/4025/p2p/QmZkurbY2G2hWay59yiTgQNaQxHSNzKZFt2jbnwJhQcKgV'
+                ]
             }
-        },
-        'nulsexplorer': {
-            'url': 'http://127.0.0.1:8080'
         },
         'nuls': {
             'chain_id': 8964,
