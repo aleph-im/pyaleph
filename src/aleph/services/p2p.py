@@ -76,9 +76,9 @@ async def get_host(host='0.0.0.0', port=4025, key=None, listen=True):
 
 async def init_p2p(config, listen=True, port_id=0):
     global host, pubsub
-    pkey = config.aleph.p2p.key.value
-    port = config.aleph.p2p.port.value + port_id
-    host, pubsub = await get_host(host=config.aleph.p2p.host.value,
+    pkey = config.p2p.key.value
+    port = config.p2p.port.value + port_id
+    host, pubsub = await get_host(host=config.p2p.host.value,
                                   port=port, key=pkey, listen=listen)
     
 
