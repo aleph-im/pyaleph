@@ -150,4 +150,7 @@ async def incoming_channel(config, topic):
             
 async def connect_peer(peer):
     info = info_from_p2p_addr(multiaddr.Multiaddr(peer))
+    if info.peer_id == host.get_id():
+        LOGGER.debug("Can't connect to myself.")
+        return
     return await host.connect(info)
