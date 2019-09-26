@@ -112,6 +112,7 @@ async def request_hash(item_hash, timeout=2, connect_timeout=1, retries=2):
             try:
                 item = await make_request(query, peer, timeout=timeout, connect_timeout=connect_timeout)
                 if item['status'] == 'success' and item['content'] is not None:
+                    # TODO: IMPORTANT /!\ verify the hash of received data!
                     return base64.decodebytes(item['content'].encode('utf-8'))
             except:
                 LOGGER.debug(f"can't get hash {item_hash} from {peer}")
