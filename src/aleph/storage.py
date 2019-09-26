@@ -14,6 +14,7 @@ from aleph.services.ipfs.storage import get_ipfs_content
 from aleph.services.ipfs.storage import add_json as add_ipfs_json
 from aleph.services.ipfs.storage import add_bytes as add_ipfs_bytes
 from aleph.services.ipfs.storage import pin_add as ipfs_pin_add
+from aleph.services.p2p.protocol import request_hash
 from aleph.services.filestore import get_value, set_value
 
 LOGGER = logging.getLogger("STORAGE")
@@ -44,8 +45,13 @@ async def get_json(hash, timeout=1, tries=1):
     # content = await loop.run_in_executor(None, get_value, hash)
     content = await get_value(hash)
     if content is None:
-        content = await get_ipfs_content(hash, timeout=timeout, tries=tries)
-    
+        content = await request_hash(hash)
+        
+        if content is None:
+            content = await get_ipfs_content(hash, timeout=timeout, tries=tries)
+        else:
+            LOGGER.debug(f"Got content fron p2p {hash}")
+        
         if content is not None and content != -1:
             LOGGER.debug(f"Storing content for{hash}")
             await set_value(hash, content)

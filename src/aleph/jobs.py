@@ -111,6 +111,7 @@ async def retry_messages_job():
 
 
 async def retry_messages_task():
+    await asyncio.sleep(4)
     while True:
         try:
             await retry_messages_job()
@@ -187,6 +188,7 @@ async def handle_txs_job():
 
 
 async def handle_txs_task():
+    await asyncio.sleep(4)
     while True:
         try:
             await handle_txs_job()

@@ -4,15 +4,19 @@ from libp2p.typing import TProtocol
 from libp2p.network.stream.net_stream_interface import INetStream
 from .pubsub import sub
 from aleph.network import incoming_check
-from aleph.chains.common import incoming
 from aleph.services.filestore import get_value
+from . import singleton
+from . import peers
 import orjson as json
 import base64
+import random
 
 PROTOCOL_ID = TProtocol("/aleph/p2p/0.1.0")
 MAX_READ_LEN = 2 ** 32 - 1
 
 LOGGER = logging.getLogger('P2P.protocol')
+
+REQUESTS_SEM = dict()
 
 async def incoming_channel(config, topic):
     from aleph.chains.common import incoming
@@ -77,7 +81,38 @@ async def read_data(stream: INetStream) -> None:
                           'reason': repr(e)}
             await stream.write(json.dumps(result))
         
+        
 async def stream_handler(stream: INetStream) -> None:
     asyncio.ensure_future(read_data(stream))
 #             asyncio.ensure_future(write_data(stream))
     
+
+async def make_request(request_structure, peer_id, timeout=2, connect_timeout=.2):
+    global REQUESTS_SEM
+    speer = str(peer_id)
+    if speer not in REQUESTS_SEM:
+        REQUESTS_SEM[speer] = asyncio.Semaphore(20)
+    async with REQUESTS_SEM[speer]:
+        stream = await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]), connect_timeout)
+        await stream.write(json.dumps(request_structure))
+        value = await asyncio.wait_for(stream.read(MAX_READ_LEN), timeout)
+        return json.loads(value)
+
+
+async def request_hash(item_hash, timeout=2, connect_timeout=1, retries=2):
+    # this should be done better, finding best peers to query from.
+    query = {
+        'command': 'hash_content',
+        'hash': item_hash
+    }
+    qpeers = await peers.get_peers()
+    random.shuffle(qpeers)
+    for i in range(retries):
+        for peer in qpeers:
+            try:
+                item = await make_request(query, peer, timeout=timeout, connect_timeout=connect_timeout)
+                if item['status'] == 'success' and item['content'] is not None:
+                    return base64.decodebytes(item['content'].encode('utf-8'))
+            except:
+                LOGGER.debug(f"can't get hash {item_hash} from {peer}")
+                continue

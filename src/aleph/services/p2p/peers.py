@@ -50,3 +50,10 @@ async def connect_peer(peer):
         LOGGER.debug("Can't connect to myself.")
         return
     return await singleton.host.connect(info)
+
+async def get_peers():
+    my_id = singleton.host.get_id()
+    peers = [peer for peer
+             in singleton.host.get_peerstore().peer_ids()
+             if peer != my_id]
+    return peers
