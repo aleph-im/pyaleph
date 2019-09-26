@@ -46,7 +46,7 @@ async def monitor_hosts(psub):
 
 async def connect_peer(peer):
     info = info_from_p2p_addr(multiaddr.Multiaddr(peer))
-    if info.peer_id == singleton.host.get_id():
+    if str(info.peer_id) == str(singleton.host.get_id()):
         LOGGER.debug("Can't connect to myself.")
         return
     return await singleton.host.connect(info)
@@ -55,5 +55,5 @@ async def get_peers():
     my_id = singleton.host.get_id()
     peers = [peer for peer
              in singleton.host.get_peerstore().peer_ids()
-             if peer != my_id]
+             if str(peer) != str(my_id)]
     return peers
