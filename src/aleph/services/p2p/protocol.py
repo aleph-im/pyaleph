@@ -68,7 +68,8 @@ async def read_data(stream: INetStream) -> None:
                         result = {'status': 'success',
                                   'content': None}
                 else:
-                    await stream.write(read_bytes)
+                    result = {'status': 'error',
+                              'reason': 'unknown command'}
                 print(f"received {read_string}")
             except Exception as e:
                 result = {'status': 'error',
