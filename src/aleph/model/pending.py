@@ -32,6 +32,7 @@ async def pending_messages_count(message_type=None, source_chain=None):
     return await PendingMessage.collection.count_documents(find_params)
 
 async def pending_txs_count(chain=None):
+    # TODO: support discarded
     find_params = {}
     if chain is not None:
         find_params = {'context.chain_name': chain}
