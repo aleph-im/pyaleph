@@ -4,7 +4,6 @@ import asyncio
 import hashlib
 from aleph.chains.register import VERIFIER_REGISTER
 from aleph.services.ipfs.pubsub import incoming_channel as incoming_ipfs_channel
-from aleph.services.p2p import incoming_channel as incoming_p2p_channel
 import logging
 LOGGER = logging.getLogger("NETWORK")
 
@@ -121,6 +120,7 @@ async def check_message(message, from_chain=False, from_network=False,
             return None
         
 def setup_listeners(config):
+    from aleph.services.p2p import incoming_channel as incoming_p2p_channel
     # for now (1st milestone), we only listen on a single global topic...
     loop = asyncio.get_event_loop()
     loop.create_task(incoming_ipfs_channel(config, config.aleph.queue_topic.value))
