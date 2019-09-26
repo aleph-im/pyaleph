@@ -15,6 +15,7 @@ GOSSIPSUB_PROTOCOL_ID = gossipsub.PROTOCOL_ID
 
 async def initialize_host(host='0.0.0.0', port=4025, key=None, listen=True):
     from .peers import publish_host, monitor_hosts
+    from .protocol import stream_handler, PROTOCOL_ID
     if key is None:
         keypair = create_new_key_pair()
         LOGGER.info("Generating new key, please save it to keep same host id.")
@@ -41,5 +42,6 @@ async def initialize_host(host='0.0.0.0', port=4025, key=None, listen=True):
         # TODO: set correct interests and args here
         asyncio.create_task(publish_host(public_address,psub))
         asyncio.create_task(monitor_hosts(psub))
+        host.set_stream_handler(PROTOCOL_ID, stream_handler)
         
     return (host, psub)
