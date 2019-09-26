@@ -63,7 +63,7 @@ async def read_data(stream: INetStream) -> None:
                     value = await get_value(message_json['hash'])
                     if value is not None:
                         result = {'status': 'success',
-                                  'content': base64.encodebytes(value)}
+                                  'content': base64.encodebytes(value).encode('utf-8')}
                     else:
                         result = {'status': 'success',
                                   'content': None}
