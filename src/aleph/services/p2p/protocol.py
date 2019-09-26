@@ -64,7 +64,7 @@ async def read_data(stream: INetStream) -> None:
                 read_string = read_bytes.decode('utf-8')
                 message_json = json.loads(read_string)
                 if message_json['command'] == 'hash_content':
-                    value = await get_value(message_json['hash'])
+                    value = await get_value(message_json['hash'], in_executor=True)
                     if value is not None:
                         result = {'status': 'success',
                                   'hash': message_json['hash'],

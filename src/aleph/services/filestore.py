@@ -1,4 +1,5 @@
 import rocksdb
+import asyncio
 import os
 
 HASHES_STORAGE = 'hashes'
@@ -23,26 +24,29 @@ def init_store(config):
     # hashes_db = rocksdb.DB(os.path.join(config.storage.folder.value, HASHES_STORAGE),
     #                        rocksdb.Options(create_if_missing=True))
     
-async def get_value(key):
+async def get_value(key, in_executor=False):
     # if not isinstance(key, bytes):
     #     if isinstance(key, str):
     #         key = key.encode('utf-8')
     #     else:
     #         raise ValueError('Bad input key (bytes or string only)')    
-        
-    return hashes_db.get(key.encode('utf-8'))
+    if in_executor:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, hashes_db.get, key.encode('utf-8'))
+    else:
+        return hashes_db.get(key.encode('utf-8'))
 
 async def set_value(key, value):
     if not isinstance(key, bytes):
         if isinstance(key, str):
             key = key.encode('utf-8')
         else:
-            raise ValueError('Bad input key (bytes or string only)')    
+            raise ValueError('Bad input key (bytes or string only)')
         
     if not isinstance(value, bytes):
         if isinstance(value, str):
             value = value.encode('utf-8')
         else:
-            raise ValueError('Bad input value (bytes or string only)')    
+            raise ValueError('Bad input value (bytes or string only)')
     
     return hashes_db.put(key, value)
