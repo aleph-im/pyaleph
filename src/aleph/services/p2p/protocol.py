@@ -6,6 +6,7 @@ from libp2p.network.stream.exceptions import StreamError
 from .pubsub import sub
 from aleph.network import incoming_check
 from aleph.services.filestore import get_value
+from concurrent import futures
 from . import singleton
 from . import peers
 import orjson as json
@@ -93,35 +94,39 @@ async def make_request(request_structure, peer_id, timeout=2,
     global STREAMS
     # global REQUESTS_SEM
     speer = str(peer_id)
-           
-    while True:
-        streams = STREAMS.get(speer, list())
+    
+    streams = STREAMS.get(speer, list())
+    try:
         if len(streams) < parallel_count:
             for i in range(parallel_count-len(streams)):
                 streams.append((await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]),
                                                         connect_timeout),
                                 asyncio.Semaphore(1)))
             STREAMS[speer] = streams
-            
-        for i, (stream, semaphore) in enumerate(streams):
-            if not semaphore.locked():
-                async with semaphore:
-                    try:
-                        # stream = await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]), connect_timeout)
-                        await stream.write(json.dumps(request_structure))
-                        value = await asyncio.wait_for(stream.read(MAX_READ_LEN), timeout)
-                        # # await stream.close()
-                        return json.loads(value)
-                    except (StreamError, RuntimeError):
-                        # let's delete this stream so it gets recreated next time
-                        await stream.close()
-                        STREAMS[speer].pop(i)
-            await asyncio.sleep(0)
+    except futures.TimeoutError:
+        await singleton.host.disconnect(peer_id)
+        await singleton.host.connect(peer_id)
+        return
+        
+    for i, (stream, semaphore) in enumerate(streams):
+        if not semaphore.locked():
+            async with semaphore:
+                try:
+                    # stream = await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]), connect_timeout)
+                    await stream.write(json.dumps(request_structure))
+                    value = await asyncio.wait_for(stream.read(MAX_READ_LEN), timeout)
+                    # # await stream.close()
+                    return json.loads(value)
+                except (StreamError, RuntimeError, OSError):
+                    # let's delete this stream so it gets recreated next time
+                    # await stream.close()
+                    STREAMS[speer].pop(i)
+        await asyncio.sleep(0)
         
 
 
 async def request_hash(item_hash, timeout=2,
-                       connect_timeout=.5, retries=2,
+                       connect_timeout=1, retries=2,
                        total_streams=100, max_per_host=20):
     # this should be done better, finding best peers to query from.
     query = {
@@ -137,9 +142,13 @@ async def request_hash(item_hash, timeout=2,
                 item = await make_request(query, peer,
                                           timeout=timeout, connect_timeout=connect_timeout,
                                           parallel_count=min(int(total_streams/len(qpeers)), max_per_host))
-                if item['status'] == 'success' and item['content'] is not None:
+                if item is not None and item['status'] == 'success' and item['content'] is not None:
                     # TODO: IMPORTANT /!\ verify the hash of received data!
                     return base64.decodebytes(item['content'].encode('utf-8'))
-            except:
+            except futures.TimeoutError:
                 LOGGER.debug(f"can't get hash {item_hash} from {peer}")
+                continue
+            except:
+                # Catch all with more info in case of weird error
+                LOGGER.exception(f"can't get hash {item_hash} from {peer}")
                 continue
