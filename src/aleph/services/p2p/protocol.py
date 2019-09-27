@@ -5,7 +5,7 @@ from libp2p.network.stream.net_stream_interface import INetStream
 from libp2p.network.stream.exceptions import StreamError
 from .pubsub import sub
 from aleph.network import incoming_check
-from aleph.services.filestore import get_value
+# from aleph.services.filestore import get_value
 from concurrent import futures
 from . import singleton
 from . import peers
@@ -59,6 +59,7 @@ async def incoming_channel(config, topic):
             LOGGER.exception("Exception in pubsub, reconnecting.")
             
 async def read_data(stream: INetStream) -> None:
+    from aleph.storage import get_hash_content
     while True:
         read_bytes = await stream.read(MAX_READ_LEN)
         if read_bytes is not None:
@@ -68,8 +69,8 @@ async def read_data(stream: INetStream) -> None:
                 read_string = read_bytes.decode('utf-8')
                 message_json = json.loads(read_string)
                 if message_json['command'] == 'hash_content':
-                    value = await get_value(message_json['hash'], in_executor=True)
-                    if value is not None:
+                    value = await get_hash_content(message_json['hash'], use_network=False)
+                    if value is not None and value != -1:
                         result = {'status': 'success',
                                   'hash': message_json['hash'],
                                   'content': base64.encodebytes(value).decode('utf-8')}
@@ -142,8 +143,8 @@ async def make_request(request_structure, peer_id, timeout=2,
 
 
 async def request_hash(item_hash, timeout=2,
-                       connect_timeout=2, retries=2,
-                       total_streams=100, max_per_host=5):
+                       connect_timeout=1, retries=2,
+                       total_streams=100, max_per_host=10):
     # this should be done better, finding best peers to query from.
     query = {
         'command': 'hash_content',
