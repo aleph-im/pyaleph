@@ -127,7 +127,13 @@ async def make_request(request_structure, peer_id, timeout=2,
                     except (StreamError, RuntimeError, OSError):
                         # let's delete this stream so it gets recreated next time
                         # await stream.close()
-                        STREAMS[speer].pop(i)
+                        try:
+                            STREAMS[speer].remove((stream, semaphore))
+                        except ValueError:
+                            pass # already removed
+                        except KeyError:
+                            return # all this peer gone bad
+                        # STREAMS[speer].pop(i)
             await asyncio.sleep(0)
             
         if not len(streams):
