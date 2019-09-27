@@ -16,6 +16,7 @@ from aleph.services.ipfs.storage import add_bytes as add_ipfs_bytes
 from aleph.services.ipfs.storage import pin_add as ipfs_pin_add
 from aleph.services.p2p.protocol import request_hash
 from aleph.services.filestore import get_value, set_value
+from aleph.web import app
 
 LOGGER = logging.getLogger("STORAGE")
 
@@ -41,14 +42,23 @@ async def get_content(message):
     
 async def get_json(hash, timeout=1, tries=1):
     # TODO: determine which storage engine to use
+    ipfs_enabled = app['config'].ipfs.enabled.value
     loop = asyncio.get_event_loop()
     # content = await loop.run_in_executor(None, get_value, hash)
     content = await get_value(hash)
     if content is None:
         content = await request_hash(hash)
         
+        if content is not None and ipfs_enabled:
+            # TODO: get a better way to compare hashes (without depending on IPFS daemon)
+            compared_hash = await add_ipfs_bytes(content)
+            if compared_hash != hash:
+                LOGGER.warning("Got a bad hash! {hash}/{compared_hash}")
+                content = None
+        
         if content is None:
-            content = await get_ipfs_content(hash, timeout=timeout, tries=tries)
+            if ipfs_enabled:
+                content = await get_ipfs_content(hash, timeout=timeout, tries=tries)
         else:
             LOGGER.debug(f"Got content fron p2p {hash}")
         

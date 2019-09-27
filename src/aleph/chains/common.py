@@ -3,6 +3,7 @@ from aleph.network import check_message as check_message_fn
 from aleph.model.messages import Message
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.permissions import check_sender_authorization
+from aleph.web import app
 from pymongo import UpdateOne
 import orjson as json
 
@@ -196,7 +197,7 @@ async def incoming(message, chain_name=None,
         #await Message.collection.insert_one(message)
 
         # since it's on-chain, we need to keep that content.
-        if message['item_type'] == 'ipfs':
+        if message['item_type'] == 'ipfs' and app['config'].ipfs.enabled.value:
             LOGGER.debug("Pining hash %s" % hash)
             await pin_hash(hash)
 
