@@ -41,7 +41,7 @@ Then run the tests:
 
 ### IPFS
 
-You need to have a running go IPFS instance running and linked in the configuration file (TODO: write details).
+You can have a running go IPFS instance running and linked in the configuration file (TODO: write details), if you don't you need to set ipfsd.enabled to false in configuration.
 
 PubSub should be active and configured to use GossipSub.
 More info there: https://github.com/ipfs/go-ipfs/blob/master/docs/experimental-features.md#ipfs-pubsub
