@@ -18,8 +18,9 @@ async def initialize_host(host='0.0.0.0', port=4025, key=None, listen=True):
     from .protocol import stream_handler, PROTOCOL_ID
     if key is None:
         keypair = create_new_key_pair()
-        LOGGER.info("Generating new key, please save it to keep same host id.")
-        LOGGER.info(keypair.private_key.impl.export_key().decode('utf-8'))
+        if listen:
+            LOGGER.info("Generating new key, please save it to keep same host id.")
+            LOGGER.info(keypair.private_key.impl.export_key().decode('utf-8'))
     else:
         priv = import_key(key)
         private_key = RSAPrivateKey(priv)

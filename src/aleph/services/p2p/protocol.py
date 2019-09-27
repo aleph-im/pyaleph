@@ -16,7 +16,7 @@ MAX_READ_LEN = 2 ** 32 - 1
 
 LOGGER = logging.getLogger('P2P.protocol')
 
-REQUESTS_SEM = dict()
+STREAMS = dict()
 
 async def incoming_channel(config, topic):
     from aleph.chains.common import incoming
@@ -75,7 +75,7 @@ async def read_data(stream: INetStream) -> None:
                 else:
                     result = {'status': 'error',
                               'reason': 'unknown command'}
-                print(f"received {read_string}")
+                LOGGER.debug("received {read_string}")
             except Exception as e:
                 result = {'status': 'error',
                           'reason': repr(e)}
@@ -88,14 +88,21 @@ async def stream_handler(stream: INetStream) -> None:
     
 
 async def make_request(request_structure, peer_id, timeout=2, connect_timeout=.2):
-    global REQUESTS_SEM
+    global STREAMS
+    # global REQUESTS_SEM
     speer = str(peer_id)
-    if speer not in REQUESTS_SEM:
-        REQUESTS_SEM[speer] = asyncio.Semaphore(20)
-    async with REQUESTS_SEM[speer]:
-        stream = await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]), connect_timeout)
+    if speer not in STREAMS:
+        STREAMS[speer] = (await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]),
+                                                 connect_timeout),
+                          asyncio.Semaphore(1))
+        await asyncio.sleep(.1)
+                          
+    stream, semaphore = STREAMS[speer]
+    async with semaphore:
+        # stream = await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]), connect_timeout)
         await stream.write(json.dumps(request_structure))
         value = await asyncio.wait_for(stream.read(MAX_READ_LEN), timeout)
+        # # await stream.close()
         return json.loads(value)
 
 
