@@ -1,4 +1,4 @@
-from aleph.storage import get_json, pin_hash, add_json, get_content
+from aleph.storage import get_json, pin_hash, add_json, get_message_content
 from aleph.network import check_message as check_message_fn
 from aleph.model.messages import Message
 from aleph.model.pending import PendingMessage, PendingTX
@@ -142,7 +142,7 @@ async def incoming(message, chain_name=None,
         #     new_values = {'confirmed': False}  # this should be our default.
 
         try:
-            content = await get_content(message)
+            content = await get_message_content(message)
         except Exception:
             LOGGER.exception("Can't get content of object %r" % hash)
             content = None

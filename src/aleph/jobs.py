@@ -294,5 +294,6 @@ def start_jobs(config):
     # loop.run_in_executor(executor, txs_task_loop, config_values)
     loop.create_task(retry_messages_task())
     loop.create_task(handle_txs_task())
-    loop.create_task(reconnect_ipfs_job(config))
+    if config.ipfs.enabled.value:
+        loop.create_task(reconnect_ipfs_job(config))
     loop.create_task(reconnect_p2p_job(config))

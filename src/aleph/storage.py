@@ -20,7 +20,7 @@ from aleph.web import app
 
 LOGGER = logging.getLogger("STORAGE")
 
-async def get_content(message):
+async def get_message_content(message):
     item_type = message.get('item_type', 'ipfs')
     
     if item_type == 'ipfs':
@@ -40,14 +40,13 @@ async def get_content(message):
     else:
         return None  # unknown, could retry later? shouldn't have arrived this far though.
     
-async def get_json(hash, timeout=1, tries=1):
+async def get_hash_content(hash, timeout=1, tries=1):
     # TODO: determine which storage engine to use
     ipfs_enabled = app['config'].ipfs.enabled.value
-    loop = asyncio.get_event_loop()
     # content = await loop.run_in_executor(None, get_value, hash)
     content = await get_value(hash)
     if content is None:
-        content = await request_hash(hash)
+        content = await request_hash(hash, timeout=timeout, retries=tries)
         
         if content is not None and ipfs_enabled:
             # TODO: get a better way to compare hashes (without depending on IPFS daemon)
@@ -67,6 +66,12 @@ async def get_json(hash, timeout=1, tries=1):
             await set_value(hash, content)
     else:
         LOGGER.debug(f"Using stored content for {hash}")
+        
+    return content
+
+async def get_json(hash, timeout=1, tries=1):
+    loop = asyncio.get_event_loop()
+    content = await get_hash_content(hash, timeout=timeout, tries=tries)
             
     if content is not None and content != -1:
         try:
