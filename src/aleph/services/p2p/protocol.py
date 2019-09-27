@@ -120,8 +120,8 @@ async def make_request(request_structure, peer_id, timeout=2,
 
 
 async def request_hash(item_hash, timeout=2,
-                       connect_timeout=1, retries=2,
-                       total_streams=200):
+                       connect_timeout=.5, retries=2,
+                       total_streams=100, max_per_host=20):
     # this should be done better, finding best peers to query from.
     query = {
         'command': 'hash_content',
@@ -135,7 +135,7 @@ async def request_hash(item_hash, timeout=2,
             try:
                 item = await make_request(query, peer,
                                           timeout=timeout, connect_timeout=connect_timeout,
-                                          parallel_count=int(total_streams/len(qpeers)))
+                                          parallel_count=min(int(total_streams/len(qpeers)), max_per_host))
                 if item['status'] == 'success' and item['content'] is not None:
                     # TODO: IMPORTANT /!\ verify the hash of received data!
                     return base64.decodebytes(item['content'].encode('utf-8'))
