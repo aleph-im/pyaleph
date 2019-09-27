@@ -2,6 +2,7 @@ import logging
 import asyncio
 from libp2p.typing import TProtocol
 from libp2p.network.stream.net_stream_interface import INetStream
+from libp2p.network.stream.exceptions import StreamError
 from .pubsub import sub
 from aleph.network import incoming_check
 from aleph.services.filestore import get_value
@@ -99,11 +100,15 @@ async def make_request(request_structure, peer_id, timeout=2, connect_timeout=.2
                           
     stream, semaphore = STREAMS[speer]
     async with semaphore:
-        # stream = await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]), connect_timeout)
-        await stream.write(json.dumps(request_structure))
-        value = await asyncio.wait_for(stream.read(MAX_READ_LEN), timeout)
-        # # await stream.close()
-        return json.loads(value)
+        try:
+            # stream = await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]), connect_timeout)
+            await stream.write(json.dumps(request_structure))
+            value = await asyncio.wait_for(stream.read(MAX_READ_LEN), timeout)
+            # # await stream.close()
+            return json.loads(value)
+        except StreamError:
+            # let's delete this stream so it gets recreated next time
+            del STREAMS[speer]
 
 
 async def request_hash(item_hash, timeout=2, connect_timeout=1, retries=2):
