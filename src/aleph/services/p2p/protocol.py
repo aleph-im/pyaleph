@@ -76,7 +76,7 @@ async def read_data(stream: INetStream) -> None:
                 else:
                     result = {'status': 'error',
                               'reason': 'unknown command'}
-                LOGGER.debug("received {read_string}")
+                LOGGER.debug(f"received {read_string}")
             except Exception as e:
                 result = {'status': 'error',
                           'reason': repr(e)}
@@ -103,7 +103,7 @@ async def make_request(request_structure, peer_id, timeout=2,
                                 asyncio.Semaphore(1)))
             STREAMS[speer] = streams
             
-        for stream, semaphore in streams:
+        for i, (stream, semaphore) in enumerate(streams):
             if not semaphore.locked():
                 async with semaphore:
                     try:
@@ -114,7 +114,7 @@ async def make_request(request_structure, peer_id, timeout=2,
                         return json.loads(value)
                     except StreamError:
                         # let's delete this stream so it gets recreated next time
-                        del STREAMS[speer]
+                        STREAMS[speer].pop(i)
             await asyncio.sleep(0)
         
 
