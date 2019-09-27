@@ -88,30 +88,40 @@ async def stream_handler(stream: INetStream) -> None:
 #             asyncio.ensure_future(write_data(stream))
     
 
-async def make_request(request_structure, peer_id, timeout=2, connect_timeout=.2):
+async def make_request(request_structure, peer_id, timeout=2,
+                       connect_timeout=.2, parallel_count=10):
     global STREAMS
     # global REQUESTS_SEM
     speer = str(peer_id)
-    if speer not in STREAMS:
-        STREAMS[speer] = (await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]),
-                                                 connect_timeout),
-                          asyncio.Semaphore(1))
-        await asyncio.sleep(.1)
-                          
-    stream, semaphore = STREAMS[speer]
-    async with semaphore:
-        try:
-            # stream = await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]), connect_timeout)
-            await stream.write(json.dumps(request_structure))
-            value = await asyncio.wait_for(stream.read(MAX_READ_LEN), timeout)
-            # # await stream.close()
-            return json.loads(value)
-        except StreamError:
-            # let's delete this stream so it gets recreated next time
-            del STREAMS[speer]
+           
+    while True:
+        streams = STREAMS.get(speer, list())
+        if len(streams) < parallel_count:
+            for i in range(parallel_count-len(streams)):
+                streams.append((await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]),
+                                                        connect_timeout),
+                                asyncio.Semaphore(1)))
+            STREAMS[speer] = streams
+            
+        for stream, semaphore in streams:
+            if not semaphore.locked():
+                async with semaphore:
+                    try:
+                        # stream = await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]), connect_timeout)
+                        await stream.write(json.dumps(request_structure))
+                        value = await asyncio.wait_for(stream.read(MAX_READ_LEN), timeout)
+                        # # await stream.close()
+                        return json.loads(value)
+                    except StreamError:
+                        # let's delete this stream so it gets recreated next time
+                        del STREAMS[speer]
+            await asyncio.sleep(0)
+        
 
 
-async def request_hash(item_hash, timeout=2, connect_timeout=1, retries=2):
+async def request_hash(item_hash, timeout=2,
+                       connect_timeout=1, retries=2,
+                       total_streams=200):
     # this should be done better, finding best peers to query from.
     query = {
         'command': 'hash_content',
@@ -119,10 +129,13 @@ async def request_hash(item_hash, timeout=2, connect_timeout=1, retries=2):
     }
     qpeers = await peers.get_peers()
     random.shuffle(qpeers)
+    qpeers = qpeers[:total_streams]
     for i in range(retries):
         for peer in qpeers:
             try:
-                item = await make_request(query, peer, timeout=timeout, connect_timeout=connect_timeout)
+                item = await make_request(query, peer,
+                                          timeout=timeout, connect_timeout=connect_timeout,
+                                          parallel_count=int(total_streams/len(qpeers)))
                 if item['status'] == 'success' and item['content'] is not None:
                     # TODO: IMPORTANT /!\ verify the hash of received data!
                     return base64.decodebytes(item['content'].encode('utf-8'))
