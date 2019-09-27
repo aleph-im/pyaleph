@@ -103,9 +103,7 @@ async def make_request(request_structure, peer_id, timeout=2,
                                                         connect_timeout),
                                 asyncio.Semaphore(1)))
             STREAMS[speer] = streams
-    except futures.TimeoutError:
-        await singleton.host.disconnect(peer_id)
-        await singleton.host.connect(peer_id)
+    except (futures.TimeoutError, StreamError, RuntimeError, OSError):
         return
         
     for i, (stream, semaphore) in enumerate(streams):
@@ -145,6 +143,8 @@ async def request_hash(item_hash, timeout=2,
                 if item is not None and item['status'] == 'success' and item['content'] is not None:
                     # TODO: IMPORTANT /!\ verify the hash of received data!
                     return base64.decodebytes(item['content'].encode('utf-8'))
+                else:
+                    LOGGER.debug(f"can't get hash {item_hash} from {peer}")
             except futures.TimeoutError:
                 LOGGER.debug(f"can't get hash {item_hash} from {peer}")
                 continue
