@@ -69,7 +69,7 @@ async def read_data(stream: INetStream) -> None:
                 read_string = read_bytes.decode('utf-8')
                 message_json = json.loads(read_string)
                 if message_json['command'] == 'hash_content':
-                    value = await get_hash_content(message_json['hash'], use_network=False)
+                    value = await get_hash_content(message_json['hash'], use_network=False, timeout=.2)
                     if value is not None and value != -1:
                         result = {'status': 'success',
                                   'hash': message_json['hash'],
@@ -93,52 +93,78 @@ async def stream_handler(stream: INetStream) -> None:
     
 
 async def make_request(request_structure, peer_id, timeout=2,
-                       connect_timeout=.2, parallel_count=10):
+                       connect_timeout=1, parallel_count=10):
     global STREAMS
     # global REQUESTS_SEM
     speer = str(peer_id)
     
     async with CONNECT_LOCK:
-        streams = STREAMS.get(speer, list())
+        if speer not in STREAMS:
+            try:
+                STREAMS[speer] = (await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]), connect_timeout), asyncio.Semaphore(1))
+            except TimeoutError:
+                await singleton.host.get_network().close_peer(peer_id)
+                await singleton.host.get_peerstore().clear_addrs(peer_id)
+        
+    stream, semaphore = STREAMS[speer]
+    async with semaphore:
         try:
-            if len(streams) < parallel_count:
-                for i in range(parallel_count-len(streams)):
-                    streams.append((await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]),
-                                                            connect_timeout),
-                                    asyncio.Semaphore(1)))
-                STREAMS[speer] = streams
-        except:
-            LOGGER.info(f"Closing connection to {peer_id}")
-            await singleton.host.get_network().close_peer(peer_id)
-            if speer in STREAMS:
-                del STREAMS[speer]
-            return
-    # except (futures.TimeoutError, StreamError, RuntimeError, OSError):
-    #     return
-    while True:
-        for i, (stream, semaphore) in enumerate(streams):
-            if not semaphore.locked():
-                async with semaphore:
-                    try:
-                        # stream = await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]), connect_timeout)
-                        await stream.write(json.dumps(request_structure))
-                        value = await asyncio.wait_for(stream.read(MAX_READ_LEN), timeout)
-                        # # await stream.close()
-                        return json.loads(value)
-                    except (StreamError, RuntimeError, OSError):
-                        # let's delete this stream so it gets recreated next time
-                        # await stream.close()
-                        try:
-                            STREAMS[speer].remove((stream, semaphore))
-                        except ValueError:
-                            pass # already removed
-                        except KeyError:
-                            return # all this peer gone bad
-                        # STREAMS[speer].pop(i)
-            await asyncio.sleep(0)
+            # stream = await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]), connect_timeout)
+            await stream.write(json.dumps(request_structure))
+            value = await asyncio.wait_for(stream.read(MAX_READ_LEN), timeout)
+            # # await stream.close()
+            return json.loads(value)
+        except (StreamError, RuntimeError, OSError):
+            # let's delete this stream so it gets recreated next time
+            # await stream.close()
+            try:
+                STREAMS.pop(speer)
+            except ValueError:
+                pass # already removed
+            except KeyError:
+                return # all this peer gone bad
+    
+    # async with CONNECT_LOCK:
+    #     streams = STREAMS.get(speer, list())
+    #     try:
+    #         if len(streams) < parallel_count:
+    #             for i in range(parallel_count-len(streams)):
+    #                 streams.append((await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]),
+    #                                                         connect_timeout),
+    #                                 asyncio.Semaphore(1)))
+    #             STREAMS[speer] = streams
+    #     except TimeoutError:
+    #         LOGGER.info(f"Closing connection to {peer_id}")
+    #         await singleton.host.get_network().close_peer(peer_id)
+    #         if speer in STREAMS:
+    #             del STREAMS[speer]
+    #         raise
+    # # except (futures.TimeoutError, StreamError, RuntimeError, OSError):
+    # #     return
+    # while True:
+    #     for i, (stream, semaphore) in enumerate(streams):
+    #         if not semaphore.locked():
+    #             async with semaphore:
+    #                 try:
+    #                     # stream = await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]), connect_timeout)
+    #                     await stream.write(json.dumps(request_structure))
+    #                     value = await asyncio.wait_for(stream.read(MAX_READ_LEN), timeout)
+    #                     # # await stream.close()
+    #                     return json.loads(value)
+    #                 except (StreamError, RuntimeError, OSError):
+    #                     # let's delete this stream so it gets recreated next time
+    #                     # await stream.close()
+    #                     try:
+    #                         STREAMS[speer].remove((stream, semaphore))
+    #                     except ValueError:
+    #                         pass # already removed
+    #                     except KeyError:
+    #                         return # all this peer gone bad
+    #                     # STREAMS[speer].pop(i)
+    #         await asyncio.sleep(0)
             
-        if not len(streams):
-            return
+    #     if not len(streams):
+    #         return
         
 
 
