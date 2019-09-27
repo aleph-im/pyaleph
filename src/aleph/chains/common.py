@@ -148,7 +148,7 @@ async def incoming(message, chain_name=None,
             content = None
 
         if content is None:
-            LOGGER.warning("Can't get content of object %r, retrying later."
+            LOGGER.info("Can't get content of object %r, retrying later."
                            % hash)
             if not retrying:
                 await PendingMessage.collection.insert_one({
