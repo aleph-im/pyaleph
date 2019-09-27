@@ -22,16 +22,16 @@ class Message(BaseClass):
                IndexModel([("content.ref", ASCENDING)]),
                IndexModel([("content.type", ASCENDING)]),
                IndexModel([("content.content.tags", ASCENDING)]),
-               IndexModel([("content.time", ASCENDING)]),
+            #    IndexModel([("content.time", ASCENDING)]),
                IndexModel([("time", DESCENDING)]),
                IndexModel([("time", ASCENDING)]),
                IndexModel([("type", ASCENDING)]),
                IndexModel([("content.address", ASCENDING),
                            ("type", ASCENDING)]),
-               IndexModel([("chain", ASCENDING)]),
-               IndexModel([("confirmations.chain", ASCENDING)]),
-               IndexModel([("confirmations.height", ASCENDING)]),
-               IndexModel([("confirmations.height", DESCENDING)]),
+            #    IndexModel([("chain", ASCENDING)]),
+            #    IndexModel([("confirmations.chain", ASCENDING)]),
+            #    IndexModel([("confirmations.height", ASCENDING)]),
+            #    IndexModel([("confirmations.height", DESCENDING)]),
                IndexModel([("confirmed", DESCENDING)])]
 
     @classmethod
