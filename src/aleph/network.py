@@ -1,7 +1,8 @@
 import aiohttp
 import orjson as json
 import asyncio
-import hashlib
+import time
+from hashlib import sha256
 from aleph.chains.register import VERIFIER_REGISTER
 from aleph.services.ipfs.pubsub import incoming_channel as incoming_ipfs_channel
 import logging
@@ -41,9 +42,10 @@ async def incoming_check(ipfs_pubsub_message):
                          % ipfs_pubsub_message.get('data', ''))
 
 def get_sha256(content):
-    h = hashlib.sha256()
-    h.update(content.encode('utf-8'))
-    return h.hexdigest()
+    # h = hashlib.sha256()
+    # h.update(content.encode('utf-8'))
+    # return h.hexdigest()
+    return sha256(content.encode('utf-8')).hexdigest()
 
 async def check_message(message, from_chain=False, from_network=False,
                         trusted=False):
@@ -86,7 +88,8 @@ async def check_message(message, from_chain=False, from_network=False,
         if message.get('hash_type', 'sha256') == 'sha256':  # leave the door open.
             if not trusted:
                 loop = asyncio.get_event_loop()
-                item_hash = await loop.run_in_executor(None, get_sha256, message['item_content'])
+                # item_hash = await loop.run_in_executor(None, get_sha256, message['item_content'])
+                item_hash = sha256(message['item_content'].encode('utf-8')).hexdigest()
                 
                 if message['item_hash'] != item_hash:
                     LOGGER.warning('Bad hash')

@@ -36,18 +36,21 @@ async def verify_signature(message):
 
     verification = await get_verification_buffer(message)
 
-    message_hash = await loop.run_in_executor(
-            None,
-            functools.partial(encode_defunct,
-                              text=verification.decode('utf-8')))
-
+    # message_hash = await loop.run_in_executor(
+    #         None,
+    #         functools.partial(encode_defunct,
+    #                           text=verification.decode('utf-8')))
+    message_hash = encode_defunct(text=verification.decode('utf-8'))
+    await asyncio.sleep(0)
     verified = False
     try:
         # we assume the signature is a valid string
-        address = await loop.run_in_executor(
-            None,
-            functools.partial(Account.recover_message, message_hash,
-                              signature=message['signature']))
+        # address = await loop.run_in_executor(
+        #     None,
+        #     functools.partial(Account.recover_message, message_hash,
+        #                       signature=message['signature']))
+        address = Account.recover_message(message_hash, signature=message['signature'])
+        await asyncio.sleep(0)
         # address = await loop.run_in_executor(
         #     None,
         #     functools.partial(w3.eth.account.recoverHash, message_hash,

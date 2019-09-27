@@ -143,6 +143,7 @@ async def handle_pending_tx(pending, actions_list):
                     check_message=True  # should we store this?
                 )
             }))
+            await asyncio.sleep(0)
             
         if message_actions:
             await PendingMessage.collection.bulk_write(message_actions)
@@ -199,12 +200,13 @@ async def handle_txs_task():
         await asyncio.sleep(0.01)
         
 
-def prepare_loop(config_values):
+def prepare_loop(config_values, idx=1):
     from aleph.model import init_db
     from aleph.web import app
     from configmanager import Config
     from aleph.config import get_defaults
     from aleph.services.ipfs.common import get_ipfs_api
+    from aleph.services.p2p import init_p2p
     
     uvloop.install()
     
@@ -218,18 +220,19 @@ def prepare_loop(config_values):
     
     init_db(config, ensure_indexes=False)
     loop.run_until_complete(get_ipfs_api(timeout=2, reset=True))
+    loop.run_until_complete(init_p2p(config, listen=False, port_id=idx))
     return loop
 
 def txs_task_loop(config_values):
-    loop = prepare_loop(config_values)
+    loop = prepare_loop(config_values, idx=1)
     loop.run_until_complete(handle_txs_task())
 
 def messages_task_loop(config_values):
-    loop = prepare_loop(config_values)
+    loop = prepare_loop(config_values, idx=2)
     loop.run_until_complete(retry_messages_task())
     
 async def reconnect_ipfs_job(config):
-    await asyncio.sleep(1)
+    await asyncio.sleep(2)
     while True:
         try:
             LOGGER.info("Reconnecting to peers")
@@ -258,7 +261,7 @@ async def reconnect_ipfs_job(config):
         await asyncio.sleep(config.ipfs.reconnect_delay.value)
         
 async def reconnect_p2p_job(config):
-    await asyncio.sleep(1)
+    await asyncio.sleep(2)
     while True:
         try:
             LOGGER.info("Reconnecting to peers")
@@ -284,14 +287,12 @@ async def reconnect_p2p_job(config):
 
 def start_jobs(config):
     LOGGER.info("starting jobs")
-    # executor = ProcessPoolExecutor()
+    executor = ProcessPoolExecutor()
     loop = asyncio.get_event_loop()
     config_values = config.dump_values()
-    # loop.run_in_executor(executor, messages_task_loop, config_values)
-    # loop.run_in_executor(executor, txs_task_loop, config_values)
-    loop.create_task(retry_messages_task())
-    loop.create_task(handle_txs_task())
+    loop.run_in_executor(executor, messages_task_loop, config_values)
+    loop.run_in_executor(executor, txs_task_loop, config_values)
+    # loop.create_task(retry_messages_task())
+    # loop.create_task(handle_txs_task())
     loop.create_task(reconnect_ipfs_job(config))
     loop.create_task(reconnect_p2p_job(config))
-    # loop.create_task(loop.run_in_executor(executor, messages_task_loop, config))
-    # loop.create_task()
