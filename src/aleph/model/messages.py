@@ -52,11 +52,13 @@ class Message(BaseClass):
 async def get_computed_address_aggregates(address_list=None, key_list=None, limit=1000):
     aggregate = [
         {'$match': {
-            'type': 'AGGREGATE',
-            'content.content': {'$type': 3}
+            'type': 'AGGREGATE'
         }},
         {'$sort': {'time': -1}},
         {'$limit': limit},
+        {'$match': {
+            'content.content': {'$type': 3}
+        }},        
         {'$project': {
             'time': 1,
             'content.address': 1,
@@ -95,10 +97,16 @@ async def get_computed_address_aggregates(address_list=None, key_list=None, limi
         }}
     ]
     if address_list is not None:
+        if len(address_list) > 1:
         aggregate[0]['$match']['content.address'] = {'$in': address_list}
+        else:
+            aggregate[0]['$match']['content.address'] = address_list[0]
 
     if key_list is not None:
+        if len(key_list) > 1:
         aggregate[0]['$match']['content.key'] = {'$in': key_list}
+        else:
+            aggregate[0]['$match']['content.key'] = key_list[0]
 
     results = Message.collection.aggregate(aggregate)
 
