@@ -40,13 +40,14 @@ async def get_message_content(message):
     else:
         return None  # unknown, could retry later? shouldn't have arrived this far though.
     
-async def get_hash_content(hash, timeout=1, tries=1):
+async def get_hash_content(hash, timeout=1, tries=1, use_network=True):
     # TODO: determine which storage engine to use
     ipfs_enabled = app['config'].ipfs.enabled.value
     # content = await loop.run_in_executor(None, get_value, hash)
     content = await get_value(hash)
     if content is None:
-        content = await request_hash(hash, timeout=timeout, retries=tries)
+        if use_network:
+            content = await request_hash(hash, timeout=timeout, retries=tries)
         
         if content is not None and ipfs_enabled:
             # TODO: get a better way to compare hashes (without depending on IPFS daemon)
