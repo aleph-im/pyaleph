@@ -112,8 +112,9 @@ async def make_request(request_structure, peer_id, timeout=2,
                         value = await asyncio.wait_for(stream.read(MAX_READ_LEN), timeout)
                         # # await stream.close()
                         return json.loads(value)
-                    except StreamError:
+                    except (StreamError, RuntimeError):
                         # let's delete this stream so it gets recreated next time
+                        await stream.close()
                         STREAMS[speer].pop(i)
             await asyncio.sleep(0)
         
