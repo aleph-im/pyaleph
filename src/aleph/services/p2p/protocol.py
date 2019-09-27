@@ -14,7 +14,7 @@ import base64
 import random
 
 PROTOCOL_ID = TProtocol("/aleph/p2p/0.1.0")
-MAX_READ_LEN = 2 ** 32 - 1
+MAX_READ_LEN = 2 ** 48 - 1
 
 LOGGER = logging.getLogger('P2P.protocol')
 
