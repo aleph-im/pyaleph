@@ -95,7 +95,7 @@ def main(args):
       args ([str]): command line parameter list
     """
 
-    uvloop.install()
+    # uvloop.install()
     args = parse_args(args)
     setup_logging(args.loglevel)
     LOGGER.info("Starting up.")
