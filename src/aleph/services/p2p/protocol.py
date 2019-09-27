@@ -141,9 +141,9 @@ async def make_request(request_structure, peer_id, timeout=2,
         
 
 
-async def request_hash(item_hash, timeout=2,
-                       connect_timeout=2, retries=2,
-                       total_streams=100, max_per_host=5):
+async def request_hash(item_hash, timeout=5,
+                       connect_timeout=5, retries=2,
+                       total_streams=100, max_per_host=20):
     # this should be done better, finding best peers to query from.
     query = {
         'command': 'hash_content',
