@@ -98,13 +98,13 @@ async def get_computed_address_aggregates(address_list=None, key_list=None, limi
     ]
     if address_list is not None:
         if len(address_list) > 1:
-        aggregate[0]['$match']['content.address'] = {'$in': address_list}
+            aggregate[0]['$match']['content.address'] = {'$in': address_list}
         else:
             aggregate[0]['$match']['content.address'] = address_list[0]
 
     if key_list is not None:
         if len(key_list) > 1:
-        aggregate[0]['$match']['content.key'] = {'$in': key_list}
+            aggregate[0]['$match']['content.key'] = {'$in': key_list}
         else:
             aggregate[0]['$match']['content.key'] = key_list[0]
 
