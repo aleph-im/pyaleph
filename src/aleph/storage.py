@@ -47,7 +47,7 @@ async def get_hash_content(hash, timeout=1, tries=1, use_network=True):
     content = await get_value(hash)
     if content is None:
         if use_network:
-            content = await request_hash(hash, timeout=timeout, retries=tries)
+            content = await request_hash(hash)
         
         if content is not None and ipfs_enabled:
             # TODO: get a better way to compare hashes (without depending on IPFS daemon)
@@ -60,7 +60,7 @@ async def get_hash_content(hash, timeout=1, tries=1, use_network=True):
             if ipfs_enabled:
                 content = await get_ipfs_content(hash, timeout=timeout, tries=tries)
         else:
-            LOGGER.debug(f"Got content fron p2p {hash}")
+            LOGGER.info(f"Got content fron p2p {hash}")
         
         if content is not None and content != -1:
             LOGGER.debug(f"Storing content for{hash}")
