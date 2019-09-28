@@ -15,7 +15,7 @@ GOSSIPSUB_PROTOCOL_ID = gossipsub.PROTOCOL_ID
 
 async def initialize_host(host='0.0.0.0', port=4025, key=None, listen=True):
     from .peers import publish_host, monitor_hosts
-    from .protocol import stream_handler, PROTOCOL_ID
+    from .protocol import PROTOCOL_ID, AlephProtocol
     if key is None:
         keypair = create_new_key_pair()
         if listen:
@@ -30,6 +30,7 @@ async def initialize_host(host='0.0.0.0', port=4025, key=None, listen=True):
     transport_opt = f"/ip4/{host}/tcp/{port}"
     host = await new_node(transport_opt=[transport_opt],
                           key_pair=keypair)
+    protocol = None
     #gossip = gossipsub.GossipSub([GOSSIPSUB_PROTOCOL_ID], 10, 9, 11, 30)
     # psub = Pubsub(host, gossip, host.get_id())
     flood = floodsub.FloodSub([FLOODSUB_PROTOCOL_ID, GOSSIPSUB_PROTOCOL_ID])
@@ -43,6 +44,7 @@ async def initialize_host(host='0.0.0.0', port=4025, key=None, listen=True):
         # TODO: set correct interests and args here
         asyncio.create_task(publish_host(public_address,psub))
         asyncio.create_task(monitor_hosts(psub))
-        host.set_stream_handler(PROTOCOL_ID, stream_handler)
+        protocol = AlephProtocol(host)
+        # host.set_stream_handler(PROTOCOL_ID, stream_handler)
         
-    return (host, psub)
+    return (host, psub, protocol)

@@ -1,7 +1,10 @@
 import logging
 import asyncio
-from libp2p.typing import TProtocol
+from libp2p.network.exceptions import SwarmException
+from libp2p.network.stream.exceptions import StreamEOF, StreamReset
 from libp2p.network.stream.net_stream_interface import INetStream
+from libp2p.typing import TProtocol
+from libp2p.network.notifee_interface import INotifee
 from libp2p.network.stream.exceptions import StreamError
 from .pubsub import sub
 from aleph.network import incoming_check
@@ -18,9 +21,134 @@ MAX_READ_LEN = 2 ** 48 - 1
 
 LOGGER = logging.getLogger('P2P.protocol')
 
-STREAMS = dict()
+STREAM_COUNT = 5
+
+HELLO_PACKET = {
+    'command': 'hello'
+}
 
 CONNECT_LOCK = asyncio.Lock()
+
+class AlephProtocol(INotifee):
+    def __init__(self, host, streams_per_host=5):
+        self.host = host
+        self.streams_per_host = 5
+        print(self.host.get_network())
+        self.host.get_network().register_notifee(self)
+        self.host.set_stream_handler(PROTOCOL_ID, self.stream_handler)
+        self.peers = dict()
+        
+    async def stream_handler(self, stream: INetStream) -> None:
+        asyncio.ensure_future(self.read_data(stream))
+    
+    async def read_data(self, stream: INetStream) -> None:
+        from aleph.storage import get_hash_content
+        while True:
+            read_bytes = await stream.read(MAX_READ_LEN)
+            if read_bytes is not None:
+                result = {'status': 'error',
+                        'reason': 'unknown'}
+                try:
+                    read_string = read_bytes.decode('utf-8')
+                    message_json = json.loads(read_string)
+                    if message_json['command'] == 'hash_content':
+                        value = await get_hash_content(message_json['hash'], use_network=False, timeout=.2)
+                        if value is not None and value != -1:
+                            result = {'status': 'success',
+                                    'hash': message_json['hash'],
+                                    'content': base64.encodebytes(value).decode('utf-8')}
+                        else:
+                            result = {'status': 'success',
+                                    'content': None}
+                    else:
+                        result = {'status': 'error',
+                                'reason': 'unknown command'}
+                    LOGGER.debug(f"received {read_string}")
+                except Exception as e:
+                    result = {'status': 'error',
+                            'reason': repr(e)}
+                await stream.write(json.dumps(result))
+                
+    async def make_request(self, request_structure):
+        streams = [item for sublist in self.peers.values() for item in sublist]
+        random.shuffle(streams)
+        while True:
+            for i, (stream, semaphore) in enumerate(streams):
+                if not semaphore.locked():
+                    async with semaphore:
+                        try:
+                            # stream = await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]), connect_timeout)
+                            await stream.write(json.dumps(request_structure))
+                            value = await stream.read(MAX_READ_LEN)
+                            # # await stream.close()
+                            return json.loads(value)
+                        except (StreamError, RuntimeError, OSError):
+                            # let's delete this stream so it gets recreated next time
+                            # await stream.close()
+                            streams.remove((stream, semaphore))
+                            LOGGER.debug("Can't request hash...")
+                await asyncio.sleep(0)
+                
+            if not len(streams):
+                return
+    
+    async def request_hash(self, item_hash):
+        # this should be done better, finding best peers to query from.
+        query = {
+            'command': 'hash_content',
+            'hash': item_hash
+        }
+        item = await self.make_request(query)
+        if item is not None and item['status'] == 'success' and item['content'] is not None:
+            # TODO: IMPORTANT /!\ verify the hash of received data!
+            return base64.decodebytes(item['content'].encode('utf-8'))
+        else:
+            LOGGER.debug(f"can't get hash {item_hash}")
+                
+    async def _handle_new_peer(self, peer_id) -> None:
+        for i in range(self.streams_per_host):
+            try:
+                stream: INetStream = await self.host.new_stream(peer_id, [PROTOCOL_ID])
+            except SwarmException as error:
+                LOGGER.debug("fail to add new peer %s, error %s", peer_id, error)
+                return
+            
+            peer_streams = list()
+            await stream.write(json.dumps(HELLO_PACKET))
+            await stream.read(MAX_READ_LEN)
+            
+            peer_streams.append((stream, asyncio.Semaphore(1)))
+        
+        self.peers[peer_id] = peer_streams
+
+        LOGGER.debug("added new peer %s", peer_id)
+        
+    async def opened_stream(self, network, stream) -> None:
+        pass
+
+    async def closed_stream(self, network, stream) -> None:
+        pass
+
+    async def connected(self, network, conn) -> None:
+        """
+        Add peer_id to initiator_peers_queue, so that this peer_id can be used to
+        create a stream and we only want to have one pubsub stream with each peer.
+        :param network: network the connection was opened on
+        :param conn: connection that was opened
+        """
+        #await self.initiator_peers_queue.put(conn.muxed_conn.peer_id)
+        peer_id = conn.muxed_conn.peer_id
+        asyncio.ensure_future(self._handle_new_peer(peer_id))
+        
+
+    async def disconnected(self, network, conn) -> None:
+        pass
+
+    async def listen(self, network, multiaddr) -> None:
+        pass
+
+    async def listen_close(self, network, multiaddr) -> None:
+        pass
 
 async def incoming_channel(config, topic):
     from aleph.chains.common import incoming
@@ -57,143 +185,11 @@ async def incoming_channel(config, topic):
 
         except Exception:
             LOGGER.exception("Exception in pubsub, reconnecting.")
-            
-async def read_data(stream: INetStream) -> None:
-    from aleph.storage import get_hash_content
-    while True:
-        read_bytes = await stream.read(MAX_READ_LEN)
-        if read_bytes is not None:
-            result = {'status': 'error',
-                      'reason': 'unknown'}
-            try:
-                read_string = read_bytes.decode('utf-8')
-                message_json = json.loads(read_string)
-                if message_json['command'] == 'hash_content':
-                    value = await get_hash_content(message_json['hash'], use_network=False, timeout=.2)
-                    if value is not None and value != -1:
-                        result = {'status': 'success',
-                                  'hash': message_json['hash'],
-                                  'content': base64.encodebytes(value).decode('utf-8')}
-                    else:
-                        result = {'status': 'success',
-                                  'content': None}
-                else:
-                    result = {'status': 'error',
-                              'reason': 'unknown command'}
-                LOGGER.debug(f"received {read_string}")
-            except Exception as e:
-                result = {'status': 'error',
-                          'reason': repr(e)}
-            await stream.write(json.dumps(result))
-        
-        
-async def stream_handler(stream: INetStream) -> None:
-    asyncio.ensure_future(read_data(stream))
-#             asyncio.ensure_future(write_data(stream))
-    
-
-async def make_request(request_structure, peer_id, timeout=2,
-                       connect_timeout=1, parallel_count=10):
-    global STREAMS
-    # global REQUESTS_SEM
-    speer = str(peer_id)
-    
-    async with CONNECT_LOCK:
-        if speer not in STREAMS:
-            try:
-                STREAMS[speer] = (await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]), connect_timeout), asyncio.Semaphore(1))
-            except TimeoutError:
-                await singleton.host.get_network().close_peer(peer_id)
-                await singleton.host.get_peerstore().clear_addrs(peer_id)
-        
-    stream, semaphore = STREAMS[speer]
-    async with semaphore:
-        try:
-            # stream = await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]), connect_timeout)
-            await stream.write(json.dumps(request_structure))
-            value = await asyncio.wait_for(stream.read(MAX_READ_LEN), timeout)
-            # # await stream.close()
-            return json.loads(value)
-        except (StreamError, RuntimeError, OSError):
-            # let's delete this stream so it gets recreated next time
-            # await stream.close()
-            try:
-                STREAMS.pop(speer)
-            except ValueError:
-                pass # already removed
-            except KeyError:
-                return # all this peer gone bad
-    
-    # async with CONNECT_LOCK:
-    #     streams = STREAMS.get(speer, list())
-    #     try:
-    #         if len(streams) < parallel_count:
-    #             for i in range(parallel_count-len(streams)):
-    #                 streams.append((await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]),
-    #                                                         connect_timeout),
-    #                                 asyncio.Semaphore(1)))
-    #             STREAMS[speer] = streams
-    #     except TimeoutError:
-    #         LOGGER.info(f"Closing connection to {peer_id}")
-    #         await singleton.host.get_network().close_peer(peer_id)
-    #         if speer in STREAMS:
-    #             del STREAMS[speer]
-    #         raise
-    # # except (futures.TimeoutError, StreamError, RuntimeError, OSError):
-    # #     return
-    # while True:
-    #     for i, (stream, semaphore) in enumerate(streams):
-    #         if not semaphore.locked():
-    #             async with semaphore:
-    #                 try:
-    #                     # stream = await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]), connect_timeout)
-    #                     await stream.write(json.dumps(request_structure))
-    #                     value = await asyncio.wait_for(stream.read(MAX_READ_LEN), timeout)
-    #                     # # await stream.close()
-    #                     return json.loads(value)
-    #                 except (StreamError, RuntimeError, OSError):
-    #                     # let's delete this stream so it gets recreated next time
-    #                     # await stream.close()
-    #                     try:
-    #                         STREAMS[speer].remove((stream, semaphore))
-    #                     except ValueError:
-    #                         pass # already removed
-    #                     except KeyError:
-    #                         return # all this peer gone bad
-    #                     # STREAMS[speer].pop(i)
-    #         await asyncio.sleep(0)
-            
-    #     if not len(streams):
-    #         return
-        
 
 
-async def request_hash(item_hash, timeout=2,
-                       connect_timeout=1, retries=2,
-                       total_streams=100, max_per_host=10):
-    # this should be done better, finding best peers to query from.
-    query = {
-        'command': 'hash_content',
-        'hash': item_hash
-    }
-    qpeers = await peers.get_peers()
-    random.shuffle(qpeers)
-    qpeers = qpeers[:total_streams]
-    for i in range(retries):
-        for peer in qpeers:
-            try:
-                item = await make_request(query, peer,
-                                          timeout=timeout, connect_timeout=connect_timeout,
-                                          parallel_count=min(int(total_streams/len(qpeers)), max_per_host))
-                if item is not None and item['status'] == 'success' and item['content'] is not None:
-                    # TODO: IMPORTANT /!\ verify the hash of received data!
-                    return base64.decodebytes(item['content'].encode('utf-8'))
-                else:
-                    LOGGER.debug(f"can't get hash {item_hash} from {peer}")
-            except futures.TimeoutError:
-                LOGGER.debug(f"can't get hash {item_hash} from {peer}")
-                continue
-            except:
-                # Catch all with more info in case of weird error
-                LOGGER.exception(f"can't get hash {item_hash} from {peer}")
-                continue
+async def request_hash(item_hash):
+    return await singleton.streamer.request_hash(item_hash)
+    
+
+        
+
