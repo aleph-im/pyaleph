@@ -47,16 +47,17 @@ async def monitor_hosts(psub):
 async def connect_peer(peer):
     info = info_from_p2p_addr(multiaddr.Multiaddr(peer))
     if str(info.peer_id) == str(singleton.host.get_id()):
-        LOGGER.debug("Can't connect to myself.")
+        # LOGGER.debug("Can't connect to myself.")
         return
     
     if not await singleton.streamer.has_active_streams(info.peer_id):
-        network = singleton.host.get_network()
-        if info.peer_id in network.connections:
-            await network.close_peer(info.peer_id)
-            del network[info.peer_id]
+        # network = singleton.host.get_network()
+        # if info.peer_id in network.connections:
+        #     await network.close_peer(info.peer_id)
+        #     del network[info.peer_id]
             
-        return await singleton.host.connect(info)
+        await singleton.host.connect(info)
+        await singleton.streamer.create_connections(info.peer_id)
 
 async def get_peers():
     my_id = singleton.host.get_id()
