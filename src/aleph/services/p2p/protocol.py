@@ -52,7 +52,7 @@ class AlephProtocol(INotifee):
                     read_string = read_bytes.decode('utf-8')
                     message_json = json.loads(read_string)
                     if message_json['command'] == 'hash_content':
-                        value = await get_hash_content(message_json['hash'], use_network=False, timeout=.2)
+                        value = await get_hash_content(message_json['hash'], use_network=False, timeout=1)
                         if value is not None and value != -1:
                             result = {'status': 'success',
                                     'hash': message_json['hash'],
