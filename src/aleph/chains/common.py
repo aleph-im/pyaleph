@@ -275,7 +275,8 @@ async def get_chaindata_messages(chaindata, context, seen_ids=None):
         messages = await get_chaindata_messages(content, context)
         if messages is not None and messages != -1:
             LOGGER.info("Got bulk data with %d items" % len(messages))
-            await pin_hash(chaindata['content'])
+            if app['config'].ipfs.enabled.value:
+                await pin_hash(chaindata['content'])
         return messages
     else:
         LOGGER.info('Got unknown protocol/version object in tx %r'
