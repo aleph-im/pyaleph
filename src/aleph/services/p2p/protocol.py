@@ -30,7 +30,7 @@ HELLO_PACKET = {
 CONNECT_LOCK = asyncio.Lock()
 
 class AlephProtocol(INotifee):
-    def __init__(self, host, streams_per_host=4):
+    def __init__(self, host, streams_per_host=5):
         self.host = host
         self.streams_per_host = streams_per_host
         print(self.host.get_network())
@@ -71,7 +71,6 @@ class AlephProtocol(INotifee):
                 
     async def make_request(self, request_structure):
         streams = [(peer, item) for peer, sublist in self.peers.items() for item in sublist]
-        print([(peer, len(sublist)) for peer, sublist in self.peers.items()])
         random.shuffle(streams)
         while True:
             for i, (peer, (stream, semaphore)) in enumerate(streams):
@@ -86,6 +85,7 @@ class AlephProtocol(INotifee):
                         except (StreamError):
                             # let's delete this stream so it gets recreated next time
                             # await stream.close()
+                            await stream.reset()
                             streams.remove((peer, (stream, semaphore)))
                             try:
                                 self.peers[peer].remove((stream, semaphore))
@@ -111,8 +111,12 @@ class AlephProtocol(INotifee):
             LOGGER.debug(f"can't get hash {item_hash}")
                 
     async def _handle_new_peer(self, peer_id) -> None:
-        peer_streams = list()
-        for i in range(self.streams_per_host):
+        await self.create_connections(peer_id)
+        LOGGER.debug("added new peer %s", peer_id)
+        
+    async def create_connections(self, peer_id):
+        peer_streams = self.peers.get(peer_id, list())
+        for i in range(self.streams_per_host - len(peer_streams)):
             try:
                 stream: INetStream = await self.host.new_stream(peer_id, [PROTOCOL_ID])
             except SwarmException as error:
@@ -127,11 +131,10 @@ class AlephProtocol(INotifee):
                 return
             
             peer_streams.append((stream, asyncio.Semaphore(1)))
-            await asyncio.sleep(.1)
+            # await asyncio.sleep(.1)
         
         self.peers[peer_id] = peer_streams
-
-        LOGGER.debug("added new peer %s", peer_id)
+        
         
     async def opened_stream(self, network, stream) -> None:
         pass
