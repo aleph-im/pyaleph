@@ -2,6 +2,8 @@ from logging import getLogger
 import asyncio
 import aioipfs
 import uvloop
+import multiprocessing
+from multiprocessing import Process, Manager
 from aleph.chains.common import incoming, get_chaindata_messages
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.model.messages import Message
@@ -220,14 +222,20 @@ def prepare_loop(config_values, idx=1):
     
     init_db(config, ensure_indexes=False)
     loop.run_until_complete(get_ipfs_api(timeout=2, reset=True))
-    loop.run_until_complete(init_p2p(config, listen=False, port_id=idx))
+    loop.run_until_complete(init_p2p(config, listen=False, port_id=idx, use_key=False))
     return loop
 
-def txs_task_loop(config_values):
+def txs_task_loop(config_values, _set_value, _get_value):
+    from aleph.services import filestore
+    filestore._set_value = _set_value
+    filestore._get_value = _get_value
     loop = prepare_loop(config_values, idx=1)
     loop.run_until_complete(handle_txs_task())
 
-def messages_task_loop(config_values):
+def messages_task_loop(config_values, _set_value, _get_value):
+    from aleph.services import filestore
+    filestore._set_value = _set_value
+    filestore._get_value = _get_value
     loop = prepare_loop(config_values, idx=2)
     loop.run_until_complete(retry_messages_task())
     
@@ -260,11 +268,13 @@ async def reconnect_ipfs_job(config):
 
         await asyncio.sleep(config.ipfs.reconnect_delay.value)
         
-async def reconnect_p2p_job(config):
+async def reconnect_p2p_job(config=None):
+    from aleph.web import app
+    if config is None:
+        config = app['config']
     await asyncio.sleep(2)
     while True:
         try:
-            LOGGER.info("Reconnecting to peers")
             peers = set(config.p2p.peers.value + [a async for a in get_peers(peer_type='P2P')])
             for peer in peers:
                 try:
@@ -277,15 +287,27 @@ async def reconnect_p2p_job(config):
 
         await asyncio.sleep(config.p2p.reconnect_delay.value)
 
-def start_jobs(config):
+def start_jobs(config, use_processes=True):
     LOGGER.info("starting jobs")
     executor = ProcessPoolExecutor()
-    loop = asyncio.get_event_loop()
-    config_values = config.dump_values()
+    
+    if use_processes:
+        from aleph.services.filestore import _get_value, _set_value
+        loop = asyncio.get_event_loop()
+        config_values = config.dump_values()
+        # manager = Manager()
+        # manager.register()
+        # manager.start()
+        p1 = Process(target=messages_task_loop, args=(config_values, _set_value, _get_value))
+        p2 = Process(target=txs_task_loop, args=(config_values, _set_value, _get_value))
+        p1.start()
+        p2.start()
+    else:
+        loop.create_task(retry_messages_task())
+        loop.create_task(handle_txs_task())
     # loop.run_in_executor(executor, messages_task_loop, config_values)
     # loop.run_in_executor(executor, txs_task_loop, config_values)
-    loop.create_task(retry_messages_task())
-    loop.create_task(handle_txs_task())
+    
     if config.ipfs.enabled.value:
         loop.create_task(reconnect_ipfs_job(config))
-    loop.create_task(reconnect_p2p_job(config))
+    # loop.create_task(reconnect_p2p_job(config))
