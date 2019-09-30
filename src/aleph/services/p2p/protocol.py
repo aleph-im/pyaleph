@@ -81,7 +81,20 @@ class AlephProtocol(INotifee):
                             await stream.write(json.dumps(request_structure))
                             value = await stream.read(MAX_READ_LEN)
                             # # await stream.close()
-                            return json.loads(value)
+                            try:
+                                value = json.loads(value)
+                            except json.JSONDecodeError:
+                                value = None
+                                continue
+                                
+                            if value.get('content') is None:
+                                # remove all streams from that peer, ask to the others.
+                                for speer, info in list(streams):
+                                    if speer == peer:
+                                        streams.remove((speer, info))
+                                break
+                                
+                            return value
                         except (StreamError):
                             # let's delete this stream so it gets recreated next time
                             # await stream.close()
