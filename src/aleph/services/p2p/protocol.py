@@ -30,9 +30,9 @@ HELLO_PACKET = {
 CONNECT_LOCK = asyncio.Lock()
 
 class AlephProtocol(INotifee):
-    def __init__(self, host, streams_per_host=10):
+    def __init__(self, host, streams_per_host=4):
         self.host = host
-        self.streams_per_host = 5
+        self.streams_per_host = streams_per_host
         print(self.host.get_network())
         self.host.get_network().register_notifee(self)
         self.host.set_stream_handler(PROTOCOL_ID, self.stream_handler)
@@ -71,6 +71,7 @@ class AlephProtocol(INotifee):
                 
     async def make_request(self, request_structure):
         streams = [(peer, item) for peer, sublist in self.peers.items() for item in sublist]
+        print([(peer, len(sublist)) for peer, sublist in self.peers.items()])
         random.shuffle(streams)
         while True:
             for i, (peer, (stream, semaphore)) in enumerate(streams):
@@ -82,7 +83,7 @@ class AlephProtocol(INotifee):
                             value = await stream.read(MAX_READ_LEN)
                             # # await stream.close()
                             return json.loads(value)
-                        except (StreamError, RuntimeError, OSError):
+                        except (StreamError):
                             # let's delete this stream so it gets recreated next time
                             # await stream.close()
                             streams.remove((peer, (stream, semaphore)))
@@ -110,6 +111,7 @@ class AlephProtocol(INotifee):
             LOGGER.debug(f"can't get hash {item_hash}")
                 
     async def _handle_new_peer(self, peer_id) -> None:
+        peer_streams = list()
         for i in range(self.streams_per_host):
             try:
                 stream: INetStream = await self.host.new_stream(peer_id, [PROTOCOL_ID])
@@ -117,7 +119,6 @@ class AlephProtocol(INotifee):
                 LOGGER.debug("fail to add new peer %s, error %s", peer_id, error)
                 return
             
-            peer_streams = list()
             try:
                 await stream.write(json.dumps(HELLO_PACKET))
                 await stream.read(MAX_READ_LEN)
@@ -126,6 +127,7 @@ class AlephProtocol(INotifee):
                 return
             
             peer_streams.append((stream, asyncio.Semaphore(1)))
+            await asyncio.sleep(.1)
         
         self.peers[peer_id] = peer_streams
 
@@ -157,6 +159,11 @@ class AlephProtocol(INotifee):
 
     async def listen_close(self, network, multiaddr) -> None:
         pass
+    
+    async def has_active_streams(self, peer_id):
+        if peer_id not in self.peers:
+            return False
+        return bool(len(self.peers[peer_id]))
 
 async def incoming_channel(config, topic):
     from aleph.chains.common import incoming

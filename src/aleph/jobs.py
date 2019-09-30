@@ -265,16 +265,8 @@ async def reconnect_p2p_job(config):
     while True:
         try:
             LOGGER.info("Reconnecting to peers")
-            for peer in config.p2p.peers.value:
-                try:
-                    await connect_peer(peer)
-                except:
-                    LOGGER.warning("Can't reconnect to %s" % peer)
-                    
-            async for peer in get_peers(peer_type='P2P'):
-                if peer in config.p2p.peers.value:
-                    continue
-                
+            peers = set(config.p2p.peers.value + [a async for a in get_peers(peer_type='P2P')])
+            for peer in peers:
                 try:
                     await connect_peer(peer)
                 except:

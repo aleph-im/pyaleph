@@ -49,7 +49,14 @@ async def connect_peer(peer):
     if str(info.peer_id) == str(singleton.host.get_id()):
         LOGGER.debug("Can't connect to myself.")
         return
-    return await singleton.host.connect(info)
+    
+    if not await singleton.streamer.has_active_streams(info.peer_id):
+        network = singleton.host.get_network()
+        if info.peer_id in network.connections:
+            await network.close_peer(info.peer_id)
+            del network[info.peer_id]
+            
+        return await singleton.host.connect(info)
 
 async def get_peers():
     my_id = singleton.host.get_id()
