@@ -8,6 +8,7 @@ except ImportError:  # pragma: no cover
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
+LOGGER = getLogger('model')
 
 db_backend = None
 
@@ -26,6 +27,7 @@ def init_db(config, ensure_indexes=True):
     sync_db = sync_connection[config.mongodb.database.value]
 
     if ensure_indexes:
+        LOGGER.info('Inserting indexes')
         from aleph.model.messages import Message
         Message.ensure_indexes(sync_db)
         from aleph.model.pending import PendingMessage, PendingTX

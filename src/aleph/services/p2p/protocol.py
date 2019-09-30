@@ -30,7 +30,7 @@ HELLO_PACKET = {
 CONNECT_LOCK = asyncio.Lock()
 
 class AlephProtocol(INotifee):
-    def __init__(self, host, streams_per_host=5):
+    def __init__(self, host, streams_per_host=10):
         self.host = host
         self.streams_per_host = 5
         print(self.host.get_network())
@@ -70,10 +70,10 @@ class AlephProtocol(INotifee):
                 await stream.write(json.dumps(result))
                 
     async def make_request(self, request_structure):
-        streams = [item for sublist in self.peers.values() for item in sublist]
+        streams = [(peer, item) for peer, sublist in self.peers.items() for item in sublist]
         random.shuffle(streams)
         while True:
-            for i, (stream, semaphore) in enumerate(streams):
+            for i, (peer, (stream, semaphore)) in enumerate(streams):
                 if not semaphore.locked():
                     async with semaphore:
                         try:
@@ -85,7 +85,11 @@ class AlephProtocol(INotifee):
                         except (StreamError, RuntimeError, OSError):
                             # let's delete this stream so it gets recreated next time
                             # await stream.close()
-                            streams.remove((stream, semaphore))
+                            streams.remove((peer, (stream, semaphore)))
+                            try:
+                                self.peers[peer].remove((stream, semaphore))
+                            except ValueError:
+                                pass
                             LOGGER.debug("Can't request hash...")
                 await asyncio.sleep(0)
                 
@@ -114,8 +118,12 @@ class AlephProtocol(INotifee):
                 return
             
             peer_streams = list()
-            await stream.write(json.dumps(HELLO_PACKET))
-            await stream.read(MAX_READ_LEN)
+            try:
+                await stream.write(json.dumps(HELLO_PACKET))
+                await stream.read(MAX_READ_LEN)
+            except Exception as error:
+                LOGGER.debug("fail to add new peer %s, error %s", peer_id, error)
+                return
             
             peer_streams.append((stream, asyncio.Semaphore(1)))
         
