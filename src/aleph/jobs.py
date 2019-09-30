@@ -4,6 +4,7 @@ import aioipfs
 import uvloop
 import multiprocessing
 from multiprocessing import Process, Manager
+from multiprocessing.managers import SyncManager, BaseProxy, RemoteError
 from aleph.chains.common import incoming, get_chaindata_messages
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.model.messages import Message
@@ -17,6 +18,9 @@ from concurrent.futures import ProcessPoolExecutor
 LOGGER = getLogger("JOBS")
 
 RETRY_LOCK = asyncio.Lock()
+
+class NodeManager(SyncManager):
+    pass
 
 
 async def handle_pending_message(pending, seen_ids, actions_list, messages_actions_list):
@@ -201,6 +205,19 @@ async def handle_txs_task():
 
         await asyncio.sleep(0.01)
         
+def function_proxy(manager, funcname):
+    def func_call(*args, **kwargs):        
+        rvalue = getattr(manager, funcname)(*args, **kwargs)
+        
+        try:
+            value = rvalue._getvalue()
+            
+        except RemoteError:
+            value = rvalue
+        
+        return value
+    
+    return func_call
 
 def prepare_loop(config_values, idx=1):
     from aleph.model import init_db
@@ -209,8 +226,15 @@ def prepare_loop(config_values, idx=1):
     from aleph.config import get_defaults
     from aleph.services.ipfs.common import get_ipfs_api
     from aleph.services.p2p import init_p2p
+    from aleph.services import filestore
     
     uvloop.install()
+    
+    manager = NodeManager()
+    manager.start()
+    
+    filestore._set_value = function_proxy(manager, '_set_value')
+    filestore._get_value = function_proxy(manager, '_get_value')
     
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -225,17 +249,11 @@ def prepare_loop(config_values, idx=1):
     loop.run_until_complete(init_p2p(config, listen=False, port_id=idx, use_key=False))
     return loop
 
-def txs_task_loop(config_values, _set_value, _get_value):
-    from aleph.services import filestore
-    filestore._set_value = _set_value
-    filestore._get_value = _get_value
+def txs_task_loop(config_values):
     loop = prepare_loop(config_values, idx=1)
     loop.run_until_complete(handle_txs_task())
 
-def messages_task_loop(config_values, _set_value, _get_value):
-    from aleph.services import filestore
-    filestore._set_value = _set_value
-    filestore._get_value = _get_value
+def messages_task_loop(config_values):
     loop = prepare_loop(config_values, idx=2)
     loop.run_until_complete(retry_messages_task())
     
@@ -298,8 +316,10 @@ def start_jobs(config, use_processes=True):
         # manager = Manager()
         # manager.register()
         # manager.start()
-        p1 = Process(target=messages_task_loop, args=(config_values, _set_value, _get_value))
-        p2 = Process(target=txs_task_loop, args=(config_values, _set_value, _get_value))
+        NodeManager.register('_set_value', _set_value)
+        NodeManager.register('_get_value', _get_value)
+        p1 = Process(target=messages_task_loop, args=(config_values,))
+        p2 = Process(target=txs_task_loop, args=(config_values,))
         p1.start()
         p2.start()
     else:
