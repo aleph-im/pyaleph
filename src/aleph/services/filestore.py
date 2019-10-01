@@ -5,6 +5,7 @@ import multiprocessing
 import threading
 
 HASHES_STORAGE = 'hashes'
+STORE_LOCK = threading.Lock()
 
 hashes_db = None
 import os
@@ -29,10 +30,12 @@ def init_store(config):
     #                        rocksdb.Options(create_if_missing=True))
     
 def _get_value(key):
-    return hashes_db.get(key)
+    with STORE_LOCK:
+        return hashes_db.get(key)
 
 def _set_value(key, value):
-    return hashes_db.put(key, value)
+    with STORE_LOCK:
+        return hashes_db.put(key, value)
     
 async def get_value(key, in_executor=False):
     # print(os.getpid(), hashes_db)
