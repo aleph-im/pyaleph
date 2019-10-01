@@ -206,7 +206,7 @@ async def handle_txs_task():
         await asyncio.sleep(0.01)
         
 def function_proxy(manager, funcname):
-    def func_call(*args, **kwargs):        
+    def func_call(*args, **kwargs):
         rvalue = getattr(manager, funcname)(*args, **kwargs)
         
         try:
@@ -227,7 +227,6 @@ def prepare_loop(config_values, idx=1):
     from aleph.services.ipfs.common import get_ipfs_api
     from aleph.services.p2p import init_p2p
     from aleph.services import filestore
-    
     uvloop.install()
     
     manager = NodeManager()
@@ -236,8 +235,9 @@ def prepare_loop(config_values, idx=1):
     filestore._set_value = function_proxy(manager, '_set_value')
     filestore._get_value = function_proxy(manager, '_get_value')
     
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    # loop = asyncio.new_event_loop()
+    # asyncio.set_event_loop(loop)
+    loop = asyncio.get_event_loop()
     
     config = Config(schema=get_defaults())
     app['config'] = config
@@ -298,7 +298,7 @@ async def reconnect_p2p_job(config=None):
                 try:
                     await connect_peer(peer)
                 except:
-                    LOGGER.warning("Can't reconnect to %s" % peer)
+                    LOGGER.debug("Can't reconnect to %s" % peer)
                 
         except Exception:
             LOGGER.exception("Error reconnecting to peers")
