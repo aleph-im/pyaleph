@@ -34,7 +34,6 @@ class AlephProtocol(INotifee):
     def __init__(self, host, streams_per_host=5):
         self.host = host
         self.streams_per_host = streams_per_host
-        print(self.host.get_network())
         self.host.get_network().register_notifee(self)
         self.host.set_stream_handler(PROTOCOL_ID, self.stream_handler)
         self.peers = dict()
