@@ -8,6 +8,7 @@ from libp2p.network.notifee_interface import INotifee
 from libp2p.network.stream.exceptions import StreamError
 from .pubsub import sub
 from aleph.network import incoming_check
+from aleph import __version__
 # from aleph.services.filestore import get_value
 from concurrent import futures
 from . import singleton
@@ -60,6 +61,17 @@ class AlephProtocol(INotifee):
                         else:
                             result = {'status': 'success',
                                     'content': None}
+                    elif message_json['command'] == 'get_message':
+                        result = {'status': 'error',
+                                  'reason': 'not implemented'}
+                    elif message_json['command'] == 'publish_message':
+                        result = {'status': 'error',
+                                  'reason': 'not implemented'}
+                    elif message_json['command'] == 'hello':
+                        result = {'status': 'success',
+                                  'content': {
+                                      'version': __version__
+                                  }}
                     else:
                         result = {'status': 'error',
                                 'reason': 'unknown command'}
