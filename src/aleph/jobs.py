@@ -19,7 +19,7 @@ LOGGER = getLogger("JOBS")
 
 RETRY_LOCK = asyncio.Lock()
 
-class NodeManager(SyncManager):
+class DBManager(SyncManager):
     pass
 
 
@@ -219,7 +219,7 @@ def function_proxy(manager, funcname):
     
     return func_call
 
-def prepare_loop(config_values, idx=1):
+def prepare_loop(config_values, manager, idx=1):
     from aleph.model import init_db
     from aleph.web import app
     from configmanager import Config
@@ -229,8 +229,8 @@ def prepare_loop(config_values, idx=1):
     from aleph.services import filestore
     uvloop.install()
     
-    manager = NodeManager()
-    manager.start()
+    # manager = NodeManager()
+    # manager.start()
     
     filestore._set_value = function_proxy(manager, '_set_value')
     filestore._get_value = function_proxy(manager, '_get_value')
@@ -249,12 +249,12 @@ def prepare_loop(config_values, idx=1):
     loop.run_until_complete(init_p2p(config, listen=False, port_id=idx, use_key=False))
     return loop
 
-def txs_task_loop(config_values):
-    loop = prepare_loop(config_values, idx=1)
+def txs_task_loop(config_values, manager):
+    loop = prepare_loop(config_values, manager, idx=1)
     loop.run_until_complete(handle_txs_task())
 
-def messages_task_loop(config_values):
-    loop = prepare_loop(config_values, idx=2)
+def messages_task_loop(config_values, manager):
+    loop = prepare_loop(config_values, manager, idx=2)
     loop.run_until_complete(retry_messages_task())
     
 async def reconnect_ipfs_job(config):
@@ -308,18 +308,23 @@ async def reconnect_p2p_job(config=None):
 def start_jobs(config, use_processes=True):
     LOGGER.info("starting jobs")
     executor = ProcessPoolExecutor()
+    loop = asyncio.get_event_loop()
     
     if use_processes:
+        from aleph.services import filestore
         from aleph.services.filestore import _get_value, _set_value
-        loop = asyncio.get_event_loop()
         config_values = config.dump_values()
         # manager = Manager()
         # manager.register()
         # manager.start()
-        NodeManager.register('_set_value', _set_value)
-        NodeManager.register('_get_value', _get_value)
-        p1 = Process(target=messages_task_loop, args=(config_values,))
-        p2 = Process(target=txs_task_loop, args=(config_values,))
+        DBManager.register('_set_value', _set_value)
+        DBManager.register('_get_value', _get_value)
+        manager = DBManager()
+        manager.start()
+        filestore._set_value = function_proxy(manager, '_set_value')
+        filestore._get_value = function_proxy(manager, '_get_value')
+        p1 = Process(target=messages_task_loop, args=(config_values,manager))
+        p2 = Process(target=txs_task_loop, args=(config_values,manager))
         p1.start()
         p2.start()
     else:
