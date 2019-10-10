@@ -305,7 +305,7 @@ async def reconnect_p2p_job(config=None):
 
         await asyncio.sleep(config.p2p.reconnect_delay.value)
 
-def start_jobs(config, use_processes=True):
+def start_jobs(config, use_processes=False):
     LOGGER.info("starting jobs")
     executor = ProcessPoolExecutor()
     loop = asyncio.get_event_loop()
