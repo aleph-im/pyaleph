@@ -128,6 +128,12 @@ def main(args):
     setup_listeners(config)
     start_connector(config, outgoing=(not args.no_commit))
     
+    fp2p = loop.create_server(handler,
+                              config.p2p.host.value,
+                              config.p2p.http_port.value)
+    srvp2p = loop.run_until_complete(fp2p)
+    LOGGER.info('Serving on %s', srvp2p.sockets[0].getsockname())
+    
     f = loop.create_server(handler,
                            config.aleph.host.value,
                            config.aleph.port.value)
