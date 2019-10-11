@@ -10,7 +10,7 @@ class Peer(BaseClass):
     COLLECTION = "peers"
 
     INDEXES = [IndexModel([("type", ASCENDING)]),
-               IndexModel([("address", ASCENDING)], unique=True),
+               IndexModel([("address", ASCENDING)]),
                IndexModel([("last_seen", DESCENDING)])]
     
 async def get_peers(peer_type=None):
