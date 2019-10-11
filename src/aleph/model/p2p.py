@@ -5,7 +5,7 @@ from aleph.model.base import BaseClass
 from pymongo import ASCENDING, DESCENDING, IndexModel
 from datetime import datetime
 
-class Chain(BaseClass):
+class Peer(BaseClass):
     """Holds information about the chains state."""
     COLLECTION = "peers"
 
@@ -18,11 +18,11 @@ async def get_peers(peer_type=None):
     TODO: handle the last seen, channel preferences, and better way of avoiding "bad contacts".
     NOTE: Currently used in jobs.
     """
-    async for peer in Chain.collection.find({'type': peer_type}):
+    async for peer in Peer.collection.find({'type': peer_type}):
         yield peer['address']
 
 async def add_peer(address, peer_type):
-    Chain.collection.replace_one({
+    Peer.collection.replace_one({
         'address': address,
         'type': peer_type
     }, {
