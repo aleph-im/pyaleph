@@ -39,6 +39,9 @@ async def tidy_http_peers_job(config=None):
     from aleph.web import app
     from .http import api_get_request
     from aleph.services.p2p import singleton
+    from aleph.services.utils import get_IP
+    
+    my_ip = await get_IP()
     if config is None:
         config = app['config']
     await asyncio.sleep(2)
@@ -47,6 +50,9 @@ async def tidy_http_peers_job(config=None):
             peers = list()
             jobs = list()
             async for peer in get_peers(peer_type='HTTP'):
+                if my_ip in peer:
+                    continue
+                
                 jobs.append(check_peer(peers, peer))
             await asyncio.gather(*jobs)
             singleton.api_servers = peers
