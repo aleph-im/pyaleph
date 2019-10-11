@@ -224,7 +224,7 @@ def prepare_loop(config_values, manager, idx=1):
     from configmanager import Config
     from aleph.config import get_defaults
     from aleph.services.ipfs.common import get_ipfs_api
-    from aleph.services.p2p import init_p2p
+    from aleph.services.p2p import init_p2p, http
     from aleph.services import filestore
     uvloop.install()
     
@@ -233,6 +233,7 @@ def prepare_loop(config_values, manager, idx=1):
     
     filestore._set_value = function_proxy(manager, '_set_value')
     filestore._get_value = function_proxy(manager, '_get_value')
+    http.SESSION = None
     
     # loop = asyncio.new_event_loop()
     # asyncio.set_event_loop(loop)
@@ -293,13 +294,13 @@ def start_jobs(config, use_processes=False):
     
     if use_processes:
         from aleph.services import filestore
-        from aleph.services.filestore import _get_value, _set_value
+        from aleph.services.filestore import __get_value, __set_value
         config_values = config.dump_values()
         # manager = Manager()
         # manager.register()
         # manager.start()
-        DBManager.register('_set_value', _set_value)
-        DBManager.register('_get_value', _get_value)
+        DBManager.register('_set_value', __set_value)
+        DBManager.register('_get_value', __get_value)
         manager = DBManager()
         manager.start()
         filestore._set_value = function_proxy(manager, '_set_value')

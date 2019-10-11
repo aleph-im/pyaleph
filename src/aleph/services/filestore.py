@@ -29,15 +29,18 @@ def init_store(config):
     # hashes_db = rocksdb.DB(os.path.join(config.storage.folder.value, HASHES_STORAGE),
     #                        rocksdb.Options(create_if_missing=True))
     
-def _get_value(key):
+def __get_value(key):
     with STORE_LOCK:
         return hashes_db.get(key)
+    
+_get_value = __get_value
 
-def _set_value(key, value):
+def __set_value(key, value):
     with STORE_LOCK:
         return hashes_db.put(key, value)
+_set_value = __set_value
     
-async def get_value(key, in_executor=False):
+async def get_value(key, in_executor=True):
     # print(os.getpid(), hashes_db)
     # if not isinstance(key, bytes):
     #     if isinstance(key, str):
