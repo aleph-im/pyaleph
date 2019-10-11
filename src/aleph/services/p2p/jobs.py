@@ -25,3 +25,33 @@ async def reconnect_p2p_job(config=None):
             LOGGER.exception("Error reconnecting to peers")
 
         await asyncio.sleep(config.p2p.reconnect_delay.value)
+        
+async def check_peer(peers, peer_uri, timeout=1):
+    try:
+        version_info = await api_get_request(peer_uri, "version", timeout=timeout)
+        if version_info is not None:
+            peers.append(peer_uri)
+    except Exception:
+        LOGGER.exception("Can't contact peer %r" % peer_uri)
+    
+        
+async def tidy_http_peers_job(config=None):
+    from aleph.web import app
+    from .http import api_get_request
+    from aleph.services.p2p import singleton
+    if config is None:
+        config = app['config']
+    await asyncio.sleep(2)
+    while True:
+        try:
+            peers = list()
+            jobs = list()
+            async for peer in get_peers(peer_type='HTTP'):
+                jobs.append(check_peer(peers, peer))
+            await asyncio.gather(*jobs)
+            singleton.api_servers = peers
+                
+        except Exception:
+            LOGGER.exception("Error reconnecting to peers")
+
+        await asyncio.sleep(config.p2p.reconnect_delay.value)
