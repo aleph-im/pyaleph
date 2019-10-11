@@ -13,10 +13,10 @@ LOGGER = logging.getLogger('P2P.host')
 FLOODSUB_PROTOCOL_ID = floodsub.PROTOCOL_ID
 GOSSIPSUB_PROTOCOL_ID = gossipsub.PROTOCOL_ID
 
-async def initialize_host(host='0.0.0.0', port=4025, key=None, listen=True):
+async def initialize_host(host='0.0.0.0', port=4025, key=None, listen=True, protocol_active=True):
     from .peers import publish_host, monitor_hosts
     from .protocol import PROTOCOL_ID, AlephProtocol
-    from aleph.jobs import reconnect_p2p_job
+    from .jobs import reconnect_p2p_job, tidy_http_peers_job
     if key is None:
         keypair = create_new_key_pair()
         if listen:
@@ -36,16 +36,23 @@ async def initialize_host(host='0.0.0.0', port=4025, key=None, listen=True):
     # psub = Pubsub(host, gossip, host.get_id())
     flood = floodsub.FloodSub([FLOODSUB_PROTOCOL_ID, GOSSIPSUB_PROTOCOL_ID])
     psub = Pubsub(host, flood, host.get_id())
-    protocol = AlephProtocol(host)
+    if protocol_active:
+        protocol = AlephProtocol(host)
     asyncio.create_task(reconnect_p2p_job())
+    asyncio.create_task(tidy_http_peers_job())
     if listen:
+        from aleph.web import app
+        
         await host.get_network().listen(multiaddr.Multiaddr(transport_opt))
         LOGGER.info("Listening on " + f'{transport_opt}/p2p/{host.get_id()}')
         ip = await get_IP()
         public_address = f'/ip4/{ip}/tcp/{port}/p2p/{host.get_id()}'
+        http_port = app['config'].p2p.http_port.value
+        public_http_address = f'http://{ip}:{http_port}'
         LOGGER.info("Probable public on " + public_address)
         # TODO: set correct interests and args here
-        asyncio.create_task(publish_host(public_address,psub))
+        asyncio.create_task(publish_host(public_address, psub, peer_type="P2P"))
+        asyncio.create_task(publish_host(public_http_address, psub, peer_type="HTTP"))
         asyncio.create_task(monitor_hosts(psub))
         # host.set_stream_handler(PROTOCOL_ID, stream_handler)
         

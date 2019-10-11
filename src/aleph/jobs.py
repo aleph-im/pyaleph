@@ -10,7 +10,6 @@ from aleph.model.pending import PendingMessage, PendingTX
 from aleph.model.messages import Message
 from aleph.model.p2p import get_peers
 from aleph.services.ipfs.common import connect_ipfs_peer
-from aleph.services.p2p import connect_peer
 from aleph.network import check_message
 from pymongo import DeleteOne, InsertOne, DeleteMany
 from concurrent.futures import ProcessPoolExecutor
@@ -285,25 +284,7 @@ async def reconnect_ipfs_job(config):
             LOGGER.exception("Error reconnecting to peers")
 
         await asyncio.sleep(config.ipfs.reconnect_delay.value)
-        
-async def reconnect_p2p_job(config=None):
-    from aleph.web import app
-    if config is None:
-        config = app['config']
-    await asyncio.sleep(2)
-    while True:
-        try:
-            peers = set(config.p2p.peers.value + [a async for a in get_peers(peer_type='P2P')])
-            for peer in peers:
-                try:
-                    await connect_peer(peer)
-                except:
-                    LOGGER.debug("Can't reconnect to %s" % peer)
-                
-        except Exception:
-            LOGGER.exception("Error reconnecting to peers")
-
-        await asyncio.sleep(config.p2p.reconnect_delay.value)
+    
 
 def start_jobs(config, use_processes=False):
     LOGGER.info("starting jobs")
