@@ -9,24 +9,25 @@ from . import singleton
 import logging
 LOGGER = logging.getLogger('P2P.HTTP')
 
-CONNECTOR = None
+SESSION = None
 
 async def api_get_request(base_uri, method, timeout=1):
-    global CONNECTOR
-    if CONNECTOR is None:
-        CONNECTOR = aiohttp.TCPConnector(limit_per_host=20)
+    global SESSION
+    if SESSION is None:
+        connector = aiohttp.TCPConnector(limit_per_host=20)
+        SESSION = aiohttp.ClientSession(read_timeout=timeout, connector=connector)
         
-    async with aiohttp.ClientSession(read_timeout=timeout, connector=CONNECTOR) as session:
-        uri = f"{base_uri}/api/v0/{method}"
-        try:
-            async with session.get(uri) as resp:
-                if resp.status != 200:
-                    result = None
-                else:
-                    result = await resp.json()
-        except:
-            result = None
-        return result
+    uri = f"{base_uri}/api/v0/{method}"
+    try:
+        async with SESSION.get(uri) as resp:
+            if resp.status != 200:
+                result = None
+            else:
+                result = await resp.json()
+    except:
+        # LOGGER.exception("Error in retrieval")
+        result = None
+    return result
 
 
 async def get_peer_hash_content(base_uri, item_hash, timeout=1):
