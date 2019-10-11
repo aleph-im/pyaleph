@@ -230,8 +230,10 @@ async def incoming_channel(config, topic):
 
 
 async def request_hash(item_hash):
-    return await singleton.streamer.request_hash(item_hash)
-    
+    if singleton.streamer is not None:
+        return await singleton.streamer.request_hash(item_hash)
+    else:
+        return None
 
         
 
