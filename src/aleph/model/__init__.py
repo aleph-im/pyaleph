@@ -35,3 +35,5 @@ def init_db(config, ensure_indexes=True):
         PendingTX.ensure_indexes(sync_db)
         from aleph.model.chains import Chain
         Chain.ensure_indexes(sync_db)
+        from aleph.model.p2p import Peer
+        Peer.ensure_indexes(sync_db)
