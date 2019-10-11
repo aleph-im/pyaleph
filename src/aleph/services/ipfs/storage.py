@@ -31,6 +31,9 @@ async def get_ipfs_content(hash, timeout=1, tries=1):
                     aiohttp.client_exceptions.ClientConnectorError):
                 try_count -= 1  # do not count as a try.
                 await asyncio.sleep(.1)
+                
+        if isinstance(result, str):
+            result = result.encode('utf-8')
 
         return result
 
