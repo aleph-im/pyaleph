@@ -167,10 +167,11 @@ async def request_transactions(config, web3, contract, start_height):
     abi = contract.events.SyncEvent._get_event_abi()
 
     async for log in logs:
-        event_data = await loop.run_in_executor(None, get_event_data,
-                                                abi, log)
-        # event_data = get_event_data(contract.events.SyncEvent._get_event_abi(),
-        #                             log)
+        # event_data = await loop.run_in_executor(None, get_event_data,
+        #                                         abi, log)
+        event_data = get_event_data(web3.codec,
+                                    contract.events.SyncEvent._get_event_abi(),
+                                    log)
         LOGGER.info('Handling TX in block %s' % event_data.blockNumber)
         publisher = event_data.args.addr  # TODO: verify rights.
         timestamp = event_data.args.timestamp
