@@ -13,7 +13,7 @@ SESSIONS = dict()
 
 async def api_get_request(base_uri, method, timeout=1):
     if timeout not in SESSIONS:
-        connector = aiohttp.TCPConnector(limit_per_host=20)
+        connector = aiohttp.TCPConnector(limit_per_host=5)
         SESSIONS[timeout] = aiohttp.ClientSession(read_timeout=timeout, connector=connector)
         
     uri = f"{base_uri}/api/v0/{method}"
