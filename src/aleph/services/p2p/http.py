@@ -9,23 +9,22 @@ from . import singleton
 import logging
 LOGGER = logging.getLogger('P2P.HTTP')
 
-SESSION = None
+SESSIONS = dict()
 
 async def api_get_request(base_uri, method, timeout=1):
-    global SESSION
-    if SESSION is None:
+    if timeout not in SESSIONS:
         connector = aiohttp.TCPConnector(limit_per_host=20)
-        SESSION = aiohttp.ClientSession(read_timeout=timeout, connector=connector)
+        SESSIONS[timeout] = aiohttp.ClientSession(read_timeout=timeout, connector=connector)
         
     uri = f"{base_uri}/api/v0/{method}"
     try:
-        async with SESSION.get(uri) as resp:
+        async with SESSIONS[timeout].get(uri) as resp:
             if resp.status != 200:
                 result = None
             else:
                 result = await resp.json()
     except:
-        # LOGGER.exception("Error in retrieval")
+        LOGGER.exception("Error in retrieval")
         result = None
     return result
 
@@ -34,7 +33,7 @@ async def get_peer_hash_content(base_uri, item_hash, timeout=1):
     from aleph.web import app
     
     result = None
-    item = await api_get_request(base_uri, f"storage/{item_hash}")
+    item = await api_get_request(base_uri, f"storage/{item_hash}", timeout=timeout)
     if item is not None and item['status'] == 'success' and item['content'] is not None:
         # TODO: IMPORTANT /!\ verify the hash of received data!
         return base64.decodebytes(item['content'].encode('utf-8'))
@@ -44,10 +43,10 @@ async def get_peer_hash_content(base_uri, item_hash, timeout=1):
     return result
     
     
-async def request_hash(item_hash):
+async def request_hash(item_hash, timeout=1):
     uris = sample(singleton.api_servers, k=len(singleton.api_servers))
     for uri in uris:
-        content = await get_peer_hash_content(uri, item_hash)
+        content = await get_peer_hash_content(uri, item_hash, timeout=timeout)
         if content is not None:
             return content
         
