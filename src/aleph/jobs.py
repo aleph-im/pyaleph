@@ -180,9 +180,16 @@ async def handle_txs_job():
     
     actions = []
     tasks = []
+    seen_offchain_hashes = []
     i = 0
     LOGGER.info("handling TXs")
     async for pending in PendingTX.collection.find().sort([('context.time', 1)]):
+        if pending['content']['protocol'] == "aleph-offchain":
+            if pending['content']['content'] not in seen_offchain_hashes:
+                seen_offchain_hashes.append(pending['content']['content'])
+            else:
+                continue
+            
         i += 1
         tasks.append(handle_pending_tx(pending, actions))
 
