@@ -10,7 +10,7 @@ import pprint
 
 from datetime import date, datetime, timedelta
 
-app = web.Application()
+app = web.Application(client_max_size=1024**2*64)
 auth = None
 
 # Configure default CORS settings.
