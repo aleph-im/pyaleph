@@ -18,7 +18,7 @@ async def get_peers(peer_type=None):
     TODO: handle the last seen, channel preferences, and better way of avoiding "bad contacts".
     NOTE: Currently used in jobs.
     """
-    async for peer in Peer.collection.find({'type': peer_type}):
+    async for peer in Peer.collection.find({'type': peer_type}).sort([('last_seen', -1)]):
         yield peer['address']
 
 async def add_peer(address, peer_type):
