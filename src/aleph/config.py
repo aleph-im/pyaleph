@@ -27,6 +27,14 @@ def get_defaults():
             'private_key': None,
             'commit_delay': 14
         },
+        'nuls2': {
+            'chain_id': 1,
+            'enabled': False,
+            'packing_node': False,
+            'api_url': 'https://apiserver.nuls.io/',
+            'private_key': None,
+            'commit_delay': 14
+        },
         'ethereum': {
             'enabled': False,
             'api_url': 'http://127.0.0.1:8545',
