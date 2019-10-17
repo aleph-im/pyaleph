@@ -32,8 +32,11 @@ def get_defaults():
             'enabled': False,
             'packing_node': False,
             'api_url': 'https://apiserver.nuls.io/',
+            'explorer_url': 'https://nuls.world',
             'private_key': None,
-            'commit_delay': 14
+            'sync_address': None,
+            'commit_delay': 14,
+            'remark': 'ALEPH-SYNC'
         },
         'ethereum': {
             'enabled': False,
