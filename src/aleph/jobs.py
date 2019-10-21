@@ -233,7 +233,7 @@ def prepare_loop(config_values, manager, idx=1):
     from aleph.services.ipfs.common import get_ipfs_api
     from aleph.services.p2p import init_p2p, http
     from aleph.services import filestore
-    uvloop.install()
+    # uvloop.install()
     
     # manager = NodeManager()
     # manager.start()
@@ -294,7 +294,7 @@ async def reconnect_ipfs_job(config):
         await asyncio.sleep(config.ipfs.reconnect_delay.value)
     
 
-def start_jobs(config, use_processes=False):
+def start_jobs(config, use_processes=True):
     LOGGER.info("starting jobs")
     executor = ProcessPoolExecutor()
     loop = asyncio.get_event_loop()
