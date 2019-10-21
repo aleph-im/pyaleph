@@ -95,7 +95,7 @@ def main(args):
       args ([str]): command line parameter list
     """
 
-    uvloop.install()
+    # uvloop.install()
     args = parse_args(args)
     setup_logging(args.loglevel)
     LOGGER.info("Starting up.")
@@ -121,7 +121,7 @@ def main(args):
         start_jobs(config)
 
     loop = asyncio.get_event_loop()
-    handler = app.make_handler()
+    handler = app.make_handler(loop=loop)
     f = p2p.init_p2p(config)
     host = loop.run_until_complete(f)
     
