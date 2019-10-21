@@ -294,7 +294,7 @@ async def reconnect_ipfs_job(config):
         await asyncio.sleep(config.ipfs.reconnect_delay.value)
     
 
-def start_jobs(config, use_processes=True):
+def start_jobs(config, use_processes=False):
     LOGGER.info("starting jobs")
     executor = ProcessPoolExecutor()
     loop = asyncio.get_event_loop()
