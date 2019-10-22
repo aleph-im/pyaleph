@@ -81,8 +81,8 @@ async def addresses_stats_view(request):
         check_time = datetime.datetime.now()
         
     if len(addresses) == 1:
-        stats = [
-            {
+        stats = {
+            addresses[0]: {
                 'address': addresses[0],
                 'messages': await Message.collection.count_documents({
                     'content.address': addresses[0]
@@ -96,7 +96,7 @@ async def addresses_stats_view(request):
                     'type': 'AGGREGATE'
                 })
             }
-        ]
+        }
     else:
         stats = await addresses_infos(address_list=addresses,
                                     check_time=check_time)
