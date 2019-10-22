@@ -62,6 +62,7 @@ async def retry_messages_job():
     seen_ids = {}
     actions = []
     messages_actions = []
+    gtasks = []
     tasks = []
     loop = asyncio.get_event_loop()
     i = 0
@@ -82,14 +83,24 @@ async def retry_messages_job():
             tasks.append(handle_pending_message(pending, seen_ids, actions, messages_actions))
             
             if (j >= 20000):
-                await join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions)
+                # await join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions) 
+                gtasks.append(asyncio.create_task(
+                    join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions)))
+                tasks = []
+                actions = []
+                messages_actions = []
                 i = 0
                 j = 0
 
             if (i >= 1024):
-                await join_pending_message_tasks(tasks)
+                # await join_pending_message_tasks(tasks)
+                gtasks.append(asyncio.create_task(join_pending_message_tasks(tasks)))
+                tasks = []
                 i = 0
-        await join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions)
+        gtasks.append(asyncio.create_task(
+            join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions)))
+        
+        await asyncio.gather(*gtasks, return_exceptions=True)
         
         # if await PendingMessage.collection.count_documents(find_params) > 100000:
         #     LOGGER.info('Cleaning messages')
