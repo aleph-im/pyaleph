@@ -209,7 +209,7 @@ async def binance_packer(config):
             # content = json.dumps(content)
             tx = await loop.run_in_executor(None, prepare_transfer_tx,
                                             wallet, target_addr,
-                                            content.encode('utf-8'))
+                                            content)
             # tx_hash = await tx.get_hash()
             LOGGER.info("Broadcasting TX")
             await client.broadcast_msg(tx, sync=True)
