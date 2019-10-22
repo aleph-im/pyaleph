@@ -71,7 +71,7 @@ async def retry_messages_job():
     #     find_params = {'message.item_type': 'inline'}
         
     while await PendingMessage.collection.count_documents(find_params):
-        async for pending in PendingMessage.collection.find(find_params).sort([('message.time', 1)]).limit(200000):
+        async for pending in PendingMessage.collection.find(find_params).sort([('message.time', 1)]).limit(1000000):
             if pending['message']['item_type'] == 'ipfs':
                 i += 15
                 j += 100
@@ -91,19 +91,19 @@ async def retry_messages_job():
                 i = 0
         await join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions)
         
-        if await PendingMessage.collection.count_documents(find_params) > 100000:
-            LOGGER.info('Cleaning messages')
-            clean_actions = []
-            # big collection, try to remove dups.
-            for key, height in seen_ids.items():
-                clean_actions.append(DeleteMany({
-                    'message.item_hash': key[0],
-                    'message.sender': key[1],
-                    'source.chain_name': key[2],
-                    'source.height': {'$gt': height}
-                }))
-            result = await PendingMessage.collection.bulk_write(clean_actions)
-            LOGGER.info(repr(result))
+        # if await PendingMessage.collection.count_documents(find_params) > 100000:
+        #     LOGGER.info('Cleaning messages')
+        #     clean_actions = []
+        #     # big collection, try to remove dups.
+        #     for key, height in seen_ids.items():
+        #         clean_actions.append(DeleteMany({
+        #             'message.item_hash': key[0],
+        #             'message.sender': key[1],
+        #             'source.chain_name': key[2],
+        #             'source.height': {'$gt': height}
+        #         }))
+        #     result = await PendingMessage.collection.bulk_write(clean_actions)
+        #     LOGGER.info(repr(result))
     # async for pending in PendingMessage.collection.find(
     #     {'message.item_content': { "$exists": False } }).sort([('message.time', 1)]).limit(100):
     #     i += 1
