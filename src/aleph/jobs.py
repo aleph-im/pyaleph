@@ -102,19 +102,19 @@ async def retry_messages_job():
         
         await asyncio.gather(*gtasks, return_exceptions=True)
         
-        # if await PendingMessage.collection.count_documents(find_params) > 100000:
-        #     LOGGER.info('Cleaning messages')
-        #     clean_actions = []
-        #     # big collection, try to remove dups.
-        #     for key, height in seen_ids.items():
-        #         clean_actions.append(DeleteMany({
-        #             'message.item_hash': key[0],
-        #             'message.sender': key[1],
-        #             'source.chain_name': key[2],
-        #             'source.height': {'$gt': height}
-        #         }))
-        #     result = await PendingMessage.collection.bulk_write(clean_actions)
-        #     LOGGER.info(repr(result))
+        if await PendingMessage.collection.count_documents(find_params) > 100000:
+            LOGGER.info('Cleaning messages')
+            clean_actions = []
+            # big collection, try to remove dups.
+            for key, height in seen_ids.items():
+                clean_actions.append(DeleteMany({
+                    'message.item_hash': key[0],
+                    'message.sender': key[1],
+                    'source.chain_name': key[2],
+                    'source.height': {'$gt': height}
+                }))
+            result = await PendingMessage.collection.bulk_write(clean_actions)
+            LOGGER.info(repr(result))
     # async for pending in PendingMessage.collection.find(
     #     {'message.item_content': { "$exists": False } }).sort([('message.time', 1)]).limit(100):
     #     i += 1
