@@ -58,13 +58,11 @@ async def incoming(message, chain_name=None,
         'sender': message['sender'],
         'type': message['type']
     }
-    existing = None
+    existing = await Message.collection.find_one(
+        filters,
+        projection={'confirmed': 1, 'confirmations': 1, 'time': 1, 'signature': 1})
 
     if check_message:
-        existing = await Message.collection.find_one(
-            filters,
-            projection={'confirmed': 1, 'confirmations': 1, 'time': 1, 'signature': 1})
-        
         if existing is None or (existing['signature'] != message['signature']):
             # check/sanitize the message if needed
             message = await check_message_fn(message,
@@ -82,10 +80,10 @@ async def incoming(message, chain_name=None,
     message['chain'] = message.get('chain', chain_name)
     
     
-    if existing is None:
-        # TODO: verify if search key is ok. do we need an unique key for messages?
-        existing = await Message.collection.find_one(
-            filters, projection={'confirmed': 1, 'confirmations': 1, 'time': 1})
+    # if existing is None:
+    #     # TODO: verify if search key is ok. do we need an unique key for messages?
+    #     existing = await Message.collection.find_one(
+    #         filters, projection={'confirmed': 1, 'confirmations': 1, 'time': 1})
     
     if chain_name and tx_hash and height:
         # We are getting a confirmation here
