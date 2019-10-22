@@ -62,9 +62,10 @@ async def incoming(message, chain_name=None,
 
     if check_message:
         existing = await Message.collection.find_one(
-            dict(signature=message['signature'],**filters),
-            projection={'confirmed': 1, 'confirmations': 1, 'time': 1})
-        if existing is None:
+            filters,
+            projection={'confirmed': 1, 'confirmations': 1, 'time': 1, 'signature': 1})
+        
+        if existing is None or (existing['signature'] != message['signature']):
             # check/sanitize the message if needed
             message = await check_message_fn(message,
                                             from_chain=(chain_name is not None))
