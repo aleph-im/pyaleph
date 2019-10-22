@@ -72,7 +72,7 @@ async def retry_messages_job():
     #     find_params = {'message.item_type': 'inline'}
         
     while await PendingMessage.collection.count_documents(find_params):
-        async for pending in PendingMessage.collection.find(find_params).sort([('message.time', 1)]).limit(1000000):
+        async for pending in PendingMessage.collection.find(find_params).sort([('message.time', 1)]).batch_size(100000):
             if pending['message']['item_type'] == 'ipfs':
                 i += 15
                 j += 100
