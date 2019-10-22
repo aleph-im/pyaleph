@@ -93,8 +93,8 @@ async def retry_messages_job():
                 j = 0
 
             if (i >= 1024):
-                # await join_pending_message_tasks(tasks)
-                gtasks.append(asyncio.create_task(join_pending_message_tasks(tasks)))
+                await join_pending_message_tasks(tasks)
+                # gtasks.append(asyncio.create_task(join_pending_message_tasks(tasks)))
                 tasks = []
                 i = 0
         gtasks.append(asyncio.create_task(
