@@ -36,7 +36,8 @@ def get_defaults():
             'private_key': None,
             'sync_address': None,
             'commit_delay': 14,
-            'remark': 'ALEPH-SYNC'
+            'remark': 'ALEPH-SYNC',
+            'token_contract': None
         },
         'ethereum': {
             'enabled': False,
@@ -46,7 +47,8 @@ def get_defaults():
             'private_key': None,
             'sync_contract': None,
             'start_height': 4200000,
-            'commit_delay': 35
+            'commit_delay': 35,
+            'token_contract': None
         },
         'binancechain': {
             'enabled': False,

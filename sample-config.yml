@@ -6,6 +6,7 @@ nuls2:
   sync_address: NULSd6HgUkssMi6oSjwEn3puNSijLKnyiRV7H
   api_url: https://apiserver.nuls.io/
   explorer_url: https://nuls.world/
+  token_contract: NULSd6Hh1FjbnAktH1FFvFnTzfgFnZtgAhYut
 
 ethereum:
   enabled: True
@@ -15,6 +16,7 @@ ethereum:
   private_key: YOUR_PRIVATE_KEY_HERE
   sync_contract: "0x6aDF64fC26D495445A3CAB545aC808d66932aC15"
   start_height: 5042280
+  token_contract: NULSd6Hh1FjbnAktH1FFvFnTzfgFnZtgAhYut
 
 binancechain:
   enabled: True
