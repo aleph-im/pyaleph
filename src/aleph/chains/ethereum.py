@@ -302,3 +302,8 @@ async def ethereum_outgoing_worker(config):
                 await asyncio.sleep(10)
 
 register_outgoing_worker(CHAIN_NAME, ethereum_outgoing_worker)
+
+
+async def get_token_contract(config, web3):
+    return web3.eth.contract(config.ethereum.sync_contract.value,
+                             abi=await get_contract_abi())
