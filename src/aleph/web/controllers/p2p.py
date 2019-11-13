@@ -4,6 +4,7 @@ from aleph.web import app
 from aleph.services.ipfs.pubsub import pub as pub_ipfs
 from aleph.services.p2p import pub as pub_p2p
 from aiohttp import web
+import asyncio
 import logging
 
 LOGGER = logging.getLogger('web.controllers.p2p')
@@ -15,14 +16,16 @@ async def pub_json(request):
     status = "success"
     try:
         if app['config'].ipfs.enabled.value:
-            await pub_ipfs(data.get('topic'), data.get('data'))
+            await asyncio.wait_for(
+                pub_ipfs(data.get('topic'), data.get('data')), .2)
     except Exception:
         LOGGER.exception("Can't publish on ipfs")
         status = "warning"
     
     
     try:
-        await pub_p2p(data.get('topic'), data.get('data'))
+        await asyncio.wait_for(
+            pub_p2p(data.get('topic'), data.get('data')), .5)
     except Exception:
         LOGGER.exception("Can't publish on p2p")
         status = "warning"
