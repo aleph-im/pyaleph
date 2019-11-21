@@ -44,6 +44,9 @@ async def get_message_content(message):
     else:
         return None  # unknown, could retry later? shouldn't have arrived this far though.
     
+def get_sha256(content):
+    return sha256(content.encode('utf-8')).hexdigest()
+
 async def get_hash_content(hash, engine='ipfs', timeout=2,
                            tries=1, use_network=True):
     # TODO: determine which storage engine to use
@@ -72,7 +75,9 @@ async def get_hash_content(hash, engine='ipfs', timeout=2,
                     content = None
                         
             elif engine == 'storage':
-                compared_hash = sha256(content.encode('utf-8')).hexdigest()
+                loop = asyncio.get_event_loop()
+                compared_hash = await loop.run_in_executor(None, get_sha256, content)
+                # compared_hash = sha256(content.encode('utf-8')).hexdigest()
                 if compared_hash != hash:
                     LOGGER.warning(f"Got a bad hash! {hash}/{compared_hash}")
                     content = -1
