@@ -72,7 +72,7 @@ async def get_hash_content(hash, engine='ipfs', timeout=2,
                     content = None
                     
         elif engine == 'storage':
-            compared_hash = sha256(content).hexdigest()
+            compared_hash = sha256(content.encode('utf-8')).hexdigest()
             if compared_hash != hash:
                 LOGGER.warning(f"Got a bad hash! {hash}/{compared_hash}")
                 content = -1
