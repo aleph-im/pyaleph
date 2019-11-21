@@ -66,7 +66,7 @@ async def get_hash_content(hash, engine='ipfs', timeout=2,
                     compared_hash = await add_ipfs_bytes(content)
                     if compared_hash != hash:
                         LOGGER.warning(f"Got a bad hash! {hash}/{compared_hash}")
-                        content = None
+                        content = -1
                 except asyncio.TimeoutError:
                     LOGGER.warning(f"Can't verify hash {hash}")
                     
@@ -74,7 +74,7 @@ async def get_hash_content(hash, engine='ipfs', timeout=2,
             compared_hash = sha256(content).hexdigest()
             if compared_hash != hash:
                 LOGGER.warning(f"Got a bad hash! {hash}/{compared_hash}")
-                content = None
+                content = -1
         
         if content is None:
             if ipfs_enabled and engine == 'ipfs':
