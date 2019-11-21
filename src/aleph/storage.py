@@ -59,8 +59,8 @@ async def get_hash_content(hash, engine='ipfs', timeout=2,
             if 'http' in enabled_clients and content is None:
                 content = await p2p_http_request_hash(hash, timeout=timeout)
         
-        if engine == 'ipfs':
-            if content is not None and ipfs_enabled:
+        if content is not None:
+            if engine == 'ipfs' and ipfs_enabled:
                 # TODO: get a better way to compare hashes (without depending on IPFS daemon)
                 try:
                     compared_hash = await add_ipfs_bytes(content)
@@ -70,12 +70,12 @@ async def get_hash_content(hash, engine='ipfs', timeout=2,
                 except asyncio.TimeoutError:
                     LOGGER.warning(f"Can't verify hash {hash}")
                     content = None
-                    
-        elif engine == 'storage':
-            compared_hash = sha256(content.encode('utf-8')).hexdigest()
-            if compared_hash != hash:
-                LOGGER.warning(f"Got a bad hash! {hash}/{compared_hash}")
-                content = -1
+                        
+            elif engine == 'storage':
+                compared_hash = sha256(content.encode('utf-8')).hexdigest()
+                if compared_hash != hash:
+                    LOGGER.warning(f"Got a bad hash! {hash}/{compared_hash}")
+                    content = -1
         
         if content is None:
             if ipfs_enabled and engine == 'ipfs':
