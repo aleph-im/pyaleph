@@ -104,15 +104,15 @@ async def get_json(hash, engine='ipfs', timeout=2, tries=1):
             
     if content is not None and content != -1:
         try:
-            if len(content) > 100000:
-                content = await loop.run_in_executor(None, json.loads, content)
-            else:
-                content = json.loads(content)
+            # if len(content) > 100000:
+            content = await loop.run_in_executor(None, json.loads, content)
+            # else:
+            #     content = json.loads(content)
         except json.JSONDecodeError:
             try:
                 import json as njson
                 content = await loop.run_in_executor(None, njson.loads, content)
-            except (json.JSONDecodeError, KeyError): 
+            except (json.JSONDecodeError, KeyError):
                 LOGGER.exception("Can't decode JSON")
                 content = -1  # never retry, bogus data
         
