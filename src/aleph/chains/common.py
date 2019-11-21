@@ -162,7 +162,7 @@ async def incoming(message, chain_name=None,
         if content == -1:
             LOGGER.warning("Can't get content of object %r, won't retry."
                            % hash)
-            return
+            return -1
 
         if content.get('address', None) is None:
             content['address'] = message['sender']
