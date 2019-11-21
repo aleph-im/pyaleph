@@ -30,8 +30,8 @@ def init_store(config):
     #                        rocksdb.Options(create_if_missing=True))
     
 def __get_value(key):
-    with STORE_LOCK:
-        return hashes_db.get(key)
+    # with STORE_LOCK:
+    return hashes_db.get(key)
     
 _get_value = __get_value
 
