@@ -69,6 +69,7 @@ async def get_hash_content(hash, engine='ipfs', timeout=2,
                         content = -1
                 except asyncio.TimeoutError:
                     LOGGER.warning(f"Can't verify hash {hash}")
+                    content = None
                     
         elif engine == 'storage':
             compared_hash = sha256(content).hexdigest()
