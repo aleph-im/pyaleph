@@ -9,6 +9,7 @@ import orjson as json
 import aiohttp
 import concurrent
 import logging
+from hashlib import sha256
 
 from aleph.services.ipfs.storage import get_ipfs_content
 from aleph.services.ipfs.storage import add_json as add_ipfs_json
@@ -25,7 +26,9 @@ async def get_message_content(message):
     item_type = message.get('item_type', 'ipfs')
     
     if item_type == 'ipfs':
-        return await get_json(message['item_hash'])
+        return await get_json(message['item_hash'], engine='ipfs')
+    if item_type == 'storage':
+        return await get_json(message['item_hash'], engine='storage')
     elif item_type == 'inline':
         try:
             loop = asyncio.get_event_loop()
@@ -41,7 +44,8 @@ async def get_message_content(message):
     else:
         return None  # unknown, could retry later? shouldn't have arrived this far though.
     
-async def get_hash_content(hash, timeout=2, tries=1, use_network=True):
+async def get_hash_content(hash, engine='ipfs', timeout=2,
+                           tries=1, use_network=True):
     # TODO: determine which storage engine to use
     ipfs_enabled = app['config'].ipfs.enabled.value
     enabled_clients = app['config'].p2p.clients.value
@@ -55,21 +59,29 @@ async def get_hash_content(hash, timeout=2, tries=1, use_network=True):
             if 'http' in enabled_clients and content is None:
                 content = await p2p_http_request_hash(hash, timeout=timeout)
         
-        if content is not None and ipfs_enabled:
-            # TODO: get a better way to compare hashes (without depending on IPFS daemon)
-            try:
-                compared_hash = await add_ipfs_bytes(content)
-                if compared_hash != hash:
-                    LOGGER.warning(f"Got a bad hash! {hash}/{compared_hash}")
-                    content = None
-            except asyncio.TimeoutError:
-                LOGGER.warning(f"Can't verify hash {hash}")
+        if engine == 'ipfs':
+            if content is not None and ipfs_enabled:
+                # TODO: get a better way to compare hashes (without depending on IPFS daemon)
+                try:
+                    compared_hash = await add_ipfs_bytes(content)
+                    if compared_hash != hash:
+                        LOGGER.warning(f"Got a bad hash! {hash}/{compared_hash}")
+                        content = None
+                except asyncio.TimeoutError:
+                    LOGGER.warning(f"Can't verify hash {hash}")
+                    
+        elif engine == 'storage':
+            compared_hash = sha256(content).hexdigest()
+            if compared_hash != hash:
+                LOGGER.warning(f"Got a bad hash! {hash}/{compared_hash}")
+                content = None
         
         if content is None:
-            if ipfs_enabled:
-                content = await get_ipfs_content(hash, timeout=timeout, tries=tries)
+            if ipfs_enabled and engine == 'ipfs':
+                content = await get_ipfs_content(hash,
+                                                 timeout=timeout, tries=tries)
         else:
-            LOGGER.info(f"Got content fron p2p {hash}")
+            LOGGER.info(f"Got content from p2p {hash}")
         
         if content is not None and content != -1:
             LOGGER.debug(f"Storing content for{hash}")
@@ -79,9 +91,10 @@ async def get_hash_content(hash, timeout=2, tries=1, use_network=True):
         
     return content
 
-async def get_json(hash, timeout=2, tries=1):
+async def get_json(hash, engine='ipfs', timeout=2, tries=1):
     loop = asyncio.get_event_loop()
-    content = await get_hash_content(hash, timeout=timeout, tries=tries)
+    content = await get_hash_content(hash, engine=engine,
+                                     timeout=timeout, tries=tries)
             
     if content is not None and content != -1:
         try:
@@ -102,12 +115,19 @@ async def get_json(hash, timeout=2, tries=1):
 async def pin_hash(chash, timeout=2, tries=1):
     return await ipfs_pin_add(chash, timeout=timeout, tries=tries)
 
-async def add_json(value):
+async def add_json(value, engine='ipfs'):
     # TODO: determine which storage engine to use
     loop = asyncio.get_event_loop()
     content = await loop.run_in_executor(None, json.dumps, value)
-    chash = await add_ipfs_bytes(content)
-    # await loop.run_in_executor(None, json.dumps, value)
+    if engine == 'ipfs':
+        chash = await add_ipfs_bytes(content)
+    elif engine == 'storage':
+        if isinstance(content, str):
+            content = content.encode('utf-8')
+        chash = sha256(content).hexdigest()
+    else:
+        raise NotImplementedError('storage engine %s not supported' % engine)
+        
     await set_value(chash, content)
     return chash
     

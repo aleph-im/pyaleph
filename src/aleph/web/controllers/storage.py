@@ -5,19 +5,31 @@ from aiohttp import web
 import base64
 
 
-async def add_json_controller(request):
+async def add_ipfs_json_controller(request):
     """ Forward the json content to IPFS server and return an hash
     """
     data = await request.json()
 
     output = {
         'status': 'success',
-        'hash': await add_json(data)
+        'hash': await add_json(data, engine='ipfs')
     }
     return web.json_response(output)
 
-app.router.add_post('/api/v0/storage/add_json', add_json_controller)
-app.router.add_post('/api/v0/ipfs/add_json', add_json_controller)
+app.router.add_post('/api/v0/ipfs/add_json', add_ipfs_json_controller)
+
+async def add_storage_json_controller(request):
+    """ Forward the json content to IPFS server and return an hash
+    """
+    data = await request.json()
+
+    output = {
+        'status': 'success',
+        'hash': await add_json(data, engine='storage')
+    }
+    return web.json_response(output)
+
+app.router.add_post('/api/v0/storage/add_json', add_storage_json_controller)
 
 async def get_hash(request):
     result = {'status': 'error',

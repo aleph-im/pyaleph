@@ -100,7 +100,7 @@ async def check_message(message, from_chain=False, from_network=False,
         
         message['item_type'] = 'inline'
         
-    else:
+    elif message.get('item_type', None) != 'storage':
         message['item_type'] = 'ipfs'
     
     if trusted:
