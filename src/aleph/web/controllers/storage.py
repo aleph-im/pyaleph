@@ -33,7 +33,7 @@ async def add_storage_json_controller(request):
 app.router.add_post('/api/v0/storage/add_json', add_storage_json_controller)
 
 def prepare_content(content):
-    return base64.encodebytes(value).decode('utf-8')
+    return base64.encodebytes(content).decode('utf-8')
 
 async def get_hash(request):
     result = {'status': 'error',
@@ -43,7 +43,7 @@ async def get_hash(request):
     if hash is not None:
         value = await get_hash_content(item_hash, use_network=False)
         loop = asyncio.get_event_loop()
-        content = await loop.run_in_executor(None, prepare_content, content)
+        content = await loop.run_in_executor(None, prepare_content, value)
     
         if value is not None and value != -1:
             result = {'status': 'success',
