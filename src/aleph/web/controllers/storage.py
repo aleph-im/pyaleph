@@ -43,9 +43,9 @@ async def get_hash(request):
     if hash is not None:
         value = await get_hash_content(item_hash, use_network=False)
         loop = asyncio.get_event_loop()
-        content = await loop.run_in_executor(None, prepare_content, value)
     
         if value is not None and value != -1:
+            content = await loop.run_in_executor(None, prepare_content, value)
             result = {'status': 'success',
                       'hash': item_hash,
                       'content': content}
