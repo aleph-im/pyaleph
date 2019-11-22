@@ -44,6 +44,9 @@ async def get_peer_hash_content(base_uri, item_hash, timeout=1):
     
     
 async def request_hash(item_hash, timeout=1):
+    if singleton.api_servers is None:
+        return None
+    
     uris = sample(singleton.api_servers, k=len(singleton.api_servers))
     for uri in uris:
         content = await get_peer_hash_content(uri, item_hash, timeout=timeout)
