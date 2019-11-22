@@ -99,8 +99,11 @@ async def check_message(message, from_chain=False, from_network=False,
         
         message['item_type'] = 'inline'
         
-    elif message.get('item_type', None) != 'storage':
-        message['item_type'] = 'ipfs'
+    else:
+        if len(message['item_hash']) == 46:
+            message['item_type'] = 'ipfs'
+        if len(message['item_hash']) == 64:
+            message['item_type'] = 'storage'
     
     if trusted:
         # only in the case of a message programmatically built here
