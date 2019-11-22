@@ -32,10 +32,10 @@ async def initialize_host(host='0.0.0.0', port=4025, key=None, listen=True, prot
     host = await new_node(transport_opt=[transport_opt],
                           key_pair=keypair)
     protocol = None
-    gossip = gossipsub.GossipSub([GOSSIPSUB_PROTOCOL_ID], 10, 9, 11, 30)
-    psub = Pubsub(host, gossip, host.get_id())
-    # flood = floodsub.FloodSub([FLOODSUB_PROTOCOL_ID, GOSSIPSUB_PROTOCOL_ID])
-    # psub = Pubsub(host, flood, host.get_id())
+    # gossip = gossipsub.GossipSub([GOSSIPSUB_PROTOCOL_ID], 10, 9, 11, 30)
+    # psub = Pubsub(host, gossip, host.get_id())
+    flood = floodsub.FloodSub([FLOODSUB_PROTOCOL_ID, GOSSIPSUB_PROTOCOL_ID])
+    psub = Pubsub(host, flood, host.get_id())
     if protocol_active:
         protocol = AlephProtocol(host)
     asyncio.create_task(reconnect_p2p_job())
