@@ -45,7 +45,9 @@ async def get_message_content(message):
         return None  # unknown, could retry later? shouldn't have arrived this far though.
     
 def get_sha256(content):
-    return sha256(content.encode('utf-8')).hexdigest()
+    if isinstance(content, str):
+        content = content.encode('utf-8')
+    return sha256(content).hexdigest()
 
 async def get_hash_content(hash, engine='ipfs', timeout=2,
                            tries=1, use_network=True):

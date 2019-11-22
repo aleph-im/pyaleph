@@ -42,10 +42,9 @@ async def incoming_check(ipfs_pubsub_message):
                          % ipfs_pubsub_message.get('data', ''))
 
 def get_sha256(content):
-    # h = hashlib.sha256()
-    # h.update(content.encode('utf-8'))
-    # return h.hexdigest()
-    return sha256(content.encode('utf-8')).hexdigest()
+    if isinstance(content, str):
+        content = content.encode('utf-8')
+    return sha256(content).hexdigest()
 
 async def check_message(message, from_chain=False, from_network=False,
                         trusted=False):
