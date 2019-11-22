@@ -25,7 +25,7 @@ async def get_peers(peer_type=None):
         yield peer['address']
 
 async def add_peer(address, peer_type):
-    Peer.collection.replace_one({
+    await Peer.collection.replace_one({
         'address': address,
         'type': peer_type
     }, {
