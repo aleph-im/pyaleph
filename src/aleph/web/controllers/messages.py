@@ -87,7 +87,10 @@ async def view_messages_list(request):
     }
 
     if pagination_per_page is not None:
-        total_msgs = await Message.collection.count_documents(find_filters)
+        if len(find_filters.keys()):
+            total_msgs = await Message.collection.count_documents(find_filters)
+        else:
+            total_msgs = await Message.collection.estimated_document_count()
 
         pagination = Pagination(pagination_page, pagination_per_page,
                                 total_msgs,
