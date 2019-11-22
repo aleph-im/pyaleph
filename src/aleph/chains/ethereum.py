@@ -154,7 +154,7 @@ async def get_logs(config, web3, contract, start_height):
                     raise
 
 
-async def request_transactions(config, web3, contract, start_height):
+async def request_transactions(config, web3, contract, abi, start_height):
     """ Continuously request data from the Ethereum blockchain.
     TODO: support websocket API.
     """
@@ -164,7 +164,6 @@ async def request_transactions(config, web3, contract, start_height):
     loop = asyncio.get_event_loop()
 
     logs = get_logs(config, web3, contract, start_height+1)
-    abi = contract.events.SyncEvent._get_event_abi()
 
     async for log in logs:
         # event_data = await loop.run_in_executor(None, get_event_data,
@@ -213,11 +212,12 @@ async def check_incoming(config):
 
     web3 = await loop.run_in_executor(None, get_web3, config)
     contract = await get_contract(config, web3)
+    abi = contract.events.SyncEvent._get_event_abi()
 
     while True:
         last_stored_height = await get_last_height()
         async for jdata, context in request_transactions(config, web3, contract,
-                                              last_stored_height):
+                                              abi, last_stored_height):
             await incoming_chaindata(jdata, context)
         await asyncio.sleep(10)
 
