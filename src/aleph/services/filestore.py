@@ -53,7 +53,7 @@ async def get_value(key, in_executor=True):
     else:
         return _get_value(key.encode('utf-8'))
 
-async def set_value(key, value):
+async def set_value(key, value, in_executor=True):
     if not isinstance(key, bytes):
         if isinstance(key, str):
             key = key.encode('utf-8')
@@ -66,4 +66,8 @@ async def set_value(key, value):
         else:
             raise ValueError('Bad input value (bytes or string only)')
     
-    return _set_value(key, value)
+    if in_executor:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _set_value, key, value)
+    else:
+        return _set_value(key, value)
