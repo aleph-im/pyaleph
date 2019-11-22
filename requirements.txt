@@ -5,8 +5,8 @@ aiohttp-cors==0.7.0
 aiohttp-jinja2==1.1.2
 aiohttp-session==2.8.0
 aioipfs==0.4.1
--e git+git@github.com:aleph-im/aleph-client.git#egg=aleph_client
--e git+git@github.com:aleph-im/nuls2-python.git#egg=nuls2-python
+-e git+https://github.com:aleph-im/aleph-client.git#egg=aleph_client
+-e git+https://github.com:aleph-im/nuls2-python.git#egg=nuls2-python
 arrow==0.15.2
 asn1crypto==1.0.1
 async-generator==1.10
