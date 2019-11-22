@@ -138,8 +138,8 @@ async def retry_messages_task():
         
 
 async def handle_pending_tx(pending, actions_list):
-    messages = await get_chaindata_messages(pending['content'], pending['context'])
     LOGGER.info("%s Handling TX in block %s" % (pending['context']['chain_name'], pending['context']['height']))
+    messages = await get_chaindata_messages(pending['content'], pending['context'])
     if isinstance(messages, list):
         message_actions = list()
         for i, message in enumerate(messages):
