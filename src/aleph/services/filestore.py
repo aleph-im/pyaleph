@@ -36,8 +36,8 @@ def __get_value(key):
 _get_value = __get_value
 
 def __set_value(key, value):
-    with STORE_LOCK:
-        return hashes_db.put(key, value)
+    # with STORE_LOCK:
+    return hashes_db.put(key, value)
 _set_value = __set_value
     
 async def get_value(key, in_executor=True):
