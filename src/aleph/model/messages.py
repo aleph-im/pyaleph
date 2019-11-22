@@ -55,7 +55,7 @@ class Message(BaseClass):
                 projection=RAW_MSG_PROJECTION).sort([('time', 1)]).limit(limit)
 
 
-async def get_computed_address_aggregates(address_list=None, key_list=None, limit=1000):
+async def get_computed_address_aggregates(address_list=None, key_list=None, limit=100):
     aggregate = [
         {'$match': {
             'type': 'AGGREGATE'
