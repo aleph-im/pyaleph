@@ -50,7 +50,7 @@ def get_sha256(content):
     return sha256(content).hexdigest()
 
 async def get_hash_content(hash, engine='ipfs', timeout=2,
-                           tries=1, use_network=True):
+                           tries=1, use_network=True, use_ipfs=True):
     # TODO: determine which storage engine to use
     ipfs_enabled = app['config'].ipfs.enabled.value
     enabled_clients = app['config'].p2p.clients.value
@@ -85,7 +85,7 @@ async def get_hash_content(hash, engine='ipfs', timeout=2,
                     content = -1
         
         if content is None:
-            if ipfs_enabled and engine == 'ipfs':
+            if ipfs_enabled and engine == 'ipfs' and use_ipfs:
                 content = await get_ipfs_content(hash,
                                                  timeout=timeout, tries=tries)
         else:
