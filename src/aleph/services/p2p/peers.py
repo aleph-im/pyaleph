@@ -9,7 +9,7 @@ LOGGER = logging.getLogger('P2P.peers')
 
 ALIVE_TOPIC = 'ALIVE'
 
-async def publish_host(address, psub, topic=ALIVE_TOPIC, interests=None, delay=10, peer_type="P2P"):
+async def publish_host(address, psub, topic=ALIVE_TOPIC, interests=None, delay=120, peer_type="P2P"):
     """ Publish our multiaddress regularly, saying we are alive.
     """
     await asyncio.sleep(2)
