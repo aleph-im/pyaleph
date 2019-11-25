@@ -83,6 +83,7 @@ async def check_message(message, from_chain=False, from_network=False,
         if len(message['item_content']) > MAX_INLINE_SIZE:
             LOGGER.warning('Message too long')
             return None
+        await asyncio.sleep(0)
         
         if message.get('hash_type', 'sha256') == 'sha256':  # leave the door open.
             if not trusted:
@@ -112,6 +113,7 @@ async def check_message(message, from_chain=False, from_network=False,
     else:
         message = {k: v for k, v in message.items()
                    if k in INCOMING_MESSAGE_AUTHORIZED_FIELDS}
+        await asyncio.sleep(0)
         chain = message.get('chain', None)
         signer = VERIFIER_REGISTER.get(chain, None)
         if signer is None:
