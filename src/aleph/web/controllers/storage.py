@@ -40,18 +40,25 @@ async def get_hash(request):
               'reason': 'unknown'}
     item_hash = request.match_info.get('hash', None)
     
+    engine = 'ipfs'
+    if len(item_hash) == 64:
+        engine = 'storage'
+    
     if hash is not None:
-        value = await get_hash_content(item_hash, use_network=False)
+        value = await get_hash_content(item_hash, use_network=False,
+                                       use_ipfs=False, engine=engine)
         loop = asyncio.get_event_loop()
     
         if value is not None and value != -1:
             content = await loop.run_in_executor(None, prepare_content, value)
             result = {'status': 'success',
                       'hash': item_hash,
+                      'engine': engine,
                       'content': content}
         else:
             result = {'status': 'success',
                       'hash': item_hash,
+                      'engine': engine,
                       'content': None}
     else:
         result = {'status': 'error',
