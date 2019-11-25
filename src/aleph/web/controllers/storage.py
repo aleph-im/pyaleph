@@ -36,6 +36,7 @@ def prepare_content(content):
     return base64.encodebytes(content).decode('utf-8')
 
 async def get_hash(request):
+    loop = asyncio.get_event_loop()
     result = {'status': 'error',
               'reason': 'unknown'}
     item_hash = request.match_info.get('hash', None)
@@ -47,7 +48,6 @@ async def get_hash(request):
     if hash is not None:
         value = await get_hash_content(item_hash, use_network=False,
                                        use_ipfs=False, engine=engine)
-        loop = asyncio.get_event_loop()
     
         if value is not None and value != -1:
             content = await loop.run_in_executor(None, prepare_content, value)
@@ -63,8 +63,8 @@ async def get_hash(request):
     else:
         result = {'status': 'error',
                 'reason': 'no hash provided'}
-        
-    response = web.json_response(result)
+    
+    response = await loop.run_in_executor(None, web.json_response, result)
     response.enable_compression()
     return response
 
