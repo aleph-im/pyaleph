@@ -45,7 +45,7 @@ async def get_hash(request):
     if len(item_hash) == 64:
         engine = 'storage'
     
-    if hash is not None:
+    if item_hash is not None:
         value = await get_hash_content(item_hash, use_network=False,
                                        use_ipfs=False, engine=engine)
     
@@ -70,3 +70,26 @@ async def get_hash(request):
 
     
 app.router.add_get('/api/v0/storage/{hash}', get_hash)
+
+async def get_raw_hash(request):
+    loop = asyncio.get_event_loop()
+    item_hash = request.match_info.get('hash', None)
+    
+    engine = 'ipfs'
+    if len(item_hash) == 64:
+        engine = 'storage'
+    
+    if item_hash is not None:
+        value = await get_hash_content(item_hash, use_network=False,
+                                       use_ipfs=False, engine=engine)
+    
+        if value is not None and value != -1:
+            response = web.Response(body=value)
+            response.enable_compression()
+            return response
+        else:
+            raise web.HTTPNotFound(text='not found')
+    else:
+        raise web.HTTPNotFound(text='no hash provided')
+    
+app.router.add_get('/api/v0/storage/raw/{hash}', get_raw_hash)
