@@ -29,6 +29,9 @@ mongodb:
   uri: "mongodb://127.0.0.1"
   database: alephtest
 
+storage:
+  store_files: true
+
 ipfs:
   host: 127.0.0.1
   port: 5001
