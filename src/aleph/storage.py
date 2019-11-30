@@ -39,10 +39,10 @@ async def get_message_content(message):
                 item_content = await loop.run_in_executor(None, njson.loads, message['item_content'])
             except (json.JSONDecodeError, KeyError): 
                 LOGGER.exception("Can't decode JSON")
-                return -1  # never retry, bogus data
-        return item_content
+                return -1, 0  # never retry, bogus data
+        return item_content,  len(message['item_content'])
     else:
-        return None  # unknown, could retry later? shouldn't have arrived this far though.
+        return None, 0  # unknown, could retry later? shouldn't have arrived this far though.
     
 def get_sha256(content):
     if isinstance(content, str):
@@ -50,7 +50,8 @@ def get_sha256(content):
     return sha256(content).hexdigest()
 
 async def get_hash_content(hash, engine='ipfs', timeout=2,
-                           tries=1, use_network=True, use_ipfs=True):
+                           tries=1, use_network=True, use_ipfs=True,
+                           store_value=True):
     # TODO: determine which storage engine to use
     ipfs_enabled = app['config'].ipfs.enabled.value
     enabled_clients = app['config'].p2p.clients.value
@@ -91,7 +92,7 @@ async def get_hash_content(hash, engine='ipfs', timeout=2,
         else:
             LOGGER.info(f"Got content from p2p {hash}")
         
-        if content is not None and content != -1:
+        if content is not None and content != -1 and store_value:
             LOGGER.debug(f"Storing content for{hash}")
             await set_value(hash, content)
     else:
@@ -103,8 +104,9 @@ async def get_json(hash, engine='ipfs', timeout=2, tries=1):
     loop = asyncio.get_event_loop()
     content = await get_hash_content(hash, engine=engine,
                                      timeout=timeout, tries=tries)
-            
+    size = 0
     if content is not None and content != -1:
+        size = len(content)
         try:
             # if len(content) > 100000:
             content = await loop.run_in_executor(None, json.loads, content)
@@ -118,7 +120,7 @@ async def get_json(hash, engine='ipfs', timeout=2, tries=1):
                 LOGGER.exception("Can't decode JSON")
                 content = -1  # never retry, bogus data
         
-    return content
+    return content, size
 
 async def pin_hash(chash, timeout=2, tries=1):
     return await ipfs_pin_add(chash, timeout=timeout, tries=tries)
