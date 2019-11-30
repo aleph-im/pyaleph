@@ -3,6 +3,7 @@ from aleph.network import check_message as check_message_fn
 from aleph.model.messages import Message
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.permissions import check_sender_authorization
+from aleph.handlers.register import handle_incoming_message
 from aleph.web import app
 from pymongo import UpdateOne
 import orjson as json
@@ -168,6 +169,29 @@ async def incoming(message, chain_name=None,
 
         if content.get('time', None) is None:
             content['time'] = message['time']
+        
+        # warning: those handlers can modify message and content in place
+        # and return a status. None has to be retried, -1 is discarded, True is
+        # handled and kept.
+        # TODO: change this, it's messy.
+        handling_result = await handle_incoming_message(message, content)
+        
+        if handling_result is None:
+            LOGGER.info("Message type handler has failed, retrying later.")
+            if not retrying:
+                await PendingMessage.collection.insert_one({
+                    'message': message,
+                    'source': dict(
+                        chain_name=chain_name, tx_hash=tx_hash, height=height,
+                        check_message=check_message  # should we store this?
+                    )
+                })
+            return
+        
+        if handling_result != True:
+            LOGGER.warning("Message type handler has failed permanently for "
+                           "%r, won't retry." % hash)
+            return -1
 
         if not await check_sender_authorization(message, content):
             LOGGER.warn("Invalid sender for %s" % hash)
