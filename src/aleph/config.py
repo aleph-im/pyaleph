@@ -19,7 +19,8 @@ def get_defaults():
             ]
         },
         'storage': {
-            'folder': './data/'
+            'folder': './data/',
+            'store_files': False
         },
         'nuls': {
             'chain_id': 8964,
