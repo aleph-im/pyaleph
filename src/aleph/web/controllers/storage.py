@@ -47,7 +47,8 @@ async def get_hash(request):
     
     if item_hash is not None:
         value = await get_hash_content(item_hash, use_network=False,
-                                       use_ipfs=False, engine=engine)
+                                       use_ipfs=False, engine=engine,
+                                       store_value=False)
     
         if value is not None and value != -1:
             content = await loop.run_in_executor(None, prepare_content, value)
@@ -81,7 +82,8 @@ async def get_raw_hash(request):
     
     if item_hash is not None:
         value = await get_hash_content(item_hash, use_network=False,
-                                       use_ipfs=False, engine=engine)
+                                       use_ipfs=False, engine=engine,
+                                       store_value=False)
     
         if value is not None and value != -1:
             response = web.Response(body=value)

@@ -140,7 +140,7 @@ async def incoming(message, chain_name=None,
         #     new_values = {'confirmed': False}  # this should be our default.
 
         try:
-            content = await get_message_content(message)
+            content, size = await get_message_content(message)
         except Exception:
             LOGGER.exception("Can't get content of object %r" % hash)
             content = None
@@ -186,6 +186,7 @@ async def incoming(message, chain_name=None,
         # message.update(new_values)
         updates['$set'] = {
             'content': content,
+            'size': size,
             'item_content': message.get('item_content'),
             'item_type': message.get('item_type'),
             'channel': message.get('channel'),
@@ -262,7 +263,7 @@ async def get_chaindata_messages(chaindata, context, seen_ids=None):
             else:
                 seen_ids.append(chaindata['content'])
         try:
-            content = await get_json(chaindata['content'], timeout=10)
+            content, size = await get_json(chaindata['content'], timeout=10)
         except Exception:
             LOGGER.exception("Can't get content of offchain object %r"
                              % chaindata['content'])
