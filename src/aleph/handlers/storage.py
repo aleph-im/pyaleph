@@ -17,21 +17,23 @@ ALLOWED_ENGINES = ['ipfs', 'storage']
 async def handle_new_storage(message, content):
     store_files = app['config'].storage.store_files.value
     if not store_files:
-        return message # handled
+        return True # handled
     
-    engine = message['content'].get('item_type', None)
+    
+    engine = content.get('item_type', None)
     if engine not in ALLOWED_ENGINES:
+        LOGGER.warning("Got invalid storage engine %s" % engine)
         return -1 # not allowed, ignore.
     
     # TODO: We should check the balance here.
-    content = await get_hash_content(message['content']['item_hash'],
+    file_content = await get_hash_content(content['item_hash'],
                                      engine=engine, tries=4,
                                      use_network=True, use_ipfs=True,
                                      store_value=True)
-    if content is None:
+    if file_content is None:
         return None # can't handle it for now.
     
-    size = len(content)
+    size = len(file_content)
     content['size'] = size
     return True
     
