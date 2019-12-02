@@ -174,7 +174,11 @@ async def incoming(message, chain_name=None,
         # and return a status. None has to be retried, -1 is discarded, True is
         # handled and kept.
         # TODO: change this, it's messy.
-        handling_result = await handle_incoming_message(message, content)
+        try:
+            handling_result = await handle_incoming_message(message, content)
+        except Exception:
+            LOGGER.exception("Error using the message type handler")
+            handling_result = None
         
         if handling_result is None:
             LOGGER.info("Message type handler has failed, retrying later.")
