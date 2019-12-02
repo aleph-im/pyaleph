@@ -1,4 +1,4 @@
-from aleph.storage import add_json, get_hash_content
+from aleph.storage import add_json, get_hash_content, add_file
 from aleph.web import app
 from aleph.services.ipfs.pubsub import pub
 from aiohttp import web
@@ -31,6 +31,22 @@ async def add_storage_json_controller(request):
     return web.json_response(output)
 
 app.router.add_post('/api/v0/storage/add_json', add_storage_json_controller)
+
+async def storage_add_file(request):
+    # No need to pin it here anymore.
+    # TODO: find a way to specify linked ipfs hashes in posts/aggr.
+    post = await request.post()
+    file_hash = await add_file(post['file'].file,
+                               filename=post['file'].filename,
+                               engine='storage')
+
+    output = {
+        'status': 'success',
+        'hash': file_hash
+    }
+    return web.json_response(output)
+
+app.router.add_post('/api/v0/storage/add_file', storage_add_file)
 
 def prepare_content(content):
     return base64.encodebytes(content).decode('utf-8')
