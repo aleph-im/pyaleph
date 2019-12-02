@@ -15,6 +15,7 @@ from aleph.services.ipfs.storage import get_ipfs_content
 from aleph.services.ipfs.storage import add_json as add_ipfs_json
 from aleph.services.ipfs.storage import add_bytes as add_ipfs_bytes
 from aleph.services.ipfs.storage import pin_add as ipfs_pin_add
+from aleph.services.ipfs.storage import add_file as ipfs_add_file
 from aleph.services.p2p.protocol import request_hash as p2p_protocol_request_hash
 from aleph.services.p2p.http import request_hash as p2p_http_request_hash
 from aleph.services.filestore import get_value, set_value
@@ -140,4 +141,20 @@ async def add_json(value, engine='ipfs'):
         
     await set_value(chash, content)
     return chash
+
+async def add_file(fileobject, filename=None, engine='ipfs'):
+    file_hash = None
+    file_content = None
     
+    if engine == 'ipfs':
+        output = await ipfs_add_file(fileobject, filename)
+        file_hash = output['Hash']
+        fileobject.seek(0)
+        file_content = fileobject.read()
+    
+    elif engine == 'storage':
+        file_content = fileobject.read()
+        file_hash = sha256(file_content).hexdigest()
+    
+    await set_value(file_hash, file_content)
+    return file_hash
