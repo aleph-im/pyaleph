@@ -6,7 +6,7 @@ import aiohttp
 import concurrent
 import logging
 
-from .common import get_ipfs_gateway_url, get_ipfs_api
+from .common import get_ipfs_gateway_url, get_ipfs_api, get_base_url
 LOGGER = logging.getLogger("IPFS.STORAGE")
 
 async def get_ipfs_content(hash, timeout=1, tries=1):

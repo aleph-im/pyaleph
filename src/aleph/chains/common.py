@@ -3,6 +3,7 @@ from aleph.network import check_message as check_message_fn
 from aleph.model.messages import Message
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.permissions import check_sender_authorization
+from aleph.handlers.register import handle_incoming_message
 from aleph.web import app
 from pymongo import UpdateOne
 import orjson as json
@@ -124,7 +125,6 @@ async def incoming(message, chain_name=None,
 
         # THIS CODE SHOULD BE HERE...
         # But, if a race condition appeared, we might have the message twice.
-        # TODO: add key constraint for that case.
         # if (existing['confirmed'] and
         #         chain_name in [c['chain'] for c in existing['confirmations']]):
         #     return
@@ -141,7 +141,7 @@ async def incoming(message, chain_name=None,
         #     new_values = {'confirmed': False}  # this should be our default.
 
         try:
-            content = await get_message_content(message)
+            content, size = await get_message_content(message)
         except Exception:
             LOGGER.exception("Can't get content of object %r" % hash)
             content = None
@@ -169,6 +169,33 @@ async def incoming(message, chain_name=None,
 
         if content.get('time', None) is None:
             content['time'] = message['time']
+        
+        # warning: those handlers can modify message and content in place
+        # and return a status. None has to be retried, -1 is discarded, True is
+        # handled and kept.
+        # TODO: change this, it's messy.
+        try:
+            handling_result = await handle_incoming_message(message, content)
+        except Exception:
+            LOGGER.exception("Error using the message type handler")
+            handling_result = None
+        
+        if handling_result is None:
+            LOGGER.info("Message type handler has failed, retrying later.")
+            if not retrying:
+                await PendingMessage.collection.insert_one({
+                    'message': message,
+                    'source': dict(
+                        chain_name=chain_name, tx_hash=tx_hash, height=height,
+                        check_message=check_message  # should we store this?
+                    )
+                })
+            return
+        
+        if handling_result != True:
+            LOGGER.warning("Message type handler has failed permanently for "
+                           "%r, won't retry." % hash)
+            return -1
 
         if not await check_sender_authorization(message, content):
             LOGGER.warn("Invalid sender for %s" % hash)
@@ -187,6 +214,7 @@ async def incoming(message, chain_name=None,
         # message.update(new_values)
         updates['$set'] = {
             'content': content,
+            'size': size,
             'item_content': message.get('item_content'),
             'item_type': message.get('item_type'),
             'channel': message.get('channel'),
@@ -263,7 +291,7 @@ async def get_chaindata_messages(chaindata, context, seen_ids=None):
             else:
                 seen_ids.append(chaindata['content'])
         try:
-            content = await get_json(chaindata['content'], timeout=10)
+            content, size = await get_json(chaindata['content'], timeout=10)
         except Exception:
             LOGGER.exception("Can't get content of offchain object %r"
                              % chaindata['content'])
