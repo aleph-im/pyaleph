@@ -1,1 +1,1 @@
-from aleph.handlers import agggregate, post, storage
+from aleph.handlers import aggregate, post, storage
