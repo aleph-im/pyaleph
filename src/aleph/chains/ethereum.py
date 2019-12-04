@@ -167,7 +167,7 @@ async def request_transactions(config, web3, contract, abi, start_height):
 
     async for log in logs:
         event_data = await loop.run_in_executor(None, get_event_data,
-                                                abi, log)
+                                                web3.codec, abi, log)
         # event_data = get_event_data(web3.codec,
         #                             contract.events.SyncEvent._get_event_abi(),
         #                             log)
