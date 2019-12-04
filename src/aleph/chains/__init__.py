@@ -1,21 +1,26 @@
 import asyncio
+import traceback
 from aleph.chains.register import OUTGOING_WORKERS, INCOMING_WORKERS
 try:
     from aleph.chains import nuls
 except:
     print("Can't load NULS")
+    traceback.print_exc()
 try:
     from aleph.chains import nuls2
 except:
     print("Can't load NULS2")
+    traceback.print_exc()
 try:
     from aleph.chains import ethereum
 except:
     print("Can't load ETH")
+    traceback.print_exc()
 try:
     from aleph.chains import binance
 except:
     print("Can't load BNB")
+    traceback.print_exc()
 
 def start_connector(config, outgoing=True):
     loop = asyncio.get_event_loop()
