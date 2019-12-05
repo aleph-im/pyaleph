@@ -156,10 +156,7 @@ async def get_merged_posts(filters, sort=None, limit=100,
                         #                         '$$tx_hash']}}
                         {'$expr':
                             {'$and': [
-                                {'$or': [
-                                    {'$eq': ['$content.ref', '$$item_hash']},
-                                    {'$eq': ['$content.ref', '$$tx_hash']},
-                                ]},
+                                {'$eq': ['$content.ref', '$$item_hash']},
                                 {'$eq': ['$content.address', '$$address']}
                             ]}
                          }
