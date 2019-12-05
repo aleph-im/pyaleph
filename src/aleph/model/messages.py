@@ -139,6 +139,7 @@ async def get_merged_posts(filters, sort=None, limit=100,
             'original_item_hash': '$item_hash',
             'original_signature': '$signature',
             'original_tx_hash': '$tx_hash',
+            'original_type': '$content.type',
             'hash': '$item_hash',
             'original_ref': '$content.ref'
         }},
