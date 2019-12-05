@@ -140,7 +140,7 @@ async def get_merged_posts(filters, sort=None, limit=100,
             'original_signature': '$signature',
             'original_tx_hash': '$tx_hash',
             'hash': '$item_hash',
-            'ref': '$content.content.ref'
+            'ref': '$content.ref'
         }},
         {'$lookup': {
             'from': 'messages',
