@@ -26,6 +26,10 @@ async def view_messages_list(request):
     if content_types is not None:
         content_types = content_types.split(',')
 
+    channels = request.query.get('channels', None)
+    if channels is not None:
+        channels = channels.split(',')
+
     tags = request.query.get('tags', None)
     if tags is not None:
         tags = tags.split(',')
@@ -55,6 +59,9 @@ async def view_messages_list(request):
 
     if tags is not None:
         filters.append({'content.tags': {'$elemMatch': {'$in': tags}}})
+
+    if channels is not None:
+        filters.append({'channel': {'$in': channels}})
 
     if hashes is not None:
         filters.append({'$or': [
