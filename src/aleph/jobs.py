@@ -10,6 +10,7 @@ from aleph.model.pending import PendingMessage, PendingTX
 from aleph.model.messages import Message
 from aleph.model.p2p import get_peers
 from aleph.services.ipfs.common import connect_ipfs_peer
+from aleph.services import p2p, filestore
 from aleph.network import check_message
 from pymongo import DeleteOne, InsertOne, DeleteMany
 from concurrent.futures import ProcessPoolExecutor
@@ -238,19 +239,33 @@ def function_proxy(manager, funcname):
     
     return func_call
 
-def prepare_manager():
+def initialize_db_process(config_values):
+    from aleph.web import app
+    from configmanager import Config
+    from aleph.config import get_defaults
+    config = Config(schema=get_defaults())
+    app['config'] = config
+    app.config = config
+    config.load_values(config_values)
+    
+    filestore.init_store(config)
+
+def prepare_manager(config_values):
     from aleph.services import filestore
     from aleph.services.filestore import __get_value, __set_value
     
     DBManager.register('_set_value', __set_value)
     DBManager.register('_get_value', __get_value)
     manager = DBManager()
-    manager.start()
+    server = manager.get_server()
+    # server.serve_forever()
+
+    manager.start(initialize_db_process, [config_values])
     filestore._set_value = function_proxy(manager, '_set_value')
     filestore._get_value = function_proxy(manager, '_get_value')
     return manager
 
-def prepare_loop(config_values, manager, idx=1):
+def prepare_loop(config_values, manager=None, idx=1):
     from aleph.model import init_db
     from aleph.web import app
     from configmanager import Config
@@ -262,6 +277,13 @@ def prepare_loop(config_values, manager, idx=1):
     
     # manager = NodeManager()
     # manager.start()
+    
+    if isinstance(manager,tuple):
+        manager_info = manager
+        DBManager.register('_set_value')
+        DBManager.register('_get_value')
+        manager = DBManager(address=manager_info[0], authkey=manager_info[1])
+        manager.connect()
     
     filestore._set_value = function_proxy(manager, '_set_value')
     filestore._get_value = function_proxy(manager, '_get_value')
@@ -326,8 +348,10 @@ def start_jobs(config, manager=None, use_processes=True):
     
     if use_processes:
         config_values = config.dump_values()
-        p1 = Process(target=messages_task_loop, args=(config_values, manager))
-        p2 = Process(target=txs_task_loop, args=(config_values ,manager))
+        p1 = Process(target=messages_task_loop,
+                     args=(config_values, (manager._address, manager._authkey)))
+        p2 = Process(target=txs_task_loop,
+                     args=(config_values, (manager._address, manager._authkey)))
         p1.start()
         p2.start()
     else:

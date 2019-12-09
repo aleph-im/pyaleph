@@ -16,7 +16,7 @@ import logging
 import asyncio
 import uvloop
 from configmanager import Config
-from multiprocessing import Process, Manager
+from multiprocessing import Process, Manager, set_start_method
 
 from aleph import __version__
 from aleph.chains import start_connector
@@ -119,16 +119,19 @@ def main(args):
 
     if args.config_file is not None:
         app['config'].yaml.load(args.config_file)
+        
+    config_values = config.dump_values()
 
     model.init_db(config, ensure_indexes=(not args.debug))
     LOGGER.info("Database initialized.")
     
-    filestore.init_store(config)
-    LOGGER.info("File store initalized.")
+    # filestore.init_store(config)
+    # LOGGER.info("File store initalized.")
     
     
     init_cors()
-    manager = prepare_manager()
+    set_start_method('spawn')
+    manager = prepare_manager(config_values)
     if not args.no_jobs:
         start_jobs(config, manager=manager)
 
@@ -141,16 +144,15 @@ def main(args):
     start_connector(config, outgoing=(not args.no_commit))
     
     
-    config_values = config.dump_values()
     p1 = Process(target=run_server, args=(config_values,
                                           config.p2p.host.value,
-                                          config.p2p.http_port.value, 
-                                          manager,
+                                          config.p2p.http_port.value,
+                                          (manager._address, manager._authkey),
                                           3))
     p2 = Process(target=run_server, args=(config_values,
                                           config.aleph.host.value,
                                           config.aleph.port.value, 
-                                          manager,
+                                          (manager._address, manager._authkey),
                                           4))
     p1.start()
     p2.start()
