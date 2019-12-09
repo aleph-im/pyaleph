@@ -16,6 +16,8 @@ from concurrent.futures import ProcessPoolExecutor
 
 LOGGER = getLogger("JOBS")
 
+MANAGER = None
+
 RETRY_LOCK = asyncio.Lock()
 
 class DBManager(SyncManager):
@@ -236,6 +238,18 @@ def function_proxy(manager, funcname):
     
     return func_call
 
+def prepare_manager():
+    from aleph.services import filestore
+    from aleph.services.filestore import __get_value, __set_value
+    
+    DBManager.register('_set_value', __set_value)
+    DBManager.register('_get_value', __get_value)
+    manager = DBManager()
+    manager.start()
+    filestore._set_value = function_proxy(manager, '_set_value')
+    filestore._get_value = function_proxy(manager, '_get_value')
+    return manager
+
 def prepare_loop(config_values, manager, idx=1):
     from aleph.model import init_db
     from aleph.web import app
@@ -305,26 +319,15 @@ async def reconnect_ipfs_job(config):
         await asyncio.sleep(config.ipfs.reconnect_delay.value)
     
 
-def start_jobs(config, use_processes=False):
+def start_jobs(config, manager=None, use_processes=True):
     LOGGER.info("starting jobs")
-    executor = ProcessPoolExecutor()
     loop = asyncio.get_event_loop()
     
+    
     if use_processes:
-        from aleph.services import filestore
-        from aleph.services.filestore import __get_value, __set_value
         config_values = config.dump_values()
-        # manager = Manager()
-        # manager.register()
-        # manager.start()
-        DBManager.register('_set_value', __set_value)
-        DBManager.register('_get_value', __get_value)
-        manager = DBManager()
-        manager.start()
-        filestore._set_value = function_proxy(manager, '_set_value')
-        filestore._get_value = function_proxy(manager, '_get_value')
-        p1 = Process(target=messages_task_loop, args=(config_values,manager))
-        p2 = Process(target=txs_task_loop, args=(config_values,manager))
+        p1 = Process(target=messages_task_loop, args=(config_values, manager))
+        p2 = Process(target=txs_task_loop, args=(config_values ,manager))
         p1.start()
         p2.start()
     else:
