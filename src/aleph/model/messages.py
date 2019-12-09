@@ -18,6 +18,7 @@ class Message(BaseClass):
                IndexModel([("item_hash", ASCENDING)]),  # Content IPFS hash
                IndexModel([("tx_hash", ASCENDING)]),  # TX Hash (if there is one)
                IndexModel([("sender", ASCENDING)]),
+               IndexModel([("channel", ASCENDING)]),
                IndexModel([("content.address", ASCENDING)]),
                IndexModel([("content.key", ASCENDING)]),
                IndexModel([("content.ref", ASCENDING)]),
