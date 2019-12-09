@@ -91,6 +91,7 @@ def setup_logging(loglevel):
 
 def run_server(config_values, host, port, manager, idx):
     from aiohttp import web
+    init_cors()
     loop = prepare_loop(config_values, manager, idx=idx)
     runner = web.AppRunner(app)
     loop.run_until_complete(runner.setup())
