@@ -23,7 +23,7 @@ async def get_ipfs_content(hash, timeout=1, tries=1):
                         result = None
                         await asyncio.sleep(.5)
                         continue
-                    result = await resp.text()
+                    result = await resp.read()
             except (concurrent.futures.TimeoutError):
                 result = None
                 await asyncio.sleep(.5)
