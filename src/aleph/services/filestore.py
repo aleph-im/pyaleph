@@ -9,6 +9,9 @@ STORE_LOCK = threading.Lock()
 
 hashes_db = None
 import os
+import logging
+
+LOGGER = logging.getLogger('filestore')
 
 def init_store(config):
     global hashes_db
@@ -30,14 +33,22 @@ def init_store(config):
     #                        rocksdb.Options(create_if_missing=True))
     
 def __get_value(key):
-    with STORE_LOCK:
-        return hashes_db.get(key)
+    try:
+        with STORE_LOCK:
+            return hashes_db.get(key)
+    except Exception:
+        LOGGER.exception("Can't get key %r" % key)
+        return None
     
 _get_value = __get_value
 
 def __set_value(key, value):
-    with STORE_LOCK:
-        return hashes_db.put(key, value)
+    try:
+        with STORE_LOCK:
+            return hashes_db.put(key, value)
+    except Exception:
+        LOGGER.exception("Can't write key %r" % key)
+        
 _set_value = __set_value
     
 async def get_value(key, in_executor=True):
