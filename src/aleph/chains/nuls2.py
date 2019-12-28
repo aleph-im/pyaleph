@@ -276,7 +276,7 @@ async def nuls2_packer(config):
             
         messages = [message async for message
                     in (await Message.get_unconfirmed_raw(
-                            limit=100000,
+                            limit=10000,
                             for_chain=CHAIN_NAME))]
         
         if len(messages):
