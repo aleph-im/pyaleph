@@ -48,12 +48,12 @@ class Message(BaseClass):
         if for_chain is None:
             return cls.collection.find(
                 {'confirmed': False},
-                projection=RAW_MSG_PROJECTION, batch_size=128).sort([('time', 1)]).limit(limit)
+                projection=RAW_MSG_PROJECTION).sort([('time', 1)]).limit(limit)
         else:
             return cls.collection.find(
                 {'confirmations.chain': {'$ne': for_chain},
                  'tx_hash': {"$exists": False}},  # tx_hash means chain native
-                projection=RAW_MSG_PROJECTION, batch_size=128).sort([('time', 1)]).limit(limit)
+                projection=RAW_MSG_PROJECTION).sort([('time', 1)]).limit(limit)
 
 
 async def get_computed_address_aggregates(address_list=None, key_list=None, limit=100):
