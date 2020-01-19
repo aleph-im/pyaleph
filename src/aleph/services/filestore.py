@@ -17,7 +17,7 @@ def init_store(config):
     global hashes_db
     opts = rocksdb.Options()
     opts.create_if_missing = True
-    opts.max_open_files = 300000
+    opts.max_open_files = 10000
     opts.write_buffer_size = 67108864
     opts.max_write_buffer_number = 3
     opts.target_file_size_base = 67108864
