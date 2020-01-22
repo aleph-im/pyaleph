@@ -23,6 +23,7 @@ from nuls2.model.data import (hash_from_address, public_key_to_hash,
 from nuls2.api.server import get_server
 from nuls2.model.transaction import Transaction
 from aiocache import cached, SimpleMemoryCache
+import functools
 
 from coincurve import PrivateKey
 
@@ -42,10 +43,12 @@ async def verify_signature(message):
     sender_hash = hash_from_address(message['sender'])
     (sender_chain_id,) = struct.unpack('h', sender_hash[:2])
     verification = await get_verification_buffer(message)
-    print(verification)
     try:
-        address = recover_message_address(sig_raw, verification,
-                                          chain_id=sender_chain_id)
+        address = await loop.run_in_executor(None,
+            functools.partial(recover_message_address, sig_raw,
+                                verification, chain_id=sender_chain_id))
+        # address = recover_message_address(sig_raw, verification,
+        #                                   chain_id=sender_chain_id)
     except Exception:
         LOGGER.exception("NULS Signature verification error")
         return False
