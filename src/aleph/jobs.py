@@ -245,7 +245,6 @@ def initialize_db_process(config_values):
     from aleph.config import get_defaults
     config = Config(schema=get_defaults())
     app['config'] = config
-    app.config = config
     config.load_values(config_values)
     
     filestore.init_store(config)
@@ -295,7 +294,6 @@ def prepare_loop(config_values, manager=None, idx=1):
     
     config = Config(schema=get_defaults())
     app['config'] = config
-    app.config = config
     config.load_values(config_values)
     
     init_db(config, ensure_indexes=False)

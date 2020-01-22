@@ -113,7 +113,6 @@ def main(args):
 
     config = Config(schema=get_defaults())
     app['config'] = config
-    app.config = config
 
     config.aleph.port.value = args.port
     config.aleph.host.value = args.host
