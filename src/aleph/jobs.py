@@ -75,7 +75,7 @@ async def retry_messages_job():
     #     find_params = {'message.item_type': 'inline'}
         
     while await PendingMessage.collection.count_documents(find_params):
-        async for pending in PendingMessage.collection.find(find_params).sort([('message.time', 1)]).batch_size(128):
+        async for pending in PendingMessage.collection.find(find_params).sort([('message.time', 1)]).batch_size(256):
             if pending['message']['item_type'] == 'ipfs':
                 i += 15
                 j += 100
@@ -104,6 +104,7 @@ async def retry_messages_job():
             join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions)))
         
         await asyncio.gather(*gtasks, return_exceptions=True)
+        gtasks = []
         
         if await PendingMessage.collection.count_documents(find_params) > 100000:
             LOGGER.info('Cleaning messages')
