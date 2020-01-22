@@ -347,9 +347,9 @@ def start_jobs(config, manager=None, use_processes=True):
     if use_processes:
         config_values = config.dump_values()
         p1 = Process(target=messages_task_loop,
-                     args=(config_values, (manager._address, manager._authkey)))
+                     args=(config_values, manager and (manager._address, manager._authkey) or None))
         p2 = Process(target=txs_task_loop,
-                     args=(config_values, (manager._address, manager._authkey)))
+                     args=(config_values, manager and (manager._address, manager._authkey) or None))
         p1.start()
         p2.start()
     else:

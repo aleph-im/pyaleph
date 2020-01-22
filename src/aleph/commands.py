@@ -131,12 +131,16 @@ def main(args):
     
     init_cors()
     set_start_method('spawn')
-    manager = prepare_manager(config_values)
+    manager = None
+    if config.storage.engine.value == 'rocksdb':
+        # rocksdb doesn't support multiprocess/multithread
+        manager = prepare_manager(config_values)
+        
     if not args.no_jobs:
         start_jobs(config, manager=manager)
 
     loop = asyncio.get_event_loop()
-    handler = app.make_handler(loop=loop)
+    # handler = app.make_handler(loop=loop)
     f = p2p.init_p2p(config)
     host = loop.run_until_complete(f)
     
@@ -147,12 +151,12 @@ def main(args):
     p1 = Process(target=run_server, args=(config_values,
                                           config.p2p.host.value,
                                           config.p2p.http_port.value,
-                                          (manager._address, manager._authkey),
+                                          manager and (manager._address, manager._authkey) or None,
                                           3))
     p2 = Process(target=run_server, args=(config_values,
                                           config.aleph.host.value,
                                           config.aleph.port.value, 
-                                          (manager._address, manager._authkey),
+                                          manager and (manager._address, manager._authkey) or None,
                                           4))
     p1.start()
     p2.start()

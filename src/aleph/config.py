@@ -20,7 +20,8 @@ def get_defaults():
         },
         'storage': {
             'folder': './data/',
-            'store_files': False
+            'store_files': False,
+            'engine': 'rocksdb'
         },
         'nuls': {
             'chain_id': 8964,
