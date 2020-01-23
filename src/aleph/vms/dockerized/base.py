@@ -16,6 +16,8 @@ class DockerizedBaseVM(BaseVM):
     }
     
     LIMITS = {'cputime': 1, 'memory': 64}
+    ENTRYPOINT = None
+    FILES = []
     
     @classmethod
     def initialize(cls):
@@ -23,10 +25,35 @@ class DockerizedBaseVM(BaseVM):
             profiles=cls.PROFILES
         )
     
+    
     @classmethod
-    def hash_state(cls, state, algo='sha256'):
+    def _run(cls, profile, command, stdin):
+        return epicbox.run(
+            profile, command, files=cls.FILES,
+            limits=cls.LIMITS, stdin=stdin)
+        
+        
+    @classmethod
+    def create(cls, code, message, *args, **kwargs):
+        """ Instanciate the VM. Returns a state.
+        """
+        raise NotImplementedError
+        
+        
+    @classmethod
+    def call(cls, code, message, *args, **kwargs):
+        """ Call a fonction on the VM.
+        """
+        raise NotImplementedError      
+        
+    
+    @classmethod
+    def hash_state(cls, state, algo='sha256', previous_hash=None):
         """ Takes a state object and returns a verifiable hash as hex string.
         """
+        if previous_hash is not None:
+            state['previous_hash'] = previous_hash
+            
         to_hash = json.dumps(state, indent=None,
                             separators=(',', ':'), sort_keys=True)
         if algo == 'sha256':
