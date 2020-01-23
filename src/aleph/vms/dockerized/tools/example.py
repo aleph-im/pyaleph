@@ -1,12 +1,12 @@
 class SmartContract:
     def __init__(self, msg, name, symbol, total_supply, decimals=18):
-        self.owner = msg['from']
+        self.owner = msg['sender']
         self.name = name
         self.symbol = symbol
         self.decimals = decimals
-        self.total_supply = total_supply
+        self.total_supply = total_supply * (10 ** decimals)
         self.balances = {
-            self.owner: total_supply
+            self.owner: self.total_supply
         }
         self.allowed = {}
 
@@ -17,7 +17,7 @@ class SmartContract:
         assert (self.allowed.get(from_address, {}).get(msg['from'], 0)
                 > tokens), "Allowance isn't enough"
         assert self.balances.get(from_address, 0) > tokens, "Balance too low"
-        assert len(to_address) <= 40, "Address too short"
+        assert len(to_address) <= 40, "Address too long"
         assert tokens > 0, "Amount should be positive"
 
         self.balances[from_address] = self.balances[from_address] - tokens
@@ -28,11 +28,11 @@ class SmartContract:
         return True
 
     def transfer(self, msg, to_address, tokens):
-        assert self.balances.get(msg['from'], 0) > tokens, "Balance too low"
-        assert len(to_address) <= 40, "Address too short"
+        assert self.balances.get(msg['sender'], 0) > tokens, "Balance too low"
+        assert len(to_address) <= 40, "Address too long"
         assert tokens > 0, "Amount should be positive"
 
-        self.balances[msg['from']] = self.balances[msg['from']] - tokens
+        self.balances[msg['sender']] = self.balances[msg['sender']] - tokens
         self.balances[to_address] = self.balances.get(to_address, 0) + tokens
 
         return True
@@ -41,12 +41,12 @@ class SmartContract:
         # Allow `spender` to withdraw from your account, multiple times,
         # up to the `tokens` amount. If this function is called again
         # it overwrites the current allowance with _value.
-        assert len(spender) <= 40, "Address too short"
+        assert len(spender) <= 40, "Address too long"
         assert tokens > 0, "Amount should be positive"
         
-        if msg['from'] not in self.allowed:
-            self.allowed[msg['from']] = {}
+        if msg['sender'] not in self.allowed:
+            self.allowed[msg['sender']] = {}
 
-        self.allowed[msg['from']][spender] = tokens
+        self.allowed[msg['sender']][spender] = tokens
 
         return True
