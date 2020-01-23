@@ -2,34 +2,56 @@
 import sys
 import select
 import json
-
+import traceback
+import builtins
 from subprocess import Popen, PIPE
 
-def execute(self, msg):
+def execute(msg):
     locs = {}
     globs = {'__builtins__': builtins}
-    byte_code = compile(msg['body'], '<restricted-python>', 'exec')
-    exec(byte_code, globs, locs)
+    byte_code = compile(msg['code'], '<smart-contract>', 'exec')
+    exec(byte_code, globals(), locs)
     return locs
 
 def do_create(payload):
     try:
         locs = execute(payload)
     except Exception as e:
-        return {'error': repr(e), 'error_step': 'prepare', 'result': None}
+        return {'error': repr(e), 'error_step': 'prepare',
+                'traceback': traceback.format_exc(), 'result': None}
 
     try:
         item_class = locs['SmartContract']
-        obj = item_class(*msg['args'], **msg['kwargs'])
+        obj = item_class(
+            payload['message'], *payload.get('args', []),
+            **payload.get('kwargs', {}))
         return {'result': True, 'state': obj.__dict__}
     except Exception as e:
-        return {'error': repr(e), 'error_step': 'call', 'result': None}
+        return {'error': repr(e), 'error_step': 'call',
+                'traceback': traceback.format_exc(), 'result': None}
+    
+def do_call(payload):
+    try:
+        locs = execute(payload)
+    except Exception as e:
+        return {'error': repr(e), 'error_step': 'prepare',
+                'traceback': traceback.format_exc(), 'result': None}
+
+    try:
+        item_class = locs['SmartContract']
+        instance = item_class.__new__(item_class)
+        instance.__dict__ = payload['state']
+        result = getattr(instance, payload['function'])(
+            payload['message'],
+            *payload.get('args', []), **payload.get('kwargs', {}))
+        return {'result': result or True, 'state': instance.__dict__}
+    except Exception as e:
+        return {'error': repr(e), 'error_step': 'call',
+                'traceback': traceback.format_exc(), 'result': None}
 
 def handle(line):
-    payload = json.loads(line)
-    print(payload)
-    
     try:
+        payload = json.loads(line)
         if payload['action'] == 'create':
             resp = do_create(payload)
         elif payload['action'] == 'call':
@@ -38,6 +60,7 @@ def handle(line):
             exit(0)
     except Exception as e:
         resp = {'error': repr(e), 'error_step': 'unhandled',
+                'traceback': traceback.format_exc(),
                 'result': None}
     return resp
 
@@ -50,6 +73,7 @@ if __name__ == "__main__":
     while sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
         line = sys.stdin.readline()
         if line:
-            handle(line)
+            resp = handle(line)
+            print(json.dumps(resp))
         else: # an empty line means stdin has been closed
             exit(0)
