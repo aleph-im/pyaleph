@@ -110,3 +110,55 @@ def test_executor_call():
     assert out_payload['state']['balances']['blah'] == 1000 * (10**18)
     assert len(out_payload['state']['balances']) == 2
     assert stderr == b''
+    
+    
+def test_executor_in_docker():
+    import epicbox
+
+    PROFILES = {
+        'python': {
+            'docker_image': 'python:3.8-alpine',
+            'network_disabled': True,
+            'user': '10000'
+        }
+    }
+
+    epicbox.configure(
+        profiles=PROFILES
+    )
+    files = [{
+        'name': 'executor.py',
+        'content': resource_string('aleph.vms.dockerized', 'tools/executor.py')}]
+    limits = {'cputime': 2, 'memory': 256}
+    example_code = resource_string('aleph.vms.dockerized', 'tools/example.py')
+    
+    payload = {
+        'code': example_code.decode('utf-8'),
+        'action': 'call',
+        'function': 'transfer',
+        'message': {
+            'sender': 'NULSd6HgcNwprmEYbQ7pqLznGVU3EhW7Syv7W'
+        },
+        'state': {
+            "owner": "NULSd6HgcNwprmEYbQ7pqLznGVU3EhW7Syv7W",
+            "name": "Test",
+            "symbol": "TST",
+            "decimals": 18,
+            "total_supply": 24000000000000000000000000,
+            "balances": {"NULSd6HgcNwprmEYbQ7pqLznGVU3EhW7Syv7W": 24000000000000000000000000},
+            "allowed": {}
+        },        
+        'args': ['blah', 1000*(10**18)]
+    }
+    
+    output = epicbox.run('python', 'python3 executor.py', files=files, limits=limits,
+                         stdin=json.dumps(payload).encode('utf-8'))
+    
+    out_payload = json.loads(output['stdout'].decode('utf-8'))
+    assert out_payload['result'] is True
+    assert out_payload['state']['owner'] == 'NULSd6HgcNwprmEYbQ7pqLznGVU3EhW7Syv7W'
+    assert out_payload['state']['total_supply'] == 24000000 * (10**18)
+    assert out_payload['state']['balances']['NULSd6HgcNwprmEYbQ7pqLznGVU3EhW7Syv7W'] == (24000000 - 1000) * (10**18)
+    assert out_payload['state']['balances']['blah'] == 1000 * (10**18)
+    assert len(out_payload['state']['balances']) == 2
+    assert not output.get('stderr')
