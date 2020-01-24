@@ -17,8 +17,8 @@ def test_executor_error_1():
     assert out_payload['error'] == 'JSONDecodeError(\'Expecting value: line 1 column 1 (char 0)\')'
     assert out_payload['error_step'] == 'unhandled'
     assert out_payload['result'] == None
-    
-    
+
+
 def test_executor_create():
     process = Popen(['python',
                      resource_filename('aleph.vms.dockerized', 'tools/executor.py')],
@@ -42,8 +42,8 @@ def test_executor_create():
     assert out_payload['state']['balances']['NULSd6HgcNwprmEYbQ7pqLznGVU3EhW7Syv7W'] == 24000000 * (10**18)
     assert len(out_payload['state']['balances']) == 1
     assert stderr == b''
-    
-    
+
+   
 def test_executor_call_error():
     process = Popen(['python',
                      resource_filename('aleph.vms.dockerized', 'tools/executor.py')],
@@ -76,7 +76,8 @@ def test_executor_call_error():
     assert out_payload['result'] is not True
     assert out_payload['error'] == "AssertionError('Amount should be positive')"
     assert stderr == b''
-    
+
+
 def test_executor_call():
     process = Popen(['python',
                      resource_filename('aleph.vms.dockerized', 'tools/executor.py')],
