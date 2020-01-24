@@ -18,22 +18,24 @@ class DockerizedPythonVM(DockerizedBaseVM):
         
         
     @classmethod
-    def create(cls, code, message, *args, **kwargs):
+    def create(cls, code, message):
         """ Instanciate the VM. Returns a state.
         """
         payload = {
             'code': code,
             'action': 'create',
             'message': message,
-            'args': args,
-            'kwargs': kwargs
+            'args': message['content'].get('args', []),
+            'kwargs': message['content'].get('kwargs', {})
         }
         
         output = cls._run('python', 'python3 executor.py',
                           stdin=json.dumps(payload).encode('utf-8'))
         
-        if output['status'] != 0:
-            return {'result': None, 'error': output['stderr']}
+        print(output)
+        
+        if output['exit_code'] != 0:
+            return {'result': None, 'error': output['stderr'].decode('utf-8')}
         
         try:
             out_payload = json.loads(output['stdout'].decode('utf-8'))
@@ -43,7 +45,7 @@ class DockerizedPythonVM(DockerizedBaseVM):
         
         
     @classmethod
-    def call(cls, code, state, message, *args, **kwargs):
+    def call(cls, code, state, message):
         """ Call a fonction on the VM.
         """
         payload = {
@@ -59,8 +61,8 @@ class DockerizedPythonVM(DockerizedBaseVM):
         output = cls._run('python', 'python3 executor.py',
                           stdin=json.dumps(payload).encode('utf-8'))
         
-        if output['status'] != 0:
-            return {'result': None, 'error': output['stderr']}
+        if output['exit_code'] != 0:
+            return {'result': None, 'error': output['stderr'].decode('utf-8')}
         
         try:
             out_payload = json.loads(output['stdout'].decode('utf-8'))
