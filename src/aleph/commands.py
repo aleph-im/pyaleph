@@ -91,12 +91,14 @@ def setup_logging(loglevel):
 
 def run_server(config_values, host, port, manager, idx):
     from aiohttp import web
+    from aleph.web.controllers.listener import broadcast
     init_cors()
     loop = prepare_loop(config_values, manager, idx=idx)
     runner = web.AppRunner(app)
     loop.run_until_complete(runner.setup())
     site = web.TCPSite(runner, host, port)
     loop.run_until_complete(site.start())
+    loop.create_task(broadcast())
     loop.run_forever()
 
 def main(args):

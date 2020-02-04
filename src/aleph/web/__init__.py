@@ -7,10 +7,12 @@ import pkg_resources
 
 import time
 import pprint
+import socketio
 
 from datetime import date, datetime, timedelta
 
 app = web.Application(client_max_size=1024**2*64)
+sio = socketio.AsyncServer(async_mode='aiohttp', cors_allowed_origins='*')
 auth = None
 
 # Configure default CORS settings.
@@ -22,6 +24,7 @@ cors = aiohttp_cors.setup(app, defaults={
             allow_headers="*",
         )
 })
+sio.attach(app)
 
 tpl_path = pkg_resources.resource_filename('aleph.web', 'templates')
 JINJA_LOADER = jinja2.ChoiceLoader([jinja2.FileSystemLoader(tpl_path), ])
@@ -44,4 +47,5 @@ env.globals.update({
 def init_cors():
     # Configure CORS on all routes.
     for route in list(app.router.routes()):
-        cors.add(route)
+        if "/socket.io/" not in repr(route.resource):
+            cors.add(route)
