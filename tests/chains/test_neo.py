@@ -29,3 +29,51 @@ async def test_verify_signature_real():
     message = json.loads(TEST_MESSAGE)
     result = await verify_signature(message)
     assert result == True
+    
+@pytest.mark.asyncio
+async def test_verify_signature_nonexistent():
+    result = await verify_signature({
+        'chain': 'CHAIN',
+        'sender': 'SENDER',
+        'type': 'TYPE',
+        'item_hash': 'ITEM_HASH'
+    })
+    assert result == False
+    
+@pytest.mark.asyncio
+async def test_verify_signature_bad_json():
+    result = await verify_signature({
+        'chain': 'CHAIN',
+        'sender': 'SENDER',
+        'type': 'TYPE',
+        'item_hash': 'ITEM_HASH',
+        'signature': 'baba'
+    })
+    assert result == False
+    
+@pytest.mark.asyncio
+async def test_verify_signature_no_salt():
+    message = json.loads(TEST_MESSAGE)
+    signature = json.loads(message['signature'])
+    del signature['salt']
+    message['signature'] = json.dumps(signature)
+    result = await verify_signature(message)
+    assert result == False
+    
+@pytest.mark.asyncio
+async def test_verify_signature_no_pubkey():
+    message = json.loads(TEST_MESSAGE)
+    signature = json.loads(message['signature'])
+    del signature['publicKey']
+    message['signature'] = json.dumps(signature)
+    result = await verify_signature(message)
+    assert result == False
+    
+@pytest.mark.asyncio
+async def test_verify_signature_no_data():
+    message = json.loads(TEST_MESSAGE)
+    signature = json.loads(message['signature'])
+    del signature['data']
+    message['signature'] = json.dumps(signature)
+    result = await verify_signature(message)
+    assert result == False

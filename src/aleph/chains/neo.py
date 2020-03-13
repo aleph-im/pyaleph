@@ -46,20 +46,25 @@ async def verify_signature(message):
         LOGGER.exception("NEO Signature deserialization error")
         return False
     
-    script_hash = Crypto.ToScriptHash(
-        "21" + signature['publicKey'] + "ac"
-    )
-    address = Crypto.ToAddress(script_hash)
+    try:
+        script_hash = Crypto.ToScriptHash(
+            "21" + signature['publicKey'] + "ac"
+        )
+        address = Crypto.ToAddress(script_hash)
+    except Exception:
+        LOGGER.exception("NEO Signature Key error")
+        return False
     
     if address != message['sender']:
         LOGGER.warning('Received bad signature from %s for %s'
                        % (address, message['sender']))
         return False
     
-    verification = await buildNEOVerification(
-        message, signature['salt'])
     
     try:
+        verification = await buildNEOVerification(
+            message, signature['salt'])
+    
         result = Crypto.VerifySignature(
             verification,
             bytes.fromhex(signature['data']),
