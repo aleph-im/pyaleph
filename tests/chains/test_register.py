@@ -4,7 +4,7 @@ import aleph.chains
 from aleph.chains import register
 from aleph.chains.register import (VERIFIER_REGISTER, INCOMING_WORKERS, OUTGOING_WORKERS,
                                    register_verifier, register_incoming_worker, register_outgoing_worker)
-from aleph.chains import binance, ethereum, nuls, nuls2
+from aleph.chains import binance, ethereum, nuls, nuls2, neo
 
 @pytest.mark.asyncio
 async def test_register_verifier(monkeypatch):
@@ -32,13 +32,15 @@ async def test_register_verifier_twice(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_verifiers():
-    assert len(VERIFIER_REGISTER.keys()) == 4  # 4 verifiers are included by default
+    assert len(VERIFIER_REGISTER.keys()) == 5  # 4 verifiers are included by default
     assert "BNB" in VERIFIER_REGISTER.keys()
     assert VERIFIER_REGISTER["BNB"] is binance.verify_signature
     assert "ETH" in VERIFIER_REGISTER.keys()
     assert VERIFIER_REGISTER["ETH"] is ethereum.verify_signature
     assert "NULS" in VERIFIER_REGISTER.keys()
     assert VERIFIER_REGISTER["NULS"] is nuls.verify_signature
+    assert "NEO" in VERIFIER_REGISTER.keys()
+    assert VERIFIER_REGISTER["NEO"] is neo.verify_signature
 
 
 @pytest.mark.asyncio
