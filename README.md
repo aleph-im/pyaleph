@@ -17,14 +17,14 @@ To use the rocksdb dependency you will need to build it, here are the requiremen
 You need to install the requirements, ideally in an empty virtualenv (I let
 that part to you):
 
-`$ python setup.py develop`
+`$ pip install -e .[bnb,nuls2,neo]`
 
 Then, once it's installed, you need to copy the sample-config.yaml file elsewhere,
 and edit it to your liking (see configuration section).
 
 To run PyAleph, run this command:
 
-`$ pyaelph -c config.yaml` (where config.yaml is your configuration file you
+`$ pyaleph -c config.yaml` (where config.yaml is your configuration file you
 edited earlier)
 
 ## Running tests
