@@ -17,7 +17,16 @@ To use the rocksdb dependency you will need to build it, here are the requiremen
 You need to install the requirements, ideally in an empty virtualenv (I let
 that part to you):
 
-`$ pip install -e .[bnb,nuls2,neo]`
+```bash
+pip install git+https://github.com/aleph-im/py-libp2p.git
+pip install git+https://github.com/aleph-im/nuls2-python.git
+pip install git+https://github.com/aleph-im/aleph-client.git
+
+pip install -U aiohttp python-binance-chain neo-python
+pip install -U aioipfs
+
+python setup.py develop
+```
 
 Then, once it's installed, you need to copy the sample-config.yaml file elsewhere,
 and edit it to your liking (see configuration section).
