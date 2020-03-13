@@ -21,6 +21,11 @@ try:
 except:
     print("Can't load BNB")
     traceback.print_exc()
+try:
+    from aleph.chains import neo
+except:
+    print("Can't load NEO")
+    traceback.print_exc()
 
 def start_connector(config, outgoing=True):
     loop = asyncio.get_event_loop()
