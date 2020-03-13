@@ -38,7 +38,7 @@ async def buildNEOVerification(message, salt):
 async def verify_signature(message):
     """ Verifies a signature of a message, return True if verified, false if not
     """
-    loop = asyncio.get_event_loop()
+    Crypto.SetupSignatureCurve()
     
     try:
         signature = json.loads(message['signature'])
@@ -58,6 +58,7 @@ async def verify_signature(message):
     
     verification = await buildNEOVerification(
         message, signature['salt'])
+    
     try:
         result = Crypto.VerifySignature(
             verification,
