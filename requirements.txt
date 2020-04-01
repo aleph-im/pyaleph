@@ -101,7 +101,7 @@ plyvel==1.1.0
 port-for==0.3.1
 prompt-toolkit==2.0.9
 protobuf==3.11.3
-psutil==5.6.3
+psutil==5.6.6
 ptyprocess==0.6.0
 py==1.8.1
 pyaes==1.6.1
