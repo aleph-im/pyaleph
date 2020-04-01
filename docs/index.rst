@@ -32,6 +32,7 @@ Contents
 
    architecture
    protocol/index
+   guides/index
 
    License <license>
    Authors <authors>

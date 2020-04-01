@@ -10,7 +10,7 @@ PyAleph requires Python v3.6+ (it won't work with older python versions).
 
 ## Installation
 
-To use the rocksdb dependency you will need to build it, here are the requirements on ubuntu:
+To use the rocksdb and others dependency you will need to build it, here are the requirements on ubuntu:
 
 `$ sudo apt install python3-dev build-essential libsnappy-dev zlib1g-dev libbz2-dev libgflags-dev liblz4-dev librocksdb-dev libgmp-dev libsecp256k1-dev`
 

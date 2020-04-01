@@ -31,6 +31,7 @@ mongodb:
 
 storage:
   store_files: true
+  engine: mongodb
 
 ipfs:
   host: 127.0.0.1
