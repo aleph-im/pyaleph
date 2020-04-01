@@ -93,7 +93,6 @@ pathtools==0.1.2
 pbr==5.4.3
 peewee==3.10.0
 pexpect==4.8.0
-pkg-resources==0.0.0
 pluggy==0.13.1
 plyvel==1.1.0
 port-for==0.3.1
