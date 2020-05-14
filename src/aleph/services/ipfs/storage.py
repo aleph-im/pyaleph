@@ -24,7 +24,7 @@ async def get_ipfs_content(hash, timeout=1, tries=1):
                         await asyncio.sleep(.5)
                         continue
                     result = await resp.read()
-            except (concurrent.futures.TimeoutError):
+            except (asyncio.TimeoutError):
                 result = None
                 await asyncio.sleep(.5)
             except (concurrent.futures.CancelledError,
@@ -84,7 +84,7 @@ async def pin_add(hash, timeout=2, tries=1):
             result = None
             async for ret in api.pin.add(hash):
                 result = ret
-        except (concurrent.futures.TimeoutError, json.JSONDecodeError):
+        except (asyncio.TimeoutError, json.JSONDecodeError):
             result = None
         except concurrent.futures.CancelledError:
             try_count -= 1  # do not count as a try.
