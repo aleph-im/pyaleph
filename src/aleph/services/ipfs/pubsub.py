@@ -32,7 +32,7 @@ async def sub(topic, base_url=None):
     
     async for mvalue in api.pubsub.sub(topic):
         try:
-            LOGGER.debug("New message received %r" % message)
+            LOGGER.debug("New message received %r" % mvalue)
 
             # we should check the sender here to avoid spam
             # and such things...
