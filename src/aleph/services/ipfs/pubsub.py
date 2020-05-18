@@ -8,7 +8,7 @@ import logging
 import base64
 import base58
 
-from .common import get_base_url
+from .common import get_base_url, get_ipfs_api
 LOGGER = logging.getLogger("IPFS.PUBSUB")
 
 
@@ -27,47 +27,26 @@ async def sub(topic, base_url=None):
     if base_url is None:
         from aleph.web import app
         base_url = await get_base_url(app['config'])
+        
+    api = await get_ipfs_api()
+    
+    async for mvalue in api.pubsub.sub(topic):
+        try:
+            LOGGER.debug("New message received %r" % message)
 
-    async with aiohttp.ClientSession(read_timeout=0) as session:
-        async with session.get('%s/api/v0/pubsub/sub' % base_url,
-                               params={'arg': topic,
-                                       'discover': 'true'}) as resp:
-            rest_value = None
-            while True:
-                value, is_full = await resp.content.readchunk()
-                if rest_value:
-                    value = rest_value + value
+            # we should check the sender here to avoid spam
+            # and such things...
+            message = await incoming_check(mvalue)
+            if message is not None:
+                yield message
 
-                if is_full:
-                    # yield value
-                    rest_value = None
-                    try:
-                        mvalue = json.loads(value)
-                        mvalue = await decode_msg(mvalue)
-                        LOGGER.debug("New message received %r" % mvalue)
-
-                        # we should check the sender here to avoid spam
-                        # and such things...
-                        message = await incoming_check(mvalue)
-                        if message is not None:
-                            yield message
-
-                    except Exception:
-                        LOGGER.exception("Error handling message")
-                else:
-                    rest_value = value
+        except Exception:
+            LOGGER.exception("Error handling message")
 
 
-async def pub(topic, message, base_url=None):
-    if base_url is None:
-        from aleph.web import app
-        base_url = await get_base_url(app['config'])
-
-    async with aiohttp.ClientSession(read_timeout=0) as session:
-        async with session.get('%s/api/v0/pubsub/pub' % base_url,
-                               params=(('arg', topic),
-                                       ('arg', message))) as resp:
-            assert resp.status == 200
+async def pub(topic, message):
+    api = await get_ipfs_api()
+    await api.pubsub.pub(topic, message)
 
 
 async def incoming_channel(config, topic):
