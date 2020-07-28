@@ -6,7 +6,7 @@ from aleph.permissions import check_sender_authorization
 from aleph.handlers.register import handle_incoming_message
 from aleph.web import app
 from pymongo import UpdateOne
-import orjson as json
+import json
 
 import asyncio
 import logging
