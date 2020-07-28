@@ -1,7 +1,7 @@
 import aioipfs
 import aiohttp
 import asyncio
-import orjson as json
+import json
 import aiohttp
 import concurrent
 import logging
@@ -18,12 +18,18 @@ async def get_ipfs_content(hash, timeout=1, tries=1):
         while (result is None) and (try_count < tries):
             try_count += 1
             try:
-                async with session.get(uri) as resp:
-                    if resp.status != 200:
-                        result = None
-                        await asyncio.sleep(.5)
-                        continue
-                    result = await resp.read()
+                api = await get_ipfs_api(timeout=5)
+                result = await api.cat(hash, length=1024*5)
+                # async with session.get(uri) as resp:
+                #     if resp.status != 200:
+                #         result = None
+                #         await asyncio.sleep(.5)
+                #         continue
+                #     result = await resp.read()
+            except aioipfs.APIError:
+                result = None
+                await asyncio.sleep(.5)
+                continue
             except (asyncio.TimeoutError):
                 result = None
                 await asyncio.sleep(.5)
