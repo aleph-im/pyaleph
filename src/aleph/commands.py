@@ -139,7 +139,7 @@ def main(args):
         manager = prepare_manager(config_values)
         
     if not args.no_jobs:
-        start_jobs(config, manager=manager)
+        start_jobs(config, manager=manager, use_processes=False)
 
     loop = asyncio.get_event_loop()
     # handler = app.make_handler(loop=loop)
