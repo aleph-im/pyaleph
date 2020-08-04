@@ -10,38 +10,29 @@ from .common import get_ipfs_gateway_url, get_ipfs_api, get_base_url
 LOGGER = logging.getLogger("IPFS.STORAGE")
 
 async def get_ipfs_content(hash, timeout=1, tries=1):
-    from aleph.web import app
-    async with aiohttp.ClientSession(read_timeout=timeout) as session:
-        uri = await get_ipfs_gateway_url(app['config'], hash)
-        try_count = 0
-        result = None
-        while (result is None) and (try_count < tries):
-            try_count += 1
-            try:
-                api = await get_ipfs_api(timeout=5)
-                result = await api.cat(hash, length=1024*5)
-                # async with session.get(uri) as resp:
-                #     if resp.status != 200:
-                #         result = None
-                #         await asyncio.sleep(.5)
-                #         continue
-                #     result = await resp.read()
-            except aioipfs.APIError:
-                result = None
-                await asyncio.sleep(.5)
-                continue
-            except (asyncio.TimeoutError):
-                result = None
-                await asyncio.sleep(.5)
-            except (concurrent.futures.CancelledError,
-                    aiohttp.client_exceptions.ClientConnectorError):
-                try_count -= 1  # do not count as a try.
-                await asyncio.sleep(.1)
-                
-        if isinstance(result, str):
-            result = result.encode('utf-8')
+    try_count = 0
+    result = None
+    while (result is None) and (try_count < tries):
+        try_count += 1
+        try:
+            api = await get_ipfs_api(timeout=5)
+            result = await asyncio.wait_for(api.cat(hash, length=1024*5), 5)
+        except aioipfs.APIError:
+            result = None
+            await asyncio.sleep(.5)
+            continue
+        except (asyncio.TimeoutError):
+            result = None
+            await asyncio.sleep(.5)
+        except (concurrent.futures.CancelledError,
+                aiohttp.client_exceptions.ClientConnectorError):
+            try_count -= 1  # do not count as a try.
+            await asyncio.sleep(.1)
+            
+    if isinstance(result, str):
+        result = result.encode('utf-8')
 
-        return result
+    return result
 
 async def get_json(hash, timeout=1, tries=1):
     result = await get_ipfs_content(hash, timeout=timeout, tries=tries)
