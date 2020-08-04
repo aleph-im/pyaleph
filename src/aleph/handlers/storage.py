@@ -11,6 +11,7 @@ TODO:
 from aleph.web import app
 from aleph.handlers.register import register_incoming_handler
 from aleph.storage import get_hash_content
+from aleph.services.ipfs.common import get_ipfs_api
 
 ALLOWED_ENGINES = ['ipfs', 'storage']
 
@@ -25,16 +26,46 @@ async def handle_new_storage(message, content):
         LOGGER.warning("Got invalid storage engine %s" % engine)
         return -1 # not allowed, ignore.
     
-    # TODO: We should check the balance here.
-    file_content = await get_hash_content(content['item_hash'],
-                                     engine=engine, tries=4,
-                                     use_network=True, use_ipfs=True,
-                                     store_value=True)
-    if file_content is None:
+    file_content = None
+    is_folder = False
+    item_hash = content['item_hash']
+    ipfs_enabled = app['config'].ipfs.enabled.value
+    do_standard_lookup = False
+    size = 0
+    
+    if engine == 'ipfs':
+        api = await get_ipfs_api(timeout=1)
+        stats = await api.files.stat(f"/ipfs/{item_hash}")
+        if stats['Type'] == 'file' and stats['CumulativeSize'] < 1024:
+            do_standard_lookup = True
+        else:
+            size = stats['CumulativeSize']
+            content['engine_info'] = stats
+            pin_api = await get_ipfs_api(timeout=60)
+            timer = 0
+            is_folder = stats['Type'] == 'directory'
+            async for status in pin_api.pin.add(item_hash):
+                timer += 1
+                if timer > 30 and status['pins'] is None:
+                    return None # Can't retrieve data now.                    
+        
+    if do_standard_lookup:
+        # TODO: We should check the balance here.
+        file_content = await get_hash_content(item_hash,
+                                        engine=engine, tries=4,
+                                        use_network=True, use_ipfs=True,
+                                        store_value=True)
+        size = len(file_content)
+        
+    elif engine == 'ipfs':
+        
+        
+    if file_content is None and not is_folder:
         return None # can't handle it for now.
     
-    size = len(file_content)
     content['size'] = size
+    content['content_type'] = is_folder and 'directory' or 'file'
+    
     return True
     
     
