@@ -57,9 +57,6 @@ async def handle_new_storage(message, content):
                                         store_value=True)
         size = len(file_content)
         
-    elif engine == 'ipfs':
-        
-        
     if file_content is None and not is_folder:
         return None # can't handle it for now.
     
