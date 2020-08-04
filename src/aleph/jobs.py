@@ -49,7 +49,7 @@ async def join_pending_message_tasks(tasks, actions_list=None, messages_actions_
         LOGGER.exception("error in incoming task")
     tasks.clear()
 
-    if actions_list is not None and len(messages_actions_list):
+    if messages_actions_list is not None and len(messages_actions_list):
         await Message.collection.bulk_write(messages_actions_list)
         messages_actions_list.clear()
 
