@@ -41,6 +41,10 @@ async def handle_new_storage(message, content):
         try:
             stats = await api.files.stat(f"/ipfs/{item_hash}")
         except aioipfs.APIError as e:
+            if "invalid CID" in e.message:
+                LOGGER.warning(f"Error retrieving stats of hash {item_hash}: {e.message}")
+                return -1
+            
             LOGGER.exception(f"Error retrieving stats of hash {item_hash}: {e.message}")
             return None
         
