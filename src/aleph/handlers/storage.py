@@ -8,10 +8,13 @@ TODO:
 - hjandle garbage collection of unused hashes
 """
 
+import aioipfs
 from aleph.web import app
 from aleph.handlers.register import register_incoming_handler
 from aleph.storage import get_hash_content
 from aleph.services.ipfs.common import get_ipfs_api
+import logging
+LOGGER = logging.getLogger("HANDLERS.STORAGE")
 
 ALLOWED_ENGINES = ['ipfs', 'storage']
 
@@ -35,7 +38,12 @@ async def handle_new_storage(message, content):
     
     if engine == 'ipfs':
         api = await get_ipfs_api(timeout=1)
-        stats = await api.files.stat(f"/ipfs/{item_hash}")
+        try:
+            stats = await api.files.stat(f"/ipfs/{item_hash}")
+        except aioipfs.APIError as e:
+            LOGGER.exception(f"Error retrieving stats of hash {item_hash}: {e.message}")
+            return None
+        
         if stats['Type'] == 'file' and stats['CumulativeSize'] < 1024:
             do_standard_lookup = True
         else:
