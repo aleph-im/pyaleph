@@ -36,6 +36,7 @@ async def get_ipfs_content(hash, timeout=1, tries=1):
 
 async def get_json(hash, timeout=1, tries=1):
     result = await get_ipfs_content(hash, timeout=timeout, tries=tries)
+    loop = asyncio.get_event_loop()
     if result is not None and result != -1:
         try:
             result = await loop.run_in_executor(None, json.loads, result)
