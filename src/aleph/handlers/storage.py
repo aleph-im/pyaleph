@@ -40,27 +40,28 @@ async def handle_new_storage(message, content):
         api = await get_ipfs_api(timeout=1)
         try:
             stats = await api.files.stat(f"/ipfs/{item_hash}")
+        
+            if stats['Type'] == 'file' and stats['CumulativeSize'] < 5120:
+                do_standard_lookup = True
+            else:
+                size = stats['CumulativeSize']
+                content['engine_info'] = stats
+                pin_api = await get_ipfs_api(timeout=60)
+                timer = 0
+                is_folder = stats['Type'] == 'directory'
+                async for status in pin_api.pin.add(item_hash):
+                    timer += 1
+                    if timer > 30 and status['pins'] is None:
+                        return None # Can't retrieve data now.
+                do_standard_lookup = False
+                
         except aioipfs.APIError as e:
             if "invalid CID" in e.message:
                 LOGGER.warning(f"Error retrieving stats of hash {item_hash}: {e.message}")
                 return -1
             
             LOGGER.exception(f"Error retrieving stats of hash {item_hash}: {e.message}")
-            return None
-        
-        if stats['Type'] == 'file' and stats['CumulativeSize'] < 1024:
             do_standard_lookup = True
-        else:
-            size = stats['CumulativeSize']
-            content['engine_info'] = stats
-            pin_api = await get_ipfs_api(timeout=60)
-            timer = 0
-            is_folder = stats['Type'] == 'directory'
-            async for status in pin_api.pin.add(item_hash):
-                timer += 1
-                if timer > 30 and status['pins'] is None:
-                    return None # Can't retrieve data now.     
-            do_standard_lookup = False               
         
     if do_standard_lookup:
         # TODO: We should check the balance here.
