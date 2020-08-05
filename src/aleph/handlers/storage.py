@@ -68,10 +68,10 @@ async def handle_new_storage(message, content):
                                         engine=engine, tries=4,
                                         use_network=True, use_ipfs=True,
                                         store_value=True)
-        size = len(file_content)
+        if file_content is None:
+            return None
         
-    if file_content is None and not is_folder:
-        return None # can't handle it for now.
+        size = len(file_content)
     
     content['size'] = size
     content['content_type'] = is_folder and 'directory' or 'file'
