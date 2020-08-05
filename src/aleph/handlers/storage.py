@@ -33,10 +33,10 @@ async def handle_new_storage(message, content):
     is_folder = False
     item_hash = content['item_hash']
     ipfs_enabled = app['config'].ipfs.enabled.value
-    do_standard_lookup = False
+    do_standard_lookup = True
     size = 0
     
-    if engine == 'ipfs':
+    if engine == 'ipfs' and ipfs_enabled:
         api = await get_ipfs_api(timeout=1)
         try:
             stats = await api.files.stat(f"/ipfs/{item_hash}")
@@ -59,7 +59,8 @@ async def handle_new_storage(message, content):
             async for status in pin_api.pin.add(item_hash):
                 timer += 1
                 if timer > 30 and status['pins'] is None:
-                    return None # Can't retrieve data now.                    
+                    return None # Can't retrieve data now.     
+            do_standard_lookup = False               
         
     if do_standard_lookup:
         # TODO: We should check the balance here.
