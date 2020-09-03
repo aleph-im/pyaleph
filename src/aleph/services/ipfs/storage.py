@@ -16,7 +16,7 @@ async def get_ipfs_content(hash, timeout=1, tries=1):
         try_count += 1
         try:
             api = await get_ipfs_api(timeout=5)
-            result = await asyncio.wait_for(api.cat(hash, length=1024*5), 5)
+            result = await asyncio.wait_for(api.cat(hash, length=1024*10), 5)
         except aioipfs.APIError:
             result = None
             await asyncio.sleep(.5)
