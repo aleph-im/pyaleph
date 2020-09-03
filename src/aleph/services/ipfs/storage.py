@@ -40,13 +40,13 @@ async def get_json(hash, timeout=1, tries=1):
     if result is not None and result != -1:
         try:
             result = await loop.run_in_executor(None, json.loads, result)
-        except json.JSONDecodeError:
-            try:
-                import json as njson
-                result = await loop.run_in_executor(None, njson.loads, result)
-            except (json.JSONDecodeError, KeyError): 
-                LOGGER.exception("Can't decode JSON")
-                result = -1  # never retry, bogus data
+        except json.decoder.JSONDecodeError:
+            # try:
+            #     import json as njson
+            #     result = await loop.run_in_executor(None, njson.loads, result)
+            # except (json.JSONDecodeError, KeyError): 
+            LOGGER.exception("Can't decode JSON")
+            result = -1  # never retry, bogus data
     return result
 
 async def add_json(value):
