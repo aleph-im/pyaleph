@@ -13,15 +13,20 @@ LOGGER = logging.getLogger('P2P.host')
 FLOODSUB_PROTOCOL_ID = floodsub.PROTOCOL_ID
 GOSSIPSUB_PROTOCOL_ID = gossipsub.PROTOCOL_ID
 
+def generate_keypair(print_info=False):
+    keypair = create_new_key_pair()
+    if print_info:
+        LOGGER.info("Generating new key, please save it to keep same host id.")
+        LOGGER.info(keypair.private_key.impl.export_key().decode('utf-8'))
+    return keypair
+    
+
 async def initialize_host(host='0.0.0.0', port=4025, key=None, listen=True, protocol_active=True):
     from .peers import publish_host, monitor_hosts
     from .protocol import PROTOCOL_ID, AlephProtocol
     from .jobs import reconnect_p2p_job, tidy_http_peers_job
     if key is None:
-        keypair = create_new_key_pair()
-        if listen:
-            LOGGER.info("Generating new key, please save it to keep same host id.")
-            LOGGER.info(keypair.private_key.impl.export_key().decode('utf-8'))
+        keypair = generate_keypair(print_info=listen)
     else:
         priv = import_key(key)
         private_key = RSAPrivateKey(priv)

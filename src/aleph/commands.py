@@ -24,6 +24,7 @@ from aleph.web import app, init_cors, controllers
 from aleph.config import get_defaults
 from aleph.network import setup_listeners
 from aleph.jobs import start_jobs, DBManager, prepare_loop, prepare_manager
+from aleph.services.p2p.manager import generate_keypair
 from aleph import model
 from aleph.services import p2p, filestore
 
@@ -75,6 +76,13 @@ def parse_args(args):
         help="set loglevel to DEBUG",
         action='store_const',
         const=logging.DEBUG)
+    parser.add_argument(
+        '-g',
+        '--gen-key',
+        dest="generate_key",
+        help="Generate a node key and exit",
+        action="store_true", 
+        default=False)
     return parser.parse_args(args)
 
 
@@ -110,6 +118,11 @@ def main(args):
 
     # uvloop.install()
     args = parse_args(args)
+    if args.generate_key:
+        setup_logging(logging.INFO)
+        generate_keypair(print_info=True)
+        return
+    
     setup_logging(args.loglevel)
     LOGGER.info("Starting up.")
 
