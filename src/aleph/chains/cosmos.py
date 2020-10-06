@@ -1,6 +1,6 @@
 import asyncio
 import aiohttp
-import orjson as json
+import json
 import time
 import struct
 import base64
@@ -66,7 +66,7 @@ async def verify_signature(message):
         return False
     
     try:
-        if signature.get('pub_key').get('type') != 'endermint/PubKeySecp256k1':
+        if signature.get('pub_key').get('type') != 'tendermint/PubKeySecp256k1':
             LOGGER.warning('Unsupported curve %s' % signature.get('pub_key').get('type'))
     except Exception:
         LOGGER.exception("Cosmos signature Key error")
