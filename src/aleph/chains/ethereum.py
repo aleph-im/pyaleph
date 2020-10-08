@@ -1,5 +1,5 @@
 import asyncio
-import orjson as json
+import json
 import pkg_resources
 from aleph.network import check_message
 from aleph.chains.common import (incoming, get_verification_buffer,

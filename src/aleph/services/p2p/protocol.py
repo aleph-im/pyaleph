@@ -13,7 +13,7 @@ from aleph import __version__
 from concurrent import futures
 from . import singleton
 from . import peers
-import orjson as json
+import json
 import base64
 import random
 

@@ -1,6 +1,6 @@
 import asyncio
 import aiohttp
-import orjson as json
+import json
 import time
 import struct
 from aleph.chains.common import (get_verification_buffer)

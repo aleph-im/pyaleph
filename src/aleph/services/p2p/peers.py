@@ -1,6 +1,6 @@
 from libp2p.peer.peerinfo import info_from_p2p_addr
 import asyncio
-import orjson as json
+import json
 import multiaddr
 import logging
 from aleph.services.p2p.pubsub import decode_msg

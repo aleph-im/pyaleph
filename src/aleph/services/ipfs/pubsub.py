@@ -1,7 +1,7 @@
 import aioipfs
 import aiohttp
 import asyncio
-import orjson as json
+import json
 import aiohttp
 import concurrent
 import logging

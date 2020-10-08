@@ -1,6 +1,6 @@
 import asyncio
 import aiohttp
-import orjson as json
+import json
 import time
 import struct
 import base64

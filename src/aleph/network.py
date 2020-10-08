@@ -1,5 +1,5 @@
 import aiohttp
-import orjson as json
+import json
 import asyncio
 import time
 from hashlib import sha256
