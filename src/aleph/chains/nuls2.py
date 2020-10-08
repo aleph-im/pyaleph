@@ -287,7 +287,7 @@ async def nuls2_packer(config):
         
             tx = await prepare_transfer_tx(address, [(target_addr, CHEAP_UNIT_FEE)], nonce,
                                            chain_id=chain_id, asset_id=1,
-                                           raw_tx_data=content, remark=remark)
+                                           raw_tx_data=content.encode('utf-8'), remark=remark)
             await tx.sign_tx(pri_key)
             tx_hex = (await tx.serialize(update_data=False)).hex()
             ret = await broadcast(server, tx_hex, chain_id=chain_id)
