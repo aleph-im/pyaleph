@@ -26,10 +26,17 @@ try:
 except:
     print("Can't load NEO")
     traceback.print_exc()
+    
 try:
     from aleph.chains import substrate
 except:
     print("Can't load DOT")
+    traceback.print_exc()
+    
+try:
+    from aleph.chains import cosmos
+except:
+    print("Can't load CSDK")
     traceback.print_exc()
 
 def start_connector(config, outgoing=True):
