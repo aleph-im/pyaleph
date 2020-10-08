@@ -111,7 +111,6 @@ async def get_json(hash, engine='ipfs', timeout=2, tries=1):
         try:
             # if len(content) > 100000:
             content = await loop.run_in_executor(None, json.loads, content)
-            content = content.encode('utf-8')
             # else:
             #     content = json.loads(content)
         except json.JSONDecodeError:

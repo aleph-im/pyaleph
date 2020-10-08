@@ -32,8 +32,6 @@ class DockerizedPythonVM(DockerizedBaseVM):
         output = cls._run('python', 'python3 executor.py',
                           stdin=json.dumps(payload).encode('utf-8'))
         
-        print(output)
-        
         if output['exit_code'] != 0:
             return {'result': None, 'error': output['stderr'].decode('utf-8')}
         

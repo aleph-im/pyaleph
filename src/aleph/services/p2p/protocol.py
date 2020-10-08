@@ -78,7 +78,7 @@ class AlephProtocol(INotifee):
                 except Exception as e:
                     result = {'status': 'error',
                             'reason': repr(e)}
-                await stream.write(json.dumps(result))
+                await stream.write(json.dumps(result).encode('utf-8'))
                 
     async def make_request(self, request_structure):
         streams = [(peer, item) for peer, sublist in self.peers.items() for item in sublist]
@@ -89,7 +89,7 @@ class AlephProtocol(INotifee):
                     async with semaphore:
                         try:
                             # stream = await asyncio.wait_for(singleton.host.new_stream(peer_id, [PROTOCOL_ID]), connect_timeout)
-                            await stream.write(json.dumps(request_structure))
+                            await stream.write(json.dumps(request_structure).encode('utf-8'))
                             value = await stream.read(MAX_READ_LEN)
                             # # await stream.close()
                             try:
@@ -148,7 +148,7 @@ class AlephProtocol(INotifee):
                 return
             
             try:
-                await stream.write(json.dumps(HELLO_PACKET))
+                await stream.write(json.dumps(HELLO_PACKET).encode('utf-8'))
                 await stream.read(MAX_READ_LEN)
             except Exception as error:
                 LOGGER.debug("fail to add new peer %s, error %s", peer_id, error)
