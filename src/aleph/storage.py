@@ -111,6 +111,7 @@ async def get_json(hash, engine='ipfs', timeout=2, tries=1):
         try:
             # if len(content) > 100000:
             content = await loop.run_in_executor(None, json.loads, content)
+            content = content.encode('utf-8')
             # else:
             #     content = json.loads(content)
         except json.JSONDecodeError:
@@ -130,6 +131,7 @@ async def add_json(value, engine='ipfs'):
     # TODO: determine which storage engine to use
     loop = asyncio.get_event_loop()
     content = await loop.run_in_executor(None, json.dumps, value)
+    content = content.encode('utf-8')
     if engine == 'ipfs':
         chash = await add_ipfs_bytes(content)
     elif engine == 'storage':

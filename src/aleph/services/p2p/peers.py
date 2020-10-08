@@ -20,7 +20,7 @@ async def publish_host(address, psub, topic=ALIVE_TOPIC, interests=None, delay=1
         'peer_type': peer_type,
         'version': __version__
     }
-    msg = json.dumps(msg)
+    msg = json.dumps(msg).encode('utf-8')
     while True:
         try:
             LOGGER.debug("Publishing alive message on p2p pubsub")
