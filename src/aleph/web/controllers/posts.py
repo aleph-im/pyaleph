@@ -35,6 +35,10 @@ async def view_posts_list(request):
     if hashes is not None:
         hashes = hashes.split(',')
 
+    channels = request.query.get('channels', None)
+    if channels is not None:
+        channels = channels.split(',')
+
     date_filters = prepare_date_filters(request, 'time')
 
     if addresses is not None:
@@ -56,6 +60,11 @@ async def view_posts_list(request):
             {'item_hash': {'$in': hashes}},
             {'tx_hash': {'$in': hashes}}
         ]})
+
+    if channels is not None:
+        filters.append({
+            'channel': {'$in': channels}
+        })
 
     if date_filters is not None:
         filters.append(date_filters)
