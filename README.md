@@ -18,6 +18,7 @@ You need to install the requirements, ideally in an empty virtualenv (I let
 that part to you):
 
 ```bash
+pip install wheel
 pip install git+https://github.com/aleph-im/py-libp2p.git
 pip install git+https://github.com/aleph-im/nuls2-python.git
 pip install git+https://github.com/aleph-im/aleph-client.git
