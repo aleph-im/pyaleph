@@ -54,7 +54,7 @@ def parse_args(args):
     parser.add_argument('-c', '--config', action="store", dest="config_file")
     parser.add_argument('-p', '--port', action="store", type=int, dest="port",
                         default=8080)
-    parser.add_argument('--host', action="store", type=str, dest="host",
+    parser.add_argument('--host', '-h', action="store", type=str, dest="host",
                         default="127.0.0.1")
     parser.add_argument('--debug', action="store_true", dest="debug",
                         default=False)
