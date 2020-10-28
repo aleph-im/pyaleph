@@ -1,43 +1,40 @@
 import asyncio
-import traceback
+import logging
 from aleph.chains.register import OUTGOING_WORKERS, INCOMING_WORKERS
+
+logger = logging.getLogger(__name__)
+
 try:
     from aleph.chains import nuls
-except:
-    print("Can't load NULS")
-    traceback.print_exc()
+except ModuleNotFoundError as error:
+    logger.warning("Can't load NULS: %s", error.msg)
 try:
     from aleph.chains import nuls2
-except:
-    print("Can't load NULS2")
-    traceback.print_exc()
+except ModuleNotFoundError as error:
+    logger.warning("Can't load NULS2: %s", error.msg)
 try:
     from aleph.chains import ethereum
-except:
-    print("Can't load ETH")
-    traceback.print_exc()
+except ModuleNotFoundError as error:
+    logger.warning("Can't load ETH: %s", error.msg)
 try:
     from aleph.chains import binance
-except:
-    print("Can't load BNB")
-    traceback.print_exc()
+except ModuleNotFoundError as error:
+    logger.warning(f"Can't load BNB: %s", error.msg)
 try:
     from aleph.chains import neo
-except:
-    print("Can't load NEO")
-    traceback.print_exc()
-    
+except ModuleNotFoundError as error:
+    logger.warning("Can't load NEO: %s", error.msg)
+
 try:
     from aleph.chains import substrate
-except:
-    print("Can't load DOT")
-    traceback.print_exc()
-    
+except (ModuleNotFoundError, ImportError) as error:
+    logger.warning("Can't load DOT: %s", error.msg)
+
 try:
     from aleph.chains import cosmos
-except:
-    print("Can't load CSDK")
-    traceback.print_exc()
+except ModuleNotFoundError as error:
+    logger.warning("Can't load CSDK: %s", error.msg)
+
 
 def start_connector(config, outgoing=True):
     loop = asyncio.get_event_loop()
