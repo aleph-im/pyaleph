@@ -83,6 +83,21 @@ def parse_args(args):
         help="Generate a node key and exit",
         action="store_true", 
         default=False)
+    parser.add_argument(
+        '--print-key',
+        dest="print_key",
+        help="Print the generated key",
+        action="store_true",
+        default=False)
+    parser.add_argument(
+        '-k',
+        '--key',
+        dest="key_path",
+        help="Path to the node private key",
+        action="store",
+        type=str,
+        default="node-secret.key",
+    )
     return parser.parse_args(args)
 
 
@@ -119,8 +134,8 @@ def main(args):
     # uvloop.install()
     args = parse_args(args)
     if args.generate_key:
-        setup_logging(logging.INFO)
-        generate_keypair(print_info=True)
+        # Generate an key pair and exit
+        generate_keypair(args.print_key, args.key_path)
         return
     
     setup_logging(args.loglevel)
@@ -128,6 +143,15 @@ def main(args):
 
     config = Config(schema=get_defaults())
     app['config'] = config
+
+    if args.key_path:
+        # Load key pair from file
+        with open(args.key_path, 'r') as key_file:
+            config.p2p.key.value = key_file.read()
+
+    if not config.p2p.key.value:
+        LOGGER.critical("Node key cannot be empty")
+        return
 
     config.aleph.port.value = args.port
     config.aleph.host.value = args.host
