@@ -62,7 +62,7 @@ def get_defaults():
             'commit_delay': 35
         },
         'mongodb': {
-            'uri': 'mongodb://127.0.0.1:27006',
+            'uri': 'mongodb://127.0.0.1:27017',
             'database': 'aleph'
         },
         'mail': {
