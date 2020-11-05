@@ -12,7 +12,7 @@ not from this directory.
 ## Initial setup
 
 You will need an initial configuration file to run the node.
-See `sample-config.yml` for an example of configuration file. 
+See `deployment/docker-demo/config.yml` for an example of configuration file. 
 This configuration can then be mounted on `/opt/pyaleph/config.yml`
 when starting the Docker image.
 
@@ -25,7 +25,7 @@ host your own Ethereum node.
 
 https://infura.io/ provides an easy access to Ethereum with a free plan.
 
-[Geth](https://geth.ethereum.org/) can be used to run an Ethereum node.
+[Geth](https://geth.ethereum.org/) can be used to run an Ethereum node yourself.
 
 Update your `config.yml`, section `ethereum` adequately.
 

@@ -80,11 +80,11 @@ RUN /opt/venv/bin/python3 -m pip install --upgrade pip
 ENV PATH="/opt/venv/bin:${PATH}"
 
 # === Copy source code ===
-COPY ../../setup.py /opt/pyaleph/
-COPY ../../setup.cfg /opt/pyaleph/
-COPY ../../src /opt/pyaleph/src
+COPY setup.py /opt/pyaleph/
+COPY setup.cfg /opt/pyaleph/
+COPY src /opt/pyaleph/src
 
-COPY ../../tests /opt/pyaleph/tests
+COPY tests /opt/pyaleph/tests
 
 COPY .git /opt/pyaleph/.git
 
