@@ -26,7 +26,7 @@ def generate_keypair(print_key: bool, key_path: Optional[str]):
 
     if key_path:
         # Save the armored key pair in a file
-        with open(args.key_path, 'wb') as key_file:
+        with open(key_path, 'wb') as key_file:
             key_file.write(keypair.private_key.impl.export_key())
 
     return keypair
