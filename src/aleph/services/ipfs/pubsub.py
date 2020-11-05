@@ -74,5 +74,6 @@ async def incoming_channel(config, topic):
                     tasks = []
                     i = 0
 
-        except Exception:
-            LOGGER.exception("Exception in IPFS pubsub, reconnecting.")
+        except ConnectionRefusedError:
+            LOGGER.exception("Exception in IPFS pubsub, reconnecting in 2 seconds...")
+            await asyncio.sleep(2)
