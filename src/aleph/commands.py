@@ -96,7 +96,7 @@ def parse_args(args):
         help="Path to the node private key",
         action="store",
         type=str,
-        default="node-secret.key",
+        default="",
     )
     return parser.parse_args(args)
 
