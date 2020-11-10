@@ -144,7 +144,7 @@ def main(args):
     config = Config(schema=get_defaults())
     app['config'] = config
 
-    if args.key_path:
+    if (not config.p2p.key.value) and args.key_path:
         # Load key pair from file
         with open(args.key_path, 'r') as key_file:
             config.p2p.key.value = key_file.read()
