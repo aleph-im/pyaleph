@@ -54,3 +54,4 @@ MANIFEST
 
 # User configuration with secrets
 config.yml
+node-secret.key

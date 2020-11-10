@@ -1,0 +1,63 @@
+version: '3.1'
+
+volumes:
+  pyaleph-ipfs:
+  pyaleph-mongodb:
+
+services:
+  pyaleph:
+    restart: always
+    image: aleph.im/pyaleph
+    command: pyaleph --config /opt/pyaleph/config.yml
+    build:
+      context: ../../.
+      dockerfile: ./deployment/docker/Dockerfile
+    ports:
+      - 8081:8080/tcp
+      - 4024:4024/tcp
+      - 4025:4025/tcp
+    volumes:
+      - ./config.yml:/opt/pyaleph/config.yml
+      - ../../node-secret.key:/opt/pyaleph/node-secret.key
+    depends_on:
+      - mongodb
+      - ipfs
+    networks:
+      - pyaleph
+      - reverse-proxy
+    logging:
+      options:
+        max-size: 50m
+#    Enable the following for debugging
+#    stdin_open: true
+#    tty: true
+
+  ipfs:
+    restart: always
+    image: ipfs/go-ipfs
+    ports:
+      - 4001:4001
+      - 4001:4001/udp
+    volumes:
+      - "pyaleph-ipfs:/data/ipfs"
+    environment:
+      - IPFS_PROFILE=server
+    networks:
+      - pyaleph
+      - reverse-proxy
+    command: ["daemon", "--enable-pubsub-experiment"]
+
+  mongodb:
+    restart: always
+    image: mongo:3.6
+    volumes:
+      - pyaleph-mongodb:/data/db
+    command: mongod --storageEngine wiredTiger
+    networks:
+      - pyaleph
+
+networks:
+  pyaleph:
+  reverse-proxy:
+    external:
+      name: reverse-proxy
