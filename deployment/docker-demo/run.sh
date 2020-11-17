@@ -23,11 +23,11 @@ fi
 # Set container user podman as owner of the key
 $DOCKER_COMMAND run --name pyaleph --rm --user root \
   -v "$(pwd)/node-secret.key:/opt/pyaleph/node-secret.key" \
-  aleph.im/pyaleph-demo chown aleph:aleph /opt/pyaleph/node-secret.key
+  alephim/pyaleph-node-demo chown aleph:aleph /opt/pyaleph/node-secret.key
 
 $DOCKER_COMMAND run --name pyaleph --rm --user ipfs \
   -v "$(pwd)/node-secret.key:/opt/pyaleph/node-secret.key" \
-  aleph.im/pyaleph-demo ipfs init
+  alephim/pyaleph-node-demo ipfs init
 
 $DOCKER_COMMAND run --name pyaleph \
   -p 8081:8081 \
@@ -42,4 +42,4 @@ $DOCKER_COMMAND run --name pyaleph \
   -v "$(pwd)/config.yml:/opt/pyaleph/config.yml" \
   -v "$(pwd)/node-secret.key:/opt/pyaleph/node-secret.key" \
   --rm -ti \
-  aleph.im/pyaleph-demo "$@"
+  alephim/pyaleph-node-demo "$@"
