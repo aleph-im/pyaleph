@@ -75,6 +75,7 @@ RUN chown -R source:source /opt/pyaleph/src /opt/pyaleph/.eggs
 # Install PyAleph source
 USER source
 WORKDIR /opt/pyaleph
+RUN pip install --upgrade --use-feature=2020-resolver requests
 RUN python setup.py develop
 RUN /opt/venv/bin/pip install --use-feature=2020-resolver -e ".[nuls2,testing]"
 

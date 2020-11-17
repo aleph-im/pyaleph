@@ -1,6 +1,6 @@
 # PyAleph Docker (Beta)
 
-This directory contains the `Dockerfile` to run PyAleph in production.
+This directory contains the `Dockerfile` to build and run PyAleph in production.
 
 ## Build the Docker image
 
@@ -11,7 +11,7 @@ You can build the Docker image simply using:
 
 or by running the Docker build command from the root of the repository:
 ```shell script
-docker build -t aleph.im/pyaleph -f deployment/docker/Dockerfile .
+docker build -t alephim/pyaleph-node -f deployment/docker/Dockerfile .
 ```
 
 ## Configure PyAleph
@@ -29,7 +29,7 @@ You can generate this key using the following commands after building the Docker
 ```shell script
 touch node-secret.key
 
-docker run --rm -ti --user root -v $(pwd)/node-secret.key:/opt/pyaleph/node-secret.key aleph.im/pyaleph:latest pyaleph --gen-key
+docker run --rm -ti --user root -v $(pwd)/node-secret.key:/opt/pyaleph/node-secret.key alephim/pyaleph-node:latest pyaleph --gen-key
 ```
 
 ## Running with Docker Compose

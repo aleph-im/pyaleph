@@ -11,7 +11,9 @@ cd "$SCRIPT_DIR/../.."
 # Use Podman if installed, else use Docker
 if hash podman 2> /dev/null
 then
-  podman build -t aleph.im/pyaleph -f "$SCRIPT_DIR/Dockerfile" .
+  DOCKER_COMMAND=podman
 else
-  docker build -t aleph.im/pyaleph -f "$SCRIPT_DIR/Dockerfile" .
+  DOCKER_COMMAND=docker
 fi
+
+$DOCKER_COMMAND  build -t alephim/pyaleph-node -f "$SCRIPT_DIR/Dockerfile" .

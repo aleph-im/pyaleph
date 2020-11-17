@@ -9,7 +9,7 @@ nuls2:
 
 ethereum:
     enabled: True
-    api_url: {{ ALEPH_ETHEREUM_URL } }
+    api_url: {{ ALEPH_ETHEREUM_URL }}
     chain_id: 4
     packing_node: False
     sync_contract: "0x6aDF64fC26D495445A3CAB545aC808d66932aC15"
@@ -35,7 +35,7 @@ ipfs:
     gateway_port: 8080
 
 aleph:
-    queue_topic: ALEPH
+    queue_topic: ALEPH-TEST
 
 p2p:
     host: 0.0.0.0

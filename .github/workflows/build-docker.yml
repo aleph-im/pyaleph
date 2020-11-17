@@ -1,7 +1,7 @@
 
 # This is a basic workflow to help you get started with Actions
 
-name: Build-Docker-Demo
+name: Build-Docker
 
 # Controls when the action will run. Triggers the workflow on any push
 on: push
@@ -20,17 +20,17 @@ jobs:
 
       # Use GitHub's Docker registry to cache intermediate layers
       - run: echo ${{ secrets.GITHUB_TOKEN }} | docker login docker.pkg.github.com -u $GITHUB_ACTOR --password-stdin
-      - run: docker pull docker.pkg.github.com/$GITHUB_REPOSITORY/build-cache-demo || true
+      - run: docker pull docker.pkg.github.com/$GITHUB_REPOSITORY/build-cache || true
 
       - name: Build the Docker image
-        run: docker build . -t pyaleph-node-demo:${GITHUB_REF##*/} -f deployment/docker-demo/Dockerfile --cache-from=docker.pkg.github.com/$GITHUB_REPOSITORY/build-cache-demo
+        run: docker build . -t pyaleph-node:${GITHUB_REF##*/} -f deployment/docker-build/Dockerfile --cache-from=docker.pkg.github.com/$GITHUB_REPOSITORY/build-cache
 
       - name: Push the image on GitHub's repository
-        run: docker tag pyaleph-node-demo:${GITHUB_REF##*/} docker.pkg.github.com/$GITHUB_REPOSITORY/pyaleph-node-demo:${GITHUB_REF##*/} && docker push docker.pkg.github.com/$GITHUB_REPOSITORY/pyaleph-node-demo:${GITHUB_REF##*/} || true
+        run: docker tag pyaleph-node:${GITHUB_REF##*/} docker.pkg.github.com/$GITHUB_REPOSITORY/pyaleph-node:${GITHUB_REF##*/} && docker push docker.pkg.github.com/$GITHUB_REPOSITORY/pyaleph-node:${GITHUB_REF##*/} || true
 
       - name: Cache the image on GitHub's repository
-        run: docker tag pyaleph-node-demo:${GITHUB_REF##*/} docker.pkg.github.com/$GITHUB_REPOSITORY/build-cache-demo && docker push docker.pkg.github.com/$GITHUB_REPOSITORY/build-cache-demo || true
+        run: docker tag pyaleph-node:${GITHUB_REF##*/} docker.pkg.github.com/$GITHUB_REPOSITORY/build-cache && docker push docker.pkg.github.com/$GITHUB_REPOSITORY/build-cache || true
 
       - name: Test the Docker image
         run: |
-          docker run --name pyaleph --user aleph pyaleph-node-demo:${GITHUB_REF##*/} pyaleph --help
+          docker run --name pyaleph --user aleph pyaleph-node:${GITHUB_REF##*/} pyaleph --help
