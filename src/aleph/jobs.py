@@ -1,5 +1,7 @@
 from logging import getLogger
 import asyncio
+from typing import Coroutine, List
+
 import aioipfs
 import uvloop
 import multiprocessing
@@ -65,7 +67,7 @@ async def retry_messages_job():
     seen_ids = {}
     actions = []
     messages_actions = []
-    gtasks = []
+    gtasks: List[Coroutine] = []
     tasks = []
     loop = asyncio.get_event_loop()
     i = 0
@@ -87,8 +89,8 @@ async def retry_messages_job():
             
             if (j >= 20000):
                 # await join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions) 
-                gtasks.append(asyncio.create_task(
-                    join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions)))
+                gtasks.append(
+                    join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions))
                 tasks = []
                 actions = []
                 messages_actions = []
@@ -100,8 +102,8 @@ async def retry_messages_job():
                 # gtasks.append(asyncio.create_task(join_pending_message_tasks(tasks)))
                 tasks = []
                 i = 0
-        gtasks.append(asyncio.create_task(
-            join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions)))
+        gtasks.append(
+            join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions))
         
         await asyncio.gather(*gtasks, return_exceptions=True)
         gtasks = []
@@ -299,8 +301,8 @@ def prepare_loop(config_values, manager=None, idx=1):
     
     init_db(config, ensure_indexes=False)
     loop.run_until_complete(get_ipfs_api(timeout=2, reset=True))
-    loop.run_until_complete(init_p2p(config, listen=False, port_id=idx, use_key=False))
-    return loop
+    tasks = loop.run_until_complete(init_p2p(config, listen=False, port_id=idx))
+    return loop, tasks
 
 def txs_task_loop(config_values, manager):
     loop = prepare_loop(config_values, manager, idx=1)
@@ -340,10 +342,9 @@ async def reconnect_ipfs_job(config):
         await asyncio.sleep(config.ipfs.reconnect_delay.value)
     
 
-def start_jobs(config, manager=None, use_processes=True):
+def start_jobs(config, manager=None, use_processes=True) -> List[Coroutine]:
     LOGGER.info("starting jobs")
-    loop = asyncio.get_event_loop()
-    
+    tasks: List[Coroutine] = []
     
     if use_processes:
         config_values = config.dump_values()
@@ -354,11 +355,13 @@ def start_jobs(config, manager=None, use_processes=True):
         p1.start()
         p2.start()
     else:
-        loop.create_task(retry_messages_task())
-        loop.create_task(handle_txs_task())
+        tasks.append(retry_messages_task())
+        tasks.append(handle_txs_task())
     # loop.run_in_executor(executor, messages_task_loop, config_values)
     # loop.run_in_executor(executor, txs_task_loop, config_values)
     
     if config.ipfs.enabled.value:
-        loop.create_task(reconnect_ipfs_job(config))
+        tasks.append(reconnect_ipfs_job(config))
     # loop.create_task(reconnect_p2p_job(config))
+
+    return tasks

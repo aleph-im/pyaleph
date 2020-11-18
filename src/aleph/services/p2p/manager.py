@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Coroutine, List
 
 from libp2p import new_node
 from libp2p.crypto.rsa import RSAPrivateKey, KeyPair, create_new_key_pair
@@ -39,6 +39,8 @@ async def initialize_host(key, host='0.0.0.0', port=4025, listen=True, protocol_
 
     assert key, "Host cannot be initialized without a key"
 
+    tasks: List[Coroutine]
+
     priv = import_key(key)
     private_key = RSAPrivateKey(priv)
     public_key = private_key.get_public_key()
@@ -54,8 +56,10 @@ async def initialize_host(key, host='0.0.0.0', port=4025, listen=True, protocol_
     psub = Pubsub(host, flood, host.get_id())
     if protocol_active:
         protocol = AlephProtocol(host)
-    asyncio.create_task(reconnect_p2p_job())
-    asyncio.create_task(tidy_http_peers_job())
+    tasks = [
+        reconnect_p2p_job(),
+        tidy_http_peers_job(),
+    ]
     if listen:
         from aleph.web import app
         
@@ -67,9 +71,12 @@ async def initialize_host(key, host='0.0.0.0', port=4025, listen=True, protocol_
         public_http_address = f'http://{ip}:{http_port}'
         LOGGER.info("Probable public on " + public_address)
         # TODO: set correct interests and args here
-        asyncio.create_task(publish_host(public_address, psub, peer_type="P2P"))
-        asyncio.create_task(publish_host(public_http_address, psub, peer_type="HTTP"))
-        asyncio.create_task(monitor_hosts(psub))
+        tasks += [
+            publish_host(public_address, psub, peer_type="P2P"),
+            publish_host(public_http_address, psub, peer_type="HTTP"),
+            monitor_hosts(psub),
+        ]
+
         # host.set_stream_handler(PROTOCOL_ID, stream_handler)
         
-    return (host, psub, protocol)
+    return (host, psub, protocol, tasks)
