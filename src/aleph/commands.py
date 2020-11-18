@@ -53,9 +53,9 @@ def parse_args(args):
         version='pyaleph {ver}'.format(ver=__version__))
     parser.add_argument('-c', '--config', action="store", dest="config_file")
     parser.add_argument('-p', '--port', action="store", type=int, dest="port",
-                        default=8080)
+                        required=False)
     parser.add_argument('--bind', '-b', action="store", type=str, dest="host",
-                        default="127.0.0.1")
+                        required=False)
     parser.add_argument('--debug', action="store_true", dest="debug",
                         default=False)
     parser.add_argument('--no-commit', action="store_true", dest="no_commit",
@@ -153,8 +153,10 @@ def main(args):
         LOGGER.critical("Node key cannot be empty")
         return
 
-    config.aleph.port.value = args.port
-    config.aleph.host.value = args.host
+    if args.port:
+        config.aleph.port.value = args.port
+    if args.host:
+        config.aleph.host.value = args.host
 
     if args.config_file is not None:
         app['config'].yaml.load(args.config_file)
