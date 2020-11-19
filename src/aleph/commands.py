@@ -112,17 +112,29 @@ def setup_logging(loglevel):
                         format=logformat, datefmt="%Y-%m-%d %H:%M:%S")
     
 
-def run_server(config_values, host, port, manager, idx):
+def run_server(config_values, log_level, host, port, manager, idx):
+    LOGGER = logging.getLogger(__name__)
+    setup_logging(log_level)
+    LOGGER.debug("run_server...")
+    # These imports will run in different processes
     from aiohttp import web
     from aleph.web.controllers.listener import broadcast
     init_cors()
     loop = prepare_loop(config_values, manager, idx=idx)
+
+    LOGGER.debug("Setup of runner")
     runner = web.AppRunner(app)
     loop.run_until_complete(runner.setup())
+
+    LOGGER.debug("Starting site")
     site = web.TCPSite(runner, host, port)
     loop.run_until_complete(site.start())
+
+    LOGGER.debug("Running broadcast server")
     loop.create_task(broadcast())
     loop.run_forever()
+    LOGGER.debug("Finished broadcast server")
+
 
 def main(args):
     """Main entry point allowing external calls
@@ -132,20 +144,21 @@ def main(args):
     """
 
     # uvloop.install()
+
     args = parse_args(args)
+    setup_logging(args.loglevel)
+
     if args.generate_key:
-        # Generate an key pair and exit
+        LOGGER.info("Generating a key pair")
         generate_keypair(args.print_key, args.key_path)
         return
-    
-    setup_logging(args.loglevel)
-    LOGGER.info("Starting up.")
 
+    LOGGER.info("Loading configuration")
     config = Config(schema=get_defaults())
     app['config'] = config
 
     if (not config.p2p.key.value) and args.key_path:
-        # Load key pair from file
+        LOGGER.debug("Loading key pair from file")
         with open(args.key_path, 'r') as key_file:
             config.p2p.key.value = key_file.read()
 
@@ -159,17 +172,18 @@ def main(args):
         config.aleph.host.value = args.host
 
     if args.config_file is not None:
+        LOGGER.debug("Loading config file '%s'", args.config_file)
         app['config'].yaml.load(args.config_file)
         
     config_values = config.dump_values()
 
+    LOGGER.debug("Initializing database")
     model.init_db(config, ensure_indexes=(not args.debug))
     LOGGER.info("Database initialized.")
     
     # filestore.init_store(config)
     # LOGGER.info("File store initalized.")
-    
-    
+
     init_cors()
     set_start_method('spawn')
     manager = None
@@ -178,30 +192,38 @@ def main(args):
         manager = prepare_manager(config_values)
         
     if not args.no_jobs:
+        LOGGER.debug("Starting jobs")
         start_jobs(config, manager=manager, use_processes=False)
 
     loop = asyncio.get_event_loop()
     # handler = app.make_handler(loop=loop)
+    LOGGER.debug("Initializing p2p")
     f = p2p.init_p2p(config)
     host = loop.run_until_complete(f)
-    
-    setup_listeners(config)
-    start_connector(config, outgoing=(not args.no_commit))
-    
-    
+    LOGGER.debug("Initialized p2p")
+
+    LOGGER.debug("Initializing listeners")
+    setup_listeners(config, loop)
+    start_connector(config, loop, outgoing=(not args.no_commit))
+    LOGGER.debug("Initialized listeners")
+
+    LOGGER.debug("Starting processes")
     p1 = Process(target=run_server, args=(config_values,
+                                          args.loglevel,
                                           config.p2p.host.value,
                                           config.p2p.http_port.value,
                                           manager and (manager._address, manager._authkey) or None,
                                           3))
     p2 = Process(target=run_server, args=(config_values,
+                                          args.loglevel,
                                           config.aleph.host.value,
-                                          config.aleph.port.value, 
+                                          config.aleph.port.value,
                                           manager and (manager._address, manager._authkey) or None,
                                           4))
     p1.start()
     p2.start()
-    
+    LOGGER.debug("Started processes")
+
     # fp2p = loop.create_server(handler,
     #                           config.p2p.host.value,
     #                           config.p2p.http_port.value)
@@ -213,6 +235,7 @@ def main(args):
     #                        config.aleph.port.value)
     # srv = loop.run_until_complete(f)
     # LOGGER.info('Serving on %s', srv.sockets[0].getsockname())
+    LOGGER.debug("Running event loop")
     loop.run_forever()
 
 
