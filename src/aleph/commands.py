@@ -27,6 +27,7 @@ from aleph.jobs import start_jobs, DBManager, prepare_loop, prepare_manager
 from aleph.services.p2p.manager import generate_keypair
 from aleph import model
 from aleph.services import p2p, filestore
+from setproctitle import setproctitle
 
 __author__ = "Moshe Malawach"
 __copyright__ = "Moshe Malawach"
@@ -113,6 +114,7 @@ def setup_logging(loglevel):
     
 
 def run_server(config_values, log_level, host, port, manager, idx):
+    setproctitle(f"pyaleph-server-{host}:{port}")
     LOGGER = logging.getLogger(__name__)
     setup_logging(log_level)
     LOGGER.debug("run_server...")
