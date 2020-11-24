@@ -30,6 +30,7 @@ tags
 *.eggs/
 .installed.cfg
 *.egg-info
+src/pyaleph.egg-info
 
 # Unittest and coverage
 htmlcov/*
