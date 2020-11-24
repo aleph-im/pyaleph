@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Aleph Node</title>
+    <style>
+
+        @font-face {
+            font-family: 'IBM Plex Mono';
+            font-weight: normal;
+            src: url(/static/IBM_Plex_Mono/IBMPlexMono-Light.ttf);
+        }
+        @font-face {
+            font-family: 'IBM Plex Mono';
+            font-weight: bold;
+            src: url(/static/IBM_Plex_Mono/IBMPlexMono-Bold.ttf);
+        }
+
+        body {
+            font-family: IBM Plex Regular,monospace;
+            margin: 5vw;
+        }
+    </style>
+</head>
+<body>
+<h1>Aleph Node</h1>
+
+<section>
+    <p>
+        This is an <a href="https://aleph.im/">Aleph.im</a> node.
+    </p>
+    <p>
+        See <a href="https://github.com/aleph-im/pyaleph">Repository</a>
+    </p>
+
+</section>
+
+<hr/>
+
+<section>
+    <h2>Sync status</h2>
+
+    <p>
+        Messages stored: {{ messages }}
+    </p>
+    <p>
+        Pending messages: {{ pending_messages }}
+    </p>
+</section>
+
+</body>
+</html>
