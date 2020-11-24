@@ -103,6 +103,8 @@ WORKDIR /opt/pyaleph
 RUN python setup.py develop
 RUN /opt/venv/bin/pip install --use-feature=2020-resolver -e ".[nuls2,testing]"
 
+# Fix an issue with Aiohttp not working
+RUN /opt/venv/bin/pip install aiohttp==3.7.2
 
 # === Run PyAleph,MongoDB and IPFS using supervisord ===
 USER root
