@@ -4,6 +4,7 @@ from aiohttp import web
 
 from aleph.web import app
 from aleph import __version__
+import aleph.model
 
 app.router.add_static('/static/',
                       path=pkg_resources.resource_filename('aleph.web',
@@ -15,8 +16,13 @@ app.router.add_static('/static/',
 async def index(request):
     """Index of aleph.
     """
+    messages = await aleph.model.db.messages.count_documents({})
+    pending_messages = await aleph.model.db.pending_messages.count_documents({})
 
-    return {}
+    return {
+        'messages': messages,
+        'pending_messages': pending_messages,
+    }
 
 app.router.add_get('/', index)
 
