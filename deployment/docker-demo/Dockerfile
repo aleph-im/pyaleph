@@ -9,8 +9,7 @@ RUN apt-get update && apt-get -y upgrade && apt-get install -y \
      python3 \
      python3-dev \
      python3-pip \
-     python3-virtualenv \
-     virtualenv \
+     python3-venv \
      build-essential \
      git
 
@@ -72,11 +71,12 @@ ENV IPFS_PATH /var/lib/ipfs
 USER source
 
 # Create virtualenv
-RUN virtualenv -p python3 /opt/venv
+RUN python3 -m venv /opt/venv
 
 # Install pip
 ENV PIP_NO_CACHE_DIR yes
 RUN /opt/venv/bin/python3 -m pip install --upgrade pip
+RUN /opt/venv/bin/python3 -m pip install --upgrade wheel
 ENV PATH="/opt/venv/bin:${PATH}"
 
 # === Copy source code ===
