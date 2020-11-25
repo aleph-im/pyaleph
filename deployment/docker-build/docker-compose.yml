@@ -13,7 +13,7 @@ services:
       context: ../../.
       dockerfile: "Dockerfile"
     ports:
-      - 80:8080/tcp
+      - 127.0.0.1:8000:8000/tcp
       - 4024:4024/tcp
       - 4025:4025/tcp
     volumes:
@@ -24,13 +24,9 @@ services:
       - ipfs
     networks:
       - pyaleph
-      - reverse-proxy
     logging:
       options:
         max-size: 50m
-#    Enable the following for debugging
-#    stdin_open: true
-#    tty: true
 
   ipfs:
     restart: always
@@ -44,7 +40,6 @@ services:
       - IPFS_PROFILE=server
     networks:
       - pyaleph
-      - reverse-proxy
     command: ["daemon", "--enable-pubsub-experiment"]
 
   mongodb:
@@ -58,6 +53,3 @@ services:
 
 networks:
   pyaleph:
-  reverse-proxy:
-    external:
-      name: reverse-proxy

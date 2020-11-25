@@ -4,7 +4,7 @@ def get_defaults():
         'aleph': {
             'queue_topic': 'ALEPH-QUEUE',
             'host': '127.0.0.1',
-            'port': 8080
+            'port': 8000
         },
         'p2p': {
             'port': 4025,

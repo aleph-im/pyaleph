@@ -86,6 +86,6 @@ USER aleph
 CMD ["pyaleph"]
 
 # PyAleph API
-EXPOSE 8081
+EXPOSE 8000
 # PyAleph p2p network
 EXPOSE 4024 4025
