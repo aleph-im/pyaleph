@@ -1,3 +1,5 @@
+from typing import Coroutine, List
+
 import aioipfs
 import aiohttp
 import asyncio
@@ -56,13 +58,12 @@ async def incoming_channel(config, topic):
         try:
             i = 0
             #seen_ids = []
-            tasks = []
+            tasks: List[Coroutine] = []
             async for message in sub(topic,
                                      base_url=await get_base_url(config)):
                 LOGGER.debug("New message %r" % message)
                 i += 1
-                tasks.append(
-                    loop.create_task(incoming(message)))
+                tasks.append(incoming(message))
 
                 # await incoming(message, seen_ids=seen_ids)
                 if (i > 1000):

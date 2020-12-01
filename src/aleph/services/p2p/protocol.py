@@ -1,5 +1,7 @@
 import logging
 import asyncio
+from typing import Coroutine, List
+
 from libp2p.network.exceptions import SwarmException
 from libp2p.network.stream.exceptions import StreamEOF, StreamReset
 from libp2p.network.stream.net_stream_interface import INetStream
@@ -198,7 +200,7 @@ async def incoming_channel(config, topic):
     while True:
         try:
             i = 0
-            tasks = []
+            tasks: List[Coroutine] = []
             async for mvalue in sub(topic):
                 try:
                     message = json.loads(mvalue['data'])
@@ -211,8 +213,7 @@ async def incoming_channel(config, topic):
                     
                     LOGGER.debug("New message %r" % message)
                     i += 1
-                    tasks.append(
-                        loop.create_task(incoming(message)))
+                    tasks.append(incoming(message))
 
                     # await incoming(message, seen_ids=seen_ids)
                     if (i > 1000):

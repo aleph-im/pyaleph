@@ -1,5 +1,6 @@
-import asyncio
 import logging
+from typing import Coroutine, List
+
 from aleph.chains.register import OUTGOING_WORKERS, INCOMING_WORKERS
 
 logger = logging.getLogger(__name__)
@@ -36,12 +37,12 @@ except ModuleNotFoundError as error:
     logger.warning("Can't load CSDK: %s", error.msg)
 
 
-def start_connector(config, outgoing=True):
-    loop = asyncio.get_event_loop()
-
+def connector_tasks(config, outgoing=True) -> List[Coroutine]:
+    tasks: List[Coroutine] = []
     for worker in INCOMING_WORKERS.values():
-        loop.create_task(worker(config))
+        tasks.append(worker(config))
 
     if outgoing:
         for worker in OUTGOING_WORKERS.values():
-            loop.create_task(worker(config))
+            tasks.append(worker(config))
+    return tasks

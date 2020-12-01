@@ -14,15 +14,17 @@ import argparse
 import sys
 import logging
 import asyncio
+from typing import List, Coroutine
+
 import uvloop
 from configmanager import Config
 from multiprocessing import Process, Manager, set_start_method
 
 from aleph import __version__
-from aleph.chains import start_connector
+from aleph.chains import connector_tasks
 from aleph.web import app, init_cors, controllers
 from aleph.config import get_defaults
-from aleph.network import setup_listeners
+from aleph.network import listener_tasks
 from aleph.jobs import start_jobs, DBManager, prepare_loop, prepare_manager
 from aleph.services.p2p.manager import generate_keypair
 from aleph import model
@@ -113,29 +115,38 @@ def setup_logging(loglevel):
                         format=logformat, datefmt="%Y-%m-%d %H:%M:%S")
     
 
-def run_server(config_values, log_level, host, port, manager, idx):
-    setproctitle(f"pyaleph-server-{host}:{port}")
-    LOGGER = logging.getLogger(__name__)
-    setup_logging(log_level)
-    LOGGER.debug("run_server...")
+async def run_server(host: str, port: int):
     # These imports will run in different processes
     from aiohttp import web
     from aleph.web.controllers.listener import broadcast
+
+    # Reconfigure logging in different process
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+
+    LOGGER.debug("Initializing CORS")
     init_cors()
-    loop = prepare_loop(config_values, manager, idx=idx)
 
     LOGGER.debug("Setup of runner")
     runner = web.AppRunner(app)
-    loop.run_until_complete(runner.setup())
+    await runner.setup()
 
     LOGGER.debug("Starting site")
     site = web.TCPSite(runner, host, port)
-    loop.run_until_complete(site.start())
+    await site.start()
 
     LOGGER.debug("Running broadcast server")
-    loop.create_task(broadcast())
-    loop.run_forever()
+    await broadcast()
     LOGGER.debug("Finished broadcast server")
+
+
+def run_server_coroutine(config_values, host, port, manager, idx):
+    """Run the server coroutine in a synchronous way.
+    Used as target of multiprocessing.Process.
+    """
+    loop, tasks = prepare_loop(config_values, manager, idx=idx)
+    loop.run_until_complete(
+        asyncio.gather(*tasks, run_server(host, port)))
 
 
 def main(args):
@@ -185,43 +196,42 @@ def main(args):
     
     # filestore.init_store(config)
     # LOGGER.info("File store initalized.")
-
-    init_cors()
+    init_cors()  # FIXME: This is stateful and process-dependent
     set_start_method('spawn')
     manager = None
     if config.storage.engine.value == 'rocksdb':
         # rocksdb doesn't support multiprocess/multithread
         manager = prepare_manager(config_values)
-        
+
+    tasks: List[Coroutine] = []
     if not args.no_jobs:
-        LOGGER.debug("Starting jobs")
-        start_jobs(config, manager=manager, use_processes=False)
+        LOGGER.debug("Creating jobs")
+        tasks += start_jobs(config, manager=manager, use_processes=False)
 
     loop = asyncio.get_event_loop()
+
     # handler = app.make_handler(loop=loop)
     LOGGER.debug("Initializing p2p")
     f = p2p.init_p2p(config)
-    host = loop.run_until_complete(f)
+    p2p_tasks = loop.run_until_complete(f)
+    tasks += p2p_tasks
     LOGGER.debug("Initialized p2p")
 
     LOGGER.debug("Initializing listeners")
-    setup_listeners(config, loop)
-    start_connector(config, loop, outgoing=(not args.no_commit))
+    tasks += listener_tasks(config)
+    tasks += connector_tasks(config, outgoing=(not args.no_commit))
     LOGGER.debug("Initialized listeners")
 
-    LOGGER.debug("Starting processes")
-    p1 = Process(target=run_server, args=(config_values,
-                                          args.loglevel,
-                                          config.p2p.host.value,
-                                          config.p2p.http_port.value,
-                                          manager and (manager._address, manager._authkey) or None,
-                                          3))
-    p2 = Process(target=run_server, args=(config_values,
-                                          args.loglevel,
-                                          config.aleph.host.value,
-                                          config.aleph.port.value,
-                                          manager and (manager._address, manager._authkey) or None,
-                                          4))
+    p1 = Process(target=run_server_coroutine, args=(config_values,
+                                                    config.p2p.host.value,
+                                                    config.p2p.http_port.value,
+                                                    manager and (manager._address, manager._authkey) or None,
+                                                    3))
+    p2 = Process(target=run_server_coroutine, args=(config_values,
+                                                    config.aleph.host.value,
+                                                    config.aleph.port.value,
+                                                    manager and (manager._address, manager._authkey) or None,
+                                                    4))
     p1.start()
     p2.start()
     LOGGER.debug("Started processes")
@@ -238,8 +248,7 @@ def main(args):
     # srv = loop.run_until_complete(f)
     # LOGGER.info('Serving on %s', srv.sockets[0].getsockname())
     LOGGER.debug("Running event loop")
-    loop.run_forever()
-
+    loop.run_until_complete(asyncio.gather(*tasks))
 
 def run():
     """Entry point for console_scripts

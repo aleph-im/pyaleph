@@ -1,3 +1,5 @@
+from typing import Coroutine, List
+
 import aiohttp
 import json
 import asyncio
@@ -126,11 +128,14 @@ async def check_message(message, from_chain=False, from_network=False,
         except ValueError:
             LOGGER.warning('Signature validation error')
             return None
-        
-def setup_listeners(config):
+
+
+def listener_tasks(config) -> List[Coroutine]:
     from aleph.services.p2p import incoming_channel as incoming_p2p_channel
     # for now (1st milestone), we only listen on a single global topic...
-    loop = asyncio.get_event_loop()
+    tasks: List[Coroutine] = [
+        incoming_p2p_channel(config, config.aleph.queue_topic.value)
+    ]
     if config.ipfs.enabled.value:
-        loop.create_task(incoming_ipfs_channel(config, config.aleph.queue_topic.value))
-    loop.create_task(incoming_p2p_channel(config, config.aleph.queue_topic.value))
+        tasks.append(incoming_ipfs_channel(config, config.aleph.queue_topic.value))
+    return tasks
