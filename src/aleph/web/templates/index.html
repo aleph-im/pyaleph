@@ -41,12 +41,45 @@
     <h2>Sync status</h2>
 
     <p>
-        Messages stored: {{ messages }}
+        Messages stored: <span id="messages">{{ messages }}</span>
     </p>
     <p>
-        Pending messages: {{ pending_messages }}
+        Pending messages: <span id="pending_messages">{{ pending_messages }}</span>
     </p>
 </section>
+
+<script>
+    const statusUrl = `ws://${window.location.host}/api/ws0/status`;
+
+    function connectStatusWs() {
+        const statusSocket = new WebSocket(statusUrl);
+
+        statusSocket.onopen = function (event) {
+            console.log("Socket open");
+        };
+
+        statusSocket.onmessage = function (event) {
+            const data = JSON.parse(event.data)
+            document.getElementById('messages').innerText = data['messages'];
+            document.getElementById('pending_messages').innerText = data['pending_messages'];
+        }
+
+        statusSocket.onclose = function(e) {
+            console.log('Socket is closed. Reconnect will be attempted in 1 second.', e.reason);
+            setTimeout(function() {
+                connectStatusWs();
+            }, 1000);
+        };
+
+        statusSocket.onerror = function(err) {
+            console.error('Socket encountered error: ', err.message, 'Closing socket');
+            statusSocket.close();
+        };
+    }
+
+    connectStatusWs();
+
+</script>
 
 </body>
 </html>
