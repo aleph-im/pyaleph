@@ -41,10 +41,14 @@
     <h2>Sync status</h2>
 
     <p>
-        Messages stored: <span id="messages">{{ messages }}</span>
+        Messages stored: <span id="pyaleph_status_sync_messages_total">
+            {{ pyaleph_status_sync_messages_total }}
+        </span>
     </p>
     <p>
-        Pending messages: <span id="pending_messages">{{ pending_messages }}</span>
+        Pending messages: <span id="pyaleph_status_sync_pending_messages_total">
+            {{ pyaleph_status_sync_pending_messages_total }}
+        </span>
     </p>
 </section>
 
@@ -60,8 +64,12 @@
 
         statusSocket.onmessage = function (event) {
             const data = JSON.parse(event.data)
-            document.getElementById('messages').innerText = data['messages'];
-            document.getElementById('pending_messages').innerText = data['pending_messages'];
+
+            document.getElementById('pyaleph_status_sync_messages_total')
+                .innerText = data['pyaleph_status_sync_messages_total'];
+
+            document.getElementById('pyaleph_status_sync_pending_messages_total')
+                .innerText = data['pyaleph_status_sync_pending_messages_total'];
         }
 
         statusSocket.onclose = function(e) {
