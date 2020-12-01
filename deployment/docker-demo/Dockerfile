@@ -41,7 +41,6 @@ RUN apt-get install -y wget
 RUN wget https://ipfs.io/ipns/dist.ipfs.io/go-ipfs/v0.7.0/go-ipfs_v0.7.0_linux-amd64.tar.gz
 RUN tar -xvzf go-ipfs_v0.7.0_linux-amd64.tar.gz -C /opt/
 RUN ln -s /opt/go-ipfs/ipfs /usr/local/bin/
-RUN /opt/go-ipfs/ipfs init
 RUN mkdir /var/lib/ipfs
 # - User 'ipfs' to run IPFS -
 RUN useradd -s /bin/bash ipfs
@@ -121,7 +120,7 @@ EXPOSE 5001
 EXPOSE 8080
 
 # PyAleph API
-EXPOSE 8081
+EXPOSE 8000
 # PyAleph p2p network
 EXPOSE 4024 4025
 

@@ -8,9 +8,9 @@ services:
   pyaleph:
     restart: always
     image: alephim/pyaleph-node:beta
-    command: pyaleph --config /opt/pyaleph/config.yml --very-verbose
+    command: pyaleph --config /opt/pyaleph/config.yml
     ports:
-      - 8081:8080/tcp
+      - 127.0.0.1:8000:8000/tcp
       - 4024:4024/tcp
       - 4025:4025/tcp
     volumes:
@@ -24,9 +24,6 @@ services:
     logging:
       options:
         max-size: 50m
-#    Enable the following for debugging
-#    stdin_open: true
-#    tty: true
 
   ipfs:
     restart: always
@@ -41,8 +38,6 @@ services:
     networks:
       - pyaleph
     command: ["daemon", "--enable-pubsub-experiment"]
-    cpus: "0.3"
-    mem_limit: 1500m
 
   mongodb:
     restart: always
@@ -52,8 +47,6 @@ services:
     command: mongod --storageEngine wiredTiger
     networks:
       - pyaleph
-    cpus: "0.3"
-    mem_limit: 500m
 
 networks:
   pyaleph:
