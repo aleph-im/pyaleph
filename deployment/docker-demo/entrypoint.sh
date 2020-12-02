@@ -9,6 +9,5 @@ if [ ! -f /var/lib/ipfs/config ]; then
 fi
 
 chown -R mongodb:mongodb /var/lib/mongodb
-chown -R mongodb:mongodb /opt/pyaleph/data
 
 /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
