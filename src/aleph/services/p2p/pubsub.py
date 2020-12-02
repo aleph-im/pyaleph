@@ -1,7 +1,9 @@
-import base64
-import base58
-from . import singleton
 import logging
+
+import base58
+
+from . import singleton
+
 LOGGER = logging.getLogger('P2P.pubsub')
 
 async def decode_msg(msg):
@@ -14,7 +16,6 @@ async def decode_msg(msg):
     
 
 async def sub(topic):
-    from aleph.network import incoming_check
     sub = await singleton.pubsub.subscribe(topic)
     while True:
         mvalue = await sub.get()

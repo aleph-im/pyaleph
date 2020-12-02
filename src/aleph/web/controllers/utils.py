@@ -1,8 +1,9 @@
+import json
+from math import ceil
+
 import aiohttp_jinja2
 from aiohttp import web
 from bson import json_util
-from math import ceil
-import json
 
 PER_PAGE = 20
 PER_PAGE_SUMMARY = 50

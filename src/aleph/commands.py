@@ -11,25 +11,23 @@ also be used as template for Python modules.
 """
 
 import argparse
-import sys
-import logging
 import asyncio
+import logging
+import sys
+from multiprocessing import Process, set_start_method
 from typing import List, Coroutine
 
-import uvloop
 from configmanager import Config
-from multiprocessing import Process, Manager, set_start_method
 
 from aleph import __version__
-from aleph.chains import connector_tasks
-from aleph.web import app, init_cors, controllers
-from aleph.config import get_defaults
-from aleph.network import listener_tasks
-from aleph.jobs import start_jobs, DBManager, prepare_loop, prepare_manager
-from aleph.services.p2p.manager import generate_keypair
 from aleph import model
-from aleph.services import p2p, filestore
-from setproctitle import setproctitle
+from aleph.chains import connector_tasks
+from aleph.config import get_defaults
+from aleph.jobs import start_jobs, prepare_loop, prepare_manager
+from aleph.network import listener_tasks
+from aleph.services import p2p
+from aleph.services.p2p.manager import generate_keypair
+from aleph.web import app, init_cors
 
 __author__ = "Moshe Malawach"
 __copyright__ = "Moshe Malawach"

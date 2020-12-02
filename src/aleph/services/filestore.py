@@ -1,17 +1,18 @@
-import rocksdb
 import asyncio
+import logging
 import os
-import multiprocessing
 import threading
-from aleph.web import app
+
+import rocksdb
+
 from aleph.model import hashes
+from aleph.web import app
 
 HASHES_STORAGE = 'hashes'
 STORE_LOCK = threading.Lock()
 
 hashes_db = None
-import os
-import logging
+
 
 LOGGER = logging.getLogger('filestore')
 

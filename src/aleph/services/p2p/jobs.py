@@ -1,8 +1,9 @@
 import asyncio
 import logging
+
 from aleph.model.p2p import get_peers
-from .peers import connect_peer
 from .http import api_get_request
+from .peers import connect_peer
 
 LOGGER = logging.getLogger('P2P.jobs')
 
@@ -37,7 +38,6 @@ async def check_peer(peers, peer_uri, timeout=1):
         
 async def tidy_http_peers_job(config=None):
     from aleph.web import app
-    from .http import api_get_request
     from aleph.services.p2p import singleton
     from aleph.services.utils import get_IP
     

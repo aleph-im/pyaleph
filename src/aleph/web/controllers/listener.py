@@ -1,10 +1,10 @@
 import asyncio
-from aiohttp import web
-import socketio
-from aleph.web import sio
-from aleph.model.messages import Message
 import collections
 import logging
+
+from aleph.model.messages import Message
+from aleph.web import sio
+
 LOGGER = logging.getLogger("LISTENER-SOCKETIO")
 
 async def broadcast():

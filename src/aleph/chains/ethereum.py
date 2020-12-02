@@ -1,27 +1,25 @@
 import asyncio
+import functools
 import json
+import logging
+
 import pkg_resources
-from aleph.network import check_message
-from aleph.chains.common import (incoming, get_verification_buffer,
-                                 get_chaindata, incoming_chaindata,
-                                 get_chaindata_messages, join_tasks)
+from eth_account import Account
+from eth_account.messages import encode_defunct
+from hexbytes import HexBytes
+from web3 import Web3
+from web3.contract import get_event_data
+from web3.gas_strategies.rpc import rpc_gas_price_strategy
+from web3.middleware import geth_poa_middleware, local_filter_middleware
+
+from aleph.chains.common import (get_verification_buffer,
+                                 get_chaindata, incoming_chaindata)
 from aleph.chains.register import (
     register_verifier, register_incoming_worker, register_outgoing_worker)
 from aleph.model.chains import Chain
 from aleph.model.messages import Message
 from aleph.model.pending import pending_messages_count, pending_txs_count
 
-from web3 import Web3
-from web3.middleware import geth_poa_middleware, local_filter_middleware
-from web3.contract import get_event_data
-from web3.gas_strategies.rpc import rpc_gas_price_strategy
-from eth_account.messages import defunct_hash_message, encode_defunct
-from eth_account import Account
-from eth_keys import keys
-from hexbytes import HexBytes
-import functools
-
-import logging
 LOGGER = logging.getLogger('chains.ethereum')
 CHAIN_NAME = 'ETH'
 

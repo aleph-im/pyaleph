@@ -1,21 +1,19 @@
-from logging import getLogger
 import asyncio
+from logging import getLogger
+from multiprocessing import Process
+from multiprocessing.managers import SyncManager, RemoteError
 from typing import Coroutine, List
 
 import aioipfs
-import uvloop
-import multiprocessing
-from multiprocessing import Process, Manager
-from multiprocessing.managers import SyncManager, BaseProxy, RemoteError
+from pymongo import DeleteOne, InsertOne, DeleteMany
+
 from aleph.chains.common import incoming, get_chaindata_messages
-from aleph.model.pending import PendingMessage, PendingTX
 from aleph.model.messages import Message
 from aleph.model.p2p import get_peers
-from aleph.services.ipfs.common import connect_ipfs_peer
-from aleph.services import p2p, filestore
+from aleph.model.pending import PendingMessage, PendingTX
 from aleph.network import check_message
-from pymongo import DeleteOne, InsertOne, DeleteMany
-from concurrent.futures import ProcessPoolExecutor
+from aleph.services import filestore
+from aleph.services.ipfs.common import connect_ipfs_peer
 
 LOGGER = getLogger("JOBS")
 

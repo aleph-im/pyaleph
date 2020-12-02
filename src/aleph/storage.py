@@ -2,23 +2,18 @@
 Basically manages the IPFS storage.
 """
 
-import aioipfs
-import aiohttp
 import asyncio
 import json
-import aiohttp
-import concurrent
 import logging
 from hashlib import sha256
 
-from aleph.services.ipfs.storage import get_ipfs_content
-from aleph.services.ipfs.storage import add_json as add_ipfs_json
-from aleph.services.ipfs.storage import add_bytes as add_ipfs_bytes
-from aleph.services.ipfs.storage import pin_add as ipfs_pin_add
-from aleph.services.ipfs.storage import add_file as ipfs_add_file
-from aleph.services.p2p.protocol import request_hash as p2p_protocol_request_hash
-from aleph.services.p2p.http import request_hash as p2p_http_request_hash
 from aleph.services.filestore import get_value, set_value
+from aleph.services.ipfs.storage import add_bytes as add_ipfs_bytes
+from aleph.services.ipfs.storage import add_file as ipfs_add_file
+from aleph.services.ipfs.storage import get_ipfs_content
+from aleph.services.ipfs.storage import pin_add as ipfs_pin_add
+from aleph.services.p2p.http import request_hash as p2p_http_request_hash
+from aleph.services.p2p.protocol import request_hash as p2p_protocol_request_hash
 from aleph.web import app
 
 LOGGER = logging.getLogger("STORAGE")

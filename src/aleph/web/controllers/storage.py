@@ -1,9 +1,10 @@
+import asyncio
+import base64
+
+from aiohttp import web
+
 from aleph.storage import add_json, get_hash_content, add_file
 from aleph.web import app
-from aleph.services.ipfs.pubsub import pub
-from aiohttp import web
-import base64
-import asyncio
 
 
 async def add_ipfs_json_controller(request):

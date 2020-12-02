@@ -1,7 +1,7 @@
+from aleph.model.messages import Message
 from aleph.web import app
 from aleph.web.controllers.utils import (Pagination,
                                          cond_output, prepare_date_filters)
-from aleph.model.messages import Message
 
 
 async def view_messages_list(request):

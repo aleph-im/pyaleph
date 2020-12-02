@@ -1,27 +1,24 @@
 import asyncio
 import json
+import logging
 import math
-import pytz
-import dateutil
-import dateutil.parser
 from datetime import datetime, timezone, timedelta
 from operator import itemgetter
 
-from binance_chain.wallet import Wallet
+import dateutil
+import dateutil.parser
+import pytz
 from binance_chain.environment import BinanceEnvironment
 from binance_chain.http import AsyncHttpApiClient
 from binance_chain.messages import TransferMsg
-from binance_chain.websockets import BinanceChainSocketManager
+from binance_chain.wallet import Wallet
 
-from aleph.chains.common import (incoming, get_verification_buffer,
-                                 get_chaindata, get_chaindata_messages,
-                                 join_tasks, incoming_chaindata)
+from aleph.chains.common import (get_chaindata, incoming_chaindata)
 from aleph.chains.register import (
     register_verifier, register_incoming_worker, register_outgoing_worker)
 from aleph.model.chains import Chain
 from aleph.model.messages import Message
 
-import logging
 LOGGER = logging.getLogger('chains.binance')
 CHAIN_NAME = 'BNB'
 PAGINATION = 500

@@ -1,15 +1,22 @@
 import asyncio
-import aiohttp
-import json
-import time
-import struct
 import base64
-import math
+import functools
+import json
+import logging
+import struct
+import time
 from operator import itemgetter
-from aleph.network import check_message
-from aleph.chains.common import (incoming, get_verification_buffer,
-                                 get_chaindata, get_chaindata_messages,
-                                 join_tasks, incoming_chaindata)
+
+import aiohttp
+from aiocache import cached, SimpleMemoryCache
+from coincurve import PrivateKey
+from nuls2.api.server import get_server
+from nuls2.model.data import (hash_from_address, recover_message_address, get_address,
+                              CHEAP_UNIT_FEE)
+from nuls2.model.transaction import Transaction
+
+from aleph.chains.common import (get_verification_buffer,
+                                 get_chaindata, incoming_chaindata)
 from aleph.chains.register import (
     register_verifier, register_incoming_worker, register_outgoing_worker,
     register_balance_getter)
@@ -17,17 +24,6 @@ from aleph.model.chains import Chain
 from aleph.model.messages import Message
 from aleph.model.pending import pending_messages_count, pending_txs_count
 
-from nuls2.model.data import (hash_from_address, public_key_to_hash,
-                              recover_message_address, get_address,
-                              address_from_hash, CHEAP_UNIT_FEE, b58_decode)
-from nuls2.api.server import get_server
-from nuls2.model.transaction import Transaction
-from aiocache import cached, SimpleMemoryCache
-import functools
-
-from coincurve import PrivateKey
-
-import logging
 LOGGER = logging.getLogger('chains.nuls2')
 CHAIN_NAME = 'NULS2'
 PAGINATION = 500

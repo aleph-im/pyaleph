@@ -1,15 +1,17 @@
-from aleph.storage import get_json, pin_hash, add_json, get_message_content
-from aleph.network import check_message as check_message_fn
+import asyncio
+import json
+import logging
+
+from pymongo import UpdateOne
+
+from aleph.handlers.register import handle_incoming_message
 from aleph.model.messages import Message
 from aleph.model.pending import PendingMessage, PendingTX
+from aleph.network import check_message as check_message_fn
 from aleph.permissions import check_sender_authorization
-from aleph.handlers.register import handle_incoming_message
+from aleph.storage import get_json, pin_hash, add_json, get_message_content
 from aleph.web import app
-from pymongo import UpdateOne
-import json
 
-import asyncio
-import logging
 LOGGER = logging.getLogger('chains.common')
 
 

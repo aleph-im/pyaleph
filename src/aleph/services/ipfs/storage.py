@@ -1,12 +1,13 @@
-import aioipfs
-import aiohttp
 import asyncio
-import json
-import aiohttp
 import concurrent
+import json
 import logging
 
-from .common import get_ipfs_gateway_url, get_ipfs_api, get_base_url
+import aiohttp
+import aioipfs
+
+from .common import get_ipfs_api, get_base_url
+
 LOGGER = logging.getLogger("IPFS.STORAGE")
 
 MAX_LEN = 1024*1024*20

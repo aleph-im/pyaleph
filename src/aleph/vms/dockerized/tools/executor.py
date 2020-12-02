@@ -1,10 +1,10 @@
 
-import sys
-import select
-import json
-import traceback
 import builtins
-from subprocess import Popen, PIPE
+import json
+import select
+import sys
+import traceback
+
 
 def execute(msg):
     locs = {}
