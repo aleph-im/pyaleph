@@ -6,6 +6,7 @@ from typing import Coroutine, List
 
 import aioipfs
 from pymongo import DeleteOne, InsertOne, DeleteMany
+from pymongo.errors import CursorNotFound
 
 from aleph.chains.common import incoming, get_chaindata_messages
 from aleph.model.messages import Message
@@ -221,6 +222,8 @@ async def handle_txs_task():
         try:
             await handle_txs_job()
             await asyncio.sleep(5)
+        except CursorNotFound:
+            LOGGER.exception("Cursor error in pending txs job ")
         except Exception:
             LOGGER.exception("Error in pending txs job")
 

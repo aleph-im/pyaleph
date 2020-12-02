@@ -37,7 +37,7 @@ async def verify_signature(message):
     
     try:
         signature = json.loads(message['signature'])
-    except Exception:
+    except (json.JSONDecodeError, KeyError):
         LOGGER.exception("NEO Signature deserialization error")
         return False
     

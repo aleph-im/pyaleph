@@ -77,6 +77,7 @@ class AlephProtocol(INotifee):
                 except Exception as e:
                     result = {'status': 'error',
                             'reason': repr(e)}
+                    LOGGER.exception("Error while reading data")
                 await stream.write(json.dumps(result).encode('utf-8'))
                 
     async def make_request(self, request_structure):
