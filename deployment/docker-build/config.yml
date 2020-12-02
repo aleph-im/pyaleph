@@ -42,3 +42,6 @@ p2p:
     port: 4025
     http_port: 4024
     reconnect_delay: 60
+
+sentry:
+    dsn: null
