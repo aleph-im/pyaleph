@@ -85,6 +85,21 @@ The endpoint should look be in the form:
 
 Edit the `config.yml` file to add the endpoint URL in the field [ethereum > api_url].
 
+----------
+Sentry DNS
+----------
+
+`Sentry https://sentry.io/`_ can be used to track errors and receive alerts if an issue
+occurs on the node.
+
+To enable Sentry, add the corresponding
+`DSN https://docs.sentry.io/product/sen=try-basics/dsn-explainer/`_ in the configuration.
+
+.. code-block:: yaml
+
+    sentry:
+        dsn: "https://<SECRET_ID>@<SENTRY_HOST>/<PROJECT_ID>"
+
 ---------------
 Node secret key
 ---------------
