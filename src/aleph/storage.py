@@ -18,28 +18,31 @@ from aleph.web import app
 
 LOGGER = logging.getLogger("STORAGE")
 
+
+async def json_async_loads(s):
+    """Deserialize ``s`` (a ``str``, ``bytes`` or ``bytearray`` instance
+    containing a JSON document) to a Python object in an asynchronous executor."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, json.loads, s)
+
+
 async def get_message_content(message):
     item_type = message.get('item_type', 'ipfs')
     
-    if item_type == 'ipfs':
-        return await get_json(message['item_hash'], engine='ipfs')
-    if item_type == 'storage':
-        return await get_json(message['item_hash'], engine='storage')
+    if item_type in ('ipfs', 'storage'):
+        return await get_json(message['item_hash'], engine=item_type)
     elif item_type == 'inline':
         try:
-            loop = asyncio.get_event_loop()
-            item_content = await loop.run_in_executor(None, json.loads, message['item_content'])
+            item_content = await json_async_loads(message['item_content'])
         except (json.JSONDecodeError, KeyError):
-            try:
-                import json as njson
-                item_content = await loop.run_in_executor(None, njson.loads, message['item_content'])
-            except (json.JSONDecodeError, KeyError): 
-                LOGGER.exception("Can't decode JSON")
-                return -1, 0  # never retry, bogus data
+            LOGGER.exception("Can't decode JSON")
+            return -1, 0  # never retry, bogus data
         return item_content,  len(message['item_content'])
     else:
+        LOGGER.exception("Unknown item type: %s", item_type)
         return None, 0  # unknown, could retry later? shouldn't have arrived this far though.
-    
+
+
 def get_sha256(content):
     if isinstance(content, str):
         content = content.encode('utf-8')
@@ -97,25 +100,16 @@ async def get_hash_content(hash, engine='ipfs', timeout=2,
     return content
 
 async def get_json(hash, engine='ipfs', timeout=2, tries=1):
-    loop = asyncio.get_event_loop()
     content = await get_hash_content(hash, engine=engine,
                                      timeout=timeout, tries=tries)
     size = 0
     if content is not None and content != -1:
         size = len(content)
         try:
-            # if len(content) > 100000:
-            content = await loop.run_in_executor(None, json.loads, content)
-            # else:
-            #     content = json.loads(content)
+            content = await json_async_loads(content)
         except json.JSONDecodeError:
-            try:
-                import json as njson
-                content = await loop.run_in_executor(None, njson.loads, content)
-            except (json.JSONDecodeError, KeyError):
-                LOGGER.exception("Can't decode JSON")
-                content = -1  # never retry, bogus data
-        
+            LOGGER.exception("Can't decode JSON")
+            content = -1  # never retry, bogus data
     return content, size
 
 async def pin_hash(chash, timeout=2, tries=1):
