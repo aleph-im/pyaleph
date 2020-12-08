@@ -43,6 +43,7 @@ class Metrics:
     pyaleph_build_info: BuildInfo
     pyaleph_status_sync_messages_total: int
     pyaleph_status_sync_pending_messages_total: int
+    pyaleph_status_sync_pending_txs_total: int
     pyaleph_status_chain_eth_last_committed_height: int
 
 
@@ -62,6 +63,9 @@ async def get_metrics() -> Metrics:
 
         pyaleph_status_sync_pending_messages_total=
         await aleph.model.db.pending_messages.count_documents({}),
+
+        pyaleph_status_sync_pending_txs_total=
+        await aleph.model.db.pending_txs.count_documents({}),
 
         pyaleph_status_chain_eth_last_committed_height=
         (await aleph.model.db.chains.find_one({'name': 'ETH'},
