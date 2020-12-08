@@ -7,6 +7,7 @@ import aiohttp
 import aioipfs
 
 from .common import get_ipfs_api, get_base_url
+from ...utils import run_in_executor
 
 LOGGER = logging.getLogger("IPFS.STORAGE")
 
@@ -42,10 +43,9 @@ async def get_ipfs_content(hash, timeout=1, tries=1):
 
 async def get_json(hash, timeout=1, tries=1):
     result = await get_ipfs_content(hash, timeout=timeout, tries=tries)
-    loop = asyncio.get_event_loop()
     if result is not None and result != -1:
         try:
-            result = await loop.run_in_executor(None, json.loads, result)
+            result = await run_in_executor(None, json.loads, result)
         except json.decoder.JSONDecodeError:
             # try:
             #     import json as njson

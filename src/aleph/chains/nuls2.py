@@ -23,6 +23,7 @@ from aleph.chains.register import (
 from aleph.model.chains import Chain
 from aleph.model.messages import Message
 from aleph.model.pending import pending_messages_count, pending_txs_count
+from aleph.utils import run_in_executor
 
 LOGGER = logging.getLogger('chains.nuls2')
 CHAIN_NAME = 'NULS2'
@@ -33,14 +34,13 @@ DECIMALS = None # will get populated later... bad?
 async def verify_signature(message):
     """ Verifies a signature of a message, return True if verified, false if not
     """
-    loop = asyncio.get_event_loop()
     sig_raw = base64.b64decode(message['signature'])
     
     sender_hash = hash_from_address(message['sender'])
     (sender_chain_id,) = struct.unpack('h', sender_hash[:2])
     verification = await get_verification_buffer(message)
     try:
-        address = await loop.run_in_executor(None,
+        address = await run_in_executor(None,
             functools.partial(recover_message_address, sig_raw,
                                 verification, chain_id=sender_chain_id))
         # address = recover_message_address(sig_raw, verification,

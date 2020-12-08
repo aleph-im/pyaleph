@@ -19,6 +19,7 @@ from aleph.chains.register import (
 from aleph.model.chains import Chain
 from aleph.model.messages import Message
 from aleph.model.pending import pending_messages_count, pending_txs_count
+from aleph.utils import run_in_executor
 
 LOGGER = logging.getLogger('chains.ethereum')
 CHAIN_NAME = 'ETH'
@@ -27,14 +28,13 @@ CHAIN_NAME = 'ETH'
 async def verify_signature(message):
     """ Verifies a signature of a message, return True if verified, false if not
     """
-    loop = asyncio.get_event_loop()
     from aleph.web import app
     config = app['config']
     # w3 = await loop.run_in_executor(None, get_web3, config)
 
     verification = await get_verification_buffer(message)
 
-    message_hash = await loop.run_in_executor(
+    message_hash = await run_in_executor(
             None,
             functools.partial(encode_defunct,
                               text=verification.decode('utf-8')))
@@ -43,7 +43,7 @@ async def verify_signature(message):
     verified = False
     try:
         # we assume the signature is a valid string
-        address = await loop.run_in_executor(
+        address = await run_in_executor(
             None,
             functools.partial(Account.recover_message, message_hash,
                               signature=message['signature']))
@@ -105,11 +105,10 @@ async def get_contract(config, web3):
 
 
 async def get_logs_query(web3, contract, start_height, end_height):
-    loop = asyncio.get_event_loop()
-    logs = await loop.run_in_executor(None, web3.eth.getLogs,
-                                      {'address': contract.address,
-                                       'fromBlock': start_height,
-                                       'toBlock': end_height})
+    logs = await run_in_executor(None, web3.eth.getLogs,
+                                 {'address': contract.address,
+                                  'fromBlock': start_height,
+                                  'toBlock': end_height})
     for log in logs:
         yield log
 
@@ -164,8 +163,8 @@ async def request_transactions(config, web3, contract, abi, start_height):
     logs = get_logs(config, web3, contract, start_height+1)
 
     async for log in logs:
-        event_data = await loop.run_in_executor(None, get_event_data,
-                                                web3.codec, abi, log)
+        event_data = await run_in_executor(None, get_event_data,
+                                           web3.codec, abi, log)
         # event_data = get_event_data(web3.codec,
         #                             contract.events.SyncEvent._get_event_abi(),
         #                             log)
@@ -206,9 +205,8 @@ async def check_incoming(config):
     last_stored_height = await get_last_height()
 
     LOGGER.info("Last block is #%d" % last_stored_height)
-    loop = asyncio.get_event_loop()
 
-    web3 = await loop.run_in_executor(None, get_web3, config)
+    web3 = await run_in_executor(None, get_web3, config)
     contract = await get_contract(config, web3)
     abi = contract.events.SyncEvent._get_event_abi()
 
@@ -246,10 +244,8 @@ def broadcast_content(config, contract, web3, account,
 
 
 async def ethereum_packer(config):
-    loop = asyncio.get_event_loop()
-    web3 = await loop.run_in_executor(None, get_web3, config)
+    web3 = await run_in_executor(None, get_web3, config)
     contract = await get_contract(config, web3)
-    loop = asyncio.get_event_loop()
 
     pri_key = HexBytes(config.ethereum.private_key.value)
     account = Account.privateKeyToAccount(pri_key)
@@ -279,10 +275,10 @@ async def ethereum_packer(config):
 
         if len(messages):
             content = await get_chaindata(messages)
-            response = await loop.run_in_executor(None, broadcast_content,
-                                                  config, contract, web3,
-                                                  account, gas_price, nonce,
-                                                  content)
+            response = await run_in_executor(None, broadcast_content,
+                                             config, contract, web3,
+                                             account, gas_price, nonce,
+                                             content)
             LOGGER.info("Broadcasted %r on %s" % (response, CHAIN_NAME))
 
         await asyncio.sleep(config.ethereum.commit_delay.value)

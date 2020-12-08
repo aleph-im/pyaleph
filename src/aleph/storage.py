@@ -14,6 +14,7 @@ from aleph.services.ipfs.storage import get_ipfs_content
 from aleph.services.ipfs.storage import pin_add as ipfs_pin_add
 from aleph.services.p2p.http import request_hash as p2p_http_request_hash
 from aleph.services.p2p.protocol import request_hash as p2p_protocol_request_hash
+from aleph.utils import run_in_executor
 from aleph.web import app
 
 LOGGER = logging.getLogger("STORAGE")
@@ -22,8 +23,7 @@ LOGGER = logging.getLogger("STORAGE")
 async def json_async_loads(s):
     """Deserialize ``s`` (a ``str``, ``bytes`` or ``bytearray`` instance
     containing a JSON document) to a Python object in an asynchronous executor."""
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, json.loads, s)
+    return await run_in_executor(None, json.loads, s)
 
 
 async def get_message_content(message):
@@ -77,8 +77,7 @@ async def get_hash_content(hash, engine='ipfs', timeout=2,
                     content = None
                         
             elif engine == 'storage':
-                loop = asyncio.get_event_loop()
-                compared_hash = await loop.run_in_executor(None, get_sha256, content)
+                compared_hash = await run_in_executor(None, get_sha256, content)
                 # compared_hash = sha256(content.encode('utf-8')).hexdigest()
                 if compared_hash != hash:
                     LOGGER.warning(f"Got a bad hash! {hash}/{compared_hash}")
@@ -117,8 +116,7 @@ async def pin_hash(chash, timeout=2, tries=1):
 
 async def add_json(value, engine='ipfs'):
     # TODO: determine which storage engine to use
-    loop = asyncio.get_event_loop()
-    content = await loop.run_in_executor(None, json.dumps, value)
+    content = await run_in_executor(None, json.dumps, value)
     content = content.encode('utf-8')
     if engine == 'ipfs':
         chash = await add_ipfs_bytes(content)
