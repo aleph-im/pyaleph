@@ -306,12 +306,12 @@ def prepare_loop(config_values, manager=None, idx=1):
     return loop, tasks
 
 def txs_task_loop(config_values, manager):
-    loop = prepare_loop(config_values, manager, idx=1)
-    loop.run_until_complete(handle_txs_task())
+    loop, tasks = prepare_loop(config_values, manager, idx=1)
+    loop.run_until_complete(*tasks, handle_txs_task())
 
 def messages_task_loop(config_values, manager):
-    loop = prepare_loop(config_values, manager, idx=2)
-    loop.run_until_complete(retry_messages_task())
+    loop, tasks = prepare_loop(config_values, manager, idx=2)
+    loop.run_until_complete(*tasks, retry_messages_task())
     
 async def reconnect_ipfs_job(config):
     await asyncio.sleep(2)
