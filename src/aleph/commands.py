@@ -170,6 +170,10 @@ def main(args):
     config = Config(schema=get_defaults())
     app['config'] = config
 
+    if args.config_file is not None:
+        LOGGER.debug("Loading config file '%s'", args.config_file)
+        app['config'].yaml.load(args.config_file)
+
     if (not config.p2p.key.value) and args.key_path:
         LOGGER.debug("Loading key pair from file")
         with open(args.key_path, 'r') as key_file:
@@ -184,9 +188,6 @@ def main(args):
     if args.host:
         config.aleph.host.value = args.host
 
-    if args.config_file is not None:
-        LOGGER.debug("Loading config file '%s'", args.config_file)
-        app['config'].yaml.load(args.config_file)
         
     config_values = config.dump_values()
 
