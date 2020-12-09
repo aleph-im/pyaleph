@@ -51,7 +51,7 @@ async def handle_new_storage(message, content):
                 is_folder = stats['Type'] == 'directory'
                 async for status in pin_api.pin.add(item_hash):
                     timer += 1
-                    if timer > 30 and status['pins'] is None:
+                    if timer > 30 and status['Pins'] is None:
                         return None # Can't retrieve data now.
                 do_standard_lookup = False
                 
