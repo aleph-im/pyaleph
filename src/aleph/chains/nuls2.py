@@ -245,7 +245,6 @@ async def get_nonce(server, account_address, chain_id, asset_id=1):
     return balance_info['nonce']
 
 async def nuls2_packer(config):
-    loop = asyncio.get_event_loop()
     server = get_server(config.nuls2.api_url.value)
     target_addr = config.nuls2.sync_address.value
     remark = config.nuls2.remark.value.encode('utf-8')

@@ -21,7 +21,7 @@ async def reconnect_p2p_job(config=None):
                     await connect_peer(config, peer)
                 except:
                     LOGGER.debug("Can't reconnect to %s" % peer)
-                
+
         except Exception:
             LOGGER.exception("Error reconnecting to peers")
 
@@ -37,6 +37,7 @@ async def check_peer(peers, peer_uri, timeout=1):
     
         
 async def tidy_http_peers_job(config=None):
+    """Check that HTTP peers are reacheable, else remove them from the list"""
     from aleph.web import app
     from aleph.services.p2p import singleton
     from aleph.services.utils import get_IP

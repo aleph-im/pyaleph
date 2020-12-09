@@ -1,6 +1,7 @@
 import json
 import platform
 from dataclasses import dataclass, asdict
+from dataclasses_json import DataClassJsonMixin
 from typing import Dict
 
 import aleph.model
@@ -37,7 +38,7 @@ class BuildInfo:
 
 
 @dataclass
-class Metrics:
+class Metrics(DataClassJsonMixin):
     """Dataclass used to expose aleph node metrics.
     """
     pyaleph_build_info: BuildInfo

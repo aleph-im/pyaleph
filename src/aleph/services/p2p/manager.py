@@ -77,6 +77,7 @@ async def initialize_host(key, host='0.0.0.0', port=4025, listen=True, protocol_
             monitor_hosts(psub),
         ]
 
+        # Enable message exchange using libp2p
         # host.set_stream_handler(PROTOCOL_ID, stream_handler)
         
     return (host, psub, protocol, tasks)

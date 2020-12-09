@@ -74,7 +74,7 @@ async def retry_messages_job():
     find_params = {}
     # if await PendingTX.collection.count_documents({}) > 500:
     #     find_params = {'message.item_type': 'inline'}
-        
+
     while await PendingMessage.collection.count_documents(find_params):
         async for pending in PendingMessage.collection.find(find_params).sort([('message.time', 1)]).batch_size(256):
             if pending['message']['item_type'] == 'ipfs':
@@ -87,6 +87,7 @@ async def retry_messages_job():
             tasks.append(handle_pending_message(pending, seen_ids, actions, messages_actions))
             
             if (j >= 20000):
+                # Group tasks using asyncio.gather in `gtasks`.
                 # await join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions) 
                 gtasks.append(
                     join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions))
@@ -132,6 +133,7 @@ async def retry_messages_job():
 
 
 async def retry_messages_task():
+    """Handle message that were added to the pending queue"""
     await asyncio.sleep(4)
     while True:
         try:
@@ -139,6 +141,7 @@ async def retry_messages_task():
         except Exception:
             LOGGER.exception("Error in pending messages retry job")
 
+        LOGGER.debug("Waiting 5 seconds for new pending messages...")
         await asyncio.sleep(5)
         
 
