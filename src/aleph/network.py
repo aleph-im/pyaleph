@@ -3,6 +3,7 @@ import json
 import logging
 from hashlib import sha256
 from typing import Coroutine, List
+from urllib.parse import unquote
 
 from aleph.chains.register import VERIFIER_REGISTER
 from aleph.services.ipfs.pubsub import incoming_channel as incoming_ipfs_channel
@@ -34,7 +35,8 @@ async def incoming_check(ipfs_pubsub_message):
     """
 
     try:
-        message = json.loads(ipfs_pubsub_message.get('data', ''))
+        message_data = ipfs_pubsub_message.get('data', b'').decode('utf-8')
+        message = json.loads(unquote(message_data))
         LOGGER.debug("New message! %r" % message)
         message = await check_message(message, from_network=True)
         return message
