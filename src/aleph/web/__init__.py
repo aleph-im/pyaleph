@@ -1,15 +1,13 @@
-from aiohttp import web
+import pprint
+import time
+from datetime import date, datetime, timedelta
+
 import aiohttp_cors
 import aiohttp_jinja2
 import jinja2
-
 import pkg_resources
-
-import time
-import pprint
 import socketio
-
-from datetime import date, datetime, timedelta
+from aiohttp import web
 
 app = web.Application(client_max_size=1024**2*64)
 sio = socketio.AsyncServer(async_mode='aiohttp', cors_allowed_origins='*')

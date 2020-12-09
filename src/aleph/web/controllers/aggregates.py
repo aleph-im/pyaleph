@@ -1,7 +1,7 @@
-from aleph.web import app
-from aleph.model.messages import get_computed_address_aggregates
-
 from aiohttp import web
+
+from aleph.model.messages import get_computed_address_aggregates
+from aleph.web import app
 
 
 async def address_aggregate(request):

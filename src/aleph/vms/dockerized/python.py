@@ -1,10 +1,10 @@
-import hashlib
 import json
-from pkg_resources import resource_filename, resource_string
-import epicbox
+
+from pkg_resources import resource_string
 
 from aleph.vms.register import register_vm_engine
 from .base import DockerizedBaseVM
+
 
 class DockerizedPythonVM(DockerizedBaseVM):
     

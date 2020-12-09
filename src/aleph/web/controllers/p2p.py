@@ -1,11 +1,11 @@
-from aleph.services.ipfs.storage import add_file
-from aleph.storage import add_json
-from aleph.web import app
-from aleph.services.ipfs.pubsub import pub as pub_ipfs
-from aleph.services.p2p import pub as pub_p2p
-from aiohttp import web
 import asyncio
 import logging
+
+from aiohttp import web
+
+from aleph.services.ipfs.pubsub import pub as pub_ipfs
+from aleph.services.p2p import pub as pub_p2p
+from aleph.web import app
 
 LOGGER = logging.getLogger('web.controllers.p2p')
 

@@ -1,8 +1,9 @@
 """
 """
 
+from pymongo import ASCENDING, IndexModel
+
 from aleph.model.base import BaseClass
-from pymongo import ASCENDING, DESCENDING, IndexModel
 
 
 class Chain(BaseClass):

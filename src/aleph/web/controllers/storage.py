@@ -1,9 +1,11 @@
-from aleph.storage import add_json, get_hash_content, add_file
-from aleph.web import app
-from aleph.services.ipfs.pubsub import pub
-from aiohttp import web
-import base64
 import asyncio
+import base64
+
+from aiohttp import web
+
+from aleph.storage import add_json, get_hash_content, add_file
+from aleph.utils import run_in_executor
+from aleph.web import app
 
 
 async def add_ipfs_json_controller(request):
@@ -52,7 +54,6 @@ def prepare_content(content):
     return base64.encodebytes(content).decode('utf-8')
 
 async def get_hash(request):
-    loop = asyncio.get_event_loop()
     result = {'status': 'error',
               'reason': 'unknown'}
     item_hash = request.match_info.get('hash', None)
@@ -67,7 +68,7 @@ async def get_hash(request):
                                        store_value=False)
     
         if value is not None and value != -1:
-            content = await loop.run_in_executor(None, prepare_content, value)
+            content = await run_in_executor(None, prepare_content, value)
             result = {'status': 'success',
                       'hash': item_hash,
                       'engine': engine,
@@ -81,7 +82,7 @@ async def get_hash(request):
         result = {'status': 'error',
                 'reason': 'no hash provided'}
     
-    response = await loop.run_in_executor(None, web.json_response, result)
+    response = await run_in_executor(None, web.json_response, result)
     response.enable_compression()
     return response
 
@@ -89,7 +90,6 @@ async def get_hash(request):
 app.router.add_get('/api/v0/storage/{hash}', get_hash)
 
 async def get_raw_hash(request):
-    loop = asyncio.get_event_loop()
     item_hash = request.match_info.get('hash', None)
     
     engine = 'ipfs'

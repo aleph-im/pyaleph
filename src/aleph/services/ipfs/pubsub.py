@@ -1,16 +1,12 @@
-from typing import Coroutine, List
-
-import aioipfs
-import aiohttp
 import asyncio
-import json
-import aiohttp
-import concurrent
-import logging
 import base64
+import logging
+from typing import Coroutine, List
+from aiohttp import ClientConnectorError
 import base58
 
 from .common import get_base_url, get_ipfs_api
+
 LOGGER = logging.getLogger("IPFS.PUBSUB")
 
 
@@ -75,6 +71,6 @@ async def incoming_channel(config, topic):
                     tasks = []
                     i = 0
 
-        except ConnectionRefusedError:
+        except (ConnectionRefusedError, ClientConnectorError):
             LOGGER.exception("Exception in IPFS pubsub, reconnecting in 2 seconds...")
             await asyncio.sleep(2)

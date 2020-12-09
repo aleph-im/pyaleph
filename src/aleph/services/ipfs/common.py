@@ -1,11 +1,7 @@
 
-import aioipfs
-import aiohttp
-import asyncio
-import json
-import aiohttp
-import concurrent
 import logging
+
+import aioipfs
 
 API = None
 LOGGER = logging.getLogger("IPFS")

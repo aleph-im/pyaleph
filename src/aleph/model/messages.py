@@ -1,7 +1,7 @@
+from pymongo import ASCENDING, DESCENDING, IndexModel
+
 from aleph.model.base import BaseClass
 from aleph.network import INCOMING_MESSAGE_AUTHORIZED_FIELDS
-from pymongo import ASCENDING, DESCENDING, IndexModel
-# from aleph import LOGGER
 
 RAW_MSG_PROJECTION = {field: 1 for field
                       in INCOMING_MESSAGE_AUTHORIZED_FIELDS}

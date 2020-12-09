@@ -8,12 +8,15 @@ TODO:
 - hjandle garbage collection of unused hashes
 """
 
-import aioipfs
-from aleph.web import app
-from aleph.handlers.register import register_incoming_handler
-from aleph.storage import get_hash_content
-from aleph.services.ipfs.common import get_ipfs_api
 import logging
+
+import aioipfs
+
+from aleph.handlers.register import register_incoming_handler
+from aleph.services.ipfs.common import get_ipfs_api
+from aleph.storage import get_hash_content
+from aleph.web import app
+
 LOGGER = logging.getLogger("HANDLERS.STORAGE")
 
 ALLOWED_ENGINES = ['ipfs', 'storage']
@@ -51,7 +54,7 @@ async def handle_new_storage(message, content):
                 is_folder = stats['Type'] == 'directory'
                 async for status in pin_api.pin.add(item_hash):
                     timer += 1
-                    if timer > 30 and status['pins'] is None:
+                    if timer > 30 and status['Pins'] is None:
                         return None # Can't retrieve data now.
                 do_standard_lookup = False
                 

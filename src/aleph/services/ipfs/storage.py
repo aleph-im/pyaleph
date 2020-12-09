@@ -1,13 +1,17 @@
-import aioipfs
-import aiohttp
 import asyncio
-import json
-import aiohttp
 import concurrent
+import json
 import logging
 
-from .common import get_ipfs_gateway_url, get_ipfs_api, get_base_url
+import aiohttp
+import aioipfs
+
+from .common import get_ipfs_api, get_base_url
+from ...utils import run_in_executor
+
 LOGGER = logging.getLogger("IPFS.STORAGE")
+
+MAX_LEN = 1024*1024*20
 
 async def get_ipfs_content(hash, timeout=1, tries=1):
     try_count = 0
@@ -16,7 +20,10 @@ async def get_ipfs_content(hash, timeout=1, tries=1):
         try_count += 1
         try:
             api = await get_ipfs_api(timeout=5)
-            result = await asyncio.wait_for(api.cat(hash, length=1024*1024*5), 5)
+            result = await asyncio.wait_for(api.cat(hash, length=MAX_LEN), 5)
+            if len(result) == MAX_LEN:
+            	result = None
+            	break
         except aioipfs.APIError:
             result = None
             await asyncio.sleep(.5)
@@ -36,10 +43,9 @@ async def get_ipfs_content(hash, timeout=1, tries=1):
 
 async def get_json(hash, timeout=1, tries=1):
     result = await get_ipfs_content(hash, timeout=timeout, tries=tries)
-    loop = asyncio.get_event_loop()
     if result is not None and result != -1:
         try:
-            result = await loop.run_in_executor(None, json.loads, result)
+            result = await run_in_executor(None, json.loads, result)
         except json.decoder.JSONDecodeError:
             # try:
             #     import json as njson

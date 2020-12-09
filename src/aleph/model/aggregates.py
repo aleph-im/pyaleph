@@ -1,7 +1,8 @@
 
-from aleph.model.base import BaseClass
 from pymongo import ASCENDING, DESCENDING, IndexModel
-import pymongo
+
+from aleph.model.base import BaseClass
+
 
 class AggregateEntries(BaseClass):
     COLLECTION = "aggregate_entries"

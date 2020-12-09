@@ -1,22 +1,14 @@
-import asyncio
-import aiohttp
-import json
-import time
-import struct
 import base64
-import ecdsa
 import hashlib
-from aleph.chains.common import (get_verification_buffer)
-from aleph.chains.register import (
-    register_verifier, register_incoming_worker, register_outgoing_worker)
-from aleph.model.chains import Chain
-from aleph.model.messages import Message
-
-from cosmospy._wallet import privkey_to_address, privkey_to_pubkey, pubkey_to_address
-from cosmospy.typing import SyncMode
-import ecdsa
-
+import json
 import logging
+
+import ecdsa
+from cosmospy._wallet import pubkey_to_address
+
+from aleph.chains.common import get_verification_buffer
+from aleph.chains.register import register_verifier
+
 LOGGER = logging.getLogger('chains.cosmos')
 CHAIN_NAME = 'CSDK'
 

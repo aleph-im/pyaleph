@@ -1,11 +1,12 @@
-from aleph.web import app
-from aleph.model.messages import Message
+import datetime
+import json
 
 from aiocache import cached, SimpleMemoryCache
 from aiohttp import web
 from bson import json_util
-import json
-import datetime
+
+from aleph.model.messages import Message
+from aleph.web import app
 
 
 # WARNING: we are storing this in memory... memcached or similar would

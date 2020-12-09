@@ -1,13 +1,12 @@
+import asyncio
+import json
+import logging
+from hashlib import sha256
 from typing import Coroutine, List
 
-import aiohttp
-import json
-import asyncio
-import time
-from hashlib import sha256
 from aleph.chains.register import VERIFIER_REGISTER
 from aleph.services.ipfs.pubsub import incoming_channel as incoming_ipfs_channel
-import logging
+
 LOGGER = logging.getLogger("NETWORK")
 
 MAX_INLINE_SIZE = 200000 # 200kb max inline content size.

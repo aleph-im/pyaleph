@@ -62,7 +62,7 @@ Download the PyAleph configuration template:
 
 .. code-block:: bash
 
-    wget "https://raw.githubusercontent.com/aleph-im/pyaleph/master/deployment/docker/config.yml"
+    wget "https://raw.githubusercontent.com/aleph-im/pyaleph/master/deployment/docker-build/config.yml"
 
 
 ----------------
@@ -138,11 +138,23 @@ The start running the node:
 4. Check that everything is working well
 ----------------------------------------
 
+------------------
+Check the metrics
+------------------
+
+Check that messages are being processed by the node by looking on the metric endpoint, by default http://localhost:4024/metrics .
+
+The number of messages should change when you refresh the page, starting with the variable pyaleph_status_sync_pending_messages_total
+
+This endpoint can be ingested by a monitoring solution such as `Prometheus https://prometheus.io/`_ to watch the dynamic of the node starting.
+
 --------------
 Check the logs
 --------------
 
 Make sure that no error is displayed in the logs.
+
+You can use `docker-compose logs` and `docker logs` for this purpose.
 
 ----------
 Check IPFS
@@ -169,4 +181,10 @@ MongoDB message counts
     > db.pending_messages.count()
     4
 
+-----------------------------
+Get alerted in case of errors
+-----------------------------
 
+You can use `Sentry https://sentry.io/`_, on premise or hosted, to get alerted if any exception occur.
+
+Add the DSN given by Sentry in your configuration to enable it.

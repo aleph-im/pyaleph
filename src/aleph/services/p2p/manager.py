@@ -1,15 +1,15 @@
+import logging
 from typing import Optional, Coroutine, List
 
+import multiaddr
+from Crypto.PublicKey.RSA import import_key
 from libp2p import new_node
 from libp2p.crypto.rsa import RSAPrivateKey, KeyPair, create_new_key_pair
-from Crypto.PublicKey.RSA import import_key
-import asyncio
 from libp2p.pubsub import floodsub, gossipsub
 from libp2p.pubsub.pubsub import Pubsub
-import multiaddr
+
 from aleph.services.utils import get_IP
 
-import logging
 LOGGER = logging.getLogger('P2P.host')
 
 FLOODSUB_PROTOCOL_ID = floodsub.PROTOCOL_ID
@@ -34,7 +34,7 @@ def generate_keypair(print_key: bool, key_path: Optional[str]):
 
 async def initialize_host(key, host='0.0.0.0', port=4025, listen=True, protocol_active=True):
     from .peers import publish_host, monitor_hosts
-    from .protocol import PROTOCOL_ID, AlephProtocol
+    from .protocol import AlephProtocol
     from .jobs import reconnect_p2p_job, tidy_http_peers_job
 
     assert key, "Host cannot be initialized without a key"
@@ -77,6 +77,7 @@ async def initialize_host(key, host='0.0.0.0', port=4025, listen=True, protocol_
             monitor_hosts(psub),
         ]
 
+        # Enable message exchange using libp2p
         # host.set_stream_handler(PROTOCOL_ID, stream_handler)
         
     return (host, psub, protocol, tasks)

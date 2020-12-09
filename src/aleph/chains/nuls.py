@@ -1,26 +1,20 @@
 import asyncio
-import aiohttp
-import json
-import time
+import logging
 import struct
-from operator import itemgetter
-from aleph.network import check_message
-from aleph.chains.common import (incoming, get_verification_buffer,
-                                 get_chaindata, get_chaindata_messages,
-                                 join_tasks)
-from aleph.chains.register import (
-    register_verifier, register_incoming_worker, register_outgoing_worker)
-from aleph.model.chains import Chain
-from aleph.model.messages import Message
 
-from aleph_client.chains.nuls1 import NulsSignature, hash_from_address, public_key_to_hash, address_from_hash
+from aleph_client.chains.nuls1 import NulsSignature, hash_from_address, public_key_to_hash, \
+    address_from_hash
+
+from aleph.chains.common import get_verification_buffer
+from aleph.chains.register import register_verifier
+
 # TODO: move this to another project
 # from nulsexplorer.protocol.data import (
 #     NulsSignature, public_key_to_hash, address_from_hash, hash_from_address,
 #     CHEAP_UNIT_FEE)
 # from nulsexplorer.protocol.transaction import Transaction
+from aleph.utils import run_in_executor
 
-import logging
 LOGGER = logging.getLogger('chains.nuls')
 CHAIN_NAME = 'NULS'
 
@@ -46,7 +40,7 @@ async def verify_signature(message):
 
     verification = await get_verification_buffer(message)
     try:
-        result = await loop.run_in_executor(
+        result = await run_in_executor(
             None, sig.verify, verification)
     except Exception:
         LOGGER.exception("NULS Signature verification error")

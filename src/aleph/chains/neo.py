@@ -1,17 +1,12 @@
-import asyncio
-import aiohttp
 import json
-import time
-import struct
-from aleph.chains.common import (get_verification_buffer)
-from aleph.chains.register import (
-    register_verifier, register_incoming_worker, register_outgoing_worker)
-from aleph.model.chains import Chain
-from aleph.model.messages import Message
+import logging
 
 from neo.Core.Cryptography.Crypto import Crypto
 
-import logging
+from aleph.chains.common import get_verification_buffer
+from aleph.chains.register import (
+    register_verifier)
+
 LOGGER = logging.getLogger('chains.neo')
 CHAIN_NAME = 'NEO'
 
@@ -42,7 +37,7 @@ async def verify_signature(message):
     
     try:
         signature = json.loads(message['signature'])
-    except Exception:
+    except (json.JSONDecodeError, KeyError):
         LOGGER.exception("NEO Signature deserialization error")
         return False
     
