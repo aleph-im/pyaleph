@@ -8,12 +8,15 @@ TODO:
 - hjandle garbage collection of unused hashes
 """
 
-import aioipfs
-from aleph.web import app
-from aleph.handlers.register import register_incoming_handler
-from aleph.storage import get_hash_content
-from aleph.services.ipfs.common import get_ipfs_api
 import logging
+
+import aioipfs
+
+from aleph.handlers.register import register_incoming_handler
+from aleph.services.ipfs.common import get_ipfs_api
+from aleph.storage import get_hash_content
+from aleph.web import app
+
 LOGGER = logging.getLogger("HANDLERS.STORAGE")
 
 ALLOWED_ENGINES = ['ipfs', 'storage']

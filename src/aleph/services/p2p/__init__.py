@@ -1,10 +1,10 @@
 from typing import Coroutine, List
 
+from . import singleton
 from .manager import initialize_host
+from .peers import connect_peer
 from .protocol import incoming_channel
 from .pubsub import pub, sub
-from .peers import connect_peer
-from . import singleton
 
 
 async def init_p2p(config, listen=True, port_id=0) -> List[Coroutine]:

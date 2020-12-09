@@ -1,21 +1,20 @@
-from logging import getLogger
 import asyncio
+from logging import getLogger
+from multiprocessing import Process
+from multiprocessing.managers import SyncManager, RemoteError
 from typing import Coroutine, List
 
 import aioipfs
-import uvloop
-import multiprocessing
-from multiprocessing import Process, Manager
-from multiprocessing.managers import SyncManager, BaseProxy, RemoteError
+from pymongo import DeleteOne, InsertOne, DeleteMany
+from pymongo.errors import CursorNotFound
+
 from aleph.chains.common import incoming, get_chaindata_messages
-from aleph.model.pending import PendingMessage, PendingTX
 from aleph.model.messages import Message
 from aleph.model.p2p import get_peers
-from aleph.services.ipfs.common import connect_ipfs_peer
-from aleph.services import p2p, filestore
+from aleph.model.pending import PendingMessage, PendingTX
 from aleph.network import check_message
-from pymongo import DeleteOne, InsertOne, DeleteMany
-from concurrent.futures import ProcessPoolExecutor
+from aleph.services import filestore
+from aleph.services.ipfs.common import connect_ipfs_peer
 
 LOGGER = getLogger("JOBS")
 
@@ -75,7 +74,7 @@ async def retry_messages_job():
     find_params = {}
     # if await PendingTX.collection.count_documents({}) > 500:
     #     find_params = {'message.item_type': 'inline'}
-        
+
     while await PendingMessage.collection.count_documents(find_params):
         async for pending in PendingMessage.collection.find(find_params).sort([('message.time', 1)]).batch_size(256):
             if pending['message']['item_type'] == 'ipfs':
@@ -88,6 +87,7 @@ async def retry_messages_job():
             tasks.append(handle_pending_message(pending, seen_ids, actions, messages_actions))
             
             if (j >= 20000):
+                # Group tasks using asyncio.gather in `gtasks`.
                 # await join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions) 
                 gtasks.append(
                     join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions))
@@ -133,6 +133,7 @@ async def retry_messages_job():
 
 
 async def retry_messages_task():
+    """Handle message that were added to the pending queue"""
     await asyncio.sleep(4)
     while True:
         try:
@@ -140,6 +141,7 @@ async def retry_messages_task():
         except Exception:
             LOGGER.exception("Error in pending messages retry job")
 
+        LOGGER.debug("Waiting 5 seconds for new pending messages...")
         await asyncio.sleep(5)
         
 
@@ -223,6 +225,8 @@ async def handle_txs_task():
         try:
             await handle_txs_job()
             await asyncio.sleep(5)
+        except CursorNotFound:
+            LOGGER.exception("Cursor error in pending txs job ")
         except Exception:
             LOGGER.exception("Error in pending txs job")
 
@@ -305,12 +309,12 @@ def prepare_loop(config_values, manager=None, idx=1):
     return loop, tasks
 
 def txs_task_loop(config_values, manager):
-    loop = prepare_loop(config_values, manager, idx=1)
-    loop.run_until_complete(handle_txs_task())
+    loop, tasks = prepare_loop(config_values, manager, idx=1)
+    loop.run_until_complete(*tasks, handle_txs_task())
 
 def messages_task_loop(config_values, manager):
-    loop = prepare_loop(config_values, manager, idx=2)
-    loop.run_until_complete(retry_messages_task())
+    loop, tasks = prepare_loop(config_values, manager, idx=2)
+    loop.run_until_complete(*tasks, retry_messages_task())
     
 async def reconnect_ipfs_job(config):
     await asyncio.sleep(2)

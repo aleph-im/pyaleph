@@ -1,6 +1,7 @@
 import json
 import platform
 from dataclasses import dataclass, asdict
+from dataclasses_json import DataClassJsonMixin
 from typing import Dict
 
 import aleph.model
@@ -37,12 +38,14 @@ class BuildInfo:
 
 
 @dataclass
-class Metrics:
+class Metrics(DataClassJsonMixin):
     """Dataclass used to expose aleph node metrics.
     """
     pyaleph_build_info: BuildInfo
     pyaleph_status_sync_messages_total: int
     pyaleph_status_sync_pending_messages_total: int
+    pyaleph_status_sync_pending_txs_total: int
+    pyaleph_status_chain_eth_last_committed_height: int
 
 
 pyaleph_build_info = BuildInfo(
@@ -61,4 +64,12 @@ async def get_metrics() -> Metrics:
 
         pyaleph_status_sync_pending_messages_total=
         await aleph.model.db.pending_messages.count_documents({}),
+
+        pyaleph_status_sync_pending_txs_total=
+        await aleph.model.db.pending_txs.count_documents({}),
+
+        pyaleph_status_chain_eth_last_committed_height=
+        (await aleph.model.db.chains.find_one({'name': 'ETH'},
+                                              projection={'last_commited_height': 1})
+         or {}).get('last_commited_height'),
     )

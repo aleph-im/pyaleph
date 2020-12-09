@@ -1,23 +1,20 @@
-import logging
 import asyncio
+import base64
+import json
+import logging
+import random
 from typing import Coroutine, List
 
 from libp2p.network.exceptions import SwarmException
-from libp2p.network.stream.exceptions import StreamEOF, StreamReset
-from libp2p.network.stream.net_stream_interface import INetStream
-from libp2p.typing import TProtocol
 from libp2p.network.notifee_interface import INotifee
 from libp2p.network.stream.exceptions import StreamError
-from .pubsub import sub
-from aleph.network import incoming_check
+from libp2p.network.stream.net_stream_interface import INetStream
+from libp2p.typing import TProtocol
+
 from aleph import __version__
-# from aleph.services.filestore import get_value
-from concurrent import futures
+from aleph.network import incoming_check
 from . import singleton
-from . import peers
-import json
-import base64
-import random
+from .pubsub import sub
 
 PROTOCOL_ID = TProtocol("/aleph/p2p/0.1.0")
 MAX_READ_LEN = 2 ** 32 - 1
@@ -80,6 +77,7 @@ class AlephProtocol(INotifee):
                 except Exception as e:
                     result = {'status': 'error',
                             'reason': repr(e)}
+                    LOGGER.exception("Error while reading data")
                 await stream.write(json.dumps(result).encode('utf-8'))
                 
     async def make_request(self, request_structure):

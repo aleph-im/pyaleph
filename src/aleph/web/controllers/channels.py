@@ -1,7 +1,9 @@
-from aiohttp import web
 from aiocache import cached, SimpleMemoryCache
-from aleph.web import app
+from aiohttp import web
+
 from aleph.model.messages import Message
+from aleph.web import app
+
 
 @cached(ttl=60*120, cache=SimpleMemoryCache, timeout=120)
 async def get_channels():

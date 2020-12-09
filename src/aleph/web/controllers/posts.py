@@ -1,7 +1,7 @@
+from aleph.model.messages import Message, get_merged_posts
 from aleph.web import app
 from aleph.web.controllers.utils import (Pagination,
                                          cond_output, prepare_date_filters)
-from aleph.model.messages import Message, get_merged_posts
 
 
 async def view_posts_list(request):

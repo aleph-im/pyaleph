@@ -80,5 +80,9 @@ def get_defaults():
               '/dnsaddr/bootstrap.aleph.im/ipfs/QmPR8m8WCmYKuuxg5Qnadd4LbnTCD2L93cV2zPW5XGVHTG',
               '/dnsaddr/api1.aleph.im/ipfs/QmVrrTCdRhjEDE8gftXNw2TihcAUy6d2TXcuNUeivBFpcA'
             ]
+        },
+        'sentry': {
+            'dsn': None,
+            'traces_sample_rate': None,
         }
     }

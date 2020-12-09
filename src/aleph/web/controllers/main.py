@@ -58,8 +58,6 @@ async def status_ws(request):
 app.router.add_get('/api/ws0/status', status_ws)
 
 
-
-
 async def metrics(request):
     """Prometheus compatible metrics.
 
@@ -72,3 +70,11 @@ async def metrics(request):
 app.router.add_get('/metrics', metrics)
 
 
+async def metrics_json(request):
+    """JSON version of the Prometheus metrics.
+    """
+    return web.Response(text=(await get_metrics()).to_json(),
+                        content_type='application/json')
+
+
+app.router.add_get('/metrics.json', metrics_json)

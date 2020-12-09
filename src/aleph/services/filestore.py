@@ -1,17 +1,19 @@
-import rocksdb
 import asyncio
+import logging
 import os
-import multiprocessing
 import threading
-from aleph.web import app
+
+import rocksdb
+
 from aleph.model import hashes
+from aleph.utils import run_in_executor
+from aleph.web import app
 
 HASHES_STORAGE = 'hashes'
 STORE_LOCK = threading.Lock()
 
 hashes_db = None
-import os
-import logging
+
 
 LOGGER = logging.getLogger('filestore')
 
@@ -72,8 +74,7 @@ async def get_value(key, in_executor=True):
                 raise ValueError('Bad input key (bytes or string only)') 
             
         if in_executor:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, _get_value, key)
+            return await run_in_executor(None, _get_value, key)
         else:
             return _get_value(key)
         
@@ -103,8 +104,7 @@ async def set_value(key, value, in_executor=True):
                 raise ValueError('Bad input key (bytes or string only)')
         
         if in_executor:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, _set_value, key, value)
+            return await run_in_executor(None, _set_value, key, value)
         else:
             return _set_value(key, value)
         
