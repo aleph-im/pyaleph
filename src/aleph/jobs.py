@@ -5,6 +5,7 @@ from multiprocessing.managers import SyncManager, RemoteError
 from typing import Coroutine, List
 
 import aioipfs
+import sentry_sdk
 from pymongo import DeleteOne, InsertOne, DeleteMany
 from pymongo.errors import CursorNotFound
 
@@ -336,13 +337,40 @@ def prepare_loop(config_values, manager=None, idx=1):
 
 
 def txs_task_loop(config_values, manager):
-    loop, tasks = prepare_loop(config_values, manager, idx=1)
-    loop.run_until_complete(asyncio.gather(*tasks, handle_txs_task()))
+    # Use a try-catch-capture_exception to work with multiprocessing, see
+    # https://github.com/getsentry/raven-python/issues/1110
+    if config_values['enable_sentry'].get('dsn'):
+        sentry_sdk.init(
+            dsn=config_values['sentry']['dsn'],
+            traces_sample_rate=config_values['sentry']['traces_sample_rate'],
+            ignore_errors=[KeyboardInterrupt],
+        )
+    try:
+        loop, tasks = prepare_loop(config_values, manager, idx=1)
+        loop.run_until_complete(asyncio.gather(*tasks, handle_txs_task()))
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        sentry_sdk.flush()
+        raise
+
 
 
 def messages_task_loop(config_values, manager):
-    loop, tasks = prepare_loop(config_values, manager, idx=2)
-    loop.run_until_complete(asyncio.gather(*tasks, retry_messages_task()))
+    # Use a try-catch-capture_exception to work with multiprocessing, see
+    # https://github.com/getsentry/raven-python/issues/1110
+    if config_values['enable_sentry'].get('dsn'):
+        sentry_sdk.init(
+            dsn=config_values['sentry']['dsn'],
+            traces_sample_rate=config_values['sentry']['traces_sample_rate'],
+            ignore_errors=[KeyboardInterrupt],
+        )
+    try:
+        loop, tasks = prepare_loop(config_values, manager, idx=2)
+        loop.run_until_complete(asyncio.gather(*tasks, retry_messages_task()))
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        sentry_sdk.flush()
+        raise
 
 
 async def reconnect_ipfs_job(config):
