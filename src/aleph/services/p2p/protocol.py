@@ -194,11 +194,8 @@ class AlephProtocol(INotifee):
 
 async def incoming_channel(config, topic):
     from aleph.chains.common import incoming
-    loop = asyncio.get_event_loop()
     while True:
         try:
-            i = 0
-            tasks: List[Coroutine] = []
             async for mvalue in sub(topic):
                 try:
                     message = json.loads(mvalue['data'])
@@ -211,17 +208,8 @@ async def incoming_channel(config, topic):
                     
                     LOGGER.debug("New message %r" % message)
                     i += 1
-                    tasks.append(incoming(message))
-
-                    # await incoming(message, seen_ids=seen_ids)
-                    if (i > 1000):
-                        # every 1000 message we check that all tasks finished
-                        # and we reset the seen_ids list.
-                        for task in tasks:
-                            await task
-                        tasks = []
-                        i = 0
-                except:
+                    await incoming(message)
+                except Exception:
                     LOGGER.exception("Can't handle message")
 
         except Exception:
