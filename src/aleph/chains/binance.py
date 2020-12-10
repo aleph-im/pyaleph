@@ -200,7 +200,7 @@ async def binance_packer(config):
 
         messages = [message async for message
                     in (await Message.get_unconfirmed_raw(
-                            limit=100000, for_chain=CHAIN_NAME))]
+                            limit=10000, for_chain=CHAIN_NAME))]
         if len(messages):
             content = await get_chaindata(messages, bulk_threshold=0)
             # content = json.dumps(content)

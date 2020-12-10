@@ -256,7 +256,7 @@ async def ethereum_packer(config):
     gas_price = web3.eth.generateGasPrice()
     while True:
         if (await pending_txs_count(chain=CHAIN_NAME)) \
-           or (await pending_messages_count(source_chain=CHAIN_NAME)):
+           or (await pending_messages_count(source_chain=CHAIN_NAME)) > 1000:
             await asyncio.sleep(30)
             continue
         
