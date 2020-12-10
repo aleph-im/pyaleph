@@ -183,7 +183,7 @@ async def incoming(message, chain_name=None,
             handling_result = None
         
         if handling_result is None:
-            LOGGER.info("Message type handler has failed, retrying later.")
+            LOGGER.debug("Message type handler has failed, retrying later.")
             if not retrying:
                 await PendingMessage.collection.insert_one({
                     'message': message,
