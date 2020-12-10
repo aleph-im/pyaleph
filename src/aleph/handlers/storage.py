@@ -28,6 +28,12 @@ async def handle_new_storage(message, content):
     
     
     engine = content.get('item_type', None)
+    
+    if len(content['item_hash']) == 46:
+        engine = 'ipfs'
+    if len(content['item_hash']) == 64:
+        engine = 'storage'
+        
     if engine not in ALLOWED_ENGINES:
         LOGGER.warning("Got invalid storage engine %s" % engine)
         return -1 # not allowed, ignore.
