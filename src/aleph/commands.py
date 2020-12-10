@@ -236,7 +236,7 @@ def main(args):
     tasks: List[Coroutine] = []
     if not args.no_jobs:
         LOGGER.debug("Creating jobs")
-        tasks += start_jobs(config, manager=manager, use_processes=True)
+        tasks += start_jobs(config, manager=manager, use_processes=False)
 
     loop = asyncio.get_event_loop()
 
