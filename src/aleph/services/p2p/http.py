@@ -26,7 +26,9 @@ async def api_get_request(base_uri, method, timeout=1):
                 result = None
             else:
                 result = await resp.json()
-    except:
+    except TimeoutError:
+        result = None
+    except Exception:
         LOGGER.exception("Error in retrieval")
         result = None
     return result
