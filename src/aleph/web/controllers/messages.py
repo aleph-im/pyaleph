@@ -109,7 +109,7 @@ async def view_messages_list(request):
             'pagination_page': pagination_page,
             'pagination_total': total_msgs,
             'pagination_per_page': pagination_per_page,
-            'pagination_item': 'posts'
+            'pagination_item': 'messages'
         })
 
     return cond_output(request, context, 'TODO.html')
