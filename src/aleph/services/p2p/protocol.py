@@ -207,7 +207,6 @@ async def incoming_channel(config, topic):
                         continue
                     
                     LOGGER.debug("New message %r" % message)
-                    i += 1
                     await incoming(message)
                 except Exception:
                     LOGGER.exception("Can't handle message")
