@@ -27,13 +27,10 @@ A Linux server with the following requirements:
  - Ability to install Docker and Docker Compose (eg: recent Debian or Ubuntu)
  - Public IP address
  - The following ports open from the internet:
-   - TCP 4001
-   - UDP 4001
-   - TCP 5001
-   - TCP 8081
-   - TCP 4024
-   - TCP 4025
-   - TCP 8000
+   - 4001/tcp
+   - 4001/udp
+   - 4024/tcp
+   - 4025/tcp
  - Shell with `sudo` access
  - A text editor
 
@@ -50,7 +47,7 @@ On a Debian-based system (Debian, Ubuntu, Linux Mint, ...), you can use the foll
     sudo apt upgrade
     sudo apt install docker.io docker-compose gnupg2 pass ufw
     sudo systemctl enable docker && sudo systemctl start docker
-    sudo ufw allow 22,4001,5001/tcp,8081/tcp,4024/tcp,4025/tcp,8000/tcp
+    sudo ufw allow 22,4001,4024/tcp,4025/tcp
 
 .. note::
     gnupg2 and pass are required for `docker login` below.
