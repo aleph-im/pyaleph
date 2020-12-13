@@ -6,7 +6,7 @@ This directory contains the `Dockerfile` to build and run PyAleph in production.
 
 You can build the Docker image simply using:
 ```shell script
-./deployment/docker/build.sh
+./deployment/docker-build/build.sh
 ```
 
 or by running the Docker build command from the root of the repository:
