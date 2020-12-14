@@ -69,7 +69,7 @@ Download the PyAleph configuration template:
 Ethereum API URL
 ----------------
 
-Register on `infura.io <https://infura.io/`_, then create a new Ethereum project.
+Register on `infura.io <https://infura.io/>`_, then create a new Ethereum project.
 In the settings, get the hosted https:// endpoint URL for your project.
 
 The endpoint should look be in the form:
