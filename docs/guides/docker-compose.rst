@@ -45,9 +45,8 @@ On a Debian-based system (Debian, Ubuntu, Linux Mint, ...), you can use the foll
 
     sudo apt update
     sudo apt upgrade
-    sudo apt install docker.io docker-compose gnupg2 pass ufw
+    sudo apt install docker.io docker-compose gnupg2 pass
     sudo systemctl enable docker && sudo systemctl start docker
-    sudo ufw allow 22,4001,4024/tcp,4025/tcp
 
 .. note::
     gnupg2 and pass are required for `docker login` below.
@@ -59,6 +58,21 @@ Add your user to the Docker group
     sudo usermod -a -G docker $(whoami)
 
 Logout, and login again to apply the new group membership.
+
+------------------------------
+Optional: Configure a firewall
+------------------------------
+
+A firewall can help you protect against unauthorized access on ports that should not be
+exposed publicly. This guide section shows how to use the `UFW <https://launchpad.net/ufw>`_
+simple and popular firewall.
+
+.. code-block:: bash
+
+    sudo apt install docker.io docker-compose gnupg2 pass ufw
+    sudo ufw allow 22,4001,4024,4025/tcp
+    sudo ufw allow 4001/udp
+
 
 2. Configuration files
 ----------------------
@@ -163,6 +177,7 @@ The start running the node:
 ---------------------
 Check the containers
 ---------------------
+
 Check that all the containers have started.
 
 .. code-block:: bash
@@ -171,13 +186,28 @@ Check that all the containers have started.
 
 You should see the following three containers with a State of "Up":
 
-          Name                    Command               State                                      Ports                                    
-----------------------------------------------------------------------------------------------------------------------------------------
-nfuser_ipfs_1      /sbin/tini -- /usr/local/b ...   Up      0.0.0.0:4001->4001/tcp, 0.0.0.0:4001->4001/udp, 5001/tcp, 8080/tcp, 8081/tcp
-nfuser_mongodb_1   docker-entrypoint.sh mongo ...   Up      27017/tcp                                                                   
-nfuser_pyaleph_1   pyaleph --config /opt/pyal ...   Up      0.0.0.0:4024->4024/tcp, 0.0.0.0:4025->4025/tcp, 127.0.0.1:8000->8000/tcp 
-    
+.. list-table:: docker-compose ps
+    :header-rows: 1
 
+    * - Name
+      - Command
+      - State
+      - Ports
+
+    * - nfuser_ipfs_1
+      - /sbin/tini -- /usr/local/b ...
+      - Up
+      - 0.0.0.0:4001->4001/tcp, 0.0.0.0:4001->4001/udp, 5001/tcp, 8080/tcp, 8081/tcp
+
+    * - nfuser_mongodb_1
+      - docker-entrypoint.sh mongo ...
+      - Up
+      - 27017/tcp
+
+    * - nfuser_pyaleph_1
+      - pyaleph --config /opt/pyal ...
+      - Up
+      - 0.0.0.0:4024->4024/tcp, 0.0.0.0:4025->4025/tcp, 127.0.0.1:8000->8000/tcp
 
 ------------------
 Check the metrics
