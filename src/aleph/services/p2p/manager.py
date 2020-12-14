@@ -31,6 +31,8 @@ def generate_keypair(print_key: bool, key_path: Optional[str]):
 
     return keypair
 
+# Save published adress to present them in the web process later
+public_adresses = []
 
 async def initialize_host(key, host='0.0.0.0', port=4025, listen=True, protocol_active=True):
     from .peers import publish_host, monitor_hosts
@@ -68,6 +70,8 @@ async def initialize_host(key, host='0.0.0.0', port=4025, listen=True, protocol_
         ip = await get_IP()
         public_address = f'/ip4/{ip}/tcp/{port}/p2p/{host.get_id()}'
         http_port = app['config'].p2p.http_port.value
+        public_adresses.append(public_address)
+
         public_http_address = f'http://{ip}:{http_port}'
         LOGGER.info("Probable public on " + public_address)
         # TODO: set correct interests and args here
