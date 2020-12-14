@@ -17,7 +17,7 @@ ethereum:
     token_contract: "0xc0134b5b924c2fca106efb33c45446c466fbe03e"
 
 binancechain:
-    enabled: False
+    enabled: True
     packing_node: False
 
 mongodb:
