@@ -11,7 +11,7 @@ services:
     command: pyaleph --config /opt/pyaleph/config.yml
     build:
       context: ../../.
-      dockerfile: "Dockerfile"
+      dockerfile: "deployment/docker-build/Dockerfile"
     ports:
       - 127.0.0.1:8000:8000/tcp
       - 4024:4024/tcp
