@@ -25,7 +25,7 @@ LOGGER = getLogger("WEB.metrics")
 def format_dict_for_prometheus(values: Dict) -> str:
     """Format a dict to a Prometheus tags string"""
     values = (f"{key}={json.dumps(value)}"
-              for key, value in values.items())
+              for key, value in values.items() if value is None)
     return '{' + ','.join(values) + '}'
 
 
@@ -65,11 +65,11 @@ class Metrics(DataClassJsonMixin):
 
     pyaleph_status_chain_eth_last_committed_height: int
     pyaleph_status_chain_eth_last_committed_height: int
-    pyaleph_retry_messages_job_seen_ids: int
-    pyaleph_retry_messages_job_gtasks: int
-    pyaleph_retry_messages_job_tasks: int
-    pyaleph_retry_messages_job_actions: int
-    pyaleph_retry_messages_job_messages_actions: int
+    pyaleph_retry_messages_job_seen_ids: Optional[int] = None
+    pyaleph_retry_messages_job_gtasks: Optional[int] = None
+    pyaleph_retry_messages_job_tasks: Optional[int] = None
+    pyaleph_retry_messages_job_actions: Optional[int] = None
+    pyaleph_retry_messages_job_messages_actions: Optional[int] = None
 
     pyaleph_status_sync_messages_reference_total: Optional[int] = None
     pyaleph_status_sync_messages_remaining_total: Optional[int] = None
@@ -146,12 +146,12 @@ async def get_metrics(shared_stats:dict) -> Metrics:
 
     return Metrics(
         pyaleph_build_info=pyaleph_build_info,
-        pyaleph_retry_messages_job_seen_ids=shared_stats.get('retry_messages_job_seen_ids', 0),
-        pyaleph_retry_messages_job_gtasks=shared_stats.get('retry_messages_job_gtasks' , 0),
-        pyaleph_retry_messages_job_tasks=shared_stats.get('retry_messages_job_tasks', 0),
-        pyaleph_retry_messages_job_actions=shared_stats.get('retry_messages_job_actions', 0),
+        pyaleph_retry_messages_job_seen_ids=shared_stats.get('retry_messages_job_seen_ids'),
+        pyaleph_retry_messages_job_gtasks=shared_stats.get('retry_messages_job_gtasks'),
+        pyaleph_retry_messages_job_tasks=shared_stats.get('retry_messages_job_tasks'),
+        pyaleph_retry_messages_job_actions=shared_stats.get('retry_messages_job_actions'),
         pyaleph_retry_messages_job_messages_actions=shared_stats.get(
-            'retry_messages_job_messages_actions', 0),
+            'retry_messages_job_messages_actions'),
 
         pyaleph_status_sync_messages_total=sync_messages_total,
 
