@@ -270,7 +270,7 @@ async def ethereum_packer(config):
 
         messages = [message async for message
                     in (await Message.get_unconfirmed_raw(
-                            limit=10000,
+                            limit=200,
                             for_chain=CHAIN_NAME))]
 
         if len(messages):
