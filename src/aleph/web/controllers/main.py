@@ -64,7 +64,8 @@ async def metrics(request):
     Naming convention:
     https://prometheus.io/docs/practices/naming/
     """
-    return web.Response(text=format_dataclass_for_prometheus(await get_metrics()))
+    shared_stats = request.config_dict['shared_stats']
+    return web.Response(text=format_dataclass_for_prometheus(await get_metrics(shared_stats)))
 
 
 app.router.add_get('/metrics', metrics)
@@ -73,7 +74,8 @@ app.router.add_get('/metrics', metrics)
 async def metrics_json(request):
     """JSON version of the Prometheus metrics.
     """
-    return web.Response(text=(await get_metrics()).to_json(),
+    shared_stats = request.config_dict['shared_stats']
+    return web.Response(text=(await get_metrics(shared_stats)).to_json(),
                         content_type='application/json')
 
 

@@ -1,3 +1,5 @@
+from logging import getLogger
+
 import asyncio
 import json
 import logging
@@ -16,6 +18,8 @@ from aleph import __version__
 from aleph.web import app
 
 LOGGER = logging.getLogger(__name__)
+
+LOGGER = getLogger("WEB.metrics")
 
 
 def format_dict_for_prometheus(values: Dict) -> str:
@@ -60,6 +64,12 @@ class Metrics(DataClassJsonMixin):
     pyaleph_status_sync_pending_txs_total: int
 
     pyaleph_status_chain_eth_last_committed_height: int
+    pyaleph_status_chain_eth_last_committed_height: int
+    pyaleph_retry_messages_job_seen_ids: int
+    pyaleph_retry_messages_job_gtasks: int
+    pyaleph_retry_messages_job_tasks: int
+    pyaleph_retry_messages_job_actions: int
+    pyaleph_retry_messages_job_messages_actions: int
 
     pyaleph_status_sync_messages_reference_total: Optional[int] = None
     pyaleph_status_sync_messages_remaining_total: Optional[int] = None
@@ -108,7 +118,11 @@ async def fetch_eth_height() -> Optional[int]:
         return None
 
 
-async def get_metrics() -> Metrics:
+async def get_metrics(shared_stats:dict) -> Metrics:
+    if shared_stats is None:
+        LOGGER.info("Shared stats disabled")
+        shared_stats = {}
+
 
     sync_messages_reference_total = await fetch_reference_total_messages()
     eth_reference_height = await fetch_eth_height()
@@ -133,6 +147,12 @@ async def get_metrics() -> Metrics:
 
     return Metrics(
         pyaleph_build_info=pyaleph_build_info,
+        pyaleph_retry_messages_job_seen_ids=shared_stats.get('retry_messages_job_seen_ids'),
+        pyaleph_retry_messages_job_gtasks=shared_stats.get('retry_messages_job_gtasks'),
+        pyaleph_retry_messages_job_tasks=shared_stats.get('retry_messages_job_tasks'),
+        pyaleph_retry_messages_job_actions=shared_stats.get('retry_messages_job_actions'),
+        pyaleph_retry_messages_job_messages_actions=shared_stats.get(
+            'retry_messages_job_messages_actions'),
 
         pyaleph_status_sync_messages_total=sync_messages_total,
 

@@ -47,7 +47,7 @@ async def initialize_host(key, host='0.0.0.0', port=4025, listen=True, protocol_
     private_key = RSAPrivateKey(priv)
     public_key = private_key.get_public_key()
     keypair = KeyPair(private_key, public_key)
-        
+
     transport_opt = f"/ip4/{host}/tcp/{port}"
     host = await new_node(transport_opt=[transport_opt],
                           key_pair=keypair)
@@ -64,7 +64,7 @@ async def initialize_host(key, host='0.0.0.0', port=4025, listen=True, protocol_
     ]
     if listen:
         from aleph.web import app
-        
+
         await host.get_network().listen(multiaddr.Multiaddr(transport_opt))
         LOGGER.info("Listening on " + f'{transport_opt}/p2p/{host.get_id()}')
         ip = await get_IP()
@@ -73,6 +73,7 @@ async def initialize_host(key, host='0.0.0.0', port=4025, listen=True, protocol_
         public_adresses.append(public_address)
 
         public_http_address = f'http://{ip}:{http_port}'
+
         LOGGER.info("Probable public on " + public_address)
         # TODO: set correct interests and args here
         tasks += [
@@ -83,5 +84,5 @@ async def initialize_host(key, host='0.0.0.0', port=4025, listen=True, protocol_
 
         # Enable message exchange using libp2p
         # host.set_stream_handler(PROTOCOL_ID, stream_handler)
-        
+
     return (host, psub, protocol, tasks)
