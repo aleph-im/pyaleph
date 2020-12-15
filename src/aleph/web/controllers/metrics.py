@@ -134,12 +134,12 @@ async def get_metrics(shared_stats:dict) -> Metrics:
             or {}
     ).get('last_commited_height')
 
-    if sync_messages_reference_total:
+    if not (sync_messages_reference_total is None or sync_messages_total is None):
         sync_messages_remaining_total = sync_messages_reference_total - sync_messages_total
     else:
         sync_messages_remaining_total = None
 
-    if eth_reference_height:
+    if not (eth_reference_height is None or eth_last_committed_height is None):
         eth_remaining_height = eth_reference_height - eth_last_committed_height
     else:
         eth_remaining_height = None
