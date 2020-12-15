@@ -20,7 +20,8 @@ app.router.add_static('/static/',
 async def index(request) -> Dict:
     """Index of aleph.
     """
-    return asdict(await get_metrics())
+    shared_stats = request.config_dict['shared_stats']
+    return asdict(await get_metrics(shared_stats))
 
 
 app.router.add_get('/', index)
@@ -46,7 +47,8 @@ async def status_ws(request):
 
     previous_status = None
     while True:
-        status = await get_metrics()
+        shared_stats = request.config_dict['shared_stats']
+        status = await get_metrics(shared_stats)
 
         if status != previous_status:
             await ws.send_json(asdict(status))

@@ -123,7 +123,6 @@ async def get_metrics(shared_stats:dict) -> Metrics:
         LOGGER.info("Shared stats disabled")
         shared_stats = {}
 
-
     sync_messages_reference_total = await fetch_reference_total_messages()
     eth_reference_height = await fetch_eth_height()
 
@@ -147,12 +146,12 @@ async def get_metrics(shared_stats:dict) -> Metrics:
 
     return Metrics(
         pyaleph_build_info=pyaleph_build_info,
-        pyaleph_retry_messages_job_seen_ids=shared_stats.get('retry_messages_job_seen_ids'),
-        pyaleph_retry_messages_job_gtasks=shared_stats.get('retry_messages_job_gtasks'),
-        pyaleph_retry_messages_job_tasks=shared_stats.get('retry_messages_job_tasks'),
-        pyaleph_retry_messages_job_actions=shared_stats.get('retry_messages_job_actions'),
+        pyaleph_retry_messages_job_seen_ids=shared_stats.get('retry_messages_job_seen_ids', 0),
+        pyaleph_retry_messages_job_gtasks=shared_stats.get('retry_messages_job_gtasks' , 0),
+        pyaleph_retry_messages_job_tasks=shared_stats.get('retry_messages_job_tasks', 0),
+        pyaleph_retry_messages_job_actions=shared_stats.get('retry_messages_job_actions', 0),
         pyaleph_retry_messages_job_messages_actions=shared_stats.get(
-            'retry_messages_job_messages_actions'),
+            'retry_messages_job_messages_actions', 0),
 
         pyaleph_status_sync_messages_total=sync_messages_total,
 
