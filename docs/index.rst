@@ -18,6 +18,7 @@ Contents
 
    architecture
    guides/index
+   guides/node-synchronisation
    protocol/index
 
    License <license>
