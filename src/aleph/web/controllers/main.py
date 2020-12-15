@@ -52,7 +52,7 @@ async def status_ws(request):
             await ws.send_json(asdict(status))
             previous_status = status
 
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(2)
 
 
 app.router.add_get('/api/ws0/status', status_ws)
