@@ -61,7 +61,9 @@ class Metrics(DataClassJsonMixin):
 
     pyaleph_status_chain_eth_last_committed_height: int
 
+    pyaleph_status_sync_messages_reference_total: Optional[int] = None
     pyaleph_status_sync_messages_remaining_total: Optional[int] = None
+    pyaleph_status_chain_eth_height_reference_total: Optional[int] = None
     pyaleph_status_chain_eth_height_remaining_total: Optional[int] = None
 
 
@@ -108,8 +110,8 @@ async def fetch_eth_height() -> Optional[int]:
 
 async def get_metrics() -> Metrics:
 
-    reference_total_messages = await fetch_reference_total_messages()
-    reference_eth_height = await fetch_eth_height()
+    sync_messages_reference_total = await fetch_reference_total_messages()
+    eth_reference_height = await fetch_eth_height()
 
     sync_messages_total: int = await aleph.model.db.messages.estimated_document_count()
 
@@ -119,13 +121,13 @@ async def get_metrics() -> Metrics:
             or {}
     ).get('last_commited_height')
 
-    if reference_total_messages:
-        sync_messages_remaining_total = reference_total_messages - sync_messages_total
+    if sync_messages_reference_total:
+        sync_messages_remaining_total = sync_messages_reference_total - sync_messages_total
     else:
         sync_messages_remaining_total = None
 
-    if reference_eth_height:
-        eth_remaining_height = reference_eth_height - eth_last_committed_height
+    if eth_reference_height:
+        eth_remaining_height = eth_reference_height - eth_last_committed_height
     else:
         eth_remaining_height = None
 
@@ -134,6 +136,7 @@ async def get_metrics() -> Metrics:
 
         pyaleph_status_sync_messages_total=sync_messages_total,
 
+        pyaleph_status_sync_messages_reference_total=sync_messages_reference_total,
         pyaleph_status_sync_messages_remaining_total=sync_messages_remaining_total,
 
         pyaleph_status_sync_pending_messages_total=
@@ -144,5 +147,6 @@ async def get_metrics() -> Metrics:
 
         pyaleph_status_chain_eth_last_committed_height=eth_last_committed_height,
 
+        pyaleph_status_chain_eth_height_reference_total=eth_reference_height,
         pyaleph_status_chain_eth_height_remaining_total=eth_remaining_height,
     )
