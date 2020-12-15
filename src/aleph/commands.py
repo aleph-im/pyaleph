@@ -120,9 +120,9 @@ def setup_logging(loglevel):
     logformat = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
     logging.basicConfig(level=loglevel, stream=sys.stdout,
                         format=logformat, datefmt="%Y-%m-%d %H:%M:%S")
-    
 
-async def run_server(host: str, port: int):
+
+async def run_server(host: str, port: int, extra_web_config: dict):
     # These imports will run in different processes
     from aiohttp import web
     from aleph.web.controllers.listener import broadcast
@@ -135,6 +135,9 @@ async def run_server(host: str, port: int):
     init_cors()
 
     LOGGER.debug("Setup of runner")
+
+    app['extra_config'] = extra_web_config
+
     runner = web.AppRunner(app)
     await runner.setup()
 
@@ -147,7 +150,7 @@ async def run_server(host: str, port: int):
     LOGGER.debug("Finished broadcast server")
 
 
-def run_server_coroutine(config_values, host, port, manager, idx, enable_sentry: bool = True):
+def run_server_coroutine(config_values, host, port, manager, idx, enable_sentry: bool = True, extra_web_config = {}):
     """Run the server coroutine in a synchronous way.
     Used as target of multiprocessing.Process.
     """
@@ -162,7 +165,7 @@ def run_server_coroutine(config_values, host, port, manager, idx, enable_sentry:
     try:
         loop, tasks = prepare_loop(config_values, manager, idx=idx)
         loop.run_until_complete(
-            asyncio.gather(*tasks, run_server(host, port)))
+            asyncio.gather(*tasks, run_server(host, port, extra_web_config)))
     except Exception as e:
         sentry_sdk.capture_exception(e)
         sentry_sdk.flush()
@@ -252,6 +255,12 @@ def main(args):
     tasks += connector_tasks(config, outgoing=(not args.no_commit))
     LOGGER.debug("Initialized listeners")
 
+    # Need to be passed here otherwise it get lost in the fork
+    from aleph.services.p2p import manager as p2p_manager
+    extra_web_config = {
+        'public_adresses': p2p_manager.public_adresses
+    }
+
     p1 = Process(target=run_server_coroutine, args=(
         config_values,
         config.p2p.host.value,
@@ -259,6 +268,7 @@ def main(args):
         manager and (manager._address, manager._authkey) or None,
         3,
         args.sentry_disabled is False,
+        extra_web_config
     ))
     p2 = Process(target=run_server_coroutine, args=(
         config_values,
@@ -267,6 +277,7 @@ def main(args):
         manager and (manager._address, manager._authkey) or None,
         4,
         args.sentry_disabled is False,
+        extra_web_config
     ))
     p1.start()
     p2.start()
