@@ -89,6 +89,8 @@ async def retry_messages_job(shared_stats):
                 shared_stats['retry_messages_job_tasks'] = len(tasks)
                 shared_stats['retry_messages_job_actions'] = len(actions)
                 shared_stats['retry_messages_job_messages_actions'] = len(messages_actions)
+                shared_stats['retry_messages_job_i'] = i
+                shared_stats['retry_messages_job_j'] = j
 
 
             if pending['message']['item_type'] == 'ipfs':

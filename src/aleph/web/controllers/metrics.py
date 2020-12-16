@@ -65,11 +65,16 @@ class Metrics(DataClassJsonMixin):
 
     pyaleph_status_chain_eth_last_committed_height: int
     pyaleph_status_chain_eth_last_committed_height: int
-    pyaleph_retry_messages_job_seen_ids: Optional[int] = None
-    pyaleph_retry_messages_job_gtasks: Optional[int] = None
-    pyaleph_retry_messages_job_tasks: Optional[int] = None
-    pyaleph_retry_messages_job_actions: Optional[int] = None
-    pyaleph_retry_messages_job_messages_actions: Optional[int] = None
+
+
+    pyaleph_processing_pending_messages_seen_ids_total: Optional[int] = None
+    pyaleph_processing_pending_messages_gtasks_total: Optional[int] = None
+    pyaleph_processing_pending_messages_tasks_total: Optional[int] = None
+    pyaleph_processing_pending_messages_action_total: Optional[int] = None
+    pyaleph_processing_pending_messages_messages_actions_total: Optional[int] = None
+    pyaleph_processing_pending_messages_i_total: Optional[int] = None
+    pyaleph_processing_pending_messages_j_total: Optional[int] = None
+
 
     pyaleph_status_sync_messages_reference_total: Optional[int] = None
     pyaleph_status_sync_messages_remaining_total: Optional[int] = None
@@ -146,12 +151,15 @@ async def get_metrics(shared_stats:dict) -> Metrics:
 
     return Metrics(
         pyaleph_build_info=pyaleph_build_info,
-        pyaleph_retry_messages_job_seen_ids=shared_stats.get('retry_messages_job_seen_ids'),
-        pyaleph_retry_messages_job_gtasks=shared_stats.get('retry_messages_job_gtasks'),
-        pyaleph_retry_messages_job_tasks=shared_stats.get('retry_messages_job_tasks'),
-        pyaleph_retry_messages_job_actions=shared_stats.get('retry_messages_job_actions'),
-        pyaleph_retry_messages_job_messages_actions=shared_stats.get(
+        pyaleph_processing_pending_messages_seen_ids_total=shared_stats.get('retry_messages_job_seen_ids'),
+        pyaleph_processing_pending_messages_gtasks_total=shared_stats.get('retry_messages_job_gtasks'),
+        pyaleph_processing_pending_messages_tasks_total=shared_stats.get('retry_messages_job_tasks'),
+        pyaleph_processing_pending_messages_action_total=shared_stats.get('retry_messages_job_actions'),
+        pyaleph_processing_pending_messages_messages_actions_total=shared_stats.get(
             'retry_messages_job_messages_actions'),
+        pyaleph_processing_pending_messages_i_total=shared_stats.get('retry_messages_job_i'),
+        pyaleph_processing_pending_messages_j_total=shared_stats.get('retry_messages_job_j'),
+
 
         pyaleph_status_sync_messages_total=sync_messages_total,
 
