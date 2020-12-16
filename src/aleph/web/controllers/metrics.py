@@ -61,14 +61,15 @@ class Metrics(DataClassJsonMixin):
     Naming convention: https://prometheus.io/docs/practices/naming/
     """
     pyaleph_build_info: BuildInfo
+
+    pyaleph_status_peers_total: int
+
     pyaleph_status_sync_messages_total: int
 
     pyaleph_status_sync_pending_messages_total: int
     pyaleph_status_sync_pending_txs_total: int
 
     pyaleph_status_chain_eth_last_committed_height: int
-    pyaleph_status_chain_eth_last_committed_height: int
-
 
     pyaleph_processing_pending_messages_seen_ids_total: Optional[int] = None
     pyaleph_processing_pending_messages_gtasks_total: Optional[int] = None
@@ -136,6 +137,8 @@ async def get_metrics(shared_stats:dict) -> Metrics:
 
     sync_messages_total: int = await aleph.model.db.messages.estimated_document_count()
 
+    peers_count = await aleph.model.db.peers.estimated_document_count()
+
     eth_last_committed_height: int = (
             await aleph.model.db.chains.find_one({'name': 'ETH'},
                                                  projection={'last_commited_height': 1})
@@ -154,6 +157,7 @@ async def get_metrics(shared_stats:dict) -> Metrics:
 
     return Metrics(
         pyaleph_build_info=pyaleph_build_info,
+        pyaleph_status_peers_total=peers_count,
         pyaleph_processing_pending_messages_seen_ids_total=shared_stats.get('retry_messages_job_seen_ids'),
         pyaleph_processing_pending_messages_gtasks_total=shared_stats.get('retry_messages_job_gtasks'),
         pyaleph_processing_pending_messages_tasks_total=shared_stats.get('retry_messages_job_tasks'),
