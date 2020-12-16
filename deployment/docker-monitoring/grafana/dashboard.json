@@ -15,7 +15,7 @@
   "editable": true,
   "gnetId": null,
   "graphTooltip": 0,
-  "id": 2,
+  "id": 1,
   "links": [],
   "panels": [
     {
@@ -33,7 +33,7 @@
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
-        "h": 8,
+        "h": 6,
         "w": 12,
         "x": 0,
         "y": 0
@@ -60,7 +60,12 @@
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
-      "seriesOverrides": [],
+      "seriesOverrides": [
+        {
+          "alias": "MemFree details",
+          "yaxis": 2
+        }
+      ],
       "spaceLength": 10,
       "stack": false,
       "steppedLine": false,
@@ -68,8 +73,14 @@
         {
           "expr": "node_memory_MemFree_bytes",
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "MemFree total",
           "refId": "A"
+        },
+        {
+          "expr": "node_memory_MemFree_bytes",
+          "interval": "",
+          "legendFormat": "MemFree details",
+          "refId": "B"
         }
       ],
       "thresholds": [],
@@ -92,15 +103,15 @@
       },
       "yaxes": [
         {
-          "format": "short",
+          "format": "decbytes",
           "label": null,
           "logBase": 1,
           "max": null,
-          "min": null,
+          "min": "0",
           "show": true
         },
         {
-          "format": "short",
+          "format": "decbytes",
           "label": null,
           "logBase": 1,
           "max": null,
@@ -128,7 +139,7 @@
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
-        "h": 8,
+        "h": 6,
         "w": 12,
         "x": 12,
         "y": 0
@@ -237,10 +248,10 @@
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
-        "h": 8,
+        "h": 6,
         "w": 12,
         "x": 0,
-        "y": 8
+        "y": 6
       },
       "hiddenSeries": false,
       "id": 4,
@@ -334,10 +345,10 @@
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
-        "h": 8,
+        "h": 6,
         "w": 12,
         "x": 12,
-        "y": 8
+        "y": 6
       },
       "hiddenSeries": false,
       "id": 12,
@@ -352,7 +363,7 @@
       },
       "lines": true,
       "linewidth": 1,
-      "nullPointMode": "null as zero",
+      "nullPointMode": "null",
       "options": {
         "alertThreshold": true
       },
@@ -397,7 +408,7 @@
           "label": null,
           "logBase": 1,
           "max": null,
-          "min": null,
+          "min": "0",
           "show": true
         },
         {
@@ -431,10 +442,10 @@
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 12,
         "x": 0,
-        "y": 16
+        "y": 12
       },
       "hiddenSeries": false,
       "id": 6,
@@ -458,7 +469,12 @@
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
-      "seriesOverrides": [],
+      "seriesOverrides": [
+        {
+          "alias": "Txs",
+          "yaxis": 2
+        }
+      ],
       "spaceLength": 10,
       "stack": false,
       "steppedLine": false,
@@ -519,7 +535,7 @@
     },
     {
       "aliasColors": {
-        "pyaleph_status_chain_eth_height_remaining_total{instance=\"pyaleph:4024\", job=\"pyaleph\"}": "light-blue"
+        "pyaleph_status_chain_eth_height_remaining_total{instance=\"pyaleph:4024\", job=\"pyaleph\"}": "green"
       },
       "bars": false,
       "dashLength": 10,
@@ -534,10 +550,10 @@
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 12,
         "x": 12,
-        "y": 16
+        "y": 12
       },
       "hiddenSeries": false,
       "id": 14,
@@ -552,7 +568,7 @@
       },
       "lines": true,
       "linewidth": 1,
-      "nullPointMode": "null as zero",
+      "nullPointMode": "null",
       "options": {
         "alertThreshold": true
       },
@@ -561,15 +577,51 @@
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
-      "seriesOverrides": [],
+      "seriesOverrides": [
+        {
+          "alias": "pyaleph_status_chain_eth_height_remaining_total{instance=\"pyaleph:4024\", job=\"pyaleph\"}",
+          "yaxis": 1
+        },
+        {
+          "alias": "pyaleph_status_chain_eth_last_committed_height{instance=\"pyaleph:4024\", job=\"pyaleph\"}",
+          "yaxis": 1
+        },
+        {
+          "alias": "pyaleph_status_chain_eth_height_reference_total{instance=\"pyaleph:4024\", job=\"pyaleph\"}",
+          "yaxis": 1
+        },
+        {
+          "alias": "delta",
+          "yaxis": 2
+        },
+        {
+          "alias": "speed",
+          "yaxis": 2
+        },
+        {
+          "alias": "msg per minute",
+          "yaxis": 2
+        },
+        {
+          "alias": "eth per minute",
+          "yaxis": 2
+        }
+      ],
       "spaceLength": 10,
       "stack": false,
       "steppedLine": false,
       "targets": [
         {
-          "expr": "pyaleph_status_chain_eth_height_remaining_total",
+          "expr": "-delta(pyaleph_status_sync_messages_remaining_total[1m])",
+          "hide": false,
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "eth per minute",
+          "refId": "B"
+        },
+        {
+          "expr": "pyaleph_status_sync_messages_remaining_total",
+          "interval": "",
+          "legendFormat": "eth remaining",
           "refId": "A"
         }
       ],
@@ -616,6 +668,7 @@
     },
     {
       "aliasColors": {
+        "pyaleph_processing_pending_messages_seen_ids_total{instance=\"pyaleph:4024\", job=\"pyaleph\"}": "dark-orange",
         "pyaleph_retry_messages_job_seen_ids{instance=\"pyaleph:4024\", job=\"pyaleph\"}": "dark-orange"
       },
       "bars": false,
@@ -631,10 +684,10 @@
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
-        "h": 8,
+        "h": 6,
         "w": 12,
         "x": 0,
-        "y": 24
+        "y": 19
       },
       "hiddenSeries": false,
       "id": 18,
@@ -664,7 +717,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "pyaleph_retry_messages_job_seen_ids",
+          "expr": "pyaleph_processing_pending_messages_seen_ids_total",
           "interval": "",
           "legendFormat": "",
           "refId": "A"
@@ -713,6 +766,203 @@
     },
     {
       "aliasColors": {
+        "pyaleph_processing_pending_messages_gtasks_total{instance=\"pyaleph:4024\", job=\"pyaleph\"}": "dark-orange",
+        "pyaleph_retry_messages_job_gtasks{instance=\"pyaleph:4024\", job=\"pyaleph\"}": "dark-orange"
+      },
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": null,
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "fill": 1,
+      "fillGradient": 0,
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 19
+      },
+      "hiddenSeries": false,
+      "id": 20,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {
+        "alertThreshold": true
+      },
+      "percentage": false,
+      "pluginVersion": "7.3.5",
+      "pointradius": 2,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "expr": "pyaleph_processing_pending_messages_gtasks_total",
+          "interval": "",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "gtasks",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {
+        "pyaleph_processing_pending_messages_messages_actions_total{instance=\"pyaleph:4024\", job=\"pyaleph\"}": "dark-orange",
+        "pyaleph_retry_messages_job_messages_actions{instance=\"pyaleph:4024\", job=\"pyaleph\"}": "dark-orange"
+      },
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": null,
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "fill": 1,
+      "fillGradient": 0,
+      "gridPos": {
+        "h": 5,
+        "w": 12,
+        "x": 0,
+        "y": 25
+      },
+      "hiddenSeries": false,
+      "id": 16,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {
+        "alertThreshold": true
+      },
+      "percentage": false,
+      "pluginVersion": "7.3.5",
+      "pointradius": 2,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "expr": "pyaleph_processing_pending_messages_messages_actions_total",
+          "interval": "",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "messages_actions",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {
+        "pyaleph_processing_pending_messages_tasks_total{instance=\"pyaleph:4024\", job=\"pyaleph\"}": "dark-orange",
         "pyaleph_retry_messages_job_tasks{instance=\"pyaleph:4024\", job=\"pyaleph\"}": "dark-orange"
       },
       "bars": false,
@@ -728,10 +978,10 @@
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
-        "h": 8,
+        "h": 5,
         "w": 12,
         "x": 12,
-        "y": 24
+        "y": 25
       },
       "hiddenSeries": false,
       "id": 22,
@@ -761,7 +1011,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "pyaleph_retry_messages_job_tasks",
+          "expr": "pyaleph_processing_pending_messages_tasks_total",
           "instant": false,
           "interval": "",
           "legendFormat": "",
@@ -811,103 +1061,7 @@
     },
     {
       "aliasColors": {
-        "pyaleph_retry_messages_job_gtasks{instance=\"pyaleph:4024\", job=\"pyaleph\"}": "dark-orange"
-      },
-      "bars": false,
-      "dashLength": 10,
-      "dashes": false,
-      "datasource": null,
-      "fieldConfig": {
-        "defaults": {
-          "custom": {}
-        },
-        "overrides": []
-      },
-      "fill": 1,
-      "fillGradient": 0,
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 32
-      },
-      "hiddenSeries": false,
-      "id": 20,
-      "legend": {
-        "avg": false,
-        "current": false,
-        "max": false,
-        "min": false,
-        "show": true,
-        "total": false,
-        "values": false
-      },
-      "lines": true,
-      "linewidth": 1,
-      "nullPointMode": "null",
-      "options": {
-        "alertThreshold": true
-      },
-      "percentage": false,
-      "pluginVersion": "7.3.5",
-      "pointradius": 2,
-      "points": false,
-      "renderer": "flot",
-      "seriesOverrides": [],
-      "spaceLength": 10,
-      "stack": false,
-      "steppedLine": false,
-      "targets": [
-        {
-          "expr": "pyaleph_retry_messages_job_gtasks",
-          "interval": "",
-          "legendFormat": "",
-          "refId": "A"
-        }
-      ],
-      "thresholds": [],
-      "timeFrom": null,
-      "timeRegions": [],
-      "timeShift": null,
-      "title": "gtasks",
-      "tooltip": {
-        "shared": true,
-        "sort": 0,
-        "value_type": "individual"
-      },
-      "type": "graph",
-      "xaxis": {
-        "buckets": null,
-        "mode": "time",
-        "name": null,
-        "show": true,
-        "values": []
-      },
-      "yaxes": [
-        {
-          "format": "short",
-          "label": null,
-          "logBase": 1,
-          "max": null,
-          "min": null,
-          "show": true
-        },
-        {
-          "format": "short",
-          "label": null,
-          "logBase": 1,
-          "max": null,
-          "min": null,
-          "show": true
-        }
-      ],
-      "yaxis": {
-        "align": false,
-        "alignLevel": null
-      }
-    },
-    {
-      "aliasColors": {
+        "pyaleph_processing_pending_messages_action_total{instance=\"pyaleph:4024\", job=\"pyaleph\"}": "dark-orange",
         "pyaleph_retry_messages_job_actions{instance=\"pyaleph:4024\", job=\"pyaleph\"}": "dark-orange"
       },
       "bars": false,
@@ -923,10 +1077,10 @@
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
-        "h": 8,
+        "h": 6,
         "w": 12,
-        "x": 12,
-        "y": 32
+        "x": 0,
+        "y": 30
       },
       "hiddenSeries": false,
       "id": 2,
@@ -956,7 +1110,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "pyaleph_retry_messages_job_actions ",
+          "expr": "pyaleph_processing_pending_messages_action_total",
           "interval": "",
           "legendFormat": "",
           "refId": "A"
@@ -1005,6 +1159,7 @@
     },
     {
       "aliasColors": {
+        "pyaleph_processing_pending_messages_i_total{instance=\"pyaleph:4024\", job=\"pyaleph\"}": "dark-purple",
         "pyaleph_retry_messages_job_messages_actions{instance=\"pyaleph:4024\", job=\"pyaleph\"}": "dark-orange"
       },
       "bars": false,
@@ -1020,13 +1175,13 @@
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
-        "h": 8,
+        "h": 6,
         "w": 12,
-        "x": 0,
-        "y": 40
+        "x": 12,
+        "y": 30
       },
       "hiddenSeries": false,
-      "id": 16,
+      "id": 27,
       "legend": {
         "avg": false,
         "current": false,
@@ -1053,7 +1208,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "pyaleph_retry_messages_job_messages_actions",
+          "expr": "pyaleph_processing_pending_messages_i_total",
           "interval": "",
           "legendFormat": "",
           "refId": "A"
@@ -1063,7 +1218,200 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "messages_actions",
+      "title": "counter i",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": null,
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "fill": 1,
+      "fillGradient": 0,
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 36
+      },
+      "hiddenSeries": false,
+      "id": 30,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {
+        "alertThreshold": true
+      },
+      "percentage": false,
+      "pluginVersion": "7.3.5",
+      "pointradius": 2,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "expr": "pyaleph_status_peers_total - 2",
+          "interval": "",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "Peers",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": "0",
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {
+        "pyaleph_processing_pending_messages_j_total{instance=\"pyaleph:4024\", job=\"pyaleph\"}": "dark-purple",
+        "pyaleph_retry_messages_job_messages_actions{instance=\"pyaleph:4024\", job=\"pyaleph\"}": "dark-orange"
+      },
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": null,
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "fill": 1,
+      "fillGradient": 0,
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 36
+      },
+      "hiddenSeries": false,
+      "id": 28,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {
+        "alertThreshold": true
+      },
+      "percentage": false,
+      "pluginVersion": "7.3.5",
+      "pointradius": 2,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "expr": "pyaleph_processing_pending_messages_j_total",
+          "interval": "",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "counter j",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -1101,7 +1449,7 @@
       }
     }
   ],
-  "refresh": false,
+  "refresh": "10s",
   "schemaVersion": 26,
   "style": "dark",
   "tags": [],
@@ -1109,12 +1457,12 @@
     "list": []
   },
   "time": {
-    "from": "now-3h",
+    "from": "now-30m",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
   "title": "Sync",
   "uid": "OvQPDPJMk",
-  "version": 14
+  "version": 3
 }

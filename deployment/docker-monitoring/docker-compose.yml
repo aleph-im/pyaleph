@@ -65,6 +65,10 @@ services:
     image: grafana/grafana
     ports:
       - 3000:3000/tcp
+    volumes:
+      - ./grafana/prometheus.yaml:/usr/share/grafana/conf/provisioning/datasources/prometheus.yaml
+      - ./grafana/dashboard.yaml:/usr/share/grafana/conf/provisioning/dashboards/dashboard.yaml
+      - ./grafana/dashboard.json:/usr/share/grafana/conf/provisioning/dashboards/dashboard.json
     networks:
       - grafana
 
