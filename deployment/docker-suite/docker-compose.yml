@@ -1,0 +1,84 @@
+version: '2.2'
+
+volumes:
+  pyaleph-ipfs:
+  pyaleph-mongodb:
+
+services:
+  pyaleph:
+    restart: always
+    image: alephim/pyaleph-node:beta
+    command: pyaleph --config /opt/pyaleph/config.yml
+    ports:
+      - 127.0.0.1:8000:8000/tcp
+      - 4024:4024/tcp
+      - 4025:4025/tcp
+    volumes:
+      - ./config.yml:/opt/pyaleph/config.yml
+      - ./node-secret.key:/opt/pyaleph/node-secret.key
+    depends_on:
+      - mongodb
+      - ipfs
+    networks:
+      - pyaleph
+    logging:
+      options:
+        max-size: 50m
+
+  ipfs:
+    restart: always
+    image: ipfs/go-ipfs
+    ports:
+      - 4001:4001
+      - 4001:4001/udp
+    volumes:
+      - "pyaleph-ipfs:/data/ipfs"
+    environment:
+      - IPFS_PROFILE=server
+    networks:
+      - pyaleph
+    command: ["daemon", "--enable-pubsub-experiment"]
+
+  mongodb:
+    restart: always
+    image: mongo:3.6
+    volumes:
+      - pyaleph-mongodb:/data/db
+    command: mongod --storageEngine wiredTiger
+    networks:
+      - pyaleph
+
+  prometheus:
+    restart: always
+    image: prom/prometheus
+    command: --log.level=debug --config.file=/etc/prometheus/prometheus.yml
+    ports:
+      - 9090:9090/tcp
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - pyaleph
+      - grafana
+
+  grafana:
+    restart: always
+    image: grafana/grafana
+    ports:
+      - 3000:3000/tcp
+    networks:
+      - grafana
+
+#  caddy:
+#    restart: always
+#    image: caddy:latest
+#    command: reverse-proxy --to 127.0.0.1:9000
+#    ports:
+#      - 80
+#      - 443
+#    networks:
+#      - pyaleph
+#      - grafana
+
+networks:
+  pyaleph:
+  grafana:
