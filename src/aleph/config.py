@@ -17,6 +17,8 @@ def get_defaults():
             'peers': [
                 '/ip4/51.159.57.71/tcp/4025/p2p/QmZkurbY2G2hWay59yiTgQNaQxHSNzKZFt2jbnwJhQcKgV',
                 '/ip4/51.158.116.142/tcp/4025/p2p/Qmaxufiqdyt5uVWcy1Xh2nh3Rs3382ArnSP2umjCiNG2Vs'
+            ],
+            'authorized_addresses': [
             ]
         },
         'storage': {
