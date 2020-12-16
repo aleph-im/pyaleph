@@ -14,8 +14,9 @@ class Peer(BaseClass):
 
     INDEXES = [IndexModel([("type", ASCENDING)]),
                IndexModel([("address", ASCENDING)]),
+               IndexModel([("emitter", ASCENDING)]),
                IndexModel([("last_seen", DESCENDING)])]
-    
+
 async def get_peers(peer_type=None):
     """ Returns current peers.
     TODO: handle the last seen, channel preferences, and better way of avoiding "bad contacts".
@@ -27,12 +28,15 @@ async def get_peers(peer_type=None):
         }).sort([('last_seen', -1)]):
         yield peer['address']
 
-async def add_peer(address, peer_type):
+async def add_peer(address:str, peer_type:str, emitter:str):
+    "Save peer with last_seen date in db"
     await Peer.collection.replace_one({
         'address': address,
-        'type': peer_type
+        'type': peer_type,
+        'emitter': emitter
     }, {
         'address': address,
         'type': peer_type,
+        'emitter': emitter,
         'last_seen': datetime.now()
     }, upsert=True)

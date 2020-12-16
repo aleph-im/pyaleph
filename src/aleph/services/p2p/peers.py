@@ -32,36 +32,43 @@ async def publish_host(address, psub, topic=ALIVE_TOPIC, interests=None, delay=1
             LOGGER.exception("Can't publish alive message")
         await asyncio.sleep(delay)
 
-    
+
 async def monitor_hosts(psub):
     from aleph.model.p2p import add_peer
     alive_sub = await psub.subscribe(ALIVE_TOPIC)
     while True:
         try:
-            mvalue = await alive_sub.get()
-            mvalue = await decode_msg(mvalue)
-            LOGGER.debug("New message received %r" % mvalue)
+            message = await alive_sub.get()
+            mvalue = await decode_msg(message)
+
+            LOGGER.info("New alive message received %r" % mvalue)
+
+            # TODO: Anti-spam: one emitter should not send us to many peers
+
             content = json.loads(mvalue['data'])
             peer_type = content.get('peer_type', 'P2P')
             if not isinstance(content['address'], str):
                 raise ValueError('Bad address')
             if not isinstance(content['peer_type'], str):
                 raise ValueError('Bad peer type')
-            
-            # TODO: handle interests and save it
-            
+
+            # TODO: handle interests and save it (channels)
+
             if peer_type not in ['P2P', 'HTTP']:
                 raise ValueError('Unsupported peer type %r' % peer_type)
-            
-            await add_peer(address=content['address'], peer_type=peer_type)
+
+            emitter = '/p2p/' + mvalue['from'].decode('ascii')
+
+            await add_peer(address=content['address'], peer_type=peer_type, emitter=emitter)
         except Exception:
             LOGGER.exception("Exception in pubsub peers monitoring")
-            
 
 async def connect_peer(config, peer):
     info = info_from_p2p_addr(multiaddr.Multiaddr(peer))
+    LOGGER.debug(f"Attempting p2p connection to {info.peer_id} {info.addrs}")
+
     if str(info.peer_id) == str(singleton.host.get_id()):
-        # LOGGER.debug("Can't connect to myself.")
+        LOGGER.debug(f"Skipping connection to myself")
         return
     
     if 'streamer' in config.p2p.clients.value:
