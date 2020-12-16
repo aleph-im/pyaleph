@@ -1,3 +1,5 @@
+from logging import getLogger
+
 import asyncio
 import json
 import logging
@@ -17,11 +19,13 @@ from aleph.web import app
 
 LOGGER = logging.getLogger(__name__)
 
+LOGGER = getLogger("WEB.metrics")
+
 
 def format_dict_for_prometheus(values: Dict) -> str:
     """Format a dict to a Prometheus tags string"""
     values = (f"{key}={json.dumps(value)}"
-              for key, value in values.items())
+              for key, value in values.items() if value is not None)
     return '{' + ','.join(values) + '}'
 
 
@@ -30,6 +34,9 @@ def format_dataclass_for_prometheus(instance) -> str:
 
     result = []
     for key, value in asdict(instance).items():
+        if value is None:
+            # prometheus don't like null value
+            continue
         if isinstance(value, dict):
             # Use a constant value of 1 for version, as Prometheus does
             result.append(f"{key}{format_dict_for_prometheus(value)} 1")
@@ -54,12 +61,24 @@ class Metrics(DataClassJsonMixin):
     Naming convention: https://prometheus.io/docs/practices/naming/
     """
     pyaleph_build_info: BuildInfo
+
+    pyaleph_status_peers_total: int
+
     pyaleph_status_sync_messages_total: int
 
     pyaleph_status_sync_pending_messages_total: int
     pyaleph_status_sync_pending_txs_total: int
 
     pyaleph_status_chain_eth_last_committed_height: int
+
+    pyaleph_processing_pending_messages_seen_ids_total: Optional[int] = None
+    pyaleph_processing_pending_messages_gtasks_total: Optional[int] = None
+    pyaleph_processing_pending_messages_tasks_total: Optional[int] = None
+    pyaleph_processing_pending_messages_action_total: Optional[int] = None
+    pyaleph_processing_pending_messages_messages_actions_total: Optional[int] = None
+    pyaleph_processing_pending_messages_i_total: Optional[int] = None
+    pyaleph_processing_pending_messages_j_total: Optional[int] = None
+
 
     pyaleph_status_sync_messages_reference_total: Optional[int] = None
     pyaleph_status_sync_messages_remaining_total: Optional[int] = None
@@ -108,12 +127,17 @@ async def fetch_eth_height() -> Optional[int]:
         return None
 
 
-async def get_metrics() -> Metrics:
+async def get_metrics(shared_stats:dict) -> Metrics:
+    if shared_stats is None:
+        LOGGER.info("Shared stats disabled")
+        shared_stats = {}
 
     sync_messages_reference_total = await fetch_reference_total_messages()
     eth_reference_height = await fetch_eth_height()
 
     sync_messages_total: int = await aleph.model.db.messages.estimated_document_count()
+
+    peers_count = await aleph.model.db.peers.estimated_document_count()
 
     eth_last_committed_height: int = (
             await aleph.model.db.chains.find_one({'name': 'ETH'},
@@ -121,18 +145,28 @@ async def get_metrics() -> Metrics:
             or {}
     ).get('last_commited_height')
 
-    if sync_messages_reference_total:
+    if not (sync_messages_reference_total is None or sync_messages_total is None):
         sync_messages_remaining_total = sync_messages_reference_total - sync_messages_total
     else:
         sync_messages_remaining_total = None
 
-    if eth_reference_height:
+    if not (eth_reference_height is None or eth_last_committed_height is None):
         eth_remaining_height = eth_reference_height - eth_last_committed_height
     else:
         eth_remaining_height = None
 
     return Metrics(
         pyaleph_build_info=pyaleph_build_info,
+        pyaleph_status_peers_total=peers_count,
+        pyaleph_processing_pending_messages_seen_ids_total=shared_stats.get('retry_messages_job_seen_ids'),
+        pyaleph_processing_pending_messages_gtasks_total=shared_stats.get('retry_messages_job_gtasks'),
+        pyaleph_processing_pending_messages_tasks_total=shared_stats.get('retry_messages_job_tasks'),
+        pyaleph_processing_pending_messages_action_total=shared_stats.get('retry_messages_job_actions'),
+        pyaleph_processing_pending_messages_messages_actions_total=shared_stats.get(
+            'retry_messages_job_messages_actions'),
+        pyaleph_processing_pending_messages_i_total=shared_stats.get('retry_messages_job_i'),
+        pyaleph_processing_pending_messages_j_total=shared_stats.get('retry_messages_job_j'),
+
 
         pyaleph_status_sync_messages_total=sync_messages_total,
 

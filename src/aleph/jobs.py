@@ -22,6 +22,7 @@ MANAGER = None
 
 RETRY_LOCK = asyncio.Lock()
 
+
 class DBManager(SyncManager):
     pass
 
@@ -59,10 +60,10 @@ async def join_pending_message_tasks(tasks, actions_list=None, messages_actions_
         actions_list.clear()
 
 
-async def retry_messages_job():
+async def retry_messages_job(shared_stats):
     """ Each few minutes, try to handle message that were added to the
     pending queue (Unavailable messages)."""
-    
+
     seen_ids = {}
     actions = []
     messages_actions = []
@@ -75,20 +76,35 @@ async def retry_messages_job():
     # if await PendingTX.collection.count_documents({}) > 500:
     #     find_params = {'message.item_type': 'inline'}
 
+
     while await PendingMessage.collection.count_documents(find_params):
         async for pending in PendingMessage.collection.find(find_params).sort([('message.time', 1)]).batch_size(256):
+            LOGGER.debug(
+                f"retry_message_job len_seen_ids={len(seen_ids)} "
+                f"len_gtasks={len(gtasks)} len_tasks={len(tasks)}")
+
+            if shared_stats is not None:
+                shared_stats['retry_messages_job_seen_ids'] = len(seen_ids)
+                shared_stats['retry_messages_job_gtasks'] = len(gtasks)
+                shared_stats['retry_messages_job_tasks'] = len(tasks)
+                shared_stats['retry_messages_job_actions'] = len(actions)
+                shared_stats['retry_messages_job_messages_actions'] = len(messages_actions)
+                shared_stats['retry_messages_job_i'] = i
+                shared_stats['retry_messages_job_j'] = j
+
+
             if pending['message']['item_type'] == 'ipfs':
                 i += 15
                 j += 100
             else:
                 i += 1
                 j += 1
-                
+
             tasks.append(handle_pending_message(pending, seen_ids, actions, messages_actions))
-            
+
             if (j >= 20000):
                 # Group tasks using asyncio.gather in `gtasks`.
-                # await join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions) 
+                # await join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions)
                 gtasks.append(
                     join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions))
                 tasks = []
@@ -102,12 +118,13 @@ async def retry_messages_job():
                 # gtasks.append(asyncio.create_task(join_pending_message_tasks(tasks)))
                 tasks = []
                 i = 0
+
         gtasks.append(
             join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions))
-        
+
         await asyncio.gather(*gtasks, return_exceptions=True)
         gtasks = []
-        
+
         if await PendingMessage.collection.count_documents(find_params) > 100000:
             LOGGER.info('Cleaning messages')
             clean_actions = []
@@ -131,19 +148,18 @@ async def retry_messages_job():
     #     #     i = 0
 
 
-
-async def retry_messages_task():
+async def retry_messages_task(shared_stats):
     """Handle message that were added to the pending queue"""
     await asyncio.sleep(4)
     while True:
         try:
-            await retry_messages_job()
+            await retry_messages_job(shared_stats=shared_stats)
         except Exception:
             LOGGER.exception("Error in pending messages retry job")
 
         LOGGER.debug("Waiting 5 seconds for new pending messages...")
         await asyncio.sleep(5)
-        
+
 
 async def handle_pending_tx(pending, actions_list):
     LOGGER.info("%s Handling TX in block %s" % (pending['context']['chain_name'], pending['context']['height']))
@@ -152,11 +168,11 @@ async def handle_pending_tx(pending, actions_list):
         message_actions = list()
         for i, message in enumerate(messages):
             message['time'] = pending['context']['time'] + (i/1000) # force order
-            
+
             message = await check_message(message, trusted=True) # we don't check signatures yet.
             if message is None:
                 continue
-            
+
             # we add it to the message queue... bad idea? should we process it asap?
             message_actions.append(InsertOne({
                 'message': message,
@@ -168,15 +184,15 @@ async def handle_pending_tx(pending, actions_list):
                 )
             }))
             await asyncio.sleep(0)
-            
+
         if message_actions:
             await PendingMessage.collection.bulk_write(message_actions)
-            
+
     if messages is not None:
         # bogus or handled, we remove it.
         actions_list.append(DeleteOne({'_id': pending['_id']}))
     # LOGGER.info("%s Handled TX in block %s" % (pending['context']['chain_name'], pending['context']['height']))
-        
+
 
 async def join_pending_txs_tasks(tasks, actions_list):
     try:
@@ -196,7 +212,7 @@ async def handle_txs_job():
     if not await PendingTX.collection.count_documents({}):
         await asyncio.sleep(5)
         return
-    
+
     actions = []
     tasks = []
     seen_offchain_hashes = []
@@ -208,7 +224,7 @@ async def handle_txs_job():
                 seen_offchain_hashes.append(pending['content']['content'])
             else:
                 continue
-            
+
         i += 1
         tasks.append(handle_pending_tx(pending, actions))
 
@@ -231,20 +247,22 @@ async def handle_txs_task():
             LOGGER.exception("Error in pending txs job")
 
         await asyncio.sleep(0.01)
-        
+
+
 def function_proxy(manager, funcname):
     def func_call(*args, **kwargs):
         rvalue = getattr(manager, funcname)(*args, **kwargs)
-        
+
         try:
             value = rvalue._getvalue()
-            
+
         except RemoteError:
             value = rvalue
-        
+
         return value
-    
+
     return func_call
+
 
 def initialize_db_process(config_values):
     from aleph.web import app
@@ -253,13 +271,14 @@ def initialize_db_process(config_values):
     config = Config(schema=get_defaults())
     app['config'] = config
     config.load_values(config_values)
-    
+
     filestore.init_store(config)
+
 
 def prepare_manager(config_values):
     from aleph.services import filestore
     from aleph.services.filestore import __get_value, __set_value
-    
+
     DBManager.register('_set_value', __set_value)
     DBManager.register('_get_value', __get_value)
     manager = DBManager()
@@ -271,6 +290,7 @@ def prepare_manager(config_values):
     filestore._get_value = function_proxy(manager, '_get_value')
     return manager
 
+
 def prepare_loop(config_values, manager=None, idx=1):
     from aleph.model import init_db
     from aleph.web import app
@@ -280,42 +300,45 @@ def prepare_loop(config_values, manager=None, idx=1):
     from aleph.services.p2p import init_p2p, http
     from aleph.services import filestore
     # uvloop.install()
-    
+
     # manager = NodeManager()
     # manager.start()
-    
+
     if isinstance(manager,tuple):
         manager_info = manager
         DBManager.register('_set_value')
         DBManager.register('_get_value')
         manager = DBManager(address=manager_info[0], authkey=manager_info[1])
         manager.connect()
-    
+
     filestore._set_value = function_proxy(manager, '_set_value')
     filestore._get_value = function_proxy(manager, '_get_value')
     http.SESSION = None
-    
+
     # loop = asyncio.new_event_loop()
     # asyncio.set_event_loop(loop)
     loop = asyncio.get_event_loop()
-    
+
     config = Config(schema=get_defaults())
     app['config'] = config
     config.load_values(config_values)
-    
+
     init_db(config, ensure_indexes=False)
     loop.run_until_complete(get_ipfs_api(timeout=2, reset=True))
     tasks = loop.run_until_complete(init_p2p(config, listen=False, port_id=idx))
     return loop, tasks
 
+
 def txs_task_loop(config_values, manager):
     loop, tasks = prepare_loop(config_values, manager, idx=1)
     loop.run_until_complete(asyncio.gather(*tasks, handle_txs_task()))
 
+
 def messages_task_loop(config_values, manager):
     loop, tasks = prepare_loop(config_values, manager, idx=2)
     loop.run_until_complete(asyncio.gather(*tasks, retry_messages_task()))
-    
+
+
 async def reconnect_ipfs_job(config):
     await asyncio.sleep(2)
     while True:
@@ -328,28 +351,28 @@ async def reconnect_ipfs_job(config):
                         LOGGER.info('\n'.join(ret['Strings']))
                 except aioipfs.APIError:
                     LOGGER.warning("Can't reconnect to %s" % peer)
-                    
+
             async for peer in get_peers(peer_type='IPFS'):
                 if peer in config.ipfs.peers.value:
                     continue
-                
+
                 try:
                     ret = await connect_ipfs_peer(peer)
                     if 'Strings' in ret:
                         LOGGER.info('\n'.join(ret['Strings']))
                 except aioipfs.APIError:
                     LOGGER.warning("Can't reconnect to %s" % peer)
-                
+
         except Exception:
             LOGGER.exception("Error reconnecting to peers")
 
         await asyncio.sleep(config.ipfs.reconnect_delay.value)
-    
 
-def start_jobs(config, manager=None, use_processes=True) -> List[Coroutine]:
+
+def start_jobs(config, shared_stats, manager=None, use_processes=True) -> List[Coroutine]:
     LOGGER.info("starting jobs")
     tasks: List[Coroutine] = []
-    
+
     if use_processes:
         config_values = config.dump_values()
         p1 = Process(target=messages_task_loop,
@@ -359,11 +382,11 @@ def start_jobs(config, manager=None, use_processes=True) -> List[Coroutine]:
         p1.start()
         p2.start()
     else:
-        tasks.append(retry_messages_task())
+        tasks.append(retry_messages_task(shared_stats=shared_stats))
         tasks.append(handle_txs_task())
     # loop.run_in_executor(executor, messages_task_loop, config_values)
     # loop.run_in_executor(executor, txs_task_loop, config_values)
-    
+
     if config.ipfs.enabled.value:
         tasks.append(reconnect_ipfs_job(config))
     # loop.create_task(reconnect_p2p_job(config))
