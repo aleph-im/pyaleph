@@ -25,7 +25,7 @@ LOGGER = getLogger("WEB.metrics")
 def format_dict_for_prometheus(values: Dict) -> str:
     """Format a dict to a Prometheus tags string"""
     values = (f"{key}={json.dumps(value)}"
-              for key, value in values.items() if value is None)
+              for key, value in values.items() if value is not None)
     return '{' + ','.join(values) + '}'
 
 
@@ -34,6 +34,9 @@ def format_dataclass_for_prometheus(instance) -> str:
 
     result = []
     for key, value in asdict(instance).items():
+        if value is None:
+            # prometheus don't like null value
+            continue
         if isinstance(value, dict):
             # Use a constant value of 1 for version, as Prometheus does
             result.append(f"{key}{format_dict_for_prometheus(value)} 1")
