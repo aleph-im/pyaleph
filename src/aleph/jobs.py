@@ -105,8 +105,10 @@ async def retry_messages_job(shared_stats):
             if (j >= 20000):
                 # Group tasks using asyncio.gather in `gtasks`.
                 # await join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions)
-                gtasks.append(
-                    join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions))
+                gtasks.append(asyncio.create_task(
+                    join_pending_message_tasks(
+                        tasks, actions_list=actions,
+                        messages_actions_list=messages_actions)))
                 tasks = []
                 actions = []
                 messages_actions = []
@@ -119,8 +121,10 @@ async def retry_messages_job(shared_stats):
                 tasks = []
                 i = 0
 
-        gtasks.append(
-            join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions))
+        gtasks.append(asyncio.create_task(
+            join_pending_message_tasks(tasks,
+                                       actions_list=actions,
+                                       messages_actions_list=messages_actions)))
 
         await asyncio.gather(*gtasks, return_exceptions=True)
         gtasks = []
