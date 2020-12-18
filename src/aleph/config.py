@@ -42,10 +42,7 @@ def get_defaults():
             'sync_address': None,
             'commit_delay': 14,
             'remark': 'ALEPH-SYNC',
-            'token_contract': None,
-            'authorized_emitters': [
-                '0x23eC28598DCeB2f7082Cc3a9D670592DfEd6e0dC'
-            ]
+            'token_contract': None
         },
         'ethereum': {
             'enabled': False,
@@ -57,7 +54,10 @@ def get_defaults():
             'start_height': 11400000,
             'commit_delay': 35,
             'token_contract': None,
-            'token_start_height': 10900000
+            'token_start_height': 10900000,
+            'authorized_emitters': [
+                '0x23eC28598DCeB2f7082Cc3a9D670592DfEd6e0dC'
+            ]
         },
         'binancechain': {
             'enabled': False,
