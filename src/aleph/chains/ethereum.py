@@ -275,11 +275,11 @@ async def ethereum_packer(config):
 
         messages = [message async for message
                     in (await Message.get_unconfirmed_raw(
-                            limit=200,
+                            limit=10000,
                             for_chain=CHAIN_NAME))]
 
         if len(messages):
-            content = await get_chaindata(messages)
+            content = await get_chaindata(messages, bulk_threshold=200)
             response = await run_in_executor(None, broadcast_content,
                                              config, contract, web3,
                                              account, gas_price, nonce,
