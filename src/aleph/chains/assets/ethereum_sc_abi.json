@@ -1,18 +1,34 @@
 [
 	{
-		"constant": false,
+		"anonymous": false,
 		"inputs": [
 			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "timestamp",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "address",
+				"name": "addr",
+				"type": "address"
+			},
+			{
+				"indexed": false,
 				"internalType": "string",
-				"name": "message",
+				"name": "msgtype",
+				"type": "string"
+			},
+			{
+				"indexed": false,
+				"internalType": "string",
+				"name": "msgcontent",
 				"type": "string"
 			}
 		],
-		"name": "doEmit",
-		"outputs": [],
-		"payable": false,
-		"stateMutability": "nonpayable",
-		"type": "function"
+		"name": "MessageEvent",
+		"type": "event"
 	},
 	{
 		"anonymous": false,
@@ -38,5 +54,40 @@
 		],
 		"name": "SyncEvent",
 		"type": "event"
+	},
+	{
+		"constant": false,
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "message",
+				"type": "string"
+			}
+		],
+		"name": "doEmit",
+		"outputs": [],
+		"payable": false,
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"constant": false,
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "msgtype",
+				"type": "string"
+			},
+			{
+				"internalType": "string",
+				"name": "msgcontent",
+				"type": "string"
+			}
+		],
+		"name": "doMessage",
+		"outputs": [],
+		"payable": false,
+		"stateMutability": "nonpayable",
+		"type": "function"
 	}
 ]

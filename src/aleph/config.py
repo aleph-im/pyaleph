@@ -16,7 +16,8 @@ def get_defaults():
             'clients': ['http'],
             'peers': [
                 '/ip4/51.159.57.71/tcp/4025/p2p/QmZkurbY2G2hWay59yiTgQNaQxHSNzKZFt2jbnwJhQcKgV',
-                '/ip4/51.158.116.142/tcp/4025/p2p/Qmaxufiqdyt5uVWcy1Xh2nh3Rs3382ArnSP2umjCiNG2Vs'
+                '/ip4/51.158.116.142/tcp/4025/p2p/Qmaxufiqdyt5uVWcy1Xh2nh3Rs3382ArnSP2umjCiNG2Vs',
+                '/ip4/62.210.93.220/tcp/4025/p2p/QmXdci5feFmA2pxTg8p3FCyWmSKnWYAAmr7Uys1YCTFD8U'
             ]
         },
         'storage': {
@@ -50,9 +51,10 @@ def get_defaults():
             'chain_id': 1,
             'private_key': None,
             'sync_contract': None,
-            'start_height': 4200000,
+            'start_height': 11400000,
             'commit_delay': 35,
-            'token_contract': None
+            'token_contract': None,
+            'token_start_height': 10900000
         },
         'binancechain': {
             'enabled': False,
@@ -79,7 +81,8 @@ def get_defaults():
             'reconnect_delay': 60,
             'peers': [
               '/dnsaddr/bootstrap.aleph.im/ipfs/QmPR8m8WCmYKuuxg5Qnadd4LbnTCD2L93cV2zPW5XGVHTG',
-              '/dnsaddr/api1.aleph.im/ipfs/QmVrrTCdRhjEDE8gftXNw2TihcAUy6d2TXcuNUeivBFpcA'
+              '/dnsaddr/api1.aleph.im/ipfs/QmVrrTCdRhjEDE8gftXNw2TihcAUy6d2TXcuNUeivBFpcA',
+              '/ip4/51.159.57.71/tcp/4001/p2p/QmeqShhZnPZgNSAwPy3iKJcHVLSc4hBJfPv5vTNi784R75'
             ]
         },
         'sentry': {
