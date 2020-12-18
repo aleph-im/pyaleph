@@ -169,8 +169,13 @@ async def request_transactions(config, web3, contract, abi, start_height):
         #                             contract.events.SyncEvent._get_event_abi(),
         #                             log)
         LOGGER.info('Handling TX in block %s' % event_data.blockNumber)
-        publisher = event_data.args.addr  # TODO: verify rights.
+        publisher = event_data.args.addr
         timestamp = event_data.args.timestamp
+        
+        if publisher not in config.ethereum.authorized_emitters.value:
+            LOGGER.info('TX with unauthorized emitter %s in block %s' %
+                        (publisher, event_data.blockNumber))
+            continue
 
         last_height = event_data.blockNumber
         #block = await loop.run_in_executor(None, web3.eth.getBlock, event_data.blockNumber)

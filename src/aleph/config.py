@@ -42,7 +42,10 @@ def get_defaults():
             'sync_address': None,
             'commit_delay': 14,
             'remark': 'ALEPH-SYNC',
-            'token_contract': None
+            'token_contract': None,
+            'authorized_emitters': [
+                '0x23eC28598DCeB2f7082Cc3a9D670592DfEd6e0dC'
+            ]
         },
         'ethereum': {
             'enabled': False,
