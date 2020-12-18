@@ -185,7 +185,7 @@ async def request_transactions(config, web3, contract, abi, start_height):
         try:
             jdata = json.loads(message)
             context = {"chain_name": CHAIN_NAME,
-                       "tx_hash": event_data.transactionHash,
+                       "tx_hash": event_data.transactionHash.hex(),
                        "time": timestamp,
                        "height": event_data.blockNumber,
                        "publisher": publisher}
