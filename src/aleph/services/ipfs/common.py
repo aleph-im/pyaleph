@@ -17,7 +17,7 @@ async def get_ipfs_gateway_url(config, hash):
         config.ipfs.gateway_port.value, hash)
 
 
-async def get_ipfs_api(timeout=60, reset=False):
+async def get_ipfs_api(timeout=20, reset=False):
     global API
     if API is None or reset:
         from aleph.web import app
