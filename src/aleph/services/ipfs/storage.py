@@ -11,7 +11,7 @@ from ...utils import run_in_executor
 
 LOGGER = logging.getLogger("IPFS.STORAGE")
 
-MAX_LEN = 1024*1024*20
+MAX_LEN = 1024*1024*100
 
 async def get_ipfs_content(hash, timeout=1, tries=1):
     try_count = 0
