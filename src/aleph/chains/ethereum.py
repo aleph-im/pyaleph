@@ -264,6 +264,7 @@ async def ethereum_packer(config):
            or (await pending_messages_count(source_chain=CHAIN_NAME)) > 1000:
             await asyncio.sleep(30)
             continue
+        gas_price = web3.eth.generateGasPrice()
         
         if i >= 100:
             await asyncio.sleep(30)  # wait three (!!) blocks
@@ -282,7 +283,7 @@ async def ethereum_packer(config):
             content = await get_chaindata(messages, bulk_threshold=200)
             response = await run_in_executor(None, broadcast_content,
                                              config, contract, web3,
-                                             account, gas_price, nonce,
+                                             account, int(gas_price*1.2), nonce,
                                              content)
             LOGGER.info("Broadcasted %r on %s" % (response, CHAIN_NAME))
 
