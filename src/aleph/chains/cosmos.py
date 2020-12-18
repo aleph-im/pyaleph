@@ -4,7 +4,7 @@ import json
 import logging
 
 import ecdsa
-from cosmospy._wallet import pubkey_to_address
+from cosmospy import pubkey_to_address
 
 from aleph.chains.common import get_verification_buffer
 from aleph.chains.register import register_verifier
