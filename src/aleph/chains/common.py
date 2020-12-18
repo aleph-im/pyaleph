@@ -306,8 +306,11 @@ async def get_chaindata_messages(chaindata, context, seen_ids=None):
             LOGGER.info("Got bulk data with %d items" % len(messages))
             if app['config'].ipfs.enabled.value:
                 # wait for 4 seconds to try to pin that
-                await asyncio.wait_for(pin_hash(chaindata['content']),
-                                       timeout=4.0)
+                try:
+                    await asyncio.wait_for(pin_hash(chaindata['content']),
+                                           timeout=4.0)
+                except asyncio.TimeoutError:
+                    LOGGER.warning(f"Can't pin hash {chaindata['content']}")
         return messages
     else:
         LOGGER.info('Got unknown protocol/version object in tx %r'
