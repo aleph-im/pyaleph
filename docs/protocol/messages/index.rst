@@ -1,12 +1,11 @@
 ********
 Messages
 ********
-
-Aleph.im messages are the core of the Aleph networking model.
+All data transfered over the aleph.im network are aleph messages and represent the core of the Aleph networking model.
 
 Message can be:
 
-- received on the REST or other API interfaces
+- sent and received on the REST or other API interfaces
 - exchanged on the peer-to-peer network
 - stored on the underlying chains
 
@@ -16,7 +15,7 @@ Message can be:
         entity Message {
             .. Message info ..
             *type : text
-            one of: POST, AGGREGATE
+            one of: POST, AGGREGATE, STORE
             *channel : text
             (channel of the message, one application ideally has one channel)
             *time : timestamp
@@ -40,10 +39,12 @@ Message can be:
         hide circle
     @enduml
 
-Actual content sent by regular users can currently be of two types:
+Actual content sent by regular users can currently be of three types:
 
 - AGGREGATE: a key-value storage specific to an address
-- POST: unique data posts (unique data points, events
+- POST: unique data posts (unique data points, events)
+- STORE: file storage
+
 
 .. uml::
    
@@ -66,9 +67,19 @@ Actual content sent by regular users can currently be of two types:
         time : timestamp
     }
 
+ object Store <<message content>> {
+        address : text <<address>>
+        item_type : same as Message.item_type (note: it does not support inline)
+        Item_hash: same as Message.item_hash
+        time : timestamp
+    }
+
+
 
     Message ||--o| Aggregate
     Message ||--o| Post
+    Message ||--o| Post
+    Message ||--o| Store
    @enduml
 
 
@@ -80,3 +91,4 @@ Message types
 
    aggregates
    post
+   store
