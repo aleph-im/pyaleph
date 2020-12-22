@@ -169,8 +169,9 @@ def run_server_coroutine(config_values, host, port, manager, idx, shared_stats, 
         loop.run_until_complete(
             asyncio.gather(*tasks, run_server(host, port, shared_stats, extra_web_config)))
     except Exception as e:
-        sentry_sdk.capture_exception(e)
-        sentry_sdk.flush()
+        if enable_sentry:
+            sentry_sdk.capture_exception(e)
+            sentry_sdk.flush()
         raise
 
 
@@ -274,7 +275,7 @@ def main(args):
             manager and (manager._address, manager._authkey) or None,
             3,
             shared_stats,
-            args.sentry_disabled is False,
+            args.sentry_disabled is False and app['config'].sentry.dsn.value,
             extra_web_config,
 
         ))
@@ -285,7 +286,7 @@ def main(args):
             manager and (manager._address, manager._authkey) or None,
             4,
             shared_stats,
-            args.sentry_disabled is False,
+            args.sentry_disabled is False and app['config'].sentry.dsn.value,
             extra_web_config
         ))
         p1.start()
