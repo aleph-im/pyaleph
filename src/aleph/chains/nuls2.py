@@ -228,7 +228,6 @@ async def prepare_transfer_tx(address, targets, nonce, chain_id=1,
         ],
         "coinTos": outputs
     })
-    print(await tx.calculate_fee())
     tx.inputs[0]['amount'] = (
         (await tx.calculate_fee())
         + sum([o['amount'] for o in outputs]))

@@ -38,7 +38,6 @@ async def get_signable_message(message):
     
 async def get_verification_string(message):
     value = await get_signable_message(message)
-    print(value)
     return json.dumps(value, separators=(",", ":"), sort_keys=True)
 
 
