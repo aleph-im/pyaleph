@@ -75,7 +75,7 @@ async def handle_new_storage(message, content):
     if do_standard_lookup:
         # TODO: We should check the balance here.
         file_content = await get_hash_content(item_hash,
-                                        engine=engine, tries=4, timeout=10,
+                                        engine=engine, tries=4, timeout=2,
                                         use_network=True, use_ipfs=True,
                                         store_value=True)
         if file_content is None:
