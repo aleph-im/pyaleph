@@ -142,6 +142,8 @@ async def retry_messages_job(shared_stats):
                 }))
             result = await PendingMessage.collection.bulk_write(clean_actions)
             LOGGER.info(repr(result))
+            
+        await asyncio.sleep(5)
     # async for pending in PendingMessage.collection.find(
     #     {'message.item_content': { "$exists": False } }).sort([('message.time', 1)]).limit(100):
     #     i += 1
