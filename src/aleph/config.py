@@ -83,7 +83,6 @@ def get_defaults():
             'id': None,
             'reconnect_delay': 60,
             'peers': [
-              '/dnsaddr/bootstrap.aleph.im/ipfs/QmPR8m8WCmYKuuxg5Qnadd4LbnTCD2L93cV2zPW5XGVHTG',
               '/dnsaddr/api1.aleph.im/ipfs/QmVrrTCdRhjEDE8gftXNw2TihcAUy6d2TXcuNUeivBFpcA',
               '/ip4/51.159.57.71/tcp/4001/p2p/QmeqShhZnPZgNSAwPy3iKJcHVLSc4hBJfPv5vTNi784R75'
             ]
