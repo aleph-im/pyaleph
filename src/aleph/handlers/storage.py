@@ -46,7 +46,7 @@ async def handle_new_storage(message, content):
     size = 0
     
     if engine == 'ipfs' and ipfs_enabled:
-        api = await get_ipfs_api(timeout=1)
+        api = await get_ipfs_api(timeout=5)
         try:
             stats = await api.files.stat(f"/ipfs/{item_hash}")
         
