@@ -36,6 +36,11 @@ try:
 except ModuleNotFoundError as error:
     logger.warning("Can't load CSDK: %s", error.msg)
 
+try:
+    from aleph.chains import solana
+except ModuleNotFoundError as error:
+    logger.warning("Can't load SOL: %s", error.msg)
+
 
 def connector_tasks(config, outgoing=True) -> List[Coroutine]:
     tasks: List[Coroutine] = []
