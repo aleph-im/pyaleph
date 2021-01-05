@@ -11,6 +11,7 @@ TODO:
 import logging
 
 import aioipfs
+import asyncio
 
 from aleph.handlers.register import register_incoming_handler
 from aleph.services.ipfs.common import get_ipfs_api
@@ -48,7 +49,8 @@ async def handle_new_storage(message, content):
     if engine == 'ipfs' and ipfs_enabled:
         api = await get_ipfs_api(timeout=5)
         try:
-            stats = await api.files.stat(f"/ipfs/{item_hash}")
+            stats = await asyncio.wait_for(
+                api.files.stat(f"/ipfs/{item_hash}"), 5)
         
             if stats['Type'] == 'file' and stats['CumulativeSize'] < 5120:
                 do_standard_lookup = True
@@ -64,7 +66,7 @@ async def handle_new_storage(message, content):
                         return None # Can't retrieve data now.
                 do_standard_lookup = False
                 
-        except aioipfs.APIError as e:
+        except (aioipfs.APIError, asyncio.TimeoutError) as e:
             if "invalid CID" in e.message:
                 LOGGER.warning(f"Error retrieving stats of hash {item_hash}: {e.message}")
                 return -1
