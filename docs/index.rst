@@ -18,7 +18,9 @@ Contents
 
    architecture
    guides/index
+   guides/node-synchronisation
    protocol/index
+   metrics
 
    License <license>
    Authors <authors>

@@ -1,11 +1,7 @@
 
-import aioipfs
-import aiohttp
-import asyncio
-import json
-import aiohttp
-import concurrent
 import logging
+
+import aioipfs
 
 API = None
 LOGGER = logging.getLogger("IPFS")
@@ -21,7 +17,7 @@ async def get_ipfs_gateway_url(config, hash):
         config.ipfs.gateway_port.value, hash)
 
 
-async def get_ipfs_api(timeout=60, reset=False):
+async def get_ipfs_api(timeout=5, reset=False):
     global API
     if API is None or reset:
         from aleph.web import app

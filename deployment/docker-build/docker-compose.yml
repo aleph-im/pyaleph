@@ -1,4 +1,4 @@
-version: '2.4'
+version: '2.2'
 
 volumes:
   pyaleph-ipfs:
@@ -11,7 +11,7 @@ services:
     command: pyaleph --config /opt/pyaleph/config.yml
     build:
       context: ../../.
-      dockerfile: "Dockerfile"
+      dockerfile: "deployment/docker-build/Dockerfile"
     ports:
       - 127.0.0.1:8000:8000/tcp
       - 4024:4024/tcp
@@ -44,7 +44,7 @@ services:
 
   mongodb:
     restart: always
-    image: mongo:3.6
+    image: mongo:4.4
     volumes:
       - pyaleph-mongodb:/data/db
     command: mongod --storageEngine wiredTiger

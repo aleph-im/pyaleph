@@ -1,27 +1,25 @@
 import asyncio
 import json
+import logging
 import math
-import pytz
-import dateutil
-import dateutil.parser
 from datetime import datetime, timezone, timedelta
 from operator import itemgetter
 
-from binance_chain.wallet import Wallet
+import dateutil
+import dateutil.parser
+import pytz
 from binance_chain.environment import BinanceEnvironment
 from binance_chain.http import AsyncHttpApiClient
 from binance_chain.messages import TransferMsg
-from binance_chain.websockets import BinanceChainSocketManager
+from binance_chain.wallet import Wallet
 
-from aleph.chains.common import (incoming, get_verification_buffer,
-                                 get_chaindata, get_chaindata_messages,
-                                 join_tasks, incoming_chaindata)
+from aleph.chains.common import (get_chaindata, incoming_chaindata)
 from aleph.chains.register import (
     register_verifier, register_incoming_worker, register_outgoing_worker)
 from aleph.model.chains import Chain
 from aleph.model.messages import Message
+from aleph.utils import run_in_executor
 
-import logging
 LOGGER = logging.getLogger('chains.binance')
 CHAIN_NAME = 'BNB'
 PAGINATION = 500
@@ -178,7 +176,6 @@ def prepare_transfer_tx(wallet, target_addr, memo_bytes):
     return tx
 
 async def binance_packer(config):
-    loop = asyncio.get_event_loop()
     # TODO: testnet perhaps? When we get testnet coins.
     env = BinanceEnvironment.get_production_env()
     target_addr = config.binancechain.sync_address.value
@@ -187,7 +184,7 @@ async def binance_packer(config):
     wallet = Wallet(config.binancechain.private_key.value, env=env)
     LOGGER.info("BNB Connector set up with address %s" % wallet.address)
     try:
-        await loop.run_in_executor(None, wallet.reload_account_sequence)
+        await run_in_executor(None, wallet.reload_account_sequence)
     except KeyError:
         pass
 
@@ -195,7 +192,7 @@ async def binance_packer(config):
     while True:
         if (i >= 100):
             try:
-                await loop.run_in_executor(None, wallet.reload_account_sequence)
+                await run_in_executor(None, wallet.reload_account_sequence)
             except KeyError:
                 pass
             # utxo = await get_utxo(config, address)
@@ -203,11 +200,11 @@ async def binance_packer(config):
 
         messages = [message async for message
                     in (await Message.get_unconfirmed_raw(
-                            limit=100000, for_chain=CHAIN_NAME))]
+                            limit=10000, for_chain=CHAIN_NAME))]
         if len(messages):
             content = await get_chaindata(messages, bulk_threshold=0)
             # content = json.dumps(content)
-            tx = await loop.run_in_executor(None, prepare_transfer_tx,
+            tx = await run_in_executor(None, prepare_transfer_tx,
                                             wallet, target_addr,
                                             content)
             # tx_hash = await tx.get_hash()

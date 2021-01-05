@@ -23,7 +23,9 @@ jobs:
       - run: docker pull docker.pkg.github.com/$GITHUB_REPOSITORY/build-cache || true
 
       - name: Build the Docker image
-        run: docker build . -t pyaleph-node:${GITHUB_REF##*/} -f deployment/docker-build/Dockerfile --cache-from=docker.pkg.github.com/$GITHUB_REPOSITORY/build-cache
+        run: |
+          git fetch --prune --unshallow --tags
+          docker build . -t pyaleph-node:${GITHUB_REF##*/} -f deployment/docker-build/Dockerfile --cache-from=docker.pkg.github.com/$GITHUB_REPOSITORY/build-cache
 
       - name: Push the image on GitHub's repository
         run: docker tag pyaleph-node:${GITHUB_REF##*/} docker.pkg.github.com/$GITHUB_REPOSITORY/pyaleph-node:${GITHUB_REF##*/} && docker push docker.pkg.github.com/$GITHUB_REPOSITORY/pyaleph-node:${GITHUB_REF##*/} || true

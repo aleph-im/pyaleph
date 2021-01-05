@@ -1,33 +1,30 @@
 import asyncio
-import aiohttp
-import json
-import time
-import struct
 import base64
-import math
+import functools
+import json
+import logging
+import struct
+import time
 from operator import itemgetter
-from aleph.network import check_message
-from aleph.chains.common import (incoming, get_verification_buffer,
-                                 get_chaindata, get_chaindata_messages,
-                                 join_tasks, incoming_chaindata)
+
+import aiohttp
+from aiocache import cached, SimpleMemoryCache
+from coincurve import PrivateKey
+from nuls2.api.server import get_server
+from nuls2.model.data import (hash_from_address, recover_message_address, get_address,
+                              CHEAP_UNIT_FEE)
+from nuls2.model.transaction import Transaction
+
+from aleph.chains.common import (get_verification_buffer,
+                                 get_chaindata, incoming_chaindata)
 from aleph.chains.register import (
     register_verifier, register_incoming_worker, register_outgoing_worker,
     register_balance_getter)
 from aleph.model.chains import Chain
 from aleph.model.messages import Message
 from aleph.model.pending import pending_messages_count, pending_txs_count
+from aleph.utils import run_in_executor
 
-from nuls2.model.data import (hash_from_address, public_key_to_hash,
-                              recover_message_address, get_address,
-                              address_from_hash, CHEAP_UNIT_FEE, b58_decode)
-from nuls2.api.server import get_server
-from nuls2.model.transaction import Transaction
-from aiocache import cached, SimpleMemoryCache
-import functools
-
-from coincurve import PrivateKey
-
-import logging
 LOGGER = logging.getLogger('chains.nuls2')
 CHAIN_NAME = 'NULS2'
 PAGINATION = 500
@@ -37,14 +34,13 @@ DECIMALS = None # will get populated later... bad?
 async def verify_signature(message):
     """ Verifies a signature of a message, return True if verified, false if not
     """
-    loop = asyncio.get_event_loop()
     sig_raw = base64.b64decode(message['signature'])
     
     sender_hash = hash_from_address(message['sender'])
     (sender_chain_id,) = struct.unpack('h', sender_hash[:2])
     verification = await get_verification_buffer(message)
     try:
-        address = await loop.run_in_executor(None,
+        address = await run_in_executor(None,
             functools.partial(recover_message_address, sig_raw,
                                 verification, chain_id=sender_chain_id))
         # address = recover_message_address(sig_raw, verification,
@@ -232,7 +228,6 @@ async def prepare_transfer_tx(address, targets, nonce, chain_id=1,
         ],
         "coinTos": outputs
     })
-    print(await tx.calculate_fee())
     tx.inputs[0]['amount'] = (
         (await tx.calculate_fee())
         + sum([o['amount'] for o in outputs]))
@@ -249,7 +244,6 @@ async def get_nonce(server, account_address, chain_id, asset_id=1):
     return balance_info['nonce']
 
 async def nuls2_packer(config):
-    loop = asyncio.get_event_loop()
     server = get_server(config.nuls2.api_url.value)
     target_addr = config.nuls2.sync_address.value
     remark = config.nuls2.remark.value.encode('utf-8')

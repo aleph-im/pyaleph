@@ -1,9 +1,12 @@
 """
 """
 
-from aleph.model.base import BaseClass
-from pymongo import ASCENDING, DESCENDING, IndexModel
 from datetime import datetime, timedelta
+
+from pymongo import ASCENDING, DESCENDING, IndexModel
+
+from aleph.model.base import BaseClass
+
 
 class Peer(BaseClass):
     """Holds information about the chains state."""

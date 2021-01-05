@@ -1,5 +1,7 @@
-import aiohttp
 import socket
+
+import aiohttp
+
 
 async def get_IP():
     ip = None

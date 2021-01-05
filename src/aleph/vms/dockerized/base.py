@@ -1,7 +1,10 @@
-import json
-import epicbox
 import hashlib
+import json
+
+import epicbox
+
 from aleph.vms.base import BaseVM
+
 
 class DockerizedBaseVM(BaseVM):
     

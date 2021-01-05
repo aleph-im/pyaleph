@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Aleph Node</title>
+    <title>Aleph.im Node</title>
     <style>
 
         @font-face {
@@ -18,19 +18,24 @@
 
         body {
             font-family: IBM Plex Regular,monospace;
-            margin: 5vw;
+            margin: 10vw;
+        }
+
+        progress {
+            width: 100%;
+            height: 0.5em;
         }
     </style>
 </head>
 <body>
-<h1>Aleph Node</h1>
+<h1><img src="/static/aleph-logo.svg"> Aleph Node</h1>
 
 <section>
     <p>
         This is an <a href="https://aleph.im/">Aleph.im</a> node.
     </p>
     <p>
-        See <a href="https://github.com/aleph-im/pyaleph">Repository</a>
+        See our <a href="https://github.com/aleph-im/pyaleph">Repository</a> for more info.
     </p>
 
 </section>
@@ -41,14 +46,47 @@
     <h2>Sync status</h2>
 
     <p>
-        Messages stored: <span id="pyaleph_status_sync_messages_total">
+        Messages stored: <span data-key="pyaleph_status_sync_messages_total">
             {{ pyaleph_status_sync_messages_total }}
+        </span>
+        {% if pyaleph_status_sync_messages_reference_total %}
+            / <span data-key="pyaleph_status_sync_messages_reference_total">
+                {{ pyaleph_status_sync_messages_reference_total }}
+            </span>
+            (<span data-key="pyaleph_status_sync_messages_remaining_total">
+                {{pyaleph_status_sync_messages_remaining_total}}
+            </span> left )
+            <br/>
+            <progress data-ratio="sync_messages" value="{{pyaleph_status_sync_messages_total}}" max="100"></progress>
+        {% endif %}
+    </p>
+    <p>
+        Pending messages: <span data-key="pyaleph_status_sync_pending_messages_total">
+            {{ pyaleph_status_sync_pending_messages_total }}
         </span>
     </p>
     <p>
-        Pending messages: <span id="pyaleph_status_sync_pending_messages_total">
-            {{ pyaleph_status_sync_pending_messages_total }}
+        Pending transactions: <span data-key="pyaleph_status_sync_pending_txs_total">
+            {{ pyaleph_status_sync_pending_txs_total }}
         </span>
+    </p>
+
+    <h3>Chains</h3>
+
+    <p>
+        ETH height: <span data-key="pyaleph_status_chain_eth_last_committed_height">
+            {{ pyaleph_status_chain_eth_last_committed_height }}
+        </span>
+        {% if pyaleph_status_chain_eth_height_reference_total %}
+            / <span data-key="pyaleph_status_chain_eth_height_reference_total">
+                {{ pyaleph_status_chain_eth_height_reference_total }}
+            </span>
+            (<span data-key="pyaleph_status_chain_eth_height_remaining_total">
+                {{pyaleph_status_chain_eth_height_remaining_total}}
+            </span> left )
+            <br/>
+            <progress data-ratio="chain_eth" value="{{pyaleph_status_chain_eth_last_committed_height}}" max="100"></progress>
+        {% endif %}
     </p>
 </section>
 
@@ -63,14 +101,21 @@
         };
 
         statusSocket.onmessage = function (event) {
-            const data = JSON.parse(event.data)
+            const data = JSON.parse(event.data);
 
-            document.getElementById('pyaleph_status_sync_messages_total')
-                .innerText = data['pyaleph_status_sync_messages_total'];
+            for (let element of document.querySelectorAll("[data-key]")) {
+                const key = element.getAttribute("data-key");
+                element.innerText = data[key];
+            }
 
-            document.getElementById('pyaleph_status_sync_pending_messages_total')
-                .innerText = data['pyaleph_status_sync_pending_messages_total'];
-        }
+            for (let element of document.querySelectorAll("progress[data-ratio=sync_messages]")) {
+                element.value = 100 * data.pyaleph_status_sync_messages_total / (data.pyaleph_status_sync_messages_reference_total);
+            }
+
+            for (let element of document.querySelectorAll("progress[data-ratio=chain_eth]")) {
+                element.value = 100 * data.pyaleph_status_chain_eth_last_committed_height / (data.pyaleph_status_chain_eth_height_reference_total);
+            }
+        };
 
         statusSocket.onclose = function(e) {
             console.log('Socket is closed. Reconnect will be attempted in 1 second.', e.reason);

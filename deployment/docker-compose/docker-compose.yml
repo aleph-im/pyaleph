@@ -1,4 +1,4 @@
-version: '2.4'
+version: '2.2'
 
 volumes:
   pyaleph-ipfs:
@@ -41,7 +41,7 @@ services:
 
   mongodb:
     restart: always
-    image: mongo:3.6
+    image: mongo:4.4
     volumes:
       - pyaleph-mongodb:/data/db
     command: mongod --storageEngine wiredTiger

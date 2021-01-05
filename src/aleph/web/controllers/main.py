@@ -20,7 +20,8 @@ app.router.add_static('/static/',
 async def index(request) -> Dict:
     """Index of aleph.
     """
-    return asdict(await get_metrics())
+    shared_stats = request.config_dict['shared_stats']
+    return asdict(await get_metrics(shared_stats))
 
 
 app.router.add_get('/', index)
@@ -46,18 +47,17 @@ async def status_ws(request):
 
     previous_status = None
     while True:
-        status = await get_metrics()
+        shared_stats = request.config_dict['shared_stats']
+        status = await get_metrics(shared_stats)
 
         if status != previous_status:
             await ws.send_json(asdict(status))
             previous_status = status
 
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(2)
 
 
 app.router.add_get('/api/ws0/status', status_ws)
-
-
 
 
 async def metrics(request):
@@ -66,9 +66,19 @@ async def metrics(request):
     Naming convention:
     https://prometheus.io/docs/practices/naming/
     """
-    return web.Response(text=format_dataclass_for_prometheus(await get_metrics()))
+    shared_stats = request.config_dict['shared_stats']
+    return web.Response(text=format_dataclass_for_prometheus(await get_metrics(shared_stats)))
 
 
 app.router.add_get('/metrics', metrics)
 
 
+async def metrics_json(request):
+    """JSON version of the Prometheus metrics.
+    """
+    shared_stats = request.config_dict['shared_stats']
+    return web.Response(text=(await get_metrics(shared_stats)).to_json(),
+                        content_type='application/json')
+
+
+app.router.add_get('/metrics.json', metrics_json)

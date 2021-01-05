@@ -8,12 +8,15 @@ TODO:
 - hjandle garbage collection of unused hashes
 """
 
-import aioipfs
-from aleph.web import app
-from aleph.handlers.register import register_incoming_handler
-from aleph.storage import get_hash_content
-from aleph.services.ipfs.common import get_ipfs_api
 import logging
+
+import aioipfs
+
+from aleph.handlers.register import register_incoming_handler
+from aleph.services.ipfs.common import get_ipfs_api
+from aleph.storage import get_hash_content
+from aleph.web import app
+
 LOGGER = logging.getLogger("HANDLERS.STORAGE")
 
 ALLOWED_ENGINES = ['ipfs', 'storage']
@@ -25,6 +28,12 @@ async def handle_new_storage(message, content):
     
     
     engine = content.get('item_type', None)
+    
+    if len(content['item_hash']) == 46:
+        engine = 'ipfs'
+    if len(content['item_hash']) == 64:
+        engine = 'storage'
+        
     if engine not in ALLOWED_ENGINES:
         LOGGER.warning("Got invalid storage engine %s" % engine)
         return -1 # not allowed, ignore.
@@ -66,7 +75,7 @@ async def handle_new_storage(message, content):
     if do_standard_lookup:
         # TODO: We should check the balance here.
         file_content = await get_hash_content(item_hash,
-                                        engine=engine, tries=4,
+                                        engine=engine, tries=4, timeout=2,
                                         use_network=True, use_ipfs=True,
                                         store_value=True)
         if file_content is None:

@@ -1,15 +1,17 @@
-from aleph.storage import get_json, pin_hash, add_json, get_message_content
-from aleph.network import check_message as check_message_fn
+import asyncio
+import json
+import logging
+
+from pymongo import UpdateOne
+
+from aleph.handlers.register import handle_incoming_message
 from aleph.model.messages import Message
 from aleph.model.pending import PendingMessage, PendingTX
+from aleph.network import check_message as check_message_fn
 from aleph.permissions import check_sender_authorization
-from aleph.handlers.register import handle_incoming_message
+from aleph.storage import get_json, pin_hash, add_json, get_message_content
 from aleph.web import app
-from pymongo import UpdateOne
-import json
 
-import asyncio
-import logging
 LOGGER = logging.getLogger('chains.common')
 
 
@@ -181,7 +183,7 @@ async def incoming(message, chain_name=None,
             handling_result = None
         
         if handling_result is None:
-            LOGGER.info("Message type handler has failed, retrying later.")
+            LOGGER.debug("Message type handler has failed, retrying later.")
             if not retrying:
                 await PendingMessage.collection.insert_one({
                     'message': message,
@@ -303,7 +305,12 @@ async def get_chaindata_messages(chaindata, context, seen_ids=None):
         if messages is not None and messages != -1:
             LOGGER.info("Got bulk data with %d items" % len(messages))
             if app['config'].ipfs.enabled.value:
-                await pin_hash(chaindata['content'])
+                # wait for 4 seconds to try to pin that
+                try:
+                    await asyncio.wait_for(pin_hash(chaindata['content']),
+                                           timeout=4.0)
+                except asyncio.TimeoutError:
+                    LOGGER.warning(f"Can't pin hash {chaindata['content']}")
         return messages
     else:
         LOGGER.info('Got unknown protocol/version object in tx %r'

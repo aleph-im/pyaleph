@@ -1,7 +1,8 @@
-from datetime import datetime
-from bson.objectid import ObjectId
-import pymongo
 import logging
+from datetime import datetime
+
+import pymongo
+from bson.objectid import ObjectId
 
 LOGGER = logging.getLogger(__name__)
 

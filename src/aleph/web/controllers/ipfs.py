@@ -1,8 +1,7 @@
-from aleph.services.ipfs.storage import add_file
-from aleph.storage import add_json
-from aleph.web import app
-from aleph.services.ipfs.pubsub import pub
 from aiohttp import web
+
+from aleph.services.ipfs.storage import add_file
+from aleph.web import app
 
 
 async def ipfs_add_file(request):

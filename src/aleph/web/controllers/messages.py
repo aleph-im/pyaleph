@@ -1,7 +1,7 @@
+from aleph.model.messages import Message
 from aleph.web import app
 from aleph.web.controllers.utils import (Pagination,
                                          cond_output, prepare_date_filters)
-from aleph.model.messages import Message
 
 
 async def view_messages_list(request):
@@ -58,7 +58,7 @@ async def view_messages_list(request):
         filters.append({'content.ref': {'$in': refs}})
 
     if tags is not None:
-        filters.append({'content.tags': {'$elemMatch': {'$in': tags}}})
+        filters.append({'content.content.tags': {'$elemMatch': {'$in': tags}}})
 
     if channels is not None:
         filters.append({'channel': {'$in': channels}})
@@ -109,7 +109,7 @@ async def view_messages_list(request):
             'pagination_page': pagination_page,
             'pagination_total': total_msgs,
             'pagination_per_page': pagination_per_page,
-            'pagination_item': 'posts'
+            'pagination_item': 'messages'
         })
 
     return cond_output(request, context, 'TODO.html')
