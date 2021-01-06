@@ -246,7 +246,8 @@ def main(args):
         shared_stats = shared_memory_manager.dict()
         if not args.no_jobs:
             LOGGER.debug("Creating jobs")
-            tasks += start_jobs(config, shared_stats=shared_stats, manager=manager, use_processes=False)
+            tasks += start_jobs(config, shared_stats=shared_stats,
+                                manager=manager, use_processes=False)
 
         loop = asyncio.get_event_loop()
 
