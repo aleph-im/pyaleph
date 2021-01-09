@@ -67,12 +67,16 @@ async def handle_new_storage(message, content):
                 do_standard_lookup = False
                 
         except (aioipfs.APIError, asyncio.TimeoutError) as e:
-            if "invalid CID" in e.message:
-                LOGGER.warning(f"Error retrieving stats of hash {item_hash}: {e.message}")
-                return -1
+            if hasattr(e, "message"):
+                if  "invalid CID" in getattr(e, "message", ""):
+                    LOGGER.warning(f"Error retrieving stats of hash {item_hash}: {e.message}")
+                    return -1
             
-            LOGGER.exception(f"Error retrieving stats of hash {item_hash}: {e.message}")
-            do_standard_lookup = True
+                LOGGER.exception(f"Error retrieving stats of hash {item_hash}: {e.message}")
+                do_standard_lookup = True
+            else:
+                LOGGER.exception(f"Error retrieving stats of hash {item_hash}")
+                do_standard_lookup = True
         
     if do_standard_lookup:
         # TODO: We should check the balance here.
