@@ -29,7 +29,7 @@ async def api_get_request(base_uri, method, timeout=1):
             else:
                 result = await resp.json()
     except (TimeoutError, asyncio.TimeoutError, ConnectionRefusedError,
-            aiohttp.ClientError):
+            aiohttp.ClientError, OSError):
         result = None
     except Exception:
         LOGGER.exception("Error in retrieval")
