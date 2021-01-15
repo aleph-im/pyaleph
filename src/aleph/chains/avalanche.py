@@ -14,7 +14,7 @@ MESSAGE_TEMPLATE = b"\x1AAvalanche Signed Message:\n%b"
 
 
 async def pack_message(message):
-    message = struct.pack(">I", 30) + message
+    message = struct.pack(">I", len(message)) + message
     message = MESSAGE_TEMPLATE % message
     return message
 
@@ -70,6 +70,7 @@ async def verify_signature(message):
 
     try:
         verification = await get_verification_buffer(message)
+        verification = await pack_message(verification)
 
         public_key = PublicKey.from_signature_and_message(
             signature, verification)
