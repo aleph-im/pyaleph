@@ -99,8 +99,13 @@ RUN chown -R source:source /opt/pyaleph/src /opt/pyaleph/.eggs
 # Install PyAleph source
 USER source
 WORKDIR /opt/pyaleph
+RUN pip install --upgrade --use-deprecated=legacy-resolver requests
+RUN pip install -U --use-deprecated=legacy-resolver git+https://github.com/aleph-im/nuls2-python.git
+RUN pip install -U --use-deprecated=legacy-resolver aiohttp python-binance-chain cosmospy
+RUN pip install -U --use-deprecated=legacy-resolver substrate-interface
+RUN pip install -U --use-deprecated=legacy-resolver aioipfs
 RUN python setup.py develop
-RUN /opt/venv/bin/pip install --use-feature=2020-resolver -e ".[nuls2,testing]"
+RUN /opt/venv/bin/pip install --use-deprecated=legacy-resolver -e ".[bnb,testing]"
 
 # Fix an issue with Aiohttp not working
 RUN /opt/venv/bin/pip install aiohttp==3.7.2
