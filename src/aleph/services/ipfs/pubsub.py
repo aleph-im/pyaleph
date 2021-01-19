@@ -49,6 +49,11 @@ async def pub(topic, message):
 
 async def incoming_channel(config, topic):
     from aleph.chains.common import incoming
+    # When using some deployment strategies such as docker-compose,
+    # the IPFS service may not be ready by the time this function
+    # is called. This variable define how many connection attempts
+    # will not be logged as exceptions.
+    trials_before_exception: int = 5
     while True:
         try:
             # seen_ids = []
@@ -57,6 +62,13 @@ async def incoming_channel(config, topic):
                 LOGGER.debug("New message %r" % message)
                 await incoming(message)
 
+                # Raise all connection errors after one has succeeded.
+                trials_before_exception = 0
         except (ConnectionRefusedError, ClientConnectorError):
-            LOGGER.exception("Exception in IPFS pubsub, reconnecting in 2 seconds...")
+            if trials_before_exception > 0:
+                LOGGER.info("Exception in IPFS pubsub, reconnecting in 2 seconds...")
+            else:
+                LOGGER.exception("Exception in IPFS pubsub, reconnecting in 2 seconds...")
             await asyncio.sleep(2)
+        finally:
+            trials_before_exception = max(trials_before_exception -1, 0)
