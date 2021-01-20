@@ -53,7 +53,8 @@ async def monitor_hosts(psub):
             if peer_type not in ['P2P', 'HTTP']:
                 raise ValueError('Unsupported peer type %r' % peer_type)
             
-            await add_peer(address=content['address'], peer_type=peer_type)
+            await add_peer(address=content['address'], peer_type=peer_type,
+                           sender=mvalue['from'])
         except Exception:
             LOGGER.exception("Exception in pubsub peers monitoring")
             

@@ -15,24 +15,27 @@ class Peer(BaseClass):
     INDEXES = [IndexModel([("type", ASCENDING)]),
                IndexModel([("address", ASCENDING)]),
                IndexModel([("last_seen", DESCENDING)])]
-    
-async def get_peers(peer_type=None):
+
+
+async def get_peers(peer_type=None, hours=2):
     """ Returns current peers.
     TODO: handle the last seen, channel preferences, and better way of avoiding "bad contacts".
     NOTE: Currently used in jobs.
     """
     async for peer in Peer.collection.find({
         'type': peer_type,
-        'last_seen': {'$gt': datetime.now() - timedelta(hours=2)}
+        'last_seen': {'$gt': datetime.now() - timedelta(hours=hours)}
         }).sort([('last_seen', -1)]):
         yield peer['address']
 
-async def add_peer(address, peer_type):
+
+async def add_peer(address, peer_type, sender=None):
     await Peer.collection.replace_one({
         'address': address,
         'type': peer_type
     }, {
         'address': address,
         'type': peer_type,
-        'last_seen': datetime.now()
+        'last_seen': datetime.now(),
+        'sender': sender
     }, upsert=True)
