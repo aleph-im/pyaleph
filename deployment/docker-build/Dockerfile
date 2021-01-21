@@ -36,6 +36,9 @@ RUN apt-get update && apt-get -y upgrade && apt-get install -y \
 RUN useradd -s /bin/bash source
 RUN mkdir /opt/venv
 RUN chown source:source /opt/venv
+# - Installed Python libraries will be save in this file
+RUN touch /opt/build-frozen-requirements.txt
+RUN chown source:source /opt/build-frozen-requirements.txt
 
 # - User 'aleph' to run the code itself
 RUN useradd -s /bin/bash aleph
@@ -85,6 +88,9 @@ RUN /opt/venv/bin/pip install --use-deprecated=legacy-resolver -e ".[testing]"
 
 # Fix an issue with Aiohttp not working
 # RUN /opt/venv/bin/pip install aiohttp==3.7.2
+
+# Save installed Python requirements for debugging
+RUN /opt/venv/bin/pip freeze > /opt/build-frozen-requirements.txt
 
 USER aleph
 CMD ["pyaleph"]
