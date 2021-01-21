@@ -56,6 +56,9 @@ RUN apt-get install -y supervisor
 RUN useradd -s /bin/bash source
 RUN mkdir /opt/venv
 RUN chown source:source /opt/venv
+# - Installed Python libraries will be save in this file
+RUN touch /opt/build-frozen-requirements.txt
+RUN chown source:source /opt/build-frozen-requirements.txt
 
 # - User 'aleph' to run the code itself
 RUN useradd -s /bin/bash aleph
@@ -106,6 +109,8 @@ RUN pip install -U --use-deprecated=legacy-resolver substrate-interface
 RUN pip install -U --use-deprecated=legacy-resolver aioipfs
 RUN python setup.py develop
 RUN /opt/venv/bin/pip install --use-deprecated=legacy-resolver -e ".[testing]"
+
+RUN /opt/venv/bin/pip freeze > /opt/build-frozen-requirements.txt
 
 # === Run PyAleph,MongoDB and IPFS using supervisord ===
 USER root
