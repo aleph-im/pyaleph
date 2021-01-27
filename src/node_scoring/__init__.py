@@ -40,10 +40,13 @@ class NodeMetrics:
     error: Optional[Exception] = None
     p2p_connect_latency: Optional[float] = None
     http_index_latency: Optional[float] = None
+    http_aggregate_latency: Optional[float] = None
 
     def global_score(self):
         if self.error is None and self.p2p_connect_latency:
-            return max(1-self.p2p_connect_latency, 0) * max(1-self.http_index_latency, 0)
+            return max(1-self.p2p_connect_latency, 0) * \
+                   max(1-self.http_index_latency, 0) * \
+                   max(1-self.http_aggregate_latency, 0)
         else:
             return 0
 
@@ -51,7 +54,7 @@ class NodeMetrics:
         if self.error:
             return str(self.error)
         else:
-            return f"{self.p2p_connect_latency} {self.http_index_latency} {self.global_score()}"
+            return f"{self.p2p_connect_latency} {self.http_index_latency} {self.http_aggregate_latency} {self.global_score()}"
 
 
 async def get_aggregate(url: Url):
@@ -98,6 +101,20 @@ async def http_get_index(address: Multiaddr) -> aiohttp.ClientResponse:
                 resp.raise_for_status()
 
 
+async def http_get_aggregate(address: Multiaddr) -> aiohttp.ClientResponse:
+    """Get a copy of the aggregate from a node using the HTTP API"""
+    ip4 = address.value_for_protocol('ip4')
+    url = f"http://{ip4}:4024/api/v0/aggregates/0xa1B3bb7d2332383D96b7796B908fB7f7F3c2Be10.json"
+
+    timeout = aiohttp.ClientTimeout(total=60)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.get(url) as resp:
+            if resp.status == 200:
+                return resp
+            else:
+                resp.raise_for_status()
+
+
 secret = b'#\xb8\xc1\xe99$V\xde>\xb1;\x90FhRW\xbd\xd6@\xfb\x06g\x1a\xd1\x1c\x801\x7f\xa3\xb1y\x9d'
 transport_opt = f"/ip4/127.0.0.1/tcp/1234"
 
@@ -121,6 +138,7 @@ async def main():
             print('=>', address.protocols())
             metrics.p2p_connect_latency = await measure_coroutine_latency(p2p_connect(p2p_host, address))
             metrics.http_index_latency = await measure_coroutine_latency(http_get_index(address))
+            metrics.http_aggregate_latency = await measure_coroutine_latency(http_get_aggregate(address))
 
         except multiaddr.exceptions.StringParseError as error:
             metrics.error = error
