@@ -64,7 +64,7 @@ async def incoming_channel(config, topic):
 
                 # Raise all connection errors after one has succeeded.
                 trials_before_exception = 0
-        except (ConnectionRefusedError, ClientConnectorError):
+        except Exception:
             if trials_before_exception > 0:
                 LOGGER.info("Exception in IPFS pubsub, reconnecting in 2 seconds...")
             else:
