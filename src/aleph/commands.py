@@ -10,106 +10,29 @@ Besides console scripts, the header (i.e. until _logger...) of this file can
 also be used as template for Python modules.
 """
 
-import argparse
 import asyncio
 import logging
 import sys
 from multiprocessing import Process, set_start_method, Manager
 from typing import List, Coroutine
 
-from configmanager import Config
+import sentry_sdk
 
-from aleph import __version__
 from aleph import model
 from aleph.chains import connector_tasks
-from aleph.config import get_defaults
+from aleph.cli.args import parse_args
+from aleph.config import load_config
 from aleph.jobs import start_jobs, prepare_loop, prepare_manager
 from aleph.network import listener_tasks
 from aleph.services import p2p
 from aleph.services.p2p.manager import generate_keypair
 from aleph.web import app, init_cors
 
-
-import sentry_sdk
-
 __author__ = "Moshe Malawach"
 __copyright__ = "Moshe Malawach"
 __license__ = "mit"
 
 LOGGER = logging.getLogger(__name__)
-
-
-def parse_args(args):
-    """Parse command line parameters
-
-    Args:
-      args ([str]): command line parameters as list of strings
-
-    Returns:
-      :obj:`argparse.Namespace`: command line parameters namespace
-    """
-    parser = argparse.ArgumentParser(
-        prog="aleph",
-        description="Aleph Network Node")
-    parser.add_argument(
-        '--version',
-        action='version',
-        version='pyaleph {ver}'.format(ver=__version__))
-    parser.add_argument('-c', '--config', action="store", dest="config_file")
-    parser.add_argument('-p', '--port', action="store", type=int, dest="port",
-                        required=False)
-    parser.add_argument('--bind', '-b', action="store", type=str, dest="host",
-                        required=False)
-    parser.add_argument('--debug', action="store_true", dest="debug",
-                        default=False)
-    parser.add_argument('--no-commit', action="store_true", dest="no_commit",
-                        default=False)
-    parser.add_argument('--no-jobs', action="store_true", dest="no_jobs",
-                        default=False)
-    parser.add_argument(
-        '-v',
-        '--verbose',
-        dest="loglevel",
-        help="set loglevel to INFO",
-        action='store_const',
-        const=logging.INFO)
-    parser.add_argument(
-        '-vv',
-        '--very-verbose',
-        dest="loglevel",
-        help="set loglevel to DEBUG",
-        action='store_const',
-        const=logging.DEBUG)
-    parser.add_argument(
-        '-g',
-        '--gen-key',
-        dest="generate_key",
-        help="Generate a node key and exit",
-        action="store_true",
-        default=False)
-    parser.add_argument(
-        '--print-key',
-        dest="print_key",
-        help="Print the generated key",
-        action="store_true",
-        default=False)
-    parser.add_argument(
-        '-k',
-        '--key',
-        dest="key_path",
-        help="Path to the node private key",
-        action="store",
-        type=str,
-        default="node-secret.key",
-    )
-    parser.add_argument(
-        '--disable-sentry',
-        dest="sentry_disabled",
-        help="Disable Sentry error tracking",
-        action="store_true",
-        default=False,
-    )
-    return parser.parse_args(args)
 
 
 def setup_logging(loglevel):
@@ -175,56 +98,26 @@ def run_server_coroutine(config_values, host, port, manager, idx, shared_stats, 
         raise
 
 
-def main(args):
-    """Main entry point allowing external calls
-
-    Args:
-      args ([str]): command line parameter list
+def setup(args, config):
+    """Stateful configuration of the node.
     """
-
-
-
-    args = parse_args(args)
     setup_logging(args.loglevel)
+    set_start_method('spawn')
 
     if args.generate_key:
         LOGGER.info("Generating a key pair")
         generate_keypair(args.print_key, args.key_path)
-        return
-
-    LOGGER.info("Loading configuration")
-    config = Config(schema=get_defaults())
-    app['config'] = config
-
-    if args.config_file is not None:
-        LOGGER.debug("Loading config file '%s'", args.config_file)
-        app['config'].yaml.load(args.config_file)
-
-    if (not config.p2p.key.value) and args.key_path:
-        LOGGER.debug("Loading key pair from file")
-        with open(args.key_path, 'r') as key_file:
-            config.p2p.key.value = key_file.read()
-
-    if not config.p2p.key.value:
-        LOGGER.critical("Node key cannot be empty")
-        return
-
-    if args.port:
-        config.aleph.port.value = args.port
-    if args.host:
-        config.aleph.host.value = args.host
+        sys.exit(0)
 
     if args.sentry_disabled:
         LOGGER.info("Sentry disabled by CLI arguments")
-    elif app['config'].sentry.dsn.value:
+    elif config.sentry.dsn.value:
         sentry_sdk.init(
-            dsn=app['config'].sentry.dsn.value,
-            traces_sample_rate=app['config'].sentry.traces_sample_rate.value,
+            dsn=config.sentry.dsn.value,
+            traces_sample_rate=config.sentry.traces_sample_rate.value,
             ignore_errors=[KeyboardInterrupt],
         )
         LOGGER.info("Sentry enabled")
-
-    config_values = config.dump_values()
 
     LOGGER.debug("Initializing database")
     model.init_db(config, ensure_indexes=(not args.debug))
@@ -232,8 +125,20 @@ def main(args):
 
     # filestore.init_store(config)
     # LOGGER.info("File store initalized.")
+    app['config'] = config
     init_cors()  # FIXME: This is stateful and process-dependent
-    set_start_method('spawn')
+
+
+def main(args, config):
+    """Main entry point allowing external calls
+
+    Args:
+      args ([str]): command line parameter list
+    """
+
+    # Serialized version to pass to other processes.
+    config_values = config.dump_values()
+
     manager = None
     if config.storage.engine.value == 'rocksdb':
         # rocksdb doesn't support multiprocess/multithread
@@ -276,7 +181,7 @@ def main(args):
             manager and (manager._address, manager._authkey) or None,
             3,
             shared_stats,
-            args.sentry_disabled is False and app['config'].sentry.dsn.value,
+            args.sentry_disabled is False and config.sentry.dsn.value,
             extra_web_config,
 
         ))
@@ -287,7 +192,7 @@ def main(args):
             manager and (manager._address, manager._authkey) or None,
             4,
             shared_stats,
-            args.sentry_disabled is False and app['config'].sentry.dsn.value,
+            args.sentry_disabled is False and config.sentry.dsn.value,
             extra_web_config
         ))
         p1.start()
@@ -311,7 +216,10 @@ def main(args):
 def run():
     """Entry point for console_scripts
     """
-    main(sys.argv[1:])
+    args = parse_args(sys.argv[1:])
+    config = load_config(args)
+    setup(args, config)
+    main(args, config)
 
 
 if __name__ == "__main__":

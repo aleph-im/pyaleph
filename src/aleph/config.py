@@ -1,4 +1,11 @@
-# settings.py
+import logging
+import sys
+
+from configmanager import Config
+
+LOGGER = logging.getLogger(__name__)
+
+
 def get_defaults():
     return {
         'aleph': {
@@ -85,3 +92,28 @@ def get_defaults():
             'traces_sample_rate': None,
         }
     }
+
+
+def load_config(args) -> Config:
+    LOGGER.info("Loading configuration")
+    config = Config(schema=get_defaults())
+
+    if args.config_file is not None:
+        LOGGER.debug("Loading config file '%s'", args.config_file)
+        config.yaml.load(args.config_file)
+
+    if (not config.p2p.key.value) and args.key_path:
+        LOGGER.debug("Loading key pair from file")
+        with open(args.key_path, 'r') as key_file:
+            config.p2p.key.value = key_file.read()
+
+    if not config.p2p.key.value:
+        LOGGER.critical("Node key cannot be empty")
+        sys.exit(1)
+
+    if args.port:
+        config.aleph.port.value = args.port
+    if args.host:
+        config.aleph.host.value = args.host
+
+    return config
