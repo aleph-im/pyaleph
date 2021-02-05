@@ -342,10 +342,10 @@ def txs_task_loop(config_values, manager):
     loop.run_until_complete(asyncio.gather(*tasks, handle_txs_task()))
 
 
-def messages_task_loop(config_values, manager):
+def messages_task_loop(config_values, manager, shared_stats):
     setproctitle('pyaleph-messages_task_loop')
     loop, tasks = prepare_loop(config_values, manager, idx=2)
-    loop.run_until_complete(asyncio.gather(*tasks, retry_messages_task()))
+    loop.run_until_complete(asyncio.gather(*tasks, retry_messages_task(shared_stats)))
 
 
 async def reconnect_ipfs_job(config):
@@ -381,28 +381,3 @@ async def reconnect_ipfs_job(config):
             LOGGER.exception("Error reconnecting to peers")
 
         await asyncio.sleep(config.ipfs.reconnect_delay.value)
-
-
-def start_jobs(config, shared_stats, manager=None, use_processes=True) -> List[Coroutine]:
-    LOGGER.info("starting jobs")
-    tasks: List[Coroutine] = []
-
-    if use_processes:
-        config_values = config.dump_values()
-        p1 = Process(target=messages_task_loop,
-                     args=(config_values, manager and (manager._address, manager._authkey) or None))
-        p2 = Process(target=txs_task_loop,
-                     args=(config_values, manager and (manager._address, manager._authkey) or None))
-        p1.start()
-        p2.start()
-    else:
-        tasks.append(retry_messages_task(shared_stats=shared_stats))
-        tasks.append(handle_txs_task())
-    # loop.run_in_executor(executor, messages_task_loop, config_values)
-    # loop.run_in_executor(executor, txs_task_loop, config_values)
-
-    if config.ipfs.enabled.value:
-        tasks.append(reconnect_ipfs_job(config))
-    # loop.create_task(reconnect_p2p_job(config))
-
-    return tasks
