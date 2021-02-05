@@ -83,7 +83,7 @@ async def get_last_height():
     return last_height
 
 
-def get_web3(config):
+def get_web3(config) -> Web3:
     web3 = Web3(Web3.HTTPProvider(config.ethereum.api_url.value))
     if config.ethereum.chain_id.value == 4:  # rinkeby
         web3.middleware_onion.inject(geth_poa_middleware, layer=0)
@@ -99,12 +99,12 @@ async def get_contract_abi():
         'assets/ethereum_sc_abi.json').decode('utf-8'))
 
 
-async def get_contract(config, web3):
+async def get_contract(config, web3: Web3):
     return web3.eth.contract(config.ethereum.sync_contract.value,
                              abi=await get_contract_abi())
 
 
-async def get_logs_query(web3, contract, start_height, end_height):
+async def get_logs_query(web3: Web3, contract, start_height, end_height):
     logs = await run_in_executor(None, web3.eth.getLogs,
                                  {'address': contract.address,
                                   'fromBlock': start_height,
@@ -113,7 +113,7 @@ async def get_logs_query(web3, contract, start_height, end_height):
         yield log
 
 
-async def get_logs(config, web3, contract, start_height):
+async def get_logs(config, web3: Web3, contract, start_height):
     try:
         logs = get_logs_query(web3, contract,
                               start_height+1, 'latest')
@@ -151,7 +151,7 @@ async def get_logs(config, web3, contract, start_height):
                     raise
 
 
-async def request_transactions(config, web3, contract, abi, start_height):
+async def request_transactions(config, web3: Web3, contract, abi, start_height):
     """ Continuously request data from the Ethereum blockchain.
     TODO: support websocket API.
     """
@@ -236,7 +236,7 @@ async def ethereum_incoming_worker(config):
 register_incoming_worker(CHAIN_NAME, ethereum_incoming_worker)
 
 
-def broadcast_content(config, contract, web3, account,
+def broadcast_content(config, contract, web3: Web3, account,
                       gas_price, nonce, content):
     # content = json.dumps(content)
     tx = contract.functions.doEmit(content).buildTransaction({
@@ -304,6 +304,6 @@ async def ethereum_outgoing_worker(config):
 register_outgoing_worker(CHAIN_NAME, ethereum_outgoing_worker)
 
 
-async def get_token_contract(config, web3):
+async def get_token_contract(config, web3: Web3):
     return web3.eth.contract(config.ethereum.sync_contract.value,
                              abi=await get_contract_abi())
