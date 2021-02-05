@@ -121,8 +121,8 @@ async def fetch_eth_height() -> Optional[int]:
 
     if config.ethereum.enabled.value:
         w3 = Web3(Web3.HTTPProvider(config.ethereum.api_url.value))
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, w3.eth.block_number)
+        return await asyncio.get_event_loop().run_in_executor(
+            None, getattr, w3.eth, 'block_number')
     else:
         return None
 
