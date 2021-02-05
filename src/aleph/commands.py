@@ -325,18 +325,6 @@ def main(args, config):
         for process in processes:
             process.join()
 
-        # fp2p = loop.create_server(handler,
-        #                           config.p2p.host.value,
-        #                           config.p2p.http_port.value)
-        # srvp2p = loop.run_until_complete(fp2p)
-        # LOGGER.info('Serving on %s', srvp2p.sockets[0].getsockname())
-
-        # f = loop.create_server(handler,
-        #                        config.aleph.host.value,
-        #                        config.aleph.port.value)
-        # srv = loop.run_until_complete(f)
-        # LOGGER.info('Serving on %s', srv.sockets[0].getsockname())
-        LOGGER.debug("Running event loop")
 
 def run():
     """Entry point for console_scripts
