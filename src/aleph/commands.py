@@ -17,12 +17,15 @@ from multiprocessing import Process, set_start_method, Manager
 from typing import List, Coroutine
 
 import sentry_sdk
+from configmanager import Config
+from setproctitle import setproctitle
 
 from aleph import model
 from aleph.chains import connector_tasks
 from aleph.cli.args import parse_args
-from aleph.config import load_config
-from aleph.jobs import start_jobs, prepare_loop, prepare_manager
+from aleph.config import load_config, get_defaults
+from aleph.jobs import start_jobs, prepare_loop, prepare_manager, messages_task_loop, txs_task_loop, \
+    reconnect_ipfs_job
 from aleph.network import listener_tasks
 from aleph.services import p2p
 from aleph.services.p2p.manager import generate_keypair
@@ -75,14 +78,22 @@ async def run_server(host: str, port: int, shared_stats:dict, extra_web_config: 
     LOGGER.debug("Finished broadcast server")
 
 
-def run_server_coroutine(config_values, host, port, manager, idx, shared_stats, enable_sentry: bool = True, extra_web_config = {}):
+def run_server_coroutine(config_values, shared_stats, enable_sentry: bool = True,
+                         extra_web_config = {}):
     """Run the server coroutine in a synchronous way.
     Used as target of multiprocessing.Process.
     """
+    config = unpack_config(config_values)
+    host = config.p2p.host.value
+    port = config.p2p.http_port.value
+    manager = None
+    idx = 3
+
+    setproctitle(f'pyaleph-run_server_coroutine-{port}')
     if enable_sentry:
         sentry_sdk.init(
-            dsn=config_values['sentry']['dsn'],
-            traces_sample_rate=config_values['sentry']['traces_sample_rate'],
+            dsn=config.sentry.dns.value,
+            traces_sample_rate=config.sentry.traces_sample_rate,
             ignore_errors=[KeyboardInterrupt],
         )
     # Use a try-catch-capture_exception to work with multiprocessing, see
@@ -96,6 +107,107 @@ def run_server_coroutine(config_values, host, port, manager, idx, shared_stats, 
             sentry_sdk.capture_exception(e)
             sentry_sdk.flush()
         raise
+
+
+def start_server_coroutine(config_serialized, shared_stats, enable_sentry,
+                           extra_web_config) -> Process:
+    process = Process(
+        target=run_server_coroutine,
+        args=(
+            config_serialized,
+            shared_stats,
+            enable_sentry,
+            extra_web_config,
+        )
+    )
+    process.start()
+    return process
+
+
+def unpack_config(config_serialized):
+    config = Config(schema=get_defaults())
+    config.load_values(config_serialized)
+    return config
+
+
+def start_messages_task_loop(config_serialized) -> Process:
+    """Start the messages task loop."""
+    process = Process(
+        target=messages_task_loop,
+        args=(config_serialized, None),
+    )
+    process.start()
+    return process
+
+
+def start_txs_task_loop(config_serialized) -> Process:
+    """Start the messages task loop."""
+    process = Process(
+        target=txs_task_loop,
+        args=(config_serialized, None),
+    )
+    process.start()
+    return process
+
+
+def run_reconnect_ipfs_job(config_serialized):
+    setproctitle('pyaleph-reconnect_ipfs_job')
+    config = unpack_config(config_serialized)
+
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(reconnect_ipfs_job(config))
+
+
+def start_reconnect_ipfs_job(config_serialized) -> Process:
+    process = Process(
+        target=run_reconnect_ipfs_job,
+        args=(config_serialized, ),
+    )
+    process.start()
+    return process
+
+
+def run_p2p(config_serialized):
+    """"""
+    setproctitle('pyaleph-run_p2p')
+    config = unpack_config(config_serialized)
+    tasks: List[Coroutine] = []
+
+    LOGGER.debug("Initializing p2p")
+    loop = asyncio.get_event_loop()
+    f = p2p.init_p2p(config)
+    tasks += loop.run_until_complete(f)
+    tasks += listener_tasks(config)
+    loop.run_until_complete(asyncio.gather(*tasks))
+
+
+def start_p2p_process(config_serialized) -> Process:
+    """Start the p2p connection."""
+    process = Process(
+        target=run_p2p,
+        args=(config_serialized, ),
+    )
+    process.start()
+    return process
+
+
+def run_connector_tasks(config_serialized, outgoing: bool):
+    setproctitle('pyaleph-run_connector_tasks')
+    config = unpack_config(config_serialized)
+
+    tasks: List[Coroutine] = connector_tasks(config, outgoing=outgoing)
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(asyncio.gather(*tasks))
+
+
+def start_connector_tasks(config_serialized, outgoing: bool) -> Process:
+    """Start the chain connector tasks."""
+    process = Process(
+        target=run_connector_tasks,
+        args=(config_serialized, outgoing),
+    )
+    process.start()
+    return process
 
 
 def setup(args, config):

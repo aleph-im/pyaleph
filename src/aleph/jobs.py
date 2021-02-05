@@ -7,6 +7,7 @@ from typing import Coroutine, List
 import aioipfs
 from pymongo import DeleteOne, InsertOne, DeleteMany
 from pymongo.errors import CursorNotFound
+from setproctitle import setproctitle
 
 from aleph.chains.common import incoming, get_chaindata_messages
 from aleph.model.messages import Message
@@ -336,11 +337,13 @@ def prepare_loop(config_values, manager=None, idx=1):
 
 
 def txs_task_loop(config_values, manager):
+    setproctitle('pyaleph-txs_task_loop')
     loop, tasks = prepare_loop(config_values, manager, idx=1)
     loop.run_until_complete(asyncio.gather(*tasks, handle_txs_task()))
 
 
 def messages_task_loop(config_values, manager):
+    setproctitle('pyaleph-messages_task_loop')
     loop, tasks = prepare_loop(config_values, manager, idx=2)
     loop.run_until_complete(asyncio.gather(*tasks, retry_messages_task()))
 
