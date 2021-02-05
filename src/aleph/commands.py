@@ -132,6 +132,18 @@ def unpack_config(config_serialized):
     return config
 
 
+def initialize_sentry(config: Config, disabled: bool = False):
+    if disabled:
+        LOGGER.info("Sentry disabled by CLI arguments")
+    elif config.sentry.dsn.value:
+        sentry_sdk.init(
+            dsn=config.sentry.dsn.value,
+            traces_sample_rate=config.sentry.traces_sample_rate.value,
+            ignore_errors=[KeyboardInterrupt],
+        )
+        LOGGER.info("Sentry enabled")
+
+
 def start_messages_task_loop(config_serialized, shared_stats) -> Process:
     """Start the messages task loop."""
     process = Process(
@@ -232,15 +244,7 @@ def setup(args, config):
         generate_keypair(args.print_key, args.key_path)
         sys.exit(0)
 
-    if args.sentry_disabled:
-        LOGGER.info("Sentry disabled by CLI arguments")
-    elif config.sentry.dsn.value:
-        sentry_sdk.init(
-            dsn=config.sentry.dsn.value,
-            traces_sample_rate=config.sentry.traces_sample_rate.value,
-            ignore_errors=[KeyboardInterrupt],
-        )
-        LOGGER.info("Sentry enabled")
+    initialize_sentry(config, disabled=args.sentry_disabled)
 
     LOGGER.debug("Initializing database")
     model.init_db(config, ensure_indexes=(not args.debug))
