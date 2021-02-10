@@ -24,7 +24,7 @@ configmanager==1.35.1
 configparser==5.0.1
 cosmospy==5.1.1
 coverage==5.3.1
-cryptography==3.3.1
+cryptography==3.3.2
 cytoolz==0.11.0
 dataclasses-json==0.5.2
 docker-py==1.8.0
