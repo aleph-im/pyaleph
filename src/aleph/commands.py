@@ -17,13 +17,12 @@ from multiprocessing import Process, set_start_method, Manager
 from typing import List, Coroutine
 
 import sentry_sdk
-from configmanager import Config
 from setproctitle import setproctitle
 
 from aleph import model
 from aleph.chains import connector_tasks
 from aleph.cli.args import parse_args
-from aleph.config import load_config, get_defaults
+from aleph.config import load_config, unpack_config, initialize_sentry
 from aleph.jobs import prepare_loop, prepare_manager, messages_task_loop, txs_task_loop, \
     reconnect_ipfs_job
 from aleph.network import listener_tasks
@@ -79,29 +78,31 @@ async def run_server(host: str, port: int, shared_stats:dict, extra_web_config: 
 
 
 def run_server_coroutine(config_values, host, port, shared_stats, enable_sentry: bool = True,
-                         extra_web_config = {}):
+                         extra_web_config=None):
     """Run the server coroutine in a synchronous way.
     Used as target of multiprocessing.Process.
     """
+    extra_web_config = extra_web_config or {}
+    setproctitle(f'pyaleph-run_server_coroutine-{port}')
     config = unpack_config(config_values)
+    initialize_sentry(config=config)
+
     manager = None
     idx = 3
 
     app['config'] = config
 
-    setproctitle(f'pyaleph-run_server_coroutine-{port}')
-    if enable_sentry:
-        sentry_sdk.init(
-            dsn=config.sentry.dsn.value,
-            traces_sample_rate=config.sentry.traces_sample_rate,
-            ignore_errors=[KeyboardInterrupt],
-        )
     # Use a try-catch-capture_exception to work with multiprocessing, see
     # https://github.com/getsentry/raven-python/issues/1110
     try:
-        loop, tasks = prepare_loop(config_values, manager, idx=idx)
-        loop.run_until_complete(
-            asyncio.gather(*tasks, run_server(host, port, shared_stats, extra_web_config)))
+        loop, tasks = prepare_loop(config, manager, idx=idx)
+        # The initialisation of libp2p registered multiple coroutines in
+        # the event loop using `asyncio.ensure_future()`, so we cannot
+        # use `loop.run_until_complete()` on the background tasks.
+        for task in tasks:
+            loop.create_task(task)
+        loop.create_task(run_server(host, port, shared_stats, extra_web_config))
+        loop.run_forever()
     except Exception as e:
         if enable_sentry:
             sentry_sdk.capture_exception(e)
@@ -124,24 +125,6 @@ def start_server_coroutine(config_serialized, host, port, shared_stats, enable_s
     )
     process.start()
     return process
-
-
-def unpack_config(config_serialized):
-    config = Config(schema=get_defaults())
-    config.load_values(config_serialized)
-    return config
-
-
-def initialize_sentry(config: Config, disabled: bool = False):
-    if disabled:
-        LOGGER.info("Sentry disabled by CLI arguments")
-    elif config.sentry.dsn.value:
-        sentry_sdk.init(
-            dsn=config.sentry.dsn.value,
-            traces_sample_rate=config.sentry.traces_sample_rate.value,
-            ignore_errors=[KeyboardInterrupt],
-        )
-        LOGGER.info("Sentry enabled")
 
 
 def start_messages_task_loop(config_serialized, shared_stats) -> Process:
@@ -167,6 +150,7 @@ def start_txs_task_loop(config_serialized) -> Process:
 def run_reconnect_ipfs_job(config_serialized):
     setproctitle('pyaleph-reconnect_ipfs_job')
     config = unpack_config(config_serialized)
+    initialize_sentry(config)
 
     app['config'] = config
     model.init_db(config, ensure_indexes=True)
@@ -188,6 +172,8 @@ def run_p2p(config_serialized):
     """"""
     setproctitle('pyaleph-run_p2p')
     config = unpack_config(config_serialized)
+    initialize_sentry(config)
+
     tasks: List[Coroutine] = []
 
     app['config'] = config
@@ -199,7 +185,12 @@ def run_p2p(config_serialized):
     f = p2p.init_p2p(config)
     tasks += loop.run_until_complete(f)
     tasks += listener_tasks(config)
-    loop.run_until_complete(asyncio.gather(*tasks))
+
+    # libp2p creates tasks in the background. These will run with loop.run_forever() but not with
+    # loop.run_until_complete(asyncio.gather(*tasks))
+    for task in tasks:
+        loop.create_task(task)
+    loop.run_forever()
 
 
 def start_p2p_process(config_serialized) -> Process:
@@ -215,6 +206,7 @@ def start_p2p_process(config_serialized) -> Process:
 def run_connector_tasks(config_serialized, outgoing: bool):
     setproctitle('pyaleph-run_connector_tasks')
     config = unpack_config(config_serialized)
+    initialize_sentry(config)
 
     model.init_db(config, ensure_indexes=True)
 
@@ -244,7 +236,7 @@ def setup(args, config):
         generate_keypair(args.print_key, args.key_path)
         sys.exit(0)
 
-    initialize_sentry(config, disabled=args.sentry_disabled)
+    initialize_sentry(config)
 
     LOGGER.debug("Initializing database")
     model.init_db(config, ensure_indexes=(not args.debug))

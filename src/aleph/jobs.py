@@ -1,15 +1,17 @@
 import asyncio
+from asyncio import Task
 from logging import getLogger
-from multiprocessing import Process
 from multiprocessing.managers import SyncManager, RemoteError
-from typing import Coroutine, List
+from typing import List, Tuple, Dict
 
 import aioipfs
+from configmanager import Config
 from pymongo import DeleteOne, InsertOne, DeleteMany
 from pymongo.errors import CursorNotFound
 from setproctitle import setproctitle
 
 from aleph.chains.common import incoming, get_chaindata_messages
+from aleph.config import unpack_config, initialize_sentry
 from aleph.model.messages import Message
 from aleph.model.p2p import get_peers
 from aleph.model.pending import PendingMessage, PendingTX
@@ -68,7 +70,7 @@ async def retry_messages_job(shared_stats):
     seen_ids = {}
     actions = []
     messages_actions = []
-    gtasks: List[Coroutine] = []
+    gtasks: List[Task] = []
     tasks = []
     loop = asyncio.get_event_loop()
     i = 0
@@ -298,11 +300,11 @@ def prepare_manager(config_values):
     return manager
 
 
-def prepare_loop(config_values, manager=None, idx=1):
+def prepare_loop(config: Config, manager=None, idx=1) \
+        -> Tuple[asyncio.AbstractEventLoop, List[Task]]:
+
     from aleph.model import init_db
     from aleph.web import app
-    from configmanager import Config
-    from aleph.config import get_defaults
     from aleph.services.ipfs.common import get_ipfs_api
     from aleph.services.p2p import init_p2p, http
     from aleph.services import filestore
@@ -322,29 +324,29 @@ def prepare_loop(config_values, manager=None, idx=1):
     filestore._get_value = function_proxy(manager, '_get_value')
     http.SESSION = None
 
-    # loop = asyncio.new_event_loop()
-    # asyncio.set_event_loop(loop)
-    loop = asyncio.get_event_loop()
-
-    config = Config(schema=get_defaults())
     app['config'] = config
-    config.load_values(config_values)
 
     init_db(config, ensure_indexes=False)
+    loop = asyncio.get_event_loop()
     loop.run_until_complete(get_ipfs_api(timeout=2, reset=True))
-    tasks = loop.run_until_complete(init_p2p(config, listen=False, port_id=idx))
-    return loop, tasks
+    background_tasks: List[Task] = loop.run_until_complete(
+        init_p2p(config, listen=False, port_id=idx))
+    return loop, background_tasks
 
 
-def txs_task_loop(config_values, manager):
+def txs_task_loop(config_values: Dict, manager):
     setproctitle('pyaleph-txs_task_loop')
-    loop, tasks = prepare_loop(config_values, manager, idx=1)
+    config = unpack_config(config_values)
+    initialize_sentry(config=config)
+    loop, tasks = prepare_loop(config, manager, idx=1)
     loop.run_until_complete(asyncio.gather(*tasks, handle_txs_task()))
 
 
-def messages_task_loop(config_values, manager, shared_stats):
+def messages_task_loop(config_values: Dict, manager, shared_stats):
     setproctitle('pyaleph-messages_task_loop')
-    loop, tasks = prepare_loop(config_values, manager, idx=2)
+    config = unpack_config(config_values)
+    initialize_sentry(config=config)
+    loop, tasks = prepare_loop(config, manager, idx=2)
     loop.run_until_complete(asyncio.gather(*tasks, retry_messages_task(shared_stats)))
 
 

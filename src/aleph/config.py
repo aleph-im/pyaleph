@@ -1,6 +1,8 @@
 import logging
 import sys
+from typing import Dict
 
+import sentry_sdk
 from configmanager import Config
 
 LOGGER = logging.getLogger(__name__)
@@ -116,4 +118,30 @@ def load_config(args) -> Config:
     if args.host:
         config.aleph.host.value = args.host
 
+    if args.sentry_disabled:
+        LOGGER.info("Sentry disabled by CLI arguments")
+        config.sentry.dns.value = None
+
     return config
+
+
+def unpack_config(config_serialized: Dict) -> Config:
+    config = Config(schema=get_defaults())
+    config.load_values(config_serialized)
+    return config
+
+
+def initialize_sentry(config: Config):
+    """Initialize Sentry in the current process.
+
+    This should be done in every process if multiple processes are created.
+    """
+    if config.sentry.dsn.value:
+        sentry_sdk.init(
+            dsn=config.sentry.dsn.value,
+            traces_sample_rate=config.sentry.traces_sample_rate.value,
+            ignore_errors=[KeyboardInterrupt],
+        )
+        LOGGER.info("Sentry enabled")
+    else:
+        LOGGER.info("Sentry disabled")
