@@ -1,16 +1,17 @@
 from aleph.model.messages import Message
 from aleph.web import app
+from aiohttp import web
+import asyncio
+import collections
 from aleph.web.controllers.utils import (Pagination,
                                          cond_output, prepare_date_filters)
+import logging
+LOGGER = logging.getLogger("MESSAGES")
 
 
-async def view_messages_list(request):
-    """ Messages list view with filters
-    """
-
+async def get_filters(request):
     find_filters = {}
 
-    query_string = request.query_string
     msg_type = request.query.get('msgType', None)
 
     filters = []
@@ -75,6 +76,15 @@ async def view_messages_list(request):
     if len(filters) > 0:
         find_filters = {'$and': filters} if len(filters) > 1 else filters[0]
 
+    return find_filters
+
+
+async def view_messages_list(request):
+    """ Messages list view with filters
+    """
+
+    find_filters = await get_filters(request)
+
     pagination_page, pagination_per_page, pagination_skip = \
         Pagination.get_pagination_params(request)
     if pagination_per_page is None:
@@ -99,6 +109,7 @@ async def view_messages_list(request):
         else:
             total_msgs = await Message.collection.estimated_document_count()
 
+        query_string = request.query_string
         pagination = Pagination(pagination_page, pagination_per_page,
                                 total_msgs,
                                 url_base='/messages/posts/page/',
@@ -116,3 +127,35 @@ async def view_messages_list(request):
 
 app.router.add_get('/api/v0/messages.json', view_messages_list)
 app.router.add_get('/api/v0/messages/page/{page}.json', view_messages_list)
+
+
+async def messages_ws(request):
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+
+    db = Message.collection
+    last_ids = collections.deque(maxlen=100)
+
+    find_filters = await get_filters(request)
+
+    while True:
+        try:
+            i = 0
+            async for item in db.find(
+                    find_filters).sort([('$natural', -1)]).limit(10):
+                item['_id'] = str(item['_id'])
+                if item['_id'] in last_ids:
+                    continue
+
+                last_ids.append(item['_id'])
+                await ws.send_json(item)
+                i += 1
+
+            await asyncio.sleep(.1)
+
+        except Exception:
+            LOGGER.exception("Error processing")
+            await asyncio.sleep(.1)
+
+
+app.router.add_get('/api/ws0/messages', messages_ws)
