@@ -137,7 +137,7 @@ async def messages_ws(request):
     last_ids = collections.deque(maxlen=100)
 
     find_filters = await get_filters(request)
-
+    # TODO: handle this with a capped collection
     while True:
         try:
             i = 0
@@ -151,11 +151,11 @@ async def messages_ws(request):
                 await ws.send_json(item)
                 i += 1
 
-            await asyncio.sleep(.1)
+            await asyncio.sleep(1)
 
         except Exception:
             LOGGER.exception("Error processing")
-            await asyncio.sleep(.1)
+            await asyncio.sleep(1)
 
 
 app.router.add_get('/api/ws0/messages', messages_ws)
