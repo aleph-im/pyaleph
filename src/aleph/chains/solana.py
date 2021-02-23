@@ -42,7 +42,7 @@ async def verify_signature(message):
         # verif = (await get_verification_buffer(message)).decode('utf-8')
         # result = keypair.verify(verif, signature['data'])
     except Exception:
-        LOGGER.exception("Substrate Signature verification error")
+        LOGGER.exception("Solana Signature verification error")
         result = False
 
     return result
