@@ -21,7 +21,6 @@ async def decode_msg(msg):
 
 
 async def sub(topic, base_url=None):
-    from aleph.network import incoming_check
     if base_url is None:
         from aleph.web import app
         base_url = await get_base_url(app['config'])
@@ -34,9 +33,7 @@ async def sub(topic, base_url=None):
 
             # we should check the sender here to avoid spam
             # and such things...
-            message = await incoming_check(mvalue)
-            if message is not None:
-                yield message
+            yield mvalue
 
         except Exception:
             LOGGER.exception("Error handling message")
@@ -48,6 +45,7 @@ async def pub(topic, message):
 
 
 async def incoming_channel(config, topic):
+    from aleph.network import incoming_check
     from aleph.chains.common import incoming
     # When using some deployment strategies such as docker-compose,
     # the IPFS service may not be ready by the time this function
@@ -57,10 +55,13 @@ async def incoming_channel(config, topic):
     while True:
         try:
             # seen_ids = []
-            async for message in sub(topic,
-                                     base_url=await get_base_url(config)):                    
-                LOGGER.debug("New message %r" % message)
-                await incoming(message)
+            async for mvalue in sub(topic,
+                                    base_url=await get_base_url(config)):       
+                
+                message = await incoming_check(mvalue)
+                if message is not None:         
+                    LOGGER.debug("New message %r" % message)
+                    await incoming(message)
 
                 # Raise all connection errors after one has succeeded.
                 trials_before_exception = 0
