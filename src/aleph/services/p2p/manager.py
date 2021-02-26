@@ -11,6 +11,7 @@ from libp2p.pubsub.pubsub import Pubsub
 from aleph.services.utils import get_IP
 from aleph.services.peers.monitor import monitor_hosts_ipfs, monitor_hosts_p2p
 from aleph.services.peers.publish import publish_host
+from aleph.services.ipfs.common import get_public_address
 
 LOGGER = logging.getLogger('P2P.host')
 
@@ -36,7 +37,8 @@ def generate_keypair(print_key: bool, key_path: Optional[str]):
 # Save published adress to present them in the web process later
 public_adresses = []
 
-async def initialize_host(key, host='0.0.0.0', port=4025, listen=True, protocol_active=True):
+async def initialize_host(key, host='0.0.0.0', port=4025, listen=True,
+                          protocol_active=True):
     from .protocol import AlephProtocol
     from .jobs import reconnect_p2p_job, tidy_http_peers_job
 
@@ -89,6 +91,15 @@ async def initialize_host(key, host='0.0.0.0', port=4025, listen=True, protocol_
         
         if app['config'].ipfs.enabled.value:
             tasks.append(monitor_hosts_ipfs(app['config']))
+            try:
+                public_ipfs_address = await get_public_address()
+                tasks.append(
+                    publish_host(public_ipfs_address,
+                                 psub, peer_type="IPFS",
+                                 use_ipfs=True)
+                )
+            except Exception:
+                LOGGER.exception("Can't publish public IPFS address")
 
         # Enable message exchange using libp2p
         # host.set_stream_handler(PROTOCOL_ID, stream_handler)

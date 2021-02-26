@@ -3,6 +3,8 @@ import logging
 
 import aioipfs
 
+from aleph.services.utils import get_IP
+
 API = None
 LOGGER = logging.getLogger("IPFS")
 
@@ -30,7 +32,18 @@ async def get_ipfs_api(timeout=5, reset=False):
 
     return API
 
+
 async def connect_ipfs_peer(peer):
     api = await get_ipfs_api(timeout=5)
     result = await api.swarm.connect(peer)
     return result
+
+async def get_public_address():
+    api = await get_ipfs_api()
+    public_ip = await get_IP()
+    
+    addresses = (await api.id())['Addresses']
+    for address in addresses:
+        if public_ip in address and "/tcp" in address and "/p2p" in address:
+            return address
+    
