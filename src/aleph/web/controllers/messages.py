@@ -137,19 +137,30 @@ async def messages_ws(request):
     last_ids = collections.deque(maxlen=100)
 
     find_filters = await get_filters(request)
+    initial_count = int(request.query.get('history', 10))
+    initial_count = max(initial_count, 200)  # let's cap this to
+                                             # 200 historic messages max.
+    i = 0
     # TODO: handle this with a capped collection
     while True:
         try:
-            i = 0
-            async for item in db.find(
-                    find_filters).sort([('$natural', -1)]).limit(10):
+            run_count = 10
+            if i == 0:
+                run_count = initial_count
+            
+            # We get all last items
+            items = [item async for item in db.find(
+                        find_filters).sort([('$natural', -1)]).limit(run_count)]
+            
+            # Now let's iterate them in reverse order, older first.
+            for item in reversed(items):
                 item['_id'] = str(item['_id'])
                 if item['_id'] in last_ids:
                     continue
 
                 last_ids.append(item['_id'])
                 await ws.send_json(item)
-                i += 1
+            i += 1
 
             await asyncio.sleep(1)
 
