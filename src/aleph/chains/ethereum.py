@@ -124,7 +124,9 @@ async def get_logs(config, web3, contract, start_height):
         if e.args[0]['code'] != -32005:
             return
 
-        last_block = web3.eth.blockNumber
+        last_block = await asyncio.get_event_loop().run_in_executor(
+            None, getattr, web3.eth, 'block_number')
+
         if (start_height < config.ethereum.start_height.value):
             start_height = config.ethereum.start_height.value
 
