@@ -272,7 +272,7 @@ async def ethereum_packer(config):
             # utxo = await get_utxo(config, address)
             i = 0
         
-        if gas_price > config.ethereum.max_gas_price:
+        if gas_price > config.ethereum.max_gas_price.value:
             # gas price too high, wait a bit and retry.
             await asyncio.sleep(60)
             continue
