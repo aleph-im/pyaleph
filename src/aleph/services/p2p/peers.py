@@ -1,6 +1,5 @@
 import asyncio
 import json
-import logging
 
 import multiaddr
 from libp2p.peer.peerinfo import info_from_p2p_addr
@@ -8,56 +7,6 @@ from libp2p.peer.peerinfo import info_from_p2p_addr
 from aleph.services.p2p.pubsub import decode_msg
 from . import singleton
 
-LOGGER = logging.getLogger('P2P.peers')
-
-ALIVE_TOPIC = 'ALIVE'
-
-async def publish_host(address, psub, topic=ALIVE_TOPIC, interests=None, delay=120, peer_type="P2P"):
-    """ Publish our multiaddress regularly, saying we are alive.
-    """
-    await asyncio.sleep(2)
-    from aleph import __version__
-    msg = {
-        'address': address,
-        'interests': interests,
-        'peer_type': peer_type,
-        'version': __version__
-    }
-    msg = json.dumps(msg).encode('utf-8')
-    while True:
-        try:
-            LOGGER.debug("Publishing alive message on p2p pubsub")
-            await psub.publish(topic, msg)
-        except Exception:
-            LOGGER.exception("Can't publish alive message")
-        await asyncio.sleep(delay)
-
-    
-async def monitor_hosts(psub):
-    from aleph.model.p2p import add_peer
-    alive_sub = await psub.subscribe(ALIVE_TOPIC)
-    while True:
-        try:
-            mvalue = await alive_sub.get()
-            mvalue = await decode_msg(mvalue)
-            LOGGER.debug("New message received %r" % mvalue)
-            content = json.loads(mvalue['data'])
-            peer_type = content.get('peer_type', 'P2P')
-            if not isinstance(content['address'], str):
-                raise ValueError('Bad address')
-            if not isinstance(content['peer_type'], str):
-                raise ValueError('Bad peer type')
-            
-            # TODO: handle interests and save it
-            
-            if peer_type not in ['P2P', 'HTTP']:
-                raise ValueError('Unsupported peer type %r' % peer_type)
-            
-            await add_peer(address=content['address'], peer_type=peer_type,
-                           sender=mvalue['from'])
-        except Exception:
-            LOGGER.exception("Exception in pubsub peers monitoring")
-            
 
 async def connect_peer(config, peer):
     info = info_from_p2p_addr(multiaddr.Multiaddr(peer))

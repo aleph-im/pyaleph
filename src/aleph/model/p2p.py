@@ -29,7 +29,7 @@ async def get_peers(peer_type=None, hours=2):
         yield peer['address']
 
 
-async def add_peer(address, peer_type, sender=None):
+async def add_peer(address, peer_type, sender=None, source=None):
     await Peer.collection.replace_one({
         'address': address,
         'type': peer_type
@@ -37,5 +37,6 @@ async def add_peer(address, peer_type, sender=None):
         'address': address,
         'type': peer_type,
         'last_seen': datetime.now(),
-        'sender': sender
+        'sender': sender,
+        'source': source
     }, upsert=True)

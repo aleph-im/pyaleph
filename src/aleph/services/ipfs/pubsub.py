@@ -56,8 +56,7 @@ async def incoming_channel(config, topic):
         try:
             # seen_ids = []
             async for mvalue in sub(topic,
-                                    base_url=await get_base_url(config)):       
-                
+                                    base_url=await get_base_url(config)):
                 message = await incoming_check(mvalue)
                 if message is not None:         
                     LOGGER.debug("New message %r" % message)

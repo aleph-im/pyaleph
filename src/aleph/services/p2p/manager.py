@@ -9,6 +9,8 @@ from libp2p.pubsub import floodsub, gossipsub
 from libp2p.pubsub.pubsub import Pubsub
 
 from aleph.services.utils import get_IP
+from aleph.services.peers.monitor import monitor_hosts_ipfs, monitor_hosts_p2p
+from aleph.services.peers.publish import publish_host
 
 LOGGER = logging.getLogger('P2P.host')
 
@@ -35,7 +37,6 @@ def generate_keypair(print_key: bool, key_path: Optional[str]):
 public_adresses = []
 
 async def initialize_host(key, host='0.0.0.0', port=4025, listen=True, protocol_active=True):
-    from .peers import publish_host, monitor_hosts
     from .protocol import AlephProtocol
     from .jobs import reconnect_p2p_job, tidy_http_peers_job
 
@@ -77,10 +78,17 @@ async def initialize_host(key, host='0.0.0.0', port=4025, listen=True, protocol_
         LOGGER.info("Probable public on " + public_address)
         # TODO: set correct interests and args here
         tasks += [
-            publish_host(public_address, psub, peer_type="P2P"),
-            publish_host(public_http_address, psub, peer_type="HTTP"),
-            monitor_hosts(psub),
+            publish_host(public_address,
+                         psub, peer_type="P2P",
+                         use_ipfs=app['config'].ipfs.enabled.value),
+            publish_host(public_http_address,
+                         psub, peer_type="HTTP",
+                         use_ipfs=app['config'].ipfs.enabled.value),
+            monitor_hosts_p2p(psub)
         ]
+        
+        if app['config'].ipfs.enabled.value:
+            tasks.append(monitor_hosts_ipfs(app['config']))
 
         # Enable message exchange using libp2p
         # host.set_stream_handler(PROTOCOL_ID, stream_handler)
