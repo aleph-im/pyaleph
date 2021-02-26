@@ -346,6 +346,8 @@ def messages_task_loop(config_values, manager):
 
 
 async def reconnect_ipfs_job(config):
+    from aleph.services.utils import get_IP
+    my_ip = await get_IP()
     await asyncio.sleep(2)
     while True:
         try:
@@ -360,6 +362,9 @@ async def reconnect_ipfs_job(config):
 
             async for peer in get_peers(peer_type='IPFS'):
                 if peer in config.ipfs.peers.value:
+                    continue
+                
+                if my_ip in peer:
                     continue
 
                 try:
