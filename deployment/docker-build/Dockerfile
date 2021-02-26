@@ -70,7 +70,7 @@ COPY .git /opt/pyaleph/.git
 USER root
 RUN mkdir /opt/pyaleph/src/pyaleph.egg-info
 RUN mkdir /opt/pyaleph/.eggs
-RUN chown -R source:source /opt/pyaleph/src /opt/pyaleph/.eggs
+RUN chown -R source:source /opt/pyaleph/src /opt/pyaleph/.eggs /opt/pyaleph/.git
 
 # Install PyAleph source
 USER source
