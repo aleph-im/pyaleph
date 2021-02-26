@@ -288,7 +288,7 @@ async def ethereum_packer(config):
             content = await get_chaindata(messages, bulk_threshold=200)
             response = await run_in_executor(None, broadcast_content,
                                              config, contract, web3,
-                                             account, int(gas_price*1.2), nonce,
+                                             account, int(gas_price*1.1), nonce,
                                              content)
             LOGGER.info("Broadcasted %r on %s" % (response, CHAIN_NAME))
 
