@@ -138,8 +138,8 @@ async def messages_ws(request):
 
     find_filters = await get_filters(request)
     initial_count = int(request.query.get('history', 10))
-    initial_count = min(initial_count, 10)
-    initial_count = max(initial_count, 200)  # let's cap this to
+    initial_count = max(initial_count, 10)
+    initial_count = min(initial_count, 200)  # let's cap this to
                                              # 200 historic messages max.
     i = 0
     # TODO: handle this with a capped collection
