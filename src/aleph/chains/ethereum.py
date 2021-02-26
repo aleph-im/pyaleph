@@ -271,6 +271,11 @@ async def ethereum_packer(config):
             gas_price = web3.eth.generateGasPrice()
             # utxo = await get_utxo(config, address)
             i = 0
+        
+        if gas_price > config.ethereum.max_gas_price:
+            # gas price too high, wait a bit and retry.
+            await asyncio.sleep(60)
+            continue
 
         nonce = web3.eth.getTransactionCount(account.address)
 

@@ -55,6 +55,7 @@ def get_defaults():
             'commit_delay': 35,
             'token_contract': None,
             'token_start_height': 10900000,
+            'max_gas_price': 150000000000,
             'authorized_emitters': [
                 '0x23eC28598DCeB2f7082Cc3a9D670592DfEd6e0dC'
             ]
