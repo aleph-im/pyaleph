@@ -26,15 +26,15 @@ async def publish_host(address, psub, interests=None, delay=120,
             if use_ipfs:
                 LOGGER.debug("Publishing alive message on ipfs pubsub")
                 await asyncio.wait_for(
-                    pub_ipfs(IPFS_ALIVE_TOPIC, msg.decode('utf-8')), .5)
+                    pub_ipfs(IPFS_ALIVE_TOPIC, msg.decode('utf-8')), 1)
         except Exception:
-            LOGGER.exception("Can't publish alive message on ipfs")
+            LOGGER.warning("Can't publish alive message on ipfs")
 
         try:
             LOGGER.debug("Publishing alive message on p2p pubsub")
             await asyncio.wait_for(
-                psub.publish(ALIVE_TOPIC, msg), .5)
+                psub.publish(ALIVE_TOPIC, msg), 1)
         except Exception:
-            LOGGER.exception("Can't publish alive message on p2p")
+            LOGGER.warning("Can't publish alive message on p2p")
             
         await asyncio.sleep(delay)
