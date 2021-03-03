@@ -33,6 +33,10 @@ jobs:
       - name: Cache the image on GitHub's repository
         run: docker tag pyaleph-node-demo:${GITHUB_REF##*/} docker.pkg.github.com/$GITHUB_REPOSITORY/build-cache-demo && docker push docker.pkg.github.com/$GITHUB_REPOSITORY/build-cache-demo || true
 
-      - name: Test the Docker image
+      - name: Test if the pyaleph CLI works
         run: |
-          docker run --name pyaleph --user aleph pyaleph-node-demo:${GITHUB_REF##*/} pyaleph --help
+          docker run --user aleph pyaleph-node-demo:${GITHUB_REF##*/} pyaleph --help
+
+      - name: Run unit tests
+        run: |
+          docker run --user aleph pyaleph-node-demo:${GITHUB_REF##*/} pytest --ignore=tests/vms/
