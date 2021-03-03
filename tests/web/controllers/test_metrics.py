@@ -43,12 +43,19 @@ def test_metrics():
             python_version='3.8.0',
             version='v999',
         ),
+        pyaleph_status_peers_total=0,
         pyaleph_status_sync_messages_total=123,
         pyaleph_status_sync_pending_messages_total=456,
+        pyaleph_status_sync_pending_txs_total=0,
+        pyaleph_status_chain_eth_last_committed_height=0,
     )
 
     assert format_dataclass_for_prometheus(
         metrics
     ) == ('pyaleph_build_info{python_version="3.8.0",version="v999"} 1\n'
+          'pyaleph_status_peers_total 0\n'
           'pyaleph_status_sync_messages_total 123\n'
-          'pyaleph_status_sync_pending_messages_total 456')
+          'pyaleph_status_sync_pending_messages_total 456\n'
+          'pyaleph_status_sync_pending_txs_total 0\n'
+          'pyaleph_status_chain_eth_last_committed_height 0'
+    )
