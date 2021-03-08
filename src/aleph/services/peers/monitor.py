@@ -30,8 +30,13 @@ async def handle_incoming_host(mvalue, source="p2p"):
         
         await add_peer(address=content['address'], peer_type=peer_type,
                        sender=mvalue['from'], source=source)
-    except Exception:
-        LOGGER.exception("Exception in pubsub peers monitoring")
+    except Exception as e:
+        if isinstance(e, ValueError) and mvalue.get('from'):
+            LOGGER.info(
+                "Received a bad peer info %s from %s" %
+                (e.args[0], mvalue["from"]))
+        else:
+            LOGGER.exception("Exception in pubsub peers monitoring")
 
 
 async def monitor_hosts_p2p(psub):
