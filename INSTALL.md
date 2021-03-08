@@ -19,7 +19,7 @@ pip install git+https://github.com/aleph-im/py-libp2p.git
 pip install git+https://github.com/aleph-im/nuls2-python.git
 pip install git+https://github.com/aleph-im/aleph-client.git
 
-pip install -U aiohttp python-binance-chain neo-python
+pip install -U aiohttp python-binance-chain
 pip install -U aioipfs
 
 python setup.py develop

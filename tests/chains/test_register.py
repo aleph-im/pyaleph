@@ -4,7 +4,7 @@ import aleph.chains
 from aleph.chains import register
 from aleph.chains.register import (VERIFIER_REGISTER, INCOMING_WORKERS, OUTGOING_WORKERS,
                                    register_verifier, register_incoming_worker, register_outgoing_worker)
-from aleph.chains import binance, ethereum, nuls, nuls2, neo, substrate, cosmos
+from aleph.chains import binance, ethereum, nuls, nuls2, substrate, cosmos, avalanche
 
 @pytest.mark.asyncio
 async def test_register_verifier(monkeypatch):
@@ -32,19 +32,15 @@ async def test_register_verifier_twice(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_verifiers():
-    assert len(VERIFIER_REGISTER.keys()) == 7  # 6 verifiers are included by default
-    assert "BNB" in VERIFIER_REGISTER.keys()
+    assert set(VERIFIER_REGISTER.keys()) == set(
+        ('NULS', 'NULS2', 'ETH', 'BNB', 'DOT', 'CSDK', 'SOL', 'AVAX'))
+
     assert VERIFIER_REGISTER["BNB"] is binance.verify_signature
-    assert "ETH" in VERIFIER_REGISTER.keys()
     assert VERIFIER_REGISTER["ETH"] is ethereum.verify_signature
-    assert "NULS" in VERIFIER_REGISTER.keys()
     assert VERIFIER_REGISTER["NULS"] is nuls.verify_signature
-    assert "NEO" in VERIFIER_REGISTER.keys()
-    assert VERIFIER_REGISTER["NEO"] is neo.verify_signature
-    assert "DOT" in VERIFIER_REGISTER.keys()
     assert VERIFIER_REGISTER["DOT"] is substrate.verify_signature
-    assert "CSDK" in VERIFIER_REGISTER.keys()
     assert VERIFIER_REGISTER["CSDK"] is cosmos.verify_signature
+    assert VERIFIER_REGISTER["AVAX"] is avalanche.verify_signature
 
 
 @pytest.mark.asyncio
