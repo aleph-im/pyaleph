@@ -19,13 +19,6 @@ ethereum:
   token_contract: "0x27702a26126e0B3702af63Ee09aC4d1A084EF628"
   token_start_height: 10939074
 
-binancechain:
-  enabled: False
-  packing_node: False
-  private_key: YOUR_PRIVATE_KEY_HERE
-  sync_address: bnb1r3rf8cj9t2w6v0za3ufyp03as3nv6rjxteku6g
-  start_time: "2019-05-22T00:00:00Z"
-
 mongodb:
   uri: "mongodb://127.0.0.1"
   database: alephtest

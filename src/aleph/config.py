@@ -60,14 +60,6 @@ def get_defaults():
                 '0x23eC28598DCeB2f7082Cc3a9D670592DfEd6e0dC'
             ]
         },
-        'binancechain': {
-            'enabled': False,
-            'packing_node': False,
-            'private_key': None,
-            'sync_address': None,
-            'start_time': None,
-            'commit_delay': 35
-        },
         'mongodb': {
             'uri': 'mongodb://127.0.0.1:27017',
             'database': 'aleph'

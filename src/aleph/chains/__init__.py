@@ -18,11 +18,6 @@ try:
 except ModuleNotFoundError as error:
     logger.warning("Can't load ETH: %s", error.msg)
 try:
-    from aleph.chains import binance
-except ModuleNotFoundError as error:
-    logger.warning(f"Can't load BNB: %s", error.msg)
-
-try:
     from aleph.chains import substrate
 except (ModuleNotFoundError, ImportError) as error:
     logger.warning("Can't load DOT: %s", error.msg)

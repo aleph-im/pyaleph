@@ -35,10 +35,6 @@ Example of config file at this point (I disabled IPFS but you can leave it enabl
         chain_id: 4
         packing_node: False
 
-    binancechain:
-        enabled: False
-        packing_node: False
-
     mongodb:
         uri: "mongodb://127.0.0.1"
         database: alephtest
@@ -180,7 +176,7 @@ Synchronisation
 ---------------
 
 To be able to keep your data synced you will need to write to at least one of the
-supported chains. Either NULS2, ETH or BNB.
+supported chains. Either NULS2 or ETH.
 
 The easiest one is NULS2, just use the sample sync info in the sample_config.yml,
 using a target address (`sync_address` in config) you own, and using

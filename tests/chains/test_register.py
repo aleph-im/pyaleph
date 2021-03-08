@@ -2,9 +2,12 @@ import pytest
 
 import aleph.chains
 from aleph.chains import register
-from aleph.chains.register import (VERIFIER_REGISTER, INCOMING_WORKERS, OUTGOING_WORKERS,
-                                   register_verifier, register_incoming_worker, register_outgoing_worker)
-from aleph.chains import binance, ethereum, nuls, nuls2, substrate, cosmos, avalanche
+from aleph.chains.register import (VERIFIER_REGISTER, INCOMING_WORKERS,
+                                   OUTGOING_WORKERS,
+                                   register_verifier,
+                                   register_incoming_worker,
+                                   register_outgoing_worker)
+from aleph.chains import ethereum, nuls, nuls2, substrate, cosmos, avalanche
 
 @pytest.mark.asyncio
 async def test_register_verifier(monkeypatch):
@@ -33,11 +36,11 @@ async def test_register_verifier_twice(monkeypatch):
 @pytest.mark.asyncio
 async def test_verifiers():
     assert set(VERIFIER_REGISTER.keys()) == set(
-        ('NULS', 'NULS2', 'ETH', 'BNB', 'DOT', 'CSDK', 'SOL', 'AVAX'))
+        ('NULS', 'NULS2', 'ETH', 'DOT', 'CSDK', 'SOL', 'AVAX'))
 
-    assert VERIFIER_REGISTER["BNB"] is binance.verify_signature
     assert VERIFIER_REGISTER["ETH"] is ethereum.verify_signature
     assert VERIFIER_REGISTER["NULS"] is nuls.verify_signature
+    assert VERIFIER_REGISTER["NULS2"] is nuls2.verify_signature
     assert VERIFIER_REGISTER["DOT"] is substrate.verify_signature
     assert VERIFIER_REGISTER["CSDK"] is cosmos.verify_signature
     assert VERIFIER_REGISTER["AVAX"] is avalanche.verify_signature
@@ -56,8 +59,6 @@ async def test_register_outgoing_worker(monkeypatch):
 @pytest.mark.asyncio
 async def test_outgoing():
     assert len(OUTGOING_WORKERS.keys()) == 3  # 3 verifiers are included by default
-    assert "BNB" in OUTGOING_WORKERS.keys()
-    assert OUTGOING_WORKERS["BNB"] is binance.binance_outgoing_worker
     assert "ETH" in OUTGOING_WORKERS.keys()
     assert OUTGOING_WORKERS["ETH"] is ethereum.ethereum_outgoing_worker
     assert "NULS2" in OUTGOING_WORKERS.keys()
@@ -75,8 +76,6 @@ async def test_register_incoming_worker(monkeypatch):
 @pytest.mark.asyncio
 async def test_incoming():
     assert len(INCOMING_WORKERS.keys()) == 3  # 3 verifiers are included by default
-    assert "BNB" in INCOMING_WORKERS.keys()
-    assert INCOMING_WORKERS["BNB"] is binance.binance_incoming_worker
     assert "ETH" in INCOMING_WORKERS.keys()
     assert INCOMING_WORKERS["ETH"] is ethereum.ethereum_incoming_worker
     assert "NULS2" in INCOMING_WORKERS.keys()

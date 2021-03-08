@@ -19,7 +19,6 @@ pip install git+https://github.com/aleph-im/py-libp2p.git
 pip install git+https://github.com/aleph-im/nuls2-python.git
 pip install git+https://github.com/aleph-im/aleph-client.git
 
-pip install -U aiohttp python-binance-chain
 pip install -U aioipfs
 
 python setup.py develop
@@ -38,7 +37,7 @@ edited earlier)
 
 Install in develop with all extras:
 
-`$ pip install -e ".[bnb,testing]"`
+`$ pip install -e ".[pokadot,cosmos,testing]"`
 
 Then run the tests:
 

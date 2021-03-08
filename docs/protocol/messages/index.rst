@@ -22,7 +22,7 @@ Message can be:
             .. Sender info ..
             *sender : text <<address>>
             *chain : text
-            (chain of sender: NULS, NULS2, ETH, BNB...)
+            (chain of sender: NULS, NULS2, ETH, DOT, CSDK, SOL...)
             -- Content --
             *item_hash <<hash>>
             if IPFS: multihash of json serialization of content
