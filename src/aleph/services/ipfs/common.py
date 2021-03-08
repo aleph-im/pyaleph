@@ -38,6 +38,7 @@ async def connect_ipfs_peer(peer):
     result = await api.swarm.connect(peer)
     return result
 
+
 async def get_public_address():
     api = await get_ipfs_api()
     public_ip = await get_IP()
@@ -47,3 +48,14 @@ async def get_public_address():
         if public_ip in address and "/tcp" in address and "/p2p" in address:
             return address
     
+    # Fallback to first possible public...
+    for address in addresses:
+        if ("127.0.0.1" not in address
+                and "/tcp" in address
+                and "/p2p" in address):
+            return address
+    
+    # Still no public there, try ourselves.
+    for address in addresses:
+        if "127.0.0.1" in address and "/tcp" in address and "/p2p" in address:
+            return address.replace("127.0.0.1", public_ip)
