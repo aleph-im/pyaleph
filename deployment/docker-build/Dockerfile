@@ -77,14 +77,14 @@ USER source
 WORKDIR /opt/pyaleph
 RUN pip install --upgrade --use-deprecated=legacy-resolver requests
 RUN pip install -U --use-deprecated=legacy-resolver git+https://github.com/aleph-im/nuls2-python.git
-RUN pip install -U --use-deprecated=legacy-resolver aiohttp cosmospy
+RUN pip install -U --use-deprecated=legacy-resolver "aiohttp>=3.7.4" cosmospy
 RUN pip install -U --use-deprecated=legacy-resolver substrate-interface
 RUN pip install -U --use-deprecated=legacy-resolver aioipfs
 RUN python setup.py develop
 RUN /opt/venv/bin/pip install --use-deprecated=legacy-resolver -e ".[testing]"
 
 # Fix an issue with Aiohttp not working
-RUN /opt/venv/bin/pip install aiohttp==3.7.2
+# RUN /opt/venv/bin/pip install aiohttp==3.7.2
 
 USER aleph
 CMD ["pyaleph"]
