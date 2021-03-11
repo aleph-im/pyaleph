@@ -7,6 +7,7 @@ import platform
 from dataclasses import dataclass, asdict
 from typing import Dict, Optional
 from urllib.parse import urljoin
+from requests import HTTPError
 
 import aiohttp
 from aiocache import cached
@@ -118,13 +119,16 @@ async def fetch_eth_height() -> Optional[int]:
     """Obtain the height of the Ethereum blockchain."""
     LOGGER.debug("Fetching ETH height")
     config = app['config']
-
-    if config.ethereum.enabled.value:
-        w3 = Web3(Web3.HTTPProvider(config.ethereum.api_url.value))
-        return await asyncio.get_event_loop().run_in_executor(
-            None, getattr, w3.eth, 'block_number')
-    else:
-        return None
+    
+    try:
+        if config.ethereum.enabled.value:
+            w3 = Web3(Web3.HTTPProvider(config.ethereum.api_url.value))
+            return await asyncio.get_event_loop().run_in_executor(
+                None, getattr, w3.eth, 'block_number')
+        else:
+            return None
+    except HTTPError:
+        return -1 # We got a boggus value!
 
 
 async def get_metrics(shared_stats:dict) -> Metrics:
