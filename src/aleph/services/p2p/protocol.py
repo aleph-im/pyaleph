@@ -193,7 +193,7 @@ class AlephProtocol(INotifee):
         return bool(len(self.peers[peer_id]))
 
 async def incoming_channel(config, topic):
-    from aleph.chains.common import incoming
+    from aleph.chains.common import delayed_incoming
     while True:
         try:
             async for mvalue in sub(topic):
@@ -207,7 +207,7 @@ async def incoming_channel(config, topic):
                         continue
                     
                     LOGGER.debug("New message %r" % message)
-                    await incoming(message)
+                    await delayed_incoming(message)
                 except Exception:
                     LOGGER.exception("Can't handle message")
 

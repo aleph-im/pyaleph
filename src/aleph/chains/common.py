@@ -34,6 +34,20 @@ async def mark_confirmed_data(chain_name, tx_hash, height):
             {'chain': chain_name,
              'height': height,
              'hash': tx_hash}]}
+    
+    
+async def delayed_incoming(message, chain_name=None,
+                           tx_hash=None, height=None):
+    await PendingMessage.collection.insert_one(
+        {
+            'message': message,
+            'source': dict(
+                chain_name=chain_name,
+                tx_hash=tx_hash,
+                height=height,
+                check_message=True  # should we store this?
+            )
+        })
 
 
 async def incoming(message, chain_name=None,
