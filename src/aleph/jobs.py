@@ -93,14 +93,15 @@ async def retry_messages_job(shared_stats):
                 shared_stats['retry_messages_job_j'] = j
 
 
-            if pending['message']['item_type'] == 'ipfs':
+            if pending['message']['item_type'] == 'ipfs' or pending['message']['type'] == 'STORE':
                 i += 15
                 j += 100
             else:
                 i += 1
                 j += 1
 
-            tasks.append(handle_pending_message(pending, seen_ids, actions, messages_actions))
+            tasks.append(asyncio.create_task(
+                handle_pending_message(pending, seen_ids, actions, messages_actions)))
 
             if (j >= 2000):
                 # Group tasks using asyncio.gather in `gtasks`.
