@@ -52,7 +52,7 @@ async def handle_new_storage(message, content):
             stats = await asyncio.wait_for(
                 api.files.stat(f"/ipfs/{item_hash}"), 5)
         
-            if stats['Type'] == 'file' and stats['CumulativeSize'] < 5120:
+            if stats['Type'] == 'file' and stats['CumulativeSize'] < 1024**2:
                 do_standard_lookup = True
             else:
                 size = stats['CumulativeSize']
