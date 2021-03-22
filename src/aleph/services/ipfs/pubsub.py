@@ -45,8 +45,8 @@ async def pub(topic, message):
 
 
 async def incoming_channel(config, topic):
-    from aleph.network import incoming
-    from aleph.chains.common import delayed_incoming
+    from aleph.network import incoming_check
+    from aleph.chains.common import incoming
     # When using some deployment strategies such as docker-compose,
     # the IPFS service may not be ready by the time this function
     # is called. This variable define how many connection attempts
