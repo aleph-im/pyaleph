@@ -235,7 +235,7 @@ async def incoming(message, chain_name=None,
             'item_type': message.get('item_type'),
             'channel': message.get('channel'),
             'signature': message.get('signature'),
-            **updates['$set']
+            **updates.get('$set', {})
         }
         should_commit = True
         #await Message.collection.insert_one(message)
