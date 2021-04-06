@@ -1,0 +1,11 @@
+global:
+  scrape_interval:     5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: pyaleph
+    static_configs:
+      - targets: ['pyaleph:4024']
+  - job_name: system
+    static_configs:
+      - targets: ['172.17.0.1:9100']

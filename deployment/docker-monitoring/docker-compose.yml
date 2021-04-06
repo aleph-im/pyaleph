@@ -1,0 +1,98 @@
+version: '2.2'
+
+volumes:
+  pyaleph-ipfs:
+  pyaleph-mongodb:
+  pyaleph-caddy-data:
+  pyaleph-caddy-config:
+
+services:
+  pyaleph:
+    restart: always
+    image: alephim/pyaleph-node:beta
+    command: pyaleph --config /opt/pyaleph/config.yml
+    ports:
+      - 127.0.0.1:8000:8000/tcp
+      - 4024:4024/tcp
+      - 4025:4025/tcp
+    volumes:
+      - ./config.yml:/opt/pyaleph/config.yml
+      - ./node-secret.key:/opt/pyaleph/node-secret.key
+    depends_on:
+      - mongodb
+      - ipfs
+    networks:
+      - pyaleph
+    logging:
+      options:
+        max-size: 50m
+
+  ipfs:
+    restart: always
+    image: ipfs/go-ipfs
+    ports:
+      - 4001:4001
+      - 4001:4001/udp
+    volumes:
+      - "pyaleph-ipfs:/data/ipfs"
+    environment:
+      - IPFS_PROFILE=server
+    networks:
+      - pyaleph
+    command: ["daemon", "--enable-pubsub-experiment"]
+
+  mongodb:
+    restart: always
+    image: mongo:4.4
+    volumes:
+      - pyaleph-mongodb:/data/db
+    command: mongod --storageEngine wiredTiger
+    networks:
+      - pyaleph
+
+  prometheus:
+    restart: always
+    image: prom/prometheus
+    command: --log.level=debug --config.file=/etc/prometheus/prometheus.yml
+    ports:
+      - 127.0.0.1:9090:9090/tcp
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - pyaleph
+      - grafana
+
+  grafana:
+    restart: always
+    image: grafana/grafana
+    ports:
+      - 127.0.0.1:3000:3000/tcp
+    volumes:
+      - ./grafana/prometheus.yaml:/etc/grafana/provisioning/datasources/prometheus.yaml
+      - ./grafana/dashboard.yaml:/etc/grafana/provisioning/dashboards/dashboard.yaml
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards/
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=a440fc1aa53b6b313b85b004605b7647  # Warning, change this !
+    networks:
+      - grafana
+
+  caddy:
+    restart: always
+    image: caddy:latest
+    command: caddy reverse-proxy --from :80 --to grafana:3000
+    # Use the following command with your own domain name to enable HTTPS instead
+#    command: caddy reverse-proxy --from grafana.aleph-node.example.org --to grafana:3000
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - pyaleph-caddy-data:/data
+      - pyaleph-caddy-config:/config
+    networks:
+      - pyaleph
+      - grafana
+
+networks:
+  pyaleph:
+  grafana:
