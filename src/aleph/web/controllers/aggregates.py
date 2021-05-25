@@ -22,6 +22,9 @@ async def address_aggregate(request):
                                                        key_list=keys,
                                                        limit=limit)
 
+    if not aggregates.get(address):
+        return web.HTTPNotFound(text="No aggregate found for this address")
+
     output = {
         'address': address,
         'data': aggregates.get(address, {})

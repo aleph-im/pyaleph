@@ -74,14 +74,10 @@ async def get_hash(request):
                       'engine': engine,
                       'content': content}
         else:
-            result = {'status': 'success',
-                      'hash': item_hash,
-                      'engine': engine,
-                      'content': None}
+            return web.HTTPNotFound(text=f"No file found for hash {item_hash}")
     else:
-        result = {'status': 'error',
-                'reason': 'no hash provided'}
-    
+        return web.HTTPBadRequest(text="No hash provided")
+
     response = await run_in_executor(None, web.json_response, result)
     response.enable_compression()
     return response
@@ -108,6 +104,6 @@ async def get_raw_hash(request):
         else:
             raise web.HTTPNotFound(text='not found')
     else:
-        raise web.HTTPNotFound(text='no hash provided')
+        raise web.HTTPBadRequest(text='no hash provided')
     
 app.router.add_get('/api/v0/storage/raw/{hash}', get_raw_hash)
