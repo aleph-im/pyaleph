@@ -1,7 +1,11 @@
+import logging
+
 from pymongo import ASCENDING, DESCENDING, IndexModel
 
 from aleph.model.base import BaseClass
 from aleph.network import INCOMING_MESSAGE_AUTHORIZED_FIELDS
+
+logger = logging.getLogger(__name__)
 
 RAW_MSG_PROJECTION = {field: 1 for field
                       in INCOMING_MESSAGE_AUTHORIZED_FIELDS}
@@ -54,6 +58,18 @@ class Message(BaseClass):
                 {'confirmations.chain': {'$ne': for_chain},
                  'tx_hash': {"$exists": False}},  # tx_hash means chain native
                 projection=RAW_MSG_PROJECTION).sort([('time', 1)]).limit(limit)
+
+    @classmethod
+    def fix_message_confirmations(cls, db):
+        logger.info("Fixing message confirmation status...")
+        cls.get_collection(cls, db).update_many(
+            {
+                "confirmed": {"$exists": False},
+                "confirmations": {"$exists": True, "$ne": []}
+            },
+            {"$set": {"confirmed": True}}
+        )
+        logger.info("Fixed message confirmation status.")
 
 
 async def get_computed_address_aggregates(address_list=None, key_list=None, limit=100):

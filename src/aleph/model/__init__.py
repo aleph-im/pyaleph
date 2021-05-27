@@ -41,3 +41,6 @@ def init_db(config, ensure_indexes=True):
         Peer.ensure_indexes(sync_db)
         # from aleph.model.hashes import Hash
         # Hash.ensure_indexes(sync_db)
+
+    from aleph.model.messages import Message
+    Message.fix_message_confirmations(sync_db)
