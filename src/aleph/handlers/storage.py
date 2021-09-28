@@ -52,7 +52,9 @@ async def handle_new_storage(message, content):
             stats = await asyncio.wait_for(
                 api.files.stat(f"/ipfs/{item_hash}"), 5)
         
-            if stats['Type'] == 'file' and stats['CumulativeSize'] < 1024**2:
+            if (stats['Type'] == 'file'
+                    and stats['CumulativeSize'] < 1024**2
+                    and len(item_hash) == 46):
                 do_standard_lookup = True
             else:
                 size = stats['CumulativeSize']
@@ -63,7 +65,7 @@ async def handle_new_storage(message, content):
                 async for status in pin_api.pin.add(item_hash):
                     timer += 1
                     if timer > 30 and status['Pins'] is None:
-                        return None # Can't retrieve data now.
+                        return None  # Can't retrieve data now.
                 do_standard_lookup = False
                 
         except (aioipfs.APIError, asyncio.TimeoutError) as e:
