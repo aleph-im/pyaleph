@@ -68,7 +68,13 @@ async def get_hash_content(hash, engine='ipfs', timeout=2,
             if engine == 'ipfs' and ipfs_enabled:
                 # TODO: get a better way to compare hashes (without depending on IPFS daemon)
                 try:
-                    compared_hash = await add_ipfs_bytes(content)
+                    cid_version = 0
+                    if len(hash) >= 58:
+                        cid_version = 1
+
+                    compared_hash = await add_ipfs_bytes(
+                        content, cid_version=cid_version)
+
                     if compared_hash != hash:
                         LOGGER.warning(f"Got a bad hash! {hash}/{compared_hash}")
                         content = -1
