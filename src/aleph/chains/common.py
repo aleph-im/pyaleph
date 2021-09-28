@@ -5,7 +5,7 @@ import logging
 from pymongo import UpdateOne
 
 from aleph.handlers.register import handle_incoming_message
-from aleph.model.messages import Message
+from aleph.model.messages import Message, CappedMessage
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.network import check_message as check_message_fn
 from aleph.permissions import check_sender_authorization
@@ -249,6 +249,7 @@ async def incoming(message, chain_name=None,
         action = UpdateOne(filters, updates, upsert=True)
         if not bulk_operation:
             await Message.collection.bulk_write([action])
+            await CappedMessage.collection.bulk_write([action])
         else:
             return action
     return True  # message handled.

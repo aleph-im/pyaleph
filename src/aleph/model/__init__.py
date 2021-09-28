@@ -27,6 +27,9 @@ def init_db(config, ensure_indexes=True):
     sync_connection = MongoClient(config.mongodb.uri.value,
                                   tz_aware=True)
     sync_db = sync_connection[config.mongodb.database.value]
+    
+    from aleph.model.messages import CappedMessage
+    CappedMessage.create(sync_db)
 
     if ensure_indexes:
         LOGGER.info('Inserting indexes')

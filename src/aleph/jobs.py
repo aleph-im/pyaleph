@@ -9,7 +9,7 @@ from pymongo import DeleteOne, InsertOne, DeleteMany
 from pymongo.errors import CursorNotFound
 
 from aleph.chains.common import incoming, get_chaindata_messages
-from aleph.model.messages import Message
+from aleph.model.messages import Message, CappedMessage
 from aleph.model.p2p import get_peers
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.network import check_message
@@ -53,6 +53,7 @@ async def join_pending_message_tasks(tasks, actions_list=None, messages_actions_
 
     if messages_actions_list is not None and len(messages_actions_list):
         await Message.collection.bulk_write(messages_actions_list)
+        await CappedMessage.collection.bulk_write(messages_actions_list)
         messages_actions_list.clear()
 
     if actions_list is not None and len(actions_list):

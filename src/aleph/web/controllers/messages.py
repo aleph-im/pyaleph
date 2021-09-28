@@ -1,7 +1,9 @@
-from aleph.model.messages import Message
+from aleph.model.messages import CappedMessage, Message
 from aleph.web import app
 from aiohttp import web
 import asyncio
+from pymongo.cursor import CursorType
+from bson.objectid import ObjectId
 import collections
 from aleph.web.controllers.utils import (Pagination,
                                          cond_output, prepare_date_filters)
@@ -133,37 +135,35 @@ async def messages_ws(request):
     ws = web.WebSocketResponse()
     await ws.prepare(request)
 
-    db = Message.collection
-    last_ids = collections.deque(maxlen=100)
+    collection = CappedMessage.collection
+    last_id = None
 
     find_filters = await get_filters(request)
     initial_count = int(request.query.get('history', 10))
     initial_count = max(initial_count, 10)
-    initial_count = min(initial_count, 200)  # let's cap this to
-                                             # 200 historic messages max.
-    i = 0
-    # TODO: handle this with a capped collection
+    # let's cap this to 200 historic messages max.
+    initial_count = min(initial_count, 200)
+    
+    items = [item async for item in collection.find(
+                find_filters).sort([('$natural', -1)]).limit(initial_count)]
+    for item in reversed(items):
+        item['_id'] = str(item['_id'])
+
+        last_id = item['_id']
+        await ws.send_json(item)
+    
     while True:
         try:
-            run_count = 10
-            if i == 0:
-                run_count = initial_count
-            
-            # We get all last items
-            items = [item async for item in db.find(
-                        find_filters).sort([('$natural', -1)]).limit(run_count)]
-            
-            # Now let's iterate them in reverse order, older first.
-            for item in reversed(items):
-                item['_id'] = str(item['_id'])
-                if item['_id'] in last_ids:
-                    continue
+            cursor = collection.find({'_id': {'$gt': ObjectId(last_id)}},
+                                     cursor_type=CursorType.TAILABLE_AWAIT)
+            while cursor.alive:
+                async for item in cursor:
+                    item['_id'] = str(item['_id'])
 
-                last_ids.append(item['_id'])
-                await ws.send_json(item)
-            i += 1
+                    last_id = item['_id']
+                    await ws.send_json(item)
 
-            await asyncio.sleep(1)
+                await asyncio.sleep(1)
 
         except Exception:
             LOGGER.exception("Error processing")

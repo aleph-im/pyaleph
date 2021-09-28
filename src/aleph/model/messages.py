@@ -12,6 +12,19 @@ RAW_MSG_PROJECTION = {field: 1 for field
 RAW_MSG_PROJECTION.update({'_id': 0})
 
 
+class CappedMessage(BaseClass):
+    COLLECTION = "log_messages"
+
+    @classmethod
+    def create(cls, db):
+        if cls.COLLECTION not in db.list_collection_names():
+            db.create_collection(
+                cls.COLLECTION,
+                capped=True,
+                size=(1024**2)*100  # 100mb
+            )
+
+
 class Message(BaseClass):
     COLLECTION = "messages"
     INDEXES = [  # Index("hash", unique=True),
@@ -89,7 +102,7 @@ async def get_computed_address_aggregates(address_list=None, key_list=None, limi
         }},
         {'$match': {
             'content.content': {'$not': {'$type': "array"}}
-        }},        
+        }},
         {'$project': {
             'time': 1,
             'content.address': 1,
