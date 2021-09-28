@@ -85,7 +85,10 @@ async def get_computed_address_aggregates(address_list=None, key_list=None, limi
         {'$sort': {'time': -1}},
         {'$limit': limit},
         {'$match': {
-            'content.content': {'$type': 3}
+            'content.content': {'$type': "object"}
+        }},
+        {'$match': {
+            'content.content': {'$not': {'$type': "array"}}
         }},        
         {'$project': {
             'time': 1,
