@@ -66,11 +66,11 @@ async def add_json(value):
     return result['Hash']
 
 
-async def add_bytes(value):
+async def add_bytes(value, cid_version=0):
     # loop = asyncio.get_event_loop()
     api = await get_ipfs_api(timeout=5)
     # try:
-    result = await api.add_bytes(value)
+    result = await api.add_bytes(value, cid_version=cid_version)
     # finally:
     #     await api.close()
 
