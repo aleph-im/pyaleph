@@ -1,3 +1,5 @@
+from typing import Set
+
 from aleph.model.messages import CappedMessage, Message
 from aleph.web import app
 from aiohttp import web
@@ -10,8 +12,16 @@ from aleph.web.controllers.utils import (Pagination,
 import logging
 LOGGER = logging.getLogger("MESSAGES")
 
+KNOWN_QUERY_FIELDS = {'sort_order', 'msgType', 'addresses', 'refs',
+                      'contentTypes', 'channels', 'tags', 'hashes', 'history'}
 
-async def get_filters(request):
+
+async def get_filters(request: web.Request):
+
+    unknown_query_fields: Set[str] = set(request.query.keys()).difference(KNOWN_QUERY_FIELDS)
+    if unknown_query_fields:
+        raise ValueError(f"Unknown query fields: {unknown_query_fields}")
+
     find_filters = {}
 
     msg_type = request.query.get('msgType', None)
