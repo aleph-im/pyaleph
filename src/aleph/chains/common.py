@@ -214,7 +214,7 @@ async def incoming(message, chain_name=None,
             return -1
 
         if not await check_sender_authorization(message, content):
-            LOGGER.warn("Invalid sender for %s" % hash)
+            LOGGER.warning("Invalid sender for %s" % hash)
             return True  # message handled.
 
         if seen_ids is not None:

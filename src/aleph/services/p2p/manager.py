@@ -1,9 +1,9 @@
 import logging
-from typing import Optional, Coroutine, List
+from typing import Optional, Coroutine, List, Tuple, Any
 
 import multiaddr
 from Crypto.PublicKey.RSA import import_key
-from libp2p import new_node
+from libp2p import new_node, BasicHost
 from libp2p.crypto.rsa import RSAPrivateKey, KeyPair, create_new_key_pair
 from libp2p.pubsub import floodsub, gossipsub
 from libp2p.pubsub.pubsub import Pubsub
@@ -38,7 +38,7 @@ def generate_keypair(print_key: bool, key_path: Optional[str]):
 public_adresses = []
 
 async def initialize_host(key, host='0.0.0.0', port=4025, listen=True,
-                          protocol_active=True):
+                          protocol_active=True) -> Tuple[BasicHost, Pubsub, Any, List]:
     from .protocol import AlephProtocol
     from .jobs import reconnect_p2p_job, tidy_http_peers_job
 
@@ -52,8 +52,8 @@ async def initialize_host(key, host='0.0.0.0', port=4025, listen=True,
     keypair = KeyPair(private_key, public_key)
 
     transport_opt = f"/ip4/{host}/tcp/{port}"
-    host = await new_node(transport_opt=[transport_opt],
-                          key_pair=keypair)
+    host: BasicHost = await new_node(transport_opt=[transport_opt],
+                                     key_pair=keypair)
     protocol = None
     # gossip = gossipsub.GossipSub([GOSSIPSUB_PROTOCOL_ID], 10, 9, 11, 30)
     # psub = Pubsub(host, gossip, host.get_id())

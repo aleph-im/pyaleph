@@ -4,7 +4,6 @@ from aiohttp import web
 import asyncio
 from pymongo.cursor import CursorType
 from bson.objectid import ObjectId
-import collections
 from aleph.web.controllers.utils import (Pagination,
                                          cond_output, prepare_date_filters)
 import logging
@@ -131,7 +130,7 @@ app.router.add_get('/api/v0/messages.json', view_messages_list)
 app.router.add_get('/api/v0/messages/page/{page}.json', view_messages_list)
 
 
-async def messages_ws(request):
+async def messages_ws(request: web.Request):
     ws = web.WebSocketResponse()
     await ws.prepare(request)
 

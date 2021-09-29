@@ -16,7 +16,7 @@ else
   DOCKER_COMMAND=docker
 fi
 
-VERSION=$(git describe --tags)
+VERSION=$(git describe --tags)-alpha
 
 $DOCKER_COMMAND tag alephim/pyaleph-node alephim/pyaleph-node:$VERSION
 $DOCKER_COMMAND push alephim/pyaleph-node:$VERSION docker.io/alephim/pyaleph-node:$VERSION
