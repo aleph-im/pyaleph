@@ -131,7 +131,7 @@ app.router.add_get('/api/v0/messages.json', view_messages_list)
 app.router.add_get('/api/v0/messages/page/{page}.json', view_messages_list)
 
 
-async def messages_ws(request):
+async def messages_ws(request: web.Request):
     ws = web.WebSocketResponse()
     await ws.prepare(request)
 
