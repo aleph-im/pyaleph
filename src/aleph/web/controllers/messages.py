@@ -4,7 +4,6 @@ from aiohttp import web
 import asyncio
 from pymongo.cursor import CursorType
 from bson.objectid import ObjectId
-import collections
 from aleph.web.controllers.utils import (Pagination,
                                          cond_output, prepare_date_filters)
 import logging
