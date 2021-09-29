@@ -150,22 +150,35 @@ async def messages_ws(request: web.Request):
 
         last_id = item['_id']
         await ws.send_json(item)
+        
+    closing = False
     
-    while True:
+    while not closing:
         try:
             cursor = collection.find({'_id': {'$gt': ObjectId(last_id)}},
                                      cursor_type=CursorType.TAILABLE_AWAIT)
             while cursor.alive:
                 async for item in cursor:
+                    if ws.closed:
+                        closing = True
+                        break
                     item['_id'] = str(item['_id'])
 
                     last_id = item['_id']
                     await ws.send_json(item)
 
-                await asyncio.sleep(1)            
+                await asyncio.sleep(1)
+                
+                if closing:
+                    break
+                
+        except ConnectionResetError:
+            closing = True
+            break
 
         except Exception:
             if ws.closed:
+                closing = True
                 break
             
             LOGGER.exception("Error processing")
