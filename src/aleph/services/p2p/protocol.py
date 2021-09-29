@@ -193,10 +193,12 @@ class AlephProtocol(INotifee):
         return bool(len(self.peers[peer_id]))
 
 async def incoming_channel(config, topic):
+    LOGGER.debug("incoming channel started...")
     from aleph.chains.common import delayed_incoming
     while True:
         try:
             async for mvalue in sub(topic):
+                LOGGER.debug("Received from P2P:", mvalue)
                 try:
                     message = json.loads(mvalue['data'])
 
