@@ -37,8 +37,9 @@ $DOCKER_COMMAND run --name pyaleph \
   -v pyaleph-mongodb:/var/lib/mongodb \
   -v pyaleph-ipfs:/var/lib/ipfs \
   -v "$(pwd)/data:/var/lib/pyaleph" \
-  -v "$(pwd)/config.yml:/opt/pyaleph/config.yml" \
-  -v "$(pwd)/node-secret.key:/opt/pyaleph/node-secret.key" \
-  -v "$(pwd)/src:/opt/pyaleph/src" \
+  -v "$(pwd)/config.yml:/opt/pyaleph/config.yml:ro" \
+  -v "$(pwd)/node-secret.key:/opt/pyaleph/node-secret.key:ro" \
+  -v "$(pwd)/src:/opt/pyaleph/src:ro" \
+  -v "$(pwd)/tests:/opt/pyaleph/tests:ro" \
   --rm -ti \
   alephim/pyaleph-node-demo "$@"
