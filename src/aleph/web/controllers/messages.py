@@ -163,9 +163,12 @@ async def messages_ws(request):
                     last_id = item['_id']
                     await ws.send_json(item)
 
-                await asyncio.sleep(1)
+                await asyncio.sleep(1)            
 
         except Exception:
+            if ws.closed:
+                break
+            
             LOGGER.exception("Error processing")
             await asyncio.sleep(1)
 
