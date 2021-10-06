@@ -19,6 +19,7 @@ from aleph.services.ipfs.common import get_ipfs_api
 from aleph.storage import get_hash_content
 from aleph.types import ItemType, UnknownHashError
 from aleph.web import app
+from aleph.web.controllers.p2p import get_user_usage, get_user_quota
 
 LOGGER = logging.getLogger("HANDLERS.STORAGE")
 
@@ -61,8 +62,19 @@ async def handle_new_storage(message, content):
             ):
                 do_standard_lookup = True
             else:
-                size = stats["CumulativeSize"]
-                content["engine_info"] = stats
+                # Large file or directory
+                size = stats['CumulativeSize']
+
+                address: str = content["content"]["address"]
+                usage: float = await get_user_usage(address)
+                quota: float = await get_user_quota(address)
+                assert usage >= 0
+                assert quota >= 0
+                if (size + usage) > quota:
+                    LOGGER.warning(f"Not enough tokens for pinning {item_hash} by {address}")
+                    return -1  # -1 to permanently reject
+
+                content['engine_info'] = stats
                 pin_api = await get_ipfs_api(timeout=60)
                 timer = 0
                 is_folder = stats["Type"] == "directory"

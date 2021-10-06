@@ -362,6 +362,7 @@ async def get_chaindata_messages(chaindata, context, seen_ids: Optional[List]=No
                 LOGGER.debug("Already seen")
                 return None
             else:
+                # Should we not do this only on get_json success ?
                 LOGGER.debug("Adding to seen_ids")
                 seen_ids.append(chaindata["content"])
         try:
