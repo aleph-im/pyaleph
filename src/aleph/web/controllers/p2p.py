@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from typing import List
 
 from aiohttp import web
 
@@ -14,17 +15,19 @@ LOGGER = logging.getLogger("web.controllers.p2p")
 async def pub_json(request):
     """Forward the message to P2P host and IPFS server as a pubsub message"""
     data = await request.json()
-    failed_publications = []
+    topic: str = data["topic"]
+    message = data["data"]
+    failed_publications: List[str] = []
 
     try:
         if app["config"].ipfs.enabled.value:
-            await asyncio.wait_for(pub_ipfs(data.get("topic"), data.get("data")), 0.2)
+            await asyncio.wait_for(pub_ipfs(topic, message), timeout=0.2)
     except Exception:
         LOGGER.exception("Can't publish on ipfs")
         failed_publications.append(Protocol.IPFS)
 
     try:
-        await asyncio.wait_for(pub_p2p(data.get("topic"), data.get("data")), 0.5)
+        await asyncio.wait_for(pub_p2p(topic, message), timeout=0.5)
     except Exception:
         LOGGER.exception("Can't publish on p2p")
         failed_publications.append(Protocol.P2P)
