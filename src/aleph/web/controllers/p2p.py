@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from typing import List
 
@@ -16,6 +17,7 @@ LOGGER = logging.getLogger("web.controllers.p2p")
 
 async def get_user_usage(address: str):
     # ETH
+    LOGGER.info("get_user_usage")
     messages = [
         msg async for msg
         in Message.collection.find({
@@ -27,9 +29,16 @@ async def get_user_usage(address: str):
             sort=[('time', -1)]
         )
     ]
+    LOGGER.info("MESSAGES {}".format(messages))
 
     # TODO: Check 'sender' is allowed (VM runner, ...)
-    pass
+
+    usage = sum(
+        max(message['content'].get('size', 0), 0)
+        for message in messages
+    )
+    assert usage >= 0
+    return usage
 
 
 async def get_user_balance(address: str) -> float:
@@ -38,19 +47,48 @@ async def get_user_balance(address: str) -> float:
     async with aiohttp.ClientSession() as client:
         async with client.get(API_url) as resp:
             resp.raise_for_status()
-            result = resp.json()
-            for token in result["tokens"]:
+            result = await resp.json()
+            LOGGER.info(json.dumps(result, indent=4))
+            for token in result.get("tokens", ()):
                 if token["tokenInfo"]["address"] == "0x27702a26126e0b3702af63ee09ac4d1a084ef628":
                     assert token["tokenInfo"]["symbol"] == "ALEPH"
                     balance = int(token["rawBalance"])
                     decimals = token["tokenInfo"]["decimals"]
+                    decimals = int(decimals)
+                    # Check value consistency:
+                    if balance < 0:
+                        raise ValueError("Balance cannot be negative")
+                    if decimals != int(decimals):
+                        raise ValueError("Decimals must be an integer")
+                    if decimals < 1:
+                        raise ValueError("Decimals must be greater than 1")
                     return balance / 10 ** decimals
+            else:
+                return 0
+
+
+def balance_to_quota(balance: float) -> float:
+    mb_per_aleph = 3
+    return balance * mb_per_aleph
 
 
 async def get_user_quota(address: str) -> float:
     balance = get_user_balance(address)
-    mb_per_aleph = 3
-    return balance * mb_per_aleph
+    return balance_to_quota(balance)
+
+
+async def view_usage(request: web.Request):
+    address = request.query.get('address')
+    if not address:
+        raise web.HTTPBadRequest(reason="Address required")
+    balance = await get_user_balance(address)
+    return web.json_response({
+        'usage': await get_user_usage(address),
+        'balance': balance,
+        'quota': balance_to_quota(balance),
+    })
+
+app.router.add_get('/api/v0/address/usage', view_usage)
 
 
 async def pub_json(request):
@@ -65,6 +103,8 @@ async def pub_json(request):
     size: int = message["content"]["size"]
     usage = await get_user_usage(address)
     quota = await get_user_quota(address)
+    assert usage >= 0
+    assert quota >= 0
     if (size + usage) > quota:
         return web.HTTPPaymentRequired(reason="Not hold enough tokens",
                                        text="This address does not hold enough Aleph tokens.\n"
