@@ -5,7 +5,7 @@ from pkg_resources import get_distribution, DistributionNotFound
 
 
 def get_git_version():
-    output = subprocess.check_output(('git', 'describe', '--tags'))
+    output = subprocess.check_output(("git", "describe", "--tags"))
     return output.decode().strip()
 
 

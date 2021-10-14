@@ -4,16 +4,17 @@ import base58
 
 from . import singleton
 
-LOGGER = logging.getLogger('P2P.pubsub')
+LOGGER = logging.getLogger("P2P.pubsub")
+
 
 async def decode_msg(msg):
     return {
-        'from': base58.b58encode(msg.from_id),
-        'data': msg.data,
-        'seqno': base58.b58encode(msg.seqno),
-        'topicIDs': msg.topicIDs
+        "from": base58.b58encode(msg.from_id),
+        "data": msg.data,
+        "seqno": base58.b58encode(msg.seqno),
+        "topicIDs": msg.topicIDs,
     }
-    
+
 
 async def sub(topic):
     sub = await singleton.pubsub.subscribe(topic)
@@ -21,10 +22,9 @@ async def sub(topic):
         mvalue = await sub.get()
         mvalue = await decode_msg(mvalue)
         LOGGER.debug("New message received %r" % mvalue)
-        
+
         yield mvalue
 
 
 async def pub(topic, message):
-    await singleton.pubsub.publish(topic, message.encode('utf-8'))
-            
+    await singleton.pubsub.publish(topic, message.encode("utf-8"))

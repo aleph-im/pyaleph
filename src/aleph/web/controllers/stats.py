@@ -11,10 +11,9 @@ from aleph.web import app
 
 # WARNING: we are storing this in memory... memcached or similar would
 #          be better if volume starts to be too big.
-@cached(ttl=60*120, cache=SimpleMemoryCache, timeout=120)
+@cached(ttl=60 * 120, cache=SimpleMemoryCache, timeout=120)
 # 60*120 seconds or 2 hours minutes, 120 seconds timeout
-async def addresses_stats(check_time=None, address_list=None,
-                          output_collection=None):
+async def addresses_stats(check_time=None, address_list=None, output_collection=None):
     if check_time is None:
         check_time = datetime.datetime.now()
 
@@ -23,91 +22,92 @@ async def addresses_stats(check_time=None, address_list=None,
     if address_list is not None and len(address_list):
         if len(address_list) > 1:
             matches.append(
-                {'$match': # {'$or': [
+                {
+                    "$match":  # {'$or': [
                     # {'sender': {'$in': address_list}},
-                    {'content.address': {'$in': address_list}}
-                    #]}
-                })
+                    {"content.address": {"$in": address_list}}
+                    # ]}
+                }
+            )
         else:
             matches.append(
-                {'$match': #{'$or': [
+                {
+                    "$match":  # {'$or': [
                     # {'sender': address_list[0]},
-                    {'content.address': address_list[0]}
-                    #]}
-                })
+                    {"content.address": address_list[0]}
+                    # ]}
+                }
+            )
 
     aggregate = Message.collection.aggregate(
-        matches +
-        [
-         {'$group': {'_id': '$content.address',
-                     'messages': {'$sum': 1},
-                     'posts': {'$sum': {"$cond": [
-                         {'$eq': ['$type', 'POST']},
-                         1, 0
-                        ]}},
-                     'aggregates': {'$sum': {"$cond": [
-                         {'$eq': ['$type', 'AGGREGATE']},
-                         1, 0
-                        ]}},
-                     }},
-         {'$project': {
-                '_id': 0,
-                'messages': 1,
-                'posts': 1,
-                'aggregates': 1,
-                'address': '$_id'
-            }},
-         {'$sort': {'address': -1}}
-         ], allowDiskUse=(address_list is None))
+        matches
+        + [
+            {
+                "$group": {
+                    "_id": "$content.address",
+                    "messages": {"$sum": 1},
+                    "posts": {"$sum": {"$cond": [{"$eq": ["$type", "POST"]}, 1, 0]}},
+                    "aggregates": {
+                        "$sum": {"$cond": [{"$eq": ["$type", "AGGREGATE"]}, 1, 0]}
+                    },
+                }
+            },
+            {
+                "$project": {
+                    "_id": 0,
+                    "messages": 1,
+                    "posts": 1,
+                    "aggregates": 1,
+                    "address": "$_id",
+                }
+            },
+            {"$sort": {"address": -1}},
+        ],
+        allowDiskUse=(address_list is None),
+    )
     items = [item async for item in aggregate]
     return items
 
 
-@cached(ttl=60*10, cache=SimpleMemoryCache)  # 600 seconds or 10 minutes
+@cached(ttl=60 * 10, cache=SimpleMemoryCache)  # 600 seconds or 10 minutes
 async def addresses_infos(check_time=None, address_list=None):
-    address_stats = await addresses_stats(check_time=check_time,
-                                          address_list=address_list)
-    return {info['address']: info
-            for info in address_stats}
+    address_stats = await addresses_stats(
+        check_time=check_time, address_list=address_list
+    )
+    return {info["address"]: info for info in address_stats}
 
 
 async def addresses_stats_view(request):
-    """ Returns the stats of some addresses.
-    """
+    """Returns the stats of some addresses."""
 
-    addresses = request.query.getall('addresses[]', [])
+    addresses = request.query.getall("addresses[]", [])
     check_time = None
 
     if len(addresses) and (len(addresses) < 200):  # don't use cached values
         check_time = datetime.datetime.now()
-        
+
     if len(addresses) == 1:
         stats = {
             addresses[0]: {
-                'address': addresses[0],
-                'messages': await Message.collection.count_documents({
-                    'content.address': addresses[0]
-                }),
-                'posts': await Message.collection.count_documents({
-                    'content.address': addresses[0],
-                    'type': 'POST'
-                }),
-                'aggregates': await Message.collection.count_documents({
-                    'content.address': addresses[0],
-                    'type': 'AGGREGATE'
-                })
+                "address": addresses[0],
+                "messages": await Message.collection.count_documents(
+                    {"content.address": addresses[0]}
+                ),
+                "posts": await Message.collection.count_documents(
+                    {"content.address": addresses[0], "type": "POST"}
+                ),
+                "aggregates": await Message.collection.count_documents(
+                    {"content.address": addresses[0], "type": "AGGREGATE"}
+                ),
             }
         }
     else:
-        stats = await addresses_infos(address_list=addresses,
-                                    check_time=check_time)
+        stats = await addresses_infos(address_list=addresses, check_time=check_time)
 
-    output = {
-        'data': stats
-    }
-    return web.json_response(output,
-                             dumps=lambda v: json.dumps(
-                                 v, default=json_util.default))
+    output = {"data": stats}
+    return web.json_response(
+        output, dumps=lambda v: json.dumps(v, default=json_util.default)
+    )
 
 
-app.router.add_get('/api/v0/addresses/stats.json', addresses_stats_view)
+app.router.add_get("/api/v0/addresses/stats.json", addresses_stats_view)
