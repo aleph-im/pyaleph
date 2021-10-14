@@ -7,6 +7,7 @@ import aiohttp
 from aiohttp import web
 
 from aleph.model.messages import Message
+from aleph.services.ipfs.common import get_ipfs_api
 from aleph.services.ipfs.pubsub import pub as pub_ipfs
 from aleph.services.p2p import pub as pub_p2p
 from aleph.types import Protocol
@@ -29,7 +30,7 @@ async def get_user_usage(address: str):
             sort=[('time', -1)]
         )
     ]
-    LOGGER.info("MESSAGES {}".format(messages))
+    LOGGER.info("MESSAGES count {}".format(len(messages)))
 
     # TODO: Check 'sender' is allowed (VM runner, ...)
 
@@ -42,7 +43,8 @@ async def get_user_usage(address: str):
 
 
 async def get_user_balance(address: str) -> float:
-    # ETH
+    # TODO: Support ALEPH on chains other than ETH
+    # TODO: Check if using the freekey api key is acceptable
     API_url = f"https://api.ethplorer.io/getAddressInfo/{address}?apiKey=freekey"
     async with aiohttp.ClientSession() as client:
         async with client.get(API_url) as resp:
@@ -73,7 +75,7 @@ def balance_to_quota(balance: float) -> float:
 
 
 async def get_user_quota(address: str) -> float:
-    balance = get_user_balance(address)
+    balance = await get_user_balance(address)
     return balance_to_quota(balance)
 
 
@@ -96,17 +98,28 @@ async def pub_json(request):
     data = await request.json()
     topic: str = data["topic"]
     message = data["data"]
+
+    print(message)
+    LOGGER.info(message)
+    msg = json.loads(message)
+    msg['content'] = json.loads(msg['item_content'])
     failed_publications: List[str] = []
 
     # Check that emitter has enough credit
-    address: str = message["content"]["address"]
-    size: int = message["content"]["size"]
+    address: str = msg["content"]["address"]
+    item_hash = msg["content"]['item_hash']  # TODO: Use get_message_content(message) ?
+    api = await get_ipfs_api(timeout=5)
+    stats = await asyncio.wait_for(
+        api.files.stat(f"/ipfs/{item_hash}"), 5)
+    size = stats['CumulativeSize']
+
+    # size: int = msg["content"]["size"]
     usage = await get_user_usage(address)
     quota = await get_user_quota(address)
     assert usage >= 0
     assert quota >= 0
     if (size + usage) > quota:
-        return web.HTTPPaymentRequired(reason="Not hold enough tokens",
+        return web.HTTPPaymentRequired(reason="Not enough tokens",
                                        text="This address does not hold enough Aleph tokens.\n"
                                             f"Usage: {usage} / {quota}\nNew file: {size}")
 
