@@ -23,9 +23,8 @@ LOGGER = logging.getLogger("HANDLERS.STORAGE")
 
 
 async def handle_new_storage(message, content):
-    store_files = app["config"].storage.store_files.value
-    if not store_files:
-        return True  # handled
+    if not app["config"].storage.store_files.value:
+        return True  # Ignore
 
     try:
         engine = ItemType(content.get("item_type"))
