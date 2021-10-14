@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 from hashlib import sha256
-from typing import Dict, Union
+from typing import Dict
 
 from aleph.services.filestore import get_value, set_value
 from aleph.services.ipfs.storage import add_bytes as add_ipfs_bytes
@@ -15,7 +15,7 @@ from aleph.services.ipfs.storage import get_ipfs_content
 from aleph.services.ipfs.storage import pin_add as ipfs_pin_add
 from aleph.services.p2p.http import request_hash as p2p_http_request_hash
 from aleph.services.p2p.protocol import request_hash as p2p_protocol_request_hash
-from aleph.utils import run_in_executor
+from aleph.utils import run_in_executor, get_sha256
 from aleph.web import app
 
 LOGGER = logging.getLogger("STORAGE")
@@ -45,12 +45,6 @@ async def get_message_content(message: Dict):
             None,
             0,
         )  # unknown, could retry later? shouldn't have arrived this far though.
-
-
-def get_sha256(content: Union[str, bytes]) -> str:
-    if isinstance(content, str):
-        content = content.encode("utf-8")
-    return sha256(content).hexdigest()
 
 
 async def get_hash_content(

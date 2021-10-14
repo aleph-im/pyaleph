@@ -1,12 +1,12 @@
 import asyncio
 import json
 import logging
-from hashlib import sha256
-from typing import Coroutine, List, Union, Dict
+from typing import Coroutine, List, Dict
 from urllib.parse import unquote
 
 from aleph.chains.register import VERIFIER_REGISTER
 from aleph.services.ipfs.pubsub import incoming_channel as incoming_ipfs_channel
+from aleph.utils import get_sha256
 
 LOGGER = logging.getLogger("NETWORK")
 
@@ -44,12 +44,6 @@ async def incoming_check(ipfs_pubsub_message):
         LOGGER.exception(
             "Received non-json message %r" % ipfs_pubsub_message.get("data", "")
         )
-
-
-def get_sha256(content: Union[str, bytes]) -> str:
-    if isinstance(content, str):
-        content = content.encode("utf-8")
-    return sha256(content).hexdigest()
 
 
 async def check_message(message: Dict, from_chain=False, from_network=False, trusted=False):
