@@ -308,6 +308,7 @@ async def get_chaindata_messages(chaindata, context, seen_ids=None):
                 # is it really what we want here?
                 return
             else:
+                # Should we not do this only on get_json success ?
                 seen_ids.append(chaindata["content"])
         try:
             content, size = await get_json(chaindata["content"], timeout=10)

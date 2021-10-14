@@ -16,7 +16,7 @@ from aleph.web import app
 LOGGER = logging.getLogger("web.controllers.p2p")
 
 
-async def get_user_usage(address: str):
+async def get_user_usage(address: str) -> float:
     # ETH
     LOGGER.info("get_user_usage")
     messages = [
