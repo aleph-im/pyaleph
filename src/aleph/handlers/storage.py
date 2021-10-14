@@ -32,7 +32,6 @@ async def handle_new_storage(message, content):
         LOGGER.warning("Got invalid storage engine %s" % engine)
         return -1  # not allowed, ignore.
 
-    file_content = None
     is_folder = False
     item_hash = content["item_hash"]
     ipfs_enabled = app["config"].ipfs.enabled.value
