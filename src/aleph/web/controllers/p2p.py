@@ -5,6 +5,7 @@ from aiohttp import web
 
 from aleph.services.ipfs.pubsub import pub as pub_ipfs
 from aleph.services.p2p import pub as pub_p2p
+from aleph.types import Protocol
 from aleph.web import app
 
 LOGGER = logging.getLogger("web.controllers.p2p")
@@ -20,13 +21,13 @@ async def pub_json(request):
             await asyncio.wait_for(pub_ipfs(data.get("topic"), data.get("data")), 0.2)
     except Exception:
         LOGGER.exception("Can't publish on ipfs")
-        failed_publications.append("ipfs")
+        failed_publications.append(Protocol.IPFS)
 
     try:
         await asyncio.wait_for(pub_p2p(data.get("topic"), data.get("data")), 0.5)
     except Exception:
         LOGGER.exception("Can't publish on p2p")
-        failed_publications.append("p2p")
+        failed_publications.append(Protocol.P2P)
 
     status = {
         0: "success",

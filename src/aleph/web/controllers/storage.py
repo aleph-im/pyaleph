@@ -4,6 +4,7 @@ import base64
 from aiohttp import web
 
 from aleph.storage import add_json, get_hash_content, add_file
+from aleph.types import ItemType
 from aleph.utils import run_in_executor
 from aleph.web import app
 
@@ -12,7 +13,7 @@ async def add_ipfs_json_controller(request):
     """Forward the json content to IPFS server and return an hash"""
     data = await request.json()
 
-    output = {"status": "success", "hash": await add_json(data, engine="ipfs")}
+    output = {"status": "success", "hash": await add_json(data, engine=ItemType.IPFS)}
     return web.json_response(output)
 
 
@@ -23,7 +24,7 @@ async def add_storage_json_controller(request):
     """Forward the json content to IPFS server and return an hash"""
     data = await request.json()
 
-    output = {"status": "success", "hash": await add_json(data, engine="storage")}
+    output = {"status": "success", "hash": await add_json(data, engine=ItemType.Storage)}
     return web.json_response(output)
 
 
@@ -35,7 +36,7 @@ async def storage_add_file(request):
     # TODO: find a way to specify linked ipfs hashes in posts/aggr.
     post = await request.post()
     file_hash = await add_file(
-        post["file"].file, filename=post["file"].filename, engine="storage"
+        post["file"].file, filename=post["file"].filename, engine=ItemType.Storage
     )
 
     output = {"status": "success", "hash": file_hash}
@@ -53,9 +54,7 @@ async def get_hash(request):
     result = {"status": "error", "reason": "unknown"}
     item_hash = request.match_info.get("hash", None)
 
-    engine = "ipfs"
-    if len(item_hash) == 64:
-        engine = "storage"
+    engine = ItemType.from_hash(item_hash)
 
     if item_hash is not None:
         value = await get_hash_content(
@@ -90,9 +89,7 @@ app.router.add_get("/api/v0/storage/{hash}", get_hash)
 async def get_raw_hash(request):
     item_hash = request.match_info.get("hash", None)
 
-    engine = "ipfs"
-    if len(item_hash) == 64:
-        engine = "storage"
+    engine = ItemType.from_hash(item_hash)
 
     if item_hash is not None:
         value = await get_hash_content(

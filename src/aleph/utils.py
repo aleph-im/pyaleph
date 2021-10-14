@@ -1,6 +1,6 @@
 import asyncio
 from hashlib import sha256
-from types import Union
+from typing import Union
 
 from aleph.settings import settings
 

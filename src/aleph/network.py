@@ -6,6 +6,7 @@ from urllib.parse import unquote
 
 from aleph.chains.register import VERIFIER_REGISTER
 from aleph.services.ipfs.pubsub import incoming_channel as incoming_ipfs_channel
+from aleph.types import ItemType
 from aleph.utils import get_sha256
 
 LOGGER = logging.getLogger("NETWORK")
@@ -98,13 +99,13 @@ async def check_message(message: Dict, from_chain=False, from_network=False, tru
             LOGGER.warning("Unknown hash type %s" % message["hash_type"])
             return None
 
-        message["item_type"] = "inline"
+        message["item_type"] = ItemType.Inline.value
 
     else:
-        if len(message["item_hash"]) == 46:
-            message["item_type"] = "ipfs"
-        if len(message["item_hash"]) == 64:
-            message["item_type"] = "storage"
+        try:
+            message["item_type"] = ItemType.from_hash(message["item_hash"]).value
+        except ValueError:
+            pass
 
     if trusted:
         # only in the case of a message programmatically built here

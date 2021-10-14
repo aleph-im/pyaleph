@@ -15,6 +15,7 @@ from aleph.services.ipfs.storage import get_ipfs_content
 from aleph.services.ipfs.storage import pin_add as ipfs_pin_add
 from aleph.services.p2p.http import request_hash as p2p_http_request_hash
 from aleph.services.p2p.protocol import request_hash as p2p_protocol_request_hash
+from aleph.types import ItemType
 from aleph.utils import run_in_executor, get_sha256
 from aleph.web import app
 
@@ -28,11 +29,11 @@ async def json_async_loads(s: str):
 
 
 async def get_message_content(message: Dict):
-    item_type: str = message.get("item_type", "ipfs")
+    item_type: str = message.get("item_type", ItemType.IPFS)
 
-    if item_type in ("ipfs", "storage"):
-        return await get_json(message["item_hash"], engine=item_type)
-    elif item_type == "inline":
+    if item_type in ItemType.__members__.values():
+        return await get_json(message["item_hash"], engine=ItemType(item_type))
+    elif item_type == ItemType.Inline:
         try:
             item_content = await json_async_loads(message["item_content"])
         except (json.JSONDecodeError, KeyError):
@@ -49,7 +50,7 @@ async def get_message_content(message: Dict):
 
 async def get_hash_content(
     hash,
-    engine="ipfs",
+    engine: ItemType=ItemType.IPFS,
     timeout=2,
     tries=1,
     use_network=True,
@@ -70,7 +71,7 @@ async def get_hash_content(
                 content = await p2p_http_request_hash(hash, timeout=timeout)
 
         if content is not None:
-            if engine == "ipfs" and ipfs_enabled:
+            if engine == ItemType.IPFS and ipfs_enabled:
                 # TODO: get a better way to compare hashes (without depending on IPFS daemon)
                 try:
                     cid_version = 0
@@ -88,7 +89,7 @@ async def get_hash_content(
                     LOGGER.warning(f"Can't verify hash {hash}")
                     content = None
 
-            elif engine == "storage":
+            elif engine == ItemType.Storage:
                 compared_hash = await run_in_executor(None, get_sha256, content)
                 # compared_hash = sha256(content.encode('utf-8')).hexdigest()
                 if compared_hash != hash:
@@ -96,7 +97,7 @@ async def get_hash_content(
                     content = -1
 
         if content is None:
-            if ipfs_enabled and engine == "ipfs" and use_ipfs:
+            if ipfs_enabled and engine == ItemType.IPFS and use_ipfs:
                 content = await get_ipfs_content(hash, timeout=timeout, tries=tries)
         else:
             LOGGER.info(f"Got content from p2p {hash}")
@@ -110,7 +111,7 @@ async def get_hash_content(
     return content
 
 
-async def get_json(hash, engine="ipfs", timeout=2, tries=1):
+async def get_json(hash, engine=ItemType.IPFS, timeout=2, tries=1):
     content = await get_hash_content(hash, engine=engine, timeout=timeout, tries=tries)
     size = 0
     if content is not None and content != -1:
@@ -127,13 +128,13 @@ async def pin_hash(chash, timeout=2, tries=1):
     return await ipfs_pin_add(chash, timeout=timeout, tries=tries)
 
 
-async def add_json(value, engine="ipfs"):
+async def add_json(value, engine: ItemType=ItemType.IPFS) -> str:
     # TODO: determine which storage engine to use
     content = await run_in_executor(None, json.dumps, value)
     content = content.encode("utf-8")
-    if engine == "ipfs":
+    if engine == ItemType.IPFS:
         chash = await add_ipfs_bytes(content)
-    elif engine == "storage":
+    elif engine == ItemType.Storage:
         if isinstance(content, str):
             content = content.encode("utf-8")
         chash = sha256(content).hexdigest()
@@ -144,17 +145,17 @@ async def add_json(value, engine="ipfs"):
     return chash
 
 
-async def add_file(fileobject, filename=None, engine="ipfs"):
+async def add_file(fileobject, filename=None, engine: ItemType=ItemType.IPFS):
     file_hash = None
     file_content = None
 
-    if engine == "ipfs":
+    if engine == ItemType.IPFS:
         output = await ipfs_add_file(fileobject, filename)
         file_hash = output["Hash"]
         fileobject.seek(0)
         file_content = fileobject.read()
 
-    elif engine == "storage":
+    elif engine == ItemType.Storage:
         file_content = fileobject.read()
         file_hash = sha256(file_content).hexdigest()
 
