@@ -32,9 +32,11 @@ def prepare_value(value):
     if isinstance(value, list):
         value = [prepare_value(v) for v in value]
 
-    elif (isinstance(value, datetime)
-          or isinstance(value, bytes)
-          or isinstance(value, ObjectId)):
+    elif (
+        isinstance(value, datetime)
+        or isinstance(value, bytes)
+        or isinstance(value, ObjectId)
+    ):
         value = str(value)
 
     return value
@@ -71,8 +73,7 @@ class SerializerObject(object):
         if attr in self._data:
             return self._data.get(attr)
 
-        raise AttributeError("%r object has no attribute %r" %
-                             (self.__class__, attr))
+        raise AttributeError("%r object has no attribute %r" % (self.__class__, attr))
 
     def __setitem__(self, attribute, value):
         self._data[attribute] = value
@@ -100,14 +101,17 @@ class BaseClass(SerializerObject):
     @classproperty
     def _collection_name(self):
         if getattr(self, "COLLECTION", None) is None:
-            raise ValueError("Please specify collection name on classes"
-                             + " inheriting from BaseClass")
+            raise ValueError(
+                "Please specify collection name on classes"
+                + " inheriting from BaseClass"
+            )
 
         return self.COLLECTION
 
     def get_collection(self, db=None):
         if db is None:
             from aleph import model
+
             db = model.db
         return db[self._collection_name]
 
@@ -122,9 +126,16 @@ class BaseClass(SerializerObject):
             return cls(value)
 
     @classmethod
-    def _prepare_find(cls, collection, *args, sort=None,
-                      sort_order=pymongo.ASCENDING, skip=None, limit=None,
-                      **kwargs):
+    def _prepare_find(
+        cls,
+        collection,
+        *args,
+        sort=None,
+        sort_order=pymongo.ASCENDING,
+        skip=None,
+        limit=None,
+        **kwargs
+    ):
         values = collection.find(*args, **kwargs)
         if sort is not None:
             if not isinstance(sort, list):
@@ -141,11 +152,24 @@ class BaseClass(SerializerObject):
         return values
 
     @classmethod
-    async def find(cls, *args, sort=None, sort_order=pymongo.ASCENDING,
-                   skip=None, limit=None, **kwargs):
-        cursor = cls._prepare_find(cls.collection, *args, sort=sort,
-                                   sort_order=sort_order, skip=skip,
-                                   limit=limit, **kwargs)
+    async def find(
+        cls,
+        *args,
+        sort=None,
+        sort_order=pymongo.ASCENDING,
+        skip=None,
+        limit=None,
+        **kwargs
+    ):
+        cursor = cls._prepare_find(
+            cls.collection,
+            *args,
+            sort=sort,
+            sort_order=sort_order,
+            skip=skip,
+            limit=limit,
+            **kwargs
+        )
 
         async for value in cursor:
             yield cls(value)
@@ -160,13 +184,14 @@ class BaseClass(SerializerObject):
         return self._id
 
     async def delete(self):
-        await self.collection.delete_one({'_id': self._id})
+        await self.collection.delete_one({"_id": self._id})
 
     async def refresh(self):
         if not self._id:
-            raise ValueError("You should save a new object before "
-                             + "trying to update it.")
-        value = await self.collection.find_one({'_id': self._id})
+            raise ValueError(
+                "You should save a new object before " + "trying to update it."
+            )
+        value = await self.collection.find_one({"_id": self._id})
         if value is not None:
             self.set_data(value)
         else:
@@ -174,8 +199,7 @@ class BaseClass(SerializerObject):
 
     @classmethod
     def ensure_indexes(cls, db):
-        """ Ensures indexes. Warning: Takes a non-async db.
-        """
+        """Ensures indexes. Warning: Takes a non-async db."""
         indexes = getattr(cls, "INDEXES", None)
         if indexes is None:
             return

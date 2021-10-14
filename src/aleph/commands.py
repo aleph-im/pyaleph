@@ -48,54 +48,56 @@ def parse_args(args):
     Returns:
       :obj:`argparse.Namespace`: command line parameters namespace
     """
-    parser = argparse.ArgumentParser(
-        prog="aleph",
-        description="Aleph Network Node")
+    parser = argparse.ArgumentParser(prog="aleph", description="Aleph Network Node")
     parser.add_argument(
-        '--version',
-        action='version',
-        version='pyaleph {ver}'.format(ver=__version__))
-    parser.add_argument('-c', '--config', action="store", dest="config_file")
-    parser.add_argument('-p', '--port', action="store", type=int, dest="port",
-                        required=False)
-    parser.add_argument('--bind', '-b', action="store", type=str, dest="host",
-                        required=False)
-    parser.add_argument('--debug', action="store_true", dest="debug",
-                        default=False)
-    parser.add_argument('--no-commit', action="store_true", dest="no_commit",
-                        default=False)
-    parser.add_argument('--no-jobs', action="store_true", dest="no_jobs",
-                        default=False)
+        "--version", action="version", version="pyaleph {ver}".format(ver=__version__)
+    )
+    parser.add_argument("-c", "--config", action="store", dest="config_file")
     parser.add_argument(
-        '-v',
-        '--verbose',
+        "-p", "--port", action="store", type=int, dest="port", required=False
+    )
+    parser.add_argument(
+        "--bind", "-b", action="store", type=str, dest="host", required=False
+    )
+    parser.add_argument("--debug", action="store_true", dest="debug", default=False)
+    parser.add_argument(
+        "--no-commit", action="store_true", dest="no_commit", default=False
+    )
+    parser.add_argument("--no-jobs", action="store_true", dest="no_jobs", default=False)
+    parser.add_argument(
+        "-v",
+        "--verbose",
         dest="loglevel",
         help="set loglevel to INFO",
-        action='store_const',
-        const=logging.INFO)
+        action="store_const",
+        const=logging.INFO,
+    )
     parser.add_argument(
-        '-vv',
-        '--very-verbose',
+        "-vv",
+        "--very-verbose",
         dest="loglevel",
         help="set loglevel to DEBUG",
-        action='store_const',
-        const=logging.DEBUG)
+        action="store_const",
+        const=logging.DEBUG,
+    )
     parser.add_argument(
-        '-g',
-        '--gen-key',
+        "-g",
+        "--gen-key",
         dest="generate_key",
         help="Generate a node key and exit",
         action="store_true",
-        default=False)
+        default=False,
+    )
     parser.add_argument(
-        '--print-key',
+        "--print-key",
         dest="print_key",
         help="Print the generated key",
         action="store_true",
-        default=False)
+        default=False,
+    )
     parser.add_argument(
-        '-k',
-        '--key',
+        "-k",
+        "--key",
         dest="key_path",
         help="Path to the node private key",
         action="store",
@@ -103,7 +105,7 @@ def parse_args(args):
         default="node-secret.key",
     )
     parser.add_argument(
-        '--disable-sentry',
+        "--disable-sentry",
         dest="sentry_disabled",
         help="Disable Sentry error tracking",
         action="store_true",
@@ -119,11 +121,12 @@ def setup_logging(loglevel):
       loglevel (int): minimum loglevel for emitting messages
     """
     logformat = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-    logging.basicConfig(level=loglevel, stream=sys.stdout,
-                        format=logformat, datefmt="%Y-%m-%d %H:%M:%S")
+    logging.basicConfig(
+        level=loglevel, stream=sys.stdout, format=logformat, datefmt="%Y-%m-%d %H:%M:%S"
+    )
 
 
-async def run_server(host: str, port: int, shared_stats:dict, extra_web_config: dict):
+async def run_server(host: str, port: int, shared_stats: dict, extra_web_config: dict):
     # These imports will run in different processes
     from aiohttp import web
     from aleph.web.controllers.listener import broadcast
@@ -137,8 +140,8 @@ async def run_server(host: str, port: int, shared_stats:dict, extra_web_config: 
 
     LOGGER.debug("Setup of runner")
 
-    app['extra_config'] = extra_web_config
-    app['shared_stats'] = shared_stats
+    app["extra_config"] = extra_web_config
+    app["shared_stats"] = shared_stats
 
     runner = web.AppRunner(app)
     await runner.setup()
@@ -152,14 +155,23 @@ async def run_server(host: str, port: int, shared_stats:dict, extra_web_config: 
     LOGGER.debug("Finished broadcast server")
 
 
-def run_server_coroutine(config_values, host, port, manager, idx, shared_stats, enable_sentry: bool = True, extra_web_config = {}):
+def run_server_coroutine(
+    config_values,
+    host,
+    port,
+    manager,
+    idx,
+    shared_stats,
+    enable_sentry: bool = True,
+    extra_web_config={},
+):
     """Run the server coroutine in a synchronous way.
     Used as target of multiprocessing.Process.
     """
     if enable_sentry:
         sentry_sdk.init(
-            dsn=config_values['sentry']['dsn'],
-            traces_sample_rate=config_values['sentry']['traces_sample_rate'],
+            dsn=config_values["sentry"]["dsn"],
+            traces_sample_rate=config_values["sentry"]["traces_sample_rate"],
             ignore_errors=[KeyboardInterrupt],
         )
     # Use a try-catch-capture_exception to work with multiprocessing, see
@@ -167,7 +179,10 @@ def run_server_coroutine(config_values, host, port, manager, idx, shared_stats, 
     try:
         loop, tasks = prepare_loop(config_values, manager, idx=idx)
         loop.run_until_complete(
-            asyncio.gather(*tasks, run_server(host, port, shared_stats, extra_web_config)))
+            asyncio.gather(
+                *tasks, run_server(host, port, shared_stats, extra_web_config)
+            )
+        )
     except Exception as e:
         if enable_sentry:
             sentry_sdk.capture_exception(e)
@@ -182,8 +197,6 @@ def main(args):
       args ([str]): command line parameter list
     """
 
-
-
     args = parse_args(args)
     setup_logging(args.loglevel)
 
@@ -194,15 +207,15 @@ def main(args):
 
     LOGGER.info("Loading configuration")
     config = Config(schema=get_defaults())
-    app['config'] = config
+    app["config"] = config
 
     if args.config_file is not None:
         LOGGER.debug("Loading config file '%s'", args.config_file)
-        app['config'].yaml.load(args.config_file)
+        app["config"].yaml.load(args.config_file)
 
     if (not config.p2p.key.value) and args.key_path:
         LOGGER.debug("Loading key pair from file")
-        with open(args.key_path, 'r') as key_file:
+        with open(args.key_path, "r") as key_file:
             config.p2p.key.value = key_file.read()
 
     if not config.p2p.key.value:
@@ -216,10 +229,10 @@ def main(args):
 
     if args.sentry_disabled:
         LOGGER.info("Sentry disabled by CLI arguments")
-    elif app['config'].sentry.dsn.value:
+    elif app["config"].sentry.dsn.value:
         sentry_sdk.init(
-            dsn=app['config'].sentry.dsn.value,
-            traces_sample_rate=app['config'].sentry.traces_sample_rate.value,
+            dsn=app["config"].sentry.dsn.value,
+            traces_sample_rate=app["config"].sentry.traces_sample_rate.value,
             ignore_errors=[KeyboardInterrupt],
         )
         LOGGER.info("Sentry enabled")
@@ -233,9 +246,9 @@ def main(args):
     # filestore.init_store(config)
     # LOGGER.info("File store initalized.")
     init_cors()  # FIXME: This is stateful and process-dependent
-    set_start_method('spawn')
+    set_start_method("spawn")
     manager = None
-    if config.storage.engine.value == 'rocksdb':
+    if config.storage.engine.value == "rocksdb":
         # rocksdb doesn't support multiprocess/multithread
         manager = prepare_manager(config_values)
 
@@ -246,8 +259,9 @@ def main(args):
         shared_stats = shared_memory_manager.dict()
         if not args.no_jobs:
             LOGGER.debug("Creating jobs")
-            tasks += start_jobs(config, shared_stats=shared_stats,
-                                manager=manager, use_processes=True)
+            tasks += start_jobs(
+                config, shared_stats=shared_stats, manager=manager, use_processes=True
+            )
 
         loop = asyncio.get_event_loop()
 
@@ -265,31 +279,35 @@ def main(args):
 
         # Need to be passed here otherwise it get lost in the fork
         from aleph.services.p2p import manager as p2p_manager
-        extra_web_config = {
-            'public_adresses': p2p_manager.public_adresses
-        }
 
-        p1 = Process(target=run_server_coroutine, args=(
-            config_values,
-            config.p2p.host.value,
-            config.p2p.http_port.value,
-            manager and (manager._address, manager._authkey) or None,
-            3,
-            shared_stats,
-            args.sentry_disabled is False and app['config'].sentry.dsn.value,
-            extra_web_config,
+        extra_web_config = {"public_adresses": p2p_manager.public_adresses}
 
-        ))
-        p2 = Process(target=run_server_coroutine, args=(
-            config_values,
-            config.aleph.host.value,
-            config.aleph.port.value,
-            manager and (manager._address, manager._authkey) or None,
-            4,
-            shared_stats,
-            args.sentry_disabled is False and app['config'].sentry.dsn.value,
-            extra_web_config
-        ))
+        p1 = Process(
+            target=run_server_coroutine,
+            args=(
+                config_values,
+                config.p2p.host.value,
+                config.p2p.http_port.value,
+                manager and (manager._address, manager._authkey) or None,
+                3,
+                shared_stats,
+                args.sentry_disabled is False and app["config"].sentry.dsn.value,
+                extra_web_config,
+            ),
+        )
+        p2 = Process(
+            target=run_server_coroutine,
+            args=(
+                config_values,
+                config.aleph.host.value,
+                config.aleph.port.value,
+                manager and (manager._address, manager._authkey) or None,
+                4,
+                shared_stats,
+                args.sentry_disabled is False and app["config"].sentry.dsn.value,
+                extra_web_config,
+            ),
+        )
         p1.start()
         p2.start()
         LOGGER.debug("Started processes")
@@ -308,9 +326,9 @@ def main(args):
         LOGGER.debug("Running event loop")
         loop.run_until_complete(asyncio.gather(*tasks))
 
+
 def run():
-    """Entry point for console_scripts
-    """
+    """Entry point for console_scripts"""
     main(sys.argv[1:])
 
 

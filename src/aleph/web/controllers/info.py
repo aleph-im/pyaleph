@@ -9,9 +9,9 @@ async def public_multriaddres(request):
     """
 
     output = {
-        'node_multi_addresses': request.config_dict['extra_config']['public_adresses'],
+        "node_multi_addresses": request.config_dict["extra_config"]["public_adresses"],
     }
     return web.json_response(output)
 
 
-app.router.add_get('/api/v0/info/public.json', public_multriaddres)
+app.router.add_get("/api/v0/info/public.json", public_multriaddres)

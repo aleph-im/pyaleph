@@ -13,32 +13,34 @@ from aleph.services.peers.monitor import monitor_hosts_ipfs, monitor_hosts_p2p
 from aleph.services.peers.publish import publish_host
 from aleph.services.ipfs.common import get_public_address
 
-LOGGER = logging.getLogger('P2P.host')
+LOGGER = logging.getLogger("P2P.host")
 
 FLOODSUB_PROTOCOL_ID = floodsub.PROTOCOL_ID
 GOSSIPSUB_PROTOCOL_ID = gossipsub.PROTOCOL_ID
 
 
 def generate_keypair(print_key: bool, key_path: Optional[str]):
-    """Generate an key pair and exit.
-    """
+    """Generate an key pair and exit."""
     keypair = create_new_key_pair()
     if print_key:
         # Print the armored key pair for archiving
-        print(keypair.private_key.impl.export_key().decode('utf-8'))
+        print(keypair.private_key.impl.export_key().decode("utf-8"))
 
     if key_path:
         # Save the armored key pair in a file
-        with open(key_path, 'wb') as key_file:
+        with open(key_path, "wb") as key_file:
             key_file.write(keypair.private_key.impl.export_key())
 
     return keypair
 
+
 # Save published adress to present them in the web process later
 public_adresses = []
 
-async def initialize_host(key, host='0.0.0.0', port=4025, listen=True,
-                          protocol_active=True) -> Tuple[BasicHost, Pubsub, Any, List]:
+
+async def initialize_host(
+    key, host="0.0.0.0", port=4025, listen=True, protocol_active=True
+) -> Tuple[BasicHost, Pubsub, Any, List]:
     from .protocol import AlephProtocol
     from .jobs import reconnect_p2p_job, tidy_http_peers_job
 
@@ -52,8 +54,7 @@ async def initialize_host(key, host='0.0.0.0', port=4025, listen=True,
     keypair = KeyPair(private_key, public_key)
 
     transport_opt = f"/ip4/{host}/tcp/{port}"
-    host: BasicHost = await new_node(transport_opt=[transport_opt],
-                                     key_pair=keypair)
+    host: BasicHost = await new_node(transport_opt=[transport_opt], key_pair=keypair)
     protocol = None
     # gossip = gossipsub.GossipSub([GOSSIPSUB_PROTOCOL_ID], 10, 9, 11, 30)
     # psub = Pubsub(host, gossip, host.get_id())
@@ -69,34 +70,40 @@ async def initialize_host(key, host='0.0.0.0', port=4025, listen=True,
         from aleph.web import app
 
         await host.get_network().listen(multiaddr.Multiaddr(transport_opt))
-        LOGGER.info("Listening on " + f'{transport_opt}/p2p/{host.get_id()}')
+        LOGGER.info("Listening on " + f"{transport_opt}/p2p/{host.get_id()}")
         ip = await get_IP()
-        public_address = f'/ip4/{ip}/tcp/{port}/p2p/{host.get_id()}'
-        http_port = app['config'].p2p.http_port.value
+        public_address = f"/ip4/{ip}/tcp/{port}/p2p/{host.get_id()}"
+        http_port = app["config"].p2p.http_port.value
         public_adresses.append(public_address)
 
-        public_http_address = f'http://{ip}:{http_port}'
+        public_http_address = f"http://{ip}:{http_port}"
 
         LOGGER.info("Probable public on " + public_address)
         # TODO: set correct interests and args here
         tasks += [
-            publish_host(public_address,
-                         psub, peer_type="P2P",
-                         use_ipfs=app['config'].ipfs.enabled.value),
-            publish_host(public_http_address,
-                         psub, peer_type="HTTP",
-                         use_ipfs=app['config'].ipfs.enabled.value),
-            monitor_hosts_p2p(psub)
+            publish_host(
+                public_address,
+                psub,
+                peer_type="P2P",
+                use_ipfs=app["config"].ipfs.enabled.value,
+            ),
+            publish_host(
+                public_http_address,
+                psub,
+                peer_type="HTTP",
+                use_ipfs=app["config"].ipfs.enabled.value,
+            ),
+            monitor_hosts_p2p(psub),
         ]
-        
-        if app['config'].ipfs.enabled.value:
-            tasks.append(monitor_hosts_ipfs(app['config']))
+
+        if app["config"].ipfs.enabled.value:
+            tasks.append(monitor_hosts_ipfs(app["config"]))
             try:
                 public_ipfs_address = await get_public_address()
                 tasks.append(
-                    publish_host(public_ipfs_address,
-                                 psub, peer_type="IPFS",
-                                 use_ipfs=True)
+                    publish_host(
+                        public_ipfs_address, psub, peer_type="IPFS", use_ipfs=True
+                    )
                 )
             except Exception:
                 LOGGER.exception("Can't publish public IPFS address")

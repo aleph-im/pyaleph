@@ -1,11 +1,10 @@
 from aleph.model.messages import Message, get_merged_posts
 from aleph.web import app
-from aleph.web.controllers.utils import (Pagination,
-                                         cond_output, prepare_date_filters)
+from aleph.web.controllers.utils import Pagination, cond_output, prepare_date_filters
 
 
 async def view_posts_list(request):
-    """ Posts list view with filters
+    """Posts list view with filters
     TODO: return state with amended posts
     """
 
@@ -15,97 +14,100 @@ async def view_posts_list(request):
     ]
 
     query_string = request.query_string
-    addresses = request.query.get('addresses', None)
+    addresses = request.query.get("addresses", None)
     if addresses is not None:
-        addresses = addresses.split(',')
+        addresses = addresses.split(",")
 
-    refs = request.query.get('refs', None)
+    refs = request.query.get("refs", None)
     if refs is not None:
-        refs = refs.split(',')
+        refs = refs.split(",")
 
-    post_types = request.query.get('types', None)
+    post_types = request.query.get("types", None)
     if post_types is not None:
-        post_types = post_types.split(',')
+        post_types = post_types.split(",")
 
-    tags = request.query.get('tags', None)
+    tags = request.query.get("tags", None)
     if tags is not None:
-        tags = tags.split(',')
+        tags = tags.split(",")
 
-    hashes = request.query.get('hashes', None)
+    hashes = request.query.get("hashes", None)
     if hashes is not None:
-        hashes = hashes.split(',')
+        hashes = hashes.split(",")
 
-    channels = request.query.get('channels', None)
+    channels = request.query.get("channels", None)
     if channels is not None:
-        channels = channels.split(',')
+        channels = channels.split(",")
 
-    date_filters = prepare_date_filters(request, 'time')
+    date_filters = prepare_date_filters(request, "time")
 
     if addresses is not None:
-        filters.append({
-            'content.address': {'$in': addresses}
-        })
+        filters.append({"content.address": {"$in": addresses}})
 
     if post_types is not None:
-        filters.append({'content.type': {'$in': post_types}})
+        filters.append({"content.type": {"$in": post_types}})
 
     if refs is not None:
-        filters.append({'content.ref': {'$in': refs}})
+        filters.append({"content.ref": {"$in": refs}})
 
     if tags is not None:
-        filters.append({'content.content.tags': {'$elemMatch': {'$in': tags}}})
+        filters.append({"content.content.tags": {"$elemMatch": {"$in": tags}}})
 
     if hashes is not None:
-        filters.append({'$or': [
-            {'item_hash': {'$in': hashes}},
-            {'tx_hash': {'$in': hashes}}
-        ]})
+        filters.append(
+            {"$or": [{"item_hash": {"$in": hashes}}, {"tx_hash": {"$in": hashes}}]}
+        )
 
     if channels is not None:
-        filters.append({
-            'channel': {'$in': channels}
-        })
+        filters.append({"channel": {"$in": channels}})
 
     if date_filters is not None:
         filters.append(date_filters)
 
     if len(filters) > 0:
-        find_filters = {'$and': filters} if len(filters) > 1 else filters[0]
+        find_filters = {"$and": filters} if len(filters) > 1 else filters[0]
 
-    pagination_page, pagination_per_page, pagination_skip = \
-        Pagination.get_pagination_params(request)
+    (
+        pagination_page,
+        pagination_per_page,
+        pagination_skip,
+    ) = Pagination.get_pagination_params(request)
     if pagination_per_page is None:
         pagination_per_page = 0
     if pagination_skip is None:
         pagination_skip = 0
 
-    posts = [msg
-             async for msg
-             in await get_merged_posts(find_filters,
-                                       limit=pagination_per_page,
-                                       skip=pagination_skip)]
+    posts = [
+        msg
+        async for msg in await get_merged_posts(
+            find_filters, limit=pagination_per_page, skip=pagination_skip
+        )
+    ]
 
-    context = {
-        'posts': posts
-    }
+    context = {"posts": posts}
 
     if pagination_per_page is not None:
         total_msgs = await Message.collection.count_documents(find_filters)
 
-        pagination = Pagination(pagination_page, pagination_per_page,
-                                total_msgs,
-                                url_base='/messages/posts/page/',
-                                query_string=query_string)
+        pagination = Pagination(
+            pagination_page,
+            pagination_per_page,
+            total_msgs,
+            url_base="/messages/posts/page/",
+            query_string=query_string,
+        )
 
-        context.update({
-            'pagination': pagination,
-            'pagination_page': pagination_page,
-            'pagination_total': total_msgs,
-            'pagination_per_page': pagination_per_page,
-            'pagination_item': 'posts'
-        })
+        context.update(
+            {
+                "pagination": pagination,
+                "pagination_page": pagination_page,
+                "pagination_total": total_msgs,
+                "pagination_per_page": pagination_per_page,
+                "pagination_item": "posts",
+            }
+        )
 
-    return cond_output(request, context, 'TODO.html')
+    return cond_output(request, context, "TODO.html")
 
-app.router.add_get('/api/v0/posts.json', view_posts_list)
-app.router.add_get('/api/v0/posts/page/{page}.json', view_posts_list)
+
+app.router.add_get("/api/v0/posts.json", view_posts_list)
+app.router.add_get("/api/v0/posts/page/{page}.json", view_posts_list)

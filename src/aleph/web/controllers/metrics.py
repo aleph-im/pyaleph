@@ -25,9 +25,12 @@ LOGGER = getLogger("WEB.metrics")
 
 def format_dict_for_prometheus(values: Dict) -> str:
     """Format a dict to a Prometheus tags string"""
-    values = (f"{key}={json.dumps(value)}"
-              for key, value in values.items() if value is not None)
-    return '{' + ','.join(values) + '}'
+    values = (
+        f"{key}={json.dumps(value)}"
+        for key, value in values.items()
+        if value is not None
+    )
+    return "{" + ",".join(values) + "}"
 
 
 def format_dataclass_for_prometheus(instance) -> str:
@@ -43,12 +46,13 @@ def format_dataclass_for_prometheus(instance) -> str:
             result.append(f"{key}{format_dict_for_prometheus(value)} 1")
         else:
             result.append(f"{key} {json.dumps(value)}")
-    return '\n'.join(result)
+    return "\n".join(result)
 
 
 @dataclass
 class BuildInfo:
     """Dataclass used to export aleph node build info."""
+
     python_version: str
     version: str
     # branch: str
@@ -61,6 +65,7 @@ class Metrics(DataClassJsonMixin):
 
     Naming convention: https://prometheus.io/docs/practices/naming/
     """
+
     pyaleph_build_info: BuildInfo
 
     pyaleph_status_peers_total: int
@@ -80,7 +85,6 @@ class Metrics(DataClassJsonMixin):
     pyaleph_processing_pending_messages_i_total: Optional[int] = None
     pyaleph_processing_pending_messages_j_total: Optional[int] = None
 
-
     pyaleph_status_sync_messages_reference_total: Optional[int] = None
     pyaleph_status_sync_messages_remaining_total: Optional[int] = None
     pyaleph_status_chain_eth_height_reference_total: Optional[int] = None
@@ -99,15 +103,17 @@ async def fetch_reference_total_messages() -> Optional[int]:
     """Obtain the total number of Aleph messages from another node."""
     LOGGER.debug("Fetching Aleph messages count")
 
-    url = app['config'].aleph.reference_node_url.value
+    url = app["config"].aleph.reference_node_url.value
     if url is None:
         return None
 
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.get(urljoin(url, 'metrics.json'), raise_for_status=True) as resp:
+            async with session.get(
+                urljoin(url, "metrics.json"), raise_for_status=True
+            ) as resp:
                 data = await resp.json()
-                return int(data['pyaleph_status_sync_messages_total'])
+                return int(data["pyaleph_status_sync_messages_total"])
         except aiohttp.ClientResponseError:
             LOGGER.exception("ETH height could not be obtained")
             return None
@@ -118,20 +124,21 @@ async def fetch_reference_total_messages() -> Optional[int]:
 async def fetch_eth_height() -> Optional[int]:
     """Obtain the height of the Ethereum blockchain."""
     LOGGER.debug("Fetching ETH height")
-    config = app['config']
-    
+    config = app["config"]
+
     try:
         if config.ethereum.enabled.value:
             w3 = Web3(Web3.HTTPProvider(config.ethereum.api_url.value))
             return await asyncio.get_event_loop().run_in_executor(
-                None, getattr, w3.eth, 'block_number')
+                None, getattr, w3.eth, "block_number"
+            )
         else:
             return None
     except HTTPError:
-        return -1 # We got a boggus value!
+        return -1  # We got a boggus value!
 
 
-async def get_metrics(shared_stats:dict) -> Metrics:
+async def get_metrics(shared_stats: dict) -> Metrics:
     if shared_stats is None:
         LOGGER.info("Shared stats disabled")
         shared_stats = {}
@@ -144,13 +151,16 @@ async def get_metrics(shared_stats:dict) -> Metrics:
     peers_count = await aleph.model.db.peers.estimated_document_count()
 
     eth_last_committed_height: int = (
-            await aleph.model.db.chains.find_one({'name': 'ETH'},
-                                                 projection={'last_commited_height': 1})
-            or {}
-    ).get('last_commited_height')
+        await aleph.model.db.chains.find_one(
+            {"name": "ETH"}, projection={"last_commited_height": 1}
+        )
+        or {}
+    ).get("last_commited_height")
 
     if not (sync_messages_reference_total is None or sync_messages_total is None):
-        sync_messages_remaining_total = sync_messages_reference_total - sync_messages_total
+        sync_messages_remaining_total = (
+            sync_messages_reference_total - sync_messages_total
+        )
     else:
         sync_messages_remaining_total = None
 
@@ -162,29 +172,33 @@ async def get_metrics(shared_stats:dict) -> Metrics:
     return Metrics(
         pyaleph_build_info=pyaleph_build_info,
         pyaleph_status_peers_total=peers_count,
-        pyaleph_processing_pending_messages_seen_ids_total=shared_stats.get('retry_messages_job_seen_ids'),
-        pyaleph_processing_pending_messages_gtasks_total=shared_stats.get('retry_messages_job_gtasks'),
-        pyaleph_processing_pending_messages_tasks_total=shared_stats.get('retry_messages_job_tasks'),
-        pyaleph_processing_pending_messages_action_total=shared_stats.get('retry_messages_job_actions'),
+        pyaleph_processing_pending_messages_seen_ids_total=shared_stats.get(
+            "retry_messages_job_seen_ids"
+        ),
+        pyaleph_processing_pending_messages_gtasks_total=shared_stats.get(
+            "retry_messages_job_gtasks"
+        ),
+        pyaleph_processing_pending_messages_tasks_total=shared_stats.get(
+            "retry_messages_job_tasks"
+        ),
+        pyaleph_processing_pending_messages_action_total=shared_stats.get(
+            "retry_messages_job_actions"
+        ),
         pyaleph_processing_pending_messages_messages_actions_total=shared_stats.get(
-            'retry_messages_job_messages_actions'),
-        pyaleph_processing_pending_messages_i_total=shared_stats.get('retry_messages_job_i'),
-        pyaleph_processing_pending_messages_j_total=shared_stats.get('retry_messages_job_j'),
-
-
+            "retry_messages_job_messages_actions"
+        ),
+        pyaleph_processing_pending_messages_i_total=shared_stats.get(
+            "retry_messages_job_i"
+        ),
+        pyaleph_processing_pending_messages_j_total=shared_stats.get(
+            "retry_messages_job_j"
+        ),
         pyaleph_status_sync_messages_total=sync_messages_total,
-
         pyaleph_status_sync_messages_reference_total=sync_messages_reference_total,
         pyaleph_status_sync_messages_remaining_total=sync_messages_remaining_total,
-
-        pyaleph_status_sync_pending_messages_total=
-        await aleph.model.db.pending_messages.estimated_document_count(),
-
-        pyaleph_status_sync_pending_txs_total=
-        await aleph.model.db.pending_txs.estimated_document_count(),
-
+        pyaleph_status_sync_pending_messages_total=await aleph.model.db.pending_messages.estimated_document_count(),
+        pyaleph_status_sync_pending_txs_total=await aleph.model.db.pending_txs.estimated_document_count(),
         pyaleph_status_chain_eth_last_committed_height=eth_last_committed_height,
-
         pyaleph_status_chain_eth_height_reference_total=eth_reference_height,
         pyaleph_status_chain_eth_height_remaining_total=eth_remaining_height,
     )

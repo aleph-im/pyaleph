@@ -30,16 +30,19 @@ from gridfs.errors import NoFile
 #                                         },
 #                                         upsert=True)
 
+
 async def get_value(key):
     from aleph.model import fs
+
     try:
         gridout = await fs.open_download_stream_by_name(key)
         return await gridout.read()
     except NoFile:
         return None
-    
+
+
 async def set_value(key, value):
     from aleph.model import fs
-    file_id = await fs.upload_from_stream(key,
-                                          value)
+
+    file_id = await fs.upload_from_stream(key, value)
     return file_id

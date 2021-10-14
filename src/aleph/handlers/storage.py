@@ -20,81 +20,91 @@ from aleph.web import app
 
 LOGGER = logging.getLogger("HANDLERS.STORAGE")
 
-ALLOWED_ENGINES = ['ipfs', 'storage']
+ALLOWED_ENGINES = ["ipfs", "storage"]
+
 
 async def handle_new_storage(message, content):
-    store_files = app['config'].storage.store_files.value
+    store_files = app["config"].storage.store_files.value
     if not store_files:
-        return True # handled
-    
-    
-    engine = content.get('item_type', None)
-    
-    if len(content['item_hash']) == 46:
-        engine = 'ipfs'
-    if len(content['item_hash']) == 64:
-        engine = 'storage'
-        
+        return True  # handled
+
+    engine = content.get("item_type", None)
+
+    if len(content["item_hash"]) == 46:
+        engine = "ipfs"
+    if len(content["item_hash"]) == 64:
+        engine = "storage"
+
     if engine not in ALLOWED_ENGINES:
         LOGGER.warning("Got invalid storage engine %s" % engine)
-        return -1 # not allowed, ignore.
-    
+        return -1  # not allowed, ignore.
+
     file_content = None
     is_folder = False
-    item_hash = content['item_hash']
-    ipfs_enabled = app['config'].ipfs.enabled.value
+    item_hash = content["item_hash"]
+    ipfs_enabled = app["config"].ipfs.enabled.value
     do_standard_lookup = True
     size = 0
-    
-    if engine == 'ipfs' and ipfs_enabled:
+
+    if engine == "ipfs" and ipfs_enabled:
         api = await get_ipfs_api(timeout=5)
         try:
-            stats = await asyncio.wait_for(
-                api.files.stat(f"/ipfs/{item_hash}"), 5)
-        
-            if (stats['Type'] == 'file'
-                    and stats['CumulativeSize'] < 1024**2
-                    and len(item_hash) == 46):
+            stats = await asyncio.wait_for(api.files.stat(f"/ipfs/{item_hash}"), 5)
+
+            if (
+                stats["Type"] == "file"
+                and stats["CumulativeSize"] < 1024 ** 2
+                and len(item_hash) == 46
+            ):
                 do_standard_lookup = True
             else:
-                size = stats['CumulativeSize']
-                content['engine_info'] = stats
+                size = stats["CumulativeSize"]
+                content["engine_info"] = stats
                 pin_api = await get_ipfs_api(timeout=60)
                 timer = 0
-                is_folder = stats['Type'] == 'directory'
+                is_folder = stats["Type"] == "directory"
                 async for status in pin_api.pin.add(item_hash):
                     timer += 1
-                    if timer > 30 and status['Pins'] is None:
+                    if timer > 30 and status["Pins"] is None:
                         return None  # Can't retrieve data now.
                 do_standard_lookup = False
-                
+
         except (aioipfs.APIError, asyncio.TimeoutError) as e:
             if hasattr(e, "message"):
-                if  "invalid CID" in getattr(e, "message", ""):
-                    LOGGER.warning(f"Error retrieving stats of hash {item_hash}: {e.message}")
+                if "invalid CID" in getattr(e, "message", ""):
+                    LOGGER.warning(
+                        f"Error retrieving stats of hash {item_hash}: {e.message}"
+                    )
                     return -1
-            
-                LOGGER.exception(f"Error retrieving stats of hash {item_hash}: {e.message}")
+
+                LOGGER.exception(
+                    f"Error retrieving stats of hash {item_hash}: {e.message}"
+                )
                 do_standard_lookup = True
             else:
                 LOGGER.exception(f"Error retrieving stats of hash {item_hash}")
                 do_standard_lookup = True
-        
+
     if do_standard_lookup:
         # TODO: We should check the balance here.
-        file_content = await get_hash_content(item_hash,
-                                              engine=engine, tries=4,
-                                              timeout=2, use_network=True,
-                                              use_ipfs=True, store_value=True)
+        file_content = await get_hash_content(
+            item_hash,
+            engine=engine,
+            tries=4,
+            timeout=2,
+            use_network=True,
+            use_ipfs=True,
+            store_value=True,
+        )
         if file_content is None or file_content == -1:
             return None
-        
+
         size = len(file_content)
-    
-    content['size'] = size
-    content['content_type'] = is_folder and 'directory' or 'file'
-    
+
+    content["size"] = size
+    content["content_type"] = is_folder and "directory" or "file"
+
     return True
-    
-    
-register_incoming_handler('STORE', handle_new_storage)
+
+
+register_incoming_handler("STORE", handle_new_storage)
