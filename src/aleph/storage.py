@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 from hashlib import sha256
+from typing import Dict, Union
 
 from aleph.services.filestore import get_value, set_value
 from aleph.services.ipfs.storage import add_bytes as add_ipfs_bytes
@@ -20,14 +21,14 @@ from aleph.web import app
 LOGGER = logging.getLogger("STORAGE")
 
 
-async def json_async_loads(s):
+async def json_async_loads(s: str):
     """Deserialize ``s`` (a ``str``, ``bytes`` or ``bytearray`` instance
     containing a JSON document) to a Python object in an asynchronous executor."""
     return await run_in_executor(None, json.loads, s)
 
 
-async def get_message_content(message):
-    item_type = message.get("item_type", "ipfs")
+async def get_message_content(message: Dict):
+    item_type: str = message.get("item_type", "ipfs")
 
     if item_type in ("ipfs", "storage"):
         return await get_json(message["item_hash"], engine=item_type)
@@ -46,7 +47,7 @@ async def get_message_content(message):
         )  # unknown, could retry later? shouldn't have arrived this far though.
 
 
-def get_sha256(content):
+def get_sha256(content: Union[str, bytes]) -> str:
     if isinstance(content, str):
         content = content.encode("utf-8")
     return sha256(content).hexdigest()

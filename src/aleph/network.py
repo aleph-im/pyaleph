@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 from hashlib import sha256
-from typing import Coroutine, List
+from typing import Coroutine, List, Union, Dict
 from urllib.parse import unquote
 
 from aleph.chains.register import VERIFIER_REGISTER
@@ -46,13 +46,13 @@ async def incoming_check(ipfs_pubsub_message):
         )
 
 
-def get_sha256(content):
+def get_sha256(content: Union[str, bytes]) -> str:
     if isinstance(content, str):
         content = content.encode("utf-8")
     return sha256(content).hexdigest()
 
 
-async def check_message(message, from_chain=False, from_network=False, trusted=False):
+async def check_message(message: Dict, from_chain=False, from_network=False, trusted=False):
     """This function should check the incoming message and verify any
     extraneous or dangerous information for the rest of the process.
     It also checks the data hash if it's not done by an external provider (ipfs)

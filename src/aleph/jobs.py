@@ -2,7 +2,7 @@ import asyncio
 from logging import getLogger
 from multiprocessing import Process
 from multiprocessing.managers import SyncManager, RemoteError
-from typing import Coroutine, List
+from typing import Coroutine, List, Dict, Optional
 
 import aioipfs
 from pymongo import DeleteOne, InsertOne, DeleteMany
@@ -67,19 +67,19 @@ async def join_pending_message_tasks(
         actions_list.clear()
 
 
-async def retry_messages_job(shared_stats):
+async def retry_messages_job(shared_stats: Optional[Dict]):
     """Each few minutes, try to handle message that were added to the
     pending queue (Unavailable messages)."""
 
-    seen_ids = {}
-    actions = []
-    messages_actions = []
+    seen_ids: Dict = {}
+    actions: List = []
+    messages_actions: List = []
     gtasks: List[Coroutine] = []
-    tasks = []
+    tasks: List = [asyncio.Task]
     loop = asyncio.get_event_loop()
-    i = 0
-    j = 0
-    find_params = {}
+    i: int = 0
+    j: int = 0
+    find_params: Dict = {}
     # if await PendingTX.collection.count_documents({}) > 500:
     #     find_params = {'message.item_type': 'inline'}
 
@@ -183,7 +183,7 @@ async def retry_messages_job(shared_stats):
     #     #     i = 0
 
 
-async def retry_messages_task(shared_stats):
+async def retry_messages_task(shared_stats: Optional[Dict]):
     """Handle message that were added to the pending queue"""
     await asyncio.sleep(4)
     while True:
@@ -320,7 +320,7 @@ def initialize_db_process(config_values):
     filestore.init_store(config)
 
 
-def prepare_manager(config_values):
+def prepare_manager(config_values) -> DBManager:
     from aleph.services import filestore
     from aleph.services.filestore import __get_value, __set_value
 
@@ -380,7 +380,7 @@ def txs_task_loop(config_values, manager):
     loop.run_until_complete(asyncio.gather(*tasks, handle_txs_task()))
 
 
-def messages_task_loop(config_values, manager, shared_stats):
+def messages_task_loop(config_values, manager, shared_stats: Optional[Dict]):
     loop, tasks = prepare_loop(config_values, manager, idx=2)
     loop.run_until_complete(asyncio.gather(*tasks, retry_messages_task(shared_stats)))
 
@@ -422,7 +422,10 @@ async def reconnect_ipfs_job(config):
 
 
 def start_jobs(
-    config, shared_stats, manager=None, use_processes=True
+        config,
+        shared_stats: Optional[Dict],
+        manager: Optional[DBManager]=None,
+        use_processes=True
 ) -> List[Coroutine]:
     LOGGER.info("starting jobs")
     tasks: List[Coroutine] = []
