@@ -16,11 +16,10 @@ import asyncio
 from aleph.handlers.register import register_incoming_handler
 from aleph.services.ipfs.common import get_ipfs_api
 from aleph.storage import get_hash_content
+from aleph.types import ItemType
 from aleph.web import app
 
 LOGGER = logging.getLogger("HANDLERS.STORAGE")
-
-ALLOWED_ENGINES = ["ipfs", "storage"]
 
 
 async def handle_new_storage(message, content):
@@ -28,14 +27,9 @@ async def handle_new_storage(message, content):
     if not store_files:
         return True  # handled
 
-    engine = content.get("item_type", None)
-
-    if len(content["item_hash"]) == 46:
-        engine = "ipfs"
-    if len(content["item_hash"]) == 64:
-        engine = "storage"
-
-    if engine not in ALLOWED_ENGINES:
+    try:
+        engine = ItemType(content.get("item_type"))
+    except ValueError:
         LOGGER.warning("Got invalid storage engine %s" % engine)
         return -1  # not allowed, ignore.
 
@@ -46,7 +40,7 @@ async def handle_new_storage(message, content):
     do_standard_lookup = True
     size = 0
 
-    if engine == "ipfs" and ipfs_enabled:
+    if engine == ItemType.IPFS and ipfs_enabled:
         api = await get_ipfs_api(timeout=5)
         try:
             stats = await asyncio.wait_for(api.files.stat(f"/ipfs/{item_hash}"), 5)

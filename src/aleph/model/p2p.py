@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 
 from pymongo import ASCENDING, DESCENDING, IndexModel
 
+from aleph.types import Protocol
 from aleph.model.base import BaseClass
 
 
@@ -34,7 +35,7 @@ async def get_peers(peer_type=None, hours=2):
         yield peer["address"]
 
 
-async def add_peer(address, peer_type, sender=None, source=None):
+async def add_peer(address, peer_type, source: Protocol, sender=None):
     await Peer.collection.replace_one(
         {"address": address, "type": peer_type},
         {
@@ -42,7 +43,7 @@ async def add_peer(address, peer_type, sender=None, source=None):
             "type": peer_type,
             "last_seen": datetime.now(),
             "sender": sender,
-            "source": source,
+            "source": source.value,
         },
         upsert=True,
     )

@@ -15,6 +15,7 @@ from aleph.model.pending import PendingMessage, PendingTX
 from aleph.network import check_message
 from aleph.services import filestore
 from aleph.services.ipfs.common import connect_ipfs_peer
+from aleph.types import ItemType
 
 LOGGER = getLogger("JOBS")
 
@@ -104,7 +105,7 @@ async def retry_messages_job(shared_stats: Optional[Dict]):
                 shared_stats["retry_messages_job_j"] = j
 
             if (
-                pending["message"]["item_type"] == "ipfs"
+                pending["message"]["item_type"] == ItemType.IPFS
                 or pending["message"]["type"] == "STORE"
             ):
                 i += 15

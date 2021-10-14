@@ -8,10 +8,12 @@ from aleph.services.ipfs.pubsub import sub as sub_ipfs
 
 import logging
 
+from aleph.types import ItemType, Protocol
+
 LOGGER = logging.getLogger("P2P.peers")
 
 
-async def handle_incoming_host(mvalue, source="p2p"):
+async def handle_incoming_host(mvalue, source: Protocol=Protocol.P2P):
     from aleph.model.p2p import add_peer
 
     try:
@@ -32,8 +34,8 @@ async def handle_incoming_host(mvalue, source="p2p"):
         await add_peer(
             address=content["address"],
             peer_type=peer_type,
-            sender=mvalue["from"],
             source=source,
+            sender=mvalue["from"],
         )
     except Exception as e:
         if isinstance(e, ValueError) and mvalue.get("from"):
@@ -50,7 +52,7 @@ async def monitor_hosts_p2p(psub):
         while True:
             mvalue = await alive_sub.get()
             mvalue = await decode_msg(mvalue)
-            await handle_incoming_host(mvalue, source="p2p")
+            await handle_incoming_host(mvalue, source=Protocol.P2P)
     except Exception:
         LOGGER.exception("Exception in pubsub peers monitoring, resubscribing")
 
@@ -60,6 +62,6 @@ async def monitor_hosts_ipfs(config):
         async for mvalue in sub_ipfs(
             IPFS_ALIVE_TOPIC, base_url=await get_base_url(config)
         ):
-            await handle_incoming_host(mvalue, source="ipfs")
+            await handle_incoming_host(mvalue, source=Protocol.IPFS)
     except Exception:
         LOGGER.exception("Exception in pubsub peers monitoring, resubscribing")
