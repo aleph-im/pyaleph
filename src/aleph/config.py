@@ -1,4 +1,3 @@
-# settings.py
 def get_defaults():
     return {
         "aleph": {

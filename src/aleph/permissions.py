@@ -1,7 +1,9 @@
+from typing import Dict
+
 from aleph.model.messages import get_computed_address_aggregates
 
 
-async def check_sender_authorization(message, content):
+async def check_sender_authorization(message: Dict, content: Dict) -> bool:
     """Checks a content against a message to verify if sender is authorized.
 
     TODO: implement "security" aggregate key check.

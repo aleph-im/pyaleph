@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from typing import Dict, Optional
 
 from pymongo import UpdateOne
 
@@ -54,7 +55,7 @@ async def incoming(
     chain_name=None,
     tx_hash=None,
     height=None,
-    seen_ids=None,
+    seen_ids: Optional[Dict]=None,
     check_message=False,
     retrying=False,
     bulk_operation=False,
