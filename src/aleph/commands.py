@@ -169,6 +169,8 @@ def run_server_coroutine(
     Used as target of multiprocessing.Process.
     """
     extra_web_config = extra_web_config or {}
+    logging.basicConfig(level=logging.DEBUG,
+                        filename=f'/tmp/run_server_coroutine-{port}.log')
     if enable_sentry:
         sentry_sdk.init(
             dsn=config_values["sentry"]["dsn"],
