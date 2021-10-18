@@ -17,6 +17,9 @@ class Pagination(object):
         pagination_param = int(request.query.get("pagination", PER_PAGE))
         with_pagination = pagination_param != 0
 
+        if pagination_page < 1:
+            raise web.HTTPBadRequest(text=f"Query field 'page' must be ≥ 1, not {pagination_page}")
+
         if not with_pagination:
             pagination_per_page = None
             pagination_skip = None
