@@ -387,11 +387,19 @@ def prepare_loop(config_values, manager=None, idx=1):
 
 
 def txs_task_loop(config_values, manager):
+    logging.basicConfig(
+        level=logging.DEBUG,
+        filename='/tmp/txs_task_loop.log',
+    )
     loop, tasks = prepare_loop(config_values, manager, idx=1)
     loop.run_until_complete(asyncio.gather(*tasks, handle_txs_task()))
 
 
 def messages_task_loop(config_values, manager, shared_stats: Optional[Dict]):
+    logging.basicConfig(
+        level=logging.DEBUG,
+        filename='/tmp/messages_task_loop.log',
+    )
     loop, tasks = prepare_loop(config_values, manager, idx=2)
     loop.run_until_complete(asyncio.gather(*tasks, retry_messages_task(shared_stats)))
 
