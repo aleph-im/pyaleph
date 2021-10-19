@@ -1,6 +1,12 @@
 import logging
+from typing import Dict, Optional
+
+from aleph_message.models import ForgetMessage, MessageType
 
 from aleph.model.messages import Message
+from aleph.services.ipfs.common import get_ipfs_api
+from aleph.storage import get_message_content
+from aleph.types import ItemType
 
 logger = logging.getLogger(__name__)
 
@@ -11,3 +17,96 @@ async def count_file_references(storage_hash: str) -> int:
     return await Message.collection.count_documents(
         filter={"content.item_hash": storage_hash},
     )
+
+
+async def file_references_exist(storage_hash: str) -> bool:
+    """Check if references to a file on Aleph exist.
+    """
+    return bool(await Message.collection.find_one(
+        filter={"content.item_hash": storage_hash},
+    ))
+
+
+async def garbage_collect(storage_hash: str):
+    """If a file does not have any reference left, delete or unpin it.
+
+    This is typically called after 'forgetting' a message.
+    """
+    if not await file_references_exist(storage_hash):
+        storage: ItemType = ItemType.from_hash(storage_hash)
+
+        if storage == ItemType.IPFS:
+            api = await get_ipfs_api(timeout=5)
+            result = await api.pin.rm(storage_hash)
+            print(result)
+            logger.debug(f"Removed from IPFS: {storage_hash}")
+        elif storage == ItemType.Storage:
+            logger.error("Not implemented yet")
+            raise NotImplementedError("Storage not deleted yet")
+            # TODO
+        else:
+            assert storage == ItemType.Inline
+            raise NotImplementedError("Storage not deleted yet")
+            # FIXME: Does this make sense ?
+        logger.debug(f"Removed from {storage}: {storage_hash}")
+    else:
+        logger.debug(f"File {storage_hash} has at least one reference left")
+
+
+async def is_allowed_to_forget(target: Dict, by: ForgetMessage) -> bool:
+    """Check if a forget message is allowed to 'forget' the target message given its hash.
+    """
+    # Both senders are identical:
+    if by.sender == target.get("sender"):
+        return True
+    else:
+        # The forget sender matches the content address:
+        target_content, _ = await get_message_content(target)
+        if by.sender == target_content["address"]:
+            return True
+    return False
+
+
+async def forget_if_allowed(target_hash: str, forget_message: ForgetMessage) -> None:
+    """Forget a message.
+
+    Remove the ‘content’ and ‘item_content’ sections of the targeted messages.
+    Add a field ‘removed_by’ that references to the processed FORGET message.
+    """
+    filter = {
+        "item_hash": target_hash,
+    }
+    target_message = await Message.collection.find_one(filter={"item_hash": target_hash})
+
+    if not target_message:
+        logger.error(f"Message to forget could not be found with id {target_hash}")
+        return
+
+    if not await is_allowed_to_forget(target_message, by=forget_message):
+        logger.debug(f"Not allowed to forget {target_hash} by {forget_message.item_hash}")
+        return
+
+    # Only present for Store messages. Used after the content has been removed.
+    storage_hash: Optional[str] = target_message["content"].get("item_hash")
+
+    updates = {
+        "content": None,
+        "item_content": None,
+        "forgotten_by": [forget_message.item_hash],
+    }
+    await Message.collection.update_many(filter=filter, update={"$set": updates})
+    # TODO QUESTION: Should the removal be added to the CappedMessage collection for websocket
+    #  updates ? Forget messages should already be published there, but the logic to validate
+    #  them could be centralized here.
+
+    if storage_hash and target_message.get("type") == MessageType.store:
+        await garbage_collect(storage_hash)  # Or create background task ?
+
+
+async def handle_forget_message(message: Dict, content: Dict):
+    # Parsing and validation
+    forget_message = ForgetMessage(**message, content=content)
+
+    for target_hash in forget_message.content.hashes:
+        await forget_if_allowed(target_hash=target_hash, forget_message=forget_message)
+    return True
