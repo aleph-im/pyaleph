@@ -4,8 +4,10 @@ import logging
 from enum import IntEnum
 from typing import Dict, Optional, Union, Tuple
 
+from aleph_message.models import MessageType
 from pymongo import UpdateOne
 
+from aleph.handlers.forget import handle_forget_message
 from aleph.handlers.storage import handle_new_storage
 from aleph.model.messages import Message, CappedMessage
 from aleph.model.pending import PendingMessage, PendingTX
@@ -201,8 +203,14 @@ async def incoming(
         # handled and kept.
         # TODO: change this, it's messy.
         try:
-            if message["type"] == "STORE":
+            if message["type"] == MessageType.store:
                 handling_result = await handle_new_storage(message, content)
+            elif message["type"] == MessageType.forget:
+                # Handling it here means that there we ensure that the message
+                # has been forgotten before it is saved on the node.
+                # We may want the opposite instead: ensure that the message has
+                # been saved before it is forgotten.
+                handling_result = await handle_forget_message(message, content)
             else:
                 handling_result = True
         except Exception:
