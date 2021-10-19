@@ -6,7 +6,7 @@ from typing import Dict, Optional, Union, Tuple
 
 from pymongo import UpdateOne
 
-from aleph.handlers.register import handle_incoming_message
+from aleph.handlers.storage import handle_new_storage
 from aleph.model.messages import Message, CappedMessage
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.network import check_message as check_message_fn
@@ -201,7 +201,10 @@ async def incoming(
         # handled and kept.
         # TODO: change this, it's messy.
         try:
-            handling_result = await handle_incoming_message(message, content)
+            if message["type"] == "STORE":
+                handling_result = await handle_new_storage(message, content)
+            else:
+                handling_result = True
         except Exception:
             LOGGER.exception("Error using the message type handler")
             handling_result = None
