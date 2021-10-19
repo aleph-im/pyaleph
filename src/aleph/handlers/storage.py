@@ -13,7 +13,6 @@ import logging
 import aioipfs
 import asyncio
 
-from aleph.handlers.register import register_incoming_handler
 from aleph.services.ipfs.common import get_ipfs_api
 from aleph.storage import get_hash_content
 from aleph.types import ItemType
@@ -98,6 +97,3 @@ async def handle_new_storage(message, content):
     content["content_type"] = is_folder and "directory" or "file"
 
     return True
-
-
-register_incoming_handler("STORE", handle_new_storage)
