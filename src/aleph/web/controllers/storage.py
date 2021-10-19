@@ -1,12 +1,15 @@
-import asyncio
 import base64
+import logging
 
 from aiohttp import web
 
+from aleph.handlers.forget import count_file_references
 from aleph.storage import add_json, get_hash_content, add_file
 from aleph.types import ItemType, UnknownHashError
 from aleph.utils import run_in_executor
 from aleph.web import app
+
+logger = logging.getLogger(__name__)
 
 
 async def add_ipfs_json_controller(request):
@@ -115,3 +118,12 @@ async def get_raw_hash(request):
 
 
 app.router.add_get("/api/v0/storage/raw/{hash}", get_raw_hash)
+
+
+async def get_file_references_count(request):
+    item_hash = request.match_info.get("hash", None)
+    count = await count_file_references(storage_hash=item_hash)
+    return web.json_response(data=count)
+
+
+app.router.add_get("/api/v0/storage/count/{hash}", get_file_references_count)
