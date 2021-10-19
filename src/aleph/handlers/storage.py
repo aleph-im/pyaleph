@@ -26,10 +26,11 @@ async def handle_new_storage(message, content):
     if not app["config"].storage.store_files.value:
         return True  # Ignore
 
+    item_type = content.get("item_type")
     try:
-        engine = ItemType(content.get("item_type"))
+        engine = ItemType(item_type)
     except ValueError:
-        LOGGER.warning("Got invalid storage engine %s" % engine)
+        LOGGER.warning("Got invalid storage engine %s" % item_type)
         return -1  # not allowed, ignore.
 
     is_folder = False
