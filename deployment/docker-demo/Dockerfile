@@ -38,8 +38,8 @@ RUN chown mongodb:mongodb /run/mongodb
 
 # Install IPFS
 RUN apt-get install -y wget
-RUN wget https://ipfs.io/ipns/dist.ipfs.io/go-ipfs/v0.7.0/go-ipfs_v0.7.0_linux-amd64.tar.gz
-RUN tar -xvzf go-ipfs_v0.7.0_linux-amd64.tar.gz -C /opt/
+RUN wget https://dist.ipfs.io/go-ipfs/v0.10.0/go-ipfs_v0.10.0_linux-amd64.tar.gz
+RUN tar -xvzf go-ipfs_v0.10.0_linux-amd64.tar.gz -C /opt/
 RUN ln -s /opt/go-ipfs/ipfs /usr/local/bin/
 RUN mkdir /var/lib/ipfs
 # - User 'ipfs' to run IPFS -
@@ -67,6 +67,7 @@ RUN chown aleph:aleph /opt/pyaleph
 USER aleph
 # ENV is user-specific
 ENV IPFS_PATH /var/lib/ipfs
+ENV IPFS_PROFILE server
 
 
 # === Install Python environment and dependencies ===

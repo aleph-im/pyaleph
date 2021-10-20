@@ -29,7 +29,7 @@ services:
 
   ipfs:
     restart: always
-    image: ipfs/go-ipfs
+    image: ipfs/go-ipfs:v0.10.0
     ports:
       - 4001:4001
       - 4001:4001/udp
@@ -39,7 +39,7 @@ services:
       - IPFS_PROFILE=server
     networks:
       - pyaleph
-    command: ["daemon", "--enable-pubsub-experiment"]
+    command: ["daemon", "--enable-pubsub-experiment", "--migrate"]
 
   mongodb:
     restart: always

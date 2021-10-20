@@ -37,7 +37,7 @@ services:
       - IPFS_PROFILE=server
     networks:
       - pyaleph
-    command: ["daemon", "--enable-pubsub-experiment"]
+    command: ["daemon", "--enable-pubsub-experiment", "--migrate"]
 
   mongodb:
     restart: always
