@@ -31,7 +31,7 @@ async def json_async_loads(s: str):
 async def get_message_content(message: Dict):
     item_type: str = message.get("item_type", ItemType.IPFS)
 
-    if item_type in ItemType.__members__.values():
+    if item_type in (ItemType.IPFS, ItemType.Storage):
         return await get_json(message["item_hash"], engine=ItemType(item_type))
     elif item_type == ItemType.Inline:
         try:
