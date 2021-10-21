@@ -2,6 +2,10 @@ from __future__ import annotations
 from enum import Enum
 
 
+class UnknownHashError(ValueError):
+    pass
+
+
 class ItemType(str, Enum):
     """Item storage options"""
     Inline = "inline"
@@ -19,7 +23,7 @@ class ItemType(str, Enum):
         elif len(hash) == 64:
             return cls.Storage
         else:
-            raise ValueError(f"Unknown hash {len(hash)} {hash}")
+            raise UnknownHashError(f"Unknown hash {len(hash)} {hash}")
 
 
 class Protocol(str, Enum):
