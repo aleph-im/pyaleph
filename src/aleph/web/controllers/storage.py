@@ -4,7 +4,7 @@ import base64
 from aiohttp import web
 
 from aleph.storage import add_json, get_hash_content, add_file
-from aleph.types import ItemType
+from aleph.types import ItemType, UnknownHashError
 from aleph.utils import run_in_executor
 from aleph.web import app
 
@@ -54,7 +54,11 @@ async def get_hash(request):
     result = {"status": "error", "reason": "unknown"}
     item_hash = request.match_info.get("hash", None)
 
-    engine = ItemType.from_hash(item_hash)
+    try:
+        engine = ItemType.from_hash(item_hash)
+    except UnknownHashError as e:
+        logger.warning(e, exc_info=True)
+        return web.HTTPBadRequest(text="Invalid hash provided")
 
     if item_hash is not None:
         value = await get_hash_content(
