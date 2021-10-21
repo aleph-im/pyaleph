@@ -80,7 +80,7 @@ async def retry_messages_job(shared_stats: Optional[Dict]):
     actions: List[DeleteOne] = []
     messages_actions: List[UpdateOne] = []
     gtasks: List[asyncio.Task] = []
-    tasks: List = [asyncio.Task]
+    tasks: List[asyncio.Task] = []
     loop = asyncio.get_event_loop()
     i: int = 0
     j: int = 0
