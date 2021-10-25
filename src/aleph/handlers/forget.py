@@ -3,6 +3,7 @@ from typing import Dict, Optional
 
 from aleph_message.models import ForgetMessage, MessageType
 
+from aleph.model import PermanentPin
 from aleph.model.messages import Message
 from aleph.services.ipfs.common import get_ipfs_api
 from aleph.storage import get_message_content
@@ -32,6 +33,10 @@ async def garbage_collect(storage_hash: str):
 
     This is typically called after 'forgetting' a message.
     """
+    if PermanentPin.collection.find_one({"multihash": storage_hash}):
+        logger.debug(f"Permanent pin will not be collected {storage_hash}")
+        return
+
     if not await file_references_exist(storage_hash):
         storage: ItemType = ItemType.from_hash(storage_hash)
 
