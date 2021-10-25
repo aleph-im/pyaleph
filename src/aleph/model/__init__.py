@@ -1,5 +1,7 @@
 from logging import getLogger
 
+from aleph.model.filepin import PermanentPin
+
 try:
     from pymongo import MongoClient
 except ImportError:  # pragma: no cover
@@ -45,6 +47,8 @@ def init_db(config, ensure_indexes=True):
         from aleph.model.p2p import Peer
 
         Peer.ensure_indexes(sync_db)
+
+        PermanentPin.ensure_indexes(sync_db)
         # from aleph.model.hashes import Hash
         # Hash.ensure_indexes(sync_db)
 
