@@ -12,7 +12,7 @@ class ItemType(str, Enum):
     def from_hash(cls, hash: str) -> ItemType:
         assert isinstance(hash, str)
         # https://docs.ipfs.io/concepts/content-addressing/#identifier-formats
-        if hash.startswith("Qm") and len(hash) == 46: # CIDv0
+        if hash.startswith("Qm") and 44 <= len(hash) <= 46: # CIDv0
             return cls.IPFS
         elif hash.startswith("bafy") and len(hash) == 59:  # CIDv1
             return cls.IPFS
