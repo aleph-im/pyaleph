@@ -71,6 +71,7 @@ def parse_args(args):
         help="set loglevel to INFO",
         action="store_const",
         const=logging.INFO,
+        default=logging.WARNING,
     )
     parser.add_argument(
         "-vv",
