@@ -71,6 +71,7 @@ class Metrics(DataClassJsonMixin):
     pyaleph_status_peers_total: int
 
     pyaleph_status_sync_messages_total: int
+    pyaleph_status_sync_permanent_files_total: int
 
     pyaleph_status_sync_pending_messages_total: int
     pyaleph_status_sync_pending_txs_total: int
@@ -194,6 +195,7 @@ async def get_metrics(shared_stats: dict) -> Metrics:
             "retry_messages_job_j"
         ),
         pyaleph_status_sync_messages_total=sync_messages_total,
+        pyaleph_status_sync_permanent_files_total=await aleph.model.db.filepins.estimated_document_count(),
         pyaleph_status_sync_messages_reference_total=sync_messages_reference_total,
         pyaleph_status_sync_messages_remaining_total=sync_messages_remaining_total,
         pyaleph_status_sync_pending_messages_total=await aleph.model.db.pending_messages.estimated_document_count(),
