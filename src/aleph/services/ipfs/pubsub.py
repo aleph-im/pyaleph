@@ -6,6 +6,8 @@ from aiohttp import ClientConnectorError
 import base58
 
 from .common import get_base_url, get_ipfs_api
+from aleph.types import InvalidMessageError
+
 
 LOGGER = logging.getLogger("IPFS.PUBSUB")
 
@@ -57,10 +59,12 @@ async def incoming_channel(config, topic):
         try:
             # seen_ids = []
             async for mvalue in sub(topic, base_url=await get_base_url(config)):
-                message = await incoming_check(mvalue)
-                if message is not None:
+                try:
+                    message = await incoming_check(mvalue)
                     LOGGER.debug("New message %r" % message)
                     asyncio.create_task(incoming(message, bulk_operation=False))
+                except InvalidMessageError:
+                    pass
 
                 # Raise all connection errors after one has succeeded.
                 trials_before_exception = 0
