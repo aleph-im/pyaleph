@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 from enum import IntEnum
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Union, Tuple
 
 from pymongo import UpdateOne
 
@@ -62,7 +62,7 @@ async def incoming(
         chain_name: Optional[str] = None,
         tx_hash: Optional[str] = None,
         height: Optional[int] = None,
-        seen_ids: Optional[Dict] = None,
+        seen_ids: Optional[Dict[Tuple, int]] = None,
         check_message: bool = False,
         retrying: bool = False,
         bulk_operation: bool = False,

@@ -2,7 +2,7 @@ import asyncio
 from logging import getLogger
 from multiprocessing import Process
 from multiprocessing.managers import SyncManager, RemoteError
-from typing import Coroutine, List, Dict, Optional
+from typing import Coroutine, List, Dict, Optional, Tuple
 
 import aioipfs
 from pymongo import DeleteOne, InsertOne, DeleteMany, UpdateOne
@@ -29,7 +29,7 @@ class DBManager(SyncManager):
 
 
 async def handle_pending_message(
-    pending: Dict, seen_ids, actions_list: List[DeleteOne], messages_actions_list: List[UpdateOne]
+    pending: Dict, seen_ids: Dict[Tuple, int], actions_list: List[DeleteOne], messages_actions_list: List[UpdateOne]
 ):
     result = await incoming(
         pending["message"],
@@ -75,10 +75,10 @@ async def retry_messages_job(shared_stats: Optional[Dict]):
     """Each few minutes, try to handle message that were added to the
     pending queue (Unavailable messages)."""
 
-    seen_ids: Dict = {}
-    actions: List = []
-    messages_actions: List = []
-    gtasks: List[Coroutine] = []
+    seen_ids: Dict[Tuple, int] = dict()
+    actions: List[DeleteOne] = []
+    messages_actions: List[UpdateOne] = []
+    gtasks: List[asyncio.Task] = []
     tasks: List = [asyncio.Task]
     loop = asyncio.get_event_loop()
     i: int = 0
