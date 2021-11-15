@@ -1,7 +1,8 @@
 import asyncio
 import json
 import logging
-from typing import Dict, Optional
+from enum import IntEnum
+from typing import Dict, Optional, Union
 
 from pymongo import UpdateOne
 
@@ -50,16 +51,22 @@ async def delayed_incoming(message, chain_name=None, tx_hash=None, height=None):
     )
 
 
+class IncomingStatus(IntEnum):
+    FAILED_PERMANENTLY = -1
+    RETRYING_LATER = 0
+    MESSAGE_HANDLED = 1
+
+
 async def incoming(
-    message,
-    chain_name=None,
-    tx_hash=None,
-    height=None,
-    seen_ids: Optional[Dict]=None,
-    check_message=False,
-    retrying=False,
-    bulk_operation=False,
-):
+        message,
+        chain_name: Optional[str] = None,
+        tx_hash: Optional[str] = None,
+        height: Optional[int] = None,
+        seen_ids: Optional[Dict] = None,
+        check_message: bool = False,
+        retrying: bool = False,
+        bulk_operation: bool = False,
+) -> Union[IncomingStatus, UpdateOne]:
     """New incoming message from underlying chain.
 
     For regular messages it will be marked as confirmed
@@ -73,7 +80,7 @@ async def incoming(
     if chain_name and tx_hash and height and seen_ids is not None:
         if ids_key in seen_ids.keys():
             if height > seen_ids[ids_key]:
-                return True
+                return IncomingStatus.MESSAGE_HANDLED
 
     filters = {
         "item_hash": hash,
@@ -94,7 +101,7 @@ async def incoming(
             )
 
     if message is None:
-        return True  # message handled.
+        return IncomingStatus.MESSAGE_HANDLED
 
     if retrying:
         LOGGER.debug("(Re)trying %s." % hash)
@@ -134,7 +141,7 @@ async def incoming(
         if seen_ids is not None:
             if ids_key in seen_ids.keys():
                 if height > seen_ids[ids_key]:
-                    return True
+                    return IncomingStatus.MESSAGE_HANDLED
                 else:
                     seen_ids[ids_key] = height
             else:
@@ -161,7 +168,7 @@ async def incoming(
             content, size = await get_message_content(message)
         except Exception:
             LOGGER.exception("Can't get content of object %r" % hash)
-            content = None
+            content, size = None, None
 
         if content is None:
             LOGGER.info("Can't get content of object %r, retrying later." % hash)
@@ -177,11 +184,11 @@ async def incoming(
                         ),
                     }
                 )
-            return
+            return IncomingStatus.RETRYING_LATER
 
         if content == -1:
             LOGGER.warning("Can't get content of object %r, won't retry." % hash)
-            return -1
+            return IncomingStatus.FAILED_PERMANENTLY
 
         if content.get("address", None) is None:
             content["address"] = message["sender"]
@@ -213,23 +220,23 @@ async def incoming(
                         ),
                     }
                 )
-            return
+            return IncomingStatus.RETRYING_LATER
 
         if handling_result != True:
             LOGGER.warning(
                 "Message type handler has failed permanently for "
                 "%r, won't retry." % hash
             )
-            return -1
+            return IncomingStatus.FAILED_PERMANENTLY
 
         if not await check_sender_authorization(message, content):
             LOGGER.warning("Invalid sender for %s" % hash)
-            return True  # message handled.
+            return IncomingStatus.MESSAGE_HANDLED
 
         if seen_ids is not None:
             if ids_key in seen_ids.keys():
                 if height > seen_ids[ids_key]:
-                    return True
+                    return IncomingStatus.MESSAGE_HANDLED
                 else:
                     seen_ids[ids_key] = height
             else:
@@ -261,7 +268,7 @@ async def incoming(
             await CappedMessage.collection.bulk_write([action])
         else:
             return action
-    return True  # message handled.
+    return IncomingStatus.MESSAGE_HANDLED
 
 
 async def invalidate(chain_name, block_height):
