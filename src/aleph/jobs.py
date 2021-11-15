@@ -5,10 +5,10 @@ from multiprocessing.managers import SyncManager, RemoteError
 from typing import Coroutine, List, Dict, Optional
 
 import aioipfs
-from pymongo import DeleteOne, InsertOne, DeleteMany
+from pymongo import DeleteOne, InsertOne, DeleteMany, UpdateOne
 from pymongo.errors import CursorNotFound
 
-from aleph.chains.common import incoming, get_chaindata_messages
+from aleph.chains.common import incoming, get_chaindata_messages, IncomingStatus
 from aleph.model.messages import Message, CappedMessage
 from aleph.model.p2p import get_peers
 from aleph.model.pending import PendingMessage, PendingTX
@@ -29,7 +29,7 @@ class DBManager(SyncManager):
 
 
 async def handle_pending_message(
-    pending, seen_ids, actions_list, messages_actions_list
+    pending: Dict, seen_ids, actions_list: List[DeleteOne], messages_actions_list: List[UpdateOne]
 ):
     result = await incoming(
         pending["message"],
@@ -42,11 +42,14 @@ async def handle_pending_message(
         bulk_operation=True,
     )
 
-    if result is not None:  # message handled (valid or not, we don't care)
-        # Is it valid to add to a list passed this way? to be checked.
-        if result is not True:
-            messages_actions_list.append(result)
-        actions_list.append(DeleteOne({"_id": pending["_id"]}))
+    if result == IncomingStatus.RETRYING_LATER:
+        return
+
+    if not isinstance(result, IncomingStatus):
+        assert isinstance(result, UpdateOne)
+        messages_actions_list.append(result)
+
+    actions_list.append(DeleteOne({"_id": pending["_id"]}))
 
 
 async def join_pending_message_tasks(

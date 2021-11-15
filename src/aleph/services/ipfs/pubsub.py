@@ -60,7 +60,7 @@ async def incoming_channel(config, topic):
                 message = await incoming_check(mvalue)
                 if message is not None:
                     LOGGER.debug("New message %r" % message)
-                    asyncio.create_task(incoming(message))
+                    asyncio.create_task(incoming(message, bulk_operation=False))
 
                 # Raise all connection errors after one has succeeded.
                 trials_before_exception = 0
