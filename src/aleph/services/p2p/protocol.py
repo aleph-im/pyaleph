@@ -13,6 +13,7 @@ from libp2p.typing import TProtocol
 
 from aleph import __version__
 from aleph.network import incoming_check
+from aleph.types import InvalidMessageError
 from . import singleton
 from .pubsub import sub
 
@@ -207,8 +208,9 @@ async def incoming_channel(config, topic):
 
                     # we should check the sender here to avoid spam
                     # and such things...
-                    message = await incoming_check(mvalue)
-                    if message is None:
+                    try:
+                        message = await incoming_check(mvalue)
+                    except InvalidMessageError:
                         continue
 
                     LOGGER.debug("New message %r" % message)

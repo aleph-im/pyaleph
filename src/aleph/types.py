@@ -26,3 +26,8 @@ class Protocol(str, Enum):
     """P2P Protocol"""
     IPFS = "ipfs"
     P2P = "p2p"
+
+
+class InvalidMessageError(Exception):
+    """Error raised when an invalid message is processed"""
+    pass

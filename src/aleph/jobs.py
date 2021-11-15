@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from logging import getLogger
 from multiprocessing import Process
 from multiprocessing.managers import SyncManager, RemoteError
@@ -15,7 +16,7 @@ from aleph.model.pending import PendingMessage, PendingTX
 from aleph.network import check_message
 from aleph.services import filestore
 from aleph.services.ipfs.common import connect_ipfs_peer
-from aleph.types import ItemType
+from aleph.types import ItemType, InvalidMessageError
 
 LOGGER = getLogger("JOBS")
 
@@ -211,10 +212,12 @@ async def handle_pending_tx(pending, actions_list):
         for i, message in enumerate(messages):
             message["time"] = pending["context"]["time"] + (i / 1000)  # force order
 
-            message = await check_message(
-                message, trusted=True
-            )  # we don't check signatures yet.
-            if message is None:
+            try:
+                message = await check_message(
+                    message, trusted=True
+                )  # we don't check signatures yet.
+            except InvalidMessageError as error:
+                LOGGER.warning(error)
                 continue
 
             # we add it to the message queue... bad idea? should we process it asap?

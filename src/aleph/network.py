@@ -6,7 +6,7 @@ from urllib.parse import unquote
 
 from aleph.chains.register import VERIFIER_REGISTER
 from aleph.services.ipfs.pubsub import incoming_channel as incoming_ipfs_channel
-from aleph.types import ItemType
+from aleph.types import ItemType, InvalidMessageError
 from aleph.utils import get_sha256
 
 LOGGER = logging.getLogger("NETWORK")
@@ -47,7 +47,7 @@ async def incoming_check(ipfs_pubsub_message):
         )
 
 
-async def check_message(message: Dict, from_chain=False, from_network=False, trusted=False):
+async def check_message(message: Dict, from_chain=False, from_network=False, trusted=False) -> Dict:
     """This function should check the incoming message and verify any
     extraneous or dangerous information for the rest of the process.
     It also checks the data hash if it's not done by an external provider (ipfs)
@@ -59,30 +59,24 @@ async def check_message(message: Dict, from_chain=False, from_network=False, tru
     TODO: Implement it fully! Dangerous!
     """
     if not isinstance(message["item_hash"], str):
-        LOGGER.warning("Unknown hash %s" % message["item_hash"])
-        return None
+        raise InvalidMessageError("Unknown hash %s" % message["item_hash"])
 
     if not isinstance(message["chain"], str):
-        LOGGER.warning("Unknown chain %s" % message["chain"])
-        return None
+        raise InvalidMessageError("Unknown chain %s" % message["chain"])
 
     if message.get("channel", None) is not None:
         if not isinstance(message.get("channel", None), str):
-            LOGGER.warning("Unknown channel %s" % message["channel"])
-            return None
+            raise InvalidMessageError("Unknown channel %s" % message["channel"])
 
     if not isinstance(message["sender"], str):
-        LOGGER.warning("Unknown sender %s" % message["sender"])
-        return None
+        raise InvalidMessageError("Unknown sender %s" % message["sender"])
 
     if not isinstance(message["signature"], str):
-        LOGGER.warning("Unknown signature %s" % message["signature"])
-        return None
+        raise InvalidMessageError("Unknown signature %s" % message["signature"])
 
     if message.get("item_content", None) is not None:
         if len(message["item_content"]) > MAX_INLINE_SIZE:
-            LOGGER.warning("Message too long")
-            return None
+            raise InvalidMessageError("Message too long")
         await asyncio.sleep(0)
 
         if message.get("hash_type", "sha256") == "sha256":  # leave the door open.
@@ -93,11 +87,9 @@ async def check_message(message: Dict, from_chain=False, from_network=False, tru
                 # item_hash = sha256(message['item_content'].encode('utf-8')).hexdigest()
 
                 if message["item_hash"] != item_hash:
-                    LOGGER.warning("Bad hash")
-                    return None
+                    raise InvalidMessageError("Bad hash")
         else:
-            LOGGER.warning("Unknown hash type %s" % message["hash_type"])
-            return None
+            raise InvalidMessageError("Unknown hash type %s" % message["hash_type"])
 
         message["item_type"] = ItemType.Inline.value
 
@@ -119,14 +111,12 @@ async def check_message(message: Dict, from_chain=False, from_network=False, tru
         chain = message.get("chain", None)
         signer = VERIFIER_REGISTER.get(chain, None)
         if signer is None:
-            LOGGER.warning("Unknown chain for validation %r" % chain)
-            return None
+            raise InvalidMessageError("Unknown chain for validation %r" % chain)
         try:
             if await signer(message):
                 return message
         except ValueError:
-            LOGGER.warning("Signature validation error")
-            return None
+            raise InvalidMessageError("Signature validation error")
 
 
 def listener_tasks(config) -> List[Coroutine]:
