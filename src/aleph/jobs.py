@@ -8,6 +8,7 @@ from typing import Coroutine, List, Dict, Optional, Tuple
 import aioipfs
 from pymongo import DeleteOne, InsertOne, DeleteMany, UpdateOne
 from pymongo.errors import CursorNotFound
+from setproctitle import setproctitle
 
 from aleph.chains.common import incoming, get_chaindata_messages, IncomingStatus
 from aleph.model.messages import Message, CappedMessage
@@ -387,6 +388,7 @@ def prepare_loop(config_values, manager=None, idx=1):
 
 
 def txs_task_loop(config_values, manager):
+    setproctitle('aleph.jobs.txs_task_loop')
     logging.basicConfig(
         level=logging.DEBUG,
         filename='/tmp/txs_task_loop.log',
@@ -396,6 +398,7 @@ def txs_task_loop(config_values, manager):
 
 
 def messages_task_loop(config_values, manager, shared_stats: Optional[Dict]):
+    setproctitle('aleph.jobs.messages_task_loop')
     logging.basicConfig(
         level=logging.DEBUG,
         filename='/tmp/messages_task_loop.log',
