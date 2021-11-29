@@ -92,7 +92,7 @@ async def forget_if_allowed(target_hash: str, forget_message: ForgetMessage) -> 
         return
 
     # Only present for Store messages. Used after the content has been removed.
-    storage_hash: Optional[str] = target_message["content"].get("item_hash")
+    storage_hash: Optional[str] = target_message.get("content", {}).get("item_hash")
 
     updates = {
         "content": None,
