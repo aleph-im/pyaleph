@@ -108,6 +108,10 @@ async def retry_messages_job(shared_stats: Optional[Dict]):
                 shared_stats["retry_messages_job_i"] = i
                 shared_stats["retry_messages_job_j"] = j
 
+            if pending["message"] is None:
+                LOGGER.warning("Found PendingMessage with empty message, this should be caught before insertion")
+                await PendingMessage.collection.delete_one({"_id": pending["_id"]})
+
             if (
                 pending["message"]["item_type"] == ItemType.IPFS
                 or pending["message"]["type"] == "STORE"
