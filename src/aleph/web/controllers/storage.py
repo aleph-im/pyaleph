@@ -60,7 +60,7 @@ async def get_hash(request):
     try:
         engine = ItemType.from_hash(item_hash)
     except UnknownHashError as e:
-        logger.warning(e, exc_info=True)
+        logger.warning(e.args[0])
         return web.HTTPBadRequest(text="Invalid hash provided")
 
     if item_hash is not None:
