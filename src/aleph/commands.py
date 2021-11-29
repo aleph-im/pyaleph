@@ -18,6 +18,7 @@ from multiprocessing import Process, set_start_method, Manager
 from typing import List, Coroutine, Dict, Optional
 
 from configmanager import Config
+from setproctitle import setproctitle
 
 from aleph import __version__
 from aleph import model
@@ -169,6 +170,7 @@ def run_server_coroutine(
     """Run the server coroutine in a synchronous way.
     Used as target of multiprocessing.Process.
     """
+    setproctitle(f'pyaleph-run_server_coroutine-{port}')
     extra_web_config = extra_web_config or {}
     logging.basicConfig(level=logging.DEBUG,
                         filename=f'/tmp/run_server_coroutine-{port}.log')
