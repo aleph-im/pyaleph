@@ -56,6 +56,9 @@ ENV PIP_NO_CACHE_DIR yes
 RUN /opt/venv/bin/python3 -m pip install --upgrade pip wheel
 ENV PATH="/opt/venv/bin:${PATH}"
 
+RUN /opt/venv/bin/pip install --upgrade --use-deprecated=legacy-resolver \
+    requests "pymongo~=3.12.2" secp256k1 coincurve aioipfs "aiohttp>=3.7.4"
+
 # === Copy source code ===
 COPY setup.py /opt/pyaleph/
 COPY setup.cfg /opt/pyaleph/
@@ -78,11 +81,9 @@ RUN chown -R source:source /opt/pyaleph/src /opt/pyaleph/.eggs /opt/pyaleph/.git
 # Install PyAleph source
 USER source
 WORKDIR /opt/pyaleph
-RUN pip install --upgrade --use-deprecated=legacy-resolver requests
 RUN pip install -U --use-deprecated=legacy-resolver git+https://github.com/aleph-im/nuls2-python.git
-RUN pip install -U --use-deprecated=legacy-resolver "aiohttp>=3.7.4" cosmospy
+RUN pip install -U --use-deprecated=legacy-resolver cosmospy
 RUN pip install -U --use-deprecated=legacy-resolver substrate-interface
-RUN pip install -U --use-deprecated=legacy-resolver aioipfs
 RUN python setup.py develop
 RUN /opt/venv/bin/pip install --use-deprecated=legacy-resolver -e ".[testing]"
 
