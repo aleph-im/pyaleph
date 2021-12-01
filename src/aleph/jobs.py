@@ -244,6 +244,8 @@ async def handle_pending_tx(pending, actions_list: List, seen_ids: Optional[List
 
         if message_actions:
             await PendingMessage.collection.bulk_write(message_actions)
+    else:
+        LOGGER.debug("TX contains no message")
 
     if messages is not None:
         # bogus or handled, we remove it.
