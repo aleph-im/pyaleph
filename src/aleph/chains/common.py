@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 from enum import IntEnum
-from typing import Dict, Optional, Union, Tuple
+from typing import Dict, Optional, Union, Tuple, List
 
 from aleph_message.models import MessageType
 from pymongo import UpdateOne
@@ -309,7 +309,7 @@ async def get_chaindata(messages, bulk_threshold=2000):
         return content
 
 
-async def get_chaindata_messages(chaindata, context, seen_ids=None):
+async def get_chaindata_messages(chaindata, context, seen_ids: Optional[List]=None):
     if chaindata is None or chaindata == -1:
         LOGGER.info("Got bad data in tx %r" % context)
         return -1
