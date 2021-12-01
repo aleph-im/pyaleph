@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from dataclasses import asdict
 from typing import Dict
 
@@ -9,6 +10,9 @@ from aiohttp import web
 from aleph import __version__
 from aleph.web import app
 from aleph.web.controllers.metrics import format_dataclass_for_prometheus, get_metrics
+
+logger = logging.getLogger(__name__)
+
 
 app.router.add_static(
     "/static/",
@@ -48,7 +52,12 @@ async def status_ws(request):
         status = await get_metrics(shared_stats)
 
         if status != previous_status:
-            await ws.send_json(asdict(status))
+            try:
+                await ws.send_json(asdict(status))
+            except ConnectionResetError:
+                logger.warning("Websocket connection reset")
+                await ws.close()
+                return
             previous_status = status
 
         await asyncio.sleep(2)
