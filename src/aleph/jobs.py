@@ -207,12 +207,12 @@ async def retry_messages_task(shared_stats: Optional[Dict]):
         await asyncio.sleep(5)
 
 
-async def handle_pending_tx(pending, actions_list):
+async def handle_pending_tx(pending, actions_list: List, seen_ids: Optional[List] = None):
     LOGGER.info(
         "%s Handling TX in block %s"
         % (pending["context"]["chain_name"], pending["context"]["height"])
     )
-    messages = await get_chaindata_messages(pending["content"], pending["context"])
+    messages = await get_chaindata_messages(pending["content"], pending["context"], seen_ids=seen_ids)
     if isinstance(messages, list):
         message_actions = list()
         for i, message in enumerate(messages):
@@ -273,6 +273,7 @@ async def handle_txs_job():
     actions = []
     tasks = []
     seen_offchain_hashes = []
+    seen_ids = []
     i = 0
     LOGGER.info("handling TXs")
     async for pending in PendingTX.collection.find().sort([("context.time", 1)]):
@@ -283,7 +284,7 @@ async def handle_txs_job():
                 continue
 
         i += 1
-        tasks.append(handle_pending_tx(pending, actions))
+        tasks.append(handle_pending_tx(pending, actions, seen_ids=seen_ids))
 
         if i > 200:
             await join_pending_txs_tasks(tasks, actions)
