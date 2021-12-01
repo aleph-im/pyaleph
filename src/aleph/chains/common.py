@@ -328,8 +328,10 @@ async def get_chaindata_messages(chaindata, context, seen_ids: Optional[List]=No
         if seen_ids is not None:
             if chaindata["content"] in seen_ids:
                 # is it really what we want here?
-                return
+                LOGGER.debug("Already seen")
+                return None
             else:
+                LOGGER.debug("Adding to seen_ids")
                 seen_ids.append(chaindata["content"])
         try:
             content, size = await get_json(chaindata["content"], timeout=10)
@@ -357,6 +359,8 @@ async def get_chaindata_messages(chaindata, context, seen_ids: Optional[List]=No
                     await asyncio.wait_for(pin_hash(chaindata["content"]), timeout=4.0)
                 except asyncio.TimeoutError:
                     LOGGER.warning(f"Can't pin hash {chaindata['content']}")
+        else:
+            LOGGER.debug("Got no message")
         return messages
     else:
         LOGGER.info("Got unknown protocol/version object in tx %r" % context)
