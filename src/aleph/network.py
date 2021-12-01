@@ -96,8 +96,8 @@ async def check_message(message: Dict, from_chain=False, from_network=False, tru
     else:
         try:
             message["item_type"] = ItemType.from_hash(message["item_hash"]).value
-        except ValueError:
-            pass
+        except ValueError as error:
+            LOGGER.warning(error)
 
     if trusted:
         # only in the case of a message programmatically built here
