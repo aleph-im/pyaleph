@@ -32,7 +32,7 @@ async def get_ipfs_api(timeout=5, reset=False):
             read_timeout=timeout,
             conns_max=25,
             conns_max_per_host=10,
-            debug=(app["config"]["logging"]["level"] <= logging.DEBUG)
+            debug=(app["config"].logging.level.value <= logging.DEBUG)
         )
 
     return API
