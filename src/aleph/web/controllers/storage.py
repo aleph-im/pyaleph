@@ -2,6 +2,7 @@ import base64
 import logging
 
 from aiohttp import web
+from aiohttp.http_exceptions import HttpBadRequest
 
 from aleph.handlers.forget import count_file_references
 from aleph.storage import add_json, get_hash_content, add_file
@@ -96,7 +97,10 @@ app.router.add_get("/api/v0/storage/{hash}", get_hash)
 async def get_raw_hash(request):
     item_hash = request.match_info.get("hash", None)
 
-    engine = ItemType.from_hash(item_hash)
+    try:
+        engine = ItemType.from_hash(item_hash)
+    except UnknownHashError:
+        raise HttpBadRequest(message="Invalid hash")
 
     if item_hash is not None:
         value = await get_hash_content(
