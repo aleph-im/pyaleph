@@ -110,6 +110,7 @@ async def forget_if_allowed(target_hash: str, forget_message: ForgetMessage) -> 
     # Only present for Store messages. Used after the content has been removed.
     storage_hash: Optional[str] = target_message.get("content", {}).get("item_hash")
 
+    logger.debug(f"Removing content for {target_hash}")
     updates = {
         "content": None,
         "item_content": None,
@@ -127,6 +128,7 @@ async def forget_if_allowed(target_hash: str, forget_message: ForgetMessage) -> 
 async def handle_forget_message(message: Dict, content: Dict):
     # Parsing and validation
     forget_message = ForgetMessage(**message, content=content)
+    logger.debug(f"Handling forget message {forget_message.item_hash}")
 
     for target_hash in forget_message.content.hashes:
         await forget_if_allowed(target_hash=target_hash, forget_message=forget_message)
