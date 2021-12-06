@@ -18,7 +18,7 @@ async def pub_json(request):
 
     try:
         if app["config"].ipfs.enabled.value:
-            await asyncio.wait_for(pub_ipfs(data.get("topic"), data.get("data")), 0.2)
+            await asyncio.wait_for(pub_ipfs(data.get("topic"), data.get("data")), 1)
     except Exception:
         LOGGER.exception("Can't publish on ipfs")
         failed_publications.append(Protocol.IPFS)
