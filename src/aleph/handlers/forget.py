@@ -23,9 +23,9 @@ async def count_file_references(storage_hash: str) -> int:
 async def file_references_exist(storage_hash: str) -> bool:
     """Check if references to a file on Aleph exist.
     """
-    return bool(await Message.collection.find_one(
+    return bool(await Message.collection.find(
         filter={"content.item_hash": storage_hash},
-    ))
+    ).limit(1).count())
 
 
 async def garbage_collect(storage_hash: str):
@@ -33,7 +33,7 @@ async def garbage_collect(storage_hash: str):
 
     This is typically called after 'forgetting' a message.
     """
-    if PermanentPin.collection.find_one({"multihash": storage_hash}):
+    if PermanentPin.collection.find({"multihash": storage_hash}).limit(1).count() > 0:
         logger.debug(f"Permanent pin will not be collected {storage_hash}")
         return
 
