@@ -399,7 +399,7 @@ def txs_task_loop(config_values, manager):
         ignore_errors=[KeyboardInterrupt],
     )
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=config_values["logging"]["level"],
         filename='/tmp/txs_task_loop.log',
     )
     loop, tasks = prepare_loop(config_values, manager, idx=1)
@@ -414,7 +414,7 @@ def messages_task_loop(config_values, manager, shared_stats: Optional[Dict]):
         ignore_errors=[KeyboardInterrupt],
     )
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=config_values["logging"]["level"],
         filename='/tmp/messages_task_loop.log',
     )
     loop, tasks = prepare_loop(config_values, manager, idx=2)
