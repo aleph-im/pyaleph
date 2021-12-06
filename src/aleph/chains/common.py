@@ -8,7 +8,7 @@ from aleph_message.models import MessageType
 from pymongo import UpdateOne
 
 from aleph.handlers.forget import handle_forget_message
-from aleph.handlers.storage import handle_new_storage
+from aleph.handlers.storage import handle_new_storage, InvalidIPFSHash
 from aleph.model import PermanentPin
 from aleph.model.messages import Message, CappedMessage
 from aleph.model.pending import PendingMessage, PendingTX
@@ -216,6 +216,11 @@ async def incoming(
                 handling_result = await handle_forget_message(message, content)
             else:
                 handling_result = True
+        except InvalidIPFSHash:
+            LOGGER.warning(
+                f"Invalid IPFS hash for message {hash}, won't retry."
+            )
+            return IncomingStatus.FAILED_PERMANENTLY
         except Exception:
             LOGGER.exception("Error using the message type handler")
             handling_result = None
