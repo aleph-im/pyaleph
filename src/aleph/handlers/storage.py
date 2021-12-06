@@ -42,6 +42,8 @@ async def handle_new_storage(message, content):
         api = await get_ipfs_api(timeout=5)
         try:
             stats = await asyncio.wait_for(api.files.stat(f"/ipfs/{item_hash}"), 5)
+            if stats is None:
+                return None
 
             if (
                 stats["Type"] == "file"
