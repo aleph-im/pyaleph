@@ -446,7 +446,7 @@ async def reconnect_ipfs_job(config):
 
                 try:
                     ret = await connect_ipfs_peer(peer)
-                    if "Strings" in ret:
+                    if ret and "Strings" in ret:
                         LOGGER.info("\n".join(ret["Strings"]))
                 except aioipfs.APIError:
                     LOGGER.warning("Can't reconnect to %s" % peer)
