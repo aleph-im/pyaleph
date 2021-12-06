@@ -91,6 +91,10 @@ async def forget_if_allowed(target_hash: str, forget_message: ForgetMessage) -> 
         logger.debug(f"Not allowed to forget {target_hash} by {forget_message.item_hash}")
         return
 
+    if target_message.get("content") is None:
+        logger.debug(f"Message content already forgotten: {target_message}")
+        return
+
     # Only present for Store messages. Used after the content has been removed.
     storage_hash: Optional[str] = target_message.get("content", {}).get("item_hash")
 
