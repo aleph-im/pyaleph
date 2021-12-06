@@ -8,13 +8,14 @@ from aleph_message.models import MessageType
 from pymongo import UpdateOne
 
 from aleph.handlers.forget import handle_forget_message
-from aleph.handlers.storage import handle_new_storage, InvalidIPFSHash
+from aleph.handlers.storage import handle_new_storage
 from aleph.model import PermanentPin
 from aleph.model.messages import Message, CappedMessage
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.network import check_message as check_message_fn
 from aleph.permissions import check_sender_authorization
 from aleph.storage import get_json, pin_hash, add_json, get_message_content
+from aleph.types import UnknownHashError
 from aleph.web import app
 
 LOGGER = logging.getLogger("chains.common")
@@ -216,7 +217,7 @@ async def incoming(
                 handling_result = await handle_forget_message(message, content)
             else:
                 handling_result = True
-        except InvalidIPFSHash:
+        except UnknownHashError:
             LOGGER.warning(
                 f"Invalid IPFS hash for message {hash}, won't retry."
             )
