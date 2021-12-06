@@ -56,8 +56,9 @@ ENV PIP_NO_CACHE_DIR yes
 RUN /opt/venv/bin/python3 -m pip install --upgrade pip wheel
 ENV PATH="/opt/venv/bin:${PATH}"
 
+RUN /opt/venv/bin/pip install --upgrade --use-deprecated=legacy-resolver git+https://github.com/aleph-im/aioipfs.git@hoh-more-exceptions
 RUN /opt/venv/bin/pip install --upgrade --use-deprecated=legacy-resolver \
-    requests "pymongo~=3.12.2" secp256k1 coincurve aioipfs "aiohttp>=3.7.4"
+    requests "pymongo~=3.12.2" secp256k1 coincurve "aiohttp>=3.7.4"
 
 # === Copy source code ===
 COPY setup.py /opt/pyaleph/

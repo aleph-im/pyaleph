@@ -1,6 +1,8 @@
 import logging
 from typing import Dict, Optional
 
+from aioipfs.api import RepoAPI
+from aioipfs.exceptions import NotPinnedError
 from aleph_message.models import ForgetMessage, MessageType
 
 from aleph.model import PermanentPin
@@ -23,9 +25,8 @@ async def count_file_references(storage_hash: str) -> int:
 async def file_references_exist(storage_hash: str) -> bool:
     """Check if references to a file on Aleph exist.
     """
-    return bool(await Message.collection.find(
-        filter={"content.item_hash": storage_hash},
-    ).limit(1).count())
+    return bool(await Message.collection.count_documents(
+        filter={"content.item_hash": storage_hash}, limit=1))
 
 
 async def garbage_collect(storage_hash: str):
@@ -33,7 +34,9 @@ async def garbage_collect(storage_hash: str):
 
     This is typically called after 'forgetting' a message.
     """
-    if PermanentPin.collection.find({"multihash": storage_hash}).limit(1).count() > 0:
+    logger.debug(f"Garbage collecting {storage_hash}")
+
+    if await PermanentPin.collection.count_documents(filter={"multihash": storage_hash}, limit=1) > 0:
         logger.debug(f"Permanent pin will not be collected {storage_hash}")
         return
 
@@ -42,8 +45,17 @@ async def garbage_collect(storage_hash: str):
 
         if storage == ItemType.IPFS:
             api = await get_ipfs_api(timeout=5)
-            result = await api.pin.rm(storage_hash)
-            print(result)
+            logger.debug(f"Removing from IPFS: {storage_hash}")
+            try:
+                result = await api.pin.rm(storage_hash)
+                print(result)
+
+                # Launch the IPFS garbage collector (`ipfs repo gc`)
+                async for _ in RepoAPI(driver=api).gc():
+                    pass
+
+            except NotPinnedError:
+                logger.debug("File not pinned")
             logger.debug(f"Removed from IPFS: {storage_hash}")
         elif storage == ItemType.Storage:
             logger.error("Not implemented yet")
