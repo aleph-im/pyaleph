@@ -17,14 +17,10 @@ from aioipfs import UnknownAPIError
 
 from aleph.services.ipfs.common import get_ipfs_api
 from aleph.storage import get_hash_content
-from aleph.types import ItemType
+from aleph.types import ItemType, UnknownHashError
 from aleph.web import app
 
 LOGGER = logging.getLogger("HANDLERS.STORAGE")
-
-
-class InvalidIPFSHash(Exception):
-    pass
 
 
 async def handle_new_storage(message, content):
@@ -47,14 +43,14 @@ async def handle_new_storage(message, content):
     if engine == ItemType.IPFS and ipfs_enabled:
         if ItemType.from_hash(item_hash) != ItemType.IPFS:
             LOGGER.warning(f"Invalid IPFS hash: '{item_hash}'")
-            raise InvalidIPFSHash(f"Invalid IPFS hash: '{item_hash}'")
+            raise UnknownHashError(f"Invalid IPFS hash: '{item_hash}'")
 
         api = await get_ipfs_api(timeout=5)
         try:
             try:
                 stats = await asyncio.wait_for(api.files.stat(f"/ipfs/{item_hash}"), 5)
             except UnknownAPIError:
-                raise InvalidIPFSHash(f"Invalid IPFS hash from API: '{item_hash}'")
+                raise UnknownHashError(f"Invalid IPFS hash from API: '{item_hash}'")
             if stats is None:
                 return None
 
