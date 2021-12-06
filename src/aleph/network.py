@@ -42,9 +42,7 @@ async def incoming_check(ipfs_pubsub_message):
         message = await check_message(message, from_network=True)
         return message
     except json.JSONDecodeError:
-        LOGGER.exception(
-            "Received non-json message %r" % ipfs_pubsub_message.get("data", "")
-        )
+        raise InvalidMessageError("Data is not JSON: {}".format(ipfs_pubsub_message.get("data", "")))
 
 
 async def check_message(message: Dict, from_chain=False, from_network=False, trusted=False) -> Dict:
