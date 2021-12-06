@@ -95,7 +95,7 @@ def run_server_coroutine(
     """
     setproctitle(f'pyaleph-run_server_coroutine-{port}')
     extra_web_config = extra_web_config or {}
-    logging.basicConfig(level=logging.DEBUG,
+    logging.basicConfig(level=config_values["logging"]["level"],
                         filename=f'/tmp/run_server_coroutine-{port}.log')
     if enable_sentry:
         sentry_sdk.init(
@@ -136,6 +136,7 @@ def main(args):
 
     LOGGER.info("Loading configuration")
     config = Config(schema=get_defaults())
+    config.logging.level.value = args.loglevel
     app["config"] = config
 
     if args.config_file is not None:

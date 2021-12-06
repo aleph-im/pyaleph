@@ -1,5 +1,11 @@
+import logging
+
+
 def get_defaults():
     return {
+        "logging": {
+            "level": logging.WARNING,
+        },
         "aleph": {
             "queue_topic": "ALEPH-QUEUE",
             "host": "0.0.0.0",
