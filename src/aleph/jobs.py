@@ -43,6 +43,7 @@ async def handle_pending_message(
         check_message=pending["source"].get("check_message", True),
         retrying=True,
         bulk_operation=True,
+        existing_id=pending["_id"],
     )
 
     if result == IncomingStatus.RETRYING_LATER:
