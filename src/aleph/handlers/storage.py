@@ -13,7 +13,7 @@ import logging
 import aioipfs
 import asyncio
 
-from aioipfs import UnknownAPIError
+from aioipfs import InvalidCIDError
 
 from aleph.services.ipfs.common import get_ipfs_api
 from aleph.storage import get_hash_content
@@ -49,7 +49,7 @@ async def handle_new_storage(message, content):
         try:
             try:
                 stats = await asyncio.wait_for(api.files.stat(f"/ipfs/{item_hash}"), 5)
-            except UnknownAPIError:
+            except InvalidCIDError:
                 raise UnknownHashError(f"Invalid IPFS hash from API: '{item_hash}'")
             if stats is None:
                 return None
