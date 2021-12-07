@@ -96,11 +96,11 @@ async def forget_if_allowed(target_hash: str, forget_message: ForgetMessage) -> 
     target_message = await Message.collection.find_one(filter={"item_hash": target_hash})
 
     if not target_message:
-        logger.error(f"Message to forget could not be found with id {target_hash}")
+        logger.info(f"Message to forget could not be found with id {target_hash}")
         return
 
     if not await is_allowed_to_forget(target_message, by=forget_message):
-        logger.debug(f"Not allowed to forget {target_hash} by {forget_message.item_hash}")
+        logger.info(f"Not allowed to forget {target_hash} by {forget_message.item_hash}")
         return
 
     if target_message.get("content") is None:
