@@ -5,6 +5,7 @@ from enum import IntEnum
 from typing import Dict, Optional, Union, Tuple, List
 
 from aleph_message.models import MessageType
+from bson import ObjectId
 from pymongo import UpdateOne
 
 from aleph.handlers.forget import handle_forget_message
@@ -72,6 +73,7 @@ async def incoming(
         check_message: bool = False,
         retrying: bool = False,
         bulk_operation: bool = False,
+        existing_id: Optional[ObjectId] = None
 ) -> Union[IncomingStatus, UpdateOne]:
     """New incoming message from underlying chain.
 
@@ -190,6 +192,13 @@ async def incoming(
                         ),
                     }
                 )
+            else:
+                LOGGER.debug(f"Incrementing for {existing_id}")
+                result = await PendingMessage.collection.update_one(
+                    filter={"_id": ObjectId(existing_id)},
+                    update={"$inc": {"retries": 1}}
+                )
+                LOGGER.debug(f"Update result {result}")
             return IncomingStatus.RETRYING_LATER
 
         if content == -1:
@@ -240,6 +249,13 @@ async def incoming(
                         ),
                     }
                 )
+            else:
+                LOGGER.debug(f"Incrementing for {existing_id}")
+                result = await PendingMessage.collection.update_one(
+                    filter={"_id": ObjectId(existing_id)},
+                    update={"$inc": {"retries": 1}}
+                )
+                LOGGER.debug(f"Update result {result}")
             return IncomingStatus.RETRYING_LATER
 
         if handling_result != True:
