@@ -6,6 +6,7 @@ from aioipfs.exceptions import NotPinnedError
 from aleph_message.models import ForgetMessage, MessageType
 
 from aleph.model import PermanentPin
+from aleph.model.hashes import delete_value
 from aleph.model.messages import Message
 from aleph.services.ipfs.common import get_ipfs_api
 from aleph.storage import get_message_content
@@ -29,7 +30,7 @@ async def file_references_exist(storage_hash: str) -> bool:
         filter={"content.item_hash": storage_hash}, limit=1))
 
 
-async def garbage_collect(storage_hash: str):
+async def garbage_collect(storage_hash: str, storage_type: ItemType):
     """If a file does not have any reference left, delete or unpin it.
 
     This is typically called after 'forgetting' a message.
@@ -41,9 +42,13 @@ async def garbage_collect(storage_hash: str):
         return
 
     if not await file_references_exist(storage_hash):
-        storage: ItemType = ItemType.from_hash(storage_hash)
+        storage_detected: ItemType = ItemType.from_hash(storage_hash)
 
-        if storage == ItemType.IPFS:
+        if storage_type != storage_detected:
+            raise ValueError(f"Inconsistent ItemType {storage_type} != {storage_detected} "
+                             f"for hash '{storage_hash}'")
+
+        if storage_type == ItemType.IPFS:
             api = await get_ipfs_api(timeout=5)
             logger.debug(f"Removing from IPFS: {storage_hash}")
             try:
@@ -57,15 +62,13 @@ async def garbage_collect(storage_hash: str):
             except NotPinnedError:
                 logger.debug("File not pinned")
             logger.debug(f"Removed from IPFS: {storage_hash}")
-        elif storage == ItemType.Storage:
-            logger.error("Not implemented yet")
-            raise NotImplementedError("Storage not deleted yet")
-            # TODO
+        elif storage_type == ItemType.Storage:
+            logger.debug(f"Removing from Gridfs: {storage_hash}")
+            await delete_value(storage_hash)
+            logger.debug(f"Removed from Gridfs: {storage_hash}")
         else:
-            assert storage == ItemType.Inline
-            raise NotImplementedError("Storage not deleted yet")
-            # FIXME: Does this make sense ?
-        logger.debug(f"Removed from {storage}: {storage_hash}")
+            raise ValueError(f"Invalid storage type {storage_type}")
+        logger.debug(f"Removed from {storage_type}: {storage_hash}")
     else:
         logger.debug(f"File {storage_hash} has at least one reference left")
 
@@ -109,6 +112,8 @@ async def forget_if_allowed(target_hash: str, forget_message: ForgetMessage) -> 
 
     # Only present for Store messages. Used after the content has been removed.
     storage_hash: Optional[str] = target_message.get("content", {}).get("item_hash")
+    storage_type_str: Optional[str] = target_message.get("content", {}).get("item_type")
+    storage_type: Optional[ItemType] = ItemType(storage_type_str) if storage_type_str else None
 
     logger.debug(f"Removing content for {target_hash}")
     updates = {
@@ -122,7 +127,7 @@ async def forget_if_allowed(target_hash: str, forget_message: ForgetMessage) -> 
     #  them could be centralized here.
 
     if storage_hash and target_message.get("type") == MessageType.store:
-        await garbage_collect(storage_hash)  # Or create background task ?
+        await garbage_collect(storage_hash, storage_type)  # Or create background task ?
 
 
 async def handle_forget_message(message: Dict, content: Dict):

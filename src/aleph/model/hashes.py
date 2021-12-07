@@ -31,7 +31,7 @@ from gridfs.errors import NoFile
 #                                         upsert=True)
 
 
-async def get_value(key):
+async def get_value(key: str):
     from aleph.model import fs
 
     try:
@@ -41,8 +41,15 @@ async def get_value(key):
         return None
 
 
-async def set_value(key, value):
+async def set_value(key: str, value: bytes):
     from aleph.model import fs
 
     file_id = await fs.upload_from_stream(key, value)
     return file_id
+
+
+async def delete_value(key: str):
+    from aleph.model import fs
+
+    async for gridfs_file in fs.find({"filename": key}):
+        await fs.delete(gridfs_file._id)
