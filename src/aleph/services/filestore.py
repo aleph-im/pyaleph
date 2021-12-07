@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import threading
+from typing import Union
 
 import rocksdb
 
@@ -95,12 +96,12 @@ async def get_value(key, in_executor=True):
         return await hashes.get_value(key)
 
 
-async def set_value(key, value, in_executor=True):
+async def set_value(key: Union[bytes, str], value: Union[bytes, str], in_executor: bool=True):
     engine = app["config"].storage.engine.value
 
     if not isinstance(value, bytes):
         if isinstance(value, str):
-            value = value.encode("utf-8")
+            value: bytes = value.encode("utf-8")
         else:
             raise ValueError("Bad input value (bytes or string only)")
 
