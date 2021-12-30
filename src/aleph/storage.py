@@ -34,6 +34,9 @@ async def get_message_content(message: Dict):
     if item_type in (ItemType.IPFS, ItemType.Storage):
         return await get_json(message["item_hash"], engine=ItemType(item_type))
     elif item_type == ItemType.Inline:
+        if "item_content" not in message:
+            LOGGER.warning(f"No item_content in message {message.get('item_hash')}")
+            return -1, 0  # never retry, bogus data
         try:
             item_content = await json_async_loads(message["item_content"])
         except (json.JSONDecodeError, KeyError):
