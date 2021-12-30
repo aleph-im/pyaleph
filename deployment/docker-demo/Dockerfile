@@ -106,7 +106,7 @@ WORKDIR /opt/pyaleph
 RUN pip install --upgrade --use-deprecated=legacy-resolver requests
 RUN pip install -U --use-deprecated=legacy-resolver git+https://github.com/aleph-im/nuls2-python.git
 RUN pip install -U --use-deprecated=legacy-resolver "aiohttp>=3.7.4" cosmospy
-RUN pip install -U --use-deprecated=legacy-resolver substrate-interface
+RUN pip install -U --use-deprecated=legacy-resolver substrate-interface 'eth-keys==0.3.3'
 RUN pip install -U --use-deprecated=legacy-resolver aioipfs
 RUN python setup.py develop
 RUN /opt/venv/bin/pip install --use-deprecated=legacy-resolver -e ".[testing]"

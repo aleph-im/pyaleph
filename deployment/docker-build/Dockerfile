@@ -84,7 +84,7 @@ USER source
 WORKDIR /opt/pyaleph
 RUN pip install -U --use-deprecated=legacy-resolver git+https://github.com/aleph-im/nuls2-python.git
 RUN pip install -U --use-deprecated=legacy-resolver cosmospy
-RUN pip install -U --use-deprecated=legacy-resolver substrate-interface
+RUN pip install -U --use-deprecated=legacy-resolver substrate-interface 'eth-keys==0.3.3'
 RUN python setup.py develop
 RUN /opt/venv/bin/pip install --use-deprecated=legacy-resolver -e ".[testing]"
 
