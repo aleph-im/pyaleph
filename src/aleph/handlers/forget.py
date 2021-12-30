@@ -102,6 +102,10 @@ async def forget_if_allowed(target_hash: str, forget_message: ForgetMessage) -> 
         logger.info(f"Message to forget could not be found with id {target_hash}")
         return
 
+    if target_message.get("type") == MessageType.forget:
+        logger.info(f"FORGET message may not be forgotten {target_hash} by {forget_message.item_hash}")
+        return
+
     if not await is_allowed_to_forget(target_message, by=forget_message):
         logger.info(f"Not allowed to forget {target_hash} by {forget_message.item_hash}")
         return
