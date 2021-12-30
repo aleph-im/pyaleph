@@ -13,7 +13,7 @@ LOGGER = logging.getLogger("MESSAGES")
 
 KNOWN_QUERY_FIELDS = {'sort_order', 'msgType', 'addresses', 'refs',
                       'contentTypes', 'channels', 'tags', 'hashes', 'history',
-                      'page'  # page is handled in Pagination.get_pagination_params
+                      'pagination', 'page'  # page is handled in Pagination.get_pagination_params
                       }
 
 
