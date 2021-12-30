@@ -39,6 +39,10 @@ async def incoming_check(ipfs_pubsub_message):
         message_data = ipfs_pubsub_message.get("data", b"").decode("utf-8")
         message = json.loads(unquote(message_data))
         LOGGER.debug("New message! %r" % message)
+
+        if message is None:
+            raise InvalidMessageError("Message may not be None")
+
         message = await check_message(message, from_network=True)
         return message
     except json.JSONDecodeError:
@@ -56,6 +60,18 @@ async def check_message(message: Dict, from_chain=False, from_network=False, tru
 
     TODO: Implement it fully! Dangerous!
     """
+    if not isinstance(message, dict):
+        raise InvalidMessageError("Message must be a dict")
+
+    if not message:
+        raise InvalidMessageError("Message must not be empty")
+
+    if "item_hash" not in message:
+        raise InvalidMessageError("Missing field 'item_hash' in message")
+    for field in ("chain", "sender", "signature"):
+        if field not in message:
+            raise InvalidMessageError(f"Missing field '{field}' in message {message['item_hash']}")
+
     if not isinstance(message["item_hash"], str):
         raise InvalidMessageError("Unknown hash %s" % message["item_hash"])
 
