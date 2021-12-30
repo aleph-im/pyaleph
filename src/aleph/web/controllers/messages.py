@@ -3,6 +3,7 @@ from typing import Set
 from aleph.model.messages import CappedMessage, Message
 from aleph.web import app
 from aiohttp import web
+from aiohttp.web_exceptions import HTTPBadRequest
 import asyncio
 from pymongo.cursor import CursorType
 from bson.objectid import ObjectId
@@ -96,7 +97,10 @@ async def get_filters(request: web.Request):
 async def view_messages_list(request):
     """Messages list view with filters"""
 
-    find_filters = await get_filters(request)
+    try:
+        find_filters = await get_filters(request)
+    except ValueError as error:
+        raise HTTPBadRequest(body=error.args[0])
 
     (
         pagination_page,
