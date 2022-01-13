@@ -37,6 +37,11 @@ try:
 except ModuleNotFoundError as error:
     logger.warning("Can't load AVAX: %s", error.msg)
 
+try:
+    from aleph.chains import near
+except ModuleNotFoundError as error:
+    logger.warning("Can't load NEAR: %s", error.msg)
+
 
 def connector_tasks(config, outgoing=True) -> List[Coroutine]:
     tasks: List[Coroutine] = []
