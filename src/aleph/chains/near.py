@@ -1,4 +1,5 @@
 import json
+import hashlib
 import base58
 from aleph.chains.common import get_verification_buffer
 from aleph.chains.register import register_verifier
@@ -28,9 +29,10 @@ async def verify_signature(message):
     try:
         verify_key = VerifyKey(s_public_key)
         verification_buffer = await get_verification_buffer(message)
+        sha256_buffer = hashlib.sha256(verification_buffer).digest()
 
-        verified = verify_key.verify(verification_buffer, signature=s_signature)
-        result = verified == verification_buffer
+        verified = verify_key.verify(sha256_buffer, signature=s_signature)
+        result = verified == sha256_buffer
     except Exception:
         LOGGER.exception("NEAR Signature verification error")
         result = False
