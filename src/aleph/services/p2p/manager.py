@@ -1,10 +1,10 @@
 import logging
-from typing import Optional, Coroutine, List, Tuple, Any
+from typing import Coroutine, List, Tuple, Any
 
 import multiaddr
 from Crypto.PublicKey.RSA import import_key
 from libp2p import new_node, BasicHost
-from libp2p.crypto.rsa import RSAPrivateKey, KeyPair, create_new_key_pair
+from libp2p.crypto.rsa import KeyPair, RSAPrivateKey
 from libp2p.pubsub import floodsub, gossipsub
 from libp2p.pubsub.pubsub import Pubsub
 
@@ -19,28 +19,18 @@ FLOODSUB_PROTOCOL_ID = floodsub.PROTOCOL_ID
 GOSSIPSUB_PROTOCOL_ID = gossipsub.PROTOCOL_ID
 
 
-def generate_keypair(print_key: bool, key_path: Optional[str]):
-    """Generate an key pair and exit."""
-    keypair = create_new_key_pair()
-    if print_key:
-        # Print the armored key pair for archiving
-        print(keypair.private_key.impl.export_key().decode("utf-8"))
-
-    if key_path:
-        # Save the armored key pair in a file
-        with open(key_path, "wb") as key_file:
-            key_file.write(keypair.private_key.impl.export_key())
-
-    return keypair
-
-
 # Save published adress to present them in the web process later
 public_adresses = []
 
 
 async def initialize_host(
-    key, host="0.0.0.0", port=4025, listen=True, protocol_active=True
+    key: str,
+    host: str = "0.0.0.0",
+    port: int = 4025,
+    listen: bool = True,
+    protocol_active: bool = True,
 ) -> Tuple[BasicHost, Pubsub, Any, List]:
+
     from .protocol import AlephProtocol
     from .jobs import reconnect_p2p_job, tidy_http_peers_job
 

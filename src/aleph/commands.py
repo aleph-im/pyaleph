@@ -26,7 +26,7 @@ from aleph.config import get_defaults
 from aleph.jobs import start_jobs, prepare_loop, prepare_manager, DBManager
 from aleph.network import listener_tasks
 from aleph.services import p2p
-from aleph.services.p2p.manager import generate_keypair
+from aleph.services.p2p.keys import generate_keypair
 from aleph.web import app, init_cors
 
 
@@ -131,7 +131,7 @@ def main(args):
 
     if args.generate_key:
         LOGGER.info("Generating a key pair")
-        generate_keypair(args.print_key, args.key_path)
+        _ = generate_keypair(args.print_key, args.key_path)
         return
 
     LOGGER.info("Loading configuration")
