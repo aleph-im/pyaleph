@@ -11,7 +11,7 @@ You can build the Docker image simply using:
 
 or by running the Docker build command from the root of the repository:
 ```shell script
-docker build -t alephim/pyaleph-node -f deployment/docker/Dockerfile .
+docker build -t alephim/pyaleph-node -f deployment/docker/pyaleph.dockerfile .
 ```
 
 ## Configure PyAleph
@@ -29,7 +29,7 @@ You can generate this key using the following commands after building the Docker
 ```shell script
 touch node-secret.key
 
-docker run --rm -ti --user root -v $(pwd)/node-secret.key:/opt/pyaleph/node-secret.key alephim/pyaleph-node:latest pyaleph --gen-key
+docker run --rm -ti --user root -v $(pwd)/node-secret.key:/opt/pyaleph/node-secret.key alephim/pyaleph-node:latest pyaleph --gen-keys
 ```
 
 ## Running with Docker Compose

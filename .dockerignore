@@ -30,7 +30,6 @@ tags
 *.eggs/
 .installed.cfg
 *.egg-info
-src/pyaleph.egg-info
 
 # Unittest and coverage
 htmlcov/*
@@ -49,9 +48,11 @@ docs/_rst/*
 docs/_build/*
 cover/*
 MANIFEST
+.github/
 
 # Per-project virtualenvs
 .venv*/
+venv*/
 
 # User configuration with secrets
 config.yml

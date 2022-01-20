@@ -48,8 +48,8 @@ def parse_args(args):
     )
     parser.add_argument(
         "-g",
-        "--gen-key",
-        dest="generate_key",
+        "--gen-keys",
+        dest="generate_keys",
         help="Generate a node key and exit",
         action="store_true",
         default=False,
@@ -57,18 +57,18 @@ def parse_args(args):
     parser.add_argument(
         "--print-key",
         dest="print_key",
-        help="Print the generated key",
+        help="Print the generated private key",
         action="store_true",
         default=False,
     )
     parser.add_argument(
         "-k",
-        "--key",
-        dest="key_path",
-        help="Path to the node private key",
+        "--key-dir",
+        dest="key_dir",
+        help="Path to the keys directory. Only used in combination with --gen-keys.",
         action="store",
         type=str,
-        default="node-secret.key",
+        default="keys",
     )
     parser.add_argument(
         "--disable-sentry",

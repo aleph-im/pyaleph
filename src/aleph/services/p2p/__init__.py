@@ -1,28 +1,34 @@
 from typing import Coroutine, List
 
+from multiaddr import Multiaddr
+from p2pclient import Client as P2PClient
+
 from . import singleton
 from .manager import initialize_host
-from .peers import connect_peer
 from .protocol import incoming_channel
-from .pubsub import pub, sub
+from .pubsub import pub
+import socket
 
 
-async def init_p2p(config, listen=True, port_id=0) -> List[Coroutine]:
-    pkey = config.p2p.key.value
+def init_p2p_client(config) -> P2PClient:
+    host = config.p2p.host.value
+    host_ip_addr = socket.gethostbyname(host)
+
+    control_port = config.p2p.control_port.value
+    listen_port = config.p2p.listen_port.value
+    control_maddr = Multiaddr(f"/ip4/{host_ip_addr}/tcp/{control_port}")
+    listen_maddr = Multiaddr(f"/ip4/0.0.0.0/tcp/{listen_port}")
+    return P2PClient(control_maddr=control_maddr, listen_maddr=listen_maddr)
+
+
+async def init_p2p(config, listen: bool = True, port_id: int = 0) -> List[Coroutine]:
+    singleton.client = init_p2p_client(config)
     port = config.p2p.port.value + port_id
-    singleton.host, singleton.pubsub, singleton.streamer, tasks = await initialize_host(
-        key=pkey,
+    singleton.streamer, tasks = await initialize_host(
+        p2p_client=singleton.client,
         host=config.p2p.host.value,
         port=port,
         listen=listen,
-        protocol_active=("protocol" in config.p2p.clients.value),
     )
+
     return tasks
-
-
-async def get_host():
-    return singleton.host
-
-
-async def get_pubsub():
-    return singleton.pubsub

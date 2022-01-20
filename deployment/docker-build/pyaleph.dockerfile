@@ -75,13 +75,16 @@ COPY .git /opt/pyaleph/.git
 
 # Setup directories for `python setup.py develop`
 USER root
-RUN mkdir /opt/pyaleph/src/pyaleph.egg-info
+RUN mkdir -p /opt/pyaleph/src/pyaleph.egg-info
 RUN mkdir /opt/pyaleph/.eggs
 RUN chown -R source:source /opt/pyaleph/src /opt/pyaleph/.eggs /opt/pyaleph/.git
 
 # Install PyAleph source
 USER source
 WORKDIR /opt/pyaleph
+# TODO: replace by a proper install of p2pclient once the changes merged and released on the mainline repo
+RUN pip install -U --use-deprecated=legacy-resolver git+https://github.com/odesenfans/py-libp2p-daemon-bindings.git@c36b0262bf0b7581c0f9662c3f2fb4368e6b3c28
+
 RUN pip install -U --use-deprecated=legacy-resolver git+https://github.com/aleph-im/nuls2-python.git
 RUN pip install -U --use-deprecated=legacy-resolver cosmospy
 RUN pip install -U --use-deprecated=legacy-resolver substrate-interface 'eth-keys==0.3.3'
@@ -99,5 +102,3 @@ CMD ["pyaleph"]
 
 # PyAleph API
 EXPOSE 8000
-# PyAleph p2p network
-EXPOSE 4024 4025

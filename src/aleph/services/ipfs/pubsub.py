@@ -1,11 +1,11 @@
 import asyncio
 import base64
 import logging
+
 import base58
 
-from .common import get_ipfs_api
 from aleph.types import InvalidMessageError
-
+from .common import get_ipfs_api
 
 LOGGER = logging.getLogger("IPFS.PUBSUB")
 
@@ -34,7 +34,7 @@ async def sub(topic: str):
             LOGGER.exception("Error handling message")
 
 
-async def pub(topic, message):
+async def pub(topic: str, message: bytes):
     api = await get_ipfs_api()
     await api.pubsub.pub(topic, message)
 
