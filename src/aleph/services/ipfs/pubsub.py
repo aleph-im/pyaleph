@@ -1,11 +1,9 @@
 import asyncio
 import base64
 import logging
-from typing import Coroutine, List
-from aiohttp import ClientConnectorError
 import base58
 
-from .common import get_base_url, get_ipfs_api
+from .common import get_ipfs_api
 from aleph.types import InvalidMessageError
 
 
@@ -21,12 +19,7 @@ async def decode_msg(msg):
     }
 
 
-async def sub(topic, base_url=None):
-    if base_url is None:
-        from aleph.web import app
-
-        base_url = await get_base_url(app["config"])
-
+async def sub(topic: str):
     api = await get_ipfs_api()
 
     async for mvalue in api.pubsub.sub(topic):
@@ -46,7 +39,7 @@ async def pub(topic, message):
     await api.pubsub.pub(topic, message)
 
 
-async def incoming_channel(config, topic):
+async def incoming_channel(topic) -> None:
     from aleph.network import incoming_check
     from aleph.chains.common import incoming
 
@@ -58,7 +51,7 @@ async def incoming_channel(config, topic):
     while True:
         try:
             # seen_ids = []
-            async for mvalue in sub(topic, base_url=await get_base_url(config)):
+            async for mvalue in sub(topic):
                 try:
                     message = await incoming_check(mvalue)
                     LOGGER.debug("New message %r" % message)
