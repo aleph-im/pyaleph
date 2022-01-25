@@ -25,7 +25,7 @@ from aleph.chains import connector_tasks
 from aleph.cli.args import parse_args
 from aleph.config import get_defaults
 from aleph.exceptions import PrivateKeyNotFoundException
-from aleph.jobs import start_jobs, prepare_loop, prepare_manager, DBManager
+from aleph.jobs import start_jobs, prepare_loop
 from aleph.network import listener_tasks
 from aleph.services import p2p
 from aleph.services.keys import generate_keypair, save_keys
@@ -88,7 +88,6 @@ def run_server_coroutine(
     config_values,
     host,
     port,
-    manager,
     idx,
     shared_stats,
     enable_sentry: bool = True,
@@ -110,7 +109,7 @@ def run_server_coroutine(
     # Use a try-catch-capture_exception to work with multiprocessing, see
     # https://github.com/getsentry/raven-python/issues/1110
     try:
-        loop, tasks = prepare_loop(config_values, manager, idx=idx)
+        loop, tasks = prepare_loop(config_values, idx=idx)
         loop.run_until_complete(
             asyncio.gather(
                 *tasks, run_server(host, port, shared_stats, extra_web_config)
@@ -184,10 +183,6 @@ def main(args):
     # LOGGER.info("File store initalized.")
     init_cors()  # FIXME: This is stateful and process-dependent
     set_start_method("spawn")
-    manager: Optional[DBManager] = None
-    if config.storage.engine.value == "rocksdb":
-        # rocksdb doesn't support multiprocess/multithread
-        manager = prepare_manager(config_values)
 
     with Manager() as shared_memory_manager:
         tasks: List[Coroutine] = []
@@ -197,7 +192,7 @@ def main(args):
         if not args.no_jobs:
             LOGGER.debug("Creating jobs")
             tasks += start_jobs(
-                config, shared_stats=shared_stats, manager=manager, use_processes=True
+                config, shared_stats=shared_stats, use_processes=True
             )
 
         loop = asyncio.get_event_loop()
@@ -225,7 +220,6 @@ def main(args):
                 config_values,
                 config.aleph.host.value,
                 config.p2p.http_port.value,
-                manager and (manager._address, manager._authkey) or None,
                 3,
                 shared_stats,
                 args.sentry_disabled is False and app["config"].sentry.dsn.value,
@@ -238,7 +232,6 @@ def main(args):
                 config_values,
                 config.aleph.host.value,
                 config.aleph.port.value,
-                manager and (manager._address, manager._authkey) or None,
                 4,
                 shared_stats,
                 args.sentry_disabled is False and app["config"].sentry.dsn.value,

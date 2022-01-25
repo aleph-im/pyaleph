@@ -16,7 +16,6 @@ from aleph.model.messages import Message, CappedMessage
 from aleph.model.p2p import get_peers
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.network import check_message
-from aleph.services import filestore
 from aleph.services.ipfs.common import connect_ipfs_peer
 from aleph.types import ItemType, InvalidMessageError
 
@@ -32,7 +31,10 @@ class DBManager(SyncManager):
 
 
 async def handle_pending_message(
-    pending: Dict, seen_ids: Dict[Tuple, int], actions_list: List[DeleteOne], messages_actions_list: List[UpdateOne]
+    pending: Dict,
+    seen_ids: Dict[Tuple, int],
+    actions_list: List[DeleteOne],
+    messages_actions_list: List[UpdateOne],
 ):
     result = await incoming(
         pending["message"],
@@ -112,7 +114,9 @@ async def retry_messages_job(shared_stats: Optional[Dict]):
                 shared_stats["retry_messages_job_j"] = j
 
             if pending["message"] is None:
-                LOGGER.warning("Found PendingMessage with empty message, this should be caught before insertion")
+                LOGGER.warning(
+                    "Found PendingMessage with empty message, this should be caught before insertion"
+                )
                 await PendingMessage.collection.delete_one({"_id": pending["_id"]})
 
             if (
@@ -208,12 +212,16 @@ async def retry_messages_task(shared_stats: Optional[Dict]):
         await asyncio.sleep(5)
 
 
-async def handle_pending_tx(pending, actions_list: List, seen_ids: Optional[List] = None):
+async def handle_pending_tx(
+    pending, actions_list: List, seen_ids: Optional[List] = None
+):
     LOGGER.info(
         "%s Handling TX in block %s"
         % (pending["context"]["chain_name"], pending["context"]["height"])
     )
-    messages = await get_chaindata_messages(pending["content"], pending["context"], seen_ids=seen_ids)
+    messages = await get_chaindata_messages(
+        pending["content"], pending["context"], seen_ids=seen_ids
+    )
     if isinstance(messages, list):
         message_actions = list()
         for i, message in enumerate(messages):
@@ -325,61 +333,16 @@ def function_proxy(manager, funcname):
     return func_call
 
 
-def initialize_db_process(config_values):
-    from aleph.web import app
-    from configmanager import Config
-    from aleph.config import get_defaults
-
-    config = Config(schema=get_defaults())
-    app["config"] = config
-    config.load_values(config_values)
-
-    filestore.init_store(config)
-
-
-def prepare_manager(config_values) -> DBManager:
-    from aleph.services import filestore
-    from aleph.services.filestore import __get_value, __set_value
-
-    DBManager.register("_set_value", __set_value)
-    DBManager.register("_get_value", __get_value)
-    manager = DBManager()
-    server = manager.get_server()
-    # server.serve_forever()
-
-    manager.start(initialize_db_process, [config_values])
-    filestore._set_value = function_proxy(manager, "_set_value")
-    filestore._get_value = function_proxy(manager, "_get_value")
-    return manager
-
-
-def prepare_loop(config_values, manager=None, idx=1):
+def prepare_loop(config_values, idx=1):
     from aleph.model import init_db
     from aleph.web import app
     from configmanager import Config
     from aleph.config import get_defaults
     from aleph.services.ipfs.common import get_ipfs_api
     from aleph.services.p2p import init_p2p, http
-    from aleph.services import filestore
 
-    # uvloop.install()
-
-    # manager = NodeManager()
-    # manager.start()
-
-    if isinstance(manager, tuple):
-        manager_info = manager
-        DBManager.register("_set_value")
-        DBManager.register("_get_value")
-        manager = DBManager(address=manager_info[0], authkey=manager_info[1])
-        manager.connect()
-
-    filestore._set_value = function_proxy(manager, "_set_value")
-    filestore._get_value = function_proxy(manager, "_get_value")
     http.SESSION = None
 
-    # loop = asyncio.new_event_loop()
-    # asyncio.set_event_loop(loop)
     loop = asyncio.get_event_loop()
 
     config = Config(schema=get_defaults())
@@ -392,8 +355,8 @@ def prepare_loop(config_values, manager=None, idx=1):
     return loop, tasks
 
 
-def txs_task_loop(config_values, manager):
-    setproctitle('aleph.jobs.txs_task_loop')
+def txs_task_loop(config_values):
+    setproctitle("aleph.jobs.txs_task_loop")
     sentry_sdk.init(
         dsn=config_values["sentry"]["dsn"],
         traces_sample_rate=config_values["sentry"]["traces_sample_rate"],
@@ -401,14 +364,14 @@ def txs_task_loop(config_values, manager):
     )
     logging.basicConfig(
         level=config_values["logging"]["level"],
-        filename='/tmp/txs_task_loop.log',
+        filename="/tmp/txs_task_loop.log",
     )
-    loop, tasks = prepare_loop(config_values, manager, idx=1)
+    loop, tasks = prepare_loop(config_values, idx=1)
     loop.run_until_complete(asyncio.gather(*tasks, handle_txs_task()))
 
 
-def messages_task_loop(config_values, manager, shared_stats: Optional[Dict]):
-    setproctitle('aleph.jobs.messages_task_loop')
+def messages_task_loop(config_values, shared_stats: Optional[Dict]):
+    setproctitle("aleph.jobs.messages_task_loop")
     sentry_sdk.init(
         dsn=config_values["sentry"]["dsn"],
         traces_sample_rate=config_values["sentry"]["traces_sample_rate"],
@@ -416,9 +379,9 @@ def messages_task_loop(config_values, manager, shared_stats: Optional[Dict]):
     )
     logging.basicConfig(
         level=config_values["logging"]["level"],
-        filename='/tmp/messages_task_loop.log',
+        filename="/tmp/messages_task_loop.log",
     )
-    loop, tasks = prepare_loop(config_values, manager, idx=2)
+    loop, tasks = prepare_loop(config_values, idx=2)
     loop.run_until_complete(asyncio.gather(*tasks, retry_messages_task(shared_stats)))
 
 
@@ -459,10 +422,9 @@ async def reconnect_ipfs_job(config):
 
 
 def start_jobs(
-        config,
-        shared_stats: Optional[Dict],
-        manager: Optional[DBManager]=None,
-        use_processes=True
+    config,
+    shared_stats: Optional[Dict],
+    use_processes=True,
 ) -> List[Coroutine]:
     LOGGER.info("starting jobs")
     tasks: List[Coroutine] = []
@@ -473,16 +435,12 @@ def start_jobs(
             target=messages_task_loop,
             args=(
                 config_values,
-                manager and (manager._address, manager._authkey) or None,
                 shared_stats,
             ),
         )
         p2 = Process(
             target=txs_task_loop,
-            args=(
-                config_values,
-                manager and (manager._address, manager._authkey) or None,
-            ),
+            args=(config_values,),
         )
         p1.start()
         p2.start()
