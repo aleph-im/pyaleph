@@ -1,12 +1,11 @@
 import pytest
 
-import aleph.chains
-from aleph.chains import register
-from aleph.chains.register import (VERIFIER_REGISTER, INCOMING_WORKERS,
-                                   OUTGOING_WORKERS,
-                                   register_verifier,
-                                   register_incoming_worker,
-                                   register_outgoing_worker)
+from aleph import register_chain as register
+from aleph.register_chain import (VERIFIER_REGISTER, INCOMING_WORKERS,
+                                  OUTGOING_WORKERS,
+                                  register_verifier,
+                                  register_incoming_worker,
+                                  register_outgoing_worker)
 from aleph.chains import ethereum, nuls, nuls2, substrate, cosmos, avalanche
 
 @pytest.mark.asyncio
@@ -35,8 +34,7 @@ async def test_register_verifier_twice(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_verifiers():
-    assert set(VERIFIER_REGISTER.keys()) == set(
-        ('NULS', 'NULS2', 'ETH', 'DOT', 'CSDK', 'SOL', 'AVAX'))
+    assert set(VERIFIER_REGISTER.keys()) == {'NULS', 'NULS2', 'ETH', 'DOT', 'CSDK', 'SOL', 'AVAX'}
 
     assert VERIFIER_REGISTER["ETH"] is ethereum.verify_signature
     assert VERIFIER_REGISTER["NULS"] is nuls.verify_signature
@@ -58,7 +56,7 @@ async def test_register_outgoing_worker(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_outgoing():
-    assert len(OUTGOING_WORKERS.keys()) == 3  # 3 verifiers are included by default
+    assert len(OUTGOING_WORKERS) == 2  # 2 verifiers are included by default
     assert "ETH" in OUTGOING_WORKERS.keys()
     assert OUTGOING_WORKERS["ETH"] is ethereum.ethereum_outgoing_worker
     assert "NULS2" in OUTGOING_WORKERS.keys()
@@ -75,7 +73,7 @@ async def test_register_incoming_worker(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_incoming():
-    assert len(INCOMING_WORKERS.keys()) == 3  # 3 verifiers are included by default
+    assert len(INCOMING_WORKERS) == 2  # 2 verifiers are included by default
     assert "ETH" in INCOMING_WORKERS.keys()
     assert INCOMING_WORKERS["ETH"] is ethereum.ethereum_incoming_worker
     assert "NULS2" in INCOMING_WORKERS.keys()

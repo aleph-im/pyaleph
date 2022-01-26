@@ -4,7 +4,7 @@ import logging
 from substrateinterface import Keypair
 
 from aleph.chains.common import get_verification_buffer
-from aleph.chains.register import register_verifier
+from aleph.register_chain import register_verifier
 
 LOGGER = logging.getLogger("chains.substrate")
 CHAIN_NAME = "DOT"

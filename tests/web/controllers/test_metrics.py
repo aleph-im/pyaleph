@@ -45,6 +45,7 @@ def test_metrics():
         ),
         pyaleph_status_peers_total=0,
         pyaleph_status_sync_messages_total=123,
+        pyaleph_status_sync_permanent_files_total=1999,
         pyaleph_status_sync_pending_messages_total=456,
         pyaleph_status_sync_pending_txs_total=0,
         pyaleph_status_chain_eth_last_committed_height=0,
@@ -55,6 +56,7 @@ def test_metrics():
     ) == ('pyaleph_build_info{python_version="3.8.0",version="v999"} 1\n'
           'pyaleph_status_peers_total 0\n'
           'pyaleph_status_sync_messages_total 123\n'
+          'pyaleph_status_sync_permanent_files_total 1999\n'
           'pyaleph_status_sync_pending_messages_total 456\n'
           'pyaleph_status_sync_pending_txs_total 0\n'
           'pyaleph_status_chain_eth_last_committed_height 0'

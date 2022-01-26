@@ -1,7 +1,7 @@
 import logging
 from typing import Coroutine, List
 
-from aleph.chains.register import OUTGOING_WORKERS, INCOMING_WORKERS
+from aleph.register_chain import OUTGOING_WORKERS, INCOMING_WORKERS
 
 logger = logging.getLogger(__name__)
 
