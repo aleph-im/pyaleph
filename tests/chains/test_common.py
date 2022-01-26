@@ -1,7 +1,6 @@
 import pytest
 
-import aleph.chains
-from aleph.chains.common import get_verification_buffer, mark_confirmed_data, incoming
+from aleph.chains.common import IncomingStatus, get_verification_buffer, mark_confirmed_data, incoming
 from unittest.mock import MagicMock
 
 
@@ -49,4 +48,4 @@ async def test_incoming_inline(mocker):
            }
     msg['item_type'] = 'inline'
     v = await incoming(msg, check_message=True)
-    assert v is True
+    assert v == IncomingStatus.MESSAGE_HANDLED

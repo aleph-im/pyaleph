@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import struct
 
@@ -10,7 +9,7 @@ from aleph_client.chains.nuls1 import (
 )
 
 from aleph.chains.common import get_verification_buffer
-from aleph.chains.register import register_verifier
+from aleph.register_chain import register_verifier
 
 # TODO: move this to another project
 # from nulsexplorer.protocol.data import (
@@ -25,8 +24,6 @@ CHAIN_NAME = "NULS"
 
 async def verify_signature(message):
     """Verifies a signature of a message, return True if verified, false if not"""
-    loop = asyncio.get_event_loop()
-
     sig_raw = bytes(bytearray.fromhex(message["signature"]))
     sig = NulsSignature(sig_raw)
 

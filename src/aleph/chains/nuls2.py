@@ -24,7 +24,7 @@ from aleph.chains.common import (
     get_chaindata,
     incoming_chaindata,
 )
-from aleph.chains.register import (
+from aleph.register_chain import (
     register_verifier,
     register_incoming_worker,
     register_outgoing_worker,

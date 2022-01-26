@@ -1,14 +1,13 @@
 import asyncio
 import json
 import logging
-from typing import Coroutine, List, Dict
+from typing import Coroutine, Dict, List, Optional
 from urllib.parse import unquote
 
-from aleph.chains.register import VERIFIER_REGISTER
+from aleph.register_chain import VERIFIER_REGISTER
 from aleph.services.ipfs.pubsub import incoming_channel as incoming_ipfs_channel
 from aleph.types import ItemType, InvalidMessageError
 from aleph.utils import get_sha256
-from p2pclient import Client as P2PClient
 
 LOGGER = logging.getLogger("NETWORK")
 
@@ -47,10 +46,17 @@ async def incoming_check(ipfs_pubsub_message):
         message = await check_message(message, from_network=True)
         return message
     except json.JSONDecodeError:
-        raise InvalidMessageError("Data is not JSON: {}".format(ipfs_pubsub_message.get("data", "")))
+        raise InvalidMessageError(
+            "Data is not JSON: {}".format(ipfs_pubsub_message.get("data", ""))
+        )
 
 
-async def check_message(message: Dict, from_chain=False, from_network=False, trusted=False) -> Dict:
+async def check_message(
+    message: Dict,
+    from_chain: bool = False,
+    from_network: bool = False,
+    trusted: bool = False,
+) -> Optional[Dict]:
     """This function should check the incoming message and verify any
     extraneous or dangerous information for the rest of the process.
     It also checks the data hash if it's not done by an external provider (ipfs)
@@ -71,7 +77,9 @@ async def check_message(message: Dict, from_chain=False, from_network=False, tru
         raise InvalidMessageError("Missing field 'item_hash' in message")
     for field in ("chain", "sender", "signature"):
         if field not in message:
-            raise InvalidMessageError(f"Missing field '{field}' in message {message['item_hash']}")
+            raise InvalidMessageError(
+                f"Missing field '{field}' in message {message['item_hash']}"
+            )
 
     if not isinstance(message["item_hash"], str):
         raise InvalidMessageError("Unknown hash %s" % message["item_hash"])
@@ -133,14 +141,14 @@ async def check_message(message: Dict, from_chain=False, from_network=False, tru
         except ValueError:
             raise InvalidMessageError("Signature validation error")
 
+        return None
+
 
 def listener_tasks(config) -> List[Coroutine]:
     from aleph.services.p2p import incoming_channel as incoming_p2p_channel
 
     # for now (1st milestone), we only listen on a single global topic...
-    tasks: List[Coroutine] = [
-        incoming_p2p_channel(config.aleph.queue_topic.value)
-    ]
+    tasks: List[Coroutine] = [incoming_p2p_channel(config.aleph.queue_topic.value)]
     if config.ipfs.enabled.value:
         tasks.append(incoming_ipfs_channel(config.aleph.queue_topic.value))
     return tasks

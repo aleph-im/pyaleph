@@ -1,8 +1,11 @@
 
 
-from subprocess import Popen, PIPE
-from pkg_resources import resource_filename, resource_string
 import json
+from subprocess import Popen, PIPE
+
+import pytest
+from pkg_resources import resource_filename, resource_string
+
 
 def test_executor_error_1():
     process = Popen(['python',
@@ -111,7 +114,8 @@ def test_executor_call():
     assert len(out_payload['state']['balances']) == 2
     assert stderr == b''
     
-    
+
+@pytest.mark.skip("Tools for dockerized VMs not installed.")
 def test_executor_in_docker():
     import epicbox
 

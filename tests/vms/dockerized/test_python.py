@@ -1,6 +1,10 @@
+import pytest
 from pkg_resources import resource_string
+
 from aleph.vms.dockerized.python import DockerizedPythonVM
 
+
+@pytest.mark.skip("Tools for dockerized VMs not installed.")
 def test_create():
     DockerizedPythonVM.initialize()
     example_code = resource_string('aleph.vms.dockerized', 'tools/example.py')
@@ -21,6 +25,7 @@ def test_create():
     assert len(result['state']['balances']) == 1
     
 
+@pytest.mark.skip("Tools for dockerized VMs not installed.")
 def test_call():
     DockerizedPythonVM.initialize()
     example_code = resource_string('aleph.vms.dockerized', 'tools/example.py')
