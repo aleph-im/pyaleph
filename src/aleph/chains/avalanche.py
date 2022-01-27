@@ -2,7 +2,7 @@ import hashlib
 import base58
 import bech32
 import struct
-from coincurve import PublicKey
+from coincurve.keys import PublicKey
 from aleph.chains.common import get_verification_buffer
 from aleph.register_chain import register_verifier
 

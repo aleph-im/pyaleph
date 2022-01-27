@@ -76,7 +76,7 @@ class Metrics(DataClassJsonMixin):
     pyaleph_status_sync_pending_messages_total: int
     pyaleph_status_sync_pending_txs_total: int
 
-    pyaleph_status_chain_eth_last_committed_height: int
+    pyaleph_status_chain_eth_last_committed_height: Optional[int]
 
     pyaleph_processing_pending_messages_seen_ids_total: Optional[int] = None
     pyaleph_processing_pending_messages_gtasks_total: Optional[int] = None
@@ -144,6 +144,9 @@ async def get_metrics(shared_stats: dict) -> Metrics:
         LOGGER.info("Shared stats disabled")
         shared_stats = {}
 
+    if aleph.model.db is None:
+        raise ValueError("MongoDB client not initialized.")
+
     sync_messages_reference_total = await fetch_reference_total_messages()
     eth_reference_height = await fetch_eth_height()
 
@@ -151,7 +154,7 @@ async def get_metrics(shared_stats: dict) -> Metrics:
 
     peers_count = await aleph.model.db.peers.estimated_document_count()
 
-    eth_last_committed_height: int = (
+    eth_last_committed_height: Optional[int] = (
         await aleph.model.db.chains.find_one(
             {"name": "ETH"}, projection={"last_commited_height": 1}
         )

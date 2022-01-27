@@ -5,8 +5,6 @@ from p2pclient import Client as P2PClient
 
 from . import singleton
 from .manager import initialize_host
-from .protocol import incoming_channel
-from .pubsub import pub
 import socket
 
 

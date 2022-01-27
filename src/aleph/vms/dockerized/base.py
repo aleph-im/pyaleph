@@ -1,5 +1,6 @@
 import hashlib
 import json
+from typing import Any, Dict, List
 
 import epicbox
 
@@ -20,7 +21,7 @@ class DockerizedBaseVM(BaseVM):
 
     LIMITS = {"cputime": 1, "memory": 64}
     ENTRYPOINT = None
-    FILES = []
+    FILES: List[Dict[str, Any]] = []
 
     @classmethod
     def initialize(cls):

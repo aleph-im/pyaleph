@@ -9,7 +9,7 @@ from operator import itemgetter
 
 import aiohttp
 from aiocache import cached, SimpleMemoryCache
-from coincurve import PrivateKey
+from coincurve.keys import PrivateKey
 from nuls2.api.server import get_server
 from nuls2.model.data import (
     hash_from_address,

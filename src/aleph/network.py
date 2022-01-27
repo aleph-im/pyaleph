@@ -145,7 +145,7 @@ async def check_message(
 
 
 def listener_tasks(config) -> List[Coroutine]:
-    from aleph.services.p2p import incoming_channel as incoming_p2p_channel
+    from aleph.services.p2p.protocol import incoming_channel as incoming_p2p_channel
 
     # for now (1st milestone), we only listen on a single global topic...
     tasks: List[Coroutine] = [incoming_p2p_channel(config.aleph.queue_topic.value)]

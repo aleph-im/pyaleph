@@ -86,7 +86,6 @@ async def retry_messages_job(shared_stats: Optional[Dict]):
     messages_actions: List[UpdateOne] = []
     gtasks: List[asyncio.Task] = []
     tasks: List[asyncio.Task] = []
-    loop = asyncio.get_event_loop()
     i: int = 0
     j: int = 0
     find_params: Dict = {}
@@ -118,6 +117,9 @@ async def retry_messages_job(shared_stats: Optional[Dict]):
                     "Found PendingMessage with empty message, this should be caught before insertion"
                 )
                 await PendingMessage.collection.delete_one({"_id": pending["_id"]})
+
+            if not isinstance(pending["message"], dict):
+                raise ValueError("Pending message is not a dictionary and cannot be read.")
 
             if (
                 pending["message"]["item_type"] == ItemType.IPFS

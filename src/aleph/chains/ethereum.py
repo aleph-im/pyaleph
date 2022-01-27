@@ -8,23 +8,24 @@ from eth_account import Account
 from eth_account.messages import encode_defunct
 from hexbytes import HexBytes
 from web3 import Web3
-from web3.contract import get_event_data
+from web3._utils.events import get_event_data
 from web3.gas_strategies.rpc import rpc_gas_price_strategy
-from web3.middleware import geth_poa_middleware, local_filter_middleware
+from web3.middleware.filter import local_filter_middleware
+from web3.middleware.geth_poa import geth_poa_middleware
 
 from aleph.chains.common import (
     get_verification_buffer,
     get_chaindata,
     incoming_chaindata,
 )
+from aleph.model.chains import Chain
+from aleph.model.messages import Message
+from aleph.model.pending import pending_messages_count, pending_txs_count
 from aleph.register_chain import (
     register_verifier,
     register_incoming_worker,
     register_outgoing_worker,
 )
-from aleph.model.chains import Chain
-from aleph.model.messages import Message
-from aleph.model.pending import pending_messages_count, pending_txs_count
 from aleph.utils import run_in_executor
 
 LOGGER = logging.getLogger("chains.ethereum")
@@ -166,10 +167,6 @@ async def request_transactions(config, web3: Web3, contract, abi, start_height):
     """Continuously request data from the Ethereum blockchain.
     TODO: support websocket API.
     """
-
-    last_height = 0
-    seen_ids = []
-    loop = asyncio.get_event_loop()
 
     logs = get_logs(config, web3, contract, start_height + 1)
 

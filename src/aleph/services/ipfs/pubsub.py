@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import logging
+from typing import Union
 
 import base58
 
@@ -34,7 +35,7 @@ async def sub(topic: str):
             LOGGER.exception("Error handling message")
 
 
-async def pub(topic: str, message: bytes):
+async def pub(topic: str, message: Union[str, bytes]):
     api = await get_ipfs_api()
     await api.pubsub.pub(topic, message)
 

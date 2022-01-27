@@ -55,7 +55,7 @@ async def tidy_http_peers_job(config: Optional[Config] = None) -> None:
     await asyncio.sleep(2)
     while True:
         try:
-            peers = list()
+            peers: List[str] = list()
             jobs = list()
             async for peer in get_peers(peer_type="HTTP"):
                 if my_ip in peer:

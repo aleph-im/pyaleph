@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 from hashlib import sha256
-from typing import Dict
+from typing import Dict, IO, Optional
 
 from aleph.services.filestore import get_value, set_value
 from aleph.services.ipfs.storage import add_bytes as add_ipfs_bytes
@@ -127,11 +127,11 @@ async def get_json(hash, engine=ItemType.IPFS, timeout=2, tries=1):
     return content, size
 
 
-async def pin_hash(chash, timeout=2, tries=1):
+async def pin_hash(chash, timeout: int = 2, tries: int = 1):
     return await ipfs_pin_add(chash, timeout=timeout, tries=tries)
 
 
-async def add_json(value, engine: ItemType=ItemType.IPFS) -> str:
+async def add_json(value, engine: ItemType = ItemType.IPFS) -> str:
     # TODO: determine which storage engine to use
     content = await run_in_executor(None, json.dumps, value)
     content = content.encode("utf-8")
@@ -148,9 +148,7 @@ async def add_json(value, engine: ItemType=ItemType.IPFS) -> str:
     return chash
 
 
-async def add_file(fileobject, filename=None, engine: ItemType=ItemType.IPFS):
-    file_hash = None
-    file_content = None
+async def add_file(fileobject: IO, filename: Optional[str] = None, engine: ItemType = ItemType.IPFS):
 
     if engine == ItemType.IPFS:
         output = await ipfs_add_file(fileobject, filename)
@@ -161,6 +159,9 @@ async def add_file(fileobject, filename=None, engine: ItemType=ItemType.IPFS):
     elif engine == ItemType.Storage:
         file_content = fileobject.read()
         file_hash = sha256(file_content).hexdigest()
+
+    else:
+        raise ValueError(f"Unsupported item type: {engine}")
 
     await set_value(file_hash, file_content)
     return file_hash

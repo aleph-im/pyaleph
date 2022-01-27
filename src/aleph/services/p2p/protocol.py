@@ -3,7 +3,7 @@ import base64
 import json
 import logging
 import random
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from anyio.abc import SocketStream
 from p2pclient import Client as P2PClient
@@ -35,7 +35,7 @@ class AlephProtocol:
     def __init__(self, p2p_client: P2PClient, streams_per_host: int = 5):
         self.p2p_client = p2p_client
         self.streams_per_host = streams_per_host
-        self.peers: Dict[ID, Tuple[SocketStream, asyncio.Semaphore]] = dict()
+        self.peers: Dict[ID, List[Tuple[SocketStream, asyncio.Semaphore]]] = dict()
         p2p_client.stream_handler(self.PROTOCOL_ID, self.stream_request_handler)
 
     async def stream_request_handler(self, stream_info: StreamInfo, stream: SocketStream) -> None:
@@ -126,7 +126,7 @@ class AlephProtocol:
         LOGGER.debug("added new peer %s", peer_id)
 
     async def create_connections(self, peer_id: ID) -> None:
-        peer_streams = self.peers.get(peer_id, list())
+        peer_streams: List[Tuple[SocketStream, asyncio.Semaphore]] = self.peers.get(peer_id, list())
         for i in range(self.streams_per_host - len(peer_streams)):
             try:
                 stream_info, stream = await self.p2p_client.stream_open(
