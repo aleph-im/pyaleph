@@ -195,7 +195,14 @@ class AlephProtocol(INotifee):
         return bool(len(self.peers[peer_id]))
 
 
-async def incoming_channel(config, topic):
+async def request_hash(item_hash):
+    if singleton.streamer is not None:
+        return await singleton.streamer.request_hash(item_hash)
+    else:
+        return None
+
+
+async def incoming_channel(topic: str) -> None:
     LOGGER.debug("incoming channel started...")
     from aleph.chains.common import delayed_incoming
 
@@ -220,10 +227,3 @@ async def incoming_channel(config, topic):
 
         except Exception:
             LOGGER.exception("Exception in pubsub, reconnecting.")
-
-
-async def request_hash(item_hash):
-    if singleton.streamer is not None:
-        return await singleton.streamer.request_hash(item_hash)
-    else:
-        return None

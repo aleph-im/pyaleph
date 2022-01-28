@@ -138,8 +138,8 @@ def listener_tasks(config) -> List[Coroutine]:
 
     # for now (1st milestone), we only listen on a single global topic...
     tasks: List[Coroutine] = [
-        incoming_p2p_channel(config, config.aleph.queue_topic.value)
+        incoming_p2p_channel(config.aleph.queue_topic.value)
     ]
     if config.ipfs.enabled.value:
-        tasks.append(incoming_ipfs_channel(config, config.aleph.queue_topic.value))
+        tasks.append(incoming_ipfs_channel(config.aleph.queue_topic.value))
     return tasks
