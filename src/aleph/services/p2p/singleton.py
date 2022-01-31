@@ -1,8 +1,13 @@
 from typing import Optional
 
-from libp2p.pubsub.pubsub import Pubsub
+from p2pclient import Client as P2PClient
 
-host = None
-pubsub: Optional[Pubsub] = None
+client: Optional[P2PClient] = None
 streamer = None
 api_servers = None
+
+
+def get_p2p_client() -> P2PClient:
+    if client is None:
+        raise ValueError("Client is null!")
+    return client

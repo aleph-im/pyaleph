@@ -54,3 +54,4 @@ MANIFEST
 # Secret files
 config.yml
 node-secret.key
+keys/

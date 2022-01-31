@@ -114,33 +114,36 @@ To enable Sentry, add the corresponding
     sentry:
         dsn: "https://<SECRET_ID>@<SENTRY_HOST>/<PROJECT_ID>"
 
----------------
-Node secret key
----------------
+----------------
+Node secret keys
+----------------
 
 An Aleph.im node should have a persistent public-private keypair to authenticate to the network.
+
+These keys can be created using the Docker image
 
 Create a file that will be used by the Aleph.im node to store it's private key.
 
 .. code-block:: bash
 
-    touch node-secret.key
+    mkdir keys
 
+# TODO review: I don't think this code block does anything, since it's executed in a container and the container is disposed
+#              once the container exits.
+.. code-block:: bash
+
+    docker run --rm -ti --user root -v $(pwd)/keys:/opt/pyaleph/keys alephim/pyaleph-node:beta chown aleph:aleph /opt/pyaleph/keys
 
 .. code-block:: bash
 
-    docker run --rm -ti --user root -v $(pwd)/node-secret.key:/opt/pyaleph/node-secret.key alephim/pyaleph-node:beta chown aleph:aleph /opt/pyaleph/node-secret.key
-
-.. code-block:: bash
-
-    docker run --rm -ti -v $(pwd)/node-secret.key:/opt/pyaleph/node-secret.key alephim/pyaleph-node:beta pyaleph --gen-key
+    docker run --rm -ti -v $(pwd)/keys:/opt/pyaleph/keys alephim/pyaleph-node:beta pyaleph --gen-keys --key-dir keys
 
 
 Optional: Check that the key file is not empty and make a backup of the key:
 
 .. code-block:: bash
 
-    cat node-secret.key
+    cat keys/node-secret.key
 
 
 ..

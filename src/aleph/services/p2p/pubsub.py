@@ -1,30 +1,25 @@
 import logging
+from typing import AsyncIterator
 
-import base58
+from p2pclient.pb.p2pd_pb2 import PSMessage
+from p2pclient.utils import read_pbmsg_safe
 
-from . import singleton
+from .singleton import get_p2p_client
 
 LOGGER = logging.getLogger("P2P.pubsub")
 
 
-async def decode_msg(msg):
-    return {
-        "from": base58.b58encode(msg.from_id),
-        "data": msg.data,
-        "seqno": base58.b58encode(msg.seqno),
-        "topicIDs": msg.topicIDs,
-    }
-
-
-async def sub(topic):
-    sub = await singleton.pubsub.subscribe(topic)
+async def sub(topic: str) -> AsyncIterator[PSMessage]:
+    p2p_client = get_p2p_client()
+    stream = await p2p_client.pubsub_subscribe(topic)
     while True:
-        mvalue = await sub.get()
-        mvalue = await decode_msg(mvalue)
-        LOGGER.debug("New message received %r" % mvalue)
+        pubsub_msg = PSMessage()
+        await read_pbmsg_safe(stream, pubsub_msg)
+        LOGGER.debug("New message received %r" % pubsub_msg)
 
-        yield mvalue
+        yield pubsub_msg
 
 
-async def pub(topic, message):
-    await singleton.pubsub.publish(topic, message.encode("utf-8"))
+async def pub(topic: str, message: str) -> None:
+    p2p_client = get_p2p_client()
+    await p2p_client.pubsub_publish(topic, message.encode("utf-8"))

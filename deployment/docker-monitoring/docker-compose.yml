@@ -9,23 +9,40 @@ volumes:
 services:
   pyaleph:
     restart: always
-    image: alephim/pyaleph-node:beta
-    command: pyaleph --config /opt/pyaleph/config.yml
+    image: pyaleph:test
+    command: pyaleph --config /opt/pyaleph/config.yml --key-dir /opt/pyaleph/keys -vv
     ports:
-      - 127.0.0.1:8000:8000/tcp
-      - 4024:4024/tcp
-      - 4025:4025/tcp
+      - "127.0.0.1:8000:8000/tcp"
+      - "4024:4024/tcp"
     volumes:
       - ./config.yml:/opt/pyaleph/config.yml
-      - ./node-secret.key:/opt/pyaleph/node-secret.key
+      - ./keys:/opt/pyaleph/keys
     depends_on:
       - mongodb
       - ipfs
+      - p2pd
     networks:
       - pyaleph
     logging:
       options:
         max-size: 50m
+
+  p2pd:
+    restart: always
+    image: alephim/jsp2pd:0.10.2-1.0.0
+    networks:
+      - pyaleph
+    environment:
+      PRIVATE_KEY_FILE: "/etc/jsp2pd/keys/serialized-node-secret.key"
+      LISTEN_MADDR: "/ip4/0.0.0.0/tcp/4020"
+      HOST_MADDRS: "/ip4/0.0.0.0/tcp/4025"
+      PUBSUB: "true"
+      PUBSUB_ROUTER: "floodsub"
+    ports:
+      - "4020:4020"
+      - "4025:4025"
+    volumes:
+      - ./keys:/etc/jsp2pd/keys
 
   ipfs:
     restart: always

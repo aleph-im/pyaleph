@@ -1,37 +1,21 @@
-import asyncio
-import json
+from configmanager import Config
+from multiaddr import Multiaddr
+from p2pclient.libp2p_stubs.peer.peerinfo import info_from_p2p_addr
 
-import multiaddr
-from libp2p.peer.peerinfo import info_from_p2p_addr
-
-from aleph.services.p2p.pubsub import decode_msg
-from . import singleton
+from .singleton import get_p2p_client, streamer
 
 
-async def connect_peer(config, peer):
-    info = info_from_p2p_addr(multiaddr.Multiaddr(peer))
-    if str(info.peer_id) == str(singleton.host.get_id()):
+async def connect_peer(config: Config, peer: str) -> None:
+    p2p_client = get_p2p_client()
+    peer_info = info_from_p2p_addr(Multiaddr(peer))
+    peer_id, _ = await p2p_client.identify()
+
+    if str(peer_info.peer_id) == str(peer_id):
         # LOGGER.debug("Can't connect to myself.")
         return
 
+    await p2p_client.connect(peer_info.peer_id, peer_info.addrs)
+
     if "streamer" in config.p2p.clients.value:
-        if not await singleton.streamer.has_active_streams(info.peer_id):
-            # network = singleton.host.get_network()
-            # if info.peer_id in network.connections:
-            #     await network.close_peer(info.peer_id)
-            #     del network[info.peer_id]
-
-            await singleton.host.connect(info)
-            await singleton.streamer.create_connections(info.peer_id)
-    else:
-        await singleton.host.connect(info)
-
-
-async def get_peers():
-    my_id = singleton.host.get_id()
-    peers = [
-        peer
-        for peer in singleton.host.get_peerstore().peer_ids()
-        if str(peer) != str(my_id)
-    ]
-    return peers
+        if not await streamer.has_active_streams(peer_info.peer_id):
+            await streamer.create_connections(peer_info.peer_id)

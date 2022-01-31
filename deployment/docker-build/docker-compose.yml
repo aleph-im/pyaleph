@@ -1,3 +1,6 @@
+# Starts all the services used by pyaleph, minus pyaleph itself. This is used for local development.
+# Use the docker-compose/docker-compose.yml file for deployment.
+
 version: '2.2'
 
 volumes:
@@ -5,35 +8,31 @@ volumes:
   pyaleph-mongodb:
 
 services:
-  pyaleph:
+  p2pd:
     restart: always
-    image: alephim/pyaleph-node
-    command: pyaleph --config /opt/pyaleph/config.yml
-    build:
-      context: ../../.
-      dockerfile: "deployment/docker-build/Dockerfile"
-    ports:
-      - 127.0.0.1:8000:8000/tcp
-      - 4024:4024/tcp
-      - 4025:4025/tcp
-    volumes:
-      - ./config.yml:/opt/pyaleph/config.yml
-      - ../../node-secret.key:/opt/pyaleph/node-secret.key
-    depends_on:
-      - mongodb
-      - ipfs
+    image: alephim/jsp2pd:0.10.2-1.0.0
     networks:
       - pyaleph
-    logging:
-      options:
-        max-size: 50m
+    environment:
+      PRIVATE_KEY_FILE: "/etc/jsp2pd/keys/serialized-node-secret.key"
+      LISTEN_MADDR: "/ip4/0.0.0.0/tcp/4020"
+      HOST_MADDRS: "/ip4/0.0.0.0/tcp/4025"
+      PUBSUB: "true"
+      PUBSUB_ROUTER: "floodsub"
+    ports:
+      - "4020:4020"
+      - "4025:4025"
+    volumes:
+      - ../../keys:/etc/jsp2pd/keys
 
   ipfs:
     restart: always
     image: ipfs/go-ipfs:v0.10.0
     ports:
-      - 4001:4001
-      - 4001:4001/udp
+      - "4001:4001"
+      - "4001:4001/udp"
+      - "5001:5001"
+      - "8080:8080"
     volumes:
       - "pyaleph-ipfs:/data/ipfs"
     environment:
@@ -50,6 +49,8 @@ services:
     command: mongod --storageEngine wiredTiger
     networks:
       - pyaleph
+    ports:
+      - "27017:27017"
 
 networks:
   pyaleph:

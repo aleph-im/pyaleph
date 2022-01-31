@@ -1,5 +1,8 @@
 import asyncio
 import logging
+from typing import List, Optional
+
+from configmanager import Config
 
 from aleph.model.p2p import get_peers
 from .http import api_get_request
@@ -8,7 +11,7 @@ from .peers import connect_peer
 LOGGER = logging.getLogger("P2P.jobs")
 
 
-async def reconnect_p2p_job(config=None):
+async def reconnect_p2p_job(config: Optional[Config] = None) -> None:
     from aleph.web import app
 
     if config is None:
@@ -22,7 +25,7 @@ async def reconnect_p2p_job(config=None):
             for peer in peers:
                 try:
                     await connect_peer(config, peer)
-                except:
+                except Exception:
                     LOGGER.debug("Can't reconnect to %s" % peer)
 
         except Exception:
@@ -31,7 +34,7 @@ async def reconnect_p2p_job(config=None):
         await asyncio.sleep(config.p2p.reconnect_delay.value)
 
 
-async def check_peer(peers, peer_uri, timeout=1):
+async def check_peer(peers: List[str], peer_uri: str, timeout: int = 1) -> None:
     try:
         version_info = await api_get_request(peer_uri, "version", timeout=timeout)
         if version_info is not None:
@@ -40,8 +43,8 @@ async def check_peer(peers, peer_uri, timeout=1):
         LOGGER.exception("Can't contact peer %r" % peer_uri)
 
 
-async def tidy_http_peers_job(config=None):
-    """Check that HTTP peers are reacheable, else remove them from the list"""
+async def tidy_http_peers_job(config: Optional[Config] = None) -> None:
+    """Check that HTTP peers are reachable, else remove them from the list"""
     from aleph.web import app
     from aleph.services.p2p import singleton
     from aleph.services.utils import get_IP

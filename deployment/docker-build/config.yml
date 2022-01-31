@@ -8,8 +8,8 @@ nuls2:
     token_contract: NULSd6Hh1FjbnAktH1FFvFnTzfgFnZtgAhYut
 
 ethereum:
-    enabled: True
-    api_url: {{ ALEPH_ETHEREUM_URL }}
+    enabled: False
+#    api_url: {{ ALEPH_ETHEREUM_URL }}
     chain_id: 1
     packing_node: False
     sync_contract: "0x166fd4299364B21c7567e163d85D78d2fb2f8Ad5"
@@ -22,7 +22,7 @@ binancechain:
     packing_node: False
 
 mongodb:
-    uri: "mongodb://mongodb:27017"
+    uri: "mongodb://localhost:27017"
     database: aleph
 
 storage:
@@ -31,7 +31,7 @@ storage:
 
 ipfs:
     enabled: True
-    host: ipfs
+    host: localhost
     port: 5001
     gateway_port: 8080
 
@@ -40,6 +40,8 @@ aleph:
 
 p2p:
     host: 0.0.0.0
+    control_port: 4020
+    listen_port: 4021
     port: 4025
     http_port: 4024
     reconnect_delay: 60

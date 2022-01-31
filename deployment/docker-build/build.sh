@@ -16,4 +16,4 @@ else
   DOCKER_COMMAND=docker
 fi
 
-$DOCKER_COMMAND  build -t alephim/pyaleph-node -f "$SCRIPT_DIR/Dockerfile" .
+$DOCKER_COMMAND  build -t alephim/pyaleph-node -f "$SCRIPT_DIR/pyaleph.dockerfile" .

@@ -12,6 +12,7 @@ also be used as template for Python modules.
 
 import asyncio
 import logging
+import os
 import sys
 from multiprocessing import Process, set_start_method, Manager
 from typing import List, Coroutine, Dict, Optional
@@ -23,10 +24,11 @@ from aleph import model
 from aleph.chains import connector_tasks
 from aleph.cli.args import parse_args
 from aleph.config import get_defaults
+from aleph.exceptions import PrivateKeyNotFoundException
 from aleph.jobs import start_jobs, prepare_loop, prepare_manager, DBManager
 from aleph.network import listener_tasks
 from aleph.services import p2p
-from aleph.services.p2p.manager import generate_keypair
+from aleph.services.keys import generate_keypair, save_keys
 from aleph.web import app, init_cors
 
 
@@ -68,6 +70,8 @@ async def run_server(host: str, port: int, shared_stats: dict, extra_web_config:
     app["extra_config"] = extra_web_config
     app["shared_stats"] = shared_stats
 
+    print(f"extra_web_config: {extra_web_config}")
+
     runner = web.AppRunner(app)
     await runner.setup()
 
@@ -88,7 +92,7 @@ def run_server_coroutine(
     idx,
     shared_stats,
     enable_sentry: bool = True,
-    extra_web_config: Dict=None,
+    extra_web_config: Optional[Dict] = None,
 ):
     """Run the server coroutine in a synchronous way.
     Used as target of multiprocessing.Process.
@@ -129,9 +133,14 @@ def main(args):
     args = parse_args(args)
     setup_logging(args.loglevel)
 
-    if args.generate_key:
+    # Generate keys and exit
+    if args.generate_keys:
         LOGGER.info("Generating a key pair")
-        generate_keypair(args.print_key, args.key_path)
+        key_pair = generate_keypair(args.print_key)
+        save_keys(key_pair, args.key_dir)
+        if args.print_key:
+            print(key_pair.private_key.impl.export_key().decode("utf-8"))
+
         return
 
     LOGGER.info("Loading configuration")
@@ -143,14 +152,12 @@ def main(args):
         LOGGER.debug("Loading config file '%s'", args.config_file)
         app["config"].yaml.load(args.config_file)
 
-    if (not config.p2p.key.value) and args.key_path:
-        LOGGER.debug("Loading key pair from file")
-        with open(args.key_path, "r") as key_file:
-            config.p2p.key.value = key_file.read()
-
-    if not config.p2p.key.value:
-        LOGGER.critical("Node key cannot be empty")
-        return
+    # We only check that the serialized key exists.
+    serialized_key_file_path = os.path.join(args.key_dir, "serialized-node-secret.key")
+    if not os.path.isfile(serialized_key_file_path):
+        msg = f"Serialized node key ({serialized_key_file_path}) not found."
+        LOGGER.critical(msg)
+        raise PrivateKeyNotFoundException(msg)
 
     if args.port:
         config.aleph.port.value = args.port
@@ -216,7 +223,7 @@ def main(args):
             target=run_server_coroutine,
             args=(
                 config_values,
-                config.p2p.host.value,
+                config.aleph.host.value,
                 config.p2p.http_port.value,
                 manager and (manager._address, manager._authkey) or None,
                 3,
@@ -259,7 +266,10 @@ def main(args):
 
 def run():
     """Entry point for console_scripts"""
-    main(sys.argv[1:])
+    try:
+        main(sys.argv[1:])
+    except PrivateKeyNotFoundException:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

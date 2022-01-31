@@ -54,90 +54,31 @@ Example of config file at this point (I disabled IPFS but you can leave it enabl
 
     p2p:
         host: 0.0.0.0
-        port: 4025
+        control_port: 4020
+        listen_port: 4021
         http_port: 4024
+        port: 4025
         peers: []
         reconnect_delay: 60
         key: null
 
-You can now run the PyAleph daemon for the first time:
+You then need to generate a private key to identify the node.
+PyAleph provides a command-line option to do so.
 
 .. code-block:: bash
 
-    pyaleph -c privatenet.yml
+    pyaleph --gen-keys --gen-key <your-key-dir>
 
-You will soon see in the logs something like this appear:
+This command creates a new directory that contains 3 keys: the private and public keys in PEM format,
+as well as the key serialized for compatibility with the P2P daemon.
 
-.. code-block:: 
+.. code-block:: bash
 
-    2020-04-01 12:26:56 [INFO] P2P.host: -----BEGIN RSA PRIVATE KEY-----
-    MIIEowIBAAKCAQEAg45OZHmQqllE895YRuI+Qk+h+4VULuHRfwvR2v0qf3qI+ZAC
-    LpmUYjIm7E5ia5Nj99cBumsCpG0+SAGZlMQi7lzWEiYwNV7jhrrUh6wV+4k9BESr
-    vwhe59rtueKopZZJTvukBTAkIA99oyfHD8fq2fUf4RxzC3dd/2rm2EdqsGshAcHS
-    UJHutu946+SfxyUvxQIk5jX+uupcClF37/gUia82sGkm6uTPCjhdrHqI/DTh17l/
-    va1ptjSnTqgKY9HA8j761wVaHdkwgw632C2GhMCn1UokG2yvRqJsOq6EIp9c/fuH
-    s6ggWJbbXkaqefdYB8ljhE0p5+C/oB1BbJ18vwIDAQABAoIBADoUKE25UYGzOXrE
-    bYqVtVDHIUcOfLTZ4whIqpQYcpum+DPdPOlfyh9z7rUigdbmUhsHo+6t8ZOv2vAl
-    LK19zcIX4DZQ/7WAN8iyUMO42FedJf/tZTlIM8X+ZDdNdpDsAV9KPwY/U6OH0zql
-    g/9Wjjs9OZ7DVZL5Vtk9U76mANbzQqpTjfvCV1tB6wT7JQUjXIwlMyHxtTsvDlKo
-    0KHfohuTxJAugDcAaVCmt1QnVUZdEkizJdusPPvWxA1Rmparx2IRVazNHKKjDToZ
-    cc/IytGnblMjdL6staPuqnavr2ZEVlpAgfl0jcxx4a1XcNNh4Fw+jaatqN5xIEQX
-    x1Xn5ukCgYEAtcCRPCH07wr3rmB/QfLPB+mBprugD7tff81BJ7IHKQFIp9jvl8VP
-    z+XfnHlghlshTJZ3hL4yXuvPyBIvKaL7toFMAXSB6S0LyZ99RdzksZ85U5ithPX3
-    0WO+oWEm9gaqfeT4EJKtRSMaF2m79lMDNTNRRtkxJJIKQABNZn2KWgUCgYEAuUxD
-    /NWJjLsGXIduO3PNGj6jMT2FmTw4O6GzMbgRbYj3zlOlwqoX6MYLTJn4xfYBcpup
-    vsViNXI+S6sFwc8s7Y3Cw3a3Iuc7RyZUVSudrcsP3PgafGPd0bt11Z1aTjfP/McS
-    vCuaCfZA2rggXdvhelO46DKR7MEsYUzVsO0eAvMCgYAZXJKnmnFsPdKMAakgUbpz
-    9zCBTKMsLtBHrCOQX3ZCUYyK52mfewgFEaWfVwySEvtVjZWF72hl+G/ZEjiEjdqj
-    /+zUMybBm+iOLPQ1IHrFElvUf3SPHieDj3CVYlImeI2n3aCD54PIJvrIE5gH6lOD
-    Q/LuePYzjTFi9ufWCmSY5QKBgBy+PdWccifIYyY7Q9gpEGm/yaS7vFuWwcpOPPO7
-    b8ij9Hym8RGPPQI4pkwNnk9m57aVevFCwQc1X4BxWQVFU9zNnqafZa0eXU2eHnrP
-    tzfcReuq+MDO5PvBrneiXv2/Hp5BayCRSuW8sza6VRr6HrHRBt/N6GDnXjEBsCwv
-    u/YNAoGBAJGykosSP6R4kmff8ZB+tCbB5eHR/O6Da7U5JTolYiU0N2zlrbgCG/Im
-    0ZLGdCBOUO2EXOojAo+Y+Abxmc7QszT9azS8XRDnKp6R0AhjuR8QvjiqjB4bfVFr
-    pLi4ta+YG2JtnHIJXFpmnTpful2sx0ioZbDq8fAYLZXQ7n8VDceA
-    -----END RSA PRIVATE KEY-----
+    ls <your-key-dir>
+        node-pub.key  node-secret.key  serialized-node-secret.key
 
-This is your private key, now add it to your config file like this:
-
-.. code-block:: yaml
-
-    p2p:
-        host: 0.0.0.0
-        port: 4025
-        http_port: 4024
-        peers: []
-        reconnect_delay: 60
-        key: |
-            -----BEGIN RSA PRIVATE KEY-----
-            MIIEowIBAAKCAQEAg45OZHmQqllE895YRuI+Qk+h+4VULuHRfwvR2v0qf3qI+ZAC
-            LpmUYjIm7E5ia5Nj99cBumsCpG0+SAGZlMQi7lzWEiYwNV7jhrrUh6wV+4k9BESr
-            vwhe59rtueKopZZJTvukBTAkIA99oyfHD8fq2fUf4RxzC3dd/2rm2EdqsGshAcHS
-            UJHutu946+SfxyUvxQIk5jX+uupcClF37/gUia82sGkm6uTPCjhdrHqI/DTh17l/
-            va1ptjSnTqgKY9HA8j761wVaHdkwgw632C2GhMCn1UokG2yvRqJsOq6EIp9c/fuH
-            s6ggWJbbXkaqefdYB8ljhE0p5+C/oB1BbJ18vwIDAQABAoIBADoUKE25UYGzOXrE
-            bYqVtVDHIUcOfLTZ4whIqpQYcpum+DPdPOlfyh9z7rUigdbmUhsHo+6t8ZOv2vAl
-            LK19zcIX4DZQ/7WAN8iyUMO42FedJf/tZTlIM8X+ZDdNdpDsAV9KPwY/U6OH0zql
-            g/9Wjjs9OZ7DVZL5Vtk9U76mANbzQqpTjfvCV1tB6wT7JQUjXIwlMyHxtTsvDlKo
-            0KHfohuTxJAugDcAaVCmt1QnVUZdEkizJdusPPvWxA1Rmparx2IRVazNHKKjDToZ
-            cc/IytGnblMjdL6staPuqnavr2ZEVlpAgfl0jcxx4a1XcNNh4Fw+jaatqN5xIEQX
-            x1Xn5ukCgYEAtcCRPCH07wr3rmB/QfLPB+mBprugD7tff81BJ7IHKQFIp9jvl8VP
-            z+XfnHlghlshTJZ3hL4yXuvPyBIvKaL7toFMAXSB6S0LyZ99RdzksZ85U5ithPX3
-            0WO+oWEm9gaqfeT4EJKtRSMaF2m79lMDNTNRRtkxJJIKQABNZn2KWgUCgYEAuUxD
-            /NWJjLsGXIduO3PNGj6jMT2FmTw4O6GzMbgRbYj3zlOlwqoX6MYLTJn4xfYBcpup
-            vsViNXI+S6sFwc8s7Y3Cw3a3Iuc7RyZUVSudrcsP3PgafGPd0bt11Z1aTjfP/McS
-            vCuaCfZA2rggXdvhelO46DKR7MEsYUzVsO0eAvMCgYAZXJKnmnFsPdKMAakgUbpz
-            9zCBTKMsLtBHrCOQX3ZCUYyK52mfewgFEaWfVwySEvtVjZWF72hl+G/ZEjiEjdqj
-            /+zUMybBm+iOLPQ1IHrFElvUf3SPHieDj3CVYlImeI2n3aCD54PIJvrIE5gH6lOD
-            Q/LuePYzjTFi9ufWCmSY5QKBgBy+PdWccifIYyY7Q9gpEGm/yaS7vFuWwcpOPPO7
-            b8ij9Hym8RGPPQI4pkwNnk9m57aVevFCwQc1X4BxWQVFU9zNnqafZa0eXU2eHnrP
-            tzfcReuq+MDO5PvBrneiXv2/Hp5BayCRSuW8sza6VRr6HrHRBt/N6GDnXjEBsCwv
-            u/YNAoGBAJGykosSP6R4kmff8ZB+tCbB5eHR/O6Da7U5JTolYiU0N2zlrbgCG/Im
-            0ZLGdCBOUO2EXOojAo+Y+Abxmc7QszT9azS8XRDnKp6R0AhjuR8QvjiqjB4bfVFr
-            pLi4ta+YG2JtnHIJXFpmnTpful2sx0ioZbDq8fAYLZXQ7n8VDceA
-            -----END RSA PRIVATE KEY-----
-
-In YAML the pipe symbol shows a multiline string will follow.
+This key directory must be provided to the PyAleph daemon on startup using the `--key-dir <your-key-dir>` option.
+It must also be passed to the P2P daemon using the `--id <your-key-dir>/serialized-node-secret.key` option.
 
 Your seed node will need to have the 4025 and 4024 ports open (those ports are
 configurable and you can change them).
@@ -164,7 +105,7 @@ Other nodes will need to have this string in the peers section to be able to fin
         peers:
             - /ip4/x.x.x.x/tcp/4025/p2p/QmesN1F17tkEUx8bQY7Sayxmq8GXHZm9cXV7QpE1gt4n3D
 
-For q heqlthy network it is recommended to have at least 2 seed nodes connected between each others,
+For a healthy network it is recommended to have at least 2 seed nodes connected between each others,
 and all other clients having them in their peer lists.
 
 IPFS
