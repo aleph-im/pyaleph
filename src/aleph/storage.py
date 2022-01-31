@@ -53,12 +53,12 @@ async def get_message_content(message: Dict):
 
 async def get_hash_content(
     hash,
-    engine: ItemType=ItemType.IPFS,
-    timeout=2,
-    tries=1,
-    use_network=True,
-    use_ipfs=True,
-    store_value=True,
+    engine: ItemType = ItemType.IPFS,
+    timeout: int = 2,
+    tries: int = 1,
+    use_network: bool = True,
+    use_ipfs: bool = True,
+    store_value: bool = True,
 ):
     # TODO: determine which storage engine to use
     ipfs_enabled = app["config"].ipfs.enabled.value

@@ -3,7 +3,7 @@ import base64
 import json
 import logging
 import random
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Set
 
 from anyio.abc import SocketStream
 from p2pclient import Client as P2PClient
@@ -14,7 +14,7 @@ from p2pclient.libp2p_stubs.peer.id import ID
 from aleph import __version__
 from aleph.network import incoming_check
 from aleph.types import InvalidMessageError
-from .pubsub import sub
+from .pubsub import receive_pubsub_messages, subscribe
 
 MAX_READ_LEN = 2 ** 32 - 1
 
@@ -34,22 +34,24 @@ class AlephProtocol:
     def __init__(self, p2p_client: P2PClient, streams_per_host: int = 5):
         self.p2p_client = p2p_client
         self.streams_per_host = streams_per_host
-        self.peers: Dict[ID, List[Tuple[SocketStream, asyncio.Semaphore]]] = dict()
-
-    async def register_stream_handler(self):
-        await self.p2p_client.stream_handler(self.PROTOCOL_ID, self.stream_request_handler)
+        self.peers: Set[ID] = set()
 
     @classmethod
-    async def create(cls, p2p_client: P2PClient, streams_per_host: int = 5) -> "AlephProtocol":
+    async def create(
+        cls, p2p_client: P2PClient, streams_per_host: int = 5
+    ) -> "AlephProtocol":
         """
         Creates a new protocol instance. This factory coroutine must be called instead of calling the constructor
         directly in order to register the stream handlers.
         """
         protocol = cls(p2p_client=p2p_client, streams_per_host=streams_per_host)
-        await protocol.register_stream_handler()
+        await p2p_client.stream_handler(cls.PROTOCOL_ID, cls.stream_request_handler)
         return protocol
 
-    async def stream_request_handler(self, stream_info: StreamInfo, stream: SocketStream) -> None:
+    @staticmethod
+    async def stream_request_handler(
+        stream_info: StreamInfo, stream: SocketStream
+    ) -> None:
         """
         Handles the reception of a message from another peer under the aleph protocol.
 
@@ -95,17 +97,22 @@ class AlephProtocol:
 
         await stream.send_all(json.dumps(result).encode("utf-8"))
 
-    async def make_request(self, request_structure: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        peers = [peer for peer in self.peers]
+    async def make_request(
+        self, request_structure: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        peers = list(self.peers)
         # Randomize the list of peers to contact to distribute the load evenly
         random.shuffle(peers)
 
         for peer in peers:
-            stream_info, stream = self.p2p_client.stream_open(peer, (self.PROTOCOL_ID,))
+            stream_info, stream = await self.p2p_client.stream_open(peer, (self.PROTOCOL_ID,))
             msg = json.dumps(request_structure).encode("UTF-8")
-            await stream.send_all(msg)
+            try:
+                await stream.send_all(msg)
+                response = await stream.receive_some(MAX_READ_LEN)
+            finally:
+                await stream.close()
 
-            response = await stream.receive_some(MAX_READ_LEN)
             try:
                 value = json.loads(response.decode("UTF-8"))
             except json.JSONDecodeError:
@@ -118,7 +125,7 @@ class AlephProtocol:
         logging.info("Could not retrieve content from any peer")
         return None
 
-    async def request_hash(self, item_hash):
+    async def request_hash(self, item_hash) -> Optional[bytes]:
         # this should be done better, finding best peers to query from.
         query = {"command": "hash_content", "hash": item_hash}
         item = await self.make_request(query)
@@ -131,14 +138,11 @@ class AlephProtocol:
             return base64.decodebytes(item["content"].encode("utf-8"))
         else:
             LOGGER.debug(f"can't get hash {item_hash}")
+            return None
 
-    async def _handle_new_peer(self, peer_id: ID) -> None:
-        await self.create_connections(peer_id)
-        LOGGER.debug("added new peer %s", peer_id)
+    async def add_peer(self, peer_id: ID) -> None:
+        if peer_id not in self.peers:
 
-    async def create_connections(self, peer_id: ID) -> None:
-        peer_streams: List[Tuple[SocketStream, asyncio.Semaphore]] = self.peers.get(peer_id, list())
-        for i in range(self.streams_per_host - len(peer_streams)):
             try:
                 stream_info, stream = await self.p2p_client.stream_open(
                     peer_id, [self.PROTOCOL_ID]
@@ -153,50 +157,21 @@ class AlephProtocol:
             except Exception as error:
                 LOGGER.debug("failed to add new peer %s, error %s", peer_id, error)
                 return
+            finally:
+                await stream.close()
 
-            peer_streams.append((stream, asyncio.Semaphore(1)))
-
-        self.peers[peer_id] = peer_streams
-
-    async def opened_stream(self, network, stream) -> None:
-        pass
-
-    async def closed_stream(self, network, stream) -> None:
-        pass
-
-    async def connected(self, network, conn) -> None:
-        """
-        Add peer_id to initiator_peers_queue, so that this peer_id can be used to
-        create a stream and we only want to have one pubsub stream with each peer.
-        :param network: network the connection was opened on
-        :param conn: connection that was opened
-        """
-        # await self.initiator_peers_queue.put(conn.muxed_conn.peer_id)
-        peer_id = conn.muxed_conn.peer_id
-        asyncio.ensure_future(self._handle_new_peer(peer_id))
-
-    async def disconnected(self, network, conn) -> None:
-        pass
-
-    async def listen(self, network, multiaddr) -> None:
-        pass
-
-    async def listen_close(self, network, multiaddr) -> None:
-        pass
-
-    async def has_active_streams(self, peer_id):
-        if peer_id not in self.peers:
-            return False
-        return bool(len(self.peers[peer_id]))
+            self.peers.add(peer_id)
 
 
 async def incoming_channel(p2p_client: P2PClient, topic: str) -> None:
     LOGGER.debug("incoming channel started...")
     from aleph.chains.common import delayed_incoming
 
+    stream = await subscribe(p2p_client, topic)
+
     while True:
         try:
-            async for mvalue in sub(p2p_client, topic):
+            async for mvalue in receive_pubsub_messages(stream):
                 LOGGER.debug("Received from P2P:", mvalue)
                 try:
                     message = json.loads(mvalue["data"])
