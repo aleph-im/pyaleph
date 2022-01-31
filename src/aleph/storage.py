@@ -14,7 +14,7 @@ from aleph.services.ipfs.storage import add_file as ipfs_add_file
 from aleph.services.ipfs.storage import get_ipfs_content
 from aleph.services.ipfs.storage import pin_add as ipfs_pin_add
 from aleph.services.p2p.http import request_hash as p2p_http_request_hash
-from aleph.services.p2p.protocol import request_hash as p2p_protocol_request_hash
+from aleph.services.p2p.singleton import get_streamer
 from aleph.types import ItemType
 from aleph.utils import run_in_executor, get_sha256
 from aleph.web import app
@@ -68,7 +68,8 @@ async def get_hash_content(
     if content is None:
         if use_network:
             if "protocol" in enabled_clients:
-                content = await p2p_protocol_request_hash(hash)
+                streamer = get_streamer()
+                content = await streamer.request_hash(hash)
 
             if "http" in enabled_clients and content is None:
                 content = await p2p_http_request_hash(hash, timeout=timeout)

@@ -14,7 +14,6 @@ from p2pclient.libp2p_stubs.peer.id import ID
 from aleph import __version__
 from aleph.network import incoming_check
 from aleph.types import InvalidMessageError
-from . import singleton
 from .pubsub import sub
 
 MAX_READ_LEN = 2 ** 32 - 1
@@ -36,7 +35,19 @@ class AlephProtocol:
         self.p2p_client = p2p_client
         self.streams_per_host = streams_per_host
         self.peers: Dict[ID, List[Tuple[SocketStream, asyncio.Semaphore]]] = dict()
-        p2p_client.stream_handler(self.PROTOCOL_ID, self.stream_request_handler)
+
+    async def register_stream_handler(self):
+        await self.p2p_client.stream_handler(self.PROTOCOL_ID, self.stream_request_handler)
+
+    @classmethod
+    async def create(cls, p2p_client: P2PClient, streams_per_host: int = 5) -> "AlephProtocol":
+        """
+        Creates a new protocol instance. This factory coroutine must be called instead of calling the constructor
+        directly in order to register the stream handlers.
+        """
+        protocol = cls(p2p_client=p2p_client, streams_per_host=streams_per_host)
+        await protocol.register_stream_handler()
+        return protocol
 
     async def stream_request_handler(self, stream_info: StreamInfo, stream: SocketStream) -> None:
         """
@@ -179,20 +190,13 @@ class AlephProtocol:
         return bool(len(self.peers[peer_id]))
 
 
-async def request_hash(item_hash):
-    if singleton.streamer is not None:
-        return await singleton.streamer.request_hash(item_hash)
-    else:
-        return None
-
-
-async def incoming_channel(topic: str) -> None:
+async def incoming_channel(p2p_client: P2PClient, topic: str) -> None:
     LOGGER.debug("incoming channel started...")
     from aleph.chains.common import delayed_incoming
 
     while True:
         try:
-            async for mvalue in sub(topic):
+            async for mvalue in sub(p2p_client, topic):
                 LOGGER.debug("Received from P2P:", mvalue)
                 try:
                     message = json.loads(mvalue["data"])

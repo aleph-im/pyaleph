@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from aiohttp import web
+from aleph.services.p2p.singleton import get_p2p_client
 
 from aleph.services.ipfs.pubsub import pub as pub_ipfs
 from aleph.services.p2p.pubsub import pub as pub_p2p
@@ -24,7 +25,8 @@ async def pub_json(request):
         failed_publications.append(Protocol.IPFS)
 
     try:
-        await asyncio.wait_for(pub_p2p(data.get("topic"), data.get("data")), 0.5)
+        p2p_client = get_p2p_client()
+        await asyncio.wait_for(pub_p2p(p2p_client, data.get("topic"), data.get("data")), 0.5)
     except Exception:
         LOGGER.exception("Can't publish on p2p")
         failed_publications.append(Protocol.P2P)

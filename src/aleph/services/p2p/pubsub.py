@@ -1,16 +1,15 @@
 import logging
 from typing import AsyncIterator
 
+from p2pclient import Client as P2PClient
 from p2pclient.pb.p2pd_pb2 import PSMessage
 from p2pclient.utils import read_pbmsg_safe
 
-from .singleton import get_p2p_client
 
 LOGGER = logging.getLogger("P2P.pubsub")
 
 
-async def sub(topic: str) -> AsyncIterator[PSMessage]:
-    p2p_client = get_p2p_client()
+async def sub(p2p_client: P2PClient, topic: str) -> AsyncIterator[PSMessage]:
     stream = await p2p_client.pubsub_subscribe(topic)
     while True:
         pubsub_msg = PSMessage()
@@ -20,6 +19,5 @@ async def sub(topic: str) -> AsyncIterator[PSMessage]:
         yield pubsub_msg
 
 
-async def pub(topic: str, message: str) -> None:
-    p2p_client = get_p2p_client()
+async def pub(p2p_client: P2PClient, topic: str, message: str) -> None:
     await p2p_client.pubsub_publish(topic, message.encode("utf-8"))
