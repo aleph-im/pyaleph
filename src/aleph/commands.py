@@ -199,13 +199,13 @@ def main(args):
 
         # handler = app.make_handler(loop=loop)
         LOGGER.debug("Initializing p2p")
-        f = p2p.init_p2p(config)
-        p2p_tasks = loop.run_until_complete(f)
+        p2p_init_task = p2p.init_p2p(config)
+        p2p_client, p2p_tasks = loop.run_until_complete(p2p_init_task)
         tasks += p2p_tasks
         LOGGER.debug("Initialized p2p")
 
         LOGGER.debug("Initializing listeners")
-        tasks += listener_tasks(config)
+        tasks += listener_tasks(config, p2p_client)
         tasks += connector_tasks(config, outgoing=(not args.no_commit))
         LOGGER.debug("Initialized listeners")
 

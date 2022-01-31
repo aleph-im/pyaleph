@@ -353,7 +353,7 @@ def prepare_loop(config_values, idx=1):
 
     init_db(config, ensure_indexes=False)
     loop.run_until_complete(get_ipfs_api(timeout=2, reset=True))
-    tasks = loop.run_until_complete(init_p2p(config, listen=False, port_id=idx))
+    _, tasks = loop.run_until_complete(init_p2p(config, listen=False, port_id=idx))
     return loop, tasks
 
 

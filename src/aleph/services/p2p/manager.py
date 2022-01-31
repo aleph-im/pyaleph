@@ -1,6 +1,7 @@
 import logging
 from typing import Coroutine, List, Optional, Tuple
 
+from configmanager import Config
 from p2pclient import Client as P2PClient
 
 from aleph.services.ipfs.common import get_public_address
@@ -17,11 +18,12 @@ public_adresses = []
 
 
 async def initialize_host(
+    config: Config,
     p2p_client: P2PClient,
     host: str = "0.0.0.0",
     port: int = 4025,
     listen: bool = True,
-    protocol_active=True,
+    protocol_active: bool = True,
 ) -> Tuple[Optional[AlephProtocol], List[Coroutine]]:
 
     from .jobs import reconnect_p2p_job, tidy_http_peers_job
@@ -30,10 +32,10 @@ async def initialize_host(
 
     transport_opt = f"/ip4/{host}/tcp/{port}"
 
-    protocol = AlephProtocol(p2p_client) if protocol_active else None
+    protocol = await AlephProtocol.create(p2p_client) if protocol_active else None
 
     tasks = [
-        reconnect_p2p_job(),
+        reconnect_p2p_job(config=config, p2p_client=p2p_client, streamer=protocol),
         tidy_http_peers_job(),
     ]
     if listen:

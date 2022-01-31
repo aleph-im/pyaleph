@@ -3,19 +3,17 @@ import logging
 from typing import List, Optional
 
 from configmanager import Config
+from p2pclient import Client as P2PClient
 
 from aleph.model.p2p import get_peers
 from .http import api_get_request
 from .peers import connect_peer
+from .protocol import AlephProtocol
 
 LOGGER = logging.getLogger("P2P.jobs")
 
 
-async def reconnect_p2p_job(config: Optional[Config] = None) -> None:
-    from aleph.web import app
-
-    if config is None:
-        config = app["config"]
+async def reconnect_p2p_job(config: Config, p2p_client: P2PClient, streamer: Optional[AlephProtocol]) -> None:
     await asyncio.sleep(2)
     while True:
         try:
@@ -24,7 +22,7 @@ async def reconnect_p2p_job(config: Optional[Config] = None) -> None:
             )
             for peer in peers:
                 try:
-                    await connect_peer(config, peer)
+                    await connect_peer(config=config, p2p_client=p2p_client, streamer=streamer, peer=peer)
                 except Exception:
                     LOGGER.debug("Can't reconnect to %s" % peer)
 

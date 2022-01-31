@@ -4,6 +4,8 @@ import logging
 from typing import Coroutine, Dict, List, Optional
 from urllib.parse import unquote
 
+from p2pclient import Client as P2PClient
+
 from aleph.register_chain import VERIFIER_REGISTER
 from aleph.services.ipfs.pubsub import incoming_channel as incoming_ipfs_channel
 from aleph.types import ItemType, InvalidMessageError
@@ -144,11 +146,11 @@ async def check_message(
         return None
 
 
-def listener_tasks(config) -> List[Coroutine]:
+def listener_tasks(config, p2p_client: P2PClient) -> List[Coroutine]:
     from aleph.services.p2p.protocol import incoming_channel as incoming_p2p_channel
 
     # for now (1st milestone), we only listen on a single global topic...
-    tasks: List[Coroutine] = [incoming_p2p_channel(config.aleph.queue_topic.value)]
+    tasks: List[Coroutine] = [incoming_p2p_channel(p2p_client, config.aleph.queue_topic.value)]
     if config.ipfs.enabled.value:
         tasks.append(incoming_ipfs_channel(config.aleph.queue_topic.value))
     return tasks

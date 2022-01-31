@@ -1,12 +1,14 @@
+from typing import Optional
+
 from configmanager import Config
 from multiaddr import Multiaddr
+from p2pclient import Client as P2PClient
 from p2pclient.libp2p_stubs.peer.peerinfo import info_from_p2p_addr
 
-from .singleton import get_p2p_client, streamer
+from .protocol import AlephProtocol
 
 
-async def connect_peer(config: Config, peer: str) -> None:
-    p2p_client = get_p2p_client()
+async def connect_peer(config: Config, p2p_client: P2PClient, streamer: Optional[AlephProtocol], peer: str) -> None:
     peer_info = info_from_p2p_addr(Multiaddr(peer))
     peer_id, _ = await p2p_client.identify()
 
