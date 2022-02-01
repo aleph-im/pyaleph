@@ -35,7 +35,10 @@ RUN apt-get update && apt-get -y upgrade && apt-get install -y \
 RUN useradd -s /bin/bash source
 RUN mkdir /opt/venv
 RUN chown source:source /opt/venv
-# - Installed Python libraries will be save in this file
+
+RUN mkdir /opt/build
+RUN chown source:source /opt/build
+# - Installed Python libraries will be saved in this file
 RUN touch /opt/build-frozen-requirements.txt
 RUN chown source:source /opt/build-frozen-requirements.txt
 
@@ -55,30 +58,27 @@ ENV PIP_NO_CACHE_DIR yes
 RUN /opt/venv/bin/python3 -m pip install --upgrade pip wheel
 ENV PATH="/opt/venv/bin:${PATH}"
 
-# === Copy source code ===
-COPY setup.py /opt/pyaleph/
+# === Install PyAleph dependencies ===
+# Install dependencies early to cache them and accelerate incremental builds.
 COPY setup.cfg /opt/pyaleph/
+COPY deployment/scripts/extract_requirements.py /opt/build/
+RUN /opt/venv/bin/python3 /opt/build/extract_requirements.py /opt/pyaleph/setup.cfg -o /opt/build/requirements.txt
+RUN /opt/venv/bin/pip install --no-cache-dir -r /opt/build/requirements.txt
+RUN rm /opt/build/extract_requirements.py /opt/build/requirements.txt
+
+# === Install PyAleph itself ===
+COPY setup.py /opt/pyaleph/
 COPY src /opt/pyaleph/src
-
-COPY tests /opt/pyaleph/tests
-
 # Git data is used to determine PyAleph's version
 COPY .git /opt/pyaleph/.git
 
-
-# === Install the application and dependencies ===
-
-# Setup directories for `python setup.py develop`
 USER root
-RUN mkdir -p /opt/pyaleph/src/pyaleph.egg-info
-RUN mkdir /opt/pyaleph/.eggs
-RUN chown -R source:source /opt/pyaleph/src /opt/pyaleph/.eggs /opt/pyaleph/.git
+RUN chown -R source:source /opt/pyaleph/
 
-# Install PyAleph source
 USER source
 WORKDIR /opt/pyaleph
 
-RUN /opt/venv/bin/pip install --no-cache-dir ".[testing]"
+RUN /opt/venv/bin/pip install --no-cache-dir "."
 
 # Save installed Python requirements for debugging
 RUN /opt/venv/bin/pip freeze > /opt/build-frozen-requirements.txt
