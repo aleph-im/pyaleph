@@ -26,7 +26,7 @@ def get_defaults():
                 "/ip4/62.210.93.220/tcp/4025/p2p/QmXdci5feFmA2pxTg8p3FCyWmSKnWYAAmr7Uys1YCTFD8U",
             ],
         },
-        "storage": {"folder": "./data/", "store_files": False, "engine": "rocksdb"},
+        "storage": {"folder": "./data/", "store_files": False, "engine": "mongodb"},
         "nuls": {
             "chain_id": 8964,
             "enabled": False,

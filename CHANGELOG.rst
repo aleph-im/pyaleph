@@ -5,6 +5,7 @@ Changelog
 Version 0.2
 ===========
 
+- Decommissioned the support for RocksDB. The only supported storage engine is now MongoDB.
 - Replaced the P2P service by jsp2pd, an official libp2p daemon. This lifts the dependency on py-libp2p.
 - The `--gen-key` option is renamed to `--gen-keys`. It now stores the public key along with the private key,
   and a serialized version of the private key for use by the P2P daemon.

@@ -20,7 +20,6 @@ RUN apt-get install -y \
      libbz2-dev \
      libgflags-dev \
      liblz4-dev \
-     librocksdb-dev \
      libgmp-dev \
      libsecp256k1-dev \
      pkg-config \

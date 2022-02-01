@@ -7,9 +7,10 @@ Note that it may not be entirely up to date, since the Docker deployment is the 
 
 ## Dependencies
 
-To use the rocksdb and others dependency you will need to build it, here are the requirements on ubuntu:
+To install PyAleph, you must first install its dependencies.
+Here are the requirements on Ubuntu:
 
-`$ sudo apt install python3-dev build-essential libsnappy-dev zlib1g-dev libbz2-dev libgflags-dev liblz4-dev librocksdb-dev libgmp-dev libsecp256k1-dev`
+`$ sudo apt install python3-dev build-essential libsnappy-dev zlib1g-dev libbz2-dev libgflags-dev liblz4-dev libgmp-dev libsecp256k1-dev`
 
 You need to install the requirements, ideally in an empty virtualenv (I let
 that part to you):
