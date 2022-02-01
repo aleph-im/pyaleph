@@ -55,10 +55,6 @@ ENV PIP_NO_CACHE_DIR yes
 RUN /opt/venv/bin/python3 -m pip install --upgrade pip wheel
 ENV PATH="/opt/venv/bin:${PATH}"
 
-RUN /opt/venv/bin/pip install --upgrade --use-deprecated=legacy-resolver git+https://github.com/aleph-im/aioipfs.git@hoh-more-exceptions
-RUN /opt/venv/bin/pip install --upgrade --use-deprecated=legacy-resolver \
-    requests "pymongo~=3.12.2" secp256k1 coincurve "aiohttp>=3.7.4"
-
 # === Copy source code ===
 COPY setup.py /opt/pyaleph/
 COPY setup.cfg /opt/pyaleph/
@@ -81,17 +77,8 @@ RUN chown -R source:source /opt/pyaleph/src /opt/pyaleph/.eggs /opt/pyaleph/.git
 # Install PyAleph source
 USER source
 WORKDIR /opt/pyaleph
-# TODO: replace by a proper install of p2pclient once the changes merged and released on the mainline repo
-RUN pip install -U --use-deprecated=legacy-resolver git+https://github.com/odesenfans/py-libp2p-daemon-bindings.git@c36b0262bf0b7581c0f9662c3f2fb4368e6b3c28
 
-RUN pip install -U --use-deprecated=legacy-resolver git+https://github.com/aleph-im/nuls2-python.git
-RUN pip install -U --use-deprecated=legacy-resolver cosmospy
-RUN pip install -U --use-deprecated=legacy-resolver substrate-interface 'eth-keys==0.3.3'
-RUN python setup.py develop
-RUN /opt/venv/bin/pip install --use-deprecated=legacy-resolver -e ".[testing]"
-
-# Fix an issue with Aiohttp not working
-# RUN /opt/venv/bin/pip install aiohttp==3.7.2
+RUN /opt/venv/bin/pip install --no-cache-dir ".[testing]"
 
 # Save installed Python requirements for debugging
 RUN /opt/venv/bin/pip freeze > /opt/build-frozen-requirements.txt
