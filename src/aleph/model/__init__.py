@@ -1,5 +1,7 @@
 from logging import getLogger
 
+from configmanager import Config
+
 from aleph.model.filepin import PermanentPin
 
 try:
@@ -20,7 +22,7 @@ db = None
 fs = None
 
 
-def init_db(config, ensure_indexes=True):
+def init_db(config: Config, ensure_indexes: bool = True):
     global connection, db, fs
     connection = AsyncIOMotorClient(config.mongodb.uri.value, tz_aware=True)
     db = connection[config.mongodb.database.value]

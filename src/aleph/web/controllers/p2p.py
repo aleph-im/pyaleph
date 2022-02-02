@@ -4,7 +4,7 @@ import logging
 from aiohttp import web
 
 from aleph.services.ipfs.pubsub import pub as pub_ipfs
-from aleph.services.p2p import pub as pub_p2p
+from aleph.services.p2p.pubsub import pub as pub_p2p
 from aleph.types import Protocol
 from aleph.web import app
 

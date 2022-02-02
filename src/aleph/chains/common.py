@@ -10,7 +10,7 @@ from pymongo import UpdateOne
 
 from aleph.handlers.forget import handle_forget_message
 from aleph.handlers.storage import handle_new_storage
-from aleph.model import PermanentPin
+from aleph.model.filepin import PermanentPin
 from aleph.model.messages import Message, CappedMessage
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.network import check_message as check_message_fn
@@ -80,6 +80,7 @@ async def incoming(
     For regular messages it will be marked as confirmed
     if existing in database, created if not.
     """
+
     hash = message["item_hash"]
     sender = message["sender"]
     chain = chain_name
@@ -146,7 +147,7 @@ async def incoming(
     # new_values = {'confirmed': False}  # this should be our default.
     should_commit = False
     if existing:
-        if seen_ids is not None:
+        if seen_ids is not None and height is not None:
             if ids_key in seen_ids.keys():
                 if height > seen_ids[ids_key]:
                     return IncomingStatus.MESSAGE_HANDLED
@@ -269,7 +270,7 @@ async def incoming(
             LOGGER.warning("Invalid sender for %s" % hash)
             return IncomingStatus.MESSAGE_HANDLED
 
-        if seen_ids is not None:
+        if seen_ids is not None and height is not None:
             if ids_key in seen_ids.keys():
                 if height > seen_ids[ids_key]:
                     return IncomingStatus.MESSAGE_HANDLED

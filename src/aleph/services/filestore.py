@@ -24,7 +24,7 @@ async def set_value(key: Union[bytes, str], value: Union[bytes, str]):
 
     if not isinstance(value, bytes):
         if isinstance(value, str):
-            value: bytes = value.encode("utf-8")
+            value = value.encode("utf-8")
         else:
             raise ValueError("Bad input value (bytes or string only)")
 

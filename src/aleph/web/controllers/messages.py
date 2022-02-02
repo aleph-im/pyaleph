@@ -1,4 +1,4 @@
-from typing import Set
+from typing import Any, Dict, List, Optional, Set
 
 from aleph.model.messages import CappedMessage, Message
 from aleph.web import app
@@ -20,38 +20,25 @@ KNOWN_QUERY_FIELDS = {'sort_order', 'msgType', 'addresses', 'refs',
 
 async def get_filters(request: web.Request):
 
+    def get_query_list_field(field: str, separator=",") -> Optional[List[str]]:
+        field_str = request.query.get(field, None)
+        return field_str.split(separator) if field_str is not None else None
+
     unknown_query_fields: Set[str] = set(request.query.keys()).difference(KNOWN_QUERY_FIELDS)
     if unknown_query_fields:
         raise ValueError(f"Unknown query fields: {unknown_query_fields}")
 
-    find_filters = {}
+    find_filters: Dict[str, Any] = {}
 
     msg_type = request.query.get("msgType", None)
 
-    filters = []
-    addresses = request.query.get("addresses", None)
-    if addresses is not None:
-        addresses = addresses.split(",")
-
-    refs = request.query.get("refs", None)
-    if refs is not None:
-        refs = refs.split(",")
-
-    content_types = request.query.get("contentTypes", None)
-    if content_types is not None:
-        content_types = content_types.split(",")
-
-    channels = request.query.get("channels", None)
-    if channels is not None:
-        channels = channels.split(",")
-
-    tags = request.query.get("tags", None)
-    if tags is not None:
-        tags = tags.split(",")
-
-    hashes = request.query.get("hashes", None)
-    if hashes is not None:
-        hashes = hashes.split(",")
+    filters: List[Dict[str, Any]] = []
+    addresses = get_query_list_field("addresses")
+    refs = get_query_list_field("refs")
+    content_types = get_query_list_field("contentTypes")
+    channels = get_query_list_field("channels")
+    tags = get_query_list_field("channels")
+    hashes = get_query_list_field("channels")
 
     date_filters = prepare_date_filters(request, "time")
 

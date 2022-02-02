@@ -5,7 +5,7 @@ from aioipfs.api import RepoAPI
 from aioipfs.exceptions import NotPinnedError
 from aleph_message.models import ForgetMessage, MessageType
 
-from aleph.model import PermanentPin
+from aleph.model.filepin import PermanentPin
 from aleph.model.hashes import delete_value
 from aleph.model.messages import Message
 from aleph.services.ipfs.common import get_ipfs_api
@@ -117,7 +117,11 @@ async def forget_if_allowed(target_hash: str, forget_message: ForgetMessage) -> 
     # Only present for Store messages. Used after the content has been removed.
     storage_hash: Optional[str] = target_message.get("content", {}).get("item_hash")
     storage_type_str: Optional[str] = target_message.get("content", {}).get("item_type")
-    storage_type: Optional[ItemType] = ItemType(storage_type_str) if storage_type_str else None
+
+    if not storage_type_str:
+        raise ValueError("Could not determine storage type")
+
+    storage_type = ItemType(storage_type_str)
 
     logger.debug(f"Removing content for {target_hash}")
     updates = {

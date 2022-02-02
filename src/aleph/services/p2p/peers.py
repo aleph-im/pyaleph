@@ -17,5 +17,7 @@ async def connect_peer(config: Config, peer: str) -> None:
     await p2p_client.connect(peer_info.peer_id, peer_info.addrs)
 
     if "streamer" in config.p2p.clients.value:
+        if streamer is None:
+            raise ValueError("Protocol streamer not initialized")
         if not await streamer.has_active_streams(peer_info.peer_id):
             await streamer.create_connections(peer_info.peer_id)

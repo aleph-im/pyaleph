@@ -32,6 +32,9 @@ jobs:
       run: |
         git status
         git describe --tags
+    - name: Check types
+      run: |
+        mypy src/
     - name: Run unit tests
       run: |
         pytest -v .
