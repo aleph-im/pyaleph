@@ -7,7 +7,7 @@ from aleph.chains.register import (VERIFIER_REGISTER, INCOMING_WORKERS,
                                    register_verifier,
                                    register_incoming_worker,
                                    register_outgoing_worker)
-from aleph.chains import ethereum, nuls, nuls2, substrate, cosmos, avalanche
+from aleph.chains import ethereum, nuls, nuls2, substrate, cosmos, avalanche, near
 
 @pytest.mark.asyncio
 async def test_register_verifier(monkeypatch):
@@ -36,7 +36,7 @@ async def test_register_verifier_twice(monkeypatch):
 @pytest.mark.asyncio
 async def test_verifiers():
     assert set(VERIFIER_REGISTER.keys()) == set(
-        ('NULS', 'NULS2', 'ETH', 'DOT', 'CSDK', 'SOL', 'AVAX'))
+        ('NULS', 'NULS2', 'ETH', 'DOT', 'CSDK', 'SOL', 'AVAX', 'NEAR'))
 
     assert VERIFIER_REGISTER["ETH"] is ethereum.verify_signature
     assert VERIFIER_REGISTER["NULS"] is nuls.verify_signature
@@ -44,6 +44,7 @@ async def test_verifiers():
     assert VERIFIER_REGISTER["DOT"] is substrate.verify_signature
     assert VERIFIER_REGISTER["CSDK"] is cosmos.verify_signature
     assert VERIFIER_REGISTER["AVAX"] is avalanche.verify_signature
+    assert VERIFIER_REGISTER["NEAR"] is near.verify_signature
 
 
 @pytest.mark.asyncio
