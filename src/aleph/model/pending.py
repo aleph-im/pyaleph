@@ -16,6 +16,8 @@ class PendingMessage(BaseClass):
         IndexModel([("source.chain_name", ASCENDING)]),
         #    IndexModel([("source.height", ASCENDING)]),
         IndexModel([("message.time", ASCENDING)]),
+        IndexModel([("retries", ASCENDING), ("message.time", ASCENDING)],
+                   partialFilterExpression={"retries": {"$gt": 0}}),
     ]
 
 
