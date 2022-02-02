@@ -7,7 +7,7 @@ from typing import Coroutine, List, Dict, Optional, Tuple
 
 import aioipfs
 import sentry_sdk
-from pymongo import DeleteOne, InsertOne, DeleteMany, UpdateOne
+from pymongo import DeleteOne, InsertOne, DeleteMany, UpdateOne, ASCENDING
 from pymongo.errors import CursorNotFound
 from setproctitle import setproctitle
 
@@ -94,7 +94,7 @@ async def retry_messages_job(shared_stats: Optional[Dict]):
 
     while await PendingMessage.collection.count_documents(find_params):
         async for pending in PendingMessage.collection.find(find_params).sort(
-            [("message.time", 1)]
+            [("retries", ASCENDING), ("message.time", ASCENDING)]
         ).batch_size(256):
             LOGGER.debug(
                 f"retry_message_job len_seen_ids={len(seen_ids)} "
@@ -112,11 +112,10 @@ async def retry_messages_job(shared_stats: Optional[Dict]):
                 shared_stats["retry_messages_job_i"] = i
                 shared_stats["retry_messages_job_j"] = j
 
-            if pending["message"] is None:
-                LOGGER.warning(
-                    "Found PendingMessage with empty message, this should be caught before insertion"
-                )
+            if pending.get("message") is None:
+                LOGGER.warning("Found PendingMessage with empty message, this should be caught before insertion")
                 await PendingMessage.collection.delete_one({"_id": pending["_id"]})
+                continue
 
             if not isinstance(pending["message"], dict):
                 raise ValueError("Pending message is not a dictionary and cannot be read.")
