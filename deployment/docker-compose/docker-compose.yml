@@ -19,6 +19,7 @@ services:
       - mongodb
       - ipfs
       - p2pd
+      - pyaleph-migrations
     networks:
       - pyaleph
     logging:
@@ -28,6 +29,8 @@ services:
   p2pd:
     restart: always
     image: alephim/jsp2pd:0.10.2-1.0.0
+    depends_on:
+      - pyaleph-updater
     networks:
       - pyaleph
     environment:

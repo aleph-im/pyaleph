@@ -24,7 +24,7 @@ from aleph import model
 from aleph.chains import connector_tasks
 from aleph.cli.args import parse_args
 from aleph.config import get_defaults
-from aleph.exceptions import InvalidConfigException, PrivateKeyNotFoundException
+from aleph.exceptions import InvalidConfigException, KeyNotFoundException
 from aleph.jobs import start_jobs, prepare_loop
 from aleph.network import listener_tasks
 from aleph.services import p2p
@@ -163,7 +163,7 @@ def main(args):
     if not os.path.isfile(serialized_key_file_path):
         msg = f"Serialized node key ({serialized_key_file_path}) not found."
         LOGGER.critical(msg)
-        raise PrivateKeyNotFoundException(msg)
+        raise KeyNotFoundException(msg)
 
     if args.port:
         config.aleph.port.value = args.port
@@ -268,7 +268,7 @@ def run():
     """Entry point for console_scripts"""
     try:
         main(sys.argv[1:])
-    except (PrivateKeyNotFoundException, InvalidConfigException):
+    except (KeyNotFoundException, InvalidConfigException):
         sys.exit(1)
 
 

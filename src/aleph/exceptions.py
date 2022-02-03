@@ -6,5 +6,9 @@ class InvalidConfigException(AlephException):
     ...
 
 
-class PrivateKeyNotFoundException(AlephException):
+class InvalidKeyDirException(AlephException):
+    ...
+
+
+class KeyNotFoundException(AlephException):
     ...

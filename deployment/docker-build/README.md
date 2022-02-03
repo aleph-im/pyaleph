@@ -27,8 +27,6 @@ An Aleph node needs an asymmetric key pair to communicate with other nodes on th
 
 You can generate this key using the following commands after building the Docker image:
 ```shell script
-touch node-secret.key
-
 docker run --rm -ti --user root -v $(pwd)/node-secret.key:/opt/pyaleph/node-secret.key alephim/pyaleph-node:latest pyaleph --gen-keys
 ```
 
