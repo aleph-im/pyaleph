@@ -67,6 +67,7 @@ RUN /opt/venv/bin/pip install --no-cache-dir -r /opt/build/requirements.txt
 RUN rm /opt/build/extract_requirements.py /opt/build/requirements.txt
 
 # === Install PyAleph itself ===
+COPY deployment/migrations /opt/pyaleph/migrations
 COPY setup.py /opt/pyaleph/
 COPY src /opt/pyaleph/src
 # Git data is used to determine PyAleph's version
