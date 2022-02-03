@@ -21,6 +21,10 @@ jobs:
       with:
         # Fetch the whole history for all tags and branches (required for aleph.__version__)
         fetch-depth: 0
+    # Install nodejs for jsp2pd
+    - uses: actions/setup-node@v2
+      with:
+        node-version: '16'
     - name: Set up Python 3.8
       id: setup-python
       uses: actions/setup-python@v2
@@ -34,7 +38,9 @@ jobs:
       with:
         path: ${{ steps.pip-cache.outputs.dir }}
         key: ${{ runner.os }}-python-${{ steps.setup-python.outputs.python-version }}-pip-${{ hashFiles('setup.cfg') }}
-    - name: Install dependencies
+    - name: Install jsp2pd
+      run: npm install --global libp2p-daemon@0.10.2
+    - name: Install Python dependencies
       run: |
         pip install .[testing]
     - name: Check types

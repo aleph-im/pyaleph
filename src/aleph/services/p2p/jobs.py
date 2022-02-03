@@ -22,7 +22,7 @@ async def reconnect_p2p_job(config: Config, p2p_client: P2PClient, streamer: Opt
             )
             for peer in peers:
                 try:
-                    await connect_peer(config=config, p2p_client=p2p_client, streamer=streamer, peer=peer)
+                    await connect_peer(p2p_client=p2p_client, streamer=streamer, peer_maddr=peer)
                 except Exception:
                     LOGGER.debug("Can't reconnect to %s" % peer)
 
