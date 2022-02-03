@@ -179,8 +179,6 @@ def main(args):
     model.init_db(config, ensure_indexes=(not args.debug))
     LOGGER.info("Database initialized.")
 
-    # filestore.init_store(config)
-    # LOGGER.info("File store initalized.")
     init_cors()  # FIXME: This is stateful and process-dependent
     set_start_method("spawn")
 
@@ -197,7 +195,6 @@ def main(args):
 
         loop = asyncio.get_event_loop()
 
-        # handler = app.make_handler(loop=loop)
         LOGGER.debug("Initializing p2p")
         p2p_init_task = p2p.init_p2p(config)
         p2p_client, p2p_tasks = loop.run_until_complete(p2p_init_task)
@@ -242,17 +239,6 @@ def main(args):
         p2.start()
         LOGGER.debug("Started processes")
 
-        # fp2p = loop.create_server(handler,
-        #                           config.p2p.host.value,
-        #                           config.p2p.http_port.value)
-        # srvp2p = loop.run_until_complete(fp2p)
-        # LOGGER.info('Serving on %s', srvp2p.sockets[0].getsockname())
-
-        # f = loop.create_server(handler,
-        #                        config.aleph.host.value,
-        #                        config.aleph.port.value)
-        # srv = loop.run_until_complete(f)
-        # LOGGER.info('Serving on %s', srv.sockets[0].getsockname())
         LOGGER.debug("Running event loop")
         loop.run_until_complete(asyncio.gather(*tasks))
 

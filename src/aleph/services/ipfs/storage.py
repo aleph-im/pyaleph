@@ -51,39 +51,26 @@ async def get_json(hash, timeout=1, tries=1):
         try:
             result = await run_in_executor(None, json.loads, result)
         except json.decoder.JSONDecodeError:
-            # try:
-            #     import json as njson
-            #     result = await loop.run_in_executor(None, njson.loads, result)
-            # except (json.JSONDecodeError, KeyError):
             LOGGER.exception("Can't decode JSON")
             result = -1  # never retry, bogus data
     return result
 
 
 async def add_json(value):
-    # loop = asyncio.get_event_loop()
     api = await get_ipfs_api(timeout=5)
-    # try:
     result = await api.add_json(value)
-    # finally:
-    #     await api.close()
 
     return result["Hash"]
 
 
 async def add_bytes(value, cid_version=0) -> str:
-    # loop = asyncio.get_event_loop()
     api = await get_ipfs_api(timeout=5)
-    # try:
     result = await api.add_bytes(value, cid_version=cid_version)
-    # finally:
-    #     await api.close()
 
     return result["Hash"]
 
 
 async def pin_add(hash, timeout=2, tries=1):
-    # loop = asyncio.get_event_loop()
     try_count = 0
     result = None
     while (result is None) and (try_count < tries):
@@ -98,8 +85,6 @@ async def pin_add(hash, timeout=2, tries=1):
         except concurrent.futures.CancelledError:
             try_count -= 1  # do not count as a try.
             await asyncio.sleep(0.1)
-        # finally:
-        #     await api.close()
 
     return result
 

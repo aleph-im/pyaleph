@@ -51,7 +51,6 @@ async def incoming_channel(topic) -> None:
     trials_before_exception: int = 5
     while True:
         try:
-            # seen_ids = []
             async for mvalue in sub(topic):
                 try:
                     message = await incoming_check(mvalue)

@@ -120,11 +120,6 @@ async def incoming(
     # we set the incoming chain as default for signature
     message["chain"] = message.get("chain", chain_name)
 
-    # if existing is None:
-    #     # TODO: verify if search key is ok. do we need an unique key for messages?
-    #     existing = await Message.collection.find_one(
-    #         filters, projection={'confirmed': 1, 'confirmations': 1, 'time': 1})
-
     if chain_name and tx_hash and height:
         # We are getting a confirmation here
         new_values = await mark_confirmed_data(chain_name, tx_hash, height)
@@ -144,7 +139,6 @@ async def incoming(
             "$min": {"time": message["time"]},
         }
 
-    # new_values = {'confirmed': False}  # this should be our default.
     should_commit = False
     if existing:
         if seen_ids is not None and height is not None:
@@ -156,12 +150,6 @@ async def incoming(
             else:
                 seen_ids[ids_key] = height
 
-        # THIS CODE SHOULD BE HERE...
-        # But, if a race condition appeared, we might have the message twice.
-        # if (existing['confirmed'] and
-        #         chain_name in [c['chain'] for c in existing['confirmations']]):
-        #     return
-
         LOGGER.debug("Updating %s." % hash)
 
         if chain_name and tx_hash and height:
@@ -170,9 +158,6 @@ async def incoming(
             should_commit = True
 
     else:
-        # if not (chain_name and tx_hash and height):
-        #     new_values = {'confirmed': False}  # this should be our default.
-
         try:
             content, size = await get_message_content(message)
         except Exception:
@@ -280,7 +265,6 @@ async def incoming(
                 seen_ids[ids_key] = height
 
         LOGGER.debug("New message to store for %s." % hash)
-        # message.update(new_values)
         updates["$set"] = {
             "content": content,
             "size": size,
@@ -291,12 +275,6 @@ async def incoming(
             **updates.get("$set", {}),
         }
         should_commit = True
-        # await Message.collection.insert_one(message)
-
-        # since it's on-chain, we need to keep that content.
-        # if message['item_type'] == 'ipfs' and app['config'].ipfs.enabled.value:
-        #     LOGGER.debug("Pining hash %s" % hash)
-        # await pin_hash(hash)
 
     if should_commit:
         action = UpdateOne(filters, updates, upsert=True)
@@ -403,5 +381,4 @@ async def join_tasks(tasks, seen_ids):
         await asyncio.gather(*tasks)
     except Exception:
         LOGGER.exception("error in incoming task")
-    # seen_ids.clear()
     tasks.clear()

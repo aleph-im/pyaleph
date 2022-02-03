@@ -1,34 +1,7 @@
 """
 """
 
-# from aleph.model.base import BaseClass
-# from pymongo import ASCENDING, IndexModel
 from gridfs.errors import NoFile
-
-# class Hash(BaseClass):
-#     """Holds information about the chains state."""
-#     COLLECTION = "hashes"
-
-#     INDEXES = [IndexModel([("key", ASCENDING)], unique=True)]
-
-#     @classmethod
-#     async def get(cls, key):
-#         obj = await cls.collection.find_one(
-#             {'key': key})
-#         if obj is None:
-#             return None
-
-#         return obj.get('value', None)
-
-#     @classmethod
-#     async def set(cls, key, value):
-#         await cls.collection.update_one({'key': key},
-#                                         {'$currentDate': {
-#                                             'last_update': True
-#                                          },
-#                                          '$set': {"value": value}
-#                                         },
-#                                         upsert=True)
 
 
 async def get_value(key: str):

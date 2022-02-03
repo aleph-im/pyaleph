@@ -37,15 +37,12 @@ async def verify_signature(message):
     from aleph.web import app
 
     config = app["config"]
-    # w3 = await loop.run_in_executor(None, get_web3, config)
 
     verification = await get_verification_buffer(message)
 
     message_hash = await run_in_executor(
         None, functools.partial(encode_defunct, text=verification.decode("utf-8"))
     )
-    # message_hash = encode_defunct(text=verification.decode('utf-8'))
-    # await asyncio.sleep(0)
     verified = False
     try:
         # we assume the signature is a valid string
@@ -55,14 +52,6 @@ async def verify_signature(message):
                 Account.recover_message, message_hash, signature=message["signature"]
             ),
         )
-        # address = Account.recover_message(message_hash, signature=message['signature'])
-        # await asyncio.sleep(0)
-        # address = await loop.run_in_executor(
-        #     None,
-        #     functools.partial(w3.eth.account.recoverHash, message_hash,
-        #                       signature=message['signature']))
-        # address = w3.eth.account.recoverHash(message_hash,
-        #                                      signature=message['signature'])
         if address == message["sender"]:
             verified = True
         else:
@@ -172,9 +161,6 @@ async def request_transactions(config, web3: Web3, contract, abi, start_height):
 
     async for log in logs:
         event_data = await run_in_executor(None, get_event_data, web3.codec, abi, log)
-        # event_data = get_event_data(web3.codec,
-        #                             contract.events.SyncEvent._get_event_abi(),
-        #                             log)
         LOGGER.info("Handling TX in block %s" % event_data.blockNumber)
         publisher = event_data.args.addr
         timestamp = event_data.args.timestamp
@@ -187,8 +173,6 @@ async def request_transactions(config, web3: Web3, contract, abi, start_height):
             continue
 
         last_height = event_data.blockNumber
-        # block = await loop.run_in_executor(None, web3.eth.getBlock, event_data.blockNumber)
-        # timestamp = block.timestamp
 
         message = event_data.args.message
         try:
@@ -248,7 +232,6 @@ register_incoming_worker(CHAIN_NAME, ethereum_incoming_worker)
 
 
 def broadcast_content(config, contract, web3: Web3, account, gas_price, nonce, content):
-    # content = json.dumps(content)
     tx = contract.functions.doEmit(content).buildTransaction(
         {
             "chainId": config.ethereum.chain_id.value,

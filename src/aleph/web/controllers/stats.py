@@ -21,23 +21,9 @@ async def addresses_stats(check_time=None, address_list=None, output_collection=
 
     if address_list is not None and len(address_list):
         if len(address_list) > 1:
-            matches.append(
-                {
-                    "$match":  # {'$or': [
-                    # {'sender': {'$in': address_list}},
-                    {"content.address": {"$in": address_list}}
-                    # ]}
-                }
-            )
+            matches.append({"$match": {"content.address": {"$in": address_list}}})
         else:
-            matches.append(
-                {
-                    "$match":  # {'$or': [
-                    # {'sender': address_list[0]},
-                    {"content.address": address_list[0]}
-                    # ]}
-                }
-            )
+            matches.append({"$match": {"content.address": address_list[0]}})
 
     aggregate = Message.collection.aggregate(
         matches

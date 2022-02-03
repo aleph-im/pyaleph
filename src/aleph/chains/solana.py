@@ -40,8 +40,6 @@ async def verify_signature(message):
         verification_buffer = await get_verification_buffer(message)
         verif = verify_key.verify(verification_buffer, signature=sigdata)
         result = verif == verification_buffer
-        # verif = (await get_verification_buffer(message)).decode('utf-8')
-        # result = keypair.verify(verif, signature['data'])
     except Exception:
         LOGGER.exception("Solana Signature verification error")
         result = False

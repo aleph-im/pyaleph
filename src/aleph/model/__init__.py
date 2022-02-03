@@ -51,8 +51,6 @@ def init_db(config: Config, ensure_indexes: bool = True):
         Peer.ensure_indexes(sync_db)
 
         PermanentPin.ensure_indexes(sync_db)
-        # from aleph.model.hashes import Hash
-        # Hash.ensure_indexes(sync_db)
 
     from aleph.model.messages import Message
 

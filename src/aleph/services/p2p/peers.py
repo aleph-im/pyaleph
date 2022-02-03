@@ -13,7 +13,6 @@ async def connect_peer(config: Config, p2p_client: P2PClient, streamer: Optional
     peer_id, _ = await p2p_client.identify()
 
     if str(peer_info.peer_id) == str(peer_id):
-        # LOGGER.debug("Can't connect to myself.")
         return
 
     await p2p_client.connect(peer_info.peer_id, peer_info.addrs)

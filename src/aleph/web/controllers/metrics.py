@@ -55,8 +55,6 @@ class BuildInfo:
 
     python_version: str
     version: str
-    # branch: str
-    # revision: str
 
 
 @dataclass

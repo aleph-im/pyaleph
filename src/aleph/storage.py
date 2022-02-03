@@ -63,7 +63,6 @@ async def get_hash_content(
     # TODO: determine which storage engine to use
     ipfs_enabled = app["config"].ipfs.enabled.value
     enabled_clients = app["config"].p2p.clients.value
-    # content = await loop.run_in_executor(None, get_value, hash)
     content = await get_value(hash)
     if content is None:
         if use_network:
@@ -95,7 +94,6 @@ async def get_hash_content(
 
             elif engine == ItemType.Storage:
                 compared_hash = await run_in_executor(None, get_sha256, content)
-                # compared_hash = sha256(content.encode('utf-8')).hexdigest()
                 if compared_hash != hash:
                     LOGGER.warning(f"Got a bad hash! {hash}/{compared_hash}")
                     content = -1

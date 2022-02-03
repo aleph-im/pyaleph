@@ -9,9 +9,7 @@ async def view_posts_list(request):
     """
 
     find_filters = {}
-    filters = [
-        # {'type': request.query.get('msgType', 'POST')}
-    ]
+    filters = []
 
     query_string = request.query_string
     addresses = request.query.get("addresses", None)

@@ -108,8 +108,6 @@ async def check_message(
             if not trusted:
                 loop = asyncio.get_event_loop()
                 item_hash = get_sha256(message["item_content"])
-                # item_hash = await loop.run_in_executor(None, get_sha256, message['item_content'])
-                # item_hash = sha256(message['item_content'].encode('utf-8')).hexdigest()
 
                 if message["item_hash"] != item_hash:
                     raise InvalidMessageError("Bad hash")
