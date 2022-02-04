@@ -24,7 +24,7 @@ from aleph import model
 from aleph.chains import connector_tasks
 from aleph.cli.args import parse_args
 from aleph.config import get_defaults
-from aleph.exceptions import PrivateKeyNotFoundException
+from aleph.exceptions import InvalidConfigException, PrivateKeyNotFoundException
 from aleph.jobs import start_jobs, prepare_loop
 from aleph.network import listener_tasks
 from aleph.services import p2p
@@ -151,6 +151,13 @@ def main(args):
         LOGGER.debug("Loading config file '%s'", args.config_file)
         app["config"].yaml.load(args.config_file)
 
+    # Check for invalid/deprecated config
+    if "protocol" in config.p2p.clients.value:
+        msg = "The 'protocol' P2P config is not supported by the current version."
+        LOGGER.error(msg)
+        raise InvalidConfigException(msg)
+
+
     # We only check that the serialized key exists.
     serialized_key_file_path = os.path.join(args.key_dir, "serialized-node-secret.key")
     if not os.path.isfile(serialized_key_file_path):
@@ -261,7 +268,7 @@ def run():
     """Entry point for console_scripts"""
     try:
         main(sys.argv[1:])
-    except PrivateKeyNotFoundException:
+    except (PrivateKeyNotFoundException, InvalidConfigException):
         sys.exit(1)
 
 
