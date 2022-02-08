@@ -15,6 +15,7 @@ import importlib.util
 import logging
 import os
 import sys
+from types import ModuleType
 
 LOGGER = logging.getLogger()
 
@@ -67,6 +68,13 @@ def setup_logging(log_level: int) -> None:
     )
 
 
+def import_module_from_path(path: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location("migration_module", path)
+    migration_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration_module)
+    return migration_module
+
+
 def main(args: argparse.Namespace):
     log_level = logging.DEBUG if args.verbose else logging.INFO
     setup_logging(log_level)
@@ -80,11 +88,7 @@ def main(args: argparse.Namespace):
 
     for migration_script in migration_scripts:
         migration_script_path = os.path.join(migration_scripts_dir, migration_script)
-        spec = importlib.util.spec_from_file_location(
-            "migration_module", migration_script_path
-        )
-        migration_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(migration_module)
+        migration_module = import_module_from_path(migration_script_path)
 
         if args.verbose:
             LOGGER.info(f"%s: %s", migration_script, migration_module.__doc__)

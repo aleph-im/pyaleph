@@ -12,36 +12,37 @@ from p2pclient.libp2p_stubs.crypto.rsa import KeyPair, RSAPrivateKey
 
 from aleph.exceptions import InvalidKeyDirException
 from aleph.services.keys import save_keys
+from pathlib import Path
 
-LOGGER = logging.getLogger("migrations")
+LOGGER = logging.getLogger(os.path.basename(__file__))
 
 
 SERIALIZED_KEY_FILE = "serialized-node-secret.key"
 
 
-def populate_key_dir(key_file: str, output_dir: str) -> None:
-    with open(key_file) as f:
+def populate_key_dir(key_file: Path, output_dir: Path) -> None:
+    with key_file.open() as f:
         private_key_str = f.read()
 
     private_key = RSAPrivateKey(RSA.import_key(private_key_str))
     key_pair = KeyPair(private_key=private_key, public_key=private_key.get_public_key())
-    save_keys(key_pair, output_dir)
+    save_keys(key_pair, str(output_dir))
 
 
 def upgrade(**kwargs):
-    key_dir = kwargs["key_dir"]
-    key_file = kwargs["key_file"]
+    key_dir = Path(kwargs["key_dir"])
+    key_file = Path(kwargs["key_file"])
 
     # Nothing to do if the serialized key file already exists
-    serialized_key_file = os.path.join(key_dir, SERIALIZED_KEY_FILE)
-    if os.path.isfile(serialized_key_file):
+    serialized_key_file = key_dir / SERIALIZED_KEY_FILE
+    if serialized_key_file.is_file():
         LOGGER.info(
             "Serialized key file {%s} already exists, nothing to do",
             serialized_key_file,
         )
         return
 
-    if not os.path.isdir(key_dir):
+    if not key_dir.is_dir():
         raise InvalidKeyDirException(
             f"The specified key directory ('{key_dir}') is not a directory."
         )
