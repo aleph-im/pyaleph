@@ -12,19 +12,30 @@ import logging
 
 LOGGER = logging.getLogger("MESSAGES")
 
-KNOWN_QUERY_FIELDS = {'sort_order', 'msgType', 'addresses', 'refs',
-                      'contentTypes', 'channels', 'tags', 'hashes', 'history',
-                      'pagination', 'page'  # page is handled in Pagination.get_pagination_params
-                      }
+KNOWN_QUERY_FIELDS = {
+    "sort_order",
+    "msgType",
+    "addresses",
+    "refs",
+    "contentKeys",
+    "contentTypes",
+    "channels",
+    "tags",
+    "hashes",
+    "history",
+    "pagination",
+    "page",  # page is handled in Pagination.get_pagination_params
+}
 
 
 async def get_filters(request: web.Request):
-
     def get_query_list_field(field: str, separator=",") -> Optional[List[str]]:
         field_str = request.query.get(field, None)
         return field_str.split(separator) if field_str is not None else None
 
-    unknown_query_fields: Set[str] = set(request.query.keys()).difference(KNOWN_QUERY_FIELDS)
+    unknown_query_fields: Set[str] = set(request.query.keys()).difference(
+        KNOWN_QUERY_FIELDS
+    )
     if unknown_query_fields:
         raise ValueError(f"Unknown query fields: {unknown_query_fields}")
 
@@ -37,8 +48,9 @@ async def get_filters(request: web.Request):
     refs = get_query_list_field("refs")
     content_types = get_query_list_field("contentTypes")
     channels = get_query_list_field("channels")
-    tags = get_query_list_field("channels")
-    hashes = get_query_list_field("channels")
+    tags = get_query_list_field("tags")
+    hashes = get_query_list_field("hashes")
+    content_keys = get_query_list_field("contentKeys")
 
     date_filters = prepare_date_filters(request, "time")
 
@@ -54,6 +66,9 @@ async def get_filters(request: web.Request):
                 ]
             }
         )
+
+    if content_keys is not None:
+        filters.append({"content.key": {"$in": content_keys}})
 
     if content_types is not None:
         filters.append({"content.type": {"$in": content_types}})
