@@ -35,6 +35,13 @@ def cli_parse() -> argparse.Namespace:
         help="Path to setup.cfg.",
     )
     parser.add_argument(
+        "--config",
+        action="store",
+        required=True,
+        type=str,
+        help="Path to the PyAleph configuration file.",
+    )
+    parser.add_argument(
         "--key-dir",
         action="store",
         required=True,
@@ -94,7 +101,7 @@ def main(args: argparse.Namespace):
             LOGGER.info(f"%s: %s", migration_script, migration_module.__doc__)
         LOGGER.info(f"Running %s for %s...", command, migration_script)
         migration_func = getattr(migration_module, args.command)
-        migration_func(key_dir=args.key_dir, key_file=args.key_file)
+        migration_func(config_file=args.config, key_dir=args.key_dir, key_file=args.key_file)
 
     LOGGER.info(f"Successfully ran %s. You can now start PyAleph.", command)
 
