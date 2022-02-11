@@ -12,19 +12,31 @@ import logging
 
 LOGGER = logging.getLogger("MESSAGES")
 
-KNOWN_QUERY_FIELDS = {'sort_order', 'msgType', 'addresses', 'refs',
-                      'contentTypes', 'channels', 'tags', 'hashes', 'history',
-                      'pagination', 'page'  # page is handled in Pagination.get_pagination_params
-                      }
+KNOWN_QUERY_FIELDS = {
+    "sort_order",
+    "msgType",
+    "addresses",
+    "refs",
+    "contentTypes",
+    "channels",
+    "tags",
+    "hashes",
+    "history",
+    "pagination",
+    "page",  # page is handled in Pagination.get_pagination_params
+    "startDate",
+    "endDate",
+}
 
 
 async def get_filters(request: web.Request):
-
     def get_query_list_field(field: str, separator=",") -> Optional[List[str]]:
         field_str = request.query.get(field, None)
         return field_str.split(separator) if field_str is not None else None
 
-    unknown_query_fields: Set[str] = set(request.query.keys()).difference(KNOWN_QUERY_FIELDS)
+    unknown_query_fields: Set[str] = set(request.query.keys()).difference(
+        KNOWN_QUERY_FIELDS
+    )
     if unknown_query_fields:
         raise ValueError(f"Unknown query fields: {unknown_query_fields}")
 
