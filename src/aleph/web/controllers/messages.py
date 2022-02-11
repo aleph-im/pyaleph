@@ -25,6 +25,8 @@ KNOWN_QUERY_FIELDS = {
     "history",
     "pagination",
     "page",  # page is handled in Pagination.get_pagination_params
+    "startDate",
+    "endDate",
 }
 
 
