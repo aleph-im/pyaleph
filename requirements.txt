@@ -73,7 +73,7 @@ path.py==12.5.0
 pexpect==4.8.0
 pkg-resources==0.0.0
 pluggy==0.13.1
-protobuf==3.14.0
+protobuf==3.15.0
 ptyprocess==0.7.0
 py==1.10.0
 py-bip39-bindings==0.1.6
