@@ -85,7 +85,7 @@
                 {{pyaleph_status_chain_eth_height_remaining_total}}
             </span> left )
             <br/>
-            <progress data-ratio="chain_eth" value="{{pyaleph_status_chain_eth_last_committed_height}}" max="100"></progress>
+            <progress data-ratio="chain_eth" value="{{ pyaleph_status_chain_eth_last_committed_height }} / {{ pyaleph_status_chain_eth_last_committed_height }}" max="100"></progress>
         {% endif %}
     </p>
 </section>
