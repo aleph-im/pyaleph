@@ -58,7 +58,7 @@ async def incoming_channel(topic) -> None:
                     LOGGER.debug("New message %r" % message)
                     asyncio.create_task(incoming(message, bulk_operation=False))
                 except InvalidMessageError:
-                    LOGGER.warning(f"Invalid message {message}")
+                    LOGGER.warning(f"Invalid message {mvalue}")
 
                 # Raise all connection errors after one has succeeded.
                 trials_before_exception = 0
