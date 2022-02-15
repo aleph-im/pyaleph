@@ -30,7 +30,7 @@ INCOMING_MESSAGE_AUTHORIZED_FIELDS = [
 HOST = None
 
 
-async def incoming_check(ipfs_pubsub_message):
+async def incoming_check(ipfs_pubsub_message: Dict) -> Dict:
     """Verifies an incoming message is sane, protecting from spam in the
     meantime.
 
@@ -58,7 +58,7 @@ async def check_message(
     from_chain: bool = False,
     from_network: bool = False,
     trusted: bool = False,
-) -> Optional[Dict]:
+) -> Dict:
     """This function should check the incoming message and verify any
     extraneous or dangerous information for the rest of the process.
     It also checks the data hash if it's not done by an external provider (ipfs)
@@ -140,10 +140,10 @@ async def check_message(
         try:
             if await signer(message):
                 return message
+            else:
+                raise InvalidMessageError("The signature of the message is invalid")
         except ValueError:
             raise InvalidMessageError("Signature validation error")
-
-        return None
 
 
 def listener_tasks(config, p2p_client: P2PClient) -> List[Coroutine]:
