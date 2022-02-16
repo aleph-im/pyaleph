@@ -8,7 +8,7 @@ This is the documentation of **pyaleph**.
 .. note::
 
     This documentation is under construction. Please get in touch if you find
-    any with the documentation or of you would like to contribute.
+    any issue with the documentation or if you would like to contribute.
 
 Contents
 ========
@@ -18,7 +18,7 @@ Contents
 
    architecture
    guides/index
-   guides/node-synchronisation
+   node-synchronisation
    protocol/index
    metrics
 
