@@ -113,12 +113,16 @@ async def retry_messages_job(shared_stats: Optional[Dict]):
                 shared_stats["retry_messages_job_j"] = j
 
             if pending.get("message") is None:
-                LOGGER.warning("Found PendingMessage with empty message, this should be caught before insertion")
+                LOGGER.warning(
+                    "Found PendingMessage with empty message, this should be caught before insertion"
+                )
                 await PendingMessage.collection.delete_one({"_id": pending["_id"]})
                 continue
 
             if not isinstance(pending["message"], dict):
-                raise ValueError("Pending message is not a dictionary and cannot be read.")
+                raise ValueError(
+                    "Pending message is not a dictionary and cannot be read."
+                )
 
             if (
                 pending["message"]["item_type"] == ItemType.IPFS
@@ -334,15 +338,15 @@ def function_proxy(manager, funcname):
     return func_call
 
 
-def prepare_loop(config_values, idx=1):
+def prepare_loop(config_values: Dict) -> asyncio.AbstractEventLoop:
     from aleph.model import init_db
     from aleph.web import app
     from configmanager import Config
     from aleph.config import get_defaults
     from aleph.services.ipfs.common import get_ipfs_api
-    from aleph.services.p2p import init_p2p, http
+    from aleph.services.p2p import http, init_p2p_client
 
-    http.SESSION = None
+    http.SESSION = None  # type:ignore
 
     loop = asyncio.get_event_loop()
 
@@ -352,8 +356,8 @@ def prepare_loop(config_values, idx=1):
 
     init_db(config, ensure_indexes=False)
     loop.run_until_complete(get_ipfs_api(timeout=2, reset=True))
-    _, tasks = loop.run_until_complete(init_p2p(config, listen=False, port_id=idx))
-    return loop, tasks
+    _ = init_p2p_client(config)
+    return loop
 
 
 def txs_task_loop(config_values):
@@ -367,8 +371,8 @@ def txs_task_loop(config_values):
         level=config_values["logging"]["level"],
         filename="/tmp/txs_task_loop.log",
     )
-    loop, tasks = prepare_loop(config_values, idx=1)
-    loop.run_until_complete(asyncio.gather(*tasks, handle_txs_task()))
+    loop = prepare_loop(config_values)
+    loop.run_until_complete(asyncio.gather(handle_txs_task()))
 
 
 def messages_task_loop(config_values, shared_stats: Optional[Dict]):
@@ -382,8 +386,8 @@ def messages_task_loop(config_values, shared_stats: Optional[Dict]):
         level=config_values["logging"]["level"],
         filename="/tmp/messages_task_loop.log",
     )
-    loop, tasks = prepare_loop(config_values, idx=2)
-    loop.run_until_complete(asyncio.gather(*tasks, retry_messages_task(shared_stats)))
+    loop = prepare_loop(config_values)
+    loop.run_until_complete(asyncio.gather(retry_messages_task(shared_stats)))
 
 
 async def reconnect_ipfs_job(config):
