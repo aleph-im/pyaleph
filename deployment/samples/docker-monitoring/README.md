@@ -11,12 +11,12 @@ with performance monitoring using [Prometheus](https://prometheus.io/) and [Graf
 
 ### Other links
 
-See [../docker-build](../docker-build) to PyAleph without the monitoring.
+See [../docker-build](../../docker-build) to PyAleph without the monitoring.
 
 See the [Docker-Compose documentation on readthedocs.io](https://pyaleph.readthedocs.io/en/latest/guides/docker-compose.html)
 for the documentation.
 
-See [../docker-build](../docker-build) to build your own image of PyAleph and run it with Docker-Compose.
+See [../docker-build](../../docker-build) to build your own image of PyAleph and run it with Docker-Compose.
 
 ## Configuration
 
