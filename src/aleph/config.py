@@ -13,10 +13,10 @@ def get_defaults():
             "reference_node_url": None,
         },
         "p2p": {
-            "control_port": 4020,
-            "listen_port": 4021,
-            "port": 4025,
             "http_port": 4024,
+            "port": 4025,
+            "control_port": 4030,
+            "listen_port": 4031,
             "host": "0.0.0.0",
             "reconnect_delay": 60,
             "clients": ["http"],
