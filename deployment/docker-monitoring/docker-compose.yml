@@ -34,12 +34,11 @@ services:
       - pyaleph
     environment:
       PRIVATE_KEY_FILE: "/etc/jsp2pd/keys/serialized-node-secret.key"
-      LISTEN_MADDR: "/ip4/0.0.0.0/tcp/4020"
+      LISTEN_MADDR: "/ip4/0.0.0.0/tcp/4030"
       HOST_MADDRS: "/ip4/0.0.0.0/tcp/4025"
       PUBSUB: "true"
       PUBSUB_ROUTER: "floodsub"
     ports:
-      - "4020:4020"
       - "4025:4025"
     volumes:
       - ./keys:/etc/jsp2pd/keys
