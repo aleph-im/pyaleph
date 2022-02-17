@@ -168,7 +168,7 @@ async def get_metrics(shared_stats: dict) -> Metrics:
     else:
         sync_messages_remaining_total = None
 
-    if eth_reference_height and eth_last_committed_height:
+    if eth_reference_height is not None and eth_last_committed_height is not None:
         # Some blocks may not contain Aleph messages, and therefore the last committed height
         # may be higher than the height of the last block containing Aleph messages.
         eth_remaining_height = max(eth_reference_height - eth_last_committed_height, 0)
