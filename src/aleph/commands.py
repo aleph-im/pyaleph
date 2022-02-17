@@ -109,9 +109,7 @@ def run_server_coroutine(
     # https://github.com/getsentry/raven-python/issues/1110
     try:
         loop = prepare_loop(config_values)
-        loop.run_until_complete(
-            asyncio.gather(run_server(host, port, shared_stats, extra_web_config))
-        )
+        loop.run_until_complete(run_server(host, port, shared_stats, extra_web_config))
     except Exception as e:
         if enable_sentry:
             sentry_sdk.capture_exception(e)
