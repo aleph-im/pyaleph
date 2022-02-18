@@ -88,7 +88,6 @@ def run_server_coroutine(
     config_values,
     host,
     port,
-    idx,
     shared_stats,
     enable_sentry: bool = True,
     extra_web_config: Optional[Dict] = None,
@@ -109,12 +108,8 @@ def run_server_coroutine(
     # Use a try-catch-capture_exception to work with multiprocessing, see
     # https://github.com/getsentry/raven-python/issues/1110
     try:
-        loop, tasks = prepare_loop(config_values, idx=idx)
-        loop.run_until_complete(
-            asyncio.gather(
-                *tasks, run_server(host, port, shared_stats, extra_web_config)
-            )
-        )
+        loop = prepare_loop(config_values)
+        loop.run_until_complete(run_server(host, port, shared_stats, extra_web_config))
     except Exception as e:
         if enable_sentry:
             sentry_sdk.capture_exception(e)
@@ -156,7 +151,6 @@ def main(args):
         msg = "The 'protocol' P2P config is not supported by the current version."
         LOGGER.error(msg)
         raise InvalidConfigException(msg)
-
 
     # We only check that the serialized key exists.
     serialized_key_file_path = os.path.join(args.key_dir, "serialized-node-secret.key")
@@ -227,7 +221,6 @@ def main(args):
                 config_values,
                 config.aleph.host.value,
                 config.p2p.http_port.value,
-                3,
                 shared_stats,
                 args.sentry_disabled is False and app["config"].sentry.dsn.value,
                 extra_web_config,
@@ -239,7 +232,6 @@ def main(args):
                 config_values,
                 config.aleph.host.value,
                 config.aleph.port.value,
-                4,
                 shared_stats,
                 args.sentry_disabled is False and app["config"].sentry.dsn.value,
                 extra_web_config,

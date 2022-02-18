@@ -19,15 +19,16 @@ def init_p2p_client(config: Config) -> P2PClient:
     listen_maddr = Multiaddr(f"/ip4/0.0.0.0/tcp/{listen_port}")
     p2p_client = P2PClient(control_maddr=control_maddr, listen_maddr=listen_maddr)
 
-    return p2p_client
-
-
-async def init_p2p(config: Config, listen: bool = True, port_id: int = 0) -> Tuple[P2PClient, List[Coroutine]]:
-    p2p_client = init_p2p_client(config)
     # This singleton will not be required anymore once the API is in its own separate program.
     singleton.client = p2p_client
 
-    port = config.p2p.port.value + port_id
+    return p2p_client
+
+
+async def init_p2p(config: Config, listen: bool = True) -> Tuple[P2PClient, List[Coroutine]]:
+    p2p_client = init_p2p_client(config)
+
+    port = config.p2p.port.value
     singleton.streamer, tasks = await initialize_host(
         config=config,
         p2p_client=p2p_client,
