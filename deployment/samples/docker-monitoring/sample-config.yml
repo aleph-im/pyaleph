@@ -9,7 +9,6 @@ nuls2:
 
 ethereum:
   enabled: true
-  api_url: http://127.0.0.1:8545
   chain_id: 1
   packing_node: false
   sync_contract: "0x166fd4299364B21c7567e163d85D78d2fb2f8Ad5"
