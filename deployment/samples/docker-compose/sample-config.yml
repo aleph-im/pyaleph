@@ -35,7 +35,7 @@ aleph:
   queue_topic: ALEPH-TEST
 
 p2p:
-  host: p2pd
+  daemon_host: p2pd
   http_port: 4024
   port: 4025
   control_port: 4030

@@ -17,7 +17,7 @@ def get_defaults():
             "port": 4025,
             "control_port": 4030,
             "listen_port": 4031,
-            "host": "0.0.0.0",
+            "daemon_host": "p2pd",
             "reconnect_delay": 60,
             "clients": ["http"],
             "peers": [

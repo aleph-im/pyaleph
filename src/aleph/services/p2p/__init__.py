@@ -10,7 +10,7 @@ from .manager import initialize_host
 
 
 def init_p2p_client(config: Config) -> P2PClient:
-    host = config.p2p.host.value
+    host = config.p2p.daemon_host.value
     host_ip_addr = socket.gethostbyname(host)
 
     control_port = config.p2p.control_port.value
@@ -32,7 +32,7 @@ async def init_p2p(config: Config, listen: bool = True) -> Tuple[P2PClient, List
     singleton.streamer, tasks = await initialize_host(
         config=config,
         p2p_client=p2p_client,
-        host=config.p2p.host.value,
+        host=config.p2p.daemon_host.value,
         port=port,
         listen=listen,
         protocol_active=("protocol" in config.p2p.clients.value),

@@ -29,7 +29,7 @@ On a Debian-based system (Debian, Ubuntu, Linux Mint, ...), you can use the foll
 
     sudo apt update
     sudo apt upgrade
-    sudo apt install docker-compose #gnupg2 pass
+    sudo apt install docker-compose
     sudo systemctl enable docker && sudo systemctl start docker
 
 Add your user to the Docker group

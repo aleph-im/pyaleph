@@ -242,7 +242,7 @@ def main(args):
         LOGGER.debug("Started processes")
 
         # fp2p = loop.create_server(handler,
-        #                           config.p2p.host.value,
+        #                           config.p2p.daemon_host.value,
         #                           config.p2p.http_port.value)
         # srvp2p = loop.run_until_complete(fp2p)
         # LOGGER.info('Serving on %s', srvp2p.sockets[0].getsockname())
