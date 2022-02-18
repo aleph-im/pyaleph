@@ -109,6 +109,7 @@ Using Docker
     docker-compose [-f <docker-compose-file>] down
     docker run --rm -ti \
         -v $(pwd)/keys:/opt/pyaleph/keys \
+        -v $(pwd)/node-secret.key:/opt/pyaleph/node-secret.key:ro \
         -v $(pwd)/config.yml:/opt/pyaleph/config.yml \
         alephim/pyaleph-node:beta \
         python3 /opt/pyaleph/migrations/config_updater.py --key-dir /opt/pyaleph/keys --config /opt/pyaleph/config.yml
