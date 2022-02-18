@@ -5,5 +5,6 @@ Guides
 .. toctree::
    :maxdepth: 2
 
-   installing
+   install
+   upgrade
    private_net
