@@ -47,8 +47,8 @@ services:
     restart: always
     image: ipfs/go-ipfs:v0.10.0
     ports:
-      - 4001:4001
-      - 4001:4001/udp
+      - "4001:4001"
+      - "4001:4001/udp"
     volumes:
       - "pyaleph-ipfs:/data/ipfs"
     environment:
@@ -71,7 +71,7 @@ services:
     image: prom/prometheus
     command: --log.level=debug --config.file=/etc/prometheus/prometheus.yml
     ports:
-      - 127.0.0.1:9090:9090/tcp
+      - "127.0.0.1:9090:9090/tcp"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     networks:
@@ -82,7 +82,7 @@ services:
     restart: always
     image: grafana/grafana
     ports:
-      - 127.0.0.1:3000:3000/tcp
+      - "127.0.0.1:3000:3000/tcp"
     volumes:
       - ./grafana/prometheus.yaml:/etc/grafana/provisioning/datasources/prometheus.yaml
       - ./grafana/dashboard.yaml:/etc/grafana/provisioning/dashboards/dashboard.yaml
@@ -100,8 +100,8 @@ services:
     # Use the following command with your own domain name to enable HTTPS instead
 #    command: caddy reverse-proxy --from grafana.aleph-node.example.org --to grafana:3000
     ports:
-      - 80:80
-      - 443:443
+      - "80:80"
+      - "443:443"
     volumes:
       - pyaleph-caddy-data:/data
       - pyaleph-caddy-config:/config

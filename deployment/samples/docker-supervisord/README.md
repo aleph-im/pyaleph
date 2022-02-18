@@ -1,7 +1,12 @@
 # PyAleph Docker Demo
 
+> This sample is currently not supported anymore and will not work out of the box.
+> We provide it as an example for advanced users who would want to customize
+> their installation. However, we will not provide support for this configuration
+> for the time being.
+
 This directory contains deployment configuration to run PyAleph 
-in a monolithic Docker image for easy setup in demo scenarios. 
+in a monolithic Docker image for easy setup in demo scenarios.
 
 The image runs [Supervisord](http://supervisord.org/), which in turn
 starts and supervises PyAleph, MongoDB and IPFS.  
