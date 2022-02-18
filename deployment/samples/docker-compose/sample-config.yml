@@ -2,7 +2,6 @@ nuls2:
   chain_id: 1
   enabled: false
   packing_node: false
-  private_key: YOUR_PRIVATE_KEY_HERE
   sync_address: NULSd6HgUkssMi6oSjwEn3puNSijLKnyiRV7H
   api_url: https://apiserver.nuls.io/
   explorer_url: https://nuls.world/
