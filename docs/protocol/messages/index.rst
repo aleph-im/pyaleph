@@ -89,6 +89,5 @@ Message types
 .. toctree::
    :maxdepth: 2
 
-   aggregates
+   aggregate
    post
-   store

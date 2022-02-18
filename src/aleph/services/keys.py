@@ -21,9 +21,9 @@ def generate_keypair(print_key: bool) -> KeyPair:
 def save_keys(key_pair: KeyPair, key_dir: str) -> None:
     """
     Saves the private and public keys to the specified directory. The keys are stored in 3 formats:
-    * The private key is stored in PEM format for ease of use, and in a serialized format compatible with the P2P
-      daemon (DER + protobuf encoding).
-    * The public key is stored in PEM format.
+    - The private key is stored in PEM format for ease of use, and in a serialized format compatible with the P2P
+    daemon (DER + protobuf encoding).
+    - The public key is stored in PEM format.
     """
     # Create the key directory if it does not exist
     if os.path.exists(key_dir):
