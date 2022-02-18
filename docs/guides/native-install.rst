@@ -3,7 +3,7 @@ Native install
 
 
 To install PyAleph, you must first install its dependencies.
-Here are the requirements on Ubuntu:
+Here are the requirements on Ubuntu 20.04:
 
 .. code-block:: bash
 
@@ -75,3 +75,9 @@ Mongodb
 
 A local running mongodb instance is required, by default it's connected to localhost port 27017, you can change
 the configuration file if needed.
+
+To install mongodb:
+
+.. code-block:: bash
+
+    sudo apt install mongodb

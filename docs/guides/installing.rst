@@ -39,7 +39,7 @@ Sentry DNS
 occurs on the node.
 
 To enable Sentry, add the corresponding
-`DSN <https://docs.sentry.io/product/sen=try-basics/dsn-explainer/>`_ in the configuration.
+`DSN <https://docs.sentry.io/product/sentry-basics/dsn-explainer/>`_ in the configuration.
 
 .. code-block:: yaml
 
