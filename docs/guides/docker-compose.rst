@@ -12,12 +12,13 @@ Components
 ----------
 
 - `PyAleph <https://github.com/aleph-im/pyaleph>`_ is the official Aleph.im node software
-- `Docker <https://www.docker.com>`_ is used to pack and deploy PyAleph and sotfware it relies upon
+- `Docker <https://www.docker.com>`_ is used to pack and deploy PyAleph and software it relies upon
 - `Docker Compose <https://docs.docker.com/compose/>`_ is used to run multiple software together using Docker
 - `MongoDB <https://www.mongodb.com>`_ is the database used by PyAleph to store it's data
 - `IPFS <https://ipfs.io/>`_ is used by PyAleph to store large files
+- `The libp2p daemon <https://github.com/libp2p/js-libp2p-daemon>`_ is used to manage P2P connections between nodes
 
-The procedure below explains how to install and run PyAleph, with MongoDB and IPFS on a Linux server using
+The procedure below explains how to install and run PyAleph, with MongoDB, IPFS and the P2P daemon on a Linux server using
 Docker and Docker Compose.
 
 0. Requirements
@@ -73,111 +74,29 @@ simple and popular firewall.
     sudo ufw allow 22,4001,4024,4025/tcp
     sudo ufw allow 4001/udp
 
-
-2. Configuration files
-----------------------
-
-Create and customize the PyAleph configuration file.
-
-Download the PyAleph configuration template:
-
-.. code-block:: bash
-
-    wget "https://raw.githubusercontent.com/aleph-im/pyaleph/master/deployment/docker-build/config.yml"
-
-
-----------------
-Ethereum API URL
-----------------
-
-Register on `infura.io <https://infura.io/>`_, then create a new Ethereum project.
-In the settings, get the hosted https:// endpoint URL for your project.
-
-The endpoint should look be in the form:
-`https://rinkeby.infura.io/v3/<project-id>` for the test network or
-`https://mainnet.infura.io/v3/<project-id>` for production.
-
-Edit the `config.yml` file to add the endpoint URL in the field [ethereum > api_url].
-
-----------
-Sentry DNS
-----------
-
-`Sentry <https://sentry.io/>`_ can be used to track errors and receive alerts if an issue
-occurs on the node.
-
-To enable Sentry, add the corresponding
-`DSN <https://docs.sentry.io/product/sen=try-basics/dsn-explainer/>`_ in the configuration.
-
-.. code-block:: yaml
-
-    sentry:
-        dsn: "https://<SECRET_ID>@<SENTRY_HOST>/<PROJECT_ID>"
-
-----------------
-Node secret keys
-----------------
-
-An Aleph.im node should have a persistent public-private keypair to authenticate to the network.
-
-These keys can be created using the Docker image
-
-Create a file that will be used by the Aleph.im node to store it's private key.
-
-.. code-block:: bash
-
-    mkdir keys
-
-# TODO review: I don't think this code block does anything, since it's executed in a container and the container is disposed
-#              once the container exits.
-.. code-block:: bash
-
-    docker run --rm -ti --user root -v $(pwd)/keys:/opt/pyaleph/keys alephim/pyaleph-node:beta chown aleph:aleph /opt/pyaleph/keys
-
-.. code-block:: bash
-
-    docker run --rm -ti -v $(pwd)/keys:/opt/pyaleph/keys alephim/pyaleph-node:beta pyaleph --gen-keys --key-dir keys
-
-
-Optional: Check that the key file is not empty and make a backup of the key:
-
-.. code-block:: bash
-
-    cat keys/node-secret.key
-
-
-..
-    ## Docker setup
-
-    ### Create a personal access token on GitHub:
-    - https://github.com/settings/tokens/new
-    - Select `read:packages` then the button "Generate token"
-
-    Login within Docker using the above access token:
-    ```shell script
-    docker login https://docker.pkg.github.com
-    ```
-    -->
-
-3. Run the node with Docker Compose
+2. Run the node with Docker Compose
 -----------------------------------
 
 Download the Docker Compose file that defines how to run PyAleph, MongoDB and IPFS together.
 
 .. code-block:: bash
 
-    wget "https://raw.githubusercontent.com/aleph-im/pyaleph/master/deployment/docker-compose/docker-compose.yml"
+    wget "https://raw.githubusercontent.com/aleph-im/pyaleph/master/deployment/samples/docker-compose/docker-compose.yml"
 
-The start running the node:
+At this stage, you will need your configuration file and your keys.
+Check the configuration section to see how you can generate them.
+
+Modify the Docker Compose file you just downloaded to update the paths to your configuration file
+and keys directory.
+Then start running the node:
 
 .. code-block:: bash
 
     docker-compose up -d
 
-4. Check that everything is working well
+3. Check that everything is working well
 ----------------------------------------
 
----------------------
 Check the containers
 ---------------------
 
@@ -254,11 +173,3 @@ MongoDB message counts
     63
     > db.pending_messages.count()
     4
-
------------------------------
-Get alerted in case of errors
------------------------------
-
-You can use `Sentry <https://sentry.io/>`_, on premise or hosted, to get alerted if any exception occur.
-
-Add the DSN given by Sentry in your configuration to enable it.

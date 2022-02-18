@@ -1,7 +1,7 @@
 ********
 Messages
 ********
-All data transfered over the aleph.im network are aleph messages and represent the core of the Aleph networking model.
+All data transferred over the aleph.im network are aleph messages and represent the core of the Aleph networking model.
 
 Message can be:
 

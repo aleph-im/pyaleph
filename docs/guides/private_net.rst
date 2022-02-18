@@ -2,7 +2,7 @@
 Setting up a private aleph.im network
 =====================================
 
-For testing some people and organization might want to setup a private
+For testing some people and organizations might want to setup a private
 aleph.im network.
 
 Please note that it is not the recommended course of action: you will
@@ -78,7 +78,8 @@ as well as the key serialized for compatibility with the P2P daemon.
         node-pub.key  node-secret.key  serialized-node-secret.key
 
 This key directory must be provided to the PyAleph daemon on startup using the `--key-dir <your-key-dir>` option.
-It must also be passed to the P2P daemon using the `--id <your-key-dir>/serialized-node-secret.key` option.
+You must also specify the path to the serialized key to the P2P daemon using the
+`--id <your-key-dir>/serialized-node-secret.key` option on the command line interface of jsp2pd.
 
 Your seed node will need to have the 4025 and 4024 ports open (those ports are
 configurable and you can change them).

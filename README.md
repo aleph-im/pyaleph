@@ -1,6 +1,6 @@
 # PyAleph: Python node for the Aleph network
 
-Next generation network of decentralized big data applications. Developement follows the [Aleph Whitepaper](https://github.com/moshemalawach/aleph-whitepaper).
+Next generation network of decentralized big data applications. Development follows the [Aleph Whitepaper](https://github.com/moshemalawach/aleph-whitepaper).
 
 ## Documentation
 
@@ -16,10 +16,10 @@ section of the documentation to install a node.
 
 ## Development
 
-Since PyAleph requires the installation of a few dependencies, the easiest ways to start are the
+[//]: # (TODO update)
+Since PyAleph requires the installation of a few dependencies, the easiest way to start is the
 [Docker and Docker Compose](https://github.com/aleph-im/pyaleph/tree/master/deployment/docker-build)
-setup, or the [Docker Demo](https://github.com/aleph-im/pyaleph/tree/master/deployment/docker-demo)
-which runs all dependencies in a single container.
+setup.
 
 ## Software used
 
