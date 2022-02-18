@@ -177,7 +177,7 @@ def main(args):
     config_values = config.dump_values()
 
     LOGGER.debug("Initializing database")
-    model.init_db(config, ensure_indexes=(not args.debug))
+    model.init_db(config, ensure_indexes=True)
     LOGGER.info("Database initialized.")
 
     # filestore.init_store(config)
