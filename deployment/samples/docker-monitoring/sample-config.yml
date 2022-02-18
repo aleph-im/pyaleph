@@ -1,19 +1,17 @@
 nuls2:
   chain_id: 1
-  enabled: False
-  packing_node: False
-  private_key: YOUR_PRIVATE_KEY_HERE
+  enabled: false
+  packing_node: false
   sync_address: NULSd6HgUkssMi6oSjwEn3puNSijLKnyiRV7H
   api_url: https://apiserver.nuls.io/
   explorer_url: https://nuls.world/
   token_contract: NULSd6Hh1FjbnAktH1FFvFnTzfgFnZtgAhYut
 
 ethereum:
-  enabled: True
+  enabled: true
   api_url: http://127.0.0.1:8545
   chain_id: 1
-  packing_node: False
-  private_key: YOUR_PRIVATE_KEY_HERE
+  packing_node: false
   sync_contract: "0x166fd4299364B21c7567e163d85D78d2fb2f8Ad5"
   start_height: 11474360
   token_contract: "0x27702a26126e0B3702af63Ee09aC4d1A084EF628"
@@ -21,13 +19,14 @@ ethereum:
 
 mongodb:
   uri: "mongodb://mongodb:27017"
-  database: alephtest
+  database: aleph
 
 storage:
   store_files: true
   engine: mongodb
 
 ipfs:
+  enabled: true
   host: ipfs
   port: 5001
   gateway_port: 8080
