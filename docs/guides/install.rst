@@ -1,28 +1,11 @@
-====================================
-Easy deployment using Docker-Compose
-====================================
-
-Introduction
-------------
+*************************
+Installing a PyAleph node
+*************************
 
 This tutorial is aimed at people wanting to run an Aleph node with little experience in system administration.
 
-----------
-Components
-----------
-
-- `PyAleph <https://github.com/aleph-im/pyaleph>`_ is the official Aleph.im node software
-- `Docker <https://www.docker.com>`_ is used to pack and deploy PyAleph and software it relies upon
-- `Docker Compose <https://docs.docker.com/compose/>`_ is used to run multiple software together using Docker
-- `MongoDB <https://www.mongodb.com>`_ is the database used by PyAleph to store it's data
-- `IPFS <https://ipfs.io/>`_ is used by PyAleph to store large files
-- `The libp2p daemon <https://github.com/libp2p/js-libp2p-daemon>`_ is used to manage P2P connections between nodes
-
-The procedure below explains how to install and run PyAleph, with MongoDB, IPFS and the P2P daemon on a Linux server using
-Docker and Docker Compose.
-
-0. Requirements
----------------
+0. Hardware requirements
+========================
 
 A Linux server with the following requirements:
  - Ability to install Docker and Docker Compose (eg: recent Debian or Ubuntu)
@@ -35,8 +18,8 @@ A Linux server with the following requirements:
  - Shell with `sudo` access
  - A text editor
 
-1. Server setup
----------------
+1. Software requirements
+========================
 
 Install Docker.
 
@@ -46,11 +29,8 @@ On a Debian-based system (Debian, Ubuntu, Linux Mint, ...), you can use the foll
 
     sudo apt update
     sudo apt upgrade
-    sudo apt install docker.io docker-compose gnupg2 pass
+    sudo apt install docker-compose
     sudo systemctl enable docker && sudo systemctl start docker
-
-.. note::
-    gnupg2 and pass are required for `docker login` below.
 
 Add your user to the Docker group
 
@@ -60,7 +40,6 @@ Add your user to the Docker group
 
 Logout, and login again to apply the new group membership.
 
-------------------------------
 Optional: Configure a firewall
 ------------------------------
 
@@ -74,8 +53,80 @@ simple and popular firewall.
     sudo ufw allow 22,4001,4024,4025/tcp
     sudo ufw allow 4001/udp
 
-2. Run the node with Docker Compose
------------------------------------
+2. Configuration
+================
+
+PyAleph requires two configuration items:
+
+- A configuration file, usually named config.yml
+- A private key to identify the node on the P2P network.
+
+Configuration file
+------------------
+
+This section describes how to create and customize the PyAleph configuration file.
+First, download the PyAleph configuration template:
+
+.. code-block:: bash
+
+    wget "https://raw.githubusercontent.com/aleph-im/pyaleph/master/deployment/samples/docker-compose/sample-config.yml"
+
+Then rename the file to config.yml:
+
+.. code-block:: bash
+
+    mv sample-config.yml config.yml
+
+Ethereum API URL
+^^^^^^^^^^^^^^^^
+
+Your Aleph node needs to connect to an Ethereum API.
+If you do not run your own Ethereum node, we suggest you can use Infura or a similar service.
+
+Register on `infura.io <https://infura.io/>`_, then create a new Ethereum project.
+In the settings, get the hosted https:// endpoint URL for your project.
+
+The endpoint should look like:
+`https://rinkeby.infura.io/v3/<project-id>` for the test network or
+`https://mainnet.infura.io/v3/<project-id>` for production.
+
+Edit the `config.yml` file to add the endpoint URL in the field [ethereum > api_url].
+
+Sentry DNS
+^^^^^^^^^^
+
+`Sentry <https://sentry.io/>`_ can be used to track errors and receive alerts if an issue
+occurs on the node.
+
+To enable Sentry, add the corresponding
+`DSN <https://docs.sentry.io/product/sentry-basics/dsn-explainer/>`_ in the configuration.
+
+.. code-block:: yaml
+
+    sentry:
+        dsn: "https://<SECRET_ID>@<SENTRY_HOST>/<PROJECT_ID>"
+
+Node secret keys
+----------------
+
+An Aleph.im node must have a persistent public-private keypair to authenticate to the network.
+These keys can be created using the Docker image.
+We strongly advise to back up your keys once generated.
+
+.. code-block:: bash
+
+    mkdir keys
+    docker run --rm -ti --user root -v $(pwd)/keys:/opt/pyaleph/keys alephim/pyaleph-node:beta chown aleph:aleph /opt/pyaleph/keys
+    docker run --rm -ti -v $(pwd)/keys:/opt/pyaleph/keys alephim/pyaleph-node:beta pyaleph --gen-keys --key-dir /opt/pyaleph/keys
+
+To check that the generation of the keys succeeded, print your private key:
+
+.. code-block:: bash
+
+    cat keys/node-secret.key
+
+3. Run the node with Docker Compose
+===================================
 
 Download the Docker Compose file that defines how to run PyAleph, MongoDB and IPFS together.
 
@@ -94,8 +145,8 @@ Then start running the node:
 
     docker-compose up -d
 
-3. Check that everything is working well
-----------------------------------------
+4. Check that everything is working well
+========================================
 
 Check the containers
 ---------------------
@@ -131,7 +182,6 @@ You should see the following three containers with a State of "Up":
       - Up
       - 0.0.0.0:4024->4024/tcp, 0.0.0.0:4025->4025/tcp, 127.0.0.1:8000->8000/tcp
 
-------------------
 Check the metrics
 ------------------
 
@@ -141,7 +191,6 @@ The number of messages should change when you refresh the page, starting with th
 
 This endpoint can be ingested by a monitoring solution such as `Prometheus <https://prometheus.io/>`_ to watch the dynamic of the node starting.
 
---------------
 Check the logs
 --------------
 
@@ -149,13 +198,11 @@ Make sure that no error is displayed in the logs.
 
 You can use `docker-compose logs` and `docker logs` for this purpose.
 
-----------
 Check IPFS
 ----------
 
 IPFS Web UI: http://localhost:5001/webui
 
-------------------------------
 Check PyAleph data via MongoDB
 ------------------------------
 
