@@ -18,7 +18,7 @@ First, download the PyAleph configuration template:
 
 .. code-block:: bash
 
-    wget "https://raw.githubusercontent.com/aleph-im/pyaleph/master/deployment/docker-build/config.yml"
+    wget "https://raw.githubusercontent.com/aleph-im/pyaleph/master/deployment/samples/docker-compose/sample-config.yml"
 
 Ethereum API URL
 ^^^^^^^^^^^^^^^^
