@@ -27,10 +27,10 @@ Download the latest image
 
 Upgrade the docker-compose file:
 
-.. code-block:: bash
+.. parsed-literal::
 
     mv docker-compose.yml docker-compose-old.yml
-    wget "https://raw.githubusercontent.com/aleph-im/pyaleph/master/deployment/samples/docker-compose/docker-compose.yml"
+    wget "https://raw.githubusercontent.com/aleph-im/pyaleph/|pyaleph_version|/deployment/samples/docker-compose/docker-compose.yml"
 
 .. code-block:: bash
 
