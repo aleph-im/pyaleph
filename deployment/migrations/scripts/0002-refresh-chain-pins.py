@@ -23,13 +23,17 @@ async def async_upgrade(config_file: Optional[str], **kwargs):
 
     init_db(config=config, ensure_indexes=False)
 
-    if (await PermanentPin.count(filter={})) < 5000:
+    # We measure over 5000 permanent pins on new nodes that did process all chaindata.
+    # We therefore use this value to estimate if a node did process all chaindata already or not.
+    expected_permanent_pins = 5000
+
+    if (await PermanentPin.count(filter={})) < expected_permanent_pins:
         logger.info("PermanentPin documents missing, fetching chaindata again")
-        start_height = get_defaults()["ethereum"]["start_height"]
+        start_height = config.ethereum.start_height.value
         await Chain.set_last_height("ETH", start_height)
     else:
         logger.info(
-            "PermanentPin documents already present, not need to re-fetch chaindata"
+            "PermanentPin documents already present, no need to re-fetch chaindata"
         )
 
 
