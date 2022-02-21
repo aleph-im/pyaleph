@@ -41,16 +41,16 @@ Upgrade your node
 
 .. code-block:: bash
 
-    docker run --rm -ti \
-        -v $(pwd)/keys:/opt/pyaleph/keys \
-        -v $(pwd)/node-secret.key:/opt/pyaleph/node-secret.key:ro \
-        -v $(pwd)/config.yml:/opt/pyaleph/config.yml:ro \
-        alephim/pyaleph-node:beta \
-        python3 /opt/pyaleph/migrations/config_updater.py \
+    docker-compose [-f <docker-compose-file>] down
+
+    docker-compose [-f <docker-compose-file>] \
+            run pyaleph /opt/pyaleph/migrations/config_updater.py \
             --key-dir /opt/pyaleph/keys \
             --key-file /opt/pyaleph/node-secret.key \
             --config /opt/pyaleph/config.yml \
             upgrade
+
+    docker-compose [-f <docker-compose-file>] down
 
 Check that your node's secret key has been migrated
 
@@ -66,5 +66,4 @@ Finally, restart your node:
 
 .. code-block:: bash
 
-    docker-compose [-f <docker-compose-file>] down
     docker-compose [-f <docker-compose-file>] up -d
