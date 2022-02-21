@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Checks and updates the configuration and key files of an Aleph node.
 
