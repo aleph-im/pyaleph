@@ -67,9 +67,9 @@ Configuration file
 This section describes how to create and customize the PyAleph configuration file.
 First, download the PyAleph configuration template:
 
-.. code-block:: bash
+.. parsed-literal::
 
-    wget "https://raw.githubusercontent.com/aleph-im/pyaleph/master/deployment/samples/docker-compose/sample-config.yml"
+    wget "https://raw.githubusercontent.com/aleph-im/pyaleph/|pyaleph_version|/deployment/samples/docker-compose/sample-config.yml"
 
 Then rename the file to config.yml:
 
@@ -130,9 +130,9 @@ To check that the generation of the keys succeeded, print your private key:
 
 Download the Docker Compose file that defines how to run PyAleph, MongoDB and IPFS together.
 
-.. code-block:: bash
+.. parsed-literal::
 
-    wget "https://raw.githubusercontent.com/aleph-im/pyaleph/master/deployment/samples/docker-compose/docker-compose.yml"
+    wget "https://raw.githubusercontent.com/aleph-im/pyaleph/|pyaleph_version|/deployment/samples/docker-compose/docker-compose.yml"
 
 At this stage, you will need your configuration file and your keys.
 Check the configuration section to see how you can generate them.

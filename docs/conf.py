@@ -290,3 +290,8 @@ intersphinx_mapping = {
     'pandas': ('http://pandas.pydata.org/pandas-docs/stable', None),
     'scipy': ('https://docs.scipy.org/doc/scipy/reference', None),
 }
+
+
+rst_epilog = """
+.. |pyaleph_version| replace:: v0.2.0-rc1
+"""
