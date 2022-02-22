@@ -1,6 +1,7 @@
-# PyAleph Docker (Beta)
+# Aleph Core Channel Node (CCN) Docker (Beta)
 
-This directory contains the `Dockerfile` to build and run PyAleph in production.
+This directory contains the `Dockerfile` to build and run the CCN in production,
+as well as a Docker Compose file for use during development.
 
 ## Build the Docker image
 
@@ -14,12 +15,14 @@ or by running the Docker build command from the root of the repository:
 docker build -t alephim/pyaleph-node -f deployment/docker/pyaleph.dockerfile .
 ```
 
-## Configure PyAleph
+## Configure the CCN
 
-We provide a template configuration in the file `deployment/docker/config.yml`,
+We provide a template configuration in the file `samples/docker-compose/config.yml`,
 which you will want to customize for your system.
 
-Change the Ethereum API URL to the endpoint you want PyAleph to use.
+Change the Ethereum API URL to the endpoint you want the CCN to use.
+
+To run the local dev environment, you will need to set the P2P daemon, IPFS and MongoDB hosts to `127.0.0.1`.
 
 ### Generate your node's private key
 
@@ -30,23 +33,15 @@ You can generate this key using the following commands after building the Docker
 docker run --rm -ti --user root -v $(pwd)/node-secret.key:/opt/pyaleph/node-secret.key alephim/pyaleph-node:latest pyaleph --gen-keys
 ```
 
-## Running with Docker Compose
+## Start the dev environment
 
-You can run PyAleph and it's dependencies MongoDB and IPFS using Docker Compose.
+Run the Docker Compose file to start all the required services:
 
-The configuration we provide allows you to run a reverse-proxy for HTTPS termination
-on a docker network named `reverse-proxy`, so you will need to create it first:
- 
-```shell script
-docker network create reverse-proxy
+```
+docker-compose -f deployment/docker-build/docker-compose.yml up -d
 ```
 
-You can then run PyAleph using Docker Compose:
-```shell script
-docker-compose -f deployment/docker/docker-compose.yml up
-```
+This will instantiate the services for MongoDB, IPFS and the P2P daemon.
 
-## Running with another infrastructure
-
-Have a look at the `docker-compose.yml` configuration to understand how PyAleph
-can be run.
+You can now start the Core Channel Node locally using the `pyaleph` command or by running the `aleph.commands` module,
+for example from PyCharm.

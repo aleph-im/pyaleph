@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Use this script to build the Docker image of PyAleph
+# Use this script to build the Docker image of the Core Channel Node
 
 set -euo pipefail
 
