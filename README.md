@@ -40,7 +40,7 @@ You're ready to go!
 
 ## Software used
 
-The Aleph CCN is written in Python and requires Python v3.6+. It will not work with older versions of Python.
+The Aleph CCN is written in Python and requires Python v3.8+. It will not work with older versions of Python.
 
 It also relies on [MongoDB](https://www.mongodb.com/) and [IPFS](https://ipfs.io/).
 
