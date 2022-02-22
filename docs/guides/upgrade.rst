@@ -15,11 +15,13 @@ Create the keys directory
 -------------------------
 
 The updater expects that you already created a keys/ directory to hold your private and public keys.
-If you do not already have one, you need to create the directory and adjust the ownership of the folder:
+If you do not already have one, you need to create the directory, copy the key of your node in it
+and adjust the ownership of the folder:
 
 .. code-block:: bash
 
     mkdir keys
+    cp node-secret.key keys/
     docker run --rm -ti --user root -v $(pwd)/keys:/opt/pyaleph/keys alephim/pyaleph-node:beta chown aleph:aleph /opt/pyaleph/keys
 
 Download the latest image
@@ -46,7 +48,7 @@ Upgrade your node
     docker-compose [-f <docker-compose-file>] \
             run pyaleph /opt/pyaleph/migrations/config_updater.py \
             --key-dir /opt/pyaleph/keys \
-            --key-file /opt/pyaleph/node-secret.key \
+            --key-file /opt/pyaleph/keys/node-secret.key \
             --config /opt/pyaleph/config.yml \
             upgrade
 
