@@ -1,6 +1,6 @@
-# PyAleph Deployment with Monitoring
+# Aleph Core Channel Node (CCN) deployment with Monitoring
 
-This directory contains a configuration to run a PyAleph node in production with Monitoring.
+This directory contains a configuration to run a CCN in production with Monitoring.
 It is aimed at a starting point for node operators interested in easily getting pre-made basic 
 metrics on their node. 
 
@@ -11,12 +11,12 @@ with performance monitoring using [Prometheus](https://prometheus.io/) and [Graf
 
 ### Other links
 
-See [../docker-build](../../docker-build) to PyAleph without the monitoring.
+See [../docker-compose](../docker-compose) to run a CCN without the monitoring.
 
 See the [Docker-Compose documentation on readthedocs.io](https://pyaleph.readthedocs.io/en/latest/guides/docker-compose.html)
 for the documentation.
 
-See [../docker-build](../../docker-build) to build your own image of PyAleph and run it with Docker-Compose.
+See [../docker-build](../../docker-build) to build your own image of the CCN and run it with Docker-Compose.
 
 ## Configuration
 

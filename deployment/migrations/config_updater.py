@@ -40,7 +40,7 @@ def cli_parse() -> argparse.Namespace:
         action="store",
         required=True,
         type=str,
-        help="Path to the PyAleph configuration file.",
+        help="Path to the Core Channel Node configuration file.",
     )
     parser.add_argument(
         "--key-dir",
@@ -104,7 +104,7 @@ def main(args: argparse.Namespace):
         migration_func = getattr(migration_module, args.command)
         migration_func(config_file=args.config, key_dir=args.key_dir, key_file=args.key_file)
 
-    LOGGER.info(f"Successfully ran %s. You can now start PyAleph.", command)
+    LOGGER.info(f"Successfully ran %s. You can now start the Core Channel Node.", command)
 
 
 if __name__ == "__main__":

@@ -58,7 +58,7 @@ ENV PIP_NO_CACHE_DIR yes
 RUN /opt/venv/bin/python3 -m pip install --upgrade pip wheel
 ENV PATH="/opt/venv/bin:${PATH}"
 
-# === Install PyAleph dependencies ===
+# === Install CCN dependencies ===
 # Install dependencies early to cache them and accelerate incremental builds.
 COPY setup.cfg /opt/pyaleph/
 COPY deployment/scripts/extract_requirements.py /opt/build/
@@ -66,11 +66,11 @@ RUN /opt/venv/bin/python3 /opt/build/extract_requirements.py /opt/pyaleph/setup.
 RUN /opt/venv/bin/pip install --no-cache-dir -r /opt/build/requirements.txt
 RUN rm /opt/build/extract_requirements.py /opt/build/requirements.txt
 
-# === Install PyAleph itself ===
+# === Install the CCN itself ===
 COPY deployment/migrations /opt/pyaleph/migrations
 COPY setup.py /opt/pyaleph/
 COPY src /opt/pyaleph/src
-# Git data is used to determine PyAleph's version
+# Git data is used to determine the version of the CCN
 COPY .git /opt/pyaleph/.git
 
 USER root
@@ -87,5 +87,5 @@ RUN /opt/venv/bin/pip freeze > /opt/build-frozen-requirements.txt
 USER aleph
 CMD ["pyaleph"]
 
-# PyAleph API
+# CCN API
 EXPOSE 8000

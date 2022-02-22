@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Use this script to publish the current Docker image of PyAleph on Docker Hub
+# Use this script to publish the current Docker image of the CCN on Docker Hub
 
 set -euo pipefail
 

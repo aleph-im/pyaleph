@@ -31,10 +31,10 @@ def populate_key_dir(private_key_str: str, output_dir: Path) -> None:
 
 def get_key_from_config(config_file: Path) -> Optional[str]:
     """
-    In previous versions of PyAleph, it was possible to set the key value directly
+    In previous versions of the CCN, it was possible to set the key value directly
     in the config file. This function tries to find it in the config or returns None.
 
-    :param config_file: Path to the PyAleph configuration file.
+    :param config_file: Path to the CCN configuration file.
     :return: The private key used to identify the node on the P2P network, or None
              if the key is not provided in the config file.
     """
