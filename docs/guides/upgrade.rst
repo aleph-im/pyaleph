@@ -18,11 +18,11 @@ The updater expects that you already created a keys/ directory to hold your priv
 If you do not already have one, you need to create the directory, copy the key of your node in it
 and adjust the ownership of the folder:
 
-.. code-block:: bash
+.. parsed-literal::
 
     mkdir keys
     cp node-secret.key keys/
-    docker run --rm -ti --user root -v $(pwd)/keys:/opt/pyaleph/keys alephim/pyaleph-node:beta chown -R aleph:aleph /opt/pyaleph/keys
+    docker run --rm -ti --user root -v $(pwd)/keys:/opt/pyaleph/keys alephim/pyaleph-node:|pyaleph_version| chown -R aleph:aleph /opt/pyaleph/keys
 
 Download the latest image
 -------------------------
