@@ -113,11 +113,11 @@ An Aleph.im node must have a persistent public-private keypair to authenticate t
 These keys can be created using the Docker image.
 We strongly advise to back up your keys once generated.
 
-.. code-block:: bash
+.. parsed-literal::
 
     mkdir keys
-    docker run --rm -ti --user root -v $(pwd)/keys:/opt/pyaleph/keys alephim/pyaleph-node:beta chown aleph:aleph /opt/pyaleph/keys
-    docker run --rm -ti -v $(pwd)/keys:/opt/pyaleph/keys alephim/pyaleph-node:beta pyaleph --gen-keys --key-dir /opt/pyaleph/keys
+    docker run --rm -ti --user root -v $(pwd)/keys:/opt/pyaleph/keys alephim/pyaleph-node:|pyaleph_version| chown aleph:aleph /opt/pyaleph/keys
+    docker run --rm -ti -v $(pwd)/keys:/opt/pyaleph/keys alephim/pyaleph-node:|pyaleph_version| pyaleph --gen-keys --key-dir /opt/pyaleph/keys
 
 To check that the generation of the keys succeeded, print your private key:
 
