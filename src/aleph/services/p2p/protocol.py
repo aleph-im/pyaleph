@@ -13,6 +13,7 @@ from p2pclient.libp2p_stubs.peer.id import ID
 
 from aleph import __version__
 from aleph.network import incoming_check
+from aleph.services.utils import pubsub_msg_to_dict
 from aleph.types import InvalidMessageError
 from .pubsub import receive_pubsub_messages, subscribe
 
@@ -171,15 +172,14 @@ async def incoming_channel(p2p_client: P2PClient, topic: str) -> None:
 
     while True:
         try:
-            async for mvalue in receive_pubsub_messages(stream):
-                LOGGER.debug("Received from P2P:", mvalue)
+            async for pubsub_message in receive_pubsub_messages(stream):
                 try:
-                    message = json.loads(mvalue["data"])
-
+                    msg_dict = pubsub_msg_to_dict(pubsub_message)
+                    LOGGER.debug("Received from P2P:", msg_dict)
                     # we should check the sender here to avoid spam
                     # and such things...
                     try:
-                        message = await incoming_check(mvalue)
+                        message = await incoming_check(msg_dict)
                     except InvalidMessageError:
                         continue
 
