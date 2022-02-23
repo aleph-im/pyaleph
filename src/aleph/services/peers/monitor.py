@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Dict, Union
+from typing import Any, Dict
 from urllib.parse import unquote
 
 from p2pclient import Client as P2PClient
@@ -9,6 +9,7 @@ from p2pclient.utils import read_pbmsg_safe
 
 from aleph.services.ipfs.pubsub import sub as sub_ipfs
 from aleph.services.peers.common import ALIVE_TOPIC, IPFS_ALIVE_TOPIC
+from aleph.services.utils import pubsub_msg_to_dict
 from aleph.types import Protocol
 
 LOGGER = logging.getLogger("P2P.peers")
@@ -47,21 +48,6 @@ async def handle_incoming_host(pubsub_msg: Dict[str, Any], source: Protocol = Pr
             LOGGER.info("Received a bad peer info %s from %s" % (e.args[0], sender))
         else:
             LOGGER.exception("Exception in pubsub peers monitoring")
-
-
-def pubsub_msg_to_dict(pubsub_msg: PSMessage) -> Dict[str, Any]:
-    """
-    A compatibility method that translates a p2pd pubsub message to the equivalent dictionary.
-    The returned value is then passed to `handle_incoming_host`.
-
-    TODO: use a better system than a dict to pass these parameters around.
-    """
-    return {
-        "from": getattr(pubsub_msg, "from"),
-        "data": pubsub_msg.data,
-        "seqno": pubsub_msg.seqno,
-        "topicIDs": pubsub_msg.topicIDs,
-    }
 
 
 async def monitor_hosts_p2p(p2p_client: P2PClient) -> None:
