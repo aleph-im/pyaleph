@@ -22,7 +22,7 @@ and adjust the ownership of the folder:
 
     mkdir keys
     cp node-secret.key keys/
-    docker run --rm -ti --user root -v $(pwd)/keys:/opt/pyaleph/keys alephim/pyaleph-node:beta chown aleph:aleph /opt/pyaleph/keys
+    docker run --rm -ti --user root -v $(pwd)/keys:/opt/pyaleph/keys alephim/pyaleph-node:beta chown -R aleph:aleph /opt/pyaleph/keys
 
 Download the latest image
 -------------------------
