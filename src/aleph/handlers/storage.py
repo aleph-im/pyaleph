@@ -19,6 +19,7 @@ from aleph.services.ipfs.common import get_ipfs_api
 from aleph.storage import get_hash_content
 from aleph.types import ItemType, UnknownHashError
 from aleph.web import app
+from aleph.exceptions import AlephStorageException
 
 LOGGER = logging.getLogger("HANDLERS.STORAGE")
 
@@ -35,7 +36,13 @@ async def handle_new_storage(message, content):
         return -1  # not allowed, ignore.
 
     is_folder = False
-    item_hash = content["item_hash"]
+    try:
+        item_hash = content["item_hash"]
+    except KeyError as e:
+        error_msg = f"Could not load item_hash / message: {message} - content {content}"
+        LOGGER.error(error_msg)
+        raise Exception(error_msg) from e
+
     ipfs_enabled = app["config"].ipfs.enabled.value
     do_standard_lookup = True
     size = 0
@@ -86,16 +93,17 @@ async def handle_new_storage(message, content):
 
     if do_standard_lookup:
         # TODO: We should check the balance here.
-        file_content = await get_hash_content(
-            item_hash,
-            engine=engine,
-            tries=4,
-            timeout=2,
-            use_network=True,
-            use_ipfs=True,
-            store_value=True,
-        )
-        if file_content is None or file_content == -1:
+        try:
+            file_content = await get_hash_content(
+                item_hash,
+                engine=engine,
+                tries=4,
+                timeout=2,
+                use_network=True,
+                use_ipfs=True,
+                store_value=True,
+            )
+        except AlephStorageException:
             return None
 
         size = len(file_content)

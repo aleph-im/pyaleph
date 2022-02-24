@@ -12,6 +12,7 @@ from p2pclient.exceptions import ControlFailure
 from p2pclient.libp2p_stubs.peer.id import ID
 
 from aleph import __version__
+from aleph.exceptions import AlephStorageException
 from aleph.network import incoming_check
 from aleph.services.utils import pubsub_msg_to_dict
 from aleph.types import InvalidMessageError
@@ -65,21 +66,24 @@ class AlephProtocol:
         if read_bytes is None:
             return
 
+        result: Dict[str, Any]
+
         try:
             read_string = read_bytes.decode("utf-8")
             message_json = json.loads(read_string)
             if message_json["command"] == "hash_content":
-                value = await get_hash_content(
-                    message_json["hash"], use_network=False, timeout=1
-                )
-                if value is not None and value != -1:
+                try:
+                    content = await get_hash_content(
+                        message_json["hash"], use_network=False, timeout=1
+                    )
+                except AlephStorageException:
+                    result = {"status": "success", "content": None}
+                else:
                     result = {
                         "status": "success",
                         "hash": message_json["hash"],
-                        "content": base64.encodebytes(value).decode("utf-8"),
+                        "content": base64.encodebytes(content.value).decode("utf-8"),
                     }
-                else:
-                    result = {"status": "success", "content": None}
             elif message_json["command"] == "get_message":
                 result = {"status": "error", "reason": "not implemented"}
             elif message_json["command"] == "publish_message":

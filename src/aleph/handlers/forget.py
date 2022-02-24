@@ -81,8 +81,8 @@ async def is_allowed_to_forget(target: Dict, by: ForgetMessage) -> bool:
         return True
     else:
         # The forget sender matches the content address:
-        target_content, _ = await get_message_content(target)
-        if by.sender == target_content["address"]:
+        target_content = await get_message_content(target)
+        if by.sender == target_content.value["address"]:
             return True
     return False
 

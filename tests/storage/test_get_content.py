@@ -4,7 +4,8 @@ import pytest
 from configmanager import Config
 
 from aleph.config import get_defaults
-from aleph.storage import get_hash_content, get_json, get_message_content
+from aleph.storage import ContentSource, get_hash_content, get_json, get_message_content
+from aleph.exceptions import InvalidContent, ContentCurrentlyUnavailable
 from aleph.types import ItemType
 from aleph.web import app
 
@@ -30,7 +31,10 @@ async def test_hash_content_from_db(
     content = await get_hash_content(
         content_hash, use_network=use_network, use_ipfs=use_ipfs
     )
-    assert content == expected_content
+    assert content.value == expected_content
+    assert content.hash == content_hash
+    assert content.source == ContentSource.DB
+    assert len(content) == len(expected_content)
 
 
 @pytest.mark.asyncio
@@ -46,7 +50,10 @@ async def test_hash_content_from_network(mocker, mock_config, use_ipfs: bool):
     content = await get_hash_content(
         content_hash, use_network=True, use_ipfs=use_ipfs, store_value=False
     )
-    assert content == expected_content
+    assert content.value == expected_content
+    assert content.hash == content_hash
+    assert content.source == ContentSource.P2P
+    assert len(content) == len(expected_content)
 
 
 @pytest.mark.asyncio
@@ -65,7 +72,10 @@ async def test_hash_content_from_network_store_value(
     content = await get_hash_content(
         content_hash, use_network=True, use_ipfs=use_ipfs, store_value=True
     )
-    assert content == expected_content
+    assert content.value == expected_content
+    assert content.hash == content_hash
+    assert content.source == ContentSource.P2P
+    assert len(content) == len(expected_content)
 
     set_value_mock.assert_called_once_with(content_hash, expected_content)
 
@@ -79,10 +89,10 @@ async def test_hash_content_from_network_invalid_hash(mocker, mock_config):
     mocker.patch("aleph.storage.p2p_http_request_hash", return_value=expected_content)
     mocker.patch("aleph.storage.add_ipfs_bytes", return_value="not-the-same-hash")
 
-    content = await get_hash_content(
-        content_hash, use_network=True, use_ipfs=False, store_value=False
-    )
-    assert content == -1
+    with pytest.raises(InvalidContent):
+        content = await get_hash_content(
+            content_hash, use_network=True, use_ipfs=False, store_value=False
+        )
 
 
 @pytest.mark.asyncio
@@ -96,21 +106,23 @@ async def test_hash_content_from_ipfs(mocker, mock_config):
         "aleph.storage.add_ipfs_bytes", return_value="not-the-hash-you're-looking-for"
     )
 
-    content = await get_hash_content(
-        content_hash, use_network=True, use_ipfs=False, store_value=False
-    )
-    assert content == -1
+    with pytest.raises(InvalidContent):
+        _content = await get_hash_content(
+            content_hash, use_network=True, use_ipfs=False, store_value=False
+        )
 
 
 @pytest.mark.asyncio
 async def test_get_valid_json(mocker, mock_config):
+    content_hash = "some-json-hash"
     json_content = {"1": "one", "2": "two", "3": "three"}
     json_bytes = json.dumps(json_content).encode("utf-8")
     mocker.patch("aleph.storage.get_value", return_value=json_bytes)
 
-    content, size = await get_json("1234")
-    assert content == json_content
-    assert size == len(json_bytes)
+    content = await get_json(content_hash)
+    assert content.value == json_content
+    assert content.hash == content_hash
+    assert content.raw_content == json_bytes
 
 
 @pytest.mark.asyncio
@@ -122,13 +134,13 @@ async def test_get_invalid_json(mocker, mock_config):
     non_json_content = b"<span>How do you like HTML?</span"
     mocker.patch("aleph.storage.get_value", return_value=non_json_content)
 
-    content, size = await get_json("1234")
-    assert content == -1
-    assert size == len(non_json_content)
+    with pytest.raises(InvalidContent):
+        _content = await get_json("1234")
 
 
 @pytest.mark.asyncio
 async def test_get_inline_content(mock_config):
+    content_hash = "message-hash"
     json_content = [
         {"post": "The joys of JavaScript (JK)"},
         {"post": "Does your cat plan to murder you?"},
@@ -136,13 +148,14 @@ async def test_get_inline_content(mock_config):
     json_bytes = json.dumps(json_content).encode("utf-8")
     message = {
         "item_type": ItemType.Inline.value,
-        "item_hash": "message_hash",
+        "item_hash": content_hash,
         "item_content": json_bytes,
     }
 
-    content, size = await get_message_content(message)
-    assert content == json_content
-    assert size == len(json_bytes)
+    content = await get_message_content(message)
+    assert content.value == json_content
+    assert content.hash == content_hash
+    assert content.raw_content == json_bytes
 
 
 @pytest.mark.asyncio
@@ -162,36 +175,37 @@ async def test_get_inline_content_full_message():
         "signature": "21027c108022f992f090bbe5c78ca8822f5b7adceb705ae2cd5318543d7bcdd2a74700473045022100b59f7df5333d57080a93be53b9af74e66a284170ec493455e675eb2539ac21db022077ffc66fe8dde7707038344496a85266bf42af1240017d4e1fa0d7068c588ca7",
         "item_type": "inline",
     }
-    content, length = await get_message_content(msg)
-    print(content)
-    assert content is not None
-    assert length == len(msg["item_content"])
-    assert content["key"] == "metrics"
-    assert content["address"] == "TTapAav8g3fFjxQQCjwPd4ERPnai9oya"
-    assert "memory" in content["content"]
-    assert "cpu_cores" in content["content"]
+    content = await get_message_content(msg)
+    item_content = content.value
+    print(item_content)
+    assert len(content.raw_content) == len(msg['item_content'])
+    assert item_content['key'] == 'metrics'
+    assert item_content['address'] == 'TTapAav8g3fFjxQQCjwPd4ERPnai9oya'
+    assert 'memory' in item_content['content']
+    assert 'cpu_cores' in item_content['content']
 
 
 @pytest.mark.asyncio
 async def test_get_stored_message_content(mocker, mock_config):
+    content_hash = "message-hash"
     json_content = {"I": "Inter", "P": "Planetary", "F": "File", "S": "System"}
     json_bytes = json.dumps(json_content).encode("utf-8")
     mocker.patch("aleph.storage.get_value", return_value=json_bytes)
 
     message = {
         "item_type": ItemType.IPFS.value,
-        "item_hash": "message_hash",
+        "item_hash": content_hash,
     }
 
-    content, size = await get_message_content(message)
-    assert content == json_content
-    assert size == len(json_bytes)
+    content = await get_message_content(message)
+    assert content.value == json_content
+    assert content.hash == content_hash
 
 
 @pytest.mark.asyncio
 async def test_get_message_content_unknown_item_type(mocker, mock_config):
     """
-    Checks that an unknown item type field in a message will mark it for retry.
+    Checks that an unknown item type field in a message will mark it as currently unavailable.
     """
 
     json_content = {"No more": "inspiration"}
@@ -203,6 +217,5 @@ async def test_get_message_content_unknown_item_type(mocker, mock_config):
         "item_hash": "message_hash",
     }
 
-    content, size = await get_message_content(message)
-    assert content is None
-    assert size == 0
+    with pytest.raises(ContentCurrentlyUnavailable):
+        _content = await get_message_content(message)

@@ -18,6 +18,11 @@ from aleph.permissions import check_sender_authorization
 from aleph.storage import get_json, pin_hash, add_json, get_message_content
 from aleph.types import UnknownHashError
 from aleph.web import app
+from aleph.exceptions import (
+    AlephStorageException,
+    InvalidContent,
+    ContentCurrentlyUnavailable,
+)
 
 LOGGER = logging.getLogger("chains.common")
 
@@ -94,15 +99,15 @@ async def mark_message_for_retry(
 
 
 async def incoming(
-        message,
-        chain_name: Optional[str] = None,
-        tx_hash: Optional[str] = None,
-        height: Optional[int] = None,
-        seen_ids: Optional[Dict[Tuple, int]] = None,
-        check_message: bool = False,
-        retrying: bool = False,
-        bulk_operation: bool = False,
-        existing_id: Optional[ObjectId] = None
+    message,
+    chain_name: Optional[str] = None,
+    tx_hash: Optional[str] = None,
+    height: Optional[int] = None,
+    seen_ids: Optional[Dict[Tuple, int]] = None,
+    check_message: bool = False,
+    retrying: bool = False,
+    bulk_operation: bool = False,
+    existing_id: Optional[ObjectId] = None,
 ) -> Union[IncomingStatus, UpdateOne]:
     """New incoming message from underlying chain.
 
@@ -202,13 +207,14 @@ async def incoming(
         #     new_values = {'confirmed': False}  # this should be our default.
 
         try:
-            content, size = await get_message_content(message)
-        except Exception:
-            LOGGER.exception("Can't get content of object %r" % hash)
-            content, size = None, None
+            content = await get_message_content(message)
 
-        if content is None:
-            LOGGER.info("Can't get content of object %r, retrying later." % hash)
+        except InvalidContent:
+            LOGGER.warning("Can't get content of object %r, won't retry." % hash)
+            return IncomingStatus.FAILED_PERMANENTLY
+
+        except (ContentCurrentlyUnavailable, Exception):
+            LOGGER.exception("Can't get content of object %r" % hash)
             await mark_message_for_retry(
                 message=message,
                 chain_name=chain_name,
@@ -220,15 +226,12 @@ async def incoming(
             )
             return IncomingStatus.RETRYING_LATER
 
-        if content == -1:
-            LOGGER.warning("Can't get content of object %r, won't retry." % hash)
-            return IncomingStatus.FAILED_PERMANENTLY
+        json_content = content.value
+        if json_content.get("address", None) is None:
+            json_content["address"] = message["sender"]
 
-        if content.get("address", None) is None:
-            content["address"] = message["sender"]
-
-        if content.get("time", None) is None:
-            content["time"] = message["time"]
+        if json_content.get("time", None) is None:
+            json_content["time"] = message["time"]
 
         # warning: those handlers can modify message and content in place
         # and return a status. None has to be retried, -1 is discarded, True is
@@ -236,19 +239,17 @@ async def incoming(
         # TODO: change this, it's messy.
         try:
             if message["type"] == MessageType.store:
-                handling_result = await handle_new_storage(message, content)
+                handling_result = await handle_new_storage(message, json_content)
             elif message["type"] == MessageType.forget:
                 # Handling it here means that there we ensure that the message
                 # has been forgotten before it is saved on the node.
                 # We may want the opposite instead: ensure that the message has
                 # been saved before it is forgotten.
-                handling_result = await handle_forget_message(message, content)
+                handling_result = await handle_forget_message(message, json_content)
             else:
                 handling_result = True
         except UnknownHashError:
-            LOGGER.warning(
-                f"Invalid IPFS hash for message {hash}, won't retry."
-            )
+            LOGGER.warning(f"Invalid IPFS hash for message {hash}, won't retry.")
             return IncomingStatus.FAILED_PERMANENTLY
         except Exception:
             LOGGER.exception("Error using the message type handler")
@@ -274,7 +275,7 @@ async def incoming(
             )
             return IncomingStatus.FAILED_PERMANENTLY
 
-        if not await check_sender_authorization(message, content):
+        if not await check_sender_authorization(message, json_content):
             LOGGER.warning("Invalid sender for %s" % hash)
             return IncomingStatus.MESSAGE_HANDLED
 
@@ -290,8 +291,8 @@ async def incoming(
         LOGGER.debug("New message to store for %s." % hash)
         # message.update(new_values)
         updates["$set"] = {
-            "content": content,
-            "size": size,
+            "content": json_content,
+            "size": len(content.raw_content),
             "item_content": message.get("item_content"),
             "item_type": message.get("item_type"),
             "channel": message.get("channel"),
@@ -340,18 +341,17 @@ async def get_chaindata(messages, bulk_threshold=2000):
         return content
 
 
-async def get_chaindata_messages(chaindata, context, seen_ids: Optional[List]=None):
-    if chaindata is None or chaindata == -1:
-        LOGGER.info("Got bad data in tx %r" % context)
-        return -1
+async def get_chaindata_messages(
+    chaindata: Dict, context, seen_ids: Optional[List] = None
+):
 
     protocol = chaindata.get("protocol", None)
     version = chaindata.get("version", None)
     if protocol == "aleph" and version == 1:
         messages = chaindata["content"]["messages"]
         if not isinstance(messages, list):
-            LOGGER.info("Got bad data in tx %r" % context)
-            messages = -1
+            error_msg = f"Got bad data in tx {context!r}"
+            raise InvalidContent(error_msg)
         return messages
 
     if protocol == "aleph-offchain" and version == 1:
@@ -365,37 +365,41 @@ async def get_chaindata_messages(chaindata, context, seen_ids: Optional[List]=No
                 LOGGER.debug("Adding to seen_ids")
                 seen_ids.append(chaindata["content"])
         try:
-            content, size = await get_json(chaindata["content"], timeout=10)
+            content = await get_json(chaindata["content"], timeout=10)
+        except AlephStorageException:
+            raise
         except Exception:
-            LOGGER.exception(
-                "Can't get content of offchain object %r" % chaindata["content"]
-            )
-            return None
-        if content is None:
-            return None
+            error_msg = f"Can't get content of offchain object {chaindata['context']!r}"
+            LOGGER.exception(error_msg)
+            raise ContentCurrentlyUnavailable(error_msg)
 
-        messages = await get_chaindata_messages(content, context)
-        if messages is not None and messages != -1:
-            LOGGER.info("Got bulk data with %d items" % len(messages))
-            if app["config"].ipfs.enabled.value:
-                # wait for 4 seconds to try to pin that
-                try:
-                    LOGGER.info(f"chaindatax {chaindata}")
-                    await PermanentPin.register(multihash=chaindata["content"],
-                                                reason={
-                                                    "source": "chaindata",
-                                                    "protocol": chaindata["protocol"],
-                                                    "version": chaindata["version"],
-                                                })
-                    await asyncio.wait_for(pin_hash(chaindata["content"]), timeout=4.0)
-                except asyncio.TimeoutError:
-                    LOGGER.warning(f"Can't pin hash {chaindata['content']}")
-        else:
+        try:
+            messages = await get_chaindata_messages(content.value, context)
+        except AlephStorageException:
             LOGGER.debug("Got no message")
+            raise
+
+        LOGGER.info("Got bulk data with %d items" % len(messages))
+        if app["config"].ipfs.enabled.value:
+            # wait for 4 seconds to try to pin that
+            try:
+                LOGGER.info(f"chaindatax {chaindata}")
+                await PermanentPin.register(
+                    multihash=chaindata["content"],
+                    reason={
+                        "source": "chaindata",
+                        "protocol": chaindata["protocol"],
+                        "version": chaindata["version"],
+                    },
+                )
+                await asyncio.wait_for(pin_hash(chaindata["content"]), timeout=4.0)
+            except asyncio.TimeoutError:
+                LOGGER.warning(f"Can't pin hash {chaindata['content']}")
         return messages
     else:
-        LOGGER.info("Got unknown protocol/version object in tx %r" % context)
-        return -1
+        error_msg = f"Got unknown protocol/version object in tx {context!r}"
+        LOGGER.info(error_msg)
+        raise InvalidContent(error_msg)
 
 
 async def incoming_chaindata(content, context):
