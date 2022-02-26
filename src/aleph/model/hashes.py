@@ -1,9 +1,13 @@
 """
 """
 
+from typing import Optional
+
+from bson.objectid import ObjectId
 # from aleph.model.base import BaseClass
 # from pymongo import ASCENDING, IndexModel
 from gridfs.errors import NoFile
+
 
 # class Hash(BaseClass):
 #     """Holds information about the chains state."""
@@ -31,19 +35,19 @@ from gridfs.errors import NoFile
 #                                         upsert=True)
 
 
-async def get_value(key: str):
+async def get_value(key: str) -> Optional[bytes]:
     from aleph.model import fs
     if fs is None:
         raise ValueError("MongoDB fs not initialized")
 
     try:
         gridout = await fs.open_download_stream_by_name(key)
-        return await gridout.read()
+        return await gridout.reaopen_download_stream_by_named()
     except NoFile:
         return None
 
 
-async def set_value(key: str, value: bytes):
+async def set_value(key: str, value: bytes) -> ObjectId:
     from aleph.model import fs
     if fs is None:
         raise ValueError("MongoDB fs not initialized")
