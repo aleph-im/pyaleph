@@ -83,8 +83,7 @@ async def incoming(
 
     hash = message["item_hash"]
     sender = message["sender"]
-    chain = chain_name
-    ids_key = (hash, sender, chain)
+    ids_key = (hash, sender, chain_name)
 
     if chain_name and tx_hash and height and seen_ids is not None:
         if ids_key in seen_ids.keys():
