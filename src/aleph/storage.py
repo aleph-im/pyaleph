@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 from hashlib import sha256
-from typing import Dict, IO, Optional
+from typing import Any, Dict, IO, Literal, Optional, Union, cast
 
 from aleph.services.filestore import get_value, set_value
 from aleph.services.ipfs.storage import add_bytes as add_ipfs_bytes
@@ -52,7 +52,7 @@ async def get_message_content(message: Dict):
 
 
 async def get_hash_content(
-    hash,
+    hash: str,
     engine: ItemType = ItemType.IPFS,
     timeout: int = 2,
     tries: int = 1,
@@ -64,7 +64,7 @@ async def get_hash_content(
     ipfs_enabled = app["config"].ipfs.enabled.value
     enabled_clients = app["config"].p2p.clients.value
     # content = await loop.run_in_executor(None, get_value, hash)
-    content = await get_value(hash)
+    content: Optional[Union[Literal[-1], bytes]] = await get_value(hash)
     if content is None:
         if use_network:
             if "protocol" in enabled_clients:
@@ -108,6 +108,9 @@ async def get_hash_content(
 
         if content is not None and content != -1 and store_value:
             LOGGER.debug(f"Storing content for{hash}")
+            # This cast is required because mypy does not understand that content
+            # cannot be int anymore
+            content = cast(bytes, content)
             await set_value(hash, content)
     else:
         LOGGER.debug(f"Using stored content for {hash}")
@@ -115,7 +118,7 @@ async def get_hash_content(
     return content
 
 
-async def get_json(hash, engine=ItemType.IPFS, timeout=2, tries=1):
+async def get_json(hash: str, engine: ItemType = ItemType.IPFS, timeout: int = 2, tries: int = 1):
     content = await get_hash_content(hash, engine=engine, timeout=timeout, tries=tries)
     size = 0
     if content is not None and content != -1:
@@ -128,11 +131,11 @@ async def get_json(hash, engine=ItemType.IPFS, timeout=2, tries=1):
     return content, size
 
 
-async def pin_hash(chash, timeout: int = 2, tries: int = 1):
+async def pin_hash(chash: str, timeout: int = 2, tries: int = 1):
     return await ipfs_pin_add(chash, timeout=timeout, tries=tries)
 
 
-async def add_json(value, engine: ItemType = ItemType.IPFS) -> str:
+async def add_json(value: Any, engine: ItemType = ItemType.IPFS) -> str:
     # TODO: determine which storage engine to use
     content = await run_in_executor(None, json.dumps, value)
     content = content.encode("utf-8")
@@ -149,7 +152,7 @@ async def add_json(value, engine: ItemType = ItemType.IPFS) -> str:
     return chash
 
 
-async def add_file(fileobject: IO, filename: Optional[str] = None, engine: ItemType = ItemType.IPFS):
+async def add_file(fileobject: IO, filename: Optional[str] = None, engine: ItemType = ItemType.IPFS) -> str:
 
     if engine == ItemType.IPFS:
         output = await ipfs_add_file(fileobject, filename)

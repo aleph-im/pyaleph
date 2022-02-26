@@ -2,12 +2,13 @@
 HTTP connection to standard rest API.
 """
 
+import asyncio
 import base64
 import logging
 from random import sample
+from typing import Optional
 
 import aiohttp
-import asyncio
 
 from . import singleton
 
@@ -44,7 +45,9 @@ async def api_get_request(base_uri, method, timeout=1):
     return result
 
 
-async def get_peer_hash_content(base_uri, item_hash, timeout=1):
+async def get_peer_hash_content(
+    base_uri: str, item_hash: str, timeout: int = 1
+) -> Optional[bytes]:
     result = None
     item = await api_get_request(base_uri, f"storage/{item_hash}", timeout=timeout)
     if item is not None and item["status"] == "success" and item["content"] is not None:
@@ -56,7 +59,7 @@ async def get_peer_hash_content(base_uri, item_hash, timeout=1):
     return result
 
 
-async def request_hash(item_hash, timeout=1):
+async def request_hash(item_hash: str, timeout: int = 1) -> Optional[bytes]:
     if singleton.api_servers is None:
         return None
 

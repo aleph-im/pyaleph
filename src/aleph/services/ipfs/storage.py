@@ -2,6 +2,7 @@ import asyncio
 import concurrent
 import json
 import logging
+from typing import Optional
 
 import aiohttp
 import aioipfs
@@ -14,7 +15,7 @@ LOGGER = logging.getLogger("IPFS.STORAGE")
 MAX_LEN = 1024 * 1024 * 100
 
 
-async def get_ipfs_content(hash, timeout=1, tries=1):
+async def get_ipfs_content(hash: str, timeout: int = 1, tries: int = 1) -> Optional[bytes]:
     try_count = 0
     result = None
     while (result is None) and (try_count < tries):
@@ -60,7 +61,7 @@ async def get_json(hash, timeout=1, tries=1):
     return result
 
 
-async def add_json(value):
+async def add_json(value: bytes) -> str:
     # loop = asyncio.get_event_loop()
     api = await get_ipfs_api(timeout=5)
     # try:
@@ -71,7 +72,7 @@ async def add_json(value):
     return result["Hash"]
 
 
-async def add_bytes(value, cid_version=0) -> str:
+async def add_bytes(value: bytes, cid_version: int = 0) -> str:
     # loop = asyncio.get_event_loop()
     api = await get_ipfs_api(timeout=5)
     # try:
@@ -82,7 +83,7 @@ async def add_bytes(value, cid_version=0) -> str:
     return result["Hash"]
 
 
-async def pin_add(hash, timeout=2, tries=1):
+async def pin_add(hash: str, timeout: int = 2, tries: int = 1):
     # loop = asyncio.get_event_loop()
     try_count = 0
     result = None
