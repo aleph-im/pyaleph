@@ -1,20 +1,10 @@
 import json
 
 import pytest
-from configmanager import Config
 
-from aleph.config import get_defaults
-from aleph.storage import ContentSource, get_hash_content, get_json, get_message_content
 from aleph.exceptions import InvalidContent, ContentCurrentlyUnavailable
+from aleph.storage import ContentSource, get_hash_content, get_json, get_message_content
 from aleph.types import ItemType
-from aleph.web import app
-
-
-@pytest.fixture
-def mock_config(mocker):
-    config = Config(get_defaults())
-    mock_config = mocker.patch.dict(app, {"config": config})
-    return mock_config
 
 
 @pytest.mark.asyncio
