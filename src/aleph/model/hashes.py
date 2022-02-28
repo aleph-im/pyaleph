@@ -42,7 +42,7 @@ async def get_value(key: str) -> Optional[bytes]:
 
     try:
         gridout = await fs.open_download_stream_by_name(key)
-        return await gridout.reaopen_download_stream_by_named()
+        return await gridout.read()
     except NoFile:
         return None
 
