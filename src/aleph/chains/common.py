@@ -64,6 +64,35 @@ class IncomingStatus(IntEnum):
     MESSAGE_HANDLED = 1
 
 
+async def mark_message_for_retry(
+    message: Dict,
+    chain_name: Optional[str],
+    tx_hash: Optional[str],
+    height: Optional[int],
+    check_message: bool,
+    retrying: bool,
+    existing_id,
+):
+    if not retrying:
+        await PendingMessage.collection.insert_one(
+            {
+                "message": message,
+                "source": dict(
+                    chain_name=chain_name,
+                    tx_hash=tx_hash,
+                    height=height,
+                    check_message=check_message,  # should we store this?
+                ),
+            }
+        )
+    else:
+        LOGGER.debug(f"Incrementing for {existing_id}")
+        result = await PendingMessage.collection.update_one(
+            filter={"_id": ObjectId(existing_id)}, update={"$inc": {"retries": 1}}
+        )
+        LOGGER.debug(f"Update result {result}")
+
+
 async def incoming(
         message,
         chain_name: Optional[str] = None,
@@ -180,25 +209,15 @@ async def incoming(
 
         if content is None:
             LOGGER.info("Can't get content of object %r, retrying later." % hash)
-            if not retrying:
-                await PendingMessage.collection.insert_one(
-                    {
-                        "message": message,
-                        "source": dict(
-                            chain_name=chain_name,
-                            tx_hash=tx_hash,
-                            height=height,
-                            check_message=check_message,  # should we store this?
-                        ),
-                    }
-                )
-            else:
-                LOGGER.debug(f"Incrementing for {existing_id}")
-                result = await PendingMessage.collection.update_one(
-                    filter={"_id": ObjectId(existing_id)},
-                    update={"$inc": {"retries": 1}}
-                )
-                LOGGER.debug(f"Update result {result}")
+            await mark_message_for_retry(
+                message=message,
+                chain_name=chain_name,
+                tx_hash=tx_hash,
+                height=height,
+                check_message=check_message,
+                retrying=retrying,
+                existing_id=existing_id,
+            )
             return IncomingStatus.RETRYING_LATER
 
         if content == -1:
@@ -237,28 +256,18 @@ async def incoming(
 
         if handling_result is None:
             LOGGER.debug("Message type handler has failed, retrying later.")
-            if not retrying:
-                await PendingMessage.collection.insert_one(
-                    {
-                        "message": message,
-                        "source": dict(
-                            chain_name=chain_name,
-                            tx_hash=tx_hash,
-                            height=height,
-                            check_message=check_message,  # should we store this?
-                        ),
-                    }
-                )
-            else:
-                LOGGER.debug(f"Incrementing for {existing_id}")
-                result = await PendingMessage.collection.update_one(
-                    filter={"_id": ObjectId(existing_id)},
-                    update={"$inc": {"retries": 1}}
-                )
-                LOGGER.debug(f"Update result {result}")
+            await mark_message_for_retry(
+                message=message,
+                chain_name=chain_name,
+                tx_hash=tx_hash,
+                height=height,
+                check_message=check_message,
+                retrying=retrying,
+                existing_id=existing_id,
+            )
             return IncomingStatus.RETRYING_LATER
 
-        if handling_result != True:
+        if not handling_result:
             LOGGER.warning(
                 "Message type handler has failed permanently for "
                 "%r, won't retry." % hash
