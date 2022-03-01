@@ -6,6 +6,7 @@ from aioipfs.exceptions import NotPinnedError
 from aleph_message.models import ForgetMessage, MessageType
 
 from aleph.model.filepin import PermanentPin
+from aleph_message.models import StoreContent
 from aleph.model.hashes import delete_value
 from aleph.model.messages import Message
 from aleph.services.ipfs.common import get_ipfs_api
@@ -87,16 +88,13 @@ async def is_allowed_to_forget(target: Dict, by: ForgetMessage) -> bool:
     return False
 
 
-async def forget_if_allowed(target_hash: str, forget_message: ForgetMessage) -> None:
+async def forget_if_allowed(target_message: Dict, forget_message: ForgetMessage) -> None:
     """Forget a message.
 
     Remove the ‘content’ and ‘item_content’ sections of the targeted messages.
     Add a field ‘removed_by’ that references to the processed FORGET message.
     """
-    filter = {
-        "item_hash": target_hash,
-    }
-    target_message = await Message.collection.find_one(filter={"item_hash": target_hash})
+    target_hash = target_message["item_hash"]
 
     if not target_message:
         logger.info(f"Message to forget could not be found with id {target_hash}")
@@ -114,28 +112,21 @@ async def forget_if_allowed(target_hash: str, forget_message: ForgetMessage) -> 
         logger.debug(f"Message content already forgotten: {target_message}")
         return
 
-    # Only present for Store messages. Used after the content has been removed.
-    storage_hash: Optional[str] = target_message.get("content", {}).get("item_hash")
-    storage_type_str: Optional[str] = target_message.get("content", {}).get("item_type")
-
-    if not storage_type_str:
-        raise ValueError("Could not determine storage type")
-
-    storage_type = ItemType(storage_type_str)
-
     logger.debug(f"Removing content for {target_hash}")
     updates = {
         "content": None,
         "item_content": None,
         "forgotten_by": [forget_message.item_hash],
     }
-    await Message.collection.update_many(filter=filter, update={"$set": updates})
+    await Message.collection.update_many(filter={"item_hash": target_hash}, update={"$set": updates})
+
     # TODO QUESTION: Should the removal be added to the CappedMessage collection for websocket
     #  updates ? Forget messages should already be published there, but the logic to validate
     #  them could be centralized here.
 
-    if storage_hash and target_message.get("type") == MessageType.store:
-        await garbage_collect(storage_hash, storage_type)  # Or create background task ?
+    if target_message.get("type") == MessageType.store:
+        store_content = StoreContent(**target_message["content"])
+        await garbage_collect(store_content.item_hash, store_content.item_type)
 
 
 async def handle_forget_message(message: Dict, content: Dict):
@@ -144,5 +135,11 @@ async def handle_forget_message(message: Dict, content: Dict):
     logger.debug(f"Handling forget message {forget_message.item_hash}")
 
     for target_hash in forget_message.content.hashes:
-        await forget_if_allowed(target_hash=target_hash, forget_message=forget_message)
+        target_message = await Message.collection.find_one(filter={"item_hash": target_hash})
+        if target_message is None:
+            logger.info(f"Message to forget could not be found with id {target_hash}")
+            continue
+
+        await forget_if_allowed(target_message=target_message, forget_message=forget_message)
+
     return True
