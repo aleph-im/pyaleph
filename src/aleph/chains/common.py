@@ -213,8 +213,9 @@ async def incoming(
             LOGGER.warning("Can't get content of object %r, won't retry." % hash)
             return IncomingStatus.FAILED_PERMANENTLY
 
-        except (ContentCurrentlyUnavailable, Exception):
-            LOGGER.exception("Can't get content of object %r" % hash)
+        except (ContentCurrentlyUnavailable, Exception) as e:
+            if not isinstance(ContentCurrentlyUnavailable, e):
+                LOGGER.exception("Can't get content of object %r" % hash)
             await mark_message_for_retry(
                 message=message,
                 chain_name=chain_name,
