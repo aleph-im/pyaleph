@@ -214,7 +214,7 @@ async def incoming(
             return IncomingStatus.FAILED_PERMANENTLY
 
         except (ContentCurrentlyUnavailable, Exception) as e:
-            if not isinstance(ContentCurrentlyUnavailable, e):
+            if not isinstance(e, ContentCurrentlyUnavailable):
                 LOGGER.exception("Can't get content of object %r" % hash)
             await mark_message_for_retry(
                 message=message,
