@@ -1,0 +1,21 @@
+{
+    "address": "0xcf76fdc3bd0f03df1d33f143453be59f8c99c0e8",
+    "ETH": {
+        "price": {
+            "rate": 2474.6209699842148,
+            "diff": -5.56,
+            "diff7d": -12.64,
+            "ts": 1646686320,
+            "marketCapUsd": 296622094992.836,
+            "availableSupply": 119865667.749,
+            "volume24h": 14438724002.808533,
+            "diff30d": -17.50018113601655,
+            "volDiff1": 64.58323983530946,
+            "volDiff7": -21.553582265449293,
+            "volDiff30": -7.574113235825621
+        },
+        "balance": 0,
+        "rawBalance": "0"
+    },
+    "countTxs": 0
+}

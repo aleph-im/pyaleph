@@ -12,6 +12,7 @@ from aleph.services.ipfs.common import get_ipfs_api
 from aleph.services.ipfs.pubsub import pub as pub_ipfs
 from aleph.services.p2p.pubsub import publish as pub_p2p
 from aleph.types import Protocol
+from aleph.chains.balance.ethplorer import EthplorerBalanceChecker
 from aleph.web import app
 
 LOGGER = logging.getLogger("web.controllers.p2p")
@@ -45,29 +46,8 @@ async def get_user_usage(address: str) -> float:
 
 async def get_user_balance(address: str) -> float:
     # TODO: Support ALEPH on chains other than ETH
-    # TODO: Check if using the freekey api key is acceptable
-    API_url = f"https://api.ethplorer.io/getAddressInfo/{address}?apiKey=freekey"
-    async with aiohttp.ClientSession() as client:
-        async with client.get(API_url) as resp:
-            resp.raise_for_status()
-            result = await resp.json()
-            LOGGER.info(json.dumps(result, indent=4))
-            for token in result.get("tokens", ()):
-                if token["tokenInfo"]["address"] == "0x27702a26126e0b3702af63ee09ac4d1a084ef628":
-                    assert token["tokenInfo"]["symbol"] == "ALEPH"
-                    balance = int(token["rawBalance"])
-                    decimals = token["tokenInfo"]["decimals"]
-                    decimals = int(decimals)
-                    # Check value consistency:
-                    if balance < 0:
-                        raise ValueError("Balance cannot be negative")
-                    if decimals != int(decimals):
-                        raise ValueError("Decimals must be an integer")
-                    if decimals < 1:
-                        raise ValueError("Decimals must be greater than 1")
-                    return balance / 10 ** decimals
-            else:
-                return 0
+    balance_checker = EthplorerBalanceChecker(api_key="freekey")
+    return await balance_checker.get_balance(address)
 
 
 def balance_to_quota(balance: float) -> float:
