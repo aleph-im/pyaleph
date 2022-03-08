@@ -22,7 +22,7 @@ async def get_ipfs_content(hash: str, timeout: int = 1, tries: int = 1) -> Optio
         try_count += 1
         try:
             api = await get_ipfs_api(timeout=5)
-            result = await asyncio.wait_for(api.cat(hash, length=MAX_LEN), 5)
+            result = await asyncio.wait_for(api.cat(hash, length=MAX_LEN), timeout=timeout)
             if len(result) == MAX_LEN:
                 result = None
                 break
