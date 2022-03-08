@@ -36,20 +36,14 @@ async def handle_new_storage(message, content):
         return -1  # not allowed, ignore.
 
     is_folder = False
-    try:
-        item_hash = content["item_hash"]
-    except KeyError as e:
-        error_msg = f"Could not load item_hash / message: {message} - content {content}"
-        LOGGER.error(error_msg)
-        raise Exception(error_msg) from e
-
+    item_hash = content["item_hash"]
     ipfs_enabled = app["config"].ipfs.enabled.value
     do_standard_lookup = True
     size = 0
 
     if engine == ItemType.IPFS and ipfs_enabled:
         if ItemType.from_hash(item_hash) != ItemType.IPFS:
-            LOGGER.warning(f"Invalid IPFS hash: '{item_hash}'")
+            LOGGER.warning("Invalid IPFS hash: '%s'", item_hash)
             raise UnknownHashError(f"Invalid IPFS hash: '{item_hash}'")
 
         api = await get_ipfs_api(timeout=5)

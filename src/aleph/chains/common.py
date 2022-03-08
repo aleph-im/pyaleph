@@ -293,7 +293,7 @@ async def incoming(
         # message.update(new_values)
         updates["$set"] = {
             "content": json_content,
-            "size": len(content.raw_content),
+            "size": len(content.raw_value),
             "item_content": message.get("item_content"),
             "item_type": message.get("item_type"),
             "channel": message.get("channel"),
@@ -368,10 +368,11 @@ async def get_chaindata_messages(
         try:
             content = await get_json(chaindata["content"], timeout=10)
         except AlephStorageException:
+            # Pass the exception to the caller
             raise
         except Exception:
             error_msg = f"Can't get content of offchain object {chaindata['context']!r}"
-            LOGGER.exception(error_msg)
+            LOGGER.exception("%s", error_msg)
             raise ContentCurrentlyUnavailable(error_msg)
 
         try:
@@ -399,7 +400,7 @@ async def get_chaindata_messages(
         return messages
     else:
         error_msg = f"Got unknown protocol/version object in tx {context!r}"
-        LOGGER.info(error_msg)
+        LOGGER.info("%s", error_msg)
         raise InvalidContent(error_msg)
 
 

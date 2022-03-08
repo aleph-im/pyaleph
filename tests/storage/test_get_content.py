@@ -45,7 +45,7 @@ async def test_hash_content_from_network(mocker, mock_config, use_ipfs: bool):
 
     mocker.patch("aleph.storage.get_value", return_value=None)
     mocker.patch("aleph.storage.p2p_http_request_hash", return_value=expected_content)
-    mocker.patch("aleph.storage.add_ipfs_bytes", return_value=content_hash)
+    mocker.patch("aleph.storage.verify_content_hash")
 
     content = await get_hash_content(
         content_hash, use_network=True, use_ipfs=use_ipfs, store_value=False
@@ -66,7 +66,7 @@ async def test_hash_content_from_network_store_value(
 
     mocker.patch("aleph.storage.get_value", return_value=None)
     mocker.patch("aleph.storage.p2p_http_request_hash", return_value=expected_content)
-    mocker.patch("aleph.storage.add_ipfs_bytes", return_value=content_hash)
+    mocker.patch("aleph.storage.verify_content_hash", return_value=content_hash)
     set_value_mock = mocker.patch("aleph.storage.set_value")
 
     content = await get_hash_content(
@@ -87,10 +87,11 @@ async def test_hash_content_from_network_invalid_hash(mocker, mock_config):
 
     mocker.patch("aleph.storage.get_value", return_value=None)
     mocker.patch("aleph.storage.p2p_http_request_hash", return_value=expected_content)
+    mocker.patch("aleph.storage.get_cid_version", return_value=1)
     mocker.patch("aleph.storage.add_ipfs_bytes", return_value="not-the-same-hash")
 
     with pytest.raises(InvalidContent):
-        content = await get_hash_content(
+        _content = await get_hash_content(
             content_hash, use_network=True, use_ipfs=False, store_value=False
         )
 
@@ -102,6 +103,7 @@ async def test_hash_content_from_ipfs(mocker, mock_config):
 
     mocker.patch("aleph.storage.get_value", return_value=None)
     mocker.patch("aleph.storage.p2p_http_request_hash", return_value=expected_content)
+    mocker.patch("aleph.storage.get_cid_version", return_value=1)
     mocker.patch(
         "aleph.storage.add_ipfs_bytes", return_value="not-the-hash-you're-looking-for"
     )
@@ -122,7 +124,7 @@ async def test_get_valid_json(mocker, mock_config):
     content = await get_json(content_hash)
     assert content.value == json_content
     assert content.hash == content_hash
-    assert content.raw_content == json_bytes
+    assert content.raw_value == json_bytes
 
 
 @pytest.mark.asyncio
@@ -155,7 +157,7 @@ async def test_get_inline_content(mock_config):
     content = await get_message_content(message)
     assert content.value == json_content
     assert content.hash == content_hash
-    assert content.raw_content == json_bytes
+    assert content.raw_value == json_bytes
 
 
 @pytest.mark.asyncio
@@ -178,7 +180,7 @@ async def test_get_inline_content_full_message():
     content = await get_message_content(msg)
     item_content = content.value
     print(item_content)
-    assert len(content.raw_content) == len(msg['item_content'])
+    assert len(content.raw_value) == len(msg['item_content'])
     assert item_content['key'] == 'metrics'
     assert item_content['address'] == 'TTapAav8g3fFjxQQCjwPd4ERPnai9oya'
     assert 'memory' in item_content['content']
