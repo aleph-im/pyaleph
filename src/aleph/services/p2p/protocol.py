@@ -202,12 +202,12 @@ async def incoming_channel(p2p_client: P2PClient, topic: str) -> None:
                     LOGGER.exception("Can't handle message")
 
         except IncompleteRead:
-            incomplete_read_counter += 1
-            if incomplete_read_counter >= incomplete_read_threshold:
+            if (incomplete_read_counter % incomplete_read_threshold) == 0:
                 LOGGER.exception(
                     "Incomplete read (%d times), reconnecting. Try to restart the application.",
                     incomplete_read_counter,
                 )
-                incomplete_read_counter = 0
+            incomplete_read_counter += 1
+
         except Exception:
             LOGGER.exception("Exception in pubsub, reconnecting.")
