@@ -42,7 +42,7 @@ async def pub(topic: str, message: Union[str, bytes]):
 
 async def incoming_channel(topic) -> None:
     from aleph.network import incoming_check
-    from aleph.chains.common import incoming
+    from aleph.chains.common import delayed_incoming
 
     # When using some deployment strategies such as docker-compose,
     # the IPFS service may not be ready by the time this function
@@ -55,10 +55,13 @@ async def incoming_channel(topic) -> None:
             async for mvalue in sub(topic):
                 try:
                     message = await incoming_check(mvalue)
-                    LOGGER.debug("New message %r" % message)
-                    asyncio.create_task(incoming(message, bulk_operation=False))
                 except InvalidMessageError:
                     LOGGER.warning(f"Invalid message {mvalue}")
+                    continue
+
+                LOGGER.debug("New message %r" % message)
+                await delayed_incoming(message)
+
 
                 # Raise all connection errors after one has succeeded.
                 trials_before_exception = 0

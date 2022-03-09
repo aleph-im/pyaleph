@@ -47,7 +47,12 @@ async def mark_confirmed_data(chain_name, tx_hash, height):
     }
 
 
-async def delayed_incoming(message, chain_name=None, tx_hash=None, height=None):
+async def delayed_incoming(
+    message: Optional[Dict],
+    chain_name: Optional[str] = None,
+    tx_hash: Optional[str] = None,
+    height: Optional[int] = None,
+):
     if message is None:
         return
     await PendingMessage.collection.insert_one(
