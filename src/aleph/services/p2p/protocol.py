@@ -6,6 +6,7 @@ import random
 from typing import Any, Dict, Optional, Set
 
 from anyio.abc import SocketStream
+from anyio.exceptions import IncompleteRead
 from p2pclient import Client as P2PClient
 from p2pclient.datastructures import StreamInfo
 from p2pclient.exceptions import ControlFailure
@@ -106,7 +107,9 @@ class AlephProtocol:
         random.shuffle(peers)
 
         for peer in peers:
-            stream_info, stream = await self.p2p_client.stream_open(peer, (self.PROTOCOL_ID,))
+            stream_info, stream = await self.p2p_client.stream_open(
+                peer, (self.PROTOCOL_ID,)
+            )
             msg = json.dumps(request_structure).encode("UTF-8")
             try:
                 await stream.send_all(msg)
@@ -170,6 +173,12 @@ async def incoming_channel(p2p_client: P2PClient, topic: str) -> None:
 
     stream = await subscribe(p2p_client, topic)
 
+    # The communication with the P2P daemon sometimes fails repeatedly, spamming
+    # IncompleteRead exceptions. We still want to log these to Sentry without sending
+    # thousands of logs.
+    incomplete_read_threshold = 30000
+    incomplete_read_counter = 0
+
     while True:
         try:
             async for pubsub_message in receive_pubsub_messages(stream):
@@ -188,5 +197,13 @@ async def incoming_channel(p2p_client: P2PClient, topic: str) -> None:
                 except Exception:
                     LOGGER.exception("Can't handle message")
 
+        except IncompleteRead:
+            incomplete_read_counter += 1
+            if incomplete_read_counter >= incomplete_read_threshold:
+                LOGGER.exception(
+                    "Incomplete read (%d times), reconnecting. Try to restart the application.",
+                    incomplete_read_counter,
+                )
+                incomplete_read_counter = 0
         except Exception:
             LOGGER.exception("Exception in pubsub, reconnecting.")
