@@ -36,7 +36,7 @@ async def initialize_host(
 
     tasks = [
         reconnect_p2p_job(config=config, p2p_client=p2p_client, streamer=protocol),
-        tidy_http_peers_job(),
+        tidy_http_peers_job(config=config),
     ]
     if listen:
         from aleph.web import app
