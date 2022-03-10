@@ -4,6 +4,7 @@ import logging
 from aiohttp import web
 from aiohttp.http_exceptions import HttpBadRequest
 
+from aleph.exceptions import AlephStorageException
 from aleph.handlers.forget import count_file_references
 from aleph.storage import add_json, get_hash_content, add_file
 from aleph.types import ItemType, UnknownHashError
@@ -55,36 +56,33 @@ def prepare_content(content):
 
 
 async def get_hash(request):
-    result = {"status": "error", "reason": "unknown"}
     item_hash = request.match_info.get("hash", None)
-
+    if item_hash is None:
+        return web.HTTPBadRequest(text="No hash provided")
     try:
         engine = ItemType.from_hash(item_hash)
     except UnknownHashError as e:
         logger.warning(e.args[0])
         return web.HTTPBadRequest(text="Invalid hash provided")
 
-    if item_hash is not None:
-        value = await get_hash_content(
+    try:
+        hash_content = await get_hash_content(
             item_hash,
             use_network=False,
             use_ipfs=True,
             engine=engine,
             store_value=False,
         )
+    except AlephStorageException:
+        return web.HTTPNotFound(text=f"No file found for hash {item_hash}")
 
-        if value is not None and value != -1:
-            content = await run_in_executor(None, prepare_content, value)
-            result = {
-                "status": "success",
-                "hash": item_hash,
-                "engine": engine,
-                "content": content,
-            }
-        else:
-            return web.HTTPNotFound(text=f"No file found for hash {item_hash}")
-    else:
-        return web.HTTPBadRequest(text="No hash provided")
+    content = await run_in_executor(None, prepare_content, hash_content.value)
+    result = {
+        "status": "success",
+        "hash": item_hash,
+        "engine": engine,
+        "content": content,
+    }
 
     response = await run_in_executor(None, web.json_response, result)
     response.enable_compression()
@@ -103,20 +101,20 @@ async def get_raw_hash(request):
         raise HttpBadRequest(message="Invalid hash")
 
     if item_hash is not None:
-        value = await get_hash_content(
-            item_hash,
-            use_network=False,
-            use_ipfs=True,
-            engine=engine,
-            store_value=False,
-        )
+        try:
+            content = await get_hash_content(
+                item_hash,
+                use_network=False,
+                use_ipfs=True,
+                engine=engine,
+                store_value=False,
+            )
+        except AlephStorageException as e:
+            raise web.HTTPNotFound(text="not found") from e
 
-        if value is not None and value != -1:
-            response = web.Response(body=value)
-            response.enable_compression()
-            return response
-        else:
-            raise web.HTTPNotFound(text="not found")
+        response = web.Response(body=content.value)
+        response.enable_compression()
+        return response
     else:
         raise web.HTTPBadRequest(text="no hash provided")
 

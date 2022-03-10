@@ -62,3 +62,13 @@ async def get_public_address():
     for address in addresses:
         if "127.0.0.1" in address and "/tcp" in address and "/p2p" in address:
             return address.replace("127.0.0.1", public_ip)
+
+
+def get_cid_version(ipfs_hash: str) -> int:
+    if ipfs_hash.startswith("Qm") and 44 <= len(ipfs_hash) <= 46:  # CIDv0
+        return 0
+
+    if ipfs_hash.startswith("bafy") and len(ipfs_hash) == 59:  # CIDv1
+        return 1
+
+    raise ValueError(f"Not a IPFS hash: '{ipfs_hash}'.")
