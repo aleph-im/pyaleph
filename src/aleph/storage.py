@@ -55,7 +55,7 @@ class RawContent(StoredContent):
 
 
 @dataclass
-class JsonContent(StoredContent):
+class MessageContent(StoredContent):
     value: Any
     raw_value: bytes
 
@@ -66,7 +66,7 @@ async def json_async_loads(s: AnyStr):
     return await run_in_executor(None, json.loads, s)
 
 
-async def get_message_content(message: Dict) -> JsonContent:
+async def get_message_content(message: Dict) -> MessageContent:
     item_type: str = message.get("item_type", ItemType.IPFS)
     item_hash = message["item_hash"]
 
@@ -84,7 +84,7 @@ async def get_message_content(message: Dict) -> JsonContent:
             LOGGER.warning(error_msg)
             raise InvalidContent(error_msg)
 
-        return JsonContent(
+        return MessageContent(
             hash=item_hash,
             source=ContentSource.INLINE,
             value=item_content,
@@ -217,7 +217,7 @@ async def get_hash_content(
 
 async def get_json(
     content_hash: str, engine=ItemType.IPFS, timeout: int = 2, tries: int = 1
-) -> JsonContent:
+) -> MessageContent:
     content = await get_hash_content(
         content_hash, engine=engine, timeout=timeout, tries=tries
     )
@@ -228,7 +228,7 @@ async def get_json(
         LOGGER.exception("Can't decode JSON")
         raise InvalidContent("Cannot decode JSON") from e
 
-    return JsonContent(
+    return MessageContent(
         hash=content.hash,
         value=json_content,
         source=content.source,
