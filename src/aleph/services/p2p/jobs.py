@@ -41,16 +41,14 @@ async def check_peer(peers: List[str], peer_uri: str, timeout: int = 1) -> None:
         LOGGER.exception("Can't contact peer %r" % peer_uri)
 
 
-async def tidy_http_peers_job(config: Optional[Config] = None) -> None:
+async def tidy_http_peers_job(config: Config) -> None:
     """Check that HTTP peers are reachable, else remove them from the list"""
-    from aleph.web import app
     from aleph.services.p2p import singleton
     from aleph.services.utils import get_IP
 
     my_ip = await get_IP()
-    if config is None:
-        config = app["config"]
     await asyncio.sleep(2)
+
     while True:
         try:
             peers: List[str] = list()
