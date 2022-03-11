@@ -21,7 +21,6 @@ from aleph.types import ItemType
 from aleph.utils import run_in_executor, get_sha256
 from aleph.web import app
 from aleph.services.ipfs.common import get_cid_version
-from functools import partial
 
 LOGGER = logging.getLogger("STORAGE")
 
