@@ -190,10 +190,11 @@ def main(args):
         # This dictionary is shared between all the process so we can expose some internal stats
         # handle with care as it's shared between process.
         shared_stats = shared_memory_manager.dict()
+        api_servers = shared_memory_manager.list()
         if not args.no_jobs:
             LOGGER.debug("Creating jobs")
             tasks += start_jobs(
-                config, shared_stats=shared_stats, use_processes=True
+                config, shared_stats=shared_stats, api_servers=api_servers, use_processes=True
             )
 
         loop = asyncio.get_event_loop()
@@ -210,7 +211,7 @@ def main(args):
         tasks += connector_tasks(config, outgoing=(not args.no_commit))
         LOGGER.debug("Initialized listeners")
 
-        # Need to be passed here otherwise it get lost in the fork
+        # Need to be passed here otherwise it gets lost in the fork
         from aleph.services.p2p import manager as p2p_manager
 
         extra_web_config = {"public_adresses": p2p_manager.public_adresses}

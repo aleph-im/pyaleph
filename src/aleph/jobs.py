@@ -2,7 +2,7 @@ import asyncio
 import logging
 from logging import getLogger
 from multiprocessing import Process
-from multiprocessing.managers import SyncManager, RemoteError
+from multiprocessing.managers import RemoteError
 from typing import Coroutine, List, Dict, Optional, Tuple
 
 import aioipfs
@@ -17,17 +17,10 @@ from aleph.model.p2p import get_peers
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.network import check_message
 from aleph.services.ipfs.common import connect_ipfs_peer
+from aleph.services.p2p import singleton
 from aleph.types import ItemType, InvalidMessageError
 
 LOGGER = getLogger("JOBS")
-
-MANAGER = None
-
-RETRY_LOCK = asyncio.Lock()
-
-
-class DBManager(SyncManager):
-    pass
 
 
 async def handle_pending_message(
@@ -105,9 +98,7 @@ async def retry_messages_job(shared_stats: Dict):
             shared_stats["retry_messages_job_gtasks"] = len(gtasks)
             shared_stats["retry_messages_job_tasks"] = len(tasks)
             shared_stats["retry_messages_job_actions"] = len(actions)
-            shared_stats["retry_messages_job_messages_actions"] = len(
-                messages_actions
-            )
+            shared_stats["retry_messages_job_messages_actions"] = len(messages_actions)
             shared_stats["retry_messages_job_i"] = i
             shared_stats["retry_messages_job_j"] = j
 
@@ -374,7 +365,18 @@ def txs_task_loop(config_values):
     loop.run_until_complete(asyncio.gather(handle_txs_task()))
 
 
-def messages_task_loop(config_values, shared_stats: Dict):
+def messages_task_loop(config_values: Dict, shared_stats: Dict, api_servers: List):
+    """
+    Background task that processes all the messages received by the node.
+
+    :param config_values: Application configuration, as a dictionary.
+    :param shared_stats: Dictionary of application metrics. This dictionary is updated by othe
+                         processes and must be allocated from shared memory.
+    :param api_servers: List of Core Channel Nodes with an HTTP interface found on the network.
+                        This list is updated by other processes and must be allocated from
+                        shared memory by the caller.
+    """
+
     setproctitle("aleph.jobs.messages_task_loop")
     sentry_sdk.init(
         dsn=config_values["sentry"]["dsn"],
@@ -385,6 +387,8 @@ def messages_task_loop(config_values, shared_stats: Dict):
         level=config_values["logging"]["level"],
         filename="/tmp/messages_task_loop.log",
     )
+    singleton.api_servers = api_servers
+
     loop = prepare_loop(config_values)
     loop.run_until_complete(asyncio.gather(retry_messages_task(shared_stats)))
 
@@ -428,6 +432,7 @@ async def reconnect_ipfs_job(config):
 def start_jobs(
     config,
     shared_stats: Dict,
+    api_servers: List[str],
     use_processes=True,
 ) -> List[Coroutine]:
     LOGGER.info("starting jobs")
@@ -440,6 +445,7 @@ def start_jobs(
             args=(
                 config_values,
                 shared_stats,
+                api_servers,
             ),
         )
         p2 = Process(
