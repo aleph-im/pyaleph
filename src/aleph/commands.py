@@ -189,7 +189,7 @@ def main(args):
         tasks: List[Coroutine] = []
         # This dictionary is shared between all the process so we can expose some internal stats
         # handle with care as it's shared between process.
-        shared_stats: Dict = shared_memory_manager.dict()
+        shared_stats = shared_memory_manager.dict()
         if not args.no_jobs:
             LOGGER.debug("Creating jobs")
             tasks += start_jobs(

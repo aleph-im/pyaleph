@@ -77,7 +77,7 @@ async def join_pending_message_tasks(
         actions_list.clear()
 
 
-async def retry_messages_job(shared_stats: Optional[Dict]):
+async def retry_messages_job(shared_stats: Dict):
     """Each few minutes, try to handle message that were added to the
     pending queue (Unavailable messages)."""
 
@@ -101,16 +101,15 @@ async def retry_messages_job(shared_stats: Optional[Dict]):
                 f"len_gtasks={len(gtasks)} len_tasks={len(tasks)}"
             )
 
-            if shared_stats is not None:
-                shared_stats["retry_messages_job_seen_ids"] = len(seen_ids)
-                shared_stats["retry_messages_job_gtasks"] = len(gtasks)
-                shared_stats["retry_messages_job_tasks"] = len(tasks)
-                shared_stats["retry_messages_job_actions"] = len(actions)
-                shared_stats["retry_messages_job_messages_actions"] = len(
-                    messages_actions
-                )
-                shared_stats["retry_messages_job_i"] = i
-                shared_stats["retry_messages_job_j"] = j
+            shared_stats["retry_messages_job_seen_ids"] = len(seen_ids)
+            shared_stats["retry_messages_job_gtasks"] = len(gtasks)
+            shared_stats["retry_messages_job_tasks"] = len(tasks)
+            shared_stats["retry_messages_job_actions"] = len(actions)
+            shared_stats["retry_messages_job_messages_actions"] = len(
+                messages_actions
+            )
+            shared_stats["retry_messages_job_i"] = i
+            shared_stats["retry_messages_job_j"] = j
 
             if pending.get("message") is None:
                 LOGGER.warning(
@@ -204,7 +203,7 @@ async def retry_messages_job(shared_stats: Optional[Dict]):
     #     #     i = 0
 
 
-async def retry_messages_task(shared_stats: Optional[Dict]):
+async def retry_messages_task(shared_stats: Dict):
     """Handle message that were added to the pending queue"""
     await asyncio.sleep(4)
     while True:
@@ -375,7 +374,7 @@ def txs_task_loop(config_values):
     loop.run_until_complete(asyncio.gather(handle_txs_task()))
 
 
-def messages_task_loop(config_values, shared_stats: Optional[Dict]):
+def messages_task_loop(config_values, shared_stats: Dict):
     setproctitle("aleph.jobs.messages_task_loop")
     sentry_sdk.init(
         dsn=config_values["sentry"]["dsn"],
@@ -428,7 +427,7 @@ async def reconnect_ipfs_job(config):
 
 def start_jobs(
     config,
-    shared_stats: Optional[Dict],
+    shared_stats: Dict,
     use_processes=True,
 ) -> List[Coroutine]:
     LOGGER.info("starting jobs")
