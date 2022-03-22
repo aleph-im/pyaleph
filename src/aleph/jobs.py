@@ -1,25 +1,24 @@
 import asyncio
-import logging
+from itertools import groupby
 from logging import getLogger
 from multiprocessing import Process
 from typing import Coroutine, List, Dict, Optional, Tuple
 
 import aioipfs
 import sentry_sdk
-from pymongo import DeleteOne, InsertOne, DeleteMany, UpdateOne, ASCENDING
-from pymongo.errors import CursorNotFound
-from setproctitle import setproctitle
-
 from aleph.chains.common import incoming, get_chaindata_messages, IncomingStatus
-from aleph.model.messages import Message, CappedMessage
+from aleph.exceptions import InvalidMessageError
+from aleph.logging import setup_logging
+from aleph.model.db_bulk_operation import DbBulkOperation
 from aleph.model.p2p import get_peers
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.network import check_message
 from aleph.services.ipfs.common import connect_ipfs_peer
 from aleph.services.p2p import singleton
 from aleph.types import ItemType
-from aleph.exceptions import InvalidMessageError
-from aleph.logging import setup_logging
+from pymongo import DeleteOne, InsertOne, DeleteMany, ASCENDING
+from pymongo.errors import CursorNotFound
+from setproctitle import setproctitle
 
 LOGGER = getLogger("JOBS")
 
@@ -27,10 +26,8 @@ LOGGER = getLogger("JOBS")
 async def handle_pending_message(
     pending: Dict,
     seen_ids: Dict[Tuple, int],
-    actions_list: List[DeleteOne],
-    messages_actions_list: List[UpdateOne],
-):
-    result = await incoming(
+) -> List[DbBulkOperation]:
+    status, operations = await incoming(
         pending["message"],
         chain_name=pending["source"].get("chain_name"),
         tx_hash=pending["source"].get("tx_hash"),
@@ -38,37 +35,39 @@ async def handle_pending_message(
         seen_ids=seen_ids,
         check_message=pending["source"].get("check_message", True),
         retrying=True,
-        bulk_operation=True,
         existing_id=pending["_id"],
     )
 
-    if result == IncomingStatus.RETRYING_LATER:
-        return
+    if status != IncomingStatus.RETRYING_LATER:
+        operations.append(
+            DbBulkOperation(PendingMessage, DeleteOne({"_id": pending["_id"]}))
+        )
 
-    if not isinstance(result, IncomingStatus):
-        assert isinstance(result, UpdateOne)
-        messages_actions_list.append(result)
-
-    actions_list.append(DeleteOne({"_id": pending["_id"]}))
+    return operations
 
 
-async def join_pending_message_tasks(
-    tasks, actions_list=None, messages_actions_list=None
-):
-    try:
-        await asyncio.gather(*tasks, return_exceptions=True)
-    except Exception:
-        LOGGER.exception("error in incoming task")
+async def join_pending_message_tasks(tasks):
+    db_operations = await asyncio.gather(*tasks, return_exceptions=True)
+
+    errors = [op for op in db_operations if isinstance(op, BaseException)]
+    for error in errors:
+        LOGGER.error("Error while processing message: %s", error)
+
+    db_operations = sorted(
+        (
+            op
+            for operations in db_operations
+            if not isinstance(operations, BaseException)
+            for op in operations
+        ),
+        key=lambda op: op.collection.__name__,
+    )
+
+    for collection, operations in groupby(db_operations, lambda op: op.collection):
+        mongo_ops = [op.operation for op in operations]
+        await collection.collection.bulk_write(mongo_ops)
+
     tasks.clear()
-
-    if messages_actions_list is not None and len(messages_actions_list):
-        await Message.collection.bulk_write(messages_actions_list)
-        await CappedMessage.collection.bulk_write(messages_actions_list)
-        messages_actions_list.clear()
-
-    if actions_list is not None and len(actions_list):
-        await PendingMessage.collection.bulk_write(actions_list)
-        actions_list.clear()
 
 
 async def retry_messages_job(shared_stats: Dict):
@@ -76,8 +75,6 @@ async def retry_messages_job(shared_stats: Dict):
     pending queue (Unavailable messages)."""
 
     seen_ids: Dict[Tuple, int] = dict()
-    actions: List[DeleteOne] = []
-    messages_actions: List[UpdateOne] = []
     gtasks: List[asyncio.Task] = []
     tasks: List[asyncio.Task] = []
     i: int = 0
@@ -96,8 +93,6 @@ async def retry_messages_job(shared_stats: Dict):
             shared_stats["retry_messages_job_seen_ids"] = len(seen_ids)
             shared_stats["retry_messages_job_gtasks"] = len(gtasks)
             shared_stats["retry_messages_job_tasks"] = len(tasks)
-            shared_stats["retry_messages_job_actions"] = len(actions)
-            shared_stats["retry_messages_job_messages_actions"] = len(messages_actions)
             shared_stats["retry_messages_job_i"] = i
             shared_stats["retry_messages_job_j"] = j
 
@@ -123,11 +118,7 @@ async def retry_messages_job(shared_stats: Dict):
                 i += 1
                 j += 1
 
-            tasks.append(
-                asyncio.create_task(
-                    handle_pending_message(pending, seen_ids, actions, messages_actions)
-                )
-            )
+            tasks.append(asyncio.create_task(handle_pending_message(pending, seen_ids)))
 
             if j >= 20000:
                 # Group tasks using asyncio.gather in `gtasks`.
@@ -135,30 +126,19 @@ async def retry_messages_job(shared_stats: Dict):
                     asyncio.create_task(
                         join_pending_message_tasks(
                             tasks,
-                            actions_list=actions,
-                            messages_actions_list=messages_actions,
                         )
                     )
                 )
                 tasks = []
-                actions = []
-                messages_actions = []
                 i = 0
                 j = 0
 
             if i >= 1024:
                 await join_pending_message_tasks(tasks)
-                # gtasks.append(asyncio.create_task(join_pending_message_tasks(tasks)))
                 tasks = []
                 i = 0
 
-        gtasks.append(
-            asyncio.create_task(
-                join_pending_message_tasks(
-                    tasks, actions_list=actions, messages_actions_list=messages_actions
-                )
-            )
-        )
+        gtasks.append(asyncio.create_task(join_pending_message_tasks(tasks)))
 
         await asyncio.gather(*gtasks, return_exceptions=True)
         gtasks = []

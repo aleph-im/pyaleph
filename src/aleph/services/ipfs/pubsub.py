@@ -42,8 +42,9 @@ async def pub(topic: str, message: Union[str, bytes]):
 
 async def incoming_channel(topic) -> None:
     from aleph.network import incoming_check
-    from aleph.chains.common import incoming
+    from aleph.chains.common import process_one_message
 
+    # TODO: implement a check at startup
     # When using some deployment strategies such as docker-compose,
     # the IPFS service may not be ready by the time this function
     # is called. This variable define how many connection attempts
@@ -51,12 +52,11 @@ async def incoming_channel(topic) -> None:
     trials_before_exception: int = 5
     while True:
         try:
-            # seen_ids = []
             async for mvalue in sub(topic):
                 try:
                     message = await incoming_check(mvalue)
                     LOGGER.debug("New message %r" % message)
-                    asyncio.create_task(incoming(message, bulk_operation=False))
+                    asyncio.create_task(process_one_message(message))
                 except InvalidMessageError:
                     LOGGER.warning(f"Invalid message {mvalue}")
 
