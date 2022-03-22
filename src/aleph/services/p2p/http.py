@@ -63,7 +63,10 @@ async def request_hash(item_hash: str, timeout: int = 1) -> Optional[bytes]:
     if singleton.api_servers is None:
         raise ValueError("Configuration error, api_servers is null.")
 
-    uris = sample(singleton.api_servers, k=len(singleton.api_servers))
+    # random.sample is not compatible with multiprocessing lists like api_servers
+    uris = list(singleton.api_servers)
+    uris = sample(uris, k=len(uris))
+
     for uri in uris:
         content = await get_peer_hash_content(uri, item_hash, timeout=timeout)
         if content is not None:

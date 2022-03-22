@@ -30,7 +30,7 @@ from aleph.network import listener_tasks
 from aleph.services import p2p
 from aleph.services.keys import generate_keypair, save_keys
 from aleph.web import app, init_cors
-
+from aleph.services.p2p import singleton
 
 import sentry_sdk
 
@@ -191,6 +191,8 @@ def main(args):
         # handle with care as it's shared between process.
         shared_stats = shared_memory_manager.dict()
         api_servers = shared_memory_manager.list()
+        singleton.api_servers = api_servers
+
         if not args.no_jobs:
             LOGGER.debug("Creating jobs")
             tasks += start_jobs(
