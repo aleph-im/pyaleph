@@ -10,6 +10,16 @@ from .http import api_get_request
 from .peers import connect_peer
 from .protocol import AlephProtocol
 
+from dataclasses import dataclass
+
+
+@dataclass
+class PeerStatus:
+    peer_uri: str
+    is_online: bool
+    version: Optional[str]
+
+
 LOGGER = logging.getLogger("P2P.jobs")
 
 
@@ -32,34 +42,46 @@ async def reconnect_p2p_job(config: Config, p2p_client: P2PClient, streamer: Opt
         await asyncio.sleep(config.p2p.reconnect_delay.value)
 
 
-async def check_peer(peers: List[str], peer_uri: str, timeout: int = 1) -> None:
+async def check_peer(peer_uri: str, timeout: int = 1) -> PeerStatus:
     try:
         version_info = await api_get_request(peer_uri, "version", timeout=timeout)
         if version_info is not None:
-            peers.append(peer_uri)
+            return PeerStatus(peer_uri=peer_uri, is_online=True, version=version_info)
+
     except Exception:
         LOGGER.exception("Can't contact peer %r" % peer_uri)
 
+    return PeerStatus(peer_uri=peer_uri, is_online=False, version=None)
 
-async def tidy_http_peers_job(config: Config) -> None:
+
+async def tidy_http_peers_job(config: Config, api_servers: List[str]) -> None:
     """Check that HTTP peers are reachable, else remove them from the list"""
-    from aleph.services.p2p import singleton
     from aleph.services.utils import get_IP
 
     my_ip = await get_IP()
     await asyncio.sleep(2)
 
     while True:
+        jobs = []
+
         try:
-            peers: List[str] = list()
-            jobs = list()
             async for peer in get_peers(peer_type="HTTP"):
                 if my_ip in peer:
                     continue
 
-                jobs.append(check_peer(peers, peer))
-            await asyncio.gather(*jobs)
-            singleton.api_servers = peers
+                jobs.append(check_peer(peer))
+            peer_statuses = await asyncio.gather(*jobs)
+
+            for peer_status in peer_statuses:
+                peer_in_api_servers = peer_status.peer_uri in api_servers
+
+                if peer_status.is_online:
+                    if not peer_in_api_servers:
+                        api_servers.append(peer_status.peer_uri)
+
+                else:
+                    if peer_in_api_servers:
+                        api_servers.remove(peer_status.peer_uri)
 
         except Exception:
             LOGGER.exception("Error reconnecting to peers")

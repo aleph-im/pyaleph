@@ -201,7 +201,7 @@ def main(args):
 
         # handler = app.make_handler(loop=loop)
         LOGGER.debug("Initializing p2p")
-        p2p_init_task = p2p.init_p2p(config)
+        p2p_init_task = p2p.init_p2p(config, api_servers)
         p2p_client, p2p_tasks = loop.run_until_complete(p2p_init_task)
         tasks += p2p_tasks
         LOGGER.debug("Initialized p2p")

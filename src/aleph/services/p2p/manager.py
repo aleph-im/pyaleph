@@ -20,6 +20,7 @@ public_adresses = []
 async def initialize_host(
     config: Config,
     p2p_client: P2PClient,
+    api_servers: List[str],
     host: str = "0.0.0.0",
     port: int = 4025,
     listen: bool = True,
@@ -36,7 +37,7 @@ async def initialize_host(
 
     tasks = [
         reconnect_p2p_job(config=config, p2p_client=p2p_client, streamer=protocol),
-        tidy_http_peers_job(config=config),
+        tidy_http_peers_job(config=config, api_servers=api_servers),
     ]
     if listen:
         from aleph.web import app
