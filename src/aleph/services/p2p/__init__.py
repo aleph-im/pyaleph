@@ -25,13 +25,16 @@ def init_p2p_client(config: Config) -> P2PClient:
     return p2p_client
 
 
-async def init_p2p(config: Config, listen: bool = True) -> Tuple[P2PClient, List[Coroutine]]:
+async def init_p2p(
+    config: Config, api_servers: List[str], listen: bool = True
+) -> Tuple[P2PClient, List[Coroutine]]:
     p2p_client = init_p2p_client(config)
 
     port = config.p2p.port.value
     singleton.streamer, tasks = await initialize_host(
         config=config,
         p2p_client=p2p_client,
+        api_servers=api_servers,
         host=config.p2p.daemon_host.value,
         port=port,
         listen=listen,
