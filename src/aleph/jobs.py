@@ -19,6 +19,7 @@ from aleph.network import check_message
 from aleph.services.ipfs.common import connect_ipfs_peer
 from aleph.services.p2p import singleton
 from aleph.types import ItemType, InvalidMessageError
+from aleph.logging import setup_logging
 
 LOGGER = getLogger("JOBS")
 
@@ -357,8 +358,8 @@ def txs_task_loop(config_values):
         traces_sample_rate=config_values["sentry"]["traces_sample_rate"],
         ignore_errors=[KeyboardInterrupt],
     )
-    logging.basicConfig(
-        level=config_values["logging"]["level"],
+    setup_logging(
+        loglevel=config_values["logging"]["level"],
         filename="/tmp/txs_task_loop.log",
     )
     loop = prepare_loop(config_values)
@@ -383,8 +384,8 @@ def messages_task_loop(config_values: Dict, shared_stats: Dict, api_servers: Lis
         traces_sample_rate=config_values["sentry"]["traces_sample_rate"],
         ignore_errors=[KeyboardInterrupt],
     )
-    logging.basicConfig(
-        level=config_values["logging"]["level"],
+    setup_logging(
+        loglevel=config_values["logging"]["level"],
         filename="/tmp/messages_task_loop.log",
     )
     singleton.api_servers = api_servers
