@@ -17,6 +17,7 @@ import sys
 from multiprocessing import Process, set_start_method, Manager
 from typing import List, Coroutine, Dict, Optional
 
+import sentry_sdk
 from configmanager import Config
 from setproctitle import setproctitle
 
@@ -26,13 +27,12 @@ from aleph.cli.args import parse_args
 from aleph.config import get_defaults
 from aleph.exceptions import InvalidConfigException, KeyNotFoundException
 from aleph.jobs import start_jobs, prepare_loop
+from aleph.logging import setup_logging
 from aleph.network import listener_tasks
 from aleph.services import p2p
 from aleph.services.keys import generate_keypair, save_keys
-from aleph.web import app, init_cors
 from aleph.services.p2p import singleton
-
-import sentry_sdk
+from aleph.web import app, init_cors
 
 __author__ = "Moshe Malawach"
 __copyright__ = "Moshe Malawach"
@@ -41,26 +41,10 @@ __license__ = "mit"
 LOGGER = logging.getLogger(__name__)
 
 
-def setup_logging(loglevel: int):
-    """Setup basic logging
-
-    Args:
-      loglevel (int): minimum loglevel for emitting messages
-    """
-    logformat = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-    logging.basicConfig(
-        level=loglevel, stream=sys.stdout, format=logformat, datefmt="%Y-%m-%d %H:%M:%S"
-    )
-
-
 async def run_server(host: str, port: int, shared_stats: dict, extra_web_config: dict):
     # These imports will run in different processes
     from aiohttp import web
     from aleph.web.controllers.listener import broadcast
-
-    # Reconfigure logging in different process
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
 
     LOGGER.debug("Initializing CORS")
     init_cors()
@@ -95,10 +79,12 @@ def run_server_coroutine(
     """Run the server coroutine in a synchronous way.
     Used as target of multiprocessing.Process.
     """
-    setproctitle(f'pyaleph-run_server_coroutine-{port}')
+    setproctitle(f"pyaleph-run_server_coroutine-{port}")
     extra_web_config = extra_web_config or {}
-    logging.basicConfig(level=config_values["logging"]["level"],
-                        filename=f'/tmp/run_server_coroutine-{port}.log')
+    setup_logging(
+        loglevel=config_values["logging"]["level"],
+        filename=f"/tmp/run_server_coroutine-{port}.log",
+    )
     if enable_sentry:
         sentry_sdk.init(
             dsn=config_values["sentry"]["dsn"],
@@ -139,12 +125,14 @@ def main(args):
 
     LOGGER.info("Loading configuration")
     config = Config(schema=get_defaults())
-    config.logging.level.value = args.loglevel
-    app["config"] = config
 
     if args.config_file is not None:
         LOGGER.debug("Loading config file '%s'", args.config_file)
-        app["config"].yaml.load(args.config_file)
+        config.yaml.load(args.config_file)
+
+    # CLI config values override config file values
+    config.logging.level.value = args.loglevel
+    app["config"] = config
 
     # Check for invalid/deprecated config
     if "protocol" in config.p2p.clients.value:
@@ -196,7 +184,10 @@ def main(args):
         if not args.no_jobs:
             LOGGER.debug("Creating jobs")
             tasks += start_jobs(
-                config, shared_stats=shared_stats, api_servers=api_servers, use_processes=True
+                config,
+                shared_stats=shared_stats,
+                api_servers=api_servers,
+                use_processes=True,
             )
 
         loop = asyncio.get_event_loop()
