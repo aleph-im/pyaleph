@@ -259,10 +259,15 @@ async def handle_pending_tx(
 
 
 async def join_pending_txs_tasks(tasks, actions_list):
-    try:
-        await asyncio.gather(*tasks, return_exceptions=True)
-    except Exception:
-        LOGGER.exception("error in incoming txs task")
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    for result in results:
+        if isinstance(result, BaseException):
+            LOGGER.exception(
+                "error in incoming txs task",
+                exc_info=(type(result), result, result.__traceback__),
+            )
+
     tasks.clear()
 
     if len(actions_list):
@@ -351,7 +356,7 @@ def prepare_loop(config_values: Dict) -> asyncio.AbstractEventLoop:
     return loop
 
 
-def txs_task_loop(config_values):
+def txs_task_loop(config_values: Dict, api_servers: List):
     setproctitle("aleph.jobs.txs_task_loop")
     sentry_sdk.init(
         dsn=config_values["sentry"]["dsn"],
@@ -362,8 +367,10 @@ def txs_task_loop(config_values):
         loglevel=config_values["logging"]["level"],
         filename="/tmp/txs_task_loop.log",
     )
+    singleton.api_servers = api_servers
+
     loop = prepare_loop(config_values)
-    loop.run_until_complete(asyncio.gather(handle_txs_task()))
+    loop.run_until_complete(handle_txs_task())
 
 
 def messages_task_loop(config_values: Dict, shared_stats: Dict, api_servers: List):
@@ -451,7 +458,7 @@ def start_jobs(
         )
         p2 = Process(
             target=txs_task_loop,
-            args=(config_values,),
+            args=(config_values, api_servers),
         )
         p1.start()
         p2.start()

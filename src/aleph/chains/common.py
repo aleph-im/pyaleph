@@ -370,10 +370,10 @@ async def get_chaindata_messages(
         except AlephStorageException:
             # Let the caller handle unavailable/invalid content
             raise
-        except Exception:
-            error_msg = f"Can't get content of offchain object {chaindata['context']!r}"
+        except Exception as e:
+            error_msg = f"Can't get content of offchain object {chaindata['content']!r}"
             LOGGER.exception("%s", error_msg)
-            raise ContentCurrentlyUnavailable(error_msg)
+            raise ContentCurrentlyUnavailable(error_msg) from e
 
         try:
             messages = await get_chaindata_messages(content.value, context)
