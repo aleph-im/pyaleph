@@ -180,7 +180,7 @@ async def incoming_channel(p2p_client: P2PClient, topic: str) -> None:
     # The communication with the P2P daemon sometimes fails repeatedly, spamming
     # IncompleteRead exceptions. We still want to log these to Sentry without sending
     # thousands of logs.
-    incomplete_read_threshold = 30000
+    incomplete_read_threshold = 150
     incomplete_read_counter = 0
 
     while True:
@@ -211,3 +211,5 @@ async def incoming_channel(p2p_client: P2PClient, topic: str) -> None:
 
         except Exception:
             LOGGER.exception("Exception in pubsub, reconnecting.")
+
+        await asyncio.sleep(2)
