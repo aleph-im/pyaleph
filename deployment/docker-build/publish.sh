@@ -19,5 +19,6 @@ fi
 VERSION=$(git describe --tags)
 
 $DOCKER_COMMAND tag alephim/pyaleph-node alephim/pyaleph-node:$VERSION
-$DOCKER_COMMAND push alephim/pyaleph-node:$VERSION docker.io/alephim/pyaleph-node:$VERSION
+#$DOCKER_COMMAND push alephim/pyaleph-node:$VERSION docker.io/alephim/pyaleph-node:$VERSION
+$DOCKER_COMMAND push alephim/pyaleph-node:$VERSION
 echo docker.io/alephim/pyaleph-node:$VERSION
