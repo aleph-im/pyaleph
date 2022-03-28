@@ -1,8 +1,10 @@
+import asyncio
 import json
 import logging
 from typing import Any, Dict
 from urllib.parse import unquote
 
+from anyio.exceptions import IncompleteRead
 from p2pclient import Client as P2PClient
 from p2pclient.pb.p2pd_pb2 import PSMessage
 from p2pclient.utils import read_pbmsg_safe
@@ -51,21 +53,38 @@ async def handle_incoming_host(pubsub_msg: Dict[str, Any], source: Protocol = Pr
 
 
 async def monitor_hosts_p2p(p2p_client: P2PClient) -> None:
+    # The communication with the P2P daemon sometimes fails repeatedly, spamming
+    # IncompleteRead exceptions. We still want to log these to Sentry without sending
+    # thousands of logs.
+    incomplete_read_threshold = 150
+    incomplete_read_counter = 0
 
-    try:
-        stream = await p2p_client.pubsub_subscribe(ALIVE_TOPIC)
-        while True:
-            pubsub_msg = PSMessage()
-            await read_pbmsg_safe(stream, pubsub_msg)
-            msg_dict = pubsub_msg_to_dict(pubsub_msg)
-            await handle_incoming_host(msg_dict, source=Protocol.P2P)
-    except Exception:
-        LOGGER.exception("Exception in pubsub peers monitoring, resubscribing")
+    while True:
+        try:
+            stream = await p2p_client.pubsub_subscribe(ALIVE_TOPIC)
+            while True:
+                pubsub_msg = PSMessage()
+                await read_pbmsg_safe(stream, pubsub_msg)
+                msg_dict = pubsub_msg_to_dict(pubsub_msg)
+                await handle_incoming_host(msg_dict, source=Protocol.P2P)
+
+        except IncompleteRead:
+            if (incomplete_read_counter % incomplete_read_threshold) == 0:
+                LOGGER.exception(
+                    "Incomplete read (%d times), reconnecting. Try to restart the application.",
+                    incomplete_read_counter,
+                )
+            incomplete_read_counter += 1
+        except Exception:
+            LOGGER.exception("Exception in pubsub peers monitoring, resubscribing")
+
+        await asyncio.sleep(2)
 
 
 async def monitor_hosts_ipfs(config):
-    try:
-        async for mvalue in sub_ipfs(IPFS_ALIVE_TOPIC):
-            await handle_incoming_host(mvalue, source=Protocol.IPFS)
-    except Exception:
-        LOGGER.exception("Exception in pubsub peers monitoring, resubscribing")
+    while True:
+        try:
+            async for mvalue in sub_ipfs(IPFS_ALIVE_TOPIC):
+                await handle_incoming_host(mvalue, source=Protocol.IPFS)
+        except Exception:
+            LOGGER.exception("Exception in pubsub peers monitoring, resubscribing")
