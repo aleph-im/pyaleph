@@ -2,6 +2,17 @@
 Changelog
 =========
 
+Version 0.2.1
+=============
+
+- Improved the code for the storage module and improved test coverage.
+- Fixed a major synchronisation issue between CCNs. A shared variable was not updated correctly, making it impossible
+  for CCNs to fetch the content linked to random messages.
+- Fixed an issue where IPFS/P2P jobs in charge of listening to the "alive" topics would not restart
+  once an error occurred.
+- Fixed an issue resulting in a KeyError if an IPFS pin timed out.
+- CCNs now required Python 3.8+ instead of Python 3.6.
+
 Version 0.2.0
 =============
 
