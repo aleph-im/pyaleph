@@ -71,6 +71,7 @@ def get_defaults():
             "token_contract": None,
             "token_start_height": 10900000,
             "max_gas_price": 150000000000,
+            "max_priority_fee": 2000000000,
             "authorized_emitters": ["0x23eC28598DCeB2f7082Cc3a9D670592DfEd6e0dC"],
         },
         "mongodb": {"uri": "mongodb://127.0.0.1:27017", "database": "aleph"},

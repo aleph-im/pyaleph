@@ -250,12 +250,12 @@ async def ethereum_incoming_worker(config):
 register_incoming_worker(CHAIN_NAME, ethereum_incoming_worker)
 
 
-def broadcast_content(config, contract, web3: Web3, account, gas_price, nonce, content):
-    # content = json.dumps(content)
+def broadcast_content(config, contract, web3: Web3, account, nonce, content):
     tx = contract.functions.doEmit(content).buildTransaction(
         {
             "chainId": config.ethereum.chain_id.value,
-            "gasPrice": gas_price,
+            "maxFeePerGas": config.ethereum.max_gas_price.value,
+            "maxPriorityFeePerGas": config.ethereum.max_priority_fee.value,
             "nonce": nonce,
         }
     )
@@ -273,13 +273,14 @@ async def ethereum_packer(config):
 
     LOGGER.info("Ethereum Connector set up with address %s" % address)
     i = 0
-    gas_price = web3.eth.generateGasPrice()
+
     while True:
         if (await pending_txs_count(chain=CHAIN_NAME)) or (
             await pending_messages_count(source_chain=CHAIN_NAME)
         ) > 1000:
             await asyncio.sleep(30)
             continue
+
         gas_price = web3.eth.generateGasPrice()
 
         if i >= 100:
@@ -311,7 +312,6 @@ async def ethereum_packer(config):
                 contract,
                 web3,
                 account,
-                int(gas_price * 1.1),
                 nonce,
                 content,
             )
