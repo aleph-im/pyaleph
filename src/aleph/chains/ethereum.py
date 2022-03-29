@@ -5,6 +5,7 @@ import logging
 from typing import AsyncIterator, Dict, Tuple
 
 import pkg_resources
+from configmanager import Config
 from eth_account import Account
 from eth_account.messages import encode_defunct
 from hexbytes import HexBytes
@@ -250,11 +251,13 @@ async def ethereum_incoming_worker(config):
 register_incoming_worker(CHAIN_NAME, ethereum_incoming_worker)
 
 
-def broadcast_content(config, contract, web3: Web3, account, nonce, content):
+def broadcast_content(
+    config: Config, contract, web3: Web3, account, nonce, content, max_fee_per_gas: int
+):
     tx = contract.functions.doEmit(content).buildTransaction(
         {
             "chainId": config.ethereum.chain_id.value,
-            "maxFeePerGas": config.ethereum.max_gas_price.value,
+            "maxFeePerGas": max_fee_per_gas,
             "maxPriorityFeePerGas": config.ethereum.max_priority_fee.value,
             "nonce": nonce,
         }
@@ -281,20 +284,20 @@ async def ethereum_packer(config):
             await asyncio.sleep(30)
             continue
 
-        gas_price = web3.eth.generateGasPrice()
+        gas_price = web3.eth.generate_gas_price()
 
         if i >= 100:
             await asyncio.sleep(30)  # wait three (!!) blocks
-            gas_price = web3.eth.generateGasPrice()
+            gas_price = web3.eth.generate_gas_price()
             # utxo = await get_utxo(config, address)
             i = 0
 
-        if gas_price > config.ethereum.max_gas_price.value:
+        if gas_price > 0.9 * config.ethereum.max_gas_price.value:
             # gas price too high, wait a bit and retry.
             await asyncio.sleep(60)
             continue
 
-        nonce = web3.eth.getTransactionCount(account.address)
+        nonce = web3.eth.get_transaction_count(account.address)
 
         messages = [
             message
@@ -305,15 +308,16 @@ async def ethereum_packer(config):
 
         if len(messages):
             content = await get_chaindata(messages, bulk_threshold=200)
-            response = await run_in_executor(
-                None,
-                broadcast_content,
-                config,
-                contract,
-                web3,
-                account,
-                nonce,
-                content,
+            response = await broadcast_content(
+                config=config,
+                contract=contract,
+                web3=web3,
+                account=account,
+                nonce=nonce,
+                content=content,
+                max_fee_per_gas=min(
+                    config.ethereum.max_gas_price.value, gas_price * 1.5
+                ),
             )
             LOGGER.info("Broadcasted %r on %s" % (response, CHAIN_NAME))
 
