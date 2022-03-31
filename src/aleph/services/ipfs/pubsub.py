@@ -5,7 +5,7 @@ from typing import Union
 
 import base58
 
-from aleph.types import InvalidMessageError
+from ...exceptions import InvalidMessageError
 from .common import get_ipfs_api
 
 LOGGER = logging.getLogger("IPFS.PUBSUB")

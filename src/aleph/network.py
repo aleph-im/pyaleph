@@ -8,7 +8,8 @@ from p2pclient import Client as P2PClient
 
 from aleph.register_chain import VERIFIER_REGISTER
 from aleph.services.ipfs.pubsub import incoming_channel as incoming_ipfs_channel
-from aleph.types import ItemType, InvalidMessageError
+from aleph.types import ItemType
+from aleph.exceptions import InvalidMessageError
 from aleph.utils import get_sha256
 
 LOGGER = logging.getLogger("NETWORK")

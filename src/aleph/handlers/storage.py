@@ -20,9 +20,9 @@ from aioipfs import InvalidCIDError
 
 from aleph.services.ipfs.common import get_ipfs_api
 from aleph.storage import get_hash_content
-from aleph.types import ItemType, UnknownHashError
+from aleph.types import ItemType
 from aleph.web import app
-from aleph.exceptions import AlephStorageException
+from aleph.exceptions import AlephStorageException, UnknownHashError
 
 LOGGER = logging.getLogger("HANDLERS.STORAGE")
 
