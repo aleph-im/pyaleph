@@ -4,10 +4,10 @@ import logging
 from aiohttp import web
 from aiohttp.http_exceptions import HttpBadRequest
 
-from aleph.exceptions import AlephStorageException
+from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.handlers.forget import count_file_references
 from aleph.storage import add_json, get_hash_content, add_file
-from aleph.types import ItemType, UnknownHashError
+from aleph.types import ItemType
 from aleph.utils import run_in_executor
 from aleph.web import app
 

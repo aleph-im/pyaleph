@@ -18,7 +18,8 @@ from aleph.model.pending import PendingMessage, PendingTX
 from aleph.network import check_message
 from aleph.services.ipfs.common import connect_ipfs_peer
 from aleph.services.p2p import singleton
-from aleph.types import ItemType, InvalidMessageError
+from aleph.types import ItemType
+from aleph.exceptions import InvalidMessageError
 from aleph.logging import setup_logging
 
 LOGGER = getLogger("JOBS")

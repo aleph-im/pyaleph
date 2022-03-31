@@ -16,12 +16,11 @@ from aleph.model.pending import PendingMessage, PendingTX
 from aleph.network import check_message as check_message_fn
 from aleph.permissions import check_sender_authorization
 from aleph.storage import get_json, pin_hash, add_json, get_message_content
-from aleph.types import UnknownHashError
 from aleph.web import app
 from aleph.exceptions import (
     AlephStorageException,
     InvalidContent,
-    ContentCurrentlyUnavailable,
+    ContentCurrentlyUnavailable, UnknownHashError,
 )
 
 LOGGER = logging.getLogger("chains.common")

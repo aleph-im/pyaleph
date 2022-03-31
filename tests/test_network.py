@@ -2,7 +2,8 @@ import pytest
 
 # Mandatory import, otherwise VERIFIER_REGISTER is not populated. TODO: improve the registration system.
 import aleph.chains
-from aleph.network import InvalidMessageError, check_message
+from aleph.network import check_message
+from aleph.exceptions import InvalidMessageError
 
 __author__ = "Moshe Malawach"
 __copyright__ = "Moshe Malawach"

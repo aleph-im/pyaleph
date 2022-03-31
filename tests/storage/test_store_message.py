@@ -3,7 +3,7 @@ import pytest
 from aleph.handlers.storage import handle_new_storage
 from aleph.storage import ContentSource, RawContent
 import json
-from aleph.types import UnknownHashError
+from aleph.exceptions import UnknownHashError
 
 
 @pytest.fixture

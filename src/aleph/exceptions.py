@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 class AlephException(Exception):
     ...
 
@@ -36,4 +39,13 @@ class ContentCurrentlyUnavailable(AlephStorageException):
     The content is currently unavailable, for example because of a
     synchronisation issue.
     """
+    ...
+
+
+class UnknownHashError(AlephException):
+    ...
+
+
+class InvalidMessageError(AlephException):
+    """Error raised when an invalid message is processed"""
     ...

@@ -13,10 +13,9 @@ from p2pclient.exceptions import ControlFailure
 from p2pclient.libp2p_stubs.peer.id import ID
 
 from aleph import __version__
-from aleph.exceptions import AlephStorageException
+from aleph.exceptions import AlephStorageException, InvalidMessageError
 from aleph.network import incoming_check
 from aleph.services.utils import pubsub_msg_to_dict
-from aleph.types import InvalidMessageError
 from .pubsub import receive_pubsub_messages, subscribe
 
 MAX_READ_LEN = 2 ** 32 - 1
