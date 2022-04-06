@@ -2,7 +2,6 @@ import asyncio
 import logging
 from logging import getLogger
 from multiprocessing import Process
-from multiprocessing.managers import RemoteError
 from typing import Coroutine, List, Dict, Optional, Tuple
 
 import aioipfs
@@ -84,8 +83,6 @@ async def retry_messages_job(shared_stats: Dict):
     i: int = 0
     j: int = 0
     find_params: Dict = {}
-    # if await PendingTX.collection.count_documents({}) > 500:
-    #     find_params = {'message.item_type': 'inline'}
 
     while await PendingMessage.collection.count_documents(find_params):
         async for pending in PendingMessage.collection.find(find_params).sort(
@@ -134,7 +131,6 @@ async def retry_messages_job(shared_stats: Dict):
 
             if j >= 20000:
                 # Group tasks using asyncio.gather in `gtasks`.
-                # await join_pending_message_tasks(tasks, actions_list=actions, messages_actions_list=messages_actions)
                 gtasks.append(
                     asyncio.create_task(
                         join_pending_message_tasks(
@@ -186,14 +182,6 @@ async def retry_messages_job(shared_stats: Dict):
             LOGGER.info(repr(result))
 
         await asyncio.sleep(5)
-    # async for pending in PendingMessage.collection.find(
-    #     {'message.item_content': { "$exists": False } }).sort([('message.time', 1)]).limit(100):
-    #     i += 1
-    #     tasks.append(asyncio.shield(handle_pending_message(pending, seen_ids, actions)))
-
-    #     # if (i > 100):
-    #     #     await join_pending_message_tasks(tasks, actions)
-    #     #     i = 0
 
 
 async def retry_messages_task(shared_stats: Dict):
@@ -256,7 +244,6 @@ async def handle_pending_tx(
     if messages is not None:
         # bogus or handled, we remove it.
         actions_list.append(DeleteOne({"_id": pending["_id"]}))
-    # LOGGER.info("%s Handled TX in block %s" % (pending['context']['chain_name'], pending['context']['height']))
 
 
 async def join_pending_txs_tasks(tasks, actions_list):
@@ -318,21 +305,6 @@ async def handle_txs_task():
             LOGGER.exception("Error in pending txs job")
 
         await asyncio.sleep(0.01)
-
-
-def function_proxy(manager, funcname):
-    def func_call(*args, **kwargs):
-        rvalue = getattr(manager, funcname)(*args, **kwargs)
-
-        try:
-            value = rvalue._getvalue()
-
-        except RemoteError:
-            value = rvalue
-
-        return value
-
-    return func_call
 
 
 def prepare_loop(config_values: Dict) -> asyncio.AbstractEventLoop:
@@ -466,11 +438,8 @@ def start_jobs(
     else:
         tasks.append(retry_messages_task(shared_stats=shared_stats))
         tasks.append(handle_txs_task())
-    # loop.run_in_executor(executor, messages_task_loop, config_values)
-    # loop.run_in_executor(executor, txs_task_loop, config_values)
 
     if config.ipfs.enabled.value:
         tasks.append(reconnect_ipfs_job(config))
-    # loop.create_task(reconnect_p2p_job(config))
 
     return tasks
