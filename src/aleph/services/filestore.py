@@ -1,16 +1,20 @@
 import logging
 from typing import Optional, Union
 
-from bson.objectid import ObjectId
-
+from aleph.config import get_config
 from aleph.model import hashes
-from aleph.web import app
+from bson.objectid import ObjectId
 
 LOGGER = logging.getLogger("filestore")
 
 
+def _get_storage_engine() -> str:
+    config = get_config()
+    return config.storage.engine.value
+
+
 async def get_value(key: str) -> Optional[bytes]:
-    engine = app["config"].storage.engine.value
+    engine = _get_storage_engine()
 
     if engine != "mongodb":
         raise ValueError(f"Unsupported storage engine: '{engine}'.")
@@ -24,7 +28,7 @@ async def get_value(key: str) -> Optional[bytes]:
 
 
 async def set_value(key: Union[bytes, str], value: Union[bytes, str]) -> ObjectId:
-    engine = app["config"].storage.engine.value
+    engine = _get_storage_engine()
 
     if engine != "mongodb":
         raise ValueError(f"Unsupported storage engine: '{engine}'.")

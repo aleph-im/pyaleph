@@ -134,16 +134,17 @@ async def handle_txs_task():
 
 def pending_txs_subprocess(config_values: Dict, api_servers: List):
     setproctitle("aleph.jobs.txs_task_loop")
+    loop, config = prepare_loop(config_values)
+
     sentry_sdk.init(
-        dsn=config_values["sentry"]["dsn"],
-        traces_sample_rate=config_values["sentry"]["traces_sample_rate"],
+        dsn=config.sentry.dsn.value,
+        traces_sample_rate=config.sentry.traces_sample_rate.value,
         ignore_errors=[KeyboardInterrupt],
     )
     setup_logging(
-        loglevel=config_values["logging"]["level"],
+        loglevel=config.logging.level.value,
         filename="/tmp/txs_task_loop.log",
     )
     singleton.api_servers = api_servers
 
-    loop = prepare_loop(config_values)
     loop.run_until_complete(handle_txs_task())

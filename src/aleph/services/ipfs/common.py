@@ -1,8 +1,9 @@
 import logging
 
 import aioipfs
-
+import aleph.config
 from aleph.services.utils import get_IP
+from configmanager import Config
 
 API = None
 LOGGER = logging.getLogger("IPFS")
@@ -18,22 +19,26 @@ async def get_ipfs_gateway_url(config, hash):
     )
 
 
-async def get_ipfs_api(timeout=5, reset=False):
+def init_ipfs_globals(config: Config, timeout: int = 5) -> None:
+    global API
+
+    host = config.ipfs.host.value
+    port = config.ipfs.port.value
+
+    API = aioipfs.AsyncIPFS(
+        host=host,
+        port=port,
+        read_timeout=timeout,
+        conns_max=25,
+        conns_max_per_host=10,
+        debug=(config.logging.level.value <= logging.DEBUG)
+    )
+
+
+async def get_ipfs_api(timeout: int = 5, reset: bool = False):
     global API
     if API is None or reset:
-        from aleph.web import app
-
-        host = app["config"].ipfs.host.value
-        port = app["config"].ipfs.port.value
-
-        API = aioipfs.AsyncIPFS(
-            host=host,
-            port=port,
-            read_timeout=timeout,
-            conns_max=25,
-            conns_max_per_host=10,
-            debug=(app["config"].logging.level.value <= logging.DEBUG)
-        )
+        init_ipfs_globals(aleph.config.app_config, timeout)
 
     return API
 
