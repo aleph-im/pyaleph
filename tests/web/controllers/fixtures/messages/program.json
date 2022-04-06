@@ -1,0 +1,111 @@
+[
+    {
+        "chain": "ETH",
+        "sender": "0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
+        "type": "PROGRAM",
+        "channel": "Fun-dApps",
+        "confirmed": true,
+        "content": {
+            "type": "vm-function",
+            "address": "0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
+            "allow_amend": false,
+            "code": {
+                "encoding": "zip",
+                "entrypoint": "example_fastapi_2:app",
+                "ref": "7eb2eca2378ea8855336ed76c8b26219f1cb90234d04441de9cf8cb1c649d003",
+                "use_latest": false
+            },
+            "variables": {
+                "VM_CUSTOM_VARIABLE": "SOMETHING",
+                "VM_CUSTOM_VARIABLE_2": "32"
+            },
+            "on": {
+                "http": true,
+                "message": [
+                    {
+                        "sender": "0xB31B787AdA86c6067701d4C0A250c89C7f1f29A5",
+                        "channel": "TEST"
+                    },
+                    {
+                        "content": {
+                            "ref": "4d4db19afca380fdf06ba7f916153d0f740db9de9eee23ad26ba96a90d8a2920"
+                        }
+                    }
+                ]
+            },
+            "environment": {
+                "reproducible": true,
+                "internet": false,
+                "aleph_api": false,
+                "shared_cache": false
+            },
+            "resources": {
+                "vcpus": 1,
+                "memory": 128,
+                "seconds": 30
+            },
+            "runtime": {
+                "ref": "5f31b0706f59404fad3d0bff97ef89ddf24da4761608ea0646329362c662ba51",
+                "use_latest": false,
+                "comment": "Aleph Alpine Linux with Python 3.8"
+            },
+            "volumes": [
+                {
+                    "comment": "Python libraries. Read-only since a 'ref' is specified.",
+                    "mount": "/opt/venv",
+                    "ref": "5f31b0706f59404fad3d0bff97ef89ddf24da4761608ea0646329362c662ba51",
+                    "use_latest": false
+                },
+                {
+                    "comment": "Ephemeral storage, read-write but will not persist after the VM stops",
+                    "mount": "/var/cache",
+                    "ephemeral": true,
+                    "size_mib": 5
+                },
+                {
+                    "comment": "Working data persisted on the VM supervisor, not available on other nodes",
+                    "mount": "/var/lib/sqlite",
+                    "name": "sqlite-data",
+                    "persistence": "host",
+                    "size_mib": 10
+                },
+                {
+                    "comment": "Working data persisted on the Aleph network. New VMs will try to use the latest version of this volume, with no guarantee against conflicts",
+                    "mount": "/var/lib/statistics",
+                    "name": "statistics",
+                    "persistence": "store",
+                    "size_mib": 10
+                },
+                {
+                    "comment": "Raw drive to use by a process, do not mount it",
+                    "name": "raw-data",
+                    "persistence": "host",
+                    "size_mib": 10
+                }
+            ],
+            "data": {
+                "encoding": "zip",
+                "mount": "/data",
+                "ref": "7eb2eca2378ea8855336ed76c8b26219f1cb90234d04441de9cf8cb1c649d003",
+                "use_latest": false
+            },
+            "export": {
+                "encoding": "zip",
+                "mount": "/data"
+            },
+            "replaces": "0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
+            "time": 1619017773.8950517
+        },
+        "item_type": "inline",
+        "signature": "0x372da8230552b8c3e65c05b31a0ff3a24666d66c575f8e11019f62579bf48c2b7fe2f0bbe907a2a5bf8050989cdaf8a59ff8a1cbcafcdef0656c54279b4aa0c71b",
+        "size": 749,
+        "time": 1619017773.8950577,
+        "confirmations": [
+            {
+                "chain": "ETH",
+                "height": 12284734,
+                "hash": "0x67f2f3cde5e94e70615c92629c70d22dc959a118f46e9411b29659c2fce87cdc"
+            }
+        ]
+    }
+]

@@ -14,6 +14,7 @@ from aleph.web.controllers import (
     storage,
     version,
 )
+from aleph.web.controllers.programs import get_programs_on_message
 
 
 def register_routes(app: web.Application):
@@ -60,3 +61,5 @@ def register_routes(app: web.Application):
 
     app.router.add_get("/version", version.version)
     app.router.add_get("/api/v0/version", version.version)
+
+    app.router.add_get("/api/v0/programs/on/message", get_programs_on_message)
