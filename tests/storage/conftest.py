@@ -1,13 +1,16 @@
+import aleph.config
 import pytest
 from configmanager import Config
-from aleph.config import get_defaults
 
 
 @pytest.fixture
 def mock_config(mocker):
-    config = Config(get_defaults())
+    config = Config(aleph.config.get_defaults())
     # To test handle_new_storage
     config.storage.store_files.value = True
 
-    mock_config = mocker.patch("aleph.config.app_config", config)
+    # We set the global variable directly instead of patching it because of an issue
+    # with mocker.patch. mocker.patch uses hasattr to determine the properties of
+    # the mock, which does not work well with configmanager Config objects.
+    aleph.config.app_config = config
     return mock_config
