@@ -10,7 +10,6 @@ from p2pclient.pb.p2pd_pb2 import PSMessage
 from p2pclient.utils import read_pbmsg_safe
 
 from aleph.services.ipfs.pubsub import sub as sub_ipfs
-from aleph.services.peers.common import ALIVE_TOPIC, IPFS_ALIVE_TOPIC
 from aleph.services.utils import pubsub_msg_to_dict
 from aleph.types import Protocol
 
@@ -52,7 +51,7 @@ async def handle_incoming_host(pubsub_msg: Dict[str, Any], source: Protocol = Pr
             LOGGER.exception("Exception in pubsub peers monitoring")
 
 
-async def monitor_hosts_p2p(p2p_client: P2PClient) -> None:
+async def monitor_hosts_p2p(p2p_client: P2PClient, alive_topic: str) -> None:
     # The communication with the P2P daemon sometimes fails repeatedly, spamming
     # IncompleteRead exceptions. We still want to log these to Sentry without sending
     # thousands of logs.
@@ -61,7 +60,7 @@ async def monitor_hosts_p2p(p2p_client: P2PClient) -> None:
 
     while True:
         try:
-            stream = await p2p_client.pubsub_subscribe(ALIVE_TOPIC)
+            stream = await p2p_client.pubsub_subscribe(alive_topic)
             while True:
                 pubsub_msg = PSMessage()
                 await read_pbmsg_safe(stream, pubsub_msg)
@@ -81,10 +80,10 @@ async def monitor_hosts_p2p(p2p_client: P2PClient) -> None:
         await asyncio.sleep(2)
 
 
-async def monitor_hosts_ipfs(config):
+async def monitor_hosts_ipfs(alive_topic: str):
     while True:
         try:
-            async for mvalue in sub_ipfs(IPFS_ALIVE_TOPIC):
+            async for mvalue in sub_ipfs(alive_topic):
                 await handle_incoming_host(mvalue, source=Protocol.IPFS)
         except Exception:
             LOGGER.exception("Exception in pubsub peers monitoring, resubscribing")
