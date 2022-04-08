@@ -44,12 +44,6 @@ async def incoming_channel(topic) -> None:
     from aleph.network import incoming_check
     from aleph.chains.common import process_one_message
 
-    # TODO: implement a check at startup
-    # When using some deployment strategies such as docker-compose,
-    # the IPFS service may not be ready by the time this function
-    # is called. This variable define how many connection attempts
-    # will not be logged as exceptions.
-    trials_before_exception: int = 5
     while True:
         try:
             async for mvalue in sub(topic):
@@ -59,16 +53,6 @@ async def incoming_channel(topic) -> None:
                     asyncio.create_task(process_one_message(message))
                 except InvalidMessageError:
                     LOGGER.warning(f"Invalid message {mvalue}")
-
-                # Raise all connection errors after one has succeeded.
-                trials_before_exception = 0
         except Exception:
-            if trials_before_exception > 0:
-                LOGGER.info("Exception in IPFS pubsub, reconnecting in 2 seconds...")
-            else:
-                LOGGER.exception(
-                    "Exception in IPFS pubsub, reconnecting in 2 seconds..."
-                )
+            LOGGER.exception("Exception in IPFS pubsub, reconnecting in 2 seconds...")
             await asyncio.sleep(2)
-        finally:
-            trials_before_exception = max(trials_before_exception - 1, 0)

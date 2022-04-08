@@ -9,8 +9,8 @@ volumes:
 services:
   pyaleph:
     restart: always
-    image: alephim/pyaleph-node:v0.2.1
-    command: pyaleph --config /opt/pyaleph/config.yml --key-dir /opt/pyaleph/keys -v
+    image: alephim/pyaleph-node:latest
+    command: --config /opt/pyaleph/config.yml --key-dir /opt/pyalsseph/keys -vv
     ports:
       - "127.0.0.1:8000:8000/tcp"
       - "4024:4024/tcp"
