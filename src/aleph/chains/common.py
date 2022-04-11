@@ -1,8 +1,13 @@
 import asyncio
 import json
 import logging
+from dataclasses import asdict
 from enum import IntEnum
 from typing import Dict, Optional, Tuple, List
+
+from aleph_message.models import MessageType
+from bson import ObjectId
+from pymongo import UpdateOne
 
 from aleph.config import get_config
 from aleph.exceptions import (
@@ -21,9 +26,7 @@ from aleph.model.pending import PendingMessage, PendingTX
 from aleph.network import check_message as check_message_fn
 from aleph.permissions import check_sender_authorization
 from aleph.storage import get_json, pin_hash, add_json, get_message_content
-from aleph_message.models import MessageType
-from bson import ObjectId
-from pymongo import UpdateOne
+from .tx_context import TxContext
 
 LOGGER = logging.getLogger("chains.common")
 
@@ -349,7 +352,7 @@ async def get_chaindata(messages, bulk_threshold=2000):
 
 
 async def get_chaindata_messages(
-    chaindata: Dict, context, seen_ids: Optional[List] = None
+    chaindata: Dict, context: TxContext, seen_ids: Optional[List] = None
 ):
     config = get_config()
 
@@ -411,9 +414,9 @@ async def get_chaindata_messages(
         raise InvalidContent(error_msg)
 
 
-async def incoming_chaindata(content, context):
+async def incoming_chaindata(content: Dict, context: TxContext):
     """Incoming data from a chain.
     Content can be inline of "offchain" through an ipfs hash.
     For now we only add it to the database, it will be processed later.
     """
-    await PendingTX.collection.insert_one({"content": content, "context": context})
+    await PendingTX.collection.insert_one({"content": content, "context": asdict(context)})
