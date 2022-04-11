@@ -12,14 +12,19 @@ been executed in the past.
 """
 
 import argparse
+import asyncio
 import importlib.util
 import logging
 import os
 import sys
 from types import ModuleType
 
-LOGGER = logging.getLogger()
+from configmanager import Config
 
+from aleph.config import get_defaults
+from aleph.model import init_db_globals
+
+LOGGER = logging.getLogger()
 
 SERIALIZED_KEY_FILE = "serialized-node-secret.key"
 
@@ -76,6 +81,12 @@ def setup_logging(log_level: int) -> None:
     )
 
 
+def init_config(config_file: str) -> Config:
+    config = Config(schema=get_defaults())
+    config.yaml.load(config_file)
+    return config
+
+
 def import_module_from_path(path: str) -> ModuleType:
     spec = importlib.util.spec_from_file_location("migration_module", path)
     migration_module = importlib.util.module_from_spec(spec)
@@ -83,9 +94,13 @@ def import_module_from_path(path: str) -> ModuleType:
     return migration_module
 
 
-def main(args: argparse.Namespace):
+async def main(args: argparse.Namespace):
     log_level = logging.DEBUG if args.verbose else logging.INFO
     setup_logging(log_level)
+
+    # Initialize some basic config and global variables
+    config = init_config(args.config)
+    init_db_globals(config=config)
 
     migration_scripts_dir = os.path.join(os.path.dirname(__file__), "scripts")
     migration_scripts = sorted(
@@ -102,14 +117,27 @@ def main(args: argparse.Namespace):
             LOGGER.info(f"%s: %s", migration_script, migration_module.__doc__)
         LOGGER.info(f"Running %s for %s...", command, migration_script)
         migration_func = getattr(migration_module, args.command)
-        migration_func(config_file=args.config, key_dir=args.key_dir, key_file=args.key_file)
 
-    LOGGER.info(f"Successfully ran %s. You can now start the Core Channel Node.", command)
+        kwargs = {
+            "config_file": args.config,
+            "key_dir": args.key_dir,
+            "key_file": args.key_file,
+            "config": config,
+        }
+
+        if asyncio.iscoroutinefunction(migration_func):
+            await migration_func(**kwargs)
+        else:
+            migration_func(**kwargs)
+
+    LOGGER.info(
+        f"Successfully ran %s. You can now start the Core Channel Node.", command
+    )
 
 
 if __name__ == "__main__":
     try:
-        main(cli_parse())
+        asyncio.run(main(cli_parse()))
     except Exception as e:
         LOGGER.error("%s", str(e))
         sys.exit(1)
