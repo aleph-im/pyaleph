@@ -18,22 +18,25 @@ from aleph.logging import setup_logging
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.network import check_message
 from aleph.services.p2p import singleton
-from .job_utils import prepare_loop
+from .job_utils import prepare_loop, gather_and_perform_db_operations
+from aleph.model.db_bulk_operation import DbBulkOperation
+from aleph.toolkit.batch import async_batch
 
 LOGGER = logging.getLogger("jobs.pending_txs")
 
 
 async def handle_pending_tx(
-    pending, actions_list: List, seen_ids: Optional[List] = None
-):
-    tx_context = TxContext(**pending["context"])
+    pending_tx, seen_ids: Optional[List] = None
+) -> List[DbBulkOperation]:
+
+    db_operations = []
+    tx_context = TxContext(**pending_tx["context"])
     LOGGER.info("%s Handling TX in block %s", tx_context.chain_name, tx_context.height)
 
     messages = await get_chaindata_messages(
-        pending["content"], tx_context, seen_ids=seen_ids
+        pending_tx["content"], tx_context, seen_ids=seen_ids
     )
     if messages:
-        message_actions = list()
         for i, message in enumerate(messages):
             message["time"] = tx_context.time + (i / 1000)  # force order
 
@@ -46,76 +49,71 @@ async def handle_pending_tx(
                 continue
 
             # we add it to the message queue... bad idea? should we process it asap?
-            message_actions.append(
-                InsertOne(
-                    {
-                        "message": message,
-                        "source": dict(
-                            chain_name=tx_context.chain_name,
-                            tx_hash=tx_context.tx_hash,
-                            height=tx_context.height,
-                            check_message=True,  # should we store this?
-                        ),
-                    }
+            db_operations.append(
+                DbBulkOperation(
+                    collection=PendingMessage,
+                    operation=InsertOne(
+                        {
+                            "message": message,
+                            "source": dict(
+                                chain_name=tx_context.chain_name,
+                                tx_hash=tx_context.tx_hash,
+                                height=tx_context.height,
+                                check_message=True,  # should we store this?
+                            ),
+                        }
+                    ),
                 )
             )
             await asyncio.sleep(0)
 
-        if message_actions:
-            await PendingMessage.collection.bulk_write(message_actions)
     else:
         LOGGER.debug("TX contains no message")
 
     if messages is not None:
         # bogus or handled, we remove it.
-        actions_list.append(DeleteOne({"_id": pending["_id"]}))
-
-
-async def join_pending_txs_tasks(tasks, actions_list):
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    for result in results:
-        if isinstance(result, BaseException):
-            LOGGER.exception(
-                "error in incoming txs task",
-                exc_info=(type(result), result, result.__traceback__),
+        db_operations.append(
+            DbBulkOperation(
+                collection=PendingTX, operation=DeleteOne({"_id": pending_tx["_id"]})
             )
+        )
 
-    tasks.clear()
+    return db_operations
 
-    if len(actions_list):
-        await PendingTX.collection.bulk_write(actions_list)
-        actions_list.clear()
+
+async def join_pending_txs_tasks(tasks):
+    await gather_and_perform_db_operations(
+        tasks,
+        on_error=lambda e: LOGGER.exception(
+            "error in incoming txs task",
+            exc_info=(type(e), e, e.__traceback__),
+        ),
+    )
 
 
 async def process_pending_txs():
-    """Each few minutes, try to handle message that were added to the
-    pending queue (Unavailable messages)."""
-    if not await PendingTX.collection.count_documents({}):
-        await asyncio.sleep(5)
-        return
+    """
+    Process chain transactions in the Pending TX queue.
+    """
 
-    actions = []
-    tasks = []
-    seen_offchain_hashes = []
+    batch_size = 200
+
+    seen_offchain_hashes = set()
     seen_ids = []
-    i = 0
     LOGGER.info("handling TXs")
-    async for pending in PendingTX.collection.find().sort([("context.time", 1)]):
-        if pending["content"]["protocol"] == "aleph-offchain":
-            if pending["content"]["content"] not in seen_offchain_hashes:
-                seen_offchain_hashes.append(pending["content"]["content"])
-            else:
-                continue
+    async for pending_tx_batch in async_batch(
+        PendingTX.collection.find().sort([("context.time", 1)]), batch_size
+    ):
+        tasks = []
+        for pending_tx in pending_tx_batch:
+            if pending_tx["content"]["protocol"] == "aleph-offchain":
+                if pending_tx["content"]["content"] in seen_offchain_hashes:
+                    continue
 
-        i += 1
-        tasks.append(handle_pending_tx(pending, actions, seen_ids=seen_ids))
+            seen_offchain_hashes.add(pending_tx["content"]["content"])
+            tasks.append(handle_pending_tx(pending_tx, seen_ids=seen_ids))
 
-        if i > 200:
-            await join_pending_txs_tasks(tasks, actions)
-            i = 0
-
-    await join_pending_txs_tasks(tasks, actions)
+        await join_pending_txs_tasks(tasks)
 
 
 async def handle_txs_task():

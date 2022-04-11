@@ -3,22 +3,21 @@ Job in charge of (re-) processing Aleph messages waiting in the pending queue.
 """
 
 import asyncio
-from itertools import groupby
 from logging import getLogger
 from typing import List, Dict, Tuple
 
 import sentry_sdk
+from aleph_message.models import MessageType
+from pymongo import DeleteOne, DeleteMany, ASCENDING
+from setproctitle import setproctitle
+
 from aleph.chains.common import incoming, IncomingStatus
 from aleph.logging import setup_logging
 from aleph.model.db_bulk_operation import DbBulkOperation
 from aleph.model.pending import PendingMessage
 from aleph.services.p2p import singleton
 from aleph.types import ItemType
-from pymongo import DeleteOne, DeleteMany, ASCENDING
-from setproctitle import setproctitle
-from aleph_message.models import MessageType
-
-from .job_utils import prepare_loop
+from .job_utils import prepare_loop, gather_and_perform_db_operations
 
 LOGGER = getLogger("jobs.pending_messages")
 
@@ -47,27 +46,10 @@ async def handle_pending_message(
 
 
 async def join_pending_message_tasks(tasks):
-    db_operations = await asyncio.gather(*tasks, return_exceptions=True)
-
-    errors = [op for op in db_operations if isinstance(op, BaseException)]
-    for error in errors:
-        LOGGER.error("Error while processing message: %s", error)
-
-    # Sort the operations by collection name before grouping and executing them.
-    db_operations = sorted(
-        (
-            op
-            for operations in db_operations
-            if not isinstance(operations, BaseException)
-            for op in operations
-        ),
-        key=lambda op: op.collection.__name__,
+    await gather_and_perform_db_operations(
+        tasks,
+        on_error=lambda e: LOGGER.error("Error while processing message: %s", e),
     )
-
-    for collection, operations in groupby(db_operations, lambda op: op.collection):
-        mongo_ops = [op.operation for op in operations]
-        await collection.collection.bulk_write(mongo_ops)
-
     tasks.clear()
 
 
