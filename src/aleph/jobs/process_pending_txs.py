@@ -38,8 +38,6 @@ async def handle_pending_tx(
     )
     if messages:
         for i, message in enumerate(messages):
-            message["time"] = tx_context.time + (i / 1000)  # force order
-
             try:
                 message = await check_message(
                     message, trusted=True
