@@ -395,7 +395,7 @@ async def get_chaindata_messages(
         if config.ipfs.enabled.value:
             # wait for 4 seconds to try to pin that
             try:
-                LOGGER.info(f"chaindatax {chaindata}")
+                LOGGER.info(f"chaindata {chaindata}")
                 await PermanentPin.register(
                     multihash=chaindata["content"],
                     reason={
