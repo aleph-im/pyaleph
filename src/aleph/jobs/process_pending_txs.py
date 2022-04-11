@@ -7,16 +7,17 @@ import logging
 from typing import List, Dict, Optional
 
 import sentry_sdk
+from pymongo import DeleteOne, InsertOne
+from pymongo.errors import CursorNotFound
+from setproctitle import setproctitle
+
 from aleph.chains.common import get_chaindata_messages
+from aleph.chains.tx_context import TxContext
 from aleph.exceptions import InvalidMessageError
 from aleph.logging import setup_logging
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.network import check_message
 from aleph.services.p2p import singleton
-from pymongo import DeleteOne, InsertOne
-from pymongo.errors import CursorNotFound
-from setproctitle import setproctitle
-
 from .job_utils import prepare_loop
 
 LOGGER = logging.getLogger("jobs.pending_txs")
@@ -25,17 +26,16 @@ LOGGER = logging.getLogger("jobs.pending_txs")
 async def handle_pending_tx(
     pending, actions_list: List, seen_ids: Optional[List] = None
 ):
-    LOGGER.info(
-        "%s Handling TX in block %s"
-        % (pending["context"]["chain_name"], pending["context"]["height"])
-    )
+    tx_context = TxContext(**pending["context"])
+    LOGGER.info("%s Handling TX in block %s", tx_context.chain_name, tx_context.height)
+
     messages = await get_chaindata_messages(
-        pending["content"], pending["context"], seen_ids=seen_ids
+        pending["content"], tx_context, seen_ids=seen_ids
     )
     if messages:
         message_actions = list()
         for i, message in enumerate(messages):
-            message["time"] = pending["context"]["time"] + (i / 1000)  # force order
+            message["time"] = tx_context.time + (i / 1000)  # force order
 
             try:
                 message = await check_message(
@@ -51,9 +51,9 @@ async def handle_pending_tx(
                     {
                         "message": message,
                         "source": dict(
-                            chain_name=pending["context"]["chain_name"],
-                            tx_hash=pending["context"]["tx_hash"],
-                            height=pending["context"]["height"],
+                            chain_name=tx_context.chain_name,
+                            tx_hash=tx_context.tx_hash,
+                            height=tx_context.height,
                             check_message=True,  # should we store this?
                         ),
                     }

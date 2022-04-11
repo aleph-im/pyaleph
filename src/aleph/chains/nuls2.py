@@ -6,6 +6,7 @@ import logging
 import struct
 import time
 from operator import itemgetter
+from typing import AsyncIterator, Dict, Tuple
 
 import aiohttp
 from aiocache import cached, SimpleMemoryCache
@@ -24,16 +25,17 @@ from aleph.chains.common import (
     get_chaindata,
     incoming_chaindata,
 )
+from aleph.model.chains import Chain
+from aleph.model.messages import Message
+from aleph.model.pending import pending_messages_count, pending_txs_count
 from aleph.register_chain import (
     register_verifier,
     register_incoming_worker,
     register_outgoing_worker,
     register_balance_getter,
 )
-from aleph.model.chains import Chain
-from aleph.model.messages import Message
-from aleph.model.pending import pending_messages_count, pending_txs_count
 from aleph.utils import run_in_executor
+from .tx_context import TxContext
 
 LOGGER = logging.getLogger("chains.nuls2")
 CHAIN_NAME = "NULS2"
@@ -154,7 +156,7 @@ async def get_transactions(
             yield tx
 
 
-async def request_transactions(config, session, start_height):
+async def request_transactions(config, session, start_height) -> AsyncIterator[Tuple[Dict, TxContext]]:
     """Continuously request data from the NULS blockchain."""
     target_addr = config.nuls2.sync_address.value
     remark = config.nuls2.remark.value
@@ -171,14 +173,14 @@ async def request_transactions(config, session, start_height):
             last_height = tx["height"]
             jdata = json.loads(ddata)
 
-            context = {
-                "chain_name": CHAIN_NAME,
-                "tx_hash": tx["hash"],
-                "height": tx["height"],
-                "time": tx["createTime"],
-                "publisher": tx["coinFroms"][0]["address"],
-            }
-            yield (jdata, context)
+            context = TxContext(
+                chain_name=CHAIN_NAME,
+                tx_hash=tx["hash"],
+                height=tx["height"],
+                time=tx["createTime"],
+                publisher=tx["coinFroms"][0]["address"],
+            )
+            yield jdata, context
 
         except json.JSONDecodeError:
             # if it's not valid json, just ignore it...

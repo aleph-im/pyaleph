@@ -2,6 +2,7 @@ import asyncio
 import functools
 import json
 import logging
+from typing import AsyncIterator, Dict, Tuple
 
 import pkg_resources
 from eth_account import Account
@@ -27,6 +28,7 @@ from aleph.register_chain import (
     register_outgoing_worker,
 )
 from aleph.utils import run_in_executor
+from .tx_context import TxContext
 
 LOGGER = logging.getLogger("chains.ethereum")
 CHAIN_NAME = "ETH"
@@ -161,7 +163,9 @@ async def get_logs(config, web3: Web3, contract, start_height):
                     raise
 
 
-async def request_transactions(config, web3: Web3, contract, abi, start_height):
+async def request_transactions(
+    config, web3: Web3, contract, abi, start_height
+) -> AsyncIterator[Tuple[Dict, TxContext]]:
     """Continuously request data from the Ethereum blockchain.
     TODO: support websocket API.
     """
@@ -191,14 +195,14 @@ async def request_transactions(config, web3: Web3, contract, abi, start_height):
         message = event_data.args.message
         try:
             jdata = json.loads(message)
-            context = {
-                "chain_name": CHAIN_NAME,
-                "tx_hash": event_data.transactionHash.hex(),
-                "time": timestamp,
-                "height": event_data.blockNumber,
-                "publisher": publisher,
-            }
-            yield (jdata, context)
+            context = TxContext(
+                chain_name=CHAIN_NAME,
+                tx_hash=event_data.transactionHash.hex(),
+                time=timestamp,
+                height=event_data.blockNumber,
+                publisher=publisher,
+            )
+            yield jdata, context
 
         except json.JSONDecodeError:
             # if it's not valid json, just ignore it...
