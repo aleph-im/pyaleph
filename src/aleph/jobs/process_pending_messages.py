@@ -16,6 +16,7 @@ from aleph.services.p2p import singleton
 from aleph.types import ItemType
 from pymongo import DeleteOne, DeleteMany, ASCENDING
 from setproctitle import setproctitle
+from aleph_message.models import MessageType
 
 from .job_utils import prepare_loop
 
@@ -111,7 +112,7 @@ async def process_pending_messages(shared_stats: Dict):
 
             if (
                 pending["message"]["item_type"] == ItemType.IPFS
-                or pending["message"]["type"] == "STORE"
+                or pending["message"]["type"] == MessageType.store
             ):
                 i += 15
                 j += 100
