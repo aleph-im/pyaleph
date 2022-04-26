@@ -1,0 +1,63 @@
+{
+  "protocol": "aleph",
+  "version": 1,
+  "content": {
+    "messages": [
+      {
+        "chain": "ETH",
+        "item_hash": "bebfaebedbc51f3c938a0aeb64832e5fab4767f59c339e6be85f13d99c12a720",
+        "sender": "0x51A58800b26AA1451aaA803d1746687cB88E0501",
+        "type": "AGGREGATE",
+        "channel": "UNSLASHED",
+        "item_content": "{\"address\":\"0x51A58800b26AA1451aaA803d1746687cB88E0501\",\"key\":\"0x6705f7a25309f01f54ee55343dc31d920213001bbitmex\",\"content\":{\"1632832208483\":{\"version\":\"x25519-xsalsa20-poly1305\",\"nonce\":\"SoKV1rzjP2Pvph87gfMFbjHLePXHUIjq\",\"ephemPublicKey\":\"HJaJv3EOOS/nF+TMqLI7wq1x50kYdFZRWSJYPQfqdDk=\",\"ciphertext\":\"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\",\"sha256\":\"b03b8968ccd6de16af0960c15cac6c9c2dda8ffbb5567a8999429eecce7a0f8d\"}},\"time\":1632832208.826}",
+        "item_type": "inline",
+        "signature": "0xf276cce9807b5a0865975e3b52437332c5bfbad7d248322ae672c57d7682158836e4fed53429741937c15bb018a90e203acddd5ae720d6edf0d2968f50e7ac471b",
+        "time": 1632832208.826
+      },
+      {
+        "chain": "ETH",
+        "item_hash": "b6f0dcd7ad05bbc2c14ff570b36051544579a7f46a6380f6cc1909d493e30a1d",
+        "sender": "0x51A58800b26AA1451aaA803d1746687cB88E0501",
+        "type": "AGGREGATE",
+        "channel": "UNSLASHED",
+        "item_content": "{\"address\":\"0x51A58800b26AA1451aaA803d1746687cB88E0501\",\"key\":\"0x6705f7a25309f01f54ee55343dc31d920213001bcoinbasepro\",\"content\":{\"1632832208459\":{\"version\":\"x25519-xsalsa20-poly1305\",\"nonce\":\"+r/0nUykXOd+FrpN3JWcS0VVAq3z7mMq\",\"ephemPublicKey\":\"JNgYenYYrycLoyItE568AJ3b0YT7oW+/428+tvNsDDY=\",\"ciphertext\":\"17Kj+/1BYzZeig2Zxi09WkBdjnBp/sDNuosAXgKtFKR7Cy/fnJ4kSOmdtldBol50Ao9B5FcDdPACRDKKnd2eDp+aMEK4d1GVRGv9J0p4nNnspk0JY2IpiY7nxVxAtm3hPAkgZVFIaNFQw5JmfFAt5TJS+tsY/XzcZd8tLNiolBMk15lVYNHokSmNKdc4pzw7poOHAqrlI0SWpdtRHE4m9gAFDt3Ooaqo4xWEV6fNwV14rBFdkvCWEFUkQY2aWWLRliU7j4BGeXi/3tVy67+KISUrrK+vSssOpXt4HO2yUVRXGDhelh43os3JnDI92oo6IFMnWO4kzNZfR/ZvI+uNArbpY2BgmOyt0UJuDBK8CsIevDWvUtcX7gWDHZCliw==\",\"sha256\":\"703c62f8c1edda4918ace33407fb97ea6f386628e224ed128602dc6b495e9cff\"}},\"time\":1632832209.182}",
+        "item_type": "inline",
+        "signature": "0x06b1cf4d70b40c858a2e3b424888ea0b7c59dc952b257496643095dc1190e964226e23ea75ad052538cdeb6d0f91a436e198c9cac552e18a166bee6ad88f1a5c1b",
+        "time": 1632832209.182
+      },
+      {
+        "chain": "ETH",
+        "item_hash": "6351a805121afacb4a2d4afabff046f1051dd810f4278b25677e2bdd551c3b72",
+        "sender": "0xED9d5B040386F394B9ABd34fD59152756b126710",
+        "type": "POST",
+        "channel": "FOUNDATION",
+        "item_content": "{\"type\":\"amend\",\"address\":\"0xED9d5B040386F394B9ABd34fD59152756b126710\",\"content\":{\"symbol\":\"ALEPH\",\"source\":{\"address\":\"0xAda8bC7558fF750967FfDa62d5321473Ae556547\",\"chain\":\"ETH\",\"amount\":7909.9494,\"contract_amount\":\"7909949400000000000000\",\"tx\":\"0xcc735e7646dfc393a1a3ab825cd17b127b37e407e6b1bc3180fb2ef221a98af8\",\"height\":13313775},\"target\":{\"chain\":\"BSC\",\"sender\":\"0x7F05Ed9650E48f3E564125EAdCdc0d5E7c2E8DaB\",\"target\":\"0xAda8bC7558fF750967FfDa62d5321473Ae556547\",\"amount\":7904.9494,\"fee\":5,\"contract_amount\":\"7904949399999999901696\",\"nonce\":262,\"tx\":\"0x3d4b903f6bf347a5f1b0bdaaec411f534b8d31d8ac510e4da6b3a386b51a7337\",\"height\":11306243},\"status\":\"finished\"},\"time\":1632834256.6084177,\"ref\":\"d06620a08d5f17d6592725b4a67a68583374ab715c4d202ba8d45a3b9b54cbe4\"}",
+        "item_type": "inline",
+        "signature": "0xb00b599a9338742c11f6507801679968a8cb881488078899b7fb8803d3dbc9bb0b6bbc2152c3dc45408ee7148c1d8b2f992bfcf2ed4e74c222f9ee27fa29f3001b",
+        "time": 1632834256.6084251
+      },
+      {
+        "chain": "ETH",
+        "item_hash": "705edcdca036918d24c1087a13460a6c63b76e19fa0bae2c188dd2af639def3d",
+        "sender": "0xF4c48E1B83233722F3609953EaF9800d0e3a1d8E",
+        "type": "STORE",
+        "channel": "TEST",
+        "item_content": "{\"address\":\"0xF4c48E1B83233722F3609953EaF9800d0e3a1d8E\",\"item_type\":\"ipfs\",\"item_hash\":\"QmPVwkMvXRVCnWMWwAgu4pwyP1ZTTbRqHV4sLbrxBhcdPK\",\"time\":1632834361.828341}",
+        "item_type": "inline",
+        "signature": "0x229fd8d8d9ba9012d17e02423cca20a52d3addf6d55276b98c5c9c5625fe6c01722fb59526dd8eb8b7b1b2b610b2e7c902c4c516ee5e729751b0e9d9b3af66d31c",
+        "time": 1632834361.828349
+      },
+      {
+        "chain": "ETH",
+        "item_hash": "05ff5b0281ba2c0f9a84c3051000aa1ffe0cddece3e76fdec12ebfcff7ed0f7c",
+        "sender": "0xF4c48E1B83233722F3609953EaF9800d0e3a1d8E",
+        "type": "POST",
+        "channel": "TEST",
+        "item_content": "{\"type\":\"test_archetype\",\"address\":\"0xF4c48E1B83233722F3609953EaF9800d0e3a1d8E\",\"content\":{\"name\":\"Pika Test\",\"description\":\"Notification Test\",\"image\":\"ipfs://QmPVwkMvXRVCnWMWwAgu4pwyP1ZTTbRqHV4sLbrxBhcdPK\",\"maxInstances\":50},\"time\":1632834362.4248235}",
+        "item_type": "inline",
+        "signature": "0xb67e90620271a3391417d38e73e10e95a807ff99a03f47771a3456c6401e697d22904912f1152c8b511078766292b3c57fa16cc15f84bf969ad6e5ec9f92c8f51c",
+        "time": 1632834362.424826
+      }
+    ]
+  }
+}

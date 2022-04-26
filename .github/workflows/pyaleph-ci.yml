@@ -16,6 +16,12 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-20.04
+    services:
+      mongodb:
+        image: mongo:4.4
+        ports:
+          - 27017:27017
+
     steps:
     - uses: actions/checkout@v2
       with:
