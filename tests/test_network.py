@@ -2,8 +2,9 @@ import pytest
 
 # Mandatory import, otherwise VERIFIER_REGISTER is not populated. TODO: improve the registration system.
 import aleph.chains
-from aleph.network import check_message
 from aleph.exceptions import InvalidMessageError
+from aleph.chains.common import IncomingStatus
+from aleph.network import check_message
 
 __author__ = "Moshe Malawach"
 __copyright__ = "Moshe Malawach"
@@ -140,5 +141,5 @@ async def test_incoming_inline_content(mocker):
            }
     # msg['item_type'] = 'inline'
     msg = await check_message(msg)
-    v = await incoming(msg)
-    assert v is True
+    status, ops = await incoming(msg)
+    assert status == IncomingStatus.MESSAGE_HANDLED
