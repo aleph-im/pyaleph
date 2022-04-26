@@ -32,7 +32,7 @@ async def handle_pending_tx(
     messages = await get_chaindata_messages(
         pending["content"], pending["context"], seen_ids=seen_ids
     )
-    if isinstance(messages, list):
+    if messages:
         message_actions = list()
         for i, message in enumerate(messages):
             message["time"] = pending["context"]["time"] + (i / 1000)  # force order
