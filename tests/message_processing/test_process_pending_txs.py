@@ -1,17 +1,18 @@
 import json
-import os
+from pathlib import Path
 from typing import Dict, List
 
 import pytest
-from aleph.jobs import handle_pending_tx
-from aleph.model.pending import PendingMessage
 from bson.objectid import ObjectId
 from pymongo import DeleteOne
 
+from aleph.jobs.process_pending_txs import handle_pending_tx
+from aleph.model.pending import PendingMessage
+
 
 def load_fixture_messages(fixture: str) -> List[Dict]:
-    fixtures_dir = os.path.join(os.path.dirname(__file__), "fixtures")
-    with open(os.path.join(fixtures_dir, fixture)) as f:
+    fixture_path = Path(__file__).parent / "fixtures" / fixture
+    with open(fixture_path) as f:
         return json.load(f)["content"]["messages"]
 
 
@@ -25,7 +26,10 @@ async def get_fixture_chaindata_messages(
 
 @pytest.mark.asyncio
 async def test_process_pending_tx(mocker, test_db):
-    mocker.patch("aleph.jobs.get_chaindata_messages", get_fixture_chaindata_messages)
+    mocker.patch(
+        "aleph.jobs.process_pending_txs.get_chaindata_messages",
+        get_fixture_chaindata_messages,
+    )
 
     pending_tx = {
         "_id": ObjectId("624ee76595d0a7ca46f4392d"),
