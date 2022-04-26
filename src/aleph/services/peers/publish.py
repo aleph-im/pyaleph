@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 
-from aleph.services.peers.common import ALIVE_TOPIC, IPFS_ALIVE_TOPIC
 from aleph.services.ipfs.pubsub import pub as pub_ipfs
 
 from p2pclient import Client as P2PClient
@@ -14,6 +13,8 @@ LOGGER = logging.getLogger("peers.publish")
 async def publish_host(
     address: str,
     p2p_client: P2PClient,
+    p2p_alive_topic: str,
+    ipfs_alive_topic: str,
     interests: Optional[List[str]] = None,
     delay: int = 120,
     peer_type: str = "P2P",
@@ -35,14 +36,14 @@ async def publish_host(
             if use_ipfs:
                 LOGGER.debug("Publishing alive message on ipfs pubsub")
                 await asyncio.wait_for(
-                    pub_ipfs(IPFS_ALIVE_TOPIC, msg.decode("utf-8")), 1
+                    pub_ipfs(ipfs_alive_topic, msg.decode("utf-8")), 1
                 )
         except Exception:
             LOGGER.warning("Can't publish alive message on ipfs")
 
         try:
             LOGGER.debug("Publishing alive message on p2p pubsub")
-            await asyncio.wait_for(p2p_client.pubsub_publish(ALIVE_TOPIC, msg), 1)
+            await asyncio.wait_for(p2p_client.pubsub_publish(p2p_alive_topic, msg), 1)
         except Exception:
             LOGGER.warning("Can't publish alive message on p2p")
 

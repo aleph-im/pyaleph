@@ -57,25 +57,36 @@ async def initialize_host(
             publish_host(
                 public_address,
                 p2p_client,
+                p2p_alive_topic=config.p2p.alive_topic.value,
+                ipfs_alive_topic=config.ipfs.alive_topic.value,
                 peer_type="P2P",
                 use_ipfs=app["config"].ipfs.enabled.value,
             ),
             publish_host(
                 public_http_address,
                 p2p_client,
+                p2p_alive_topic=config.p2p.alive_topic.value,
+                ipfs_alive_topic=config.ipfs.alive_topic.value,
                 peer_type="HTTP",
                 use_ipfs=app["config"].ipfs.enabled.value,
             ),
-            monitor_hosts_p2p(p2p_client),
+            monitor_hosts_p2p(p2p_client, alive_topic=config.p2p.alive_topic.value),
         ]
 
         if app["config"].ipfs.enabled.value:
-            tasks.append(monitor_hosts_ipfs(app["config"]))
+            tasks.append(
+                monitor_hosts_ipfs(alive_topic=app["config"].ipfs.alive_topic.value)
+            )
             try:
                 public_ipfs_address = await get_public_address()
                 tasks.append(
                     publish_host(
-                        public_ipfs_address, p2p_client, peer_type="IPFS", use_ipfs=True
+                        public_ipfs_address,
+                        p2p_client,
+                        p2p_alive_topic=config.p2p.alive_topic.value,
+                        ipfs_alive_topic=config.ipfs.alive_topic.value,
+                        peer_type="IPFS",
+                        use_ipfs=True,
                     )
                 )
             except Exception:

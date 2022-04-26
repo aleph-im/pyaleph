@@ -19,6 +19,7 @@ def get_defaults():
             "listen_port": 4031,
             "daemon_host": "p2pd",
             "reconnect_delay": 60,
+            "alive_topic": "ALIVE",
             "clients": ["http"],
             "peers": [
                 "/ip4/51.159.57.71/tcp/4025/p2p/QmZkurbY2G2hWay59yiTgQNaQxHSNzKZFt2jbnwJhQcKgV",
@@ -71,6 +72,7 @@ def get_defaults():
             "port": 5001,
             "gateway_port": 8080,
             "id": None,
+            "alive_topic": "ALEPH_ALIVE",
             "reconnect_delay": 60,
             "peers": [
                 "/dnsaddr/api1.aleph.im/ipfs/12D3KooWNgogVS6o8fVsPdzh2FJpCdJJLVSgJT38XGE1BJoCerHx",
