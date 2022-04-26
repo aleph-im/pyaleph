@@ -61,10 +61,10 @@ ENV PATH="/opt/venv/bin:${PATH}"
 # === Install CCN dependencies ===
 # Install dependencies early to cache them and accelerate incremental builds.
 COPY setup.cfg /opt/pyaleph/
-COPY deployment/scripts/extract_requirements.py /opt/build/
-RUN /opt/venv/bin/python3 /opt/build/extract_requirements.py /opt/pyaleph/setup.cfg -o /opt/build/requirements.txt
+COPY deployment/scripts /opt/pyaleph/deployment/scripts
+RUN /opt/venv/bin/python3 /opt/pyaleph/deployment/scripts/extract_requirements.py /opt/pyaleph/setup.cfg -o /opt/build/requirements.txt
 RUN /opt/venv/bin/pip install --no-cache-dir -r /opt/build/requirements.txt
-RUN rm /opt/build/extract_requirements.py /opt/build/requirements.txt
+RUN rm /opt/build/requirements.txt
 
 # === Install the CCN itself ===
 COPY deployment/migrations /opt/pyaleph/migrations
@@ -85,7 +85,7 @@ RUN /opt/venv/bin/pip install --no-cache-dir "."
 RUN /opt/venv/bin/pip freeze > /opt/build-frozen-requirements.txt
 
 USER aleph
-CMD ["pyaleph"]
+ENTRYPOINT ["bash", "deployment/scripts/run_aleph_ccn.sh"]
 
 # CCN API
 EXPOSE 8000
