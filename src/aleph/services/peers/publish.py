@@ -43,7 +43,7 @@ async def publish_host(
 
         try:
             LOGGER.debug("Publishing alive message on p2p pubsub")
-            await asyncio.wait_for(p2p_client.pubsub_publish(p2p_alive_topic, msg), 1)
+            await asyncio.wait_for(p2p_client.pubsub_publish(p2p_alive_topic, msg), 10)
         except Exception:
             LOGGER.warning("Can't publish alive message on p2p")
 
