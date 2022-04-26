@@ -26,7 +26,8 @@ from aleph.chains import connector_tasks
 from aleph.cli.args import parse_args
 from aleph.config import get_defaults
 from aleph.exceptions import InvalidConfigException, KeyNotFoundException
-from aleph.jobs import start_jobs, prepare_loop
+from aleph.jobs.job_utils import prepare_loop
+from aleph.jobs import start_jobs
 from aleph.logging import setup_logging
 from aleph.network import listener_tasks
 from aleph.services import p2p
