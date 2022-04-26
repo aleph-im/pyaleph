@@ -26,7 +26,7 @@ async def pub_json(request):
 
     try:
         p2p_client = get_p2p_client()
-        await asyncio.wait_for(pub_p2p(p2p_client, data.get("topic"), data.get("data")), 0.5)
+        await asyncio.wait_for(pub_p2p(p2p_client, data.get("topic"), data.get("data")), 10)
     except Exception:
         LOGGER.exception("Can't publish on p2p")
         failed_publications.append(Protocol.P2P)
