@@ -1,10 +1,16 @@
-import argparse
+"""
+This script reads a configuration value from the CCN config. This enables reading
+configuration values from shell scripts without launching the CCN itself.
+"""
 
-import configmanager.exceptions
-from aleph.config import get_defaults
-from configmanager import Config
+import argparse
 import sys
 from functools import partial
+
+import configmanager.exceptions
+from configmanager import Config
+
+from aleph.config import get_defaults
 
 
 def cli_parse() -> argparse.Namespace:

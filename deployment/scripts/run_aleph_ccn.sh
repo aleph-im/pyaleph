@@ -45,4 +45,4 @@ IPFS_PORT=$(get_config ipfs.port)
 wait_for_it "${DB_URI}"
 wait_for_it -h "${IPFS_HOST}" -p "${IPFS_PORT}"
 
-pyaleph "${PYALEPH_ARGS[@]}"
+exec pyaleph "${PYALEPH_ARGS[@]}"
