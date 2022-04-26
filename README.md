@@ -11,7 +11,7 @@ built from this repository with `$ python setup.py docs`
 ## Deployment
 
 We recommend following the 
-[Easy deployment using Docker-Compose](https://pyaleph.readthedocs.io/en/latest/guides/docker-compose.html)
+[Installing a Core Channel Node](https://pyaleph.readthedocs.io/en/latest/guides/install.html)
 section of the documentation to install a node.
 
 ## Development
