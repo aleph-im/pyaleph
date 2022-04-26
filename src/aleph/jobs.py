@@ -53,6 +53,7 @@ async def join_pending_message_tasks(tasks):
     for error in errors:
         LOGGER.error("Error while processing message: %s", error)
 
+    # Sort the operations by collection name before grouping and executing them.
     db_operations = sorted(
         (
             op
