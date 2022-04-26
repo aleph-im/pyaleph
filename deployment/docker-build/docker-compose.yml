@@ -27,7 +27,7 @@ services:
 
   ipfs:
     restart: always
-    image: ipfs/go-ipfs:v0.12.1
+    image: ipfs/go-ipfs:v0.12.2
     ports:
       - "4001:4001"
       - "4001:4001/udp"
