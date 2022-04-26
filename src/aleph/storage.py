@@ -19,8 +19,8 @@ from aleph.services.p2p.http import request_hash as p2p_http_request_hash
 from aleph.services.p2p.singleton import get_streamer
 from aleph.types import ItemType
 from aleph.utils import run_in_executor, get_sha256
-from aleph.web import app
 from aleph.services.ipfs.common import get_cid_version
+from aleph.config import get_config
 
 LOGGER = logging.getLogger("STORAGE")
 
@@ -99,7 +99,8 @@ async def fetch_content_from_network(
     content_hash: str, engine: ItemType, timeout: int
 ) -> Optional[bytes]:
     content = None
-    enabled_clients = app["config"].p2p.clients.value
+    config = get_config()
+    enabled_clients = config.p2p.clients.value
 
     if "protocol" in enabled_clients:
         streamer = get_streamer()
@@ -145,7 +146,8 @@ async def verify_content_hash(
     Checks that the hash of a content we fetched from the network matches the expected hash.
     :return: True if the hashes match, False otherwise.
     """
-    ipfs_enabled = app["config"].ipfs.enabled.value
+    config = get_config()
+    ipfs_enabled = config.ipfs.enabled.value
 
     if engine == ItemType.IPFS and ipfs_enabled:
         try:
@@ -181,7 +183,8 @@ async def get_hash_content(
     store_value: bool = True,
 ) -> RawContent:
     # TODO: determine which storage engine to use
-    ipfs_enabled = app["config"].ipfs.enabled.value
+    config = get_config()
+    ipfs_enabled = config.ipfs.enabled.value
 
     source = None
 

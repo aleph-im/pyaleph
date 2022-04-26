@@ -24,7 +24,7 @@ from setproctitle import setproctitle
 from aleph import model
 from aleph.chains import connector_tasks
 from aleph.cli.args import parse_args
-from aleph.config import get_defaults
+import aleph.config
 from aleph.exceptions import InvalidConfigException, KeyNotFoundException
 from aleph.jobs.job_utils import prepare_loop
 from aleph.jobs import start_jobs
@@ -42,7 +42,9 @@ __license__ = "mit"
 LOGGER = logging.getLogger(__name__)
 
 
-async def run_server(host: str, port: int, shared_stats: dict, extra_web_config: dict):
+async def run_server(
+    config: Config, host: str, port: int, shared_stats: dict, extra_web_config: dict
+):
     # These imports will run in different processes
     from aiohttp import web
     from aleph.web.controllers.listener import broadcast
@@ -52,6 +54,7 @@ async def run_server(host: str, port: int, shared_stats: dict, extra_web_config:
 
     LOGGER.debug("Setup of runner")
 
+    app["config"] = config
     app["extra_config"] = extra_web_config
     app["shared_stats"] = shared_stats
 
@@ -81,22 +84,25 @@ def run_server_coroutine(
     Used as target of multiprocessing.Process.
     """
     setproctitle(f"pyaleph-run_server_coroutine-{port}")
+
+    loop, config = prepare_loop(config_values)
+
     extra_web_config = extra_web_config or {}
     setup_logging(
-        loglevel=config_values["logging"]["level"],
+        loglevel=config.logging.level.value,
         filename=f"/tmp/run_server_coroutine-{port}.log",
     )
     if enable_sentry:
         sentry_sdk.init(
-            dsn=config_values["sentry"]["dsn"],
-            traces_sample_rate=config_values["sentry"]["traces_sample_rate"],
+            dsn=config.sentry.dsn.value,
+            traces_sample_rate=config.sentry.traces_sample_rate.value,
             ignore_errors=[KeyboardInterrupt],
         )
+
     # Use a try-catch-capture_exception to work with multiprocessing, see
     # https://github.com/getsentry/raven-python/issues/1110
     try:
-        loop = prepare_loop(config_values)
-        loop.run_until_complete(run_server(host, port, shared_stats, extra_web_config))
+        loop.run_until_complete(run_server(config, host, port, shared_stats, extra_web_config))
     except Exception as e:
         if enable_sentry:
             sentry_sdk.capture_exception(e)
@@ -104,7 +110,7 @@ def run_server_coroutine(
         raise
 
 
-def main(args):
+async def main(args):
     """Main entry point allowing external calls
 
     Args:
@@ -125,7 +131,7 @@ def main(args):
         return
 
     LOGGER.info("Loading configuration")
-    config = Config(schema=get_defaults())
+    config = aleph.config.app_config
 
     if args.config_file is not None:
         LOGGER.debug("Loading config file '%s'", args.config_file)
@@ -133,7 +139,6 @@ def main(args):
 
     # CLI config values override config file values
     config.logging.level.value = args.loglevel
-    app["config"] = config
 
     # Check for invalid/deprecated config
     if "protocol" in config.p2p.clients.value:
@@ -155,10 +160,10 @@ def main(args):
 
     if args.sentry_disabled:
         LOGGER.info("Sentry disabled by CLI arguments")
-    elif app["config"].sentry.dsn.value:
+    elif config.sentry.dsn.value:
         sentry_sdk.init(
-            dsn=app["config"].sentry.dsn.value,
-            traces_sample_rate=app["config"].sentry.traces_sample_rate.value,
+            dsn=config.sentry.dsn.value,
+            traces_sample_rate=config.sentry.traces_sample_rate.value,
             ignore_errors=[KeyboardInterrupt],
         )
         LOGGER.info("Sentry enabled")
@@ -169,8 +174,6 @@ def main(args):
     model.init_db(config, ensure_indexes=True)
     LOGGER.info("Database initialized.")
 
-    # filestore.init_store(config)
-    # LOGGER.info("File store initalized.")
     init_cors()  # FIXME: This is stateful and process-dependent
     set_start_method("spawn")
 
@@ -191,12 +194,9 @@ def main(args):
                 use_processes=True,
             )
 
-        loop = asyncio.get_event_loop()
-
         # handler = app.make_handler(loop=loop)
         LOGGER.debug("Initializing p2p")
-        p2p_init_task = p2p.init_p2p(config, api_servers)
-        p2p_client, p2p_tasks = loop.run_until_complete(p2p_init_task)
+        p2p_client, p2p_tasks = await p2p.init_p2p(config, api_servers)
         tasks += p2p_tasks
         LOGGER.debug("Initialized p2p")
 
@@ -217,7 +217,7 @@ def main(args):
                 config.aleph.host.value,
                 config.p2p.http_port.value,
                 shared_stats,
-                args.sentry_disabled is False and app["config"].sentry.dsn.value,
+                args.sentry_disabled is False and config.sentry.dsn.value,
                 extra_web_config,
             ),
         )
@@ -228,7 +228,7 @@ def main(args):
                 config.aleph.host.value,
                 config.aleph.port.value,
                 shared_stats,
-                args.sentry_disabled is False and app["config"].sentry.dsn.value,
+                args.sentry_disabled is False and config.sentry.dsn.value,
                 extra_web_config,
             ),
         )
@@ -248,13 +248,13 @@ def main(args):
         # srv = loop.run_until_complete(f)
         # LOGGER.info('Serving on %s', srv.sockets[0].getsockname())
         LOGGER.debug("Running event loop")
-        loop.run_until_complete(asyncio.gather(*tasks))
+        await asyncio.gather(*tasks)
 
 
 def run():
     """Entry point for console_scripts"""
     try:
-        main(sys.argv[1:])
+        asyncio.run(main(sys.argv[1:]))
     except (KeyNotFoundException, InvalidConfigException):
         sys.exit(1)
 

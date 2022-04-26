@@ -1,24 +1,19 @@
-from logging import getLogger
-
 import asyncio
 import json
-import logging
 import platform
 from dataclasses import dataclass, asdict
+from logging import getLogger
 from typing import Dict, Optional
 from urllib.parse import urljoin
-from requests import HTTPError
 
 import aiohttp
-from aiocache import cached
-from dataclasses_json import DataClassJsonMixin
-from web3 import Web3
-
 import aleph.model
+from aiocache import cached
 from aleph import __version__
-from aleph.web import app
-
-LOGGER = logging.getLogger(__name__)
+from aleph.config import get_config
+from dataclasses_json import DataClassJsonMixin
+from requests import HTTPError
+from web3 import Web3
 
 LOGGER = getLogger("WEB.metrics")
 
@@ -104,7 +99,8 @@ async def fetch_reference_total_messages() -> Optional[int]:
     """Obtain the total number of Aleph messages from another node."""
     LOGGER.debug("Fetching Aleph messages count")
 
-    url = app["config"].aleph.reference_node_url.value
+    config = get_config()
+    url = config.aleph.reference_node_url.value
     if url is None:
         return None
 
@@ -125,7 +121,7 @@ async def fetch_reference_total_messages() -> Optional[int]:
 async def fetch_eth_height() -> Optional[int]:
     """Obtain the height of the Ethereum blockchain."""
     LOGGER.debug("Fetching ETH height")
-    config = app["config"]
+    config = get_config()
 
     try:
         if config.ethereum.enabled.value:

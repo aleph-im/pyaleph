@@ -6,6 +6,7 @@ from typing import Optional
 
 import aiohttp
 import aioipfs
+from aleph.config import get_config
 
 from .common import get_ipfs_api, get_base_url
 from ...utils import run_in_executor
@@ -106,10 +107,10 @@ async def pin_add(hash: str, timeout: int = 2, tries: int = 1):
 
 
 async def add_file(fileobject, filename):
-    async with aiohttp.ClientSession() as session:
-        from aleph.web import app
+    config = get_config()
 
-        url = "%s/api/v0/add" % (await get_base_url(app["config"]))
+    async with aiohttp.ClientSession() as session:
+        url = "%s/api/v0/add" % (await get_base_url(config))
         data = aiohttp.FormData()
         data.add_field("path", fileobject, filename=filename)
 

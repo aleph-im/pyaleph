@@ -5,30 +5,29 @@ For now it's very simple, we check if we want to store files or not.
 TODO:
 - check balances and storage allowance
 - handle incentives from 3rd party
-- hjandle garbage collection of unused hashes
+- handle garbage collection of unused hashes
 """
 
+import asyncio
 import logging
+from typing import Dict
 
 import aioipfs
-import asyncio
-from typing import Dict
-from aleph_message.models import StoreMessage
-from pydantic import ValidationError
-
 from aioipfs import InvalidCIDError
-
+from aleph.config import get_config
+from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.services.ipfs.common import get_ipfs_api
 from aleph.storage import get_hash_content
 from aleph.types import ItemType
-from aleph.web import app
-from aleph.exceptions import AlephStorageException, UnknownHashError
+from aleph_message.models import StoreMessage
+from pydantic import ValidationError
 
 LOGGER = logging.getLogger("HANDLERS.STORAGE")
 
 
 async def handle_new_storage(message: Dict, content: Dict):
-    if not app["config"].storage.store_files.value:
+    config = get_config()
+    if not config.storage.store_files.value:
         return True  # Ignore
 
     # TODO: ideally the content should be transformed earlier, but this requires more clean up
@@ -49,7 +48,7 @@ async def handle_new_storage(message: Dict, content: Dict):
     is_folder = False
     item_hash = store_message.content.item_hash
 
-    ipfs_enabled = app["config"].ipfs.enabled.value
+    ipfs_enabled = config.ipfs.enabled.value
     do_standard_lookup = True
     size = 0
 

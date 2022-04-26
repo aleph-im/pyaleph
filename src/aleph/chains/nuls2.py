@@ -348,9 +348,9 @@ register_outgoing_worker(CHAIN_NAME, nuls2_outgoing_worker)
 async def nuls2_balance_getter(address, config=None):
     global DECIMALS
     if config is None:
-        from aleph.web import app
+        from aleph.config import get_config
+        config = get_config()
 
-        config = app["config"]
     server = get_server(config.nuls2.api_url.value)
     contract_address = get_server(config.nuls2.contract_address.value)
     chain_id = config.nuls2.chain_id.value
