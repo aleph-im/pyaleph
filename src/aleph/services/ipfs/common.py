@@ -38,7 +38,7 @@ def init_ipfs_globals(config: Config, timeout: int = 5) -> None:
 async def get_ipfs_api(timeout: int = 5, reset: bool = False):
     global API
     if API is None or reset:
-        init_ipfs_globals(aleph.config.app_config, timeout)
+        init_ipfs_globals(aleph.config.get_config(), timeout)
 
     return API
 
