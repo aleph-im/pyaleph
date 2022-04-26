@@ -2,6 +2,12 @@
 Changelog
 =========
 
+Next release
+============
+
+- Breaking change: the "pyaleph_processing_pending_messages_action_total" and
+  "pyaleph_processing_pending_messages_action_total" values are no longer part of the metrics.
+
 Version 0.2.1
 =============
 

@@ -49,5 +49,5 @@ async def test_incoming_inline(mocker):
            'signature': '21027c108022f992f090bbe5c78ca8822f5b7adceb705ae2cd5318543d7bcdd2a74700473045022100b59f7df5333d57080a93be53b9af74e66a284170ec493455e675eb2539ac21db022077ffc66fe8dde7707038344496a85266bf42af1240017d4e1fa0d7068c588ca7'
            }
     msg['item_type'] = 'inline'
-    v = await incoming(msg, check_message=True)
-    assert v == IncomingStatus.MESSAGE_HANDLED
+    status, ops = await incoming(msg, check_message=True)
+    assert status == IncomingStatus.MESSAGE_HANDLED
