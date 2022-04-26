@@ -34,9 +34,7 @@ CHAIN_NAME = "ETH"
 
 async def verify_signature(message):
     """Verifies a signature of a message, return True if verified, false if not"""
-    from aleph.web import app
 
-    config = app["config"]
     # w3 = await loop.run_in_executor(None, get_web3, config)
 
     verification = await get_verification_buffer(message)

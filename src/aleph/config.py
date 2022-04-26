@@ -1,5 +1,7 @@
 import logging
 
+from configmanager import Config
+
 
 def get_defaults():
     return {
@@ -85,3 +87,10 @@ def get_defaults():
             "traces_sample_rate": None,
         },
     }
+
+
+app_config = Config(schema=get_defaults())
+
+
+def get_config() -> Config:
+    return app_config
