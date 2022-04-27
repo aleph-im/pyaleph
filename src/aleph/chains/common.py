@@ -8,7 +8,9 @@ from aleph.config import get_config
 from aleph.exceptions import (
     AlephStorageException,
     InvalidContent,
-    ContentCurrentlyUnavailable, UnknownHashError,
+    ContentCurrentlyUnavailable,
+    UnknownHashError,
+    InvalidMessageError,
 )
 from aleph.handlers.forget import handle_forget_message
 from aleph.handlers.storage import handle_new_storage
@@ -136,9 +138,12 @@ async def incoming(
     if check_message:
         if existing is None or (existing["signature"] != message["signature"]):
             # check/sanitize the message if needed
-            message = await check_message_fn(
-                message, from_chain=(chain_name is not None)
-            )
+            try:
+                message = await check_message_fn(
+                    message, from_chain=(chain_name is not None)
+                )
+            except InvalidMessageError:
+                return IncomingStatus.FAILED_PERMANENTLY, []
 
     if message is None:
         return IncomingStatus.MESSAGE_HANDLED, []
