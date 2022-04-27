@@ -66,7 +66,7 @@ async def join_pending_message_tasks(tasks):
 
     for collection, operations in groupby(db_operations, lambda op: op.collection):
         mongo_ops = [op.operation for op in operations]
-        await collection.bulk_write(mongo_ops)
+        await collection.collection.bulk_write(mongo_ops)
 
     tasks.clear()
 
