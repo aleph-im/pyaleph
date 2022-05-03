@@ -3,6 +3,7 @@ Job in charge of (re-) processing Aleph messages waiting in the pending queue.
 """
 
 import asyncio
+from functools import partial
 from logging import getLogger
 from typing import List, Dict, Tuple
 
@@ -48,7 +49,7 @@ async def handle_pending_message(
 async def join_pending_message_tasks(tasks):
     await gather_and_perform_db_operations(
         tasks,
-        on_error=lambda e: LOGGER.error("Error while processing message: %s", e),
+        on_error=partial(LOGGER.error, "Error while processing message: %s"),
     )
     tasks.clear()
 
