@@ -4,7 +4,7 @@ T = TypeVar("T")
 
 
 async def async_batch(
-    async_iterable: AsyncIterator["T"], n: int
+    async_iterable: AsyncIterator[T], n: int
 ) -> AsyncIterator[List[T]]:
     batch = []
     async for item in async_iterable:

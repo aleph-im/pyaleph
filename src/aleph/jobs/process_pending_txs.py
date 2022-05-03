@@ -29,7 +29,7 @@ async def handle_pending_tx(
     pending_tx, seen_ids: Optional[List] = None
 ) -> List[DbBulkOperation]:
 
-    db_operations = []
+    db_operations: List[DbBulkOperation] = []
     tx_context = TxContext(**pending_tx["context"])
     LOGGER.info("%s Handling TX in block %s", tx_context.chain_name, tx_context.height)
 
