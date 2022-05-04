@@ -16,7 +16,7 @@ Contents
 .. toctree::
    :maxdepth: 2
 
-   architecture
+   architecture/index
    guides/index
    node-synchronisation
    protocol/index

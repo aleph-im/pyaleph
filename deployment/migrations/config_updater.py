@@ -159,6 +159,6 @@ async def main(args: argparse.Namespace):
 if __name__ == "__main__":
     try:
         asyncio.run(main(cli_parse()))
-    except Exception as e:
-        LOGGER.error("%s", str(e))
+    except Exception:
+        LOGGER.exception("Failed to run migration scripts")
         sys.exit(1)

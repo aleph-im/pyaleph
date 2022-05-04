@@ -21,10 +21,17 @@ async def add_ipfs_json_controller(request):
 
 
 async def add_storage_json_controller(request):
-    """Forward the json content to IPFS server and return an hash"""
+    """Forward the json content to IPFS server and return a hash"""
     data = await request.json()
 
-    output = {"status": "success", "hash": await add_json(data, engine=ItemType.Storage)}
+    delete_interval = request.app["config"].storage.delete_interval.value
+    output = {
+        "status": "success",
+        "hash": await add_json(
+            data, engine=ItemType.Storage, delete_interval=delete_interval
+        ),
+    }
+
     return web.json_response(output)
 
 
@@ -32,7 +39,15 @@ async def storage_add_file(request):
     # No need to pin it here anymore.
     # TODO: find a way to specify linked ipfs hashes in posts/aggr.
     post = await request.post()
-    file_hash = await add_file(post["file"].file, engine=ItemType.Storage)
+
+    # Schedule the file for deletion
+    delete_interval = request.app["config"].storage.delete_interval.value
+
+    file_hash = await add_file(
+        post["file"].file,
+        engine=ItemType.Storage,
+        delete_interval=delete_interval,
+    )
 
     output = {"status": "success", "hash": file_hash}
     return web.json_response(output)

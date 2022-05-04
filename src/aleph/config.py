@@ -30,7 +30,13 @@ def get_defaults():
                 "/ip4/62.210.93.220/tcp/4025/p2p/QmXdci5feFmA2pxTg8p3FCyWmSKnWYAAmr7Uys1YCTFD8U",
             ],
         },
-        "storage": {"folder": "./data/", "store_files": False, "engine": "mongodb"},
+        "storage": {
+            "folder": "./data/",
+            "store_files": False,
+            "engine": "mongodb",
+            "delete_interval": 3600,
+            "garbage_collector": {"period": 3600},
+        },
         "nuls": {
             "chain_id": 8964,
             "enabled": False,
@@ -80,7 +86,7 @@ def get_defaults():
             "peers": [
                 "/dnsaddr/api1.aleph.im/ipfs/12D3KooWNgogVS6o8fVsPdzh2FJpCdJJLVSgJT38XGE1BJoCerHx",
                 "/ip4/51.159.57.71/tcp/4001/p2p/12D3KooWBH3JVSBwHLNzxv7EzniBP3tDmjJaoa3EJBF9wyhZtHt2",
-                "/ip4/62.210.93.220/tcp/4001/p2p/12D3KooWLcmvqojHzUnR7rr8YhFKGDD8z7fmsPyBfAm2rT3sFGAF"
+                "/ip4/62.210.93.220/tcp/4001/p2p/12D3KooWLcmvqojHzUnR7rr8YhFKGDD8z7fmsPyBfAm2rT3sFGAF",
             ],
         },
         "sentry": {

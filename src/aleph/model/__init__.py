@@ -1,9 +1,9 @@
-import asyncio
 from logging import getLogger
 
 from configmanager import Config
 
 from aleph.model.filepin import PermanentPin
+from aleph.model.scheduled_deletions import ScheduledDeletion
 
 try:
     from pymongo import MongoClient
@@ -56,8 +56,7 @@ def init_db(config: Config, ensure_indexes: bool = True):
         Peer.ensure_indexes(sync_db)
 
         PermanentPin.ensure_indexes(sync_db)
-        # from aleph.model.hashes import Hash
-        # Hash.ensure_indexes(sync_db)
+        ScheduledDeletion.ensure_indexes(sync_db)
 
     from aleph.model.messages import Message
 

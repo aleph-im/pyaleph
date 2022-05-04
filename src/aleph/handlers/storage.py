@@ -14,13 +14,15 @@ from typing import Dict
 
 import aioipfs
 from aioipfs import InvalidCIDError
-from aleph.config import get_config
-from aleph.exceptions import AlephStorageException, UnknownHashError
-from aleph.services.ipfs.common import get_ipfs_api
-from aleph.storage import get_hash_content
-from aleph.types import ItemType
 from aleph_message.models import StoreMessage
 from pydantic import ValidationError
+
+from aleph.config import get_config
+from aleph.exceptions import AlephStorageException, UnknownHashError
+from aleph.model.scheduled_deletions import ScheduledDeletion
+from aleph.services.ipfs.common import get_ipfs_api
+from aleph.storage import get_hash_content, ContentSource
+from aleph.types import ItemType
 
 LOGGER = logging.getLogger("HANDLERS.STORAGE")
 
@@ -110,6 +112,12 @@ async def handle_new_storage(message: Dict, content: Dict):
             )
         except AlephStorageException:
             return None
+
+        # If the file was found locally, it might be marked for deletion.
+        # Ensure that we keep the content in the DB by removing the scheduled
+        # deletion entry.
+        if file_content.source == ContentSource.DB:
+            ScheduledDeletion.collection.delete_one({"filename": item_hash})
 
         size = len(file_content)
 

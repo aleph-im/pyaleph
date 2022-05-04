@@ -2,6 +2,7 @@
 Basically manages the IPFS storage.
 """
 import asyncio
+import datetime as dt
 import json
 import logging
 from dataclasses import dataclass
@@ -9,8 +10,11 @@ from enum import Enum
 from hashlib import sha256
 from typing import Any, AnyStr, Dict, IO, Optional
 
+from aleph.config import get_config
 from aleph.exceptions import InvalidContent, ContentCurrentlyUnavailable
+from aleph.model.scheduled_deletions import ScheduledDeletion, ScheduledDeletionInfo
 from aleph.services.filestore import get_value, set_value
+from aleph.services.ipfs.common import get_cid_version
 from aleph.services.ipfs.storage import add_bytes as add_ipfs_bytes
 from aleph.services.ipfs.storage import add_file as ipfs_add_file
 from aleph.services.ipfs.storage import get_ipfs_content
@@ -19,8 +23,6 @@ from aleph.services.p2p.http import request_hash as p2p_http_request_hash
 from aleph.services.p2p.singleton import get_streamer
 from aleph.types import ItemType
 from aleph.utils import run_in_executor, get_sha256
-from aleph.services.ipfs.common import get_cid_version
-from aleph.config import get_config
 
 LOGGER = logging.getLogger("STORAGE")
 
@@ -242,16 +244,33 @@ async def pin_hash(chash: str, timeout: int = 2, tries: int = 1):
     return await ipfs_pin_add(chash, timeout=timeout, tries=tries)
 
 
-async def add_json(value: Any, engine: ItemType = ItemType.IPFS) -> str:
+async def schedule_for_deletion(filename: str, delete_interval: int) -> None:
+    """
+    Schedules a file stored in local storage for deletion.
+    :param filename: Name of the file to delete.
+    :param delete_interval: Interval before the deletion of the file, in seconds.
+    """
+
+    delete_by = dt.datetime.utcnow() + dt.timedelta(seconds=delete_interval)
+    await ScheduledDeletion.insert(
+        ScheduledDeletionInfo(filename=filename, delete_by=delete_by)
+    )
+
+
+async def add_json(
+    value: Any, engine: ItemType = ItemType.IPFS, delete_interval: Optional[int] = None
+) -> str:
     # TODO: determine which storage engine to use
     content = await run_in_executor(None, json.dumps, value)
     content = content.encode("utf-8")
+
     if engine == ItemType.IPFS:
         chash = await add_ipfs_bytes(content)
     elif engine == ItemType.Storage:
-        if isinstance(content, str):
-            content = content.encode("utf-8")
         chash = sha256(content).hexdigest()
+        if delete_interval:
+            await schedule_for_deletion(chash, delete_interval)
+
     else:
         raise NotImplementedError("storage engine %s not supported" % engine)
 
@@ -259,7 +278,11 @@ async def add_json(value: Any, engine: ItemType = ItemType.IPFS) -> str:
     return chash
 
 
-async def add_file(fileobject: IO, engine: ItemType = ItemType.IPFS) -> str:
+async def add_file(
+    fileobject: IO,
+    engine: ItemType = ItemType.IPFS,
+    delete_interval: Optional[int] = None,
+) -> str:
 
     if engine == ItemType.IPFS:
         output = await ipfs_add_file(fileobject)
@@ -270,6 +293,9 @@ async def add_file(fileobject: IO, engine: ItemType = ItemType.IPFS) -> str:
     elif engine == ItemType.Storage:
         file_content = fileobject.read()
         file_hash = sha256(file_content).hexdigest()
+
+        if delete_interval:
+            await schedule_for_deletion(file_hash, delete_interval)
 
     else:
         raise ValueError(f"Unsupported item type: {engine}")
