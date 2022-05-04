@@ -7,6 +7,7 @@ def get_defaults():
     return {
         "logging": {
             "level": logging.WARNING,
+            "max_log_file_size": 1 * 1024 * 1024 * 1024,
         },
         "aleph": {
             "queue_topic": "ALEPH-QUEUE",

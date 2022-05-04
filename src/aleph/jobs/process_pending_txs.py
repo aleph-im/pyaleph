@@ -144,6 +144,7 @@ def pending_txs_subprocess(config_values: Dict, api_servers: List):
     setup_logging(
         loglevel=config.logging.level.value,
         filename="/tmp/txs_task_loop.log",
+        max_log_file_size=config.logging.max_log_file_size,
     )
     singleton.api_servers = api_servers
 
