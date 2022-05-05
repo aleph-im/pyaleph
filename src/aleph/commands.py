@@ -91,6 +91,7 @@ def run_server_coroutine(
     setup_logging(
         loglevel=config.logging.level.value,
         filename=f"/tmp/run_server_coroutine-{port}.log",
+        max_log_file_size=config.logging.max_log_file_size,
     )
     if enable_sentry:
         sentry_sdk.init(
