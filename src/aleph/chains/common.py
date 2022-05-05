@@ -393,7 +393,6 @@ async def get_chaindata_messages(
 
         LOGGER.info("Got bulk data with %d items" % len(messages))
         if config.ipfs.enabled.value:
-            # wait for 4 seconds to try to pin that
             try:
                 LOGGER.info(f"chaindata {chaindata}")
                 await PermanentPin.register(
@@ -404,7 +403,8 @@ async def get_chaindata_messages(
                         "version": chaindata["version"],
                     },
                 )
-                await asyncio.wait_for(pin_hash(chaindata["content"]), timeout=4.0)
+                # Some IPFS fetches can take a while, hence the large timeout.
+                await asyncio.wait_for(pin_hash(chaindata["content"]), timeout=120)
             except asyncio.TimeoutError:
                 LOGGER.warning(f"Can't pin hash {chaindata['content']}")
         return messages
