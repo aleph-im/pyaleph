@@ -258,7 +258,8 @@ async def incoming(
         except UnknownHashError:
             LOGGER.warning(f"Invalid IPFS hash for message {item_hash}, won't retry.")
             return IncomingStatus.FAILED_PERMANENTLY, []
-        except Exception:
+        except Exception as e:
+            print(e)
             LOGGER.exception("Error using the message type handler")
             handling_result = None
 
