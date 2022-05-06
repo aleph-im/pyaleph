@@ -102,7 +102,6 @@ async def test_handle_new_storage_file(mocker, mock_config, fixture_message_file
     mock_ipfs_api.files.stat = mocker.AsyncMock(return_value=ipfs_stats)
     mocker.patch("aleph.handlers.storage.get_ipfs_api", return_value=mock_ipfs_api)
 
-
     result = await handle_new_storage(fixture_message_file, content)
     assert result and result != -1
 

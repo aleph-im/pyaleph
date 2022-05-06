@@ -42,36 +42,38 @@ async def garbage_collect(storage_hash: str, storage_type: ItemType):
         logger.debug(f"Permanent pin will not be collected {storage_hash}")
         return
 
-    if not await file_references_exist(storage_hash):
-        storage_detected: ItemType = ItemType.from_hash(storage_hash)
-
-        if storage_type != storage_detected:
-            raise ValueError(f"Inconsistent ItemType {storage_type} != {storage_detected} "
-                             f"for hash '{storage_hash}'")
-
-        if storage_type == ItemType.IPFS:
-            api = await get_ipfs_api(timeout=5)
-            logger.debug(f"Removing from IPFS: {storage_hash}")
-            try:
-                result = await api.pin.rm(storage_hash)
-                print(result)
-
-                # Launch the IPFS garbage collector (`ipfs repo gc`)
-                async for _ in RepoAPI(driver=api).gc():
-                    pass
-
-            except NotPinnedError:
-                logger.debug("File not pinned")
-            logger.debug(f"Removed from IPFS: {storage_hash}")
-        elif storage_type == ItemType.Storage:
-            logger.debug(f"Removing from Gridfs: {storage_hash}")
-            await delete_value(storage_hash)
-            logger.debug(f"Removed from Gridfs: {storage_hash}")
-        else:
-            raise ValueError(f"Invalid storage type {storage_type}")
-        logger.debug(f"Removed from {storage_type}: {storage_hash}")
-    else:
+    if await file_references_exist(storage_hash):
         logger.debug(f"File {storage_hash} has at least one reference left")
+        return
+
+    # Unpin the file from IPFS or remove it from local storage
+    storage_detected: ItemType = ItemType.from_hash(storage_hash)
+
+    if storage_type != storage_detected:
+        raise ValueError(f"Inconsistent ItemType {storage_type} != {storage_detected} "
+                         f"for hash '{storage_hash}'")
+
+    if storage_type == ItemType.IPFS:
+        api = await get_ipfs_api(timeout=5)
+        logger.debug(f"Removing from IPFS: {storage_hash}")
+        try:
+            result = await api.pin.rm(storage_hash)
+            print(result)
+
+            # Launch the IPFS garbage collector (`ipfs repo gc`)
+            async for _ in RepoAPI(driver=api).gc():
+                pass
+
+        except NotPinnedError:
+            logger.debug("File not pinned")
+        logger.debug(f"Removed from IPFS: {storage_hash}")
+    elif storage_type == ItemType.Storage:
+        logger.debug(f"Removing from Gridfs: {storage_hash}")
+        await delete_value(storage_hash)
+        logger.debug(f"Removed from Gridfs: {storage_hash}")
+    else:
+        raise ValueError(f"Invalid storage type {storage_type}")
+    logger.debug(f"Removed from {storage_type}: {storage_hash}")
 
 
 async def is_allowed_to_forget(target: Dict, by: ForgetMessage) -> bool:
