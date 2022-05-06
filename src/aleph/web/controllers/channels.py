@@ -2,7 +2,6 @@ from aiocache import cached, SimpleMemoryCache
 from aiohttp import web
 
 from aleph.model.messages import Message
-from aleph.web import app
 
 
 @cached(ttl=60 * 120, cache=SimpleMemoryCache, timeout=120)
@@ -20,6 +19,3 @@ async def used_channels(request):
     response = web.json_response({"channels": await get_channels()})
     response.enable_compression()
     return response
-
-
-app.router.add_get("/api/v0/channels/list.json", used_channels)

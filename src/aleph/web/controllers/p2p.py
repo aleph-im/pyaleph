@@ -7,7 +7,6 @@ from aleph.services.p2p.singleton import get_p2p_client
 from aleph.services.ipfs.pubsub import pub as pub_ipfs
 from aleph.services.p2p.pubsub import publish as pub_p2p
 from aleph.types import Protocol
-from aleph.web import app
 
 LOGGER = logging.getLogger("web.controllers.p2p")
 
@@ -18,7 +17,7 @@ async def pub_json(request):
     failed_publications = []
 
     try:
-        if app["config"].ipfs.enabled.value:
+        if request.app["config"].ipfs.enabled.value:
             await asyncio.wait_for(pub_ipfs(data.get("topic"), data.get("data")), 1)
     except Exception:
         LOGGER.exception("Can't publish on ipfs")
@@ -41,7 +40,3 @@ async def pub_json(request):
         {"status": status, "failed": failed_publications},
         status=500 if status == "error" else 200,
     )
-
-
-app.router.add_post("/api/v0/ipfs/pubsub/pub", pub_json)
-app.router.add_post("/api/v0/p2p/pubsub/pub", pub_json)
