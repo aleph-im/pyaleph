@@ -187,7 +187,7 @@ def pending_messages_subprocess(
     setup_logging(
         loglevel=config.logging.level.value,
         filename="/tmp/messages_task_loop.log",
-        max_log_file_size=config.logging.max_log_file_size,
+        max_log_file_size=config.logging.max_log_file_size.value,
     )
     singleton.api_servers = api_servers
 
