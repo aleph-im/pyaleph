@@ -131,10 +131,30 @@ async def forget_if_allowed(target_message: Dict, forget_message: ForgetMessage)
         await garbage_collect(store_content.item_hash, store_content.item_type)
 
 
-async def handle_forget_message(message: Dict, content: Dict):
+async def handle_forget_message(message: Dict, content: Dict) -> Optional[bool]:
+    """
+    Processes a FORGET message by deleting the content of all targeted messages.
+
+    :param message: The FORGET message, as a dictionary.
+    :param content: The JSON item_content field of the message, as a dictionary.
+    :return: True if the FORGET message was processed correctly. None if at least
+             one of the hashes is currently missing on the node, meaning that
+             the message will be marked for retry at a later time.
+    """
+
     # Parsing and validation
     forget_message = ForgetMessage(**message, content=content)
     logger.debug(f"Handling forget message {forget_message.item_hash}")
+
+    hashes_to_forget = forget_message.content.hashes
+    matching_messages = Message.collection.find(
+        {"item_hash": {"$in": forget_message.content.hashes}}, {"item_hash": 1}
+    )
+    matching_hashes = set([msg["item_hash"] async for msg in matching_messages])
+
+    if matching_hashes != set(hashes_to_forget):
+        # Mark the FORGET message for retry
+        return None
 
     for target_hash in forget_message.content.hashes:
         target_message = await Message.collection.find_one(filter={"item_hash": target_hash})

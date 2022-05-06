@@ -51,7 +51,12 @@ async def mark_confirmed_data(chain_name, tx_hash, height):
     }
 
 
-async def delayed_incoming(message, chain_name=None, tx_hash=None, height=None):
+async def delayed_incoming(
+    message: Dict,
+    chain_name: Optional[str] = None,
+    tx_hash: Optional[str] = None,
+    height: Optional[int] = None,
+):
     if message is None:
         return
     await PendingMessage.collection.insert_one(
@@ -325,11 +330,11 @@ async def incoming(
     return IncomingStatus.MESSAGE_HANDLED, []
 
 
-async def process_one_message(message: Dict):
+async def process_one_message(message: Dict, *args, **kwargs):
     """
     Helper function to process a message on the spot.
     """
-    status, ops = await incoming(message)
+    status, ops = await incoming(message, *args, **kwargs)
     for op in ops:
         await op.collection.collection.bulk_write([op.operation])
 
@@ -419,4 +424,6 @@ async def incoming_chaindata(content: Dict, context: TxContext):
     Content can be inline of "offchain" through an ipfs hash.
     For now we only add it to the database, it will be processed later.
     """
-    await PendingTX.collection.insert_one({"content": content, "context": asdict(context)})
+    await PendingTX.collection.insert_one(
+        {"content": content, "context": asdict(context)}
+    )
