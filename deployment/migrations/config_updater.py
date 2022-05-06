@@ -17,7 +17,9 @@ import importlib.util
 import logging
 import os
 import sys
+from pathlib import Path
 from types import ModuleType
+from typing import Iterable
 
 from configmanager import Config
 
@@ -62,6 +64,14 @@ def cli_parse() -> argparse.Namespace:
         help="Path to the private key file, if any. Only used to upgrade the key to the latest format.",
     )
     parser.add_argument(
+        "--filter-scripts",
+        action="store",
+        required=False,
+        type=str,
+        help="A filter for migration scripts. If specified, only the files "
+        "matching the provided glob expression will be run.",
+    )
+    parser.add_argument(
         "--verbose",
         "-v",
         help="Show more information.",
@@ -94,6 +104,18 @@ def import_module_from_path(path: str) -> ModuleType:
     return migration_module
 
 
+def list_migration_scripts(
+    migrations_dir: Path, glob_expression: str
+) -> Iterable[Path]:
+    migration_scripts = set(migrations_dir.glob("*.py"))
+    if glob_expression:
+        migration_scripts = migration_scripts & set(
+            migrations_dir.glob(glob_expression)
+        )
+
+    return migration_scripts
+
+
 async def main(args: argparse.Namespace):
     log_level = logging.DEBUG if args.verbose else logging.INFO
     setup_logging(log_level)
@@ -102,9 +124,9 @@ async def main(args: argparse.Namespace):
     config = init_config(args.config)
     init_db_globals(config=config)
 
-    migration_scripts_dir = os.path.join(os.path.dirname(__file__), "scripts")
+    migration_scripts_dir = Path(__file__).parent / "scripts"
     migration_scripts = sorted(
-        f for f in os.listdir(migration_scripts_dir) if f.endswith(".py")
+        list_migration_scripts(migration_scripts_dir, args.filter_scripts)
     )
 
     command = args.command
