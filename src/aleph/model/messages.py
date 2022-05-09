@@ -4,6 +4,7 @@ from pymongo import ASCENDING, DESCENDING, IndexModel
 
 from aleph.model.base import BaseClass
 from aleph.network import INCOMING_MESSAGE_AUTHORIZED_FIELDS
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +109,11 @@ class Message(BaseClass):
         logger.info("Fixed message confirmation status.")
 
 
-async def get_computed_address_aggregates(address_list=None, key_list=None, limit=100):
+async def get_computed_address_aggregates(
+    address_list: Optional[List[str]] = None,
+    key_list: Optional[List[str]] = None,
+    limit: int = 100,
+):
     aggregate = [
         {"$match": {"type": "AGGREGATE"}},
         {"$sort": {"time": -1}},
@@ -139,17 +144,20 @@ async def get_computed_address_aggregates(address_list=None, key_list=None, limi
         {"$addFields": {"address": "$_id", "contents": {"$arrayToObject": "$items"}}},
         {"$project": {"_id": 0, "address": 1, "contents": 1}},
     ]
+
+    # Note: type-ignore statements are required because mypy does not understand that
+    # the nested dictionaries we declared just above are dictionaries.
     if address_list is not None:
         if len(address_list) > 1:
-            aggregate[0]["$match"]["content.address"] = {"$in": address_list}
+            aggregate[0]["$match"]["content.address"] = {"$in": address_list}  # type: ignore
         else:
-            aggregate[0]["$match"]["content.address"] = address_list[0]
+            aggregate[0]["$match"]["content.address"] = address_list[0]  # type: ignore
 
     if key_list is not None:
         if len(key_list) > 1:
-            aggregate[0]["$match"]["content.key"] = {"$in": key_list}
+            aggregate[0]["$match"]["content.key"] = {"$in": key_list}  # type: ignore
         else:
-            aggregate[0]["$match"]["content.key"] = key_list[0]
+            aggregate[0]["$match"]["content.key"] = key_list[0]  # type: ignore
 
     results = Message.collection.aggregate(aggregate)
 

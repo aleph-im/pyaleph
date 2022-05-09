@@ -22,7 +22,7 @@ async def check_sender_authorization(message: Dict, content: Dict) -> bool:
 
     aggregate = aggregates.get(address, {})
     security_key = aggregate.get("security", {})
-    authorizations = security_key.get("authorizations")
+    authorizations = security_key.get("authorizations", [])
 
     for auth in authorizations:
         if auth.get("address", "") != sender:
