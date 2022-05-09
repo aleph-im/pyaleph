@@ -33,7 +33,7 @@ from aleph.network import listener_tasks
 from aleph.services import p2p
 from aleph.services.keys import generate_keypair, save_keys
 from aleph.services.p2p import singleton
-from aleph.web import app, init_cors
+from aleph.web import app
 
 __author__ = "Moshe Malawach"
 __copyright__ = "Moshe Malawach"
@@ -48,9 +48,6 @@ async def run_server(
     # These imports will run in different processes
     from aiohttp import web
     from aleph.web.controllers.listener import broadcast
-
-    LOGGER.debug("Initializing CORS")
-    init_cors()
 
     LOGGER.debug("Setup of runner")
 
@@ -175,7 +172,6 @@ async def main(args):
     model.init_db(config, ensure_indexes=True)
     LOGGER.info("Database initialized.")
 
-    init_cors()  # FIXME: This is stateful and process-dependent
     set_start_method("spawn")
 
     with Manager() as shared_memory_manager:
