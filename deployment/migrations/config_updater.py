@@ -19,7 +19,7 @@ import os
 import sys
 from pathlib import Path
 from types import ModuleType
-from typing import Iterable
+from typing import Iterable, Optional
 
 from configmanager import Config
 
@@ -105,7 +105,7 @@ def import_module_from_path(path: str) -> ModuleType:
 
 
 def list_migration_scripts(
-    migrations_dir: Path, glob_expression: str
+    migrations_dir: Path, glob_expression: Optional[str]
 ) -> Iterable[Path]:
     migration_scripts = set(migrations_dir.glob("*.py"))
     if glob_expression:
