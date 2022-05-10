@@ -6,6 +6,7 @@
     "type": "POST",
     "time": 1652126646.5008686,
     "item_content": "{\"address\":\"0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106\",\"time\":1652126646.5007327,\"content\":{\"title\":\"My first blog post using Aleph.im\",\"body\":\"Using Aleph.im, we can make a decentralized blog.\"},\"type\":\"test\"}",
+    "item_type": "inline",
     "item_hash": "4c33dd1ebf61bbb4342d8258b591fcd52cca73fd7c425542f78311d8f45ba274",
     "signature": "0x999ab556b92351e6edf894b4a67f01f0344c7023883eb5bafdf4cd0b98ca91781692ac6b95246c1bf940eedcedfd6dc04751accfbc417ee1b1ae13893634e7eb1c",
     "confirmed": false,
@@ -27,7 +28,8 @@
     "time": 1652126721.497669,
     "item_content": "{\"address\":\"0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106\",\"time\":1652126721.4974446,\"item_type\":\"storage\",\"item_hash\":\"5ccdd7bccfbc5955e2e40166dd0cdea0b093154fd87bc2bea57e7c768cde2f21\",\"mime_type\":\"text/plain\"}",
     "item_hash": "2953f0b52beb79fc0ed1bc455346fdcb530611605e16c636778a0d673d7184af",
-    "signature": "0xa10129dd561c1bc93e8655daf09520e9f1694989263e25f330b403ad33563f4b64c9ae18f6cbfb33e8a47a095be7a181b140a369e6205fd04eef55397624a7121b",
+    "item_type": "inline",
+   "signature": "0xa10129dd561c1bc93e8655daf09520e9f1694989263e25f330b403ad33563f4b64c9ae18f6cbfb33e8a47a095be7a181b140a369e6205fd04eef55397624a7121b",
     "content": {
       "address": "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
       "time": 1652126721.4974446,

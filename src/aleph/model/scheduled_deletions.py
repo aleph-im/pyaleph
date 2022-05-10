@@ -22,6 +22,9 @@ class ScheduledDeletionInfo:
             object_id=db_value["_id"],
         )
 
+    def to_dict(self):
+        return {"filename": self.filename, "delete_by": self.delete_by}
+
 
 class ScheduledDeletion(BaseClass):
     COLLECTION = "scheduled_deletions"
@@ -31,7 +34,7 @@ class ScheduledDeletion(BaseClass):
 
     @classmethod
     async def insert(cls, scheduled_deletion: ScheduledDeletionInfo):
-        await cls.collection.insert_one(asdict(scheduled_deletion))
+        await cls.collection.insert_one(scheduled_deletion.to_dict())
 
     @classmethod
     async def files_to_delete(
