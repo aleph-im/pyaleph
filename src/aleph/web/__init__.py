@@ -8,7 +8,7 @@ import jinja2
 import pkg_resources
 import socketio
 from aiohttp import web
-from aleph.web.controllers import register_routes
+from aleph.web.controllers.routes import register_routes
 
 app = web.Application(client_max_size=1024 ** 2 * 64)
 sio = socketio.AsyncServer(async_mode="aiohttp", cors_allowed_origins="*")
