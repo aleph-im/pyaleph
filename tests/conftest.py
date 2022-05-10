@@ -1,10 +1,13 @@
-import pytest
-from aleph.model import init_db
-from aleph.config import get_defaults
-from configmanager import Config
+import asyncio
+import os
+
 import pymongo
 import pytest_asyncio
+from configmanager import Config
 
+from aleph.config import get_defaults
+from aleph.model import init_db
+from aleph.web import create_app
 
 TEST_DB = "ccn_automated_tests"
 
@@ -28,3 +31,15 @@ async def test_db():
 
     from aleph.model import db
     yield db
+
+
+@pytest_asyncio.fixture
+async def ccn_api_client(aiohttp_client):
+    # Make aiohttp return the stack trace on 500 errors
+    event_loop = asyncio.get_event_loop()
+    event_loop.set_debug(True)
+
+    app = create_app()
+    client = await aiohttp_client(app)
+
+    return client
