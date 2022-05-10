@@ -1,5 +1,4 @@
 from aleph.model.messages import Message, get_merged_posts
-from aleph.web import app
 from aleph.web.controllers.utils import Pagination, cond_output, prepare_date_filters
 
 
@@ -107,7 +106,3 @@ async def view_posts_list(request):
         )
 
     return cond_output(request, context, "TODO.html")
-
-
-app.router.add_get("/api/v0/posts.json", view_posts_list)
-app.router.add_get("/api/v0/posts/page/{page}.json", view_posts_list)

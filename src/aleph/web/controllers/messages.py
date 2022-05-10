@@ -1,7 +1,6 @@
 from typing import Any, Dict, List, Optional, Set
 
 from aleph.model.messages import CappedMessage, Message
-from aleph.web import app
 from aiohttp import web
 from aiohttp.web_exceptions import HTTPBadRequest
 import asyncio
@@ -156,10 +155,6 @@ async def view_messages_list(request):
     return cond_output(request, context, "TODO.html")
 
 
-app.router.add_get("/api/v0/messages.json", view_messages_list)
-app.router.add_get("/api/v0/messages/page/{page}.json", view_messages_list)
-
-
 async def messages_ws(request: web.Request):
     ws = web.WebSocketResponse()
     await ws.prepare(request)
@@ -219,6 +214,3 @@ async def messages_ws(request: web.Request):
 
             LOGGER.exception("Error processing")
             await asyncio.sleep(1)
-
-
-app.router.add_get("/api/ws0/messages", messages_ws)

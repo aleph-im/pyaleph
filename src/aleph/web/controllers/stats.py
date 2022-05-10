@@ -6,7 +6,6 @@ from aiohttp import web
 from bson import json_util
 
 from aleph.model.messages import Message
-from aleph.web import app
 
 
 # WARNING: we are storing this in memory... memcached or similar would
@@ -108,6 +107,3 @@ async def addresses_stats_view(request):
     return web.json_response(
         output, dumps=lambda v: json.dumps(v, default=json_util.default)
     )
-
-
-app.router.add_get("/api/v0/addresses/stats.json", addresses_stats_view)
