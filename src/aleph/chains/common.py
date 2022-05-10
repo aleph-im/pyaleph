@@ -307,29 +307,26 @@ async def incoming(
             **updates.get("$set", {}),
         }
         should_commit = True
-        # await Message.collection.insert_one(message)
-
-        # since it's on-chain, we need to keep that content.
-        # if message['item_type'] == 'ipfs' and app['config'].ipfs.enabled.value:
-        #     LOGGER.debug("Pining hash %s" % hash)
-        # await pin_hash(hash)
 
     if should_commit:
         update_op = UpdateOne(filters, updates, upsert=True)
-        bulk_ops = [
-            DbBulkOperation(CappedMessage, update_op),
-            DbBulkOperation(Message, update_op),
-        ]
+        bulk_ops = [DbBulkOperation(Message, update_op)]
+
+        # Capped collections do not accept updates that increase the size, so
+        # we must ignore confirmations.
+        if existing is None:
+            bulk_ops.append(DbBulkOperation(CappedMessage, update_op))
+
         return IncomingStatus.MESSAGE_HANDLED, bulk_ops
 
     return IncomingStatus.MESSAGE_HANDLED, []
 
 
-async def process_one_message(message: Dict):
+async def process_one_message(message: Dict, *args, **kwargs):
     """
     Helper function to process a message on the spot.
     """
-    status, ops = await incoming(message)
+    status, ops = await incoming(message, *args, **kwargs)
     for op in ops:
         await op.collection.collection.bulk_write([op.operation])
 
@@ -419,4 +416,6 @@ async def incoming_chaindata(content: Dict, context: TxContext):
     Content can be inline of "offchain" through an ipfs hash.
     For now we only add it to the database, it will be processed later.
     """
-    await PendingTX.collection.insert_one({"content": content, "context": asdict(context)})
+    await PendingTX.collection.insert_one(
+        {"content": content, "context": asdict(context)}
+    )
