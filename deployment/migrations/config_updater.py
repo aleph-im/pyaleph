@@ -15,7 +15,6 @@ import argparse
 import asyncio
 import importlib.util
 import logging
-import os
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -132,8 +131,8 @@ async def main(args: argparse.Namespace):
     command = args.command
 
     for migration_script in migration_scripts:
-        migration_script_path = os.path.join(migration_scripts_dir, migration_script)
-        migration_module = import_module_from_path(migration_script_path)
+        migration_script_path = migration_scripts_dir / migration_script
+        migration_module = import_module_from_path(str(migration_script_path))
 
         if args.verbose:
             LOGGER.info(f"%s: %s", migration_script, migration_module.__doc__)
