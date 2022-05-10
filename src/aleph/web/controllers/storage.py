@@ -32,9 +32,7 @@ async def storage_add_file(request):
     # No need to pin it here anymore.
     # TODO: find a way to specify linked ipfs hashes in posts/aggr.
     post = await request.post()
-    file_hash = await add_file(
-        post["file"].file, filename=post["file"].filename, engine=ItemType.Storage
-    )
+    file_hash = await add_file(post["file"].file, engine=ItemType.Storage)
 
     output = {"status": "success", "hash": file_hash}
     return web.json_response(output)

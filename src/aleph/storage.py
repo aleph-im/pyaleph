@@ -259,12 +259,10 @@ async def add_json(value: Any, engine: ItemType = ItemType.IPFS) -> str:
     return chash
 
 
-async def add_file(
-    fileobject: IO, filename: Optional[str] = None, engine: ItemType = ItemType.IPFS
-) -> str:
+async def add_file(fileobject: IO, engine: ItemType = ItemType.IPFS) -> str:
 
     if engine == ItemType.IPFS:
-        output = await ipfs_add_file(fileobject, filename)
+        output = await ipfs_add_file(fileobject)
         file_hash = output["Hash"]
         fileobject.seek(0)
         file_content = fileobject.read()

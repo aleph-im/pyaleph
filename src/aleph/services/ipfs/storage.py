@@ -2,7 +2,7 @@ import asyncio
 import concurrent
 import json
 import logging
-from typing import Optional
+from typing import IO, Optional
 
 import aiohttp
 import aioipfs
@@ -106,13 +106,13 @@ async def pin_add(hash: str, timeout: int = 2, tries: int = 1):
     return result
 
 
-async def add_file(fileobject, filename):
+async def add_file(fileobject: IO):
     config = get_config()
 
     async with aiohttp.ClientSession() as session:
         url = "%s/api/v0/add" % (await get_base_url(config))
         data = aiohttp.FormData()
-        data.add_field("path", fileobject, filename=filename)
+        data.add_field("path", fileobject)
 
         resp = await session.post(url, data=data)
         return await resp.json()
