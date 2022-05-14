@@ -128,7 +128,8 @@ async def view_messages_list(request):
     messages = [
         msg
         async for msg in Message.collection.find(
-            find_filters,
+            filter=find_filters,
+            projection={"_id": 0},
             limit=pagination_per_page,
             skip=pagination_skip,
             sort=[("time", int(request.query.get("sort_order", "-1")))],

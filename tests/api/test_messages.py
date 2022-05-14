@@ -15,6 +15,15 @@ def get_messages_by_keys(messages: Iterable[Dict], **keys) -> List[Dict]:
     return [msg for msg in messages if all(msg[k] == v for k, v in keys.items())]
 
 
+def check_message_fields(messages: Iterable[Dict]):
+    """
+    Basic checks on fields. For example, check that we do not expose internal data
+    like MongoDB object IDs.
+    """
+    for message in messages:
+        assert "_id" not in message
+
+
 def assert_messages_equal(messages: Iterable[Dict], expected_messages: Iterable[Dict]):
     messages_by_hash = {msg["item_hash"]: msg for msg in messages}
 
@@ -50,6 +59,7 @@ async def test_get_messages(fixture_messages, ccn_api_client):
 
     messages = data["messages"]
     assert len(messages) == len(fixture_messages)
+    check_message_fields(messages)
     assert_messages_equal(messages, fixture_messages)
 
     assert data["pagination_total"] == len(messages)
