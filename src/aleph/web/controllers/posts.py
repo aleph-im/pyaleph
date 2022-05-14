@@ -85,7 +85,10 @@ async def view_posts_list(request):
     context = {"posts": posts}
 
     if pagination_per_page is not None:
-        total_msgs = await Message.collection.count_documents(find_filters)
+        total_msgs = await Message.collection.count_documents(
+            filter=find_filters,
+            projection={"_id": 0},
+        )
 
         pagination = Pagination(
             pagination_page,
