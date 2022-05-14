@@ -4,7 +4,9 @@ Job in charge of loading messages stored on-chain and put them in the pending me
 
 import asyncio
 import logging
-from typing import List, Dict, Optional, Set
+from dataclasses import asdict
+from typing import List, Dict, Optional
+from typing import Set
 
 import sentry_sdk
 from configmanager import Config
@@ -31,7 +33,7 @@ async def handle_pending_tx(
 
     db_operations: List[DbBulkOperation] = []
     tx_context = TxContext(**pending_tx["context"])
-    LOGGER.info("%s Handling TX in block %s", tx_context.chain_name, tx_context.height)
+    LOGGER.info("%s Handling TX in block %s", tx_context.chain, tx_context.height)
 
     messages = await get_chaindata_messages(
         pending_tx["content"], tx_context, seen_ids=seen_ids
@@ -55,12 +57,8 @@ async def handle_pending_tx(
                     operation=InsertOne(
                         {
                             "message": message.dict(exclude={"content"}),
-                            "source": dict(
-                                chain_name=tx_context.chain_name,
-                                tx_hash=tx_context.tx_hash,
-                                height=tx_context.height,
-                                check_message=True,  # should we store this?
-                            ),
+                            "tx_context": asdict(tx_context),
+                            "check_message": True,
                         }
                     ),
                 )

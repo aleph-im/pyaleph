@@ -14,13 +14,13 @@ from pymongo import DeleteOne, DeleteMany, ASCENDING
 from setproctitle import setproctitle
 
 from aleph.chains.common import incoming, IncomingStatus
+from aleph.exceptions import InvalidMessageError
 from aleph.logging import setup_logging
 from aleph.model.db_bulk_operation import DbBulkOperation
 from aleph.model.pending import PendingMessage
+from aleph.schemas.pending_messages import parse_message
 from aleph.services.p2p import singleton
 from .job_utils import prepare_loop, process_job_results
-from ..exceptions import InvalidMessageError
-from ..schemas.pending_messages import parse_message
 
 LOGGER = getLogger("jobs.pending_messages")
 
@@ -60,12 +60,12 @@ async def handle_pending_message(
         # If an invalid message somehow ended in pending messages, drop it.
         return [delete_pending_message_op]
 
+    tx_context = pending.get("tx_context")
+
     async with sem:
         status, operations = await incoming(
             pending_message=message,
-            chain_name=pending["source"].get("chain_name"),
-            tx_hash=pending["source"].get("tx_hash"),
-            height=pending["source"].get("height"),
+            tx_context=tx_context,
             seen_ids=seen_ids,
             check_message=pending["source"].get("check_message", True),
             retrying=True,

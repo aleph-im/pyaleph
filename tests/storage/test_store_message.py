@@ -1,11 +1,11 @@
 import json
 
 import pytest
-from aleph_message.models import MessageConfirmation
 
 from aleph.handlers.storage import handle_new_storage
 from aleph.schemas.message_content import ContentSource, RawContent
 from aleph.schemas.validated_message import (
+    MessageConfirmation,
     ValidatedStoreMessage,
     StoreContentWithMetadata,
 )
@@ -33,6 +33,8 @@ def fixture_message_file():
                 chain="ETH",
                 hash="0x28fd852984b1f2222ca1870a97f44cc34b535a49d2618f5689a10a67985935d5",
                 height=14276536,
+                time=9000,
+                publisher="0xsomething",
             )
         ],
     )

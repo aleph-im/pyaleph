@@ -33,8 +33,8 @@ async def test_process_pending_tx(mocker, test_db):
             "content": "test-data-pending-tx-messages",
         },
         "context": {
-            "chain_name": "ETH",
-            "tx_hash": "0xf49cb176c1ce4f6eb7b9721303994b05074f8fadc37b5f41ac6f78bdf4b14b6c",
+            "chain": "ETH",
+            "hash": "0xf49cb176c1ce4f6eb7b9721303994b05074f8fadc37b5f41ac6f78bdf4b14b6c",
             "time": 1632835747,
             "height": 13314512,
             "publisher": "0x23eC28598DCeB2f7082Cc3a9D670592DfEd6e0dC",
