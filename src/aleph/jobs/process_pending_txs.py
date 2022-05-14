@@ -4,6 +4,7 @@ Job in charge of loading messages stored on-chain and put them in the pending me
 
 import asyncio
 import logging
+import time
 from typing import List, Dict, Optional
 from typing import Set
 
@@ -39,6 +40,11 @@ async def handle_pending_tx(
     )
     if messages:
         for i, message_dict in enumerate(messages):
+            reception_time = time.time()
+            # TODO: this update of the time field is unwanted, but needed to preserve
+            #       the behavior of aggregates. Use the correct time field in aggregates
+            #       and then remove this line.
+            message_dict["time"] = tx_context.time + (i / 1000)
 
             try:
                 # we don't check signatures yet.
@@ -57,6 +63,7 @@ async def handle_pending_tx(
                         {
                             "message": message.dict(exclude={"content"}),
                             "tx_context": tx_context.dict(),
+                            "reception_time": reception_time,
                             "check_message": True,
                         }
                     ),

@@ -70,7 +70,7 @@ async def test_forget_multiusers_storage(mocker, test_db):
     await store_gridfs_file(key=file_hash, value=file_content)
 
     message_user1 = parse_message(message_user1_dict)
-    await process_one_message(message_user1)
+    await process_one_message(message_user1, reception_time=message_user1.time)
 
     message1_db = await Message.collection.find_one(
         {"item_hash": message_user1.item_hash}
@@ -78,14 +78,14 @@ async def test_forget_multiusers_storage(mocker, test_db):
     assert message1_db is not None
 
     message_user2 = parse_message(message_user2_dict)
-    await process_one_message(message_user2)
+    await process_one_message(message_user2, reception_time=message_user2.time)
 
     # Sanity check: check that the file exists
     db_file_data = await read_gridfs_file(file_hash)
     assert db_file_data == file_content
 
     forget_message_user1 = parse_message(forget_message_user1_dict)
-    await process_one_message(forget_message_user1)
+    await process_one_message(forget_message_user1, reception_time=forget_message_user1.time)
 
     # Check that the message was properly forgotten
     forgotten_message = await Message.collection.find_one(

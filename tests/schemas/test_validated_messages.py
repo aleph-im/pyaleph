@@ -59,6 +59,7 @@ def test_parse_aggregate_inline_message():
         pending_message=pending_message,
         content=message_content,
         confirmations=confirmations,
+        reception_time=pending_message.time,
     )
     assert isinstance(validated_message, ValidatedAggregateMessage)
 
@@ -105,6 +106,7 @@ def test_parse_post_message_storage_content():
         pending_message=pending_message,
         content=message_content,
         confirmations=confirmations,
+        reception_time=pending_message.time,
     )
 
     check_basic_message_fields(validated_message, message_dict)
@@ -139,6 +141,7 @@ def test_parse_store_message_inline_content():
         pending_message=pending_message,
         content=message_content,
         confirmations=confirmations,
+        reception_time=pending_message.time,
     )
     assert isinstance(validated_message, ValidatedStoreMessage)
 

@@ -43,12 +43,14 @@ async def test_confirm_message(test_db):
     content = json.loads(MESSAGE_DICT["item_content"])
 
     message = parse_message(MESSAGE_DICT)
-    await process_one_message(message)
+    original_reception_time = 100000
+    await process_one_message(message, reception_time=original_reception_time)
     message_in_db = await Message.collection.find_one({"item_hash": item_hash})
 
     assert message_in_db is not None
     assert message_in_db["content"] == content
     assert not message_in_db["confirmed"]
+    assert message_in_db["reception_time"] == original_reception_time
 
     capped_message_in_db = await CappedMessage.collection.find_one(
         {"item_hash": item_hash}
@@ -57,6 +59,7 @@ async def test_confirm_message(test_db):
     assert remove_id_key(message_in_db) == remove_id_key(capped_message_in_db)
 
     # Now, confirm the message
+    confirmation_reception_time = 123000
     tx_context = TxContext(
         chain="ETH",
         hash="123",
@@ -65,12 +68,15 @@ async def test_confirm_message(test_db):
         publisher="0xdeadbeef",
     )
 
-    await process_one_message(message, tx_context)
+    await process_one_message(message, reception_time=confirmation_reception_time, tx_context=tx_context)
 
     message_in_db = await Message.collection.find_one({"item_hash": item_hash})
 
     assert message_in_db is not None
     assert message_in_db["confirmed"]
+    assert message_in_db["confirmation_time"] == tx_context.time
+    assert message_in_db["reception_time"] == original_reception_time
+
     expected_confirmations = [tx_context.dict()]
     assert message_in_db["confirmations"] == expected_confirmations
 
@@ -92,6 +98,7 @@ async def test_process_confirmed_message(test_db):
     """
 
     item_hash = MESSAGE_DICT["item_hash"]
+    reception_time = 1000000
 
     # Confirm the message
     message = parse_message(MESSAGE_DICT)
@@ -102,13 +109,17 @@ async def test_process_confirmed_message(test_db):
         time=120000,
         publisher="0xdeadbeef",
     )
-    await process_one_message(message, tx_context)
+    await process_one_message(
+        message, reception_time=reception_time, tx_context=tx_context
+    )
 
     # Now, confirm the message
     message_in_db = await Message.collection.find_one({"item_hash": item_hash})
 
     assert message_in_db is not None
     assert message_in_db["confirmed"]
+    assert message_in_db["confirmation_time"] == tx_context.time
+    assert message_in_db["reception_time"] == reception_time
 
     expected_confirmations = [tx_context.dict()]
     assert message_in_db["confirmations"] == expected_confirmations

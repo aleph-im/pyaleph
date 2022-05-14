@@ -1,12 +1,13 @@
 import asyncio
 import base64
 import logging
+import time
 from typing import Union
 
 import base58
 
-from ...exceptions import InvalidMessageError
 from .common import get_ipfs_api
+from aleph.exceptions import InvalidMessageError
 
 LOGGER = logging.getLogger("IPFS.PUBSUB")
 
@@ -48,9 +49,12 @@ async def incoming_channel(topic) -> None:
         try:
             async for mvalue in sub(topic):
                 try:
+                    reception_time = time.time()
                     message = await get_pubsub_message(mvalue)
                     LOGGER.debug("New message %r" % message)
-                    asyncio.create_task(process_one_message(message))
+                    asyncio.create_task(
+                        process_one_message(message, reception_time=reception_time)
+                    )
                 except InvalidMessageError:
                     LOGGER.warning(f"Invalid message {mvalue}")
         except Exception:

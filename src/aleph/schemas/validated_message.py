@@ -12,7 +12,8 @@ from aleph_message.models import (
     MessageType,
     PostContent,
     ProgramContent,
-    StoreContent, )
+    StoreContent,
+)
 from pydantic import BaseModel, Field
 
 from aleph.schemas.base_messages import AlephBaseMessage, ContentType, MType
@@ -60,6 +61,8 @@ class BaseValidatedMessage(AlephBaseMessage, Generic[MType, ContentType]):
     content: ContentType
     confirmations: List[MessageConfirmation] = Field(default_factory=list)
     forgotten_by: List[str] = Field(default_factory=list)
+    reception_time: float
+    confirmation_time: Optional[float]
 
 
 class ValidatedAggregateMessage(
@@ -95,6 +98,7 @@ class ValidatedStoreMessage(
 def validate_pending_message(
     pending_message: BasePendingMessage[MType, ContentType],
     content: MessageContent,
+    reception_time: float,
     confirmations: List[MessageConfirmation],
 ) -> BaseValidatedMessage[MType, ContentType]:
 
@@ -114,6 +118,11 @@ def validate_pending_message(
     if json_content.get("time", None) is None:
         json_content["time"] = pending_message.time
 
+    if confirmations:
+        confirmation_time = min(confirmation.time for confirmation in confirmations)
+    else:
+        confirmation_time = None
+
     # Note: we could use the construct method of Pydantic to bypass validation
     # and speed up the conversion process. However, this means giving up on validation.
     # At the time of writing, correctness seems more important than performance.
@@ -123,6 +132,8 @@ def validate_pending_message(
         confirmed=bool(confirmations),
         confirmations=confirmations,
         size=len(content.raw_value),
+        reception_time=reception_time,
+        confirmation_time=confirmation_time,
     )
 
 
@@ -137,6 +148,11 @@ def make_confirmation_update_query(confirmations: List[MessageConfirmation]) -> 
 
     return {
         "$max": {"confirmed": True},
+        "$min": {
+            "confirmation_time": min(
+                confirmation.time for confirmation in confirmations
+            )
+        },
         "$addToSet": {
             "confirmations": {
                 "$each": [confirmation.dict() for confirmation in confirmations]
@@ -159,10 +175,18 @@ def make_message_upsert_query(message: BaseValidatedMessage[Any, Any]) -> Dict:
             "channel": message.channel,
             "signature": message.signature,
         },
-        "$min": {"time": message.time},
+        "$min": {
+            "time": message.time,
+            "reception_time": message.reception_time,
+        },
     }
 
     # Add fields related to confirmations
-    updates.update(make_confirmation_update_query(message.confirmations))
+    confirmation_updates = make_confirmation_update_query(message.confirmations)
+    for k, v in confirmation_updates.items():
+        try:
+            updates[k].update(v)
+        except KeyError:
+            updates[k] = v
 
     return updates

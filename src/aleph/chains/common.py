@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 from enum import IntEnum
-from typing import Dict, Optional, Tuple, List
+from typing import Any, Dict, Optional, Tuple, List
 
 from bson import ObjectId
 from pymongo import UpdateOne
@@ -61,6 +61,7 @@ async def mark_confirmed_data(chain_name, tx_hash, height):
 
 async def delayed_incoming(
     message: BasePendingMessage,
+    reception_time: float,
     tx_context: Optional[TxContext] = None,
     check_message: bool = True,
 ):
@@ -71,6 +72,7 @@ async def delayed_incoming(
         {
             "message": message.dict(exclude={"content"}),
             "tx_context": tx_context.dict() if tx_context else None,
+            "reception_time": reception_time,
             "check_message": check_message,
         }
     )
@@ -84,6 +86,7 @@ class IncomingStatus(IntEnum):
 
 async def mark_message_for_retry(
     message: BasePendingMessage,
+    reception_time: float,
     tx_context: Optional[TxContext],
     check_message: bool,
     retrying: bool,
@@ -92,7 +95,12 @@ async def mark_message_for_retry(
     message_dict = message.dict(exclude={"content"})
 
     if not retrying:
-        await delayed_incoming(message, tx_context, check_message)
+        await delayed_incoming(
+            message,
+            reception_time=reception_time,
+            tx_context=tx_context,
+            check_message=check_message,
+        )
     else:
         LOGGER.debug(f"Incrementing for {existing_id}")
         result = await PendingMessage.collection.update_one(
@@ -103,6 +111,7 @@ async def mark_message_for_retry(
 
 async def incoming(
     pending_message: BasePendingMessage,
+    reception_time: float,
     tx_context: Optional[TxContext] = None,
     seen_ids: Optional[Dict[Tuple, int]] = None,
     check_message: bool = False,
@@ -191,6 +200,7 @@ async def incoming(
                 LOGGER.exception("Can't get content of object %r" % item_hash)
             await mark_message_for_retry(
                 message=pending_message,
+                reception_time=reception_time,
                 tx_context=tx_context,
                 check_message=check_message,
                 retrying=retrying,
@@ -201,6 +211,7 @@ async def incoming(
         validated_message = validate_pending_message(
             pending_message=pending_message,
             content=content,
+            reception_time=reception_time,
             confirmations=confirmations,
         )
 
@@ -230,6 +241,7 @@ async def incoming(
             LOGGER.debug("Message type handler has failed, retrying later.")
             await mark_message_for_retry(
                 message=pending_message,
+                reception_time=reception_time,
                 tx_context=tx_context,
                 check_message=check_message,
                 retrying=retrying,

@@ -12,6 +12,7 @@ def make_validated_message_from_dict(
     message_dict: Dict,
     raw_content: Optional[Union[str, bytes]] = None,
     confirmations: Optional[List[MessageConfirmation]] = None,
+    reception_time: Optional[float] = None,
 ):
     """
     Creates a validated message instance from a raw message dictionary.
@@ -46,4 +47,7 @@ def make_validated_message_from_dict(
         pending_message=pending_message,
         content=message_content,
         confirmations=confirmations or [],
+        # If no reception time is specified, just set it to the message time as propagation
+        # across Aleph is instantaneous, obviously.
+        reception_time=reception_time or pending_message.time,
     )

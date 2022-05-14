@@ -68,5 +68,6 @@ async def test_incoming_inline(mocker):
     message_dict["item_type"] = "inline"
 
     message = parse_message(message_dict)
-    status, ops = await incoming(message, check_message=True)
+    status, ops = await incoming(message, reception_time=100000, check_message=True)
+
     assert status == IncomingStatus.MESSAGE_HANDLED

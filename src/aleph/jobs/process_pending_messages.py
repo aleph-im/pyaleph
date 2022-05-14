@@ -67,6 +67,7 @@ async def handle_pending_message(
     async with sem:
         status, operations = await incoming(
             pending_message=message,
+            reception_time=pending["reception_time"],
             tx_context=tx_context,
             seen_ids=seen_ids,
             check_message=pending["source"].get("check_message", True),

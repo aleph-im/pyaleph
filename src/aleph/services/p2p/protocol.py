@@ -3,6 +3,7 @@ import base64
 import json
 import logging
 import random
+import time
 from typing import Any, Dict, Optional, Set
 
 from anyio.abc import SocketStream
@@ -186,6 +187,7 @@ async def incoming_channel(p2p_client: P2PClient, topic: str) -> None:
         try:
             async for pubsub_message in receive_pubsub_messages(stream):
                 try:
+                    reception_time = time.time()
                     msg_dict = pubsub_msg_to_dict(pubsub_message)
                     LOGGER.debug("Received from P2P:", msg_dict)
                     # we should check the sender here to avoid spam
@@ -196,7 +198,7 @@ async def incoming_channel(p2p_client: P2PClient, topic: str) -> None:
                         continue
 
                     LOGGER.debug("New message %r" % message)
-                    await delayed_incoming(message)
+                    await delayed_incoming(message, reception_time)
                 except Exception:
                     LOGGER.exception("Can't handle message")
 
