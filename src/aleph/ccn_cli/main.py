@@ -4,6 +4,7 @@ from typing import Optional
 import typer
 
 from .cli_config import CliConfig
+from .commands.garbage_collector import gc_ns
 from .commands.keys import keys_ns
 from .commands.migrations import migrations_ns
 
@@ -16,6 +17,7 @@ def validate_config_file_path(config: Optional[Path]) -> Optional[Path]:
             raise typer.BadParameter(f"'{config.absolute()}' does not exist")
 
     return config
+
 
 def validate_key_dir(key_dir: Optional[Path]) -> Optional[Path]:
     if key_dir is not None:
@@ -63,6 +65,7 @@ def main(
     ctx.obj = cli_config
 
 
+app.add_typer(gc_ns, name="gc", help="Invoke the garbage collector.")
 app.add_typer(keys_ns, name="keys", help="Operations on private keys.")
 app.add_typer(migrations_ns, name="migrations", help="Run DB migrations.")
 
