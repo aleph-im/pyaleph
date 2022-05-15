@@ -79,7 +79,7 @@ async def check_message(
 
     if "item_hash" not in message:
         raise InvalidMessageError("Missing field 'item_hash' in message")
-    for field in ("chain", "sender", "signature"):
+    for field in INCOMING_MESSAGE_AUTHORIZED_FIELDS:
         if field not in message:
             raise InvalidMessageError(
                 f"Missing field '{field}' in message {message['item_hash']}"
