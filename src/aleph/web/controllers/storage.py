@@ -6,8 +6,8 @@ from aiohttp import web
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.handlers.forget import count_file_references
 from aleph.storage import add_json, get_hash_content, add_file
-from aleph.types import ItemType
-from aleph.utils import run_in_executor
+from aleph_message.models import ItemType
+from aleph.utils import run_in_executor, item_type_from_hash
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ async def add_ipfs_json_controller(request):
     """Forward the json content to IPFS server and return an hash"""
     data = await request.json()
 
-    output = {"status": "success", "hash": await add_json(data, engine=ItemType.IPFS)}
+    output = {"status": "success", "hash": await add_json(data, engine=ItemType.ipfs)}
     return web.json_response(output)
 
 
@@ -24,7 +24,7 @@ async def add_storage_json_controller(request):
     """Forward the json content to IPFS server and return an hash"""
     data = await request.json()
 
-    output = {"status": "success", "hash": await add_json(data, engine=ItemType.Storage)}
+    output = {"status": "success", "hash": await add_json(data, engine=ItemType.storage)}
     return web.json_response(output)
 
 
@@ -32,7 +32,7 @@ async def storage_add_file(request):
     # No need to pin it here anymore.
     # TODO: find a way to specify linked ipfs hashes in posts/aggr.
     post = await request.post()
-    file_hash = await add_file(post["file"].file, engine=ItemType.Storage)
+    file_hash = await add_file(post["file"].file, engine=ItemType.storage)
 
     output = {"status": "success", "hash": file_hash}
     return web.json_response(output)
@@ -47,7 +47,7 @@ async def get_hash(request):
     if item_hash is None:
         return web.HTTPBadRequest(text="No hash provided")
     try:
-        engine = ItemType.from_hash(item_hash)
+        engine = item_type_from_hash(item_hash)
     except UnknownHashError as e:
         logger.warning(e.args[0])
         return web.HTTPBadRequest(text="Invalid hash provided")
@@ -83,7 +83,7 @@ async def get_raw_hash(request):
         raise web.HTTPBadRequest(text="No hash provided")
 
     try:
-        engine = ItemType.from_hash(item_hash)
+        engine = item_type_from_hash(item_hash)
     except UnknownHashError:
         raise web.HTTPBadRequest(text="Invalid hash")
 
