@@ -4,14 +4,12 @@ import logging
 from typing import Coroutine, Dict, List
 from urllib.parse import unquote
 
-from aleph_message.models import ItemType
 from p2pclient import Client as P2PClient
 
 from aleph.exceptions import InvalidMessageError
 from aleph.register_chain import VERIFIER_REGISTER
+from aleph.schemas.pending_messages import parse_message
 from aleph.services.ipfs.pubsub import incoming_channel as incoming_ipfs_channel
-from aleph.utils import get_sha256
-from aleph.utils import item_type_from_hash
 
 LOGGER = logging.getLogger("NETWORK")
 
@@ -71,57 +69,8 @@ async def check_message(
 
     TODO: Implement it fully! Dangerous!
     """
-    if not isinstance(message, dict):
-        raise InvalidMessageError("Message must be a dict")
 
-    if not message:
-        raise InvalidMessageError("Message must not be empty")
-
-    for field in INCOMING_MESSAGE_AUTHORIZED_FIELDS:
-        if field not in message:
-            raise InvalidMessageError(
-                f"Missing field '{field}' in message {message['item_hash']}"
-            )
-
-    if not isinstance(message["item_hash"], str):
-        raise InvalidMessageError("Unknown hash %s" % message["item_hash"])
-
-    if not isinstance(message["chain"], str):
-        raise InvalidMessageError("Unknown chain %s" % message["chain"])
-
-    if message.get("channel", None) is not None:
-        if not isinstance(message.get("channel", None), str):
-            raise InvalidMessageError("Unknown channel %s" % message["channel"])
-
-    if not isinstance(message["sender"], str):
-        raise InvalidMessageError("Unknown sender %s" % message["sender"])
-
-    if not isinstance(message["signature"], str):
-        raise InvalidMessageError("Unknown signature %s" % message["signature"])
-
-    if message.get("item_content", None) is not None:
-        if len(message["item_content"]) > MAX_INLINE_SIZE:
-            raise InvalidMessageError("Message too long")
-        await asyncio.sleep(0)
-
-        if message.get("hash_type", "sha256") == "sha256":  # leave the door open.
-            if not trusted:
-                item_hash = get_sha256(message["item_content"])
-                # item_hash = await loop.run_in_executor(None, get_sha256, message['item_content'])
-                # item_hash = sha256(message['item_content'].encode('utf-8')).hexdigest()
-
-                if message["item_hash"] != item_hash:
-                    raise InvalidMessageError("Bad hash")
-        else:
-            raise InvalidMessageError("Unknown hash type %s" % message["hash_type"])
-
-        message["item_type"] = ItemType.inline.value
-
-    else:
-        try:
-            message["item_type"] = item_type_from_hash(message["item_hash"]).value
-        except ValueError as error:
-            LOGGER.warning(error)
+    _ = parse_message(message)
 
     if trusted:
         # only in the case of a message programmatically built here
