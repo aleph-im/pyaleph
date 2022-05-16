@@ -8,7 +8,7 @@ from logging import getLogger
 from typing import List, Dict, Tuple
 
 import sentry_sdk
-from aleph_message.models import MessageType
+from aleph_message.models import ItemType, MessageType
 from pymongo import DeleteOne, DeleteMany, ASCENDING
 from setproctitle import setproctitle
 
@@ -17,7 +17,6 @@ from aleph.logging import setup_logging
 from aleph.model.db_bulk_operation import DbBulkOperation
 from aleph.model.pending import PendingMessage
 from aleph.services.p2p import singleton
-from aleph.types import ItemType
 from .job_utils import prepare_loop, gather_and_perform_db_operations
 
 LOGGER = getLogger("jobs.pending_messages")
@@ -94,7 +93,7 @@ async def process_pending_messages(shared_stats: Dict):
                 )
 
             if (
-                pending["message"]["item_type"] == ItemType.IPFS
+                pending["message"]["item_type"] == ItemType.ipfs
                 or pending["message"]["type"] == MessageType.store
             ):
                 i += 15

@@ -14,13 +14,14 @@ from typing import Dict
 
 import aioipfs
 from aioipfs import InvalidCIDError
+from aleph_message.models import ItemType, StoreMessage
+from pydantic import ValidationError
+
 from aleph.config import get_config
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.services.ipfs.common import get_ipfs_api
 from aleph.storage import get_hash_content
-from aleph.types import ItemType
-from aleph_message.models import StoreMessage
-from pydantic import ValidationError
+from aleph.utils import item_type_from_hash
 
 LOGGER = logging.getLogger("HANDLERS.STORAGE")
 
@@ -52,8 +53,8 @@ async def handle_new_storage(message: Dict, content: Dict):
     do_standard_lookup = True
     size = 0
 
-    if engine == ItemType.IPFS and ipfs_enabled:
-        if ItemType.from_hash(item_hash) != ItemType.IPFS:
+    if engine == ItemType.ipfs and ipfs_enabled:
+        if item_type_from_hash(item_hash) != ItemType.ipfs:
             LOGGER.warning("Invalid IPFS hash: '%s'", item_hash)
             raise UnknownHashError(f"Invalid IPFS hash: '{item_hash}'")
 

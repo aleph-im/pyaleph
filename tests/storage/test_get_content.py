@@ -4,7 +4,7 @@ import pytest
 
 from aleph.exceptions import InvalidContent, ContentCurrentlyUnavailable
 from aleph.storage import ContentSource, get_hash_content, get_json, get_message_content
-from aleph.types import ItemType
+from aleph_message.models import ItemType
 
 
 @pytest.mark.asyncio
@@ -139,7 +139,7 @@ async def test_get_inline_content(mock_config):
     ]
     json_bytes = json.dumps(json_content).encode("utf-8")
     message = {
-        "item_type": ItemType.Inline.value,
+        "item_type": ItemType.inline.value,
         "item_hash": content_hash,
         "item_content": json_bytes,
     }
@@ -185,7 +185,7 @@ async def test_get_stored_message_content(mocker, mock_config):
     mocker.patch("aleph.storage.get_value", return_value=json_bytes)
 
     message = {
-        "item_type": ItemType.IPFS.value,
+        "item_type": ItemType.ipfs.value,
         "item_hash": content_hash,
     }
 

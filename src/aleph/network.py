@@ -1,16 +1,17 @@
 import asyncio
 import json
 import logging
-from typing import Coroutine, Dict, List, Optional
+from typing import Coroutine, Dict, List
 from urllib.parse import unquote
 
+from aleph_message.models import ItemType
 from p2pclient import Client as P2PClient
 
+from aleph.exceptions import InvalidMessageError
 from aleph.register_chain import VERIFIER_REGISTER
 from aleph.services.ipfs.pubsub import incoming_channel as incoming_ipfs_channel
-from aleph.types import ItemType
-from aleph.exceptions import InvalidMessageError
 from aleph.utils import get_sha256
+from aleph.utils import item_type_from_hash
 
 LOGGER = logging.getLogger("NETWORK")
 
@@ -116,11 +117,11 @@ async def check_message(
         else:
             raise InvalidMessageError("Unknown hash type %s" % message["hash_type"])
 
-        message["item_type"] = ItemType.Inline.value
+        message["item_type"] = ItemType.inline.value
 
     else:
         try:
-            message["item_type"] = ItemType.from_hash(message["item_hash"]).value
+            message["item_type"] = item_type_from_hash(message["item_hash"]).value
         except ValueError as error:
             LOGGER.warning(error)
 

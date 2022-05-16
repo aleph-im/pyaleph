@@ -9,18 +9,19 @@ from enum import Enum
 from hashlib import sha256
 from typing import Any, AnyStr, Dict, IO, Optional
 
+from aleph_message.models import ItemType
+
+from aleph.config import get_config
 from aleph.exceptions import InvalidContent, ContentCurrentlyUnavailable
 from aleph.services.filestore import get_value, set_value
+from aleph.services.ipfs.common import get_cid_version
 from aleph.services.ipfs.storage import add_bytes as add_ipfs_bytes
 from aleph.services.ipfs.storage import add_file as ipfs_add_file
 from aleph.services.ipfs.storage import get_ipfs_content
 from aleph.services.ipfs.storage import pin_add as ipfs_pin_add
 from aleph.services.p2p.http import request_hash as p2p_http_request_hash
 from aleph.services.p2p.singleton import get_streamer
-from aleph.types import ItemType
-from aleph.utils import run_in_executor, get_sha256
-from aleph.services.ipfs.common import get_cid_version
-from aleph.config import get_config
+from aleph.utils import get_sha256, run_in_executor
 
 LOGGER = logging.getLogger("STORAGE")
 
@@ -66,12 +67,12 @@ async def json_async_loads(s: AnyStr):
 
 
 async def get_message_content(message: Dict) -> MessageContent:
-    item_type: str = message.get("item_type", ItemType.IPFS)
+    item_type: str = message.get("item_type", ItemType.ipfs)
     item_hash = message["item_hash"]
 
-    if item_type in (ItemType.IPFS, ItemType.Storage):
+    if item_type in (ItemType.ipfs, ItemType.storage):
         return await get_json(item_hash, engine=ItemType(item_type))
-    elif item_type == ItemType.Inline:
+    elif item_type == ItemType.inline:
         if "item_content" not in message:
             error_msg = f"No item_content in message {message.get('item_hash')}"
             LOGGER.warning(error_msg)
@@ -149,13 +150,13 @@ async def verify_content_hash(
     config = get_config()
     ipfs_enabled = config.ipfs.enabled.value
 
-    if engine == ItemType.IPFS and ipfs_enabled:
+    if engine == ItemType.ipfs and ipfs_enabled:
         try:
             cid_version = get_cid_version(expected_hash)
         except ValueError as e:
             raise InvalidContent(e) from e
         compute_hash_task = compute_content_hash_ipfs(content, cid_version)
-    elif engine == ItemType.Storage:
+    elif engine == ItemType.storage:
         compute_hash_task = compute_content_hash_sha256(content)
     else:
         raise ValueError(f"Invalid storage engine: '{engine}'.")
@@ -175,7 +176,7 @@ async def verify_content_hash(
 
 async def get_hash_content(
     content_hash: str,
-    engine: ItemType = ItemType.IPFS,
+    engine: ItemType = ItemType.ipfs,
     timeout: int = 2,
     tries: int = 1,
     use_network: bool = True,
@@ -198,7 +199,7 @@ async def get_hash_content(
         source = ContentSource.P2P
 
     if content is None:
-        if ipfs_enabled and engine == ItemType.IPFS and use_ipfs:
+        if ipfs_enabled and engine == ItemType.ipfs and use_ipfs:
             content = await get_ipfs_content(content_hash, timeout=timeout, tries=tries)
             source = ContentSource.IPFS
 
@@ -218,7 +219,7 @@ async def get_hash_content(
 
 
 async def get_json(
-    content_hash: str, engine=ItemType.IPFS, timeout: int = 2, tries: int = 1
+    content_hash: str, engine=ItemType.ipfs, timeout: int = 2, tries: int = 1
 ) -> MessageContent:
     content = await get_hash_content(
         content_hash, engine=engine, timeout=timeout, tries=tries
@@ -242,13 +243,13 @@ async def pin_hash(chash: str, timeout: int = 2, tries: int = 1):
     return await ipfs_pin_add(chash, timeout=timeout, tries=tries)
 
 
-async def add_json(value: Any, engine: ItemType = ItemType.IPFS) -> str:
+async def add_json(value: Any, engine: ItemType = ItemType.ipfs) -> str:
     # TODO: determine which storage engine to use
     content = await run_in_executor(None, json.dumps, value)
     content = content.encode("utf-8")
-    if engine == ItemType.IPFS:
+    if engine == ItemType.ipfs:
         chash = await add_ipfs_bytes(content)
-    elif engine == ItemType.Storage:
+    elif engine == ItemType.storage:
         if isinstance(content, str):
             content = content.encode("utf-8")
         chash = sha256(content).hexdigest()
@@ -259,15 +260,15 @@ async def add_json(value: Any, engine: ItemType = ItemType.IPFS) -> str:
     return chash
 
 
-async def add_file(fileobject: IO, engine: ItemType = ItemType.IPFS) -> str:
+async def add_file(fileobject: IO, engine: ItemType = ItemType.ipfs) -> str:
 
-    if engine == ItemType.IPFS:
+    if engine == ItemType.ipfs:
         output = await ipfs_add_file(fileobject)
         file_hash = output["Hash"]
         fileobject.seek(0)
         file_content = fileobject.read()
 
-    elif engine == ItemType.Storage:
+    elif engine == ItemType.storage:
         file_content = fileobject.read()
         file_hash = sha256(file_content).hexdigest()
 
