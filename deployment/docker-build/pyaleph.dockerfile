@@ -84,6 +84,9 @@ RUN /opt/venv/bin/pip install --no-cache-dir "."
 # Save installed Python requirements for debugging
 RUN /opt/venv/bin/pip freeze > /opt/build-frozen-requirements.txt
 
+USER root
+RUN chown -R aleph:aleph /opt/pyaleph/
+
 USER aleph
 ENTRYPOINT ["bash", "deployment/scripts/run_aleph_ccn.sh"]
 

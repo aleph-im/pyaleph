@@ -4,9 +4,10 @@ Job in charge of loading messages stored on-chain and put them in the pending me
 
 import asyncio
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Set
 
 import sentry_sdk
+from configmanager import Config
 from pymongo import DeleteOne, InsertOne
 from pymongo.errors import CursorNotFound
 from setproctitle import setproctitle
@@ -15,12 +16,11 @@ from aleph.chains.common import get_chaindata_messages
 from aleph.chains.tx_context import TxContext
 from aleph.exceptions import InvalidMessageError
 from aleph.logging import setup_logging
+from aleph.model.db_bulk_operation import DbBulkOperation
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.network import check_message
 from aleph.services.p2p import singleton
-from .job_utils import prepare_loop, gather_and_perform_db_operations
-from aleph.model.db_bulk_operation import DbBulkOperation
-from aleph.toolkit.batch import async_batch
+from .job_utils import prepare_loop, process_job_results
 
 LOGGER = logging.getLogger("jobs.pending_txs")
 
@@ -81,8 +81,8 @@ async def handle_pending_tx(
     return db_operations
 
 
-async def join_pending_txs_tasks(tasks):
-    await gather_and_perform_db_operations(
+async def process_tx_job_results(tasks: Set[asyncio.Task]):
+    await process_job_results(
         tasks,
         on_error=lambda e: LOGGER.exception(
             "error in incoming txs task",
@@ -91,36 +91,42 @@ async def join_pending_txs_tasks(tasks):
     )
 
 
-async def process_pending_txs():
+async def process_pending_txs(max_concurrent_tasks: int):
     """
     Process chain transactions in the Pending TX queue.
     """
 
-    batch_size = 200
+    tasks: Set[asyncio.Task] = set()
 
     seen_offchain_hashes = set()
-    seen_ids = []
+    seen_ids: List[str] = []
     LOGGER.info("handling TXs")
-    async for pending_tx_batch in async_batch(
-        PendingTX.collection.find().sort([("context.time", 1)]), batch_size
-    ):
-        tasks = []
-        for pending_tx in pending_tx_batch:
-            if pending_tx["content"]["protocol"] == "aleph-offchain":
-                if pending_tx["content"]["content"] in seen_offchain_hashes:
-                    continue
+    async for pending_tx in PendingTX.collection.find().sort([("context.time", 1)]):
+        if pending_tx["content"]["protocol"] == "aleph-offchain":
+            if pending_tx["content"]["content"] in seen_offchain_hashes:
+                continue
 
-            seen_offchain_hashes.add(pending_tx["content"]["content"])
-            tasks.append(handle_pending_tx(pending_tx, seen_ids=seen_ids))
+        if len(tasks) == max_concurrent_tasks:
+            done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            await process_tx_job_results(done)
 
-        await join_pending_txs_tasks(tasks)
+        seen_offchain_hashes.add(pending_tx["content"]["content"])
+        tx_task = asyncio.create_task(handle_pending_tx(pending_tx, seen_ids=seen_ids))
+        tasks.add(tx_task)
+
+    # Wait for the last tasks
+    if tasks:
+        done, _ = await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)
+        await process_tx_job_results(done)
 
 
-async def handle_txs_task():
+async def handle_txs_task(config: Config):
+    max_concurrent_tasks = config.aleph.jobs.pending_txs.max_concurrency.value
+
     await asyncio.sleep(4)
     while True:
         try:
-            await process_pending_txs()
+            await process_pending_txs(max_concurrent_tasks)
             await asyncio.sleep(5)
         except CursorNotFound:
             LOGGER.exception("Cursor error in pending txs job ")
@@ -146,4 +152,4 @@ def pending_txs_subprocess(config_values: Dict, api_servers: List):
     )
     singleton.api_servers = api_servers
 
-    loop.run_until_complete(handle_txs_task())
+    loop.run_until_complete(handle_txs_task(config))
