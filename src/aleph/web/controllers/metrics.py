@@ -7,13 +7,15 @@ from typing import Dict, Optional
 from urllib.parse import urljoin
 
 import aiohttp
-import aleph.model
 from aiocache import cached
-from aleph import __version__
-from aleph.config import get_config
+from aleph_message.models import MessageType
 from dataclasses_json import DataClassJsonMixin
 from requests import HTTPError
 from web3 import Web3
+
+import aleph.model
+from aleph import __version__
+from aleph.config import get_config
 
 LOGGER = getLogger("WEB.metrics")
 
@@ -74,12 +76,14 @@ class Metrics(DataClassJsonMixin):
     pyaleph_status_chain_eth_last_committed_height: Optional[int]
 
     pyaleph_processing_pending_messages_seen_ids_total: Optional[int] = None
-    pyaleph_processing_pending_messages_gtasks_total: Optional[int] = None
     pyaleph_processing_pending_messages_tasks_total: Optional[int] = None
+    pyaleph_processing_pending_messages_aggregate_tasks: int = 0
+    pyaleph_processing_pending_messages_forget_tasks: int = 0
+    pyaleph_processing_pending_messages_post_tasks: int = 0
+    pyaleph_processing_pending_messages_program_tasks: int = 0
+    pyaleph_processing_pending_messages_store_tasks: int = 0
+
     pyaleph_processing_pending_messages_action_total: Optional[int] = None
-    pyaleph_processing_pending_messages_messages_actions_total: Optional[int] = None
-    pyaleph_processing_pending_messages_i_total: Optional[int] = None
-    pyaleph_processing_pending_messages_j_total: Optional[int] = None
 
     pyaleph_status_sync_messages_reference_total: Optional[int] = None
     pyaleph_status_sync_messages_remaining_total: Optional[int] = None
@@ -177,24 +181,24 @@ async def get_metrics(shared_stats: dict) -> Metrics:
         pyaleph_processing_pending_messages_seen_ids_total=shared_stats.get(
             "retry_messages_job_seen_ids"
         ),
-        pyaleph_processing_pending_messages_gtasks_total=shared_stats.get(
-            "retry_messages_job_gtasks"
-        ),
         pyaleph_processing_pending_messages_tasks_total=shared_stats.get(
             "retry_messages_job_tasks"
         ),
-        pyaleph_processing_pending_messages_action_total=shared_stats.get(
-            "retry_messages_job_actions"
-        ),
-        pyaleph_processing_pending_messages_messages_actions_total=shared_stats.get(
-            "retry_messages_job_messages_actions"
-        ),
-        pyaleph_processing_pending_messages_i_total=shared_stats.get(
-            "retry_messages_job_i"
-        ),
-        pyaleph_processing_pending_messages_j_total=shared_stats.get(
-            "retry_messages_job_j"
-        ),
+        pyaleph_processing_pending_messages_aggregate_tasks=shared_stats[
+            "message_jobs"
+        ][MessageType.aggregate],
+        pyaleph_processing_pending_messages_forget_tasks=shared_stats["message_jobs"][
+            MessageType.forget
+        ],
+        pyaleph_processing_pending_messages_post_tasks=shared_stats["message_jobs"][
+            MessageType.post
+        ],
+        pyaleph_processing_pending_messages_program_tasks=shared_stats["message_jobs"][
+            MessageType.program
+        ],
+        pyaleph_processing_pending_messages_store_tasks=shared_stats["message_jobs"][
+            MessageType.store
+        ],
         pyaleph_status_sync_messages_total=sync_messages_total,
         pyaleph_status_sync_permanent_files_total=await aleph.model.db.filepins.estimated_document_count(),
         pyaleph_status_sync_messages_reference_total=sync_messages_reference_total,

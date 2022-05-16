@@ -35,8 +35,8 @@ def start_jobs(
         p1.start()
         p2.start()
     else:
-        tasks.append(retry_messages_task(shared_stats=shared_stats))
-        tasks.append(handle_txs_task())
+        tasks.append(retry_messages_task(config=config, shared_stats=shared_stats))
+        tasks.append(handle_txs_task(config))
 
     if config.ipfs.enabled.value:
         tasks.append(reconnect_ipfs_job(config))

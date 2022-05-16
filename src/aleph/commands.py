@@ -14,20 +14,22 @@ import asyncio
 import logging
 import os
 import sys
-from multiprocessing import Process, set_start_method, Manager
-from typing import List, Coroutine, Dict, Optional
+from multiprocessing import Manager, Process, set_start_method
+from multiprocessing.managers import SyncManager
+from typing import Any, Coroutine, Dict, List, Optional
 
 import sentry_sdk
+from aleph_message.models import MessageType
 from configmanager import Config
 from setproctitle import setproctitle
 
+import aleph.config
 from aleph import model
 from aleph.chains import connector_tasks
 from aleph.cli.args import parse_args
-import aleph.config
 from aleph.exceptions import InvalidConfigException, KeyNotFoundException
-from aleph.jobs.job_utils import prepare_loop
 from aleph.jobs import start_jobs
+from aleph.jobs.job_utils import prepare_loop
 from aleph.logging import setup_logging
 from aleph.network import listener_tasks
 from aleph.services import p2p
@@ -40,6 +42,22 @@ __copyright__ = "Moshe Malawach"
 __license__ = "mit"
 
 LOGGER = logging.getLogger(__name__)
+
+
+def init_shared_stats(shared_memory_manager: SyncManager) -> Dict[str, Any]:
+    """
+    Initializes the shared stats dictionary. This dictionary is meant to be shared
+    across processes to publish internal statistics about each job.
+    """
+    shared_stats: Dict[str, Any] = shared_memory_manager.dict()
+    # Nested dicts must also be shared dictionaries, otherwise they will not be
+    # shared across processes.
+    message_jobs_dict = shared_memory_manager.dict()
+    for message_type in MessageType:
+        message_jobs_dict[message_type] = 0
+    shared_stats["message_jobs"] = message_jobs_dict
+
+    return shared_stats
 
 
 async def run_server(
@@ -176,9 +194,8 @@ async def main(args):
 
     with Manager() as shared_memory_manager:
         tasks: List[Coroutine] = []
-        # This dictionary is shared between all the process so we can expose some internal stats
-        # handle with care as it's shared between process.
-        shared_stats = shared_memory_manager.dict()
+
+        shared_stats = init_shared_stats(shared_memory_manager)
         api_servers = shared_memory_manager.list()
         singleton.api_servers = api_servers
 

@@ -1,15 +1,17 @@
 import asyncio
+from itertools import groupby
+from typing import Callable, cast
 from typing import Dict
 from typing import Iterable, Tuple
 
+from configmanager import Config
+
 import aleph.config
 from aleph.model import init_db_globals
+from aleph.model.db_bulk_operation import DbBulkOperation
 from aleph.services.ipfs.common import init_ipfs_globals
 from aleph.services.p2p import init_p2p_client
-from configmanager import Config
-from typing import Awaitable, Callable, List
-from aleph.model.db_bulk_operation import DbBulkOperation
-from itertools import groupby
+from aleph.toolkit.split import split_iterable
 
 
 def prepare_loop(config_values: Dict) -> Tuple[asyncio.AbstractEventLoop, Config]:
@@ -45,32 +47,29 @@ async def perform_db_operations(db_operations: Iterable[DbBulkOperation]) -> Non
         await collection.collection.bulk_write(mongo_ops)
 
 
-async def gather_and_perform_db_operations(
-    tasks: List[Awaitable[List[DbBulkOperation]]],
+async def process_job_results(
+    tasks: Iterable[asyncio.Task],  # TODO: switch to a generic type when moving to 3.9+
     on_error: Callable[[BaseException], None],
-) -> None:
+):
     """
     Processes the result of the pending TX/message tasks.
 
-    Gathers the results of the tasks passed in input, handles exceptions
-    and performs DB operations.
+    Splits successful and failed jobs, handles exceptions and performs
+    DB operations.
 
-    :param tasks: Job tasks. Each of these tasks must return a list of
-                  DbBulkOperation objects.
+    :param tasks: Finished job tasks. Each of these tasks must return a list of
+                  DbBulkOperation objects. It is up to the caller to determine
+                  when tasks are done, for example by using asyncio.wait.
     :param on_error: Error callback function. This function will be called
                      on each error from one of the tasks.
     """
-    task_results = await asyncio.gather(*tasks, return_exceptions=True)
+    successes, errors = split_iterable(tasks, lambda t: t.exception() is None)
 
-    errors = [op for op in task_results if isinstance(op, BaseException)]
     for error in errors:
-        on_error(error)
+        # mypy sees Optional[BaseException] otherwise
+        exception = cast(BaseException, error.exception())
+        on_error(exception)
 
-    db_operations = (
-        op
-        for operations in task_results
-        if not isinstance(operations, BaseException)
-        for op in operations
-    )
+    db_operations = (op for success in successes for op in success.result())
 
     await perform_db_operations(db_operations)

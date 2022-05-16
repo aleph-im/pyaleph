@@ -14,6 +14,15 @@ def get_defaults():
             "host": "0.0.0.0",
             "port": 8000,
             "reference_node_url": None,
+            "jobs": {
+                "pending_messages": {
+                    "max_concurrency": 2000,
+                    "store": 100,
+                },
+                "pending_txs": {
+                    "max_concurrency": 20,
+                }
+            }
         },
         "p2p": {
             "http_port": 4024,
