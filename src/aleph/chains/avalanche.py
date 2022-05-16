@@ -8,6 +8,8 @@ from aleph.register_chain import register_verifier
 
 import logging
 
+from aleph.schemas.pending_messages import BasePendingMessage
+
 LOGGER = logging.getLogger("chains.avalanche")
 CHAIN_NAME = "AVAX"
 MESSAGE_TEMPLATE = b"\x1AAvalanche Signed Message:\n%b"
@@ -49,16 +51,16 @@ async def get_chain_info(address):
     return chain_id, hrp
 
 
-async def verify_signature(message):
+async def verify_signature(message: BasePendingMessage):
     """Verifies a signature of a message, return True if verified, false if not"""
     try:
-        chain_id, hrp = await get_chain_info(message["sender"])
+        chain_id, hrp = await get_chain_info(message.sender)
     except Exception:
         LOGGER.exception("Avalanche sender address deserialization error")
         return False
 
     try:
-        signature = base58.b58decode(message["signature"])
+        signature = base58.b58decode(message.signature)
         signature, status = await validate_checksum(signature)
         if not status:
             LOGGER.exception("Avalanche signature checksum error")
@@ -76,10 +78,10 @@ async def verify_signature(message):
         address = await address_from_public_key(public_key.format())
         address = await address_to_string(chain_id, hrp, address)
 
-        result = address == message["sender"]
+        result = address == message.sender
 
     except Exception as e:
-        LOGGER.exception("Error processing signature for %s" % message["sender"])
+        LOGGER.exception("Error processing signature for %s" % message.sender)
         result = False
 
     return result

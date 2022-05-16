@@ -7,15 +7,17 @@ from nacl.signing import VerifyKey
 
 import logging
 
+from aleph.schemas.pending_messages import BasePendingMessage
+
 LOGGER = logging.getLogger("chains.solana")
 CHAIN_NAME = "SOL"
 
 
-async def verify_signature(message):
+async def verify_signature(message: BasePendingMessage) -> bool:
     """Verifies a signature of a message, return True if verified, false if not"""
 
     try:
-        signature = json.loads(message["signature"])
+        signature = json.loads(message.signature)
         sigdata = base58.b58decode(signature["signature"])
         public_key = base58.b58decode(signature["publicKey"])
     except Exception:
@@ -31,7 +33,7 @@ async def verify_signature(message):
         LOGGER.exception("Solana signature version error")
         return False
 
-    if message["sender"] != signature["publicKey"]:
+    if message.sender != signature["publicKey"]:
         LOGGER.exception("Solana signature source error")
         return False
 

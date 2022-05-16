@@ -2,24 +2,26 @@ import base64
 import hashlib
 import json
 import logging
+from typing import Dict
 
 import ecdsa
 from cosmospy import pubkey_to_address
 
 from aleph.chains.common import get_verification_buffer
 from aleph.register_chain import register_verifier
+from aleph.schemas.pending_messages import BasePendingMessage
 
 LOGGER = logging.getLogger("chains.cosmos")
 CHAIN_NAME = "CSDK"
 
 
-async def get_signable_message(message):
+async def get_signable_message(message: BasePendingMessage) -> Dict:
     signable = (await get_verification_buffer(message)).decode("utf-8")
     content_message = {
         "type": "signutil/MsgSignText",
         "value": {
             "message": signable,
-            "signer": message["sender"],
+            "signer": message.sender,
         },
     }
 
@@ -38,7 +40,7 @@ async def get_signable_message(message):
     }
 
 
-async def get_verification_string(message):
+async def get_verification_string(message: BasePendingMessage) -> str:
     value = await get_signable_message(message)
     return json.dumps(value, separators=(",", ":"), sort_keys=True)
 
@@ -48,11 +50,11 @@ async def get_hrp(address):
     return hrp
 
 
-async def verify_signature(message):
+async def verify_signature(message: BasePendingMessage) -> bool:
     """Verifies a signature of a message, return True if verified, false if not"""
 
     try:
-        signature = json.loads(message["signature"])
+        signature = json.loads(message.signature)
     except Exception:
         LOGGER.exception("Cosmos signature deserialization error")
         return False
@@ -68,7 +70,7 @@ async def verify_signature(message):
 
     try:
         pub_key = base64.b64decode(signature.get("pub_key").get("value"))
-        hrp = await get_hrp(message["sender"])
+        hrp = await get_hrp(message.sender)
     except Exception:
         LOGGER.exception("Cosmos key verification error")
         result = False
@@ -81,10 +83,10 @@ async def verify_signature(message):
 
     try:
         address = pubkey_to_address(pub_key, hrp=hrp)
-        if address != message["sender"]:
+        if address != message.sender:
             LOGGER.warning(
                 "Signature for bad address %s instead of %s"
-                % (address, message["sender"])
+                % (address, message.sender)
             )
             return False
 

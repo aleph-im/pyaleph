@@ -5,16 +5,17 @@ from substrateinterface import Keypair
 
 from aleph.chains.common import get_verification_buffer
 from aleph.register_chain import register_verifier
+from aleph.schemas.pending_messages import BasePendingMessage
 
 LOGGER = logging.getLogger("chains.substrate")
 CHAIN_NAME = "DOT"
 
 
-async def verify_signature(message):
+async def verify_signature(message: BasePendingMessage) -> bool:
     """Verifies a signature of a message, return True if verified, false if not"""
 
     try:
-        signature = json.loads(message["signature"])
+        signature = json.loads(message.signature)
     except Exception:
         LOGGER.exception("Substrate signature deserialization error")
         return False
@@ -27,7 +28,7 @@ async def verify_signature(message):
         return False
 
     try:
-        keypair = Keypair(ss58_address=message["sender"])
+        keypair = Keypair(ss58_address=message.sender)
         verif = (await get_verification_buffer(message)).decode("utf-8")
         result = keypair.verify(verif, signature["data"])
     except Exception:

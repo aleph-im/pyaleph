@@ -16,26 +16,27 @@ from aleph.register_chain import register_verifier
 #     NulsSignature, public_key_to_hash, address_from_hash, hash_from_address,
 #     CHEAP_UNIT_FEE)
 # from nulsexplorer.protocol.transaction import Transaction
+from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.utils import run_in_executor
 
 LOGGER = logging.getLogger("chains.nuls")
 CHAIN_NAME = "NULS"
 
 
-async def verify_signature(message):
+async def verify_signature(message: BasePendingMessage) -> bool:
     """Verifies a signature of a message, return True if verified, false if not"""
-    sig_raw = bytes(bytearray.fromhex(message["signature"]))
+    sig_raw = bytes(bytearray.fromhex(message.signature))
     sig = NulsSignature(sig_raw)
 
-    sender_hash = hash_from_address(message["sender"])
+    sender_hash = hash_from_address(message.sender)
     (sender_chain_id,) = struct.unpack("h", sender_hash[:2])
 
     hash = public_key_to_hash(sig.pub_key, sender_chain_id)
 
     address = address_from_hash(hash)
-    if address != message["sender"]:
+    if address != message.sender:
         LOGGER.warning(
-            "Received bad signature from %s for %s" % (address, message["sender"])
+            "Received bad signature from %s for %s" % (address, message.sender)
         )
         return False
 
