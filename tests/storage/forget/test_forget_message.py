@@ -1,6 +1,6 @@
 import pytest
 from aleph_message.models import ForgetMessage
-from aleph.handlers.forget import forget_if_allowed
+from aleph.handlers.forget import forget_if_allowed, TargetMessageInfo
 
 
 @pytest.mark.asyncio
@@ -46,7 +46,8 @@ async def test_forget_inline_message(mocker):
     message_mock = mocker.patch("aleph.handlers.forget.Message")
     message_mock.collection.update_many = mocker.AsyncMock()
 
-    await forget_if_allowed(target_message, forget_message)
+    target_info = TargetMessageInfo.from_db_object(target_message)
+    await forget_if_allowed(target_info, forget_message)
 
     message_mock.collection.update_many.assert_called_once_with(
         filter={"item_hash": target_message["item_hash"]},
@@ -106,7 +107,8 @@ async def test_forget_store_message(mocker):
     message_mock = mocker.patch("aleph.handlers.forget.Message")
     message_mock.collection.update_many = mocker.AsyncMock()
 
-    await forget_if_allowed(target_message, forget_message)
+    target_info = TargetMessageInfo.from_db_object(target_message)
+    await forget_if_allowed(target_info, forget_message)
 
     message_mock.collection.update_many.assert_called_once_with(
         filter={"item_hash": target_message["item_hash"]},
@@ -171,7 +173,8 @@ async def test_forget_forget_message(mocker):
     message_mock = mocker.patch("aleph.handlers.forget.Message")
     message_mock.collection.update_many = mocker.AsyncMock()
 
-    await forget_if_allowed(target_message, forget_message)
+    target_info = TargetMessageInfo.from_db_object(target_message)
+    await forget_if_allowed(target_info, forget_message)
 
     assert not message_mock.collection.update_many.called
     assert not garbage_collect_mock.called
