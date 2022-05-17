@@ -2,6 +2,8 @@ import pytest
 from aleph_message.models import ForgetMessage
 from aleph.handlers.forget import forget_if_allowed, TargetMessageInfo
 
+from message_test_helpers import make_validated_message_from_dict
+
 
 @pytest.mark.asyncio
 async def test_forget_inline_message(mocker):
@@ -41,7 +43,7 @@ async def test_forget_inline_message(mocker):
         },
     }
 
-    forget_message = ForgetMessage(**forget_message)
+    forget_message = make_validated_message_from_dict(forget_message)
     garbage_collect_mock = mocker.patch("aleph.handlers.forget.garbage_collect")
     message_mock = mocker.patch("aleph.handlers.forget.Message")
     message_mock.collection.update_many = mocker.AsyncMock()
@@ -93,16 +95,9 @@ async def test_forget_store_message(mocker):
         "item_content": '{"address":"0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106","time":1652794384.3101473,"hashes":["f6fc4884e3ec3624bd3f60a3c37abf83a130777086061b1a373e659f2bab4d06"]}',
         "item_hash": "5e40c8e2197e0678b5fba9cb1679e3a80fa6aeaa1a440d94f059525295fa32d3",
         "signature": "0xc342e671be10894bf707b86c3f7538cdb7e4bb5760e234f8d07f8b3dfde015492337bd8756f169e37ac691b74c765415e96b6e1813238912e10ea54cc003887d1b",
-        "content": {
-            "address": "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
-            "time": 1652794384.3101473,
-            "hashes": [
-                "f6fc4884e3ec3624bd3f60a3c37abf83a130777086061b1a373e659f2bab4d06"
-            ],
-        },
     }
 
-    forget_message = ForgetMessage(**forget_message)
+    forget_message = make_validated_message_from_dict(forget_message)
     garbage_collect_mock = mocker.patch("aleph.handlers.forget.garbage_collect")
     message_mock = mocker.patch("aleph.handlers.forget.Message")
     message_mock.collection.update_many = mocker.AsyncMock()
@@ -168,7 +163,7 @@ async def test_forget_forget_message(mocker):
         "time": 1639058312.376,
     }
 
-    forget_message = ForgetMessage(**forget_message)
+    forget_message = make_validated_message_from_dict(forget_message)
     garbage_collect_mock = mocker.patch("aleph.handlers.forget.garbage_collect")
     message_mock = mocker.patch("aleph.handlers.forget.Message")
     message_mock.collection.update_many = mocker.AsyncMock()

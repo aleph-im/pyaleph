@@ -1,16 +1,19 @@
-from typing import Dict
-
 from aleph.model.messages import get_computed_address_aggregates
+from aleph.schemas.validated_message import (
+    BaseValidatedMessage,
+    ValidatedPostMessage,
+    ValidatedAggregateMessage,
+)
 
 
-async def check_sender_authorization(message: Dict, content: Dict) -> bool:
+async def check_sender_authorization(message: BaseValidatedMessage) -> bool:
     """Checks a content against a message to verify if sender is authorized.
 
     TODO: implement "security" aggregate key check.
     """
 
-    sender = message["sender"]
-    address = content["address"]
+    sender = message.sender
+    address = message.content.address
 
     # if sender is the content address, all good.
     if sender == address:
@@ -28,7 +31,7 @@ async def check_sender_authorization(message: Dict, content: Dict) -> bool:
         if auth.get("address", "") != sender:
             continue  # not applicable, move on.
 
-        if auth.get("chain") and message["chain"] != auth.get("chain"):
+        if auth.get("chain") and message.chain != auth.get("chain"):
             continue
 
         channels = auth.get("channels", [])
@@ -36,18 +39,18 @@ async def check_sender_authorization(message: Dict, content: Dict) -> bool:
         ptypes = auth.get("post_types", [])
         akeys = auth.get("aggregate_keys", [])
 
-        if len(channels) and message["channel"] not in channels:
+        if len(channels) and message.channel not in channels:
             continue
 
-        if len(mtypes) and message["type"] not in mtypes:
+        if len(mtypes) and message.type not in mtypes:
             continue
 
-        if message["type"] == "POST":
-            if len(ptypes) and content["type"] not in ptypes:
+        if isinstance(message, ValidatedPostMessage):
+            if len(ptypes) and message.content.type not in ptypes:
                 continue
 
-        if message["type"] == "AGGREGATE":
-            if len(akeys) and content["key"] not in akeys:
+        if isinstance(message, ValidatedAggregateMessage):
+            if len(akeys) and message.content.key not in akeys:
                 continue
 
         return True

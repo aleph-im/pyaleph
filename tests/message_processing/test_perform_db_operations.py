@@ -1,6 +1,5 @@
 import pytest
-from pymongo import DeleteOne
-from pymongo import InsertOne
+from pymongo import DeleteOne, InsertOne
 
 from aleph.jobs.job_utils import perform_db_operations
 from aleph.model.db_bulk_operation import DbBulkOperation

@@ -14,7 +14,7 @@ from p2pclient.libp2p_stubs.peer.id import ID
 
 from aleph import __version__
 from aleph.exceptions import AlephStorageException, InvalidMessageError
-from aleph.network import incoming_check
+from aleph.network import get_pubsub_message
 from aleph.services.utils import pubsub_msg_to_dict
 from .pubsub import receive_pubsub_messages, subscribe
 
@@ -191,7 +191,7 @@ async def incoming_channel(p2p_client: P2PClient, topic: str) -> None:
                     # we should check the sender here to avoid spam
                     # and such things...
                     try:
-                        message = await incoming_check(msg_dict)
+                        message = await get_pubsub_message(msg_dict)
                     except InvalidMessageError:
                         continue
 

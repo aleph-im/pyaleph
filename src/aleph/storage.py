@@ -4,15 +4,15 @@ Basically manages the IPFS storage.
 import asyncio
 import json
 import logging
-from dataclasses import dataclass
-from enum import Enum
 from hashlib import sha256
-from typing import Any, AnyStr, Dict, IO, Optional
+from typing import Any, AnyStr, IO, Optional, cast
 
 from aleph_message.models import ItemType
 
 from aleph.config import get_config
 from aleph.exceptions import InvalidContent, ContentCurrentlyUnavailable
+from aleph.schemas.message_content import ContentSource, RawContent, MessageContent
+from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.services.filestore import get_value, set_value
 from aleph.services.ipfs.common import get_cid_version
 from aleph.services.ipfs.storage import add_bytes as add_ipfs_bytes
@@ -21,43 +21,9 @@ from aleph.services.ipfs.storage import get_ipfs_content
 from aleph.services.ipfs.storage import pin_add as ipfs_pin_add
 from aleph.services.p2p.http import request_hash as p2p_http_request_hash
 from aleph.services.p2p.singleton import get_streamer
-from aleph.utils import get_sha256, run_in_executor, item_type_from_hash
+from aleph.utils import get_sha256, run_in_executor
 
 LOGGER = logging.getLogger("STORAGE")
-
-
-class ContentSource(str, Enum):
-    """
-    Defines the source of the content of a message.
-
-    Message content can be fetched from different sources depending on the procedure followed by the user sending
-    a particular message. This enum determines where the node found the content.
-    """
-
-    DB = "DB"
-    P2P = "P2P"
-    IPFS = "IPFS"
-    INLINE = "inline"
-
-
-@dataclass
-class StoredContent:
-    hash: str
-    source: Optional[ContentSource]
-
-
-@dataclass
-class RawContent(StoredContent):
-    value: bytes
-
-    def __len__(self):
-        return len(self.value)
-
-
-@dataclass
-class MessageContent(StoredContent):
-    value: Any
-    raw_value: bytes
 
 
 async def json_async_loads(s: AnyStr):
@@ -66,19 +32,18 @@ async def json_async_loads(s: AnyStr):
     return await run_in_executor(None, json.loads, s)
 
 
-async def get_message_content(message: Dict) -> MessageContent:
-    item_type: str = message["item_type"]
-    item_hash = message["item_hash"]
+async def get_message_content(message: BasePendingMessage) -> MessageContent:
+    item_type = message.item_type
+    item_hash = message.item_hash
 
     if item_type in (ItemType.ipfs, ItemType.storage):
         return await get_json(item_hash, engine=ItemType(item_type))
     elif item_type == ItemType.inline:
-        if "item_content" not in message:
-            error_msg = f"No item_content in message {message.get('item_hash')}"
-            LOGGER.warning(error_msg)
-            raise InvalidContent(error_msg)  # never retry, bogus data
+        # This hypothesis is validated at schema level
+        item_content = cast(str, message.item_content)
+
         try:
-            item_content = await json_async_loads(message["item_content"])
+            content = await json_async_loads(item_content)
         except (json.JSONDecodeError, KeyError) as e:
             error_msg = f"Can't decode JSON: {e}"
             LOGGER.warning(error_msg)
@@ -87,8 +52,8 @@ async def get_message_content(message: Dict) -> MessageContent:
         return MessageContent(
             hash=item_hash,
             source=ContentSource.INLINE,
-            value=item_content,
-            raw_value=message["item_content"],
+            value=content,
+            raw_value=item_content,
         )
     else:
         # unknown, could retry later? shouldn't have arrived this far though.
