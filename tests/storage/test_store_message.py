@@ -1,14 +1,16 @@
+import json
+
 import pytest
 
-from aleph.handlers.storage import handle_new_storage
-from aleph.storage import ContentSource, RawContent
-import json
 from aleph.exceptions import UnknownHashError
+from aleph.handlers.storage import handle_new_storage
+from aleph.schemas.pending_messages import parse_message, PendingStoreMessage
+from aleph.storage import ContentSource, RawContent
 
 
 @pytest.fixture
 def fixture_message_file():
-    return {
+    message_dict = {
         "_id": {"$oid": "621908cb378bcd3ef596fa50"},
         "chain": "ETH",
         "item_hash": "7e4f914865028356704919810073ec5690ecc4bb0ee3bd6bdb24829fd532398f",
@@ -29,11 +31,12 @@ def fixture_message_file():
             }
         ],
     }
+    return parse_message(message_dict)
 
 
 @pytest.fixture
 def fixture_message_directory():
-    return {
+    message_dict = {
         "_id": {"$oid": "1234"},
         "chain": "ETH",
         "item_hash": "b3d17833bcefb7a6eb2d9fa7c77cca3eed3a3fa901a904d35c529a71be25fc6d",
@@ -47,11 +50,12 @@ def fixture_message_directory():
         "size": 158,
         "time": 1644409598.782,
     }
+    return parse_message(message_dict)
 
 
 @pytest.mark.asyncio
 async def test_handle_new_storage_invalid_content(
-    mock_config, fixture_message_directory
+    mock_config, fixture_message_directory: PendingStoreMessage
 ):
     missing_item_hash_content = {
         "address": "0x2278d6A697B2Be8aE4Ddf090f918d1642Ee43c8C",
@@ -80,8 +84,10 @@ async def test_handle_new_storage_invalid_content(
 
 
 @pytest.mark.asyncio
-async def test_handle_new_storage_file(mocker, mock_config, fixture_message_file):
-    content = json.loads(fixture_message_file["item_content"])
+async def test_handle_new_storage_file(
+    mocker, mock_config, fixture_message_file: PendingStoreMessage
+):
+    content = json.loads(fixture_message_file.item_content)
 
     raw_content = RawContent(
         hash=content["item_hash"],
@@ -115,7 +121,7 @@ async def test_handle_new_storage_file(mocker, mock_config, fixture_message_file
 
 @pytest.mark.asyncio
 async def test_handle_new_storage_directory(
-    mocker, mock_config, fixture_message_directory
+    mocker, mock_config, fixture_message_directory: PendingStoreMessage
 ):
     get_hash_content_mock = mocker.patch("aleph.handlers.storage.get_hash_content")
     mock_ipfs_api = mocker.MagicMock()
@@ -129,7 +135,7 @@ async def test_handle_new_storage_directory(
     mock_ipfs_api.files.stat = mocker.AsyncMock(return_value=ipfs_stats)
     mocker.patch("aleph.handlers.storage.get_ipfs_api", return_value=mock_ipfs_api)
 
-    content = json.loads(fixture_message_directory["item_content"])
+    content = json.loads(fixture_message_directory.item_content)
 
     result = await handle_new_storage(fixture_message_directory, content)
     assert result and result != -1
@@ -144,9 +150,9 @@ async def test_handle_new_storage_directory(
 
 @pytest.mark.asyncio
 async def test_handle_new_storage_invalid_hash(
-    mocker, mock_config, fixture_message_file
+    mock_config, fixture_message_file: PendingStoreMessage
 ):
-    content = json.loads(fixture_message_file["item_content"])
+    content = json.loads(fixture_message_file.item_content)
     content["item_hash"] = "some-invalid-hash"
 
     with pytest.raises(UnknownHashError):

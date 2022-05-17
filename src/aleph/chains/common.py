@@ -5,7 +5,6 @@ from dataclasses import asdict
 from enum import IntEnum
 from typing import Dict, Optional, Tuple, List
 
-from aleph_message.models import MessageType
 from bson import ObjectId
 from pymongo import UpdateOne
 
@@ -23,11 +22,11 @@ from aleph.model.db_bulk_operation import DbBulkOperation
 from aleph.model.filepin import PermanentPin
 from aleph.model.messages import CappedMessage, Message
 from aleph.model.pending import PendingMessage, PendingTX
-from aleph.network import check_message as check_message_fn
+from aleph.network import verify_signature
 from aleph.permissions import check_sender_authorization
 from aleph.storage import get_json, pin_hash, add_json, get_message_content
 from .tx_context import TxContext
-from ..schemas.pending_messages import BasePendingMessage
+from ..schemas.pending_messages import BasePendingMessage, PendingForgetMessage, PendingStoreMessage
 
 LOGGER = logging.getLogger("chains.common")
 
@@ -53,12 +52,17 @@ async def mark_confirmed_data(chain_name, tx_hash, height):
     }
 
 
-async def delayed_incoming(message, chain_name=None, tx_hash=None, height=None):
+async def delayed_incoming(
+    message: BasePendingMessage,
+    chain_name: Optional[str] = None,
+    tx_hash: Optional[str] = None,
+    height: Optional[int] = None,
+):
     if message is None:
         return
     await PendingMessage.collection.insert_one(
         {
-            "message": message,
+            "message": message.dict(exclude={"content"}),
             "source": dict(
                 chain_name=chain_name,
                 tx_hash=tx_hash,
@@ -76,7 +80,7 @@ class IncomingStatus(IntEnum):
 
 
 async def mark_message_for_retry(
-    message: Dict,
+    message: BasePendingMessage,
     chain_name: Optional[str],
     tx_hash: Optional[str],
     height: Optional[int],
@@ -84,10 +88,12 @@ async def mark_message_for_retry(
     retrying: bool,
     existing_id,
 ):
+    message_dict = message.dict(exclude={"content"})
+
     if not retrying:
         await PendingMessage.collection.insert_one(
             {
-                "message": message,
+                "message": message_dict,
                 "source": dict(
                     chain_name=chain_name,
                     tx_hash=tx_hash,
@@ -105,7 +111,7 @@ async def mark_message_for_retry(
 
 
 async def incoming(
-    message: Dict,
+    message: BasePendingMessage,
     chain_name: Optional[str] = None,
     tx_hash: Optional[str] = None,
     height: Optional[int] = None,
@@ -120,8 +126,8 @@ async def incoming(
     if existing in database, created if not.
     """
 
-    item_hash = message["item_hash"]
-    sender = message["sender"]
+    item_hash = message.item_hash
+    sender = message.sender
     ids_key = (item_hash, sender, chain_name)
 
     if chain_name and tx_hash and height and seen_ids is not None:
@@ -131,9 +137,9 @@ async def incoming(
 
     filters = {
         "item_hash": item_hash,
-        "chain": message["chain"],
-        "sender": message["sender"],
-        "type": message["type"],
+        "chain": message.chain,
+        "sender": message.sender,
+        "type": message.type,
     }
     existing = await Message.collection.find_one(
         filters,
@@ -141,40 +147,28 @@ async def incoming(
     )
 
     if check_message:
-        if existing is None or (existing["signature"] != message["signature"]):
+        if existing is None or (existing["signature"] != message.signature):
             # check/sanitize the message if needed
             try:
-                message = await check_message_fn(
-                    message, from_chain=(chain_name is not None)
-                )
+                await verify_signature(message)
             except InvalidMessageError:
                 return IncomingStatus.FAILED_PERMANENTLY, []
-
-    if message is None:
-        return IncomingStatus.MESSAGE_HANDLED, []
 
     if retrying:
         LOGGER.debug("(Re)trying %s." % item_hash)
     else:
         LOGGER.info("Incoming %s." % item_hash)
 
-    # we set the incoming chain as default for signature
-    message["chain"] = message.get("chain", chain_name)
-
-    # if existing is None:
-    #     # TODO: verify if search key is ok. do we need an unique key for messages?
-    #     existing = await Message.collection.find_one(
-    #         filters, projection={'confirmed': 1, 'confirmations': 1, 'time': 1})
+    updates: Dict[str, Dict]
 
     if chain_name and tx_hash and height:
         # We are getting a confirmation here
         new_values = await mark_confirmed_data(chain_name, tx_hash, height)
-
         updates = {
             "$set": {
                 "confirmed": True,
             },
-            "$min": {"time": message["time"]},
+            "$min": {"time": message.time},
             "$addToSet": {"confirmations": new_values["confirmations"][0]},
         }
     else:
@@ -182,10 +176,10 @@ async def incoming(
             "$max": {
                 "confirmed": False,
             },
-            "$min": {"time": message["time"]},
+            "$min": {"time": message.time},
+            "$set": {},
         }
 
-    # new_values = {'confirmed': False}  # this should be our default.
     should_commit = False
     if existing:
         if seen_ids is not None and height is not None:
@@ -237,19 +231,19 @@ async def incoming(
 
         json_content = content.value
         if json_content.get("address", None) is None:
-            json_content["address"] = message["sender"]
+            json_content["address"] = message.sender
 
         if json_content.get("time", None) is None:
-            json_content["time"] = message["time"]
+            json_content["time"] = message.time
 
         # warning: those handlers can modify message and content in place
         # and return a status. None has to be retried, -1 is discarded, True is
         # handled and kept.
         # TODO: change this, it's messy.
         try:
-            if message["type"] == MessageType.store:
+            if isinstance(message, PendingStoreMessage):
                 handling_result = await handle_new_storage(message, json_content)
-            elif message["type"] == MessageType.forget:
+            elif isinstance(message, PendingForgetMessage):
                 # Handling it here means that there we ensure that the message
                 # has been forgotten before it is saved on the node.
                 # We may want the opposite instead: ensure that the message has
@@ -298,14 +292,14 @@ async def incoming(
                 seen_ids[ids_key] = height
 
         LOGGER.debug("New message to store for %s." % item_hash)
-        # message.update(new_values)
+
         updates["$set"] = {
             "content": json_content,
             "size": len(content.raw_value),
-            "item_content": message.get("item_content"),
-            "item_type": message.get("item_type"),
-            "channel": message.get("channel"),
-            "signature": message.get("signature"),
+            "item_content": message.item_content,
+            "item_type": message.item_type.value,
+            "channel": message.channel,
+            "signature": message.signature,
             **updates.get("$set", {}),
         }
         should_commit = True
@@ -324,7 +318,7 @@ async def incoming(
     return IncomingStatus.MESSAGE_HANDLED, []
 
 
-async def process_one_message(message: Dict, *args, **kwargs):
+async def process_one_message(message: BasePendingMessage, *args, **kwargs):
     """
     Helper function to process a message on the spot.
     """

@@ -9,7 +9,7 @@ from aleph.chains.common import (
 )
 from unittest.mock import MagicMock
 
-from aleph.schemas.pending_messages import BasePendingMessage
+from aleph.schemas.pending_messages import BasePendingMessage, parse_message
 
 
 @pytest.mark.asyncio
@@ -55,7 +55,7 @@ async def test_incoming_inline(mocker):
 
     mocker.patch("aleph.model.db")
 
-    msg = {
+    message_dict = {
         "chain": "NULS",
         "channel": "SYSINFO",
         "sender": "TTapAav8g3fFjxQQCjwPd4ERPnai9oya",
@@ -65,6 +65,8 @@ async def test_incoming_inline(mocker):
         "item_hash": "84afd8484912d3fa11a402e480d17e949fbf600fcdedd69674253be0320fa62c",
         "signature": "21027c108022f992f090bbe5c78ca8822f5b7adceb705ae2cd5318543d7bcdd2a74700473045022100b59f7df5333d57080a93be53b9af74e66a284170ec493455e675eb2539ac21db022077ffc66fe8dde7707038344496a85266bf42af1240017d4e1fa0d7068c588ca7",
     }
-    msg["item_type"] = "inline"
-    status, ops = await incoming(msg, check_message=True)
+    message_dict["item_type"] = "inline"
+
+    message = parse_message(message_dict)
+    status, ops = await incoming(message, check_message=True)
     assert status == IncomingStatus.MESSAGE_HANDLED

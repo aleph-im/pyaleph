@@ -7,12 +7,13 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 from hashlib import sha256
-from typing import Any, AnyStr, Dict, IO, Optional
+from typing import Any, AnyStr, IO, Optional, Union, cast
 
 from aleph_message.models import ItemType
 
 from aleph.config import get_config
 from aleph.exceptions import InvalidContent, ContentCurrentlyUnavailable
+from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.services.filestore import get_value, set_value
 from aleph.services.ipfs.common import get_cid_version
 from aleph.services.ipfs.storage import add_bytes as add_ipfs_bytes
@@ -57,7 +58,7 @@ class RawContent(StoredContent):
 @dataclass
 class MessageContent(StoredContent):
     value: Any
-    raw_value: bytes
+    raw_value: Union[bytes, str]
 
 
 async def json_async_loads(s: AnyStr):
@@ -66,19 +67,18 @@ async def json_async_loads(s: AnyStr):
     return await run_in_executor(None, json.loads, s)
 
 
-async def get_message_content(message: Dict) -> MessageContent:
-    item_type: str = message.get("item_type", ItemType.ipfs)
-    item_hash = message["item_hash"]
+async def get_message_content(message: BasePendingMessage) -> MessageContent:
+    item_type = message.item_type
+    item_hash = message.item_hash
 
     if item_type in (ItemType.ipfs, ItemType.storage):
         return await get_json(item_hash, engine=ItemType(item_type))
     elif item_type == ItemType.inline:
-        if "item_content" not in message:
-            error_msg = f"No item_content in message {message.get('item_hash')}"
-            LOGGER.warning(error_msg)
-            raise InvalidContent(error_msg)  # never retry, bogus data
+        # This hypothesis is validated at schema level
+        item_content = cast(str, message.item_content)
+
         try:
-            item_content = await json_async_loads(message["item_content"])
+            content = await json_async_loads(item_content)
         except (json.JSONDecodeError, KeyError) as e:
             error_msg = f"Can't decode JSON: {e}"
             LOGGER.warning(error_msg)
@@ -87,8 +87,8 @@ async def get_message_content(message: Dict) -> MessageContent:
         return MessageContent(
             hash=item_hash,
             source=ContentSource.INLINE,
-            value=item_content,
-            raw_value=message["item_content"],
+            value=content,
+            raw_value=item_content,
         )
     else:
         # unknown, could retry later? shouldn't have arrived this far though.

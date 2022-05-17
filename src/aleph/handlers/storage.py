@@ -19,6 +19,7 @@ from pydantic import ValidationError
 
 from aleph.config import get_config
 from aleph.exceptions import AlephStorageException, UnknownHashError
+from aleph.schemas.pending_messages import PendingStoreMessage
 from aleph.services.ipfs.common import get_ipfs_api
 from aleph.storage import get_hash_content
 from aleph.utils import item_type_from_hash
@@ -26,7 +27,7 @@ from aleph.utils import item_type_from_hash
 LOGGER = logging.getLogger("HANDLERS.STORAGE")
 
 
-async def handle_new_storage(message: Dict, content: Dict):
+async def handle_new_storage(message: PendingStoreMessage, content: Dict):
     config = get_config()
     if not config.storage.store_files.value:
         return True  # Ignore
@@ -34,7 +35,7 @@ async def handle_new_storage(message: Dict, content: Dict):
     # TODO: ideally the content should be transformed earlier, but this requires more clean up
     #       (ex: no more in place modification of content, simplification of the flow)
     try:
-        store_message = StoreMessage(**message, content=content)
+        store_message = StoreMessage(**message.dict(exclude={"content"}), content=content)
     except ValidationError as e:
         print(e)
         return -1  # Invalid store message, discard
