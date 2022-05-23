@@ -40,6 +40,7 @@ class Message(BaseClass):
         IndexModel([("sender", ASCENDING)]),
         IndexModel([("channel", ASCENDING)]),
         IndexModel([("content.address", ASCENDING)]),
+        IndexModel([("content.item_hash", ASCENDING)]),
         IndexModel([("content.key", ASCENDING)]),
         IndexModel([("content.ref", ASCENDING)]),
         IndexModel([("content.type", ASCENDING)]),

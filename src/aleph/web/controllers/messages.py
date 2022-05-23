@@ -16,6 +16,7 @@ KNOWN_QUERY_FIELDS = {
     "msgType",
     "addresses",
     "refs",
+    "contentHashes",
     "contentKeys",
     "contentTypes",
     "chains",
@@ -48,12 +49,13 @@ async def get_filters(request: web.Request):
     filters: List[Dict[str, Any]] = []
     addresses = get_query_list_field("addresses")
     refs = get_query_list_field("refs")
+    content_keys = get_query_list_field("contentKeys")
+    content_hashes = get_query_list_field("contentHashes")
     content_types = get_query_list_field("contentTypes")
     chains = get_query_list_field("chains")
     channels = get_query_list_field("channels")
     tags = get_query_list_field("tags")
     hashes = get_query_list_field("hashes")
-    content_keys = get_query_list_field("contentKeys")
 
     date_filters = prepare_date_filters(request, "time")
 
@@ -69,6 +71,9 @@ async def get_filters(request: web.Request):
                 ]
             }
         )
+
+    if content_hashes is not None:
+        filters.append({"content.item_hash": {"$in": content_hashes}})
 
     if content_keys is not None:
         filters.append({"content.key": {"$in": content_keys}})

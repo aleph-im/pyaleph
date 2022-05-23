@@ -118,3 +118,25 @@ async def test_get_messages_filter_by_chain(fixture_messages, aiohttp_client):
     fake_chain_data = await fetch_messages_by_chain("2CHAINZ")
     fake_chain_messages = fake_chain_data["messages"]
     assert fake_chain_messages == []
+
+
+@pytest.mark.asyncio
+async def test_get_messages_filter_by_content_hash(fixture_messages, aiohttp_client):
+    app = create_app()
+    client = await aiohttp_client(app)
+
+    async def fetch_messages_by_content_hash(item_hash: str) -> Dict:
+        response = await client.get(MESSAGES_URI, params={"contentHashes": item_hash})
+        assert response.status == 200, await response.text()
+        return await response.json()
+
+    content_hash = "5ccdd7bccfbc5955e2e40166dd0cdea0b093154fd87bc2bea57e7c768cde2f21"
+    data = await fetch_messages_by_content_hash(content_hash)
+    messages = data["messages"]
+    assert_messages_equal(
+        messages, get_messages_by_keys(fixture_messages, item_hash="2953f0b52beb79fc0ed1bc455346fdcb530611605e16c636778a0d673d7184af")
+    )
+
+    fake_hash_data = await fetch_messages_by_content_hash("1234")
+    fake_hash_messages = fake_hash_data["messages"]
+    assert fake_hash_messages == []
