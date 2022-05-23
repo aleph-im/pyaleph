@@ -18,6 +18,7 @@ KNOWN_QUERY_FIELDS = {
     "refs",
     "contentKeys",
     "contentTypes",
+    "chains",
     "channels",
     "tags",
     "hashes",
@@ -48,6 +49,7 @@ async def get_filters(request: web.Request):
     addresses = get_query_list_field("addresses")
     refs = get_query_list_field("refs")
     content_types = get_query_list_field("contentTypes")
+    chains = get_query_list_field("chains")
     channels = get_query_list_field("channels")
     tags = get_query_list_field("tags")
     hashes = get_query_list_field("hashes")
@@ -79,6 +81,9 @@ async def get_filters(request: web.Request):
 
     if tags is not None:
         filters.append({"content.content.tags": {"$elemMatch": {"$in": tags}}})
+
+    if chains is not None:
+        filters.append({"chain": {"$in": chains}})
 
     if channels is not None:
         filters.append({"channel": {"$in": channels}})
