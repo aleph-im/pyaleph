@@ -93,12 +93,9 @@ async def test_get_messages_filter_by_channel(fixture_messages, ccn_api_client):
 
 
 @pytest.mark.asyncio
-async def test_get_messages_filter_by_chain(fixture_messages, aiohttp_client):
-    app = create_app()
-    client = await aiohttp_client(app)
-
+async def test_get_messages_filter_by_chain(fixture_messages, ccn_api_client):
     async def fetch_messages_by_chain(chain: str) -> Dict:
-        response = await client.get(MESSAGES_URI, params={"chains": chain})
+        response = await ccn_api_client.get(MESSAGES_URI, params={"chains": chain})
         assert response.status == 200, await response.text()
         return await response.json()
 
@@ -114,12 +111,9 @@ async def test_get_messages_filter_by_chain(fixture_messages, aiohttp_client):
 
 
 @pytest.mark.asyncio
-async def test_get_messages_filter_by_content_hash(fixture_messages, aiohttp_client):
-    app = create_app()
-    client = await aiohttp_client(app)
-
+async def test_get_messages_filter_by_content_hash(fixture_messages, ccn_api_client):
     async def fetch_messages_by_content_hash(item_hash: str) -> Dict:
-        response = await client.get(MESSAGES_URI, params={"contentHashes": item_hash})
+        response = await ccn_api_client.get(MESSAGES_URI, params={"contentHashes": item_hash})
         assert response.status == 200, await response.text()
         return await response.json()
 
