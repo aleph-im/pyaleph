@@ -13,7 +13,6 @@ from aleph.services.ipfs.pubsub import incoming_channel as incoming_ipfs_channel
 
 LOGGER = logging.getLogger("NETWORK")
 
-MAX_INLINE_SIZE = 200000  # 200kb max inline content size.
 
 INCOMING_MESSAGE_AUTHORIZED_FIELDS = [
     "item_hash",
@@ -26,8 +25,6 @@ INCOMING_MESSAGE_AUTHORIZED_FIELDS = [
     "time",
     "signature",
 ]
-
-HOST = None
 
 
 async def incoming_check(ipfs_pubsub_message: Dict) -> Dict:

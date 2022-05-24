@@ -20,16 +20,17 @@ TODO: this module should reasonably be part of aleph message, if only
 
 import json
 from hashlib import sha256
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal, Optional
 
 from aleph_message.models import (
     AggregateContent,
     BaseContent,
+    BaseMessage,
+    Chain,
     ForgetContent,
     PostContent,
     ProgramContent,
     StoreContent,
-    HashType,
 )
 from aleph_message.models import MessageType, ItemType
 from pydantic import BaseModel, root_validator, validator
@@ -46,7 +47,7 @@ class BasePendingMessage(BaseModel):
     """
 
     sender: str
-    chain: str
+    chain: Chain
     signature: str
     type: MessageType
     item_content: Optional[str]
@@ -74,7 +75,7 @@ class BasePendingMessage(BaseModel):
             try:
                 values["content"] = json.loads(item_content)
             except json.JSONDecodeError as e:
-                raise ValueError("Could not load item content") from e
+                raise ValueError("Message content is not valid JSON data") from e
         else:
             if item_content is not None:
                 raise ValueError(f"{item_type} messages cannot define item_content")
