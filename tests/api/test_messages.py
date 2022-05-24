@@ -7,7 +7,6 @@ import pytest
 import pytest_asyncio
 
 from aleph.model.messages import Message
-from aleph.web import create_app
 
 MESSAGES_URI = "/api/v0/messages.json"
 
@@ -43,11 +42,8 @@ async def fixture_messages(test_db):
 
 
 @pytest.mark.asyncio
-async def test_get_messages(fixture_messages, aiohttp_client):
-    app = create_app()
-    client = await aiohttp_client(app)
-
-    response = await client.get(MESSAGES_URI)
+async def test_get_messages(fixture_messages, ccn_api_client):
+    response = await ccn_api_client.get(MESSAGES_URI)
     assert response.status == 200, await response.text()
 
     data = await response.json()
@@ -61,12 +57,9 @@ async def test_get_messages(fixture_messages, aiohttp_client):
 
 
 @pytest.mark.asyncio
-async def test_get_messages_filter_by_channel(fixture_messages, aiohttp_client):
-    app = create_app()
-    client = await aiohttp_client(app)
-
+async def test_get_messages_filter_by_channel(fixture_messages, ccn_api_client):
     async def fetch_messages_by_channel(channel: str) -> Dict:
-        response = await client.get(MESSAGES_URI, params={"channels": channel})
+        response = await ccn_api_client.get(MESSAGES_URI, params={"channels": channel})
         assert response.status == 200, await response.text()
         return await response.json()
 
