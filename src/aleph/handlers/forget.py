@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 from dataclasses import dataclass
 from typing import Dict, Optional, List
@@ -25,7 +27,7 @@ class TargetMessageInfo:
     content_item_type: Optional[ItemType]
 
     @classmethod
-    def from_db_object(cls, message_dict: Dict) -> "TargetMessageInfo":
+    def from_db_object(cls, message_dict: Dict) -> TargetMessageInfo:
         content = message_dict.get("content", {})
         content_item_type = content.get("item_type")
 
