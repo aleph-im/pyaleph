@@ -1,9 +1,10 @@
 ********
 Messages
 ********
-All data transferred over the aleph.im network are aleph messages and represent the core of the Aleph networking model.
 
-Message can be:
+All data transferred over the aleph.im network are Aleph messages and represent the core of the Aleph networking model.
+
+Messages can be:
 
 - sent and received on the REST or other API interfaces
 - exchanged on the peer-to-peer network
@@ -87,7 +88,32 @@ Message types
 =============
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
 
    aggregate
+   forget
    post
+   program
+   store
+
+Item hash, type and content
+===========================
+
+Messages are uniquely identified by the `item_hash` field.
+This value is obtained by computing the hash of the `content` field.
+Currently, the hash can be obtained in one of two ways.
+If the content of the message is stored on IPFS, the `item_hash` of the message will be the CIDv0
+of this content.
+Otherwise, if the message is stored on Aleph native storage or is included in the message, the item hash
+will be the SHA256 hash of the message in hexadecimal encoding.
+In the first case, the item type will be set to "ipfs". In the second case, the item type will either
+be "inline" if the content is included in the message (serialized as a string in the `item_content` field)
+or "storage".
+Inline storage will be used for content up to 200kB.
+Beyond this size, users must update the content prior to uploading the message on IPFS or Aleph storage.
+
+Signature
+=========
+
+Aleph messages are cryptographically signed with the private key of the user.
+The signature covers the `sender`, `chain`, `type` and `item_hash` fields of the message.
