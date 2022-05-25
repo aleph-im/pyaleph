@@ -17,7 +17,7 @@ async def test_get_verification_buffer():
     item_hash = "7e4f914865028356704919810073ec5690ecc4bb0ee3bd6bdb24829fd532398f"
 
     message = BasePendingMessage(
-        chain="CHAIN",
+        chain="ETH",
         sender="SENDER",
         type=MessageType.store,
         item_hash=item_hash,
@@ -28,7 +28,7 @@ async def test_get_verification_buffer():
     )
 
     buffer = await get_verification_buffer(message)
-    expected_buffer = f"CHAIN\nSENDER\nSTORE\n{item_hash}".encode("utf-8")
+    expected_buffer = f"ETH\nSENDER\nSTORE\n{item_hash}".encode("utf-8")
     assert buffer == expected_buffer
 
 
