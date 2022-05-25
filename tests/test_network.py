@@ -40,6 +40,7 @@ async def test_valid_message():
 async def test_invalid_chain_message():
     sample_message = {
         "item_hash": "QmfDkHXdGND7e8uwJr4yvXSAvbPc8rothM6UN5ABQPsLkF",
+        "item_type": "ipfs",
         "chain": "BAR",
         "channel": "SYSINFO",
         "sender": "TTanii7eCT93f45g2UpKH81mxpVNcCYw",
@@ -55,6 +56,7 @@ async def test_invalid_chain_message():
 async def test_invalid_signature_message():
     sample_message = {
         "item_hash": "QmfDkHXdGND7e8uwJr4yvXSAvbPc8rothM6UN5ABQPsLkF",
+        "item_type": "ipfs",
         "chain": "NULS",
         "channel": "SYSINFO",
         "sender": "TTanii7eCT93f45g2UpKH81mxpVNcCYw",
