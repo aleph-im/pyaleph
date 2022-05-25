@@ -1,4 +1,3 @@
-import asyncio
 from logging import getLogger
 
 from configmanager import Config

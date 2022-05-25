@@ -120,6 +120,16 @@ class BaseClass(SerializerObject):
         return self.get_collection(self)
 
     @classmethod
+    def is_capped(cls):
+        """
+        Returns true if the collection is a capped collection, false otherwise.
+
+        This method is intended as a shortcut to avoid a roundtrip to the DB to get
+        the same information with `await collection.options()`.
+        """
+        return False
+
+    @classmethod
     async def find_one(cls, **kwargs):
         value = await cls.collection.find_one(kwargs)
         if value is not None:

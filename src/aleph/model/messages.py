@@ -1,10 +1,10 @@
 import logging
+from typing import List, Optional
 
 from pymongo import ASCENDING, DESCENDING, IndexModel
 
 from aleph.model.base import BaseClass
 from aleph.network import INCOMING_MESSAGE_AUTHORIZED_FIELDS
-from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +14,10 @@ RAW_MSG_PROJECTION.update({"_id": 0})
 
 class CappedMessage(BaseClass):
     COLLECTION = "log_messages"
+
+    @classmethod
+    def is_capped(cls):
+        return True
 
     @classmethod
     def create(cls, db):

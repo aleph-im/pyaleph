@@ -1,9 +1,12 @@
 import asyncio
+import logging
 from itertools import groupby
-from typing import Callable, cast
+from typing import Callable
 from typing import Dict
 from typing import Iterable, Tuple
+from typing import cast
 
+import pymongo.errors
 from configmanager import Config
 
 import aleph.config
@@ -11,7 +14,11 @@ from aleph.model import init_db_globals
 from aleph.model.db_bulk_operation import DbBulkOperation
 from aleph.services.ipfs.common import init_ipfs_globals
 from aleph.services.p2p import init_p2p_client
+from aleph.toolkit.exceptions import ignore_exceptions
 from aleph.toolkit.split import split_iterable
+from aleph.toolkit.timer import Timer
+
+LOGGER = logging.getLogger(__name__)
 
 
 def prepare_loop(config_values: Dict) -> Tuple[asyncio.AbstractEventLoop, Config]:
@@ -42,9 +49,36 @@ async def perform_db_operations(db_operations: Iterable[DbBulkOperation]) -> Non
         key=lambda op: op.collection.__name__,
     )
 
+    # Process updates collection by collection. Note that we use an ugly hack for capped
+    # collections where we ignore bulk write errors. These errors are usually caused
+    # by the node processing the same message twice in parallel, from different sources.
+    # This results in updates to a message with different confirmation fields, and capped
+    # collections do not like updates that increase the size of a document.
+    # We can safely ignore these errors as long as our only capped collection is
+    # CappedMessage. Using unordered bulk writes guarantees that all operations will be
+    # attempted, meaning that all the messages that can be inserted will be.
     for collection, operations in groupby(sorted_operations, lambda op: op.collection):
-        mongo_ops = [op.operation for op in operations]
-        await collection.collection.bulk_write(mongo_ops)
+        exceptions_to_ignore = []
+        if collection.is_capped():
+            exceptions_to_ignore.append(pymongo.errors.BulkWriteError)
+
+        with Timer() as timer:
+            mongo_ops = [op.operation for op in operations]
+
+            with ignore_exceptions(
+                *exceptions_to_ignore,
+                on_error=lambda e: LOGGER.warning(
+                    "Bulk write error while writing to %s", collection.__name__
+                )
+            ):
+                await collection.collection.bulk_write(mongo_ops, ordered=False)
+
+        LOGGER.info(
+            "Performed %d operations on %s in %.4f seconds",
+            len(mongo_ops),
+            collection.__name__,
+            timer.elapsed(),
+        )
 
 
 async def process_job_results(
