@@ -36,6 +36,7 @@ from aleph.register_chain import (
 )
 from aleph.utils import run_in_executor
 from .tx_context import TxContext
+from ..schemas.pending_messages import BasePendingMessage
 
 LOGGER = logging.getLogger("chains.nuls2")
 CHAIN_NAME = "NULS2"
@@ -44,11 +45,11 @@ PAGINATION = 500
 DECIMALS = None  # will get populated later... bad?
 
 
-async def verify_signature(message):
+async def verify_signature(message: BasePendingMessage) -> bool:
     """Verifies a signature of a message, return True if verified, false if not"""
-    sig_raw = base64.b64decode(message["signature"])
+    sig_raw = base64.b64decode(message.signature)
 
-    sender_hash = hash_from_address(message["sender"])
+    sender_hash = hash_from_address(message.sender)
     (sender_chain_id,) = struct.unpack("h", sender_hash[:2])
     verification = await get_verification_buffer(message)
     try:
@@ -64,9 +65,9 @@ async def verify_signature(message):
         LOGGER.exception("NULS Signature verification error")
         return False
 
-    if address != message["sender"]:
+    if address != message.sender:
         LOGGER.warning(
-            "Received bad signature from %s for %s" % (address, message["sender"])
+            "Received bad signature from %s for %s" % (address, message.sender)
         )
         return False
     else:

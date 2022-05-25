@@ -27,15 +27,17 @@ from aleph.network import check_message as check_message_fn
 from aleph.permissions import check_sender_authorization
 from aleph.storage import get_json, pin_hash, add_json, get_message_content
 from .tx_context import TxContext
+from ..schemas.pending_messages import BasePendingMessage
 
 LOGGER = logging.getLogger("chains.common")
 
 
-async def get_verification_buffer(message: Dict) -> bytes:
+async def get_verification_buffer(message: BasePendingMessage) -> bytes:
     """Returns a serialized string to verify the message integrity
     (this is was it signed)
     """
-    return "{chain}\n{sender}\n{type}\n{item_hash}".format(**message).encode("utf-8")
+    buffer = f"{message.chain}\n{message.sender}\n{message.type}\n{message.item_hash}"
+    return buffer.encode("utf-8")
 
 
 async def mark_confirmed_data(chain_name, tx_hash, height):

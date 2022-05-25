@@ -29,12 +29,13 @@ from aleph.register_chain import (
 )
 from aleph.utils import run_in_executor
 from .tx_context import TxContext
+from ..schemas.pending_messages import BasePendingMessage
 
 LOGGER = logging.getLogger("chains.ethereum")
 CHAIN_NAME = "ETH"
 
 
-async def verify_signature(message):
+async def verify_signature(message: BasePendingMessage) -> bool:
     """Verifies a signature of a message, return True if verified, false if not"""
 
     # w3 = await loop.run_in_executor(None, get_web3, config)
@@ -52,7 +53,7 @@ async def verify_signature(message):
         address = await run_in_executor(
             None,
             functools.partial(
-                Account.recover_message, message_hash, signature=message["signature"]
+                Account.recover_message, message_hash, signature=message.signature
             ),
         )
         # address = Account.recover_message(message_hash, signature=message['signature'])
@@ -63,16 +64,16 @@ async def verify_signature(message):
         #                       signature=message['signature']))
         # address = w3.eth.account.recoverHash(message_hash,
         #                                      signature=message['signature'])
-        if address == message["sender"]:
+        if address == message.sender:
             verified = True
         else:
             LOGGER.warning(
-                "Received bad signature from %s for %s" % (address, message["sender"])
+                "Received bad signature from %s for %s" % (address, message.sender)
             )
             return False
 
     except Exception as e:
-        LOGGER.exception("Error processing signature for %s" % message["sender"])
+        LOGGER.exception("Error processing signature for %s" % message.sender)
         verified = False
 
     return verified

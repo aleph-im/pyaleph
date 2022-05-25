@@ -51,7 +51,7 @@ async def incoming_check(ipfs_pubsub_message: Dict) -> Dict:
 
 
 async def check_message(
-    message: Dict,
+    message_dict: Dict,
     from_chain: bool = False,
     from_network: bool = False,
     trusted: bool = False,
@@ -67,24 +67,20 @@ async def check_message(
     TODO: Implement it fully! Dangerous!
     """
 
-    _ = parse_message(message)
+    message = parse_message(message_dict)
 
     if trusted:
         # only in the case of a message programmatically built here
         # from legacy native chain signing for example (signing offloaded)
-        return message
+        return message_dict
     else:
-        message = {
-            k: v for k, v in message.items() if k in INCOMING_MESSAGE_AUTHORIZED_FIELDS
-        }
-        await asyncio.sleep(0)
-        chain = message.get("chain", None)
+        chain = message.chain
         signer = VERIFIER_REGISTER.get(chain, None)
         if signer is None:
             raise InvalidMessageError("Unknown chain for validation %r" % chain)
         try:
             if await signer(message):
-                return message
+                return message_dict
             else:
                 raise InvalidMessageError("The signature of the message is invalid")
         except ValueError:
