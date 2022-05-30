@@ -25,7 +25,6 @@ from typing import Any, Literal, Optional
 from aleph_message.models import (
     AggregateContent,
     BaseContent,
-    BaseMessage,
     Chain,
     ForgetContent,
     PostContent,
@@ -34,7 +33,6 @@ from aleph_message.models import (
 )
 from aleph_message.models import MessageType, ItemType
 from pydantic import BaseModel, root_validator, validator
-
 from aleph.exceptions import InvalidMessageError
 from aleph.utils import item_type_from_hash
 
@@ -62,10 +60,20 @@ class BasePendingMessage(BaseModel):
         """
         Preload inline content. We let the CCN populate this field later
         on for ipfs and storage item types.
+
+        Sets the default value for item_type, if required.
         """
 
-        item_type = values["item_type"]
         item_content = values.get("item_content")
+        default_item_type = (
+            item_type_from_hash(values["item_hash"])
+            if item_content is None
+            else ItemType.inline
+        )
+
+        input_item_type = values.get("item_type")
+        item_type = input_item_type or default_item_type
+
         if item_type == ItemType.inline:
             if item_content is None:
                 raise ValueError("Item content not specified for inline item type")
@@ -79,6 +87,10 @@ class BasePendingMessage(BaseModel):
         else:
             if item_content is not None:
                 raise ValueError(f"{item_type} messages cannot define item_content")
+
+        # Store back the default item_content if not specified
+        if input_item_type is None:
+            values["item_type"] = default_item_type.value
 
         return values
 

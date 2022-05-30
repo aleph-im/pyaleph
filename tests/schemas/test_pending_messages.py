@@ -2,6 +2,7 @@ import json
 from typing import Dict
 
 import pytest
+from aleph_message.models import ItemType
 
 from aleph.exceptions import InvalidMessageError
 from aleph.schemas.pending_messages import (
@@ -166,6 +167,40 @@ def test_parse_program_message():
     assert message.content.time == content["time"]
     assert message.content.code == content["code"]
     assert message.content.type == content["type"]
+
+
+def test_default_item_type_inline():
+    # Note: we reuse the fixture of test_parse_program_message here
+    message_dict = {
+        "chain": "ETH",
+        "item_hash": "2feafebd2dcc023851cbe461ba09000c6ea7ddf2db6dbb31ae8b627556382ba7",
+        "sender": "0x101d8D16372dBf5f1614adaE95Ee5CCE61998Fc9",
+        "type": "PROGRAM",
+        "channel": "TEST",
+        "item_content": '{"address":"0x101d8D16372dBf5f1614adaE95Ee5CCE61998Fc9","time":1627465647.9127016,"type":"vm-function","allow_amend":false,"code":{"encoding":"zip","entrypoint":"main:app","ref":"3631866c6237ff84c546e43b5679111b419c7044e0c367f357dbc7dd8ad21a5a","use_latest":true},"on":{"http":true},"environment":{"reproducible":false,"internet":true,"aleph_api":true,"shared_cache":false},"resources":{"vcpus":1,"memory":128,"seconds":30},"runtime":{"ref":"bd79839bf96e595a06da5ac0b6ba51dea6f7e2591bb913deccded04d831d29f4","use_latest":true,"comment":"Aleph Alpine Linux with Python 3.8"},"volumes":[]}',
+        "signature": "0x167b4558fd2f806bab7ef14d1f92723dd1616d5806075ba95e5ebbe4860a47b2613a2205c507525e8e5f8c7251e1a5c5963a12f7f2343e93c4b9b6e402fbb9bf1b",
+        "time": 1627465978.121,
+    }
+
+    message = parse_message(message_dict)
+    assert message.item_type == ItemType.inline
+
+
+def test_default_item_type_ipfs():
+    # Note: we reuse the fixture of test_parse_program_message here
+    message_dict = {
+        "chain": "ETH",
+        "item_hash": "QmcS6md3AHR62rbmrnjy6SzJkunTsqtc6XhAuzYkYV66m4",
+        "sender": "0x06DE0C46884EbFF46558Cd1a9e7DA6B1c3E9D0a8",
+        "type": "POST",
+        "channel": None,
+        "item_content": None,
+        "signature": "0xc728c7ddc9d8ec930465915d866c7bcc7b304fb15e95b753aa89f8c0ca143bad5b6e7cbec66a098f4c8435e1bb65c0d48913241a2b95285b12c12eb2ea8f12971b",
+        "time": 1608297192.104,
+    }
+
+    message = parse_message(message_dict)
+    assert message.item_type == ItemType.ipfs
 
 
 def test_parse_none():
