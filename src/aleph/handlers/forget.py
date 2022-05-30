@@ -16,6 +16,9 @@ from aleph.services.ipfs.common import get_ipfs_api
 from aleph.utils import item_type_from_hash
 
 
+logger = logging.getLogger(__name__)
+
+
 @dataclass
 class TargetMessageInfo:
     item_hash: str
@@ -43,9 +46,6 @@ class TargetMessageInfo:
             content_item_hash=content.get("item_hash"),
             content_item_type=content_item_type,
         )
-
-
-logger = logging.getLogger(__name__)
 
 
 async def count_file_references(storage_hash: str) -> int:
@@ -214,8 +214,19 @@ async def handle_forget_message(message: Dict, content: Dict):
     # Parsing and validation
     forget_message = ForgetMessage(**message, content=content)
     logger.debug(f"Handling forget message {forget_message.item_hash}")
+    hashes_to_forget = forget_message.content.hashes
 
-    for target_hash in forget_message.content.hashes:
+    for target_aggregate in forget_message.content.aggregates:
+        aggregate_hashes = (
+            message["item_hash"]
+            async for message in Message.collection.find(
+                {"type": MessageType.aggregate.value, "content.key": target_aggregate},
+                projection={"_id": 0, "item_hash": 1},
+            )
+        )
+        hashes_to_forget.extend(aggregate_hashes)
+
+    for target_hash in hashes_to_forget:
         target_info = await get_target_message_info(target_hash)
 
         if target_info is None:
