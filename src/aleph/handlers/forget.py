@@ -212,7 +212,10 @@ async def get_target_message_info(target_hash: str) -> Optional[TargetMessageInf
 
 async def handle_forget_message(message: Dict, content: Dict):
     # Parsing and validation
-    forget_message = ForgetMessage(**message, content=content)
+    # TODO: this is a temporary fix to release faster, finish od-message-models-in-pipeline
+    message["content"] = content
+
+    forget_message = ForgetMessage(**message)
     logger.debug(f"Handling forget message {forget_message.item_hash}")
 
     for target_hash in forget_message.content.hashes:
