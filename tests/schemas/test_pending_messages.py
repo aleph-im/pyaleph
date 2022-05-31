@@ -203,6 +203,72 @@ def test_default_item_type_ipfs():
     assert message.item_type == ItemType.ipfs
 
 
+def test_invalid_item_type():
+    """
+    Tests a message with an uppercase item type instead of lower case.
+    """
+
+    message_dict = {
+        "_id": None,
+        "chain": "ETH",
+        "channel": "ANIMA_MAINNET",
+        "confirmed": False,
+        "item_hash": "c6c9df8d5b5dcd5cf74562c9d383308c354a5238d3b0d9db10d931b250490600",
+        "item_type": "STORAGE",
+        "sender": "0x989Cfa25243C07b90Bedc673Fe6Df69B5B0D675C",
+        "signature": "0x63e9dd351ff6735bb41c2658d95828bd0dbc14fc64eee119114fd7e84fa737f157c3b38ae7c5ca30a73c03e3794f35c94282b5fc9379d31b43f913d1c18300ca01",
+        "time": 1653989834,
+        "type": "AGGREGATE",
+    }
+
+    with pytest.raises(InvalidMessageError):
+        _ = parse_message(message_dict)
+
+
+def test_invalid_chain():
+    """
+    Tests a message sent on a chain that does not exist.
+    """
+
+    message_dict = {
+        "_id": None,
+        "chain": "MEGA_CHAIN",
+        "channel": "ANIMA_MAINNET",
+        "confirmed": False,
+        "item_hash": "c6c9df8d5b5dcd5cf74562c9d383308c354a5238d3b0d9db10d931b250490600",
+        "item_type": "storage",
+        "sender": "0x989Cfa25243C07b90Bedc673Fe6Df69B5B0D675C",
+        "signature": "0x63e9dd351ff6735bb41c2658d95828bd0dbc14fc64eee119114fd7e84fa737f157c3b38ae7c5ca30a73c03e3794f35c94282b5fc9379d31b43f913d1c18300ca01",
+        "time": 1653989834,
+        "type": "AGGREGATE",
+    }
+
+    with pytest.raises(InvalidMessageError):
+        _ = parse_message(message_dict)
+
+
+def test_invalid_hash():
+    """
+    Tests a message sent on a chain that does not exist.
+    """
+
+    message_dict = {
+        "_id": None,
+        "chain": "ETH",
+        "channel": "ANIMA_MAINNET",
+        "confirmed": False,
+        "item_hash": "deadbeef",
+        "item_type": "storage",
+        "sender": "0x989Cfa25243C07b90Bedc673Fe6Df69B5B0D675C",
+        "signature": "0x63e9dd351ff6735bb41c2658d95828bd0dbc14fc64eee119114fd7e84fa737f157c3b38ae7c5ca30a73c03e3794f35c94282b5fc9379d31b43f913d1c18300ca01",
+        "time": 1653989834,
+        "type": "AGGREGATE",
+    }
+
+    with pytest.raises(InvalidMessageError):
+        _ = parse_message(message_dict)
+
+
 def test_parse_none():
     with pytest.raises(InvalidMessageError):
         _ = parse_message(None)
