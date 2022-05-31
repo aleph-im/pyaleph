@@ -31,10 +31,13 @@ async def handle_new_storage(message: Dict, content: Dict):
     if not config.storage.store_files.value:
         return True  # Ignore
 
+    # TODO: this is a temporary fix to release faster, finish od-message-models-in-pipeline
+    message["content"] = content
+
     # TODO: ideally the content should be transformed earlier, but this requires more clean up
     #       (ex: no more in place modification of content, simplification of the flow)
     try:
-        store_message = StoreMessage(**message, content=content)
+        store_message = StoreMessage(**message)
     except ValidationError as e:
         print(e)
         return -1  # Invalid store message, discard
