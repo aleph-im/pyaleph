@@ -17,7 +17,7 @@ def get_defaults():
             "jobs": {
                 "pending_messages": {
                     "max_concurrency": 2000,
-                    "store": 100,
+                    "store": 30,
                 },
                 "pending_txs": {
                     "max_concurrency": 20,
