@@ -46,7 +46,9 @@ Upgrade your node
     docker-compose [-f <docker-compose-file>] down
 
     docker-compose [-f <docker-compose-file>] \
-            run pyaleph /opt/pyaleph/migrations/config_updater.py \
+            run \
+            --entrypoint /opt/pyaleph/migrations/config_updater.py \
+            pyaleph \
             --key-dir /opt/pyaleph/keys \
             --key-file /opt/pyaleph/keys/node-secret.key \
             --config /opt/pyaleph/config.yml \
