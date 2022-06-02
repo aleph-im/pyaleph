@@ -38,6 +38,12 @@ Upgrade the docker-compose file:
 
     docker-compose [-f <docker-compose-file>] pull
 
+Copy your customizations to the new docker-compose if relevant:
+
+.. parsed-literal::
+
+    diff --color --side-by-side docker-compose-old.yml docker-compose.yml
+
 Upgrade your node
 -----------------
 
