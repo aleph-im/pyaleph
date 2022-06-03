@@ -69,6 +69,10 @@ async def check_message(
 
     message = parse_message(message_dict)
 
+    # TODO: this is a temporary fix to set the item_type of the message to the correct
+    #       value. This should be replaced by a full use of Pydantic models.
+    message_dict["item_type"] = message.item_type.value
+
     if trusted:
         # only in the case of a message programmatically built here
         # from legacy native chain signing for example (signing offloaded)
