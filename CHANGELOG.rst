@@ -2,6 +2,13 @@
 Changelog
 =========
 
+Version 0.3.1
+=============
+
+This release fixes a synchronisation issue introduced in 0.3.0. Messages where the "item_type"
+field was not specified could not be processed in real-time and had to wait for the on-chain
+confirmation to be processed.
+
 Version 0.3.0
 =============
 
