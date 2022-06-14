@@ -2,7 +2,7 @@ import asyncio
 import functools
 import json
 import logging
-from typing import AsyncIterator, Dict, Tuple
+from typing import AsyncIterator, Tuple
 
 import pkg_resources
 from eth_account import Account
@@ -19,6 +19,7 @@ from aleph.chains.common import (
     get_chaindata,
     incoming_chaindata,
 )
+from aleph.chains.on_chain_models import OnChainData, parse_on_chain_data
 from aleph.model.chains import Chain
 from aleph.model.messages import Message
 from aleph.model.pending import pending_messages_count, pending_txs_count
@@ -166,7 +167,7 @@ async def get_logs(config, web3: Web3, contract, start_height):
 
 async def request_transactions(
     config, web3: Web3, contract, abi, start_height
-) -> AsyncIterator[Tuple[Dict, TxContext]]:
+) -> AsyncIterator[Tuple[OnChainData, TxContext]]:
     """Continuously request data from the Ethereum blockchain.
     TODO: support websocket API.
     """
@@ -195,7 +196,7 @@ async def request_transactions(
 
         message = event_data.args.message
         try:
-            jdata = json.loads(message)
+            on_chain_data = parse_on_chain_data(message)
             context = TxContext(
                 chain_name=CHAIN_NAME,
                 tx_hash=event_data.transactionHash.hex(),
@@ -203,7 +204,7 @@ async def request_transactions(
                 height=event_data.blockNumber,
                 publisher=publisher,
             )
-            yield jdata, context
+            yield on_chain_data, context
 
         except json.JSONDecodeError:
             # if it's not valid json, just ignore it...
@@ -229,10 +230,10 @@ async def check_incoming(config):
 
     while True:
         last_stored_height = await get_last_height()
-        async for jdata, context in request_transactions(
+        async for on_chain_data, context in request_transactions(
             config, web3, contract, abi, last_stored_height
         ):
-            await incoming_chaindata(jdata, context)
+            await incoming_chaindata(on_chain_data, context)
         await asyncio.sleep(10)
 
 

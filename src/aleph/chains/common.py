@@ -6,6 +6,7 @@ from enum import IntEnum
 from typing import Dict, Optional, Tuple, List
 
 from aleph_message.models import MessageType, ItemType
+from aleph.chains.on_chain_models import OnChainData
 from bson import ObjectId
 from pymongo import UpdateOne
 
@@ -435,11 +436,18 @@ async def get_chaindata_messages(
         raise InvalidContent(error_msg)
 
 
-async def incoming_chaindata(content: Dict, context: TxContext):
+async def incoming_chaindata(on_chain_data: OnChainData, context: TxContext):
+    """
+    Stores on-chain data in the DB for ulterior processing.
+
+    :param on_chain_data: On-chain data.
+    :param context: Information about where the data comes from (chain,
+    :return:
+    """
     """Incoming data from a chain.
     Content can be inline of "offchain" through an ipfs hash.
     For now we only add it to the database, it will be processed later.
     """
     await PendingTX.collection.insert_one(
-        {"content": content, "context": asdict(context)}
+        {"content": on_chain_data.dict(), "context": asdict(context)}
     )
