@@ -2,6 +2,16 @@
 Changelog
 =========
 
+Version 0.3.2
+=============
+
+This release fixes a synchronisation delay issue. The pending message job blocked
+while waiting for the last pending messages in the queue to be processed. This caused
+a delay of several hours until the job could loop again on the pending messages collection
+and start processing new pending messages. We removed the blocking synchronisation point
+and now let the job pick up new pending messages while ignoring the ones that are already
+being processed.
+
 Version 0.3.1
 =============
 
