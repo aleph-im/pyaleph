@@ -175,6 +175,17 @@ async def process_pending_messages(config: Config, shared_stats: Dict):
             pending_tasks.add(message_task)
             task_message_dict[message_task] = pending
 
+        # This synchronization point is required when a few pending messages remain.
+        # We wait for at least one task to finish; the remaining tasks will be collected
+        # on the next iterations of the loop.
+        if pending_tasks:
+            finished_tasks, _ = await asyncio.wait(
+                pending_tasks, return_when=asyncio.FIRST_COMPLETED
+            )
+            await process_message_job_results(
+                finished_tasks, task_message_dict, shared_stats, processing_messages
+            )
+
         # TODO: move this to a dedicated job and/or check unicity on insertion
         #       in pending messages
         if await PendingMessage.collection.count_documents(find_params) > 100000:
