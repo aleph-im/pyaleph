@@ -207,4 +207,4 @@ def parse_message(message_dict: Any) -> BasePendingMessage:
     try:
         return msg_cls(**message_dict)
     except ValueError as e:
-        raise InvalidMessageError("Could not parse message") from e
+        raise InvalidMessageError(f"Could not parse message: {str(e)}") from e
