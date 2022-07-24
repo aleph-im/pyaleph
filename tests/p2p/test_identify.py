@@ -4,6 +4,7 @@ import pytest
 from p2pclient import Client as P2PClient
 
 
+@pytest.mark.skip("Will not work anymore until P2P daemon is upgraded")
 @pytest.mark.asyncio
 @pytest.mark.parametrize("p2p_clients", [1], indirect=True)
 async def test_p2p_client_identify(p2p_clients: Tuple[P2PClient]):

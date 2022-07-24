@@ -8,6 +8,7 @@ from aleph.services.p2p.peers import connect_peer
 from aleph.services.p2p.protocol import AlephProtocol
 
 
+@pytest.mark.skip("Will not work anymore until P2P daemon is upgraded")
 @pytest.mark.asyncio
 @pytest.mark.parametrize("p2p_clients", [2], indirect=True)
 async def test_p2p_client_connect(p2p_clients: Tuple[P2PClient, P2PClient]):
@@ -26,6 +27,7 @@ async def test_p2p_client_connect(p2p_clients: Tuple[P2PClient, P2PClient]):
     assert client2_peer_id in [peer.peer_id for peer in client1_peers]
 
 
+@pytest.mark.skip("Will not work anymore until P2P daemon is upgraded")
 @pytest.mark.asyncio
 @pytest.mark.parametrize("p2p_clients", [2], indirect=True)
 async def test_connect_peer_no_streamer(p2p_clients: Tuple[P2PClient, P2PClient]):
@@ -44,6 +46,7 @@ async def test_connect_peer_no_streamer(p2p_clients: Tuple[P2PClient, P2PClient]
     assert client2_peer_id in [peer.peer_id for peer in await client1.list_peers()]
 
 
+@pytest.mark.skip("Will not work anymore until P2P daemon is upgraded")
 @pytest.mark.asyncio
 @pytest.mark.parametrize("p2p_clients", [2], indirect=True)
 async def test_connect_peer_streamer(p2p_clients: Tuple[P2PClient, P2PClient]):
@@ -71,6 +74,7 @@ async def test_connect_peer_streamer(p2p_clients: Tuple[P2PClient, P2PClient]):
     assert client2_peer_id in streamer_client1.peers
 
 
+@pytest.mark.skip("Will not work anymore until P2P daemon is upgraded")
 @pytest.mark.asyncio
 @pytest.mark.parametrize("p2p_clients", [1], indirect=True)
 async def test_connect_to_self(p2p_clients: Tuple[P2PClient]):
