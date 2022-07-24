@@ -25,7 +25,7 @@ async def verify_signature(message: BasePendingMessage) -> bool:
 
     try:
         signature = signature_dict["signature"]
-        public_key = signature["publicKey"]
+        public_key = signature_dict["publicKey"]
     except KeyError as e:
         LOGGER.exception("'%s' key missing from Tezos signature dictionary.", e.args[0])
         return False
@@ -43,7 +43,7 @@ async def verify_signature(message: BasePendingMessage) -> bool:
 
     # Check the signature
     try:
-        key.verify(message.signature, verification_buffer)
+        key.verify(signature, verification_buffer)
     except ValueError:
         LOGGER.warning("Received message with bad signature from %s" % message.sender)
         return False
