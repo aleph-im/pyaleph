@@ -37,6 +37,11 @@ try:
 except ModuleNotFoundError as error:
     logger.warning("Can't load AVAX: %s", error.msg)
 
+try:
+    from aleph.chains import tezos
+except ModuleNotFoundError as error:
+    logger.warning("Can't load Tezos: %s", error.msg)
+
 
 def connector_tasks(config, outgoing=True) -> List[Coroutine]:
     tasks: List[Coroutine] = []

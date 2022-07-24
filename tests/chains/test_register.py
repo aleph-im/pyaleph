@@ -34,7 +34,16 @@ async def test_register_verifier_twice(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_verifiers():
-    assert set(VERIFIER_REGISTER.keys()) == {'NULS', 'NULS2', 'ETH', 'DOT', 'CSDK', 'SOL', 'AVAX'}
+    assert set(VERIFIER_REGISTER.keys()) == {
+        "AVAX",
+        "CSDK",
+        "DOT",
+        "ETH",
+        "NULS",
+        "NULS2",
+        "SOL",
+        "TEZOS",
+    }
 
     assert VERIFIER_REGISTER["ETH"] is ethereum.verify_signature
     assert VERIFIER_REGISTER["NULS"] is nuls.verify_signature
