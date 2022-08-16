@@ -66,7 +66,7 @@ async def verify_signature(message: BasePendingMessage):
             LOGGER.exception("Avalanche signature checksum error")
             return False
     except Exception:
-        LOGGER.exception("Solana signature deserialization error")
+        LOGGER.exception("Avalanche signature deserialization error")
         return False
 
     try:
