@@ -71,11 +71,16 @@ def prepare_date_filters(request, filter_key):
     start_date = float(request.query.get("startDate", 0))
     end_date = float(request.query.get("endDate", 0))
 
-    if start_date > 0:
+    if start_date < 0:
+        raise ValueError("startDate field may not be negative")
+    if end_date < 0:
+        raise ValueError("endDate field may not be negative")
+
+    if start_date:
         date_filters = {}
         date_filters[filter_key] = {"$gte": start_date}
 
-    if end_date > 0:
+    if end_date:
         new_filter = {}
         new_filter[filter_key] = {"$lte": end_date}
         if date_filters is not None:
