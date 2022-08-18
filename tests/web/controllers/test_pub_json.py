@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 
@@ -22,7 +24,7 @@ async def test_pub_valid_aleph_message(mock_config, ccn_api_client, mocker):
 
     response = await ccn_api_client.post(
         "/api/v0/ipfs/pubsub/pub",
-        json={"topic": message_topic, "data": message},
+        json={"topic": message_topic, "data": json.dumps(message)},
     )
     assert response.status == 200, await response.text()
 
@@ -38,7 +40,9 @@ async def test_pub_invalid_aleph_message(mock_config, ccn_api_client, mocker):
         "/api/v0/ipfs/pubsub/pub",
         json={
             "topic": message_topic,
-            "data": {"header": "this is not an Aleph message at all", "type": "STORE"},
+            "data": json.dumps(
+                {"header": "this is not an Aleph message at all", "type": "STORE"}
+            ),
         },
     )
     assert response.status == 422, await response.text()
