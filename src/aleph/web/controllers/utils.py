@@ -68,8 +68,8 @@ class Pagination(object):
 def prepare_date_filters(request, filter_key):
     date_filters = None
 
-    start_date = int(request.query.get("startDate", 0))
-    end_date = int(request.query.get("endDate", 0))
+    start_date = float(request.query.get("startDate", 0))
+    end_date = float(request.query.get("endDate", 0))
 
     if start_date > 0:
         date_filters = {}
