@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from typing import Dict
+from typing import Dict, cast
 
 from aiohttp import web
 from configmanager import Config
@@ -30,7 +30,7 @@ def validate_request_data(config: Config, request_data: Dict) -> None:
     # Currently, we only check validate messages
     message_topic = config.aleph.queue_topic.value
     if topic == message_topic:
-        message = json.loads(request_data.get("data"))
+        message = json.loads(cast(str, request_data.get("data")))
         try:
             _ = parse_message(message)
         except InvalidMessageError as e:
