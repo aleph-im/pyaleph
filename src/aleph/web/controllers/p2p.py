@@ -1,16 +1,16 @@
 import asyncio
+import json
 import logging
-from typing import Dict
+from typing import Dict, cast
 
 from aiohttp import web
 from configmanager import Config
 
 from aleph.exceptions import InvalidMessageError
 from aleph.schemas.pending_messages import parse_message
-from aleph.services.p2p.singleton import get_p2p_client
-
 from aleph.services.ipfs.pubsub import pub as pub_ipfs
 from aleph.services.p2p.pubsub import publish as pub_p2p
+from aleph.services.p2p.singleton import get_p2p_client
 from aleph.types import Protocol
 
 LOGGER = logging.getLogger("web.controllers.p2p")
@@ -26,13 +26,13 @@ def validate_request_data(config: Config, request_data: Dict) -> None:
     """
 
     topic = request_data.get("topic")
-    data = request_data.get("data")
 
     # Currently, we only check validate messages
     message_topic = config.aleph.queue_topic.value
     if topic == message_topic:
+        message = json.loads(cast(str, request_data.get("data")))
         try:
-            _ = parse_message(data)
+            _ = parse_message(message)
         except InvalidMessageError as e:
             raise web.HTTPUnprocessableEntity(body=str(e))
 
