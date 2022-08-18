@@ -34,7 +34,7 @@ def validate_request_data(config: Config, request_data: Dict) -> None:
         try:
             _ = parse_message(data)
         except InvalidMessageError as e:
-            raise web.HTTPUnprocessableEntity(text=str(e))
+            raise web.HTTPUnprocessableEntity(body=str(e))
 
 
 async def pub_json(request: web.Request):

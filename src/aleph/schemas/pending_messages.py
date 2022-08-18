@@ -32,7 +32,7 @@ from aleph_message.models import (
     StoreContent,
 )
 from aleph_message.models import MessageType, ItemType
-from pydantic import BaseModel, root_validator, validator
+from pydantic import BaseModel, ValidationError, root_validator, validator
 
 from aleph.exceptions import InvalidMessageError, UnknownHashError
 from aleph.utils import item_type_from_hash
@@ -206,5 +206,5 @@ def parse_message(message_dict: Any) -> BasePendingMessage:
 
     try:
         return msg_cls(**message_dict)
-    except ValueError as e:
-        raise InvalidMessageError(f"Could not parse message: {str(e)}") from e
+    except ValidationError as e:
+        raise InvalidMessageError(json.dumps(e.json())) from e
