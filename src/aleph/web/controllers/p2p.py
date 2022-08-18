@@ -1,7 +1,12 @@
 import asyncio
 import logging
+from typing import Dict
 
 from aiohttp import web
+from configmanager import Config
+
+from aleph.exceptions import InvalidMessageError
+from aleph.schemas.pending_messages import parse_message
 from aleph.services.p2p.singleton import get_p2p_client
 
 from aleph.services.ipfs.pubsub import pub as pub_ipfs
@@ -11,21 +16,44 @@ from aleph.types import Protocol
 LOGGER = logging.getLogger("web.controllers.p2p")
 
 
-async def pub_json(request):
+def validate_request_data(config: Config, request_data: Dict) -> None:
+    """
+    Validates the content of a JSON pubsub message depending on the channel
+    and raises a 422 error if the data does not match the expected format.
+
+    :param config: Application configuration.
+    :param request_data: Request JSON data, as a dictionary.
+    """
+
+    topic = request_data.get("topic")
+    data = request_data.get("data")
+
+    # Currently, we only check validate messages
+    message_topic = config.aleph.queue_topic.value
+    if topic == message_topic:
+        try:
+            _ = parse_message(data)
+        except InvalidMessageError as e:
+            raise web.HTTPUnprocessableEntity(body=str(e))
+
+
+async def pub_json(request: web.Request):
     """Forward the message to P2P host and IPFS server as a pubsub message"""
-    data = await request.json()
+    request_data = await request.json()
+    validate_request_data(config=request.app["config"], request_data=request_data)
+
     failed_publications = []
 
     try:
         if request.app["config"].ipfs.enabled.value:
-            await asyncio.wait_for(pub_ipfs(data.get("topic"), data.get("data")), 1)
+            await asyncio.wait_for(pub_ipfs(request_data.get("topic"), request_data.get("data")), 1)
     except Exception:
         LOGGER.exception("Can't publish on ipfs")
         failed_publications.append(Protocol.IPFS)
 
     try:
         p2p_client = get_p2p_client()
-        await asyncio.wait_for(pub_p2p(p2p_client, data.get("topic"), data.get("data")), 10)
+        await asyncio.wait_for(pub_p2p(p2p_client, request_data.get("topic"), request_data.get("data")), 10)
     except Exception:
         LOGGER.exception("Can't publish on p2p")
         failed_publications.append(Protocol.P2P)
