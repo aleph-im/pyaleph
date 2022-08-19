@@ -49,7 +49,7 @@ cover/*
 MANIFEST
 
 # Per-project virtualenvs
-.venv*/
+venv*/
 
 # Secret files
 config.yml
