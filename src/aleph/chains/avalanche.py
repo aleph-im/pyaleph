@@ -70,7 +70,7 @@ async def verify_signature(message: BasePendingMessage):
         return False
 
     try:
-        verification = await get_verification_buffer(message)
+        verification = get_verification_buffer(message)
         verification = await pack_message(verification)
 
         public_key = PublicKey.from_signature_and_message(signature, verification)

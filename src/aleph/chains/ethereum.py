@@ -40,7 +40,7 @@ async def verify_signature(message: BasePendingMessage) -> bool:
 
     # w3 = await loop.run_in_executor(None, get_web3, config)
 
-    verification = await get_verification_buffer(message)
+    verification = get_verification_buffer(message)
 
     message_hash = await run_in_executor(
         None, functools.partial(encode_defunct, text=verification.decode("utf-8"))
