@@ -40,7 +40,7 @@ async def verify_signature(message: BasePendingMessage) -> bool:
         )
         return False
 
-    verification = await get_verification_buffer(message)
+    verification = get_verification_buffer(message)
     try:
         result = await run_in_executor(None, sig.verify, verification)
     except Exception:

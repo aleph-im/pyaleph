@@ -51,7 +51,7 @@ async def verify_signature(message: BasePendingMessage) -> bool:
 
     sender_hash = hash_from_address(message.sender)
     (sender_chain_id,) = struct.unpack("h", sender_hash[:2])
-    verification = await get_verification_buffer(message)
+    verification = get_verification_buffer(message)
     try:
         address = await run_in_executor(
             None,

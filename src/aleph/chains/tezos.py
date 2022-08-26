@@ -16,7 +16,7 @@ async def verify_signature(message: BasePendingMessage) -> bool:
     Verifies the cryptographic signature of a message signed with a Tezos key.
     """
 
-    verification_buffer = await get_verification_buffer(message)
+    verification_buffer = get_verification_buffer(message)
     try:
         signature_dict = json.loads(message.signature)
     except json.JSONDecodeError:

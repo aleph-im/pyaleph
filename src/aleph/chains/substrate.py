@@ -29,7 +29,7 @@ async def verify_signature(message: BasePendingMessage) -> bool:
 
     try:
         keypair = Keypair(ss58_address=message.sender)
-        verif = (await get_verification_buffer(message)).decode("utf-8")
+        verif = (get_verification_buffer(message)).decode("utf-8")
         result = keypair.verify(verif, signature["data"])
     except Exception:
         LOGGER.exception("Substrate Signature verification error")

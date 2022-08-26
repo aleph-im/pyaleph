@@ -16,7 +16,7 @@ CHAIN_NAME = "CSDK"
 
 
 async def get_signable_message(message: BasePendingMessage) -> Dict:
-    signable = (await get_verification_buffer(message)).decode("utf-8")
+    signable = (get_verification_buffer(message)).decode("utf-8")
     content_message = {
         "type": "signutil/MsgSignText",
         "value": {

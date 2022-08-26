@@ -33,7 +33,7 @@ from ..utils import item_type_from_hash
 LOGGER = logging.getLogger("chains.common")
 
 
-async def get_verification_buffer(message: BasePendingMessage) -> bytes:
+def get_verification_buffer(message: BasePendingMessage) -> bytes:
     """Returns a serialized string to verify the message integrity
     (this is was it signed)
     """

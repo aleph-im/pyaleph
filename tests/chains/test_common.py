@@ -27,7 +27,7 @@ async def test_get_verification_buffer():
         time=1000000,
     )
 
-    buffer = await get_verification_buffer(message)
+    buffer = get_verification_buffer(message)
     expected_buffer = f"ETH\nSENDER\nSTORE\n{item_hash}".encode("utf-8")
     assert buffer == expected_buffer
 
