@@ -2,6 +2,14 @@
 Changelog
 =========
 
+Version 0.3.3
+=============
+
+* Users can now sign Aleph messages with a Tezos private key.
+* The API now checks the validity of Aleph messages as soon as they are posted and
+  returns a 422 error code if the message is incorrect. Note that the signature is not
+  checked.
+
 Version 0.3.2
 =============
 
