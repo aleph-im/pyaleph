@@ -6,7 +6,7 @@ from aiohttp.web_exceptions import HTTPBadRequest
 import asyncio
 from pymongo.cursor import CursorType
 from bson.objectid import ObjectId
-from aleph.web.controllers.utils import Pagination, cond_output, prepare_date_filters
+from aleph.web.controllers.utils import Pagination, cond_output, prepare_date_filters, prune_mongo_id
 import logging
 
 LOGGER = logging.getLogger("MESSAGES")
@@ -126,7 +126,7 @@ async def view_messages_list(request):
         pagination_skip = 0
 
     messages = [
-        msg
+        prune_mongo_id(msg)
         async for msg in Message.collection.find(
             find_filters,
             limit=pagination_per_page,
@@ -206,7 +206,7 @@ async def messages_ws(request: web.Request):
                     item["_id"] = str(item["_id"])
 
                     last_id = item["_id"]
-                    await ws.send_json(item)
+                    await ws.send_json(prune_mongo_id(item))
 
                 await asyncio.sleep(1)
 

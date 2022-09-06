@@ -125,3 +125,10 @@ def cond_output(request, context, template):
     response.enable_compression()
 
     return response
+
+
+def prune_mongo_id(data: Dict) -> Dict:
+    try:
+        del data["_id"]
+    except KeyError:
+        pass
