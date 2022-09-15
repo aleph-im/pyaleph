@@ -62,7 +62,7 @@ async def test_handle_new_storage_invalid_content(
     result = await handle_new_storage(
         fixture_message_directory, missing_item_hash_content
     )
-    assert result == -1
+    assert not result
 
     missing_item_type_content = {
         "address": "0x2278d6A697B2Be8aE4Ddf090f918d1642Ee43c8C",
@@ -73,10 +73,10 @@ async def test_handle_new_storage_invalid_content(
     result = await handle_new_storage(
         fixture_message_directory, missing_item_type_content
     )
-    assert result == -1
+    assert not result
 
     result = await handle_new_storage(fixture_message_directory, content={})
-    assert result == -1
+    assert not result
 
 
 @pytest.mark.asyncio
@@ -149,5 +149,5 @@ async def test_handle_new_storage_invalid_hash(
     content = json.loads(fixture_message_file["item_content"])
     content["item_hash"] = "some-invalid-hash"
 
-    with pytest.raises(UnknownHashError):
-        _ = await handle_new_storage(fixture_message_file, content)
+    result = await handle_new_storage(fixture_message_file, content)
+    assert not result
