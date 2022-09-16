@@ -21,7 +21,6 @@ from typing import Any, Coroutine, Dict, List, Optional
 import sentry_sdk
 from aleph_message.models import MessageType
 from configmanager import Config
-from p2pclient import Client as P2PClient
 from setproctitle import setproctitle
 
 import aleph.config
@@ -35,7 +34,7 @@ from aleph.logging import setup_logging
 from aleph.network import listener_tasks
 from aleph.services import p2p
 from aleph.services.keys import generate_keypair, save_keys
-from aleph.services.p2p import singleton
+from aleph.services.p2p import singleton, init_p2p_client
 from aleph.web import app
 
 __author__ = "Moshe Malawach"
@@ -67,13 +66,13 @@ async def run_server(
     port: int,
     shared_stats: dict,
     extra_web_config: dict,
-    p2p_client: P2PClient,
 ):
     # These imports will run in different processes
     from aiohttp import web
     from aleph.web.controllers.listener import broadcast
 
     LOGGER.debug("Setup of runner")
+    p2p_client = await init_p2p_client(config, service_name=f"api-server-{port}")
 
     app["config"] = config
     app["extra_config"] = extra_web_config
@@ -99,7 +98,6 @@ def run_server_coroutine(
     host: str,
     port: int,
     shared_stats: Dict,
-    p2p_client: P2PClient,
     enable_sentry: bool = True,
     extra_web_config: Optional[Dict] = None,
 ):
@@ -127,7 +125,7 @@ def run_server_coroutine(
     # https://github.com/getsentry/raven-python/issues/1110
     try:
         loop.run_until_complete(
-            run_server(config, host, port, shared_stats, extra_web_config, p2p_client)
+            run_server(config, host, port, shared_stats, extra_web_config)
         )
     except Exception as e:
         if enable_sentry:
@@ -172,10 +170,10 @@ async def main(args):
         LOGGER.error(msg)
         raise InvalidConfigException(msg)
 
-    # We only check that the serialized key exists.
-    serialized_key_file_path = os.path.join(args.key_dir, "serialized-node-secret.key")
-    if not os.path.isfile(serialized_key_file_path):
-        msg = f"Serialized node key ({serialized_key_file_path}) not found."
+    # We only check that the private key exists.
+    private_key_file_path = os.path.join(args.key_dir, "node-secret.pkcs8.der")
+    if not os.path.isfile(private_key_file_path):
+        msg = f"Serialized node key ({private_key_file_path}) not found."
         LOGGER.critical(msg)
         raise KeyNotFoundException(msg)
 
@@ -218,9 +216,10 @@ async def main(args):
                 use_processes=True,
             )
 
-        # handler = app.make_handler(loop=loop)
         LOGGER.debug("Initializing p2p")
-        p2p_client, p2p_tasks = await p2p.init_p2p(config, api_servers)
+        p2p_client, p2p_tasks = await p2p.init_p2p(
+            config, service_name="network-monitor", api_servers=api_servers
+        )
         tasks += p2p_tasks
         LOGGER.debug("Initialized p2p")
 
@@ -241,7 +240,6 @@ async def main(args):
                 config.aleph.host.value,
                 config.p2p.http_port.value,
                 shared_stats,
-                p2p_client,
                 args.sentry_disabled is False and config.sentry.dsn.value,
                 extra_web_config,
             ),
@@ -253,7 +251,6 @@ async def main(args):
                 config.aleph.host.value,
                 config.aleph.port.value,
                 shared_stats,
-                p2p_client,
                 args.sentry_disabled is False and config.sentry.dsn.value,
                 extra_web_config,
             ),

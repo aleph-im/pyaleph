@@ -1,14 +1,13 @@
 import logging
-from typing import Coroutine, List, Optional, Tuple
+from typing import Coroutine, List
 
+from aleph_p2p_client import AlephP2PServiceClient
 from configmanager import Config
-from p2pclient import Client as P2PClient
 
 from aleph.services.ipfs.common import get_public_address
 from aleph.services.peers.monitor import monitor_hosts_ipfs, monitor_hosts_p2p
 from aleph.services.peers.publish import publish_host
 from aleph.services.utils import get_IP
-from .protocol import AlephProtocol
 
 LOGGER = logging.getLogger("P2P.host")
 
@@ -19,13 +18,12 @@ public_adresses = []
 
 async def initialize_host(
     config: Config,
-    p2p_client: P2PClient,
+    p2p_client: AlephP2PServiceClient,
     api_servers: List[str],
     host: str = "0.0.0.0",
     port: int = 4025,
     listen: bool = True,
-    protocol_active: bool = True,
-) -> Tuple[Optional[AlephProtocol], List[Coroutine]]:
+) -> List[Coroutine]:
 
     from .jobs import reconnect_p2p_job, tidy_http_peers_job
 
@@ -33,14 +31,12 @@ async def initialize_host(
 
     transport_opt = f"/ip4/{host}/tcp/{port}"
 
-    protocol = await AlephProtocol.create(p2p_client) if protocol_active else None
-
     tasks = [
-        reconnect_p2p_job(config=config, p2p_client=p2p_client, streamer=protocol),
+        reconnect_p2p_job(config=config, p2p_client=p2p_client),
         tidy_http_peers_job(config=config, api_servers=api_servers),
     ]
     if listen:
-        peer_id, _ = await p2p_client.identify()
+        peer_id = (await p2p_client.identify()).peer_id
         LOGGER.info("Listening on " + f"{transport_opt}/p2p/{peer_id}")
         ip = await get_IP()
         public_address = f"/ip4/{ip}/tcp/{port}/p2p/{peer_id}"
@@ -90,4 +86,4 @@ async def initialize_host(
             except Exception:
                 LOGGER.exception("Can't publish public IPFS address")
 
-    return protocol, tasks
+    return tasks

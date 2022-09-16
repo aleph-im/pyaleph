@@ -41,14 +41,14 @@ async def pub(topic: str, message: Union[str, bytes]):
 
 
 async def incoming_channel(topic) -> None:
-    from aleph.network import get_pubsub_message
+    from aleph.network import decode_pubsub_message
     from aleph.chains.common import process_one_message
 
     while True:
         try:
             async for mvalue in sub(topic):
                 try:
-                    message = await get_pubsub_message(mvalue)
+                    message = await decode_pubsub_message(mvalue["data"])
                     LOGGER.debug("New message %r" % message)
                     asyncio.create_task(process_one_message(message))
                 except InvalidMessageError:

@@ -1,41 +1,41 @@
-import socket
 from typing import Coroutine, List, Tuple
 
+from aleph_p2p_client import AlephP2PServiceClient, make_p2p_service_client
 from configmanager import Config
-from multiaddr import Multiaddr
-from p2pclient import Client as P2PClient
 
 from . import singleton
 from .manager import initialize_host
 
 
-def init_p2p_client(config: Config) -> P2PClient:
-    host = config.p2p.daemon_host.value
-    host_ip_addr = socket.gethostbyname(host)
-
-    control_port = config.p2p.control_port.value
-    listen_port = config.p2p.listen_port.value
-    control_maddr = Multiaddr(f"/ip4/{host_ip_addr}/tcp/{control_port}")
-    listen_maddr = Multiaddr(f"/ip4/0.0.0.0/tcp/{listen_port}")
-    p2p_client = P2PClient(control_maddr=control_maddr, listen_maddr=listen_maddr)
+async def init_p2p_client(config: Config, service_name: str) -> AlephP2PServiceClient:
+    p2p_client = await make_p2p_service_client(
+        service_name=service_name,
+        mq_host=config.p2p.mq_host.value,
+        mq_port=config.rabbitmq.port.value,
+        mq_username=config.rabbitmq.username.value,
+        mq_password=config.rabbitmq.password.value,
+        mq_pub_exchange_name=config.rabbitmq.pub_exchange.value,
+        mq_sub_exchange_name=config.rabbitmq.sub_exchange.value,
+        http_host=config.p2p.daemon_host.value,
+        http_port=config.p2p.control_port.value,
+    )
 
     return p2p_client
 
 
 async def init_p2p(
-    config: Config, api_servers: List[str], listen: bool = True
-) -> Tuple[P2PClient, List[Coroutine]]:
-    p2p_client = init_p2p_client(config)
+    config: Config, service_name: str, api_servers: List[str], listen: bool = True
+) -> Tuple[AlephP2PServiceClient, List[Coroutine]]:
+    p2p_client = await init_p2p_client(config, service_name)
 
     port = config.p2p.port.value
-    singleton.streamer, tasks = await initialize_host(
+    tasks = await initialize_host(
         config=config,
         p2p_client=p2p_client,
         api_servers=api_servers,
         host=config.p2p.daemon_host.value,
         port=port,
         listen=listen,
-        protocol_active=("protocol" in config.p2p.clients.value),
     )
 
     return p2p_client, tasks

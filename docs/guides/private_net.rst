@@ -55,7 +55,6 @@ Example of config file at this point (I disabled IPFS but you can leave it enabl
     p2p:
         host: 0.0.0.0
         control_port: 4030
-        listen_port: 4031
         http_port: 4024
         port: 4025
         peers: []

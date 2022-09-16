@@ -4,6 +4,7 @@ import logging
 from typing import Dict, cast
 
 from aiohttp import web
+from aleph_p2p_client import AlephP2PServiceClient
 from configmanager import Config
 
 from aleph.exceptions import InvalidMessageError
@@ -51,7 +52,7 @@ async def pub_json(request: web.Request):
         failed_publications.append(Protocol.IPFS)
 
     try:
-        p2p_client = request.app["p2p_client"]
+        p2p_client: AlephP2PServiceClient = request.app["p2p_client"]
         await asyncio.wait_for(pub_p2p(p2p_client, request_data.get("topic"), request_data.get("data")), 10)
     except Exception:
         LOGGER.exception("Can't publish on p2p")

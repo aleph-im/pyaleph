@@ -35,11 +35,10 @@ aleph:
   queue_topic: ALEPH-TEST
 
 p2p:
-  daemon_host: p2pd
+  daemon_host: p2p-service
   http_port: 4024
   port: 4025
   control_port: 4030
-  listen_port: 4031
   reconnect_delay: 60
 
 sentry:

@@ -7,7 +7,7 @@ def get_defaults():
     return {
         "logging": {
             "level": logging.WARNING,
-            "max_log_file_size": 1_000_000_000  # 1GB,
+            "max_log_file_size": 1_000_000_000,  # 1GB,
         },
         "aleph": {
             "queue_topic": "ALEPH-QUEUE",
@@ -21,15 +21,15 @@ def get_defaults():
                 },
                 "pending_txs": {
                     "max_concurrency": 20,
-                }
-            }
+                },
+            },
         },
         "p2p": {
             "http_port": 4024,
             "port": 4025,
             "control_port": 4030,
-            "listen_port": 4031,
-            "daemon_host": "p2pd",
+            "daemon_host": "p2p-service",
+            "mq_host": "rabbitmq",
             "reconnect_delay": 60,
             "alive_topic": "ALIVE",
             "clients": ["http"],
@@ -38,6 +38,7 @@ def get_defaults():
                 "/ip4/95.216.100.234/tcp/4025/p2p/Qmaxufiqdyt5uVWcy1Xh2nh3Rs3382ArnSP2umjCiNG2Vs",
                 "/ip4/62.210.93.220/tcp/4025/p2p/QmXdci5feFmA2pxTg8p3FCyWmSKnWYAAmr7Uys1YCTFD8U",
             ],
+            "topics": ["ALIVE", "ALEPH-QUEUE"],
         },
         "storage": {"folder": "./data/", "store_files": False, "engine": "mongodb"},
         "nuls": {
@@ -89,8 +90,16 @@ def get_defaults():
             "peers": [
                 "/dnsaddr/api1.aleph.im/ipfs/12D3KooWNgogVS6o8fVsPdzh2FJpCdJJLVSgJT38XGE1BJoCerHx",
                 "/ip4/51.159.57.71/tcp/4001/p2p/12D3KooWBH3JVSBwHLNzxv7EzniBP3tDmjJaoa3EJBF9wyhZtHt2",
-                "/ip4/62.210.93.220/tcp/4001/p2p/12D3KooWLcmvqojHzUnR7rr8YhFKGDD8z7fmsPyBfAm2rT3sFGAF"
+                "/ip4/62.210.93.220/tcp/4001/p2p/12D3KooWLcmvqojHzUnR7rr8YhFKGDD8z7fmsPyBfAm2rT3sFGAF",
             ],
+        },
+        "rabbitmq": {
+            "host": "127.0.0.1",
+            "port": 5672,
+            "username": "guest",
+            "password": "guest",
+            "pub_exchange": "p2p-publish",
+            "sub_exchange": "p2p-subscribe",
         },
         "sentry": {
             "dsn": None,
