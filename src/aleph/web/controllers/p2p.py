@@ -10,7 +10,6 @@ from aleph.exceptions import InvalidMessageError
 from aleph.schemas.pending_messages import parse_message
 from aleph.services.ipfs.pubsub import pub as pub_ipfs
 from aleph.services.p2p.pubsub import publish as pub_p2p
-from aleph.services.p2p.singleton import get_p2p_client
 from aleph.types import Protocol
 
 LOGGER = logging.getLogger("web.controllers.p2p")
@@ -52,7 +51,7 @@ async def pub_json(request: web.Request):
         failed_publications.append(Protocol.IPFS)
 
     try:
-        p2p_client = get_p2p_client()
+        p2p_client = request.app["p2p_client"]
         await asyncio.wait_for(pub_p2p(p2p_client, request_data.get("topic"), request_data.get("data")), 10)
     except Exception:
         LOGGER.exception("Can't publish on p2p")

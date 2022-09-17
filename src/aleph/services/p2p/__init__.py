@@ -19,9 +19,6 @@ def init_p2p_client(config: Config) -> P2PClient:
     listen_maddr = Multiaddr(f"/ip4/0.0.0.0/tcp/{listen_port}")
     p2p_client = P2PClient(control_maddr=control_maddr, listen_maddr=listen_maddr)
 
-    # This singleton will not be required anymore once the API is in its own separate program.
-    singleton.client = p2p_client
-
     return p2p_client
 
 

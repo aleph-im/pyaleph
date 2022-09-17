@@ -21,6 +21,7 @@ from typing import Any, Coroutine, Dict, List, Optional
 import sentry_sdk
 from aleph_message.models import MessageType
 from configmanager import Config
+from p2pclient import Client as P2PClient
 from setproctitle import setproctitle
 
 import aleph.config
@@ -61,7 +62,12 @@ def init_shared_stats(shared_memory_manager: SyncManager) -> Dict[str, Any]:
 
 
 async def run_server(
-    config: Config, host: str, port: int, shared_stats: dict, extra_web_config: dict
+    config: Config,
+    host: str,
+    port: int,
+    shared_stats: dict,
+    extra_web_config: dict,
+    p2p_client: P2PClient,
 ):
     # These imports will run in different processes
     from aiohttp import web
@@ -72,6 +78,7 @@ async def run_server(
     app["config"] = config
     app["extra_config"] = extra_web_config
     app["shared_stats"] = shared_stats
+    app["p2p_client"] = p2p_client
 
     print(f"extra_web_config: {extra_web_config}")
 
@@ -88,10 +95,11 @@ async def run_server(
 
 
 def run_server_coroutine(
-    config_values,
-    host,
-    port,
-    shared_stats,
+    config_values: Dict,
+    host: str,
+    port: int,
+    shared_stats: Dict,
+    p2p_client: P2PClient,
     enable_sentry: bool = True,
     extra_web_config: Optional[Dict] = None,
 ):
@@ -118,7 +126,9 @@ def run_server_coroutine(
     # Use a try-catch-capture_exception to work with multiprocessing, see
     # https://github.com/getsentry/raven-python/issues/1110
     try:
-        loop.run_until_complete(run_server(config, host, port, shared_stats, extra_web_config))
+        loop.run_until_complete(
+            run_server(config, host, port, shared_stats, extra_web_config, p2p_client)
+        )
     except Exception as e:
         if enable_sentry:
             sentry_sdk.capture_exception(e)
@@ -231,6 +241,7 @@ async def main(args):
                 config.aleph.host.value,
                 config.p2p.http_port.value,
                 shared_stats,
+                p2p_client,
                 args.sentry_disabled is False and config.sentry.dsn.value,
                 extra_web_config,
             ),
@@ -242,6 +253,7 @@ async def main(args):
                 config.aleph.host.value,
                 config.aleph.port.value,
                 shared_stats,
+                p2p_client,
                 args.sentry_disabled is False and config.sentry.dsn.value,
                 extra_web_config,
             ),
