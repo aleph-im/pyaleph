@@ -31,7 +31,7 @@ from aleph_message.models import (
     ProgramContent,
     StoreContent,
 )
-from aleph_message.models import MessageType, ItemType
+from aleph_message.models import MessageType, ItemHash, ItemType
 from pydantic import BaseModel, ValidationError, root_validator, validator
 
 from aleph.exceptions import InvalidMessageError, UnknownHashError
@@ -51,7 +51,7 @@ class BasePendingMessage(BaseModel):
     type: MessageType
     item_content: Optional[str]
     item_type: ItemType
-    item_hash: str
+    item_hash: ItemHash
     time: float
     channel: Optional[str] = None
     content: Optional[BaseContent] = None
