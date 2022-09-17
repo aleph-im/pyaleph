@@ -10,7 +10,7 @@ TODO:
 
 import asyncio
 import logging
-from typing import Dict
+from typing import Dict, Optional
 
 import aioipfs
 from aioipfs import InvalidCIDError
@@ -26,7 +26,7 @@ from aleph.utils import item_type_from_hash
 LOGGER = logging.getLogger("HANDLERS.STORAGE")
 
 
-async def handle_new_storage(message: Dict, content: Dict):
+async def handle_new_storage(message: Dict, content: Dict) -> Optional[bool]:
     config = get_config()
     if not config.storage.store_files.value:
         return True  # Ignore
@@ -39,15 +39,15 @@ async def handle_new_storage(message: Dict, content: Dict):
     try:
         store_message = StoreMessage(**message)
     except ValidationError as e:
-        print(e)
-        return -1  # Invalid store message, discard
+        logging.warning("Invalid store message: %s", e)
+        return False  # Invalid store message, discard
 
     item_type = store_message.content.item_type
     try:
         engine = ItemType(item_type)
     except ValueError:
         LOGGER.warning("Got invalid storage engine %s" % item_type)
-        return -1  # not allowed, ignore.
+        return False  # not allowed, ignore.
 
     is_folder = False
     item_hash = store_message.content.item_hash

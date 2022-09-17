@@ -1,9 +1,9 @@
+import json
+
 import pytest
 
 from aleph.handlers.storage import handle_new_storage
 from aleph.storage import ContentSource, RawContent
-import json
-from aleph.exceptions import UnknownHashError
 
 
 @pytest.fixture
@@ -62,7 +62,7 @@ async def test_handle_new_storage_invalid_content(
     result = await handle_new_storage(
         fixture_message_directory, missing_item_hash_content
     )
-    assert result == -1
+    assert result is False
 
     missing_item_type_content = {
         "address": "0x2278d6A697B2Be8aE4Ddf090f918d1642Ee43c8C",
@@ -73,10 +73,10 @@ async def test_handle_new_storage_invalid_content(
     result = await handle_new_storage(
         fixture_message_directory, missing_item_type_content
     )
-    assert result == -1
+    assert result is False
 
     result = await handle_new_storage(fixture_message_directory, content={})
-    assert result == -1
+    assert result is False
 
 
 @pytest.mark.asyncio
@@ -132,7 +132,7 @@ async def test_handle_new_storage_directory(
     content = json.loads(fixture_message_directory["item_content"])
 
     result = await handle_new_storage(fixture_message_directory, content)
-    assert result and result != -1
+    assert result
 
     # Check the updates to the content dict
     assert content["engine_info"] == ipfs_stats
@@ -149,5 +149,5 @@ async def test_handle_new_storage_invalid_hash(
     content = json.loads(fixture_message_file["item_content"])
     content["item_hash"] = "some-invalid-hash"
 
-    with pytest.raises(UnknownHashError):
-        _ = await handle_new_storage(fixture_message_file, content)
+    result = await handle_new_storage(fixture_message_file, content)
+    assert result is False
