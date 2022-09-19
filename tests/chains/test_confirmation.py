@@ -5,19 +5,18 @@ import pytest
 
 from aleph.chains.common import process_one_message
 from aleph.model.messages import CappedMessage, Message
+from aleph.schemas.pending_messages import parse_message
 
-
-MESSAGE = {
+MESSAGE_DICT = {
     "chain": "ETH",
-    "sender": "0x971300C78A38e0F85E60A3b04ae3fA70b4276B64",
-    "type": "POST",
     "channel": "TEST",
+    "sender": "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
+    "type": "POST",
+    "time": 1652803407.1179411,
     "item_type": "inline",
-    "size": 70,
-    "time": 1646123806,
-    "item_content": '{"body": "Top 10 cutest Kodiak bears that will definitely murder you"}',
-    "item_hash": "fd14aaae5693710fae42fc58049f80ba7abdbf0cce00eb73e585bc89907eaad8",
-    "signature": "0xccb6a4c7e2a709accf941463a93064a9f34ea1d03b17fe9d117c80fb0878ee0a2f284af4afb37de187a1116c0cec5b3a8da89b40d5281919dbeebdffc50c86c71c",
+    "item_content": '{"address":"0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106","time":1652803407.1178224,"content":{"body":"Top 10 cutest Kodiak bears that will definitely murder you"},"type":"test"}',
+    "item_hash": "85abdd0ea565ac0f282d1a86b5b3da87ed3d55426a78e9c0ec979ae58e947b9c",
+    "signature": "0xfd5183273be769aaa44ea494911c9e4702fde87dd7dd5e2d5ec76c0a251654544bc98eacd33ca204a536f55f726130683cab1d1ad5ac8da1cbbf39d4d7a124401b",
 }
 
 
@@ -39,14 +38,15 @@ async def test_confirm_message(test_db):
     the websockets.
     """
 
-    item_hash = MESSAGE["item_hash"]
-    content = json.loads(MESSAGE["item_content"])
+    item_hash = MESSAGE_DICT["item_hash"]
+    content = json.loads(MESSAGE_DICT["item_content"])
 
-    await process_one_message(MESSAGE)
+    message = parse_message(MESSAGE_DICT)
+    await process_one_message(message)
     message_in_db = await Message.collection.find_one({"item_hash": item_hash})
 
     assert message_in_db is not None
-    assert message_in_db["content"]["body"] == content["body"]
+    assert message_in_db["content"] == content
     assert not message_in_db["confirmed"]
 
     capped_message_in_db = await CappedMessage.collection.find_one(
@@ -58,7 +58,7 @@ async def test_confirm_message(test_db):
     # Now, confirm the message
     chain_name, tx_hash, height = "ETH", "123", 8000
     await process_one_message(
-        MESSAGE, chain_name=chain_name, tx_hash=tx_hash, height=height
+        message, chain_name=chain_name, tx_hash=tx_hash, height=height
     )
 
     message_in_db = await Message.collection.find_one({"item_hash": item_hash})
@@ -86,12 +86,13 @@ async def test_process_confirmed_message(test_db):
     in capped messages.
     """
 
-    item_hash = MESSAGE["item_hash"]
+    item_hash = MESSAGE_DICT["item_hash"]
 
-    # Now, confirm the message
+    # Confirm the message
     chain_name, tx_hash, height = "ETH", "123", 8000
+    message = parse_message(MESSAGE_DICT)
     await process_one_message(
-        MESSAGE, chain_name=chain_name, tx_hash=tx_hash, height=height
+        message, chain_name=chain_name, tx_hash=tx_hash, height=height
     )
 
     message_in_db = await Message.collection.find_one({"item_hash": item_hash})

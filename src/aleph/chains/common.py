@@ -5,7 +5,7 @@ from dataclasses import asdict
 from enum import IntEnum
 from typing import Dict, Optional, Tuple, List
 
-from aleph_message.models import MessageType, ItemType
+from aleph_message.models import MessageConfirmation
 from bson import ObjectId
 from pymongo import UpdateOne
 
@@ -23,12 +23,20 @@ from aleph.model.db_bulk_operation import DbBulkOperation
 from aleph.model.filepin import PermanentPin
 from aleph.model.messages import CappedMessage, Message
 from aleph.model.pending import PendingMessage, PendingTX
-from aleph.network import check_message as check_message_fn
+from aleph.network import verify_signature
 from aleph.permissions import check_sender_authorization
 from aleph.storage import get_json, pin_hash, add_json, get_message_content
 from .tx_context import TxContext
-from ..schemas.pending_messages import BasePendingMessage
-from ..utils import item_type_from_hash
+from aleph.schemas.pending_messages import (
+    BasePendingMessage,
+)
+from aleph.schemas.validated_message import (
+    validate_pending_message,
+    ValidatedStoreMessage,
+    ValidatedForgetMessage,
+    make_confirmation_update_query,
+make_message_upsert_query,
+)
 
 LOGGER = logging.getLogger("chains.common")
 
@@ -54,12 +62,17 @@ async def mark_confirmed_data(chain_name, tx_hash, height):
     }
 
 
-async def delayed_incoming(message, chain_name=None, tx_hash=None, height=None):
+async def delayed_incoming(
+    message: BasePendingMessage,
+    chain_name: Optional[str] = None,
+    tx_hash: Optional[str] = None,
+    height: Optional[int] = None,
+):
     if message is None:
         return
     await PendingMessage.collection.insert_one(
         {
-            "message": message,
+            "message": message.dict(exclude={"content"}),
             "source": dict(
                 chain_name=chain_name,
                 tx_hash=tx_hash,
@@ -77,7 +90,7 @@ class IncomingStatus(IntEnum):
 
 
 async def mark_message_for_retry(
-    message: Dict,
+    message: BasePendingMessage,
     chain_name: Optional[str],
     tx_hash: Optional[str],
     height: Optional[int],
@@ -85,10 +98,12 @@ async def mark_message_for_retry(
     retrying: bool,
     existing_id,
 ):
+    message_dict = message.dict(exclude={"content"})
+
     if not retrying:
         await PendingMessage.collection.insert_one(
             {
-                "message": message,
+                "message": message_dict,
                 "source": dict(
                     chain_name=chain_name,
                     tx_hash=tx_hash,
@@ -105,25 +120,8 @@ async def mark_message_for_retry(
         LOGGER.debug(f"Update result {result}")
 
 
-def update_message_item_type(message_dict: Dict) -> Dict:
-    """
-    Ensures that the item_type field of a message is present.
-    Sets it to the default value if the field is not specified.
-    """
-    if "item_type" in message_dict:
-        return message_dict
-
-    if "item_content" in message_dict:
-        item_type = ItemType.inline
-    else:
-        item_type = item_type_from_hash(message_dict["item_hash"])
-
-    message_dict["item_type"] = item_type
-    return message_dict
-
-
 async def incoming(
-    message: Dict,
+    pending_message: BasePendingMessage,
     chain_name: Optional[str] = None,
     tx_hash: Optional[str] = None,
     height: Optional[int] = None,
@@ -138,24 +136,26 @@ async def incoming(
     if existing in database, created if not.
     """
 
-    # TODO: this is a temporary fix to set the item_type of the message to the correct
-    #       value. This should be replaced by a full use of Pydantic models.
-    message = update_message_item_type(message)
-
-    item_hash = message["item_hash"]
-    sender = message["sender"]
+    item_hash = pending_message.item_hash
+    sender = pending_message.sender
+    confirmations = []
     ids_key = (item_hash, sender, chain_name)
 
-    if chain_name and tx_hash and height and seen_ids is not None:
-        if ids_key in seen_ids.keys():
-            if height > seen_ids[ids_key]:
-                return IncomingStatus.MESSAGE_HANDLED, []
+    if chain_name and tx_hash and height:
+        if seen_ids is not None:
+            if ids_key in seen_ids.keys():
+                if height > seen_ids[ids_key]:
+                    return IncomingStatus.MESSAGE_HANDLED, []
+
+        confirmations.append(
+            MessageConfirmation(chain=chain_name, hash=tx_hash, height=height)
+        )
 
     filters = {
         "item_hash": item_hash,
-        "chain": message["chain"],
-        "sender": message["sender"],
-        "type": message["type"],
+        "chain": pending_message.chain,
+        "sender": pending_message.sender,
+        "type": pending_message.type,
     }
     existing = await Message.collection.find_one(
         filters,
@@ -163,52 +163,20 @@ async def incoming(
     )
 
     if check_message:
-        if existing is None or (existing["signature"] != message["signature"]):
+        if existing is None or (existing["signature"] != pending_message.signature):
             # check/sanitize the message if needed
             try:
-                message = await check_message_fn(
-                    message, from_chain=(chain_name is not None)
-                )
+                await verify_signature(pending_message)
             except InvalidMessageError:
                 return IncomingStatus.FAILED_PERMANENTLY, []
-
-    if message is None:
-        return IncomingStatus.MESSAGE_HANDLED, []
 
     if retrying:
         LOGGER.debug("(Re)trying %s." % item_hash)
     else:
         LOGGER.info("Incoming %s." % item_hash)
 
-    # we set the incoming chain as default for signature
-    message["chain"] = message.get("chain", chain_name)
+    updates: Dict[str, Dict] = {}
 
-    # if existing is None:
-    #     # TODO: verify if search key is ok. do we need an unique key for messages?
-    #     existing = await Message.collection.find_one(
-    #         filters, projection={'confirmed': 1, 'confirmations': 1, 'time': 1})
-
-    if chain_name and tx_hash and height:
-        # We are getting a confirmation here
-        new_values = await mark_confirmed_data(chain_name, tx_hash, height)
-
-        updates = {
-            "$set": {
-                "confirmed": True,
-            },
-            "$min": {"time": message["time"]},
-            "$addToSet": {"confirmations": new_values["confirmations"][0]},
-        }
-    else:
-        updates = {
-            "$max": {
-                "confirmed": False,
-            },
-            "$min": {"time": message["time"]},
-        }
-
-    # new_values = {'confirmed': False}  # this should be our default.
-    should_commit = False
     if existing:
         if seen_ids is not None and height is not None:
             if ids_key in seen_ids.keys():
@@ -219,25 +187,14 @@ async def incoming(
             else:
                 seen_ids[ids_key] = height
 
-        # THIS CODE SHOULD BE HERE...
-        # But, if a race condition appeared, we might have the message twice.
-        # if (existing['confirmed'] and
-        #         chain_name in [c['chain'] for c in existing['confirmations']]):
-        #     return
-
         LOGGER.debug("Updating %s." % item_hash)
 
-        if chain_name and tx_hash and height:
-            # we need to update messages adding the confirmation
-            # await Message.collection.update_many(filters, updates)
-            should_commit = True
+        if confirmations:
+            updates = make_confirmation_update_query(confirmations)
 
     else:
-        # if not (chain_name and tx_hash and height):
-        #     new_values = {'confirmed': False}  # this should be our default.
-
         try:
-            content = await get_message_content(message)
+            content = await get_message_content(pending_message)
 
         except InvalidContent:
             LOGGER.warning("Can't get content of object %r, won't retry." % item_hash)
@@ -247,7 +204,7 @@ async def incoming(
             if not isinstance(e, ContentCurrentlyUnavailable):
                 LOGGER.exception("Can't get content of object %r" % item_hash)
             await mark_message_for_retry(
-                message=message,
+                message=pending_message,
                 chain_name=chain_name,
                 tx_hash=tx_hash,
                 height=height,
@@ -257,26 +214,23 @@ async def incoming(
             )
             return IncomingStatus.RETRYING_LATER, []
 
-        json_content = content.value
-        if json_content.get("address", None) is None:
-            json_content["address"] = message["sender"]
-
-        if json_content.get("time", None) is None:
-            json_content["time"] = message["time"]
+        validated_message = validate_pending_message(
+            pending_message=pending_message, content=content, confirmations=confirmations
+        )
 
         # warning: those handlers can modify message and content in place
         # and return a status. None has to be retried, -1 is discarded, True is
         # handled and kept.
         # TODO: change this, it's messy.
         try:
-            if message["type"] == MessageType.store:
-                handling_result = await handle_new_storage(message, json_content)
-            elif message["type"] == MessageType.forget:
+            if isinstance(validated_message, ValidatedStoreMessage):
+                handling_result = await handle_new_storage(validated_message)
+            elif isinstance(validated_message, ValidatedForgetMessage):
                 # Handling it here means that there we ensure that the message
                 # has been forgotten before it is saved on the node.
                 # We may want the opposite instead: ensure that the message has
                 # been saved before it is forgotten.
-                handling_result = await handle_forget_message(message, json_content)
+                handling_result = await handle_forget_message(validated_message)
             else:
                 handling_result = True
         except UnknownHashError:
@@ -289,7 +243,7 @@ async def incoming(
         if handling_result is None:
             LOGGER.debug("Message type handler has failed, retrying later.")
             await mark_message_for_retry(
-                message=message,
+                message=pending_message,
                 chain_name=chain_name,
                 tx_hash=tx_hash,
                 height=height,
@@ -306,7 +260,7 @@ async def incoming(
             )
             return IncomingStatus.FAILED_PERMANENTLY, []
 
-        if not await check_sender_authorization(message, json_content):
+        if not await check_sender_authorization(validated_message):
             LOGGER.warning("Invalid sender for %s" % item_hash)
             return IncomingStatus.MESSAGE_HANDLED, []
 
@@ -320,19 +274,10 @@ async def incoming(
                 seen_ids[ids_key] = height
 
         LOGGER.debug("New message to store for %s." % item_hash)
-        # message.update(new_values)
-        updates["$set"] = {
-            "content": json_content,
-            "size": len(content.raw_value),
-            "item_content": message.get("item_content"),
-            "item_type": message.get("item_type"),
-            "channel": message.get("channel"),
-            "signature": message.get("signature"),
-            **updates.get("$set", {}),
-        }
-        should_commit = True
 
-    if should_commit:
+        updates = make_message_upsert_query(validated_message)
+
+    if updates:
         update_op = UpdateOne(filters, updates, upsert=True)
         bulk_ops = [DbBulkOperation(Message, update_op)]
 
@@ -346,7 +291,7 @@ async def incoming(
     return IncomingStatus.MESSAGE_HANDLED, []
 
 
-async def process_one_message(message: Dict, *args, **kwargs):
+async def process_one_message(message: BasePendingMessage, *args, **kwargs):
     """
     Helper function to process a message on the spot.
     """

@@ -1,7 +1,6 @@
 import json
-import os
-from typing import Dict, List
 from pathlib import Path
+from typing import Dict, List
 
 
 def load_fixture_messages(fixture: str) -> List[Dict]:

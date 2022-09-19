@@ -187,7 +187,7 @@ def test_default_item_type_inline():
 
 
 def test_default_item_type_ipfs():
-    # Note: we reuse the fixture of test_parse_program_message here
+    # Note: we reuse the fixture of test_parse_post_message_storage_content here
     message_dict = {
         "chain": "ETH",
         "item_hash": "QmcS6md3AHR62rbmrnjy6SzJkunTsqtc6XhAuzYkYV66m4",

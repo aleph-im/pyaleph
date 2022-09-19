@@ -2,9 +2,10 @@ import json
 
 import pytest
 
-from aleph.exceptions import InvalidContent, ContentCurrentlyUnavailable
-from aleph.storage import ContentSource, get_hash_content, get_json, get_message_content
-from aleph_message.models import ItemType
+from aleph.exceptions import InvalidContent
+from aleph.schemas.message_content import ContentSource
+from aleph.schemas.pending_messages import parse_message
+from aleph.storage import get_hash_content, get_json, get_message_content
 
 
 @pytest.mark.asyncio
@@ -131,32 +132,12 @@ async def test_get_invalid_json(mocker, mock_config):
 
 
 @pytest.mark.asyncio
-async def test_get_inline_content(mock_config):
-    content_hash = "message-hash"
-    json_content = [
-        {"post": "The joys of JavaScript (JK)"},
-        {"post": "Does your cat plan to murder you?"},
-    ]
-    json_bytes = json.dumps(json_content).encode("utf-8")
-    message = {
-        "item_type": ItemType.inline.value,
-        "item_hash": content_hash,
-        "item_content": json_bytes,
-    }
-
-    content = await get_message_content(message)
-    assert content.value == json_content
-    assert content.hash == content_hash
-    assert content.raw_value == json_bytes
-
-
-@pytest.mark.asyncio
 async def test_get_inline_content_full_message():
     """
-    Same test as above, with a complete message. Reuse of an older test.
+    Get inline content from a message. Reuses an older test/fixture.
     """
 
-    msg = {
+    message_dict = {
         "chain": "NULS",
         "channel": "SYSINFO",
         "sender": "TTapAav8g3fFjxQQCjwPd4ERPnai9oya",
@@ -167,47 +148,37 @@ async def test_get_inline_content_full_message():
         "signature": "21027c108022f992f090bbe5c78ca8822f5b7adceb705ae2cd5318543d7bcdd2a74700473045022100b59f7df5333d57080a93be53b9af74e66a284170ec493455e675eb2539ac21db022077ffc66fe8dde7707038344496a85266bf42af1240017d4e1fa0d7068c588ca7",
         "item_type": "inline",
     }
-    content = await get_message_content(msg)
+
+    message = parse_message(message_dict)
+    content = await get_message_content(message)
     item_content = content.value
-    print(item_content)
-    assert len(content.raw_value) == len(msg['item_content'])
-    assert item_content['key'] == 'metrics'
-    assert item_content['address'] == 'TTapAav8g3fFjxQQCjwPd4ERPnai9oya'
-    assert 'memory' in item_content['content']
-    assert 'cpu_cores' in item_content['content']
+
+    assert len(content.raw_value) == len(message.item_content)
+    assert item_content["key"] == "metrics"
+    assert item_content["address"] == "TTapAav8g3fFjxQQCjwPd4ERPnai9oya"
+    assert "memory" in item_content["content"]
+    assert "cpu_cores" in item_content["content"]
 
 
 @pytest.mark.asyncio
 async def test_get_stored_message_content(mocker, mock_config):
-    content_hash = "message-hash"
+    message_dict = {
+        "chain": "ETH",
+        "channel": "TEST",
+        "sender": "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
+        "type": "POST",
+        "item_type": "storage",
+        "item_hash": "315f7313eb97d2c8299e3ee9c19d81f226c44ccf81c387c9fb25c54fced245f5",
+        "item_content": None,
+        "signature": "unsigned fixture, deal with it",
+        "time": 1652805847.190618,
+    }
     json_content = {"I": "Inter", "P": "Planetary", "F": "File", "S": "System"}
     json_bytes = json.dumps(json_content).encode("utf-8")
     mocker.patch("aleph.storage.get_value", return_value=json_bytes)
 
-    message = {
-        "item_type": ItemType.ipfs.value,
-        "item_hash": content_hash,
-    }
+    message = parse_message(message_dict)
 
     content = await get_message_content(message)
     assert content.value == json_content
-    assert content.hash == content_hash
-
-
-@pytest.mark.asyncio
-async def test_get_message_content_unknown_item_type(mocker, mock_config):
-    """
-    Checks that an unknown item type field in a message will mark it as currently unavailable.
-    """
-
-    json_content = {"No more": "inspiration"}
-    json_bytes = json.dumps(json_content).encode("utf-8")
-    mocker.patch("aleph.storage.get_value", return_value=json_bytes)
-
-    message = {
-        "item_type": "invalid-item-type",
-        "item_hash": "message_hash",
-    }
-
-    with pytest.raises(ContentCurrentlyUnavailable):
-        _content = await get_message_content(message)
+    assert content.hash == message.item_hash

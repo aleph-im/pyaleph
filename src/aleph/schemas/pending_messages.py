@@ -17,44 +17,31 @@ TODO: this module should reasonably be part of aleph message, if only
       in aleph-client.
 """
 
-
 import json
-from hashlib import sha256
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Generic
 
 from aleph_message.models import (
     AggregateContent,
-    BaseContent,
-    Chain,
     ForgetContent,
     PostContent,
     ProgramContent,
     StoreContent,
 )
-from aleph_message.models import MessageType, ItemHash, ItemType
-from pydantic import BaseModel, ValidationError, root_validator, validator
+from aleph_message.models import ItemType, MessageType
+from pydantic import ValidationError
+from pydantic import root_validator
 
 from aleph.exceptions import InvalidMessageError, UnknownHashError
+from aleph.schemas.base_messages import AlephBaseMessage, MType, ContentType
 from aleph.utils import item_type_from_hash
 
 MAX_INLINE_SIZE = 200000  # 200kb max inline content size.
 
 
-class BasePendingMessage(BaseModel):
+class BasePendingMessage(AlephBaseMessage, Generic[MType, ContentType]):
     """
     A raw Aleph message, as sent by users to the Aleph network.
     """
-
-    sender: str
-    chain: Chain
-    signature: str
-    type: MessageType
-    item_content: Optional[str]
-    item_type: ItemType
-    item_hash: ItemHash
-    time: float
-    channel: Optional[str] = None
-    content: Optional[BaseContent] = None
 
     @root_validator(pre=True)
     def load_content(cls, values):
@@ -96,91 +83,37 @@ class BasePendingMessage(BaseModel):
             if item_content is not None:
                 raise ValueError(f"{item_type} messages cannot define item_content")
 
-        # Store back the default item_content if not specified
+        # Store back the default item_type if not specified
         if input_item_type is None:
             values["item_type"] = default_item_type.value
 
         return values
 
-    @root_validator()
-    def check_item_type(cls, values):
-        """
-        Checks that the item hash of the message matches the one inferred from the hash.
-        Only applicable to storage/ipfs item types.
-        """
-        item_type_value = values.get("item_type")
-        if item_type_value is None:
-            raise ValueError("Could not determine item type")
 
-        item_type = ItemType(item_type_value)
-        if item_type == ItemType.inline:
-            return values
-
-        item_hash = values.get("item_hash")
-        if item_hash is None:
-            raise ValueError("Could not determine item hash")
-
-        expected_item_type = item_type_from_hash(item_hash)
-        if item_type != expected_item_type:
-            raise ValueError(
-                f"Expected {expected_item_type} based on hash but item type is {item_type}."
-            )
-        return values
-
-    @validator("item_hash")
-    def check_item_hash(cls, v, values):
-        """
-        For inline item types, check that the item hash is equal to
-        the hash of the item content.
-        """
-
-        item_type = values.get("item_type")
-        if item_type is None:
-            raise ValueError("Could not determine item type")
-
-        if item_type == ItemType.inline:
-            item_content: str = values.get("item_content")
-            if item_content is None:
-                raise ValueError("Could not find inline item content")
-
-            computed_hash: str = sha256(item_content.encode()).hexdigest()
-            if v != computed_hash:
-                raise ValueError(
-                    "'item_hash' does not match 'sha256(item_content)'"
-                    f", expecting {computed_hash}"
-                )
-        elif item_type == ItemType.ipfs:
-            # TODO: CHeck that the hash looks like an IPFS multihash
-            pass
-        else:
-            if item_type != ItemType.storage:
-                raise ValueError(f"Unknown item type: '{item_type}'")
-        return v
+class PendingAggregateMessage(
+    BasePendingMessage[Literal[MessageType.aggregate], AggregateContent]  # type: ignore
+):
+    pass
 
 
-class PendingAggregateMessage(BasePendingMessage):
-    type: Literal[MessageType.aggregate]  # type: ignore
-    content: Optional[AggregateContent] = None
+class PendingForgetMessage(
+    BasePendingMessage[Literal[MessageType.forget], ForgetContent]  # type: ignore
+):
+    pass
 
 
-class PendingForgetMessage(BasePendingMessage):
-    type: Literal[MessageType.forget]  # type: ignore
-    content: Optional[ForgetContent] = None
+class PendingPostMessage(BasePendingMessage[Literal[MessageType.post], PostContent]):  # type: ignore
+    pass
 
 
-class PendingPostMessage(BasePendingMessage):
-    type: Literal[MessageType.post]  # type: ignore
-    content: Optional[PostContent] = None
+class PendingProgramMessage(
+    BasePendingMessage[Literal[MessageType.program], ProgramContent]  # type: ignore
+):
+    pass
 
 
-class PendingProgramMessage(BasePendingMessage):
-    type: Literal[MessageType.program]  # type: ignore
-    content: Optional[ProgramContent] = None
-
-
-class PendingStoreMessage(BasePendingMessage):
-    type: Literal[MessageType.store]  # type: ignore
-    content: Optional[StoreContent] = None
+class PendingStoreMessage(BasePendingMessage[Literal[MessageType.store], StoreContent]):  # type: ignore
+    pass
 
 
 MESSAGE_TYPE_TO_CLASS = {

@@ -10,15 +10,18 @@ TODO:
 
 import asyncio
 import logging
-from typing import Dict, Optional
+from typing import Optional
 
 import aioipfs
 from aioipfs import InvalidCIDError
-from aleph_message.models import ItemType, StoreMessage
-from pydantic import ValidationError
+from aleph_message.models import ItemType
 
 from aleph.config import get_config
 from aleph.exceptions import AlephStorageException, UnknownHashError
+from aleph.schemas.validated_message import (
+    StoreContentWithMetadata,
+    ValidatedStoreMessage, EngineInfo,
+)
 from aleph.services.ipfs.common import get_ipfs_api
 from aleph.storage import get_hash_content
 from aleph.utils import item_type_from_hash
@@ -26,21 +29,10 @@ from aleph.utils import item_type_from_hash
 LOGGER = logging.getLogger("HANDLERS.STORAGE")
 
 
-async def handle_new_storage(message: Dict, content: Dict) -> Optional[bool]:
+async def handle_new_storage(store_message: ValidatedStoreMessage) -> Optional[bool]:
     config = get_config()
     if not config.storage.store_files.value:
         return True  # Ignore
-
-    # TODO: this is a temporary fix to release faster, finish od-message-models-in-pipeline
-    message["content"] = content
-
-    # TODO: ideally the content should be transformed earlier, but this requires more clean up
-    #       (ex: no more in place modification of content, simplification of the flow)
-    try:
-        store_message = StoreMessage(**message)
-    except ValidationError as e:
-        logging.warning("Invalid store message: %s", e)
-        return False  # Invalid store message, discard
 
     item_type = store_message.content.item_type
     try:
@@ -49,12 +41,13 @@ async def handle_new_storage(message: Dict, content: Dict) -> Optional[bool]:
         LOGGER.warning("Got invalid storage engine %s" % item_type)
         return False  # not allowed, ignore.
 
+    output_content = StoreContentWithMetadata.from_content(store_message.content)
+
     is_folder = False
     item_hash = store_message.content.item_hash
 
     ipfs_enabled = config.ipfs.enabled.value
     do_standard_lookup = True
-    size = 0
 
     if engine == ItemType.ipfs and ipfs_enabled:
         if item_type_from_hash(item_hash) != ItemType.ipfs:
@@ -66,7 +59,9 @@ async def handle_new_storage(message: Dict, content: Dict) -> Optional[bool]:
             try:
                 stats = await asyncio.wait_for(api.files.stat(f"/ipfs/{item_hash}"), 5)
             except InvalidCIDError as e:
-                raise UnknownHashError(f"Invalid IPFS hash from API: '{item_hash}'") from e
+                raise UnknownHashError(
+                    f"Invalid IPFS hash from API: '{item_hash}'"
+                ) from e
             if stats is None:
                 return None
 
@@ -77,8 +72,8 @@ async def handle_new_storage(message: Dict, content: Dict) -> Optional[bool]:
             ):
                 do_standard_lookup = True
             else:
-                size = stats["CumulativeSize"]
-                content["engine_info"] = stats
+                output_content.size = stats["CumulativeSize"]
+                output_content.engine_info = EngineInfo(**stats)
                 pin_api = await get_ipfs_api(timeout=60)
                 timer = 0
                 is_folder = stats["Type"] == "directory"
@@ -115,9 +110,9 @@ async def handle_new_storage(message: Dict, content: Dict) -> Optional[bool]:
         except AlephStorageException:
             return None
 
-        size = len(file_content)
+        output_content.size = len(file_content)
 
-    content["size"] = size
-    content["content_type"] = is_folder and "directory" or "file"
+    output_content.content_type = "directory" if is_folder else "file"
+    store_message.content = output_content
 
     return True

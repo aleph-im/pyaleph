@@ -1,4 +1,6 @@
 import asyncio
+import os
+import sys
 
 import pymongo
 import pytest
@@ -11,6 +13,12 @@ from aleph.model import init_db
 from aleph.web import create_app
 
 TEST_DB = "ccn_automated_tests"
+
+
+# Add the helpers to the PYTHONPATH.
+# Note: mark the "helpers" directory as a source directory to tell PyCharm
+# about this trick and avoid IDE errors.
+sys.path.append(os.path.join(os.path.dirname(__file__), 'helpers'))
 
 
 def drop_db(db_name: str, config: Config):

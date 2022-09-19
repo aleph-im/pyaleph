@@ -6,13 +6,12 @@ from typing import Dict, Optional, List
 
 from aioipfs.api import RepoAPI
 from aioipfs.exceptions import NotPinnedError
-from aleph_message.models import ForgetMessage, MessageType
-from aleph_message.models import ItemType
-from pydantic import ValidationError
+from aleph_message.models import ItemType, MessageType
 
 from aleph.model.filepin import PermanentPin
 from aleph.model.hashes import delete_value
 from aleph.model.messages import Message
+from aleph.schemas.validated_message import ValidatedForgetMessage
 from aleph.services.ipfs.common import get_ipfs_api
 from aleph.utils import item_type_from_hash
 
@@ -118,7 +117,7 @@ async def garbage_collect(storage_hash: str, storage_type: ItemType):
 
 
 async def is_allowed_to_forget(
-    target_info: TargetMessageInfo, by: ForgetMessage
+    target_info: TargetMessageInfo, by: ValidatedForgetMessage
 ) -> bool:
     """Check if a forget message is allowed to 'forget' the target message given its hash."""
     # Both senders are identical:
@@ -136,7 +135,7 @@ async def is_allowed_to_forget(
 
 
 async def forget_if_allowed(
-    target_info: TargetMessageInfo, forget_message: ForgetMessage
+    target_info: TargetMessageInfo, forget_message: ValidatedForgetMessage
 ) -> None:
     """Forget a message.
 
@@ -210,17 +209,8 @@ async def get_target_message_info(target_hash: str) -> Optional[TargetMessageInf
     return TargetMessageInfo.from_db_object(message_dict)
 
 
-async def handle_forget_message(message: Dict, content: Dict) -> bool:
+async def handle_forget_message(forget_message: ValidatedForgetMessage) -> bool:
     # Parsing and validation
-    # TODO: this is a temporary fix to release faster, finish od-message-models-in-pipeline
-    message["content"] = content
-
-    try:
-        forget_message = ForgetMessage(**message)
-    except ValidationError as e:
-        logger.error("Invalid forget message: %s", e)
-        return False
-
     logger.debug(f"Handling forget message {forget_message.item_hash}")
     hashes_to_forget = forget_message.content.hashes
 

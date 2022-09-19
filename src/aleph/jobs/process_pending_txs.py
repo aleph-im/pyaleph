@@ -18,9 +18,9 @@ from aleph.exceptions import InvalidMessageError
 from aleph.logging import setup_logging
 from aleph.model.db_bulk_operation import DbBulkOperation
 from aleph.model.pending import PendingMessage, PendingTX
-from aleph.network import check_message
 from aleph.services.p2p import singleton
 from .job_utils import prepare_loop, process_job_results
+from ..schemas.pending_messages import parse_message
 
 LOGGER = logging.getLogger("jobs.pending_txs")
 
@@ -37,16 +37,16 @@ async def handle_pending_tx(
         pending_tx["content"], tx_context, seen_ids=seen_ids
     )
     if messages:
-        for i, message in enumerate(messages):
-            message["time"] = tx_context.time + (i / 1000)  # force order
+        for i, message_dict in enumerate(messages):
 
             try:
-                message = await check_message(
-                    message, trusted=True
-                )  # we don't check signatures yet.
+                # we don't check signatures yet.
+                message = parse_message(message_dict)
             except InvalidMessageError as error:
                 LOGGER.warning(error)
                 continue
+
+            message.time = tx_context.time + (i / 1000)  # force order
 
             # we add it to the message queue... bad idea? should we process it asap?
             db_operations.append(
@@ -54,7 +54,7 @@ async def handle_pending_tx(
                     collection=PendingMessage,
                     operation=InsertOne(
                         {
-                            "message": message,
+                            "message": message.dict(exclude={"content"}),
                             "source": dict(
                                 chain_name=tx_context.chain_name,
                                 tx_hash=tx_context.tx_hash,
