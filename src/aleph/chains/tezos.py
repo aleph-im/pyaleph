@@ -1,5 +1,7 @@
+import datetime as dt
 import json
 import logging
+from enum import Enum
 
 from aleph_pytezos.crypto.key import Key
 
@@ -10,13 +12,82 @@ from aleph.schemas.pending_messages import BasePendingMessage
 LOGGER = logging.getLogger(__name__)
 CHAIN_NAME = "TEZOS"
 
+# Default dApp URI for Micheline-style signatures
+DEFAULT_DAPP_URI = "aleph.im"
+
+
+class TezosSignatureType(str, Enum):
+    RAW = "raw"
+    MICHELINE = "micheline"
+
+
+def timestamp_to_iso_8601(timestamp: float) -> str:
+    """
+    Returns the timestamp formatted to ISO-8601, JS-style.
+
+    Compared to the regular `isoformat()`, this function only provides precision down
+    to milliseconds and prints a "Z" instead of +0000 for UTC.
+    This format is typically used by JavaScript applications, like our TS SDK.
+
+    Example: 2022-09-23T14:41:19.029Z
+
+    :param timestamp: The timestamp to format.
+    :return: The formatted timestamp.
+    """
+
+    return (
+        dt.datetime.utcfromtimestamp(timestamp).isoformat(timespec="milliseconds") + "Z"
+    )
+
+
+def micheline_verification_buffer(
+    verification_buffer: bytes,
+    timestamp: float,
+    dapp_uri: str,
+) -> bytes:
+    """
+    Computes the verification buffer for Micheline-type signatures.
+
+    This verification buffer is used when signing data with a Tezos web wallet.
+    See https://tezostaquito.io/docs/signing/#generating-a-signature-with-beacon-sdk.
+
+    :param verification_buffer: The original (non-Tezos) verification buffer for the Aleph message.
+    :param timestamp: Timestamp of the message.
+    :return: The verification buffer used for the signature by the web wallet.
+    """
+
+    prefix = b"Tezos Signed Message:"
+    timestamp = timestamp_to_iso_8601(timestamp).encode("utf-8")
+
+    payload = b" ".join(
+        (prefix, dapp_uri.encode("utf-8"), timestamp, verification_buffer)
+    )
+    hex_encoded_payload = payload.hex()
+    payload_size = str(len(hex_encoded_payload)).encode("utf-8")
+
+    return b"\x05" + b"\x01\x00" + payload_size + payload
+
+
+def get_tezos_verification_buffer(
+    message: BasePendingMessage, signature_type: TezosSignatureType, dapp_uri: str
+) -> bytes:
+    verification_buffer = get_verification_buffer(message)
+
+    if signature_type == TezosSignatureType.RAW:
+        return verification_buffer
+    elif signature_type == TezosSignatureType.MICHELINE:
+        return micheline_verification_buffer(
+            verification_buffer, message.time, dapp_uri
+        )
+
+    raise ValueError(f"Unsupported signature type: {signature_type}")
+
 
 async def verify_signature(message: BasePendingMessage) -> bool:
     """
     Verifies the cryptographic signature of a message signed with a Tezos key.
     """
 
-    verification_buffer = get_verification_buffer(message)
     try:
         signature_dict = json.loads(message.signature)
     except json.JSONDecodeError:
@@ -30,6 +101,9 @@ async def verify_signature(message: BasePendingMessage) -> bool:
         LOGGER.exception("'%s' key missing from Tezos signature dictionary.", e.args[0])
         return False
 
+    signature_type = TezosSignatureType(signature_dict.get("signingType", "raw"))
+    dapp_uri = signature_dict.get("dappUri", DEFAULT_DAPP_URI)
+
     key = Key.from_encoded_key(public_key)
     # Check that the sender ID is equal to the public key hash
     public_key_hash = key.public_key_hash()
@@ -40,6 +114,10 @@ async def verify_signature(message: BasePendingMessage) -> bool:
             message.sender,
             public_key_hash,
         )
+
+    verification_buffer = get_tezos_verification_buffer(
+        message, signature_type, dapp_uri
+    )
 
     # Check the signature
     try:
