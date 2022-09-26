@@ -16,10 +16,13 @@ from aleph.schemas.chains.tezos_indexer_response import (
     MessageEventPayload,
 )
 from aleph.schemas.pending_messages import parse_message
+from aleph.chains import (
+    tezos,
+)  # TODO: this import is currently necessary because of circular dependencies
 
 
 @pytest.mark.asyncio
-async def test_tezos_verify_signature():
+async def test_tezos_verify_signature_raw():
     message_dict = {
         "chain": "TEZOS",
         "channel": "TEST",
@@ -42,7 +45,7 @@ async def test_tezos_verify_signature():
 
 
 @pytest.mark.asyncio
-async def test_tezos_verify_signature_ed25519():
+async def test_tezos_verify_signature_raw_ed25519():
     message_dict = {
         "chain": "TEZOS",
         "sender": "tz1SmGHzna3YhKropa3WudVq72jhTPDBn4r5",
@@ -234,3 +237,20 @@ def test_indexer_event_to_aleph_message_invalid_payload():
 
     with pytest.raises(InvalidMessageError):
         _ = indexer_event_to_aleph_message(indexer_event)
+
+
+@pytest.mark.asyncio
+async def test_tezos_verify_signature_micheline():
+    message_dict = {
+        "chain": "TEZOS",
+        "sender": "tz1VrPqrVdMFsgykWyhGH7SYcQ9avHTjPcdD",
+        "type": "POST",
+        "channel": "ALEPH-TEST",
+        "signature": '{"signingType":"micheline","signature":"sigXD8iT5ivdawgPzE1AbtDwqqAjJhS5sHS1psyE74YjfiaQnxWZsATNjncdsuQw3b9xaK79krxtsC8uQoT5TcUXmo66aovT","publicKey":"edpkvapDnjnasrNcmUdMZXhQZwpX6viPyuGCq6nrP4W7ZJCm7EFTpS"}',
+        "time": 1663944079.029,
+        "item_type": "storage",
+        "item_hash": "72b2722b95582419cfa71f631ff6c6afc56344dc6a4609e772877621813040b7",
+    }
+
+    message = parse_message(message_dict)
+    await verify_signature(message)
