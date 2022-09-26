@@ -12,8 +12,8 @@ from aleph.schemas.pending_messages import BasePendingMessage
 LOGGER = logging.getLogger(__name__)
 CHAIN_NAME = "TEZOS"
 
-# Default dApp URI for Micheline-style signatures
-DEFAULT_DAPP_URI = "aleph.im"
+# Default dApp URL for Micheline-style signatures
+DEFAULT_DAPP_URL = "aleph.im"
 
 
 class TezosSignatureType(str, Enum):
@@ -43,7 +43,7 @@ def timestamp_to_iso_8601(timestamp: float) -> str:
 def micheline_verification_buffer(
     verification_buffer: bytes,
     timestamp: float,
-    dapp_uri: str,
+    dapp_url: str,
 ) -> bytes:
     """
     Computes the verification buffer for Micheline-type signatures.
@@ -53,6 +53,7 @@ def micheline_verification_buffer(
 
     :param verification_buffer: The original (non-Tezos) verification buffer for the Aleph message.
     :param timestamp: Timestamp of the message.
+    :param dapp_url: The URL of the dApp, for use as part of the verification buffer.
     :return: The verification buffer used for the signature by the web wallet.
     """
 
@@ -60,7 +61,7 @@ def micheline_verification_buffer(
     timestamp = timestamp_to_iso_8601(timestamp).encode("utf-8")
 
     payload = b" ".join(
-        (prefix, dapp_uri.encode("utf-8"), timestamp, verification_buffer)
+        (prefix, dapp_url.encode("utf-8"), timestamp, verification_buffer)
     )
     hex_encoded_payload = payload.hex()
     payload_size = str(len(hex_encoded_payload)).encode("utf-8")
@@ -69,7 +70,7 @@ def micheline_verification_buffer(
 
 
 def get_tezos_verification_buffer(
-    message: BasePendingMessage, signature_type: TezosSignatureType, dapp_uri: str
+    message: BasePendingMessage, signature_type: TezosSignatureType, dapp_url: str
 ) -> bytes:
     verification_buffer = get_verification_buffer(message)
 
@@ -77,7 +78,7 @@ def get_tezos_verification_buffer(
         return verification_buffer
     elif signature_type == TezosSignatureType.MICHELINE:
         return micheline_verification_buffer(
-            verification_buffer, message.time, dapp_uri
+            verification_buffer, message.time, dapp_url
         )
 
     raise ValueError(f"Unsupported signature type: {signature_type}")
@@ -102,7 +103,7 @@ async def verify_signature(message: BasePendingMessage) -> bool:
         return False
 
     signature_type = TezosSignatureType(signature_dict.get("signingType", "raw"))
-    dapp_uri = signature_dict.get("dAppUrl", DEFAULT_DAPP_URI)
+    dapp_url = signature_dict.get("dappUrl", DEFAULT_DAPP_URL)
 
     key = Key.from_encoded_key(public_key)
     # Check that the sender ID is equal to the public key hash
@@ -116,7 +117,7 @@ async def verify_signature(message: BasePendingMessage) -> bool:
         )
 
     verification_buffer = get_tezos_verification_buffer(
-        message, signature_type, dapp_uri
+        message, signature_type, dapp_url
     )
 
     # Check the signature
