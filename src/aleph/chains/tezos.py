@@ -103,7 +103,7 @@ async def verify_signature(message: BasePendingMessage) -> bool:
         return False
 
     signature_type = TezosSignatureType(signature_dict.get("signingType", "raw"))
-    dapp_url = signature_dict.get("dappUrl", DEFAULT_DAPP_URL)
+    dapp_url = signature_dict.get("dAppUrl", DEFAULT_DAPP_URL)
 
     key = Key.from_encoded_key(public_key)
     # Check that the sender ID is equal to the public key hash
