@@ -5,10 +5,10 @@ import pytest
 from aleph.handlers.storage import handle_new_storage
 from aleph.schemas.message_content import ContentSource, RawContent
 from aleph.schemas.validated_message import (
-    MessageConfirmation,
     ValidatedStoreMessage,
     StoreContentWithMetadata,
 )
+from aleph.schemas.message_confirmation import MessageConfirmation
 from message_test_helpers import make_validated_message_from_dict
 
 

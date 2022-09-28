@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-from dataclasses import asdict
 from enum import IntEnum
 from typing import Dict, Optional, Tuple, List
 
@@ -27,12 +26,12 @@ from aleph.permissions import check_sender_authorization
 from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.schemas.validated_message import (
     validate_pending_message,
-    MessageConfirmation,
     ValidatedStoreMessage,
     ValidatedForgetMessage,
     make_confirmation_update_query,
     make_message_upsert_query,
 )
+from ..schemas.message_confirmation import MessageConfirmation
 from aleph.storage import get_json, pin_hash, add_json, get_message_content
 from .tx_context import TxContext
 
@@ -71,7 +70,7 @@ async def delayed_incoming(
     await PendingMessage.collection.insert_one(
         {
             "message": message.dict(exclude={"content"}),
-            "tx_context": asdict(tx_context) if tx_context is not None else None,
+            "tx_context": tx_context.dict() if tx_context else None,
             "check_message": check_message,
         }
     )
@@ -122,7 +121,7 @@ async def incoming(
     chain_name = tx_context.chain if tx_context is not None else None
     ids_key = (item_hash, sender, chain_name)
 
-    if tx_context is not None:
+    if tx_context:
         if seen_ids is not None:
             if ids_key in seen_ids.keys():
                 if tx_context.height > seen_ids[ids_key]:
@@ -371,5 +370,5 @@ async def incoming_chaindata(content: Dict, context: TxContext):
     For now we only add it to the database, it will be processed later.
     """
     await PendingTX.collection.insert_one(
-        {"content": content, "context": asdict(context)}
+        {"content": content, "context": context.dict()}
     )

@@ -4,7 +4,6 @@ Job in charge of loading messages stored on-chain and put them in the pending me
 
 import asyncio
 import logging
-from dataclasses import asdict
 from typing import List, Dict, Optional
 from typing import Set
 
@@ -57,7 +56,7 @@ async def handle_pending_tx(
                     operation=InsertOne(
                         {
                             "message": message.dict(exclude={"content"}),
-                            "tx_context": asdict(tx_context),
+                            "tx_context": tx_context.dict(),
                             "check_message": True,
                         }
                     ),

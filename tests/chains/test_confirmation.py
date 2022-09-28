@@ -1,5 +1,4 @@
 import json
-from dataclasses import asdict
 from typing import Dict
 
 import pytest
@@ -72,7 +71,7 @@ async def test_confirm_message(test_db):
 
     assert message_in_db is not None
     assert message_in_db["confirmed"]
-    expected_confirmations = [asdict(tx_context)]
+    expected_confirmations = [tx_context.dict()]
     assert message_in_db["confirmations"] == expected_confirmations
 
     capped_message_after_confirmation = await CappedMessage.collection.find_one(
@@ -111,7 +110,7 @@ async def test_process_confirmed_message(test_db):
     assert message_in_db is not None
     assert message_in_db["confirmed"]
 
-    expected_confirmations = [asdict(tx_context)]
+    expected_confirmations = [tx_context.dict()]
     assert message_in_db["confirmations"] == expected_confirmations
 
     capped_message_in_db = await CappedMessage.collection.find_one(
@@ -120,4 +119,4 @@ async def test_process_confirmed_message(test_db):
 
     assert remove_id_key(message_in_db) == remove_id_key(capped_message_in_db)
     assert capped_message_in_db["confirmed"]
-    assert capped_message_in_db["confirmations"] == [asdict(tx_context)]
+    assert capped_message_in_db["confirmations"] == [tx_context.dict()]

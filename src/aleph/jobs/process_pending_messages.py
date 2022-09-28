@@ -21,6 +21,7 @@ from aleph.model.pending import PendingMessage
 from aleph.schemas.pending_messages import parse_message
 from aleph.services.p2p import singleton
 from .job_utils import prepare_loop, process_job_results
+from ..chains.tx_context import TxContext
 
 LOGGER = getLogger("jobs.pending_messages")
 
@@ -60,7 +61,8 @@ async def handle_pending_message(
         # If an invalid message somehow ended in pending messages, drop it.
         return [delete_pending_message_op]
 
-    tx_context = pending.get("tx_context")
+    tx_context_dict = pending.get("tx_context")
+    tx_context = TxContext.parse_obj(tx_context_dict) if tx_context_dict else None
 
     async with sem:
         status, operations = await incoming(

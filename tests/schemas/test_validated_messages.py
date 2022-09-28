@@ -16,10 +16,10 @@ from aleph.schemas.pending_messages import (
 from aleph.schemas.validated_message import (
     validate_pending_message,
     BaseValidatedMessage,
-    MessageConfirmation,
     ValidatedAggregateMessage,
     ValidatedStoreMessage,
 )
+from aleph.schemas.message_confirmation import MessageConfirmation
 
 
 def check_basic_message_fields(message: BaseValidatedMessage, message_dict: Dict):
