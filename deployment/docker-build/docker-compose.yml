@@ -18,8 +18,8 @@ services:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
 
   p2p-service:
     restart: always
@@ -35,7 +35,7 @@ services:
       RUST_LOG: info
     ports:
       - "4025:4025"
-      - "4030:4030"
+      - "127.0.0.1:4030:4030"
     command:
       - "--config"
       - "/etc/p2p-service/config.yml"
@@ -48,8 +48,8 @@ services:
     ports:
       - "4001:4001"
       - "4001:4001/udp"
-      - "5001:5001"
-      - "8080:8080"
+      - "127.0.0.1:5001:5001"
+      - "127.0.0.1:8080:8080"
     volumes:
       - "pyaleph-ipfs:/data/ipfs"
     environment:
@@ -67,7 +67,7 @@ services:
     networks:
       - pyaleph
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
 
 networks:
   pyaleph:
