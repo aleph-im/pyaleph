@@ -19,14 +19,20 @@ db_backend = None
 # Mongodb connection and db
 connection = None
 db = None
-fs = None
 
 
 def init_db_globals(config: Config):
-    global connection, db, fs
+    global connection, db
     connection = AsyncIOMotorClient(config.mongodb.uri.value, tz_aware=True)
     db = connection[config.mongodb.database.value]
-    fs = AsyncIOMotorGridFSBucket(db)
+
+
+def make_gridfs_client():
+    global db
+    if db is None:
+        raise ValueError("DB is not initialized")
+
+    return AsyncIOMotorGridFSBucket(db)
 
 
 def init_db(config: Config, ensure_indexes: bool = True):
@@ -55,8 +61,6 @@ def init_db(config: Config, ensure_indexes: bool = True):
         Peer.ensure_indexes(sync_db)
 
         PermanentPin.ensure_indexes(sync_db)
-        # from aleph.model.hashes import Hash
-        # Hash.ensure_indexes(sync_db)
 
     from aleph.model.messages import Message
 

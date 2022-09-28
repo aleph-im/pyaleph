@@ -5,7 +5,7 @@ from typing import Union
 
 import base58
 
-from ...exceptions import InvalidMessageError
+from aleph.exceptions import InvalidMessageError
 from .common import get_ipfs_api
 
 LOGGER = logging.getLogger("IPFS.PUBSUB")
@@ -40,9 +40,9 @@ async def pub(topic: str, message: Union[str, bytes]):
     await api.pubsub.pub(topic, message)
 
 
-async def incoming_channel(topic) -> None:
+# TODO: add type hint for message_processor, it currently causes a cyclical import
+async def incoming_channel(topic: str, message_processor) -> None:
     from aleph.network import decode_pubsub_message
-    from aleph.chains.common import process_one_message
 
     while True:
         try:
@@ -50,7 +50,7 @@ async def incoming_channel(topic) -> None:
                 try:
                     message = await decode_pubsub_message(mvalue["data"])
                     LOGGER.debug("New message %r" % message)
-                    asyncio.create_task(process_one_message(message))
+                    asyncio.create_task(message_processor.process_one_message(message))
                 except InvalidMessageError:
                     LOGGER.warning(f"Invalid message {mvalue}")
         except Exception:

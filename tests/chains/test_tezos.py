@@ -1,10 +1,7 @@
 import pytest
 
-from aleph.network import verify_signature
+from aleph.chains.tezos import TezosConnector
 from aleph.schemas.pending_messages import parse_message
-from aleph.chains import (
-    tezos,
-)  # TODO: this import is currently necessary because of circular dependencies
 
 
 @pytest.mark.asyncio
@@ -25,9 +22,10 @@ async def test_tezos_verify_signature_raw():
             "type": "test",
         },
     }
+    connector = TezosConnector()
 
     message = parse_message(message_dict)
-    await verify_signature(message)
+    assert await connector.verify_signature(message)
 
 
 @pytest.mark.asyncio
@@ -44,8 +42,10 @@ async def test_tezos_verify_signature_raw_ed25519():
         "item_hash": "41de1a7766c7e5fad54772470eefde63b6bef8683c4159d9179d74955009deb4",
     }
 
+    connector = TezosConnector()
+
     message = parse_message(message_dict)
-    await verify_signature(message)
+    assert await connector.verify_signature(message)
 
 
 @pytest.mark.asyncio
@@ -60,6 +60,7 @@ async def test_tezos_verify_signature_micheline():
         "item_type": "storage",
         "item_hash": "72b2722b95582419cfa71f631ff6c6afc56344dc6a4609e772877621813040b7",
     }
+    connector = TezosConnector()
 
     message = parse_message(message_dict)
-    await verify_signature(message)
+    assert await connector.verify_signature(message)

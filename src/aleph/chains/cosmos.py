@@ -8,7 +8,7 @@ import ecdsa
 from cosmospy import pubkey_to_address
 
 from aleph.chains.common import get_verification_buffer
-from aleph.register_chain import register_verifier
+from .connector import Verifier
 from aleph.schemas.pending_messages import BasePendingMessage
 
 LOGGER = logging.getLogger("chains.cosmos")
@@ -50,58 +50,56 @@ async def get_hrp(address):
     return hrp
 
 
-async def verify_signature(message: BasePendingMessage) -> bool:
-    """Verifies a signature of a message, return True if verified, false if not"""
+class CosmosConnector(Verifier):
+    async def verify_signature(self, message: BasePendingMessage) -> bool:
+        """Verifies a signature of a message, return True if verified, false if not"""
 
-    try:
-        signature = json.loads(message.signature)
-    except Exception:
-        LOGGER.exception("Cosmos signature deserialization error")
-        return False
-
-    try:
-        if signature.get("pub_key").get("type") != "tendermint/PubKeySecp256k1":
-            LOGGER.warning(
-                "Unsupported curve %s" % signature.get("pub_key").get("type")
-            )
-    except Exception:
-        LOGGER.exception("Cosmos signature Key error")
-        return False
-
-    try:
-        pub_key = base64.b64decode(signature.get("pub_key").get("value"))
-        hrp = await get_hrp(message.sender)
-    except Exception:
-        LOGGER.exception("Cosmos key verification error")
-        result = False
-
-    try:
-        sig_compact = base64.b64decode(signature.get("signature"))
-    except Exception:
-        LOGGER.exception("Cosmos signature deserialization error")
-        result = False
-
-    try:
-        address = pubkey_to_address(pub_key, hrp=hrp)
-        if address != message.sender:
-            LOGGER.warning(
-                "Signature for bad address %s instead of %s"
-                % (address, message.sender)
-            )
+        try:
+            signature = json.loads(message.signature)
+        except Exception:
+            LOGGER.exception("Cosmos signature deserialization error")
             return False
 
-        verif = await get_verification_string(message)
-        vk = ecdsa.VerifyingKey.from_string(pub_key, curve=ecdsa.SECP256k1)
-        verified = vk.verify(
-            sig_compact, verif.encode("utf-8"), hashfunc=hashlib.sha256
-        )
-        return verified
+        try:
+            if signature.get("pub_key").get("type") != "tendermint/PubKeySecp256k1":
+                LOGGER.warning(
+                    "Unsupported curve %s" % signature.get("pub_key").get("type")
+                )
+        except Exception:
+            LOGGER.exception("Cosmos signature Key error")
+            return False
 
-    except Exception:
-        LOGGER.exception("Substrate Signature verification error")
-        result = False
+        try:
+            pub_key = base64.b64decode(signature.get("pub_key").get("value"))
+            hrp = await get_hrp(message.sender)
+        except Exception:
+            LOGGER.exception("Cosmos key verification error")
+            result = False
 
-    return result
+        try:
+            sig_compact = base64.b64decode(signature.get("signature"))
+        except Exception:
+            LOGGER.exception("Cosmos signature deserialization error")
+            result = False
 
+        try:
+            address = pubkey_to_address(pub_key, hrp=hrp)
+            if address != message.sender:
+                LOGGER.warning(
+                    "Signature for bad address %s instead of %s"
+                    % (address, message.sender)
+                )
+                return False
 
-register_verifier(CHAIN_NAME, verify_signature)
+            verif = await get_verification_string(message)
+            vk = ecdsa.VerifyingKey.from_string(pub_key, curve=ecdsa.SECP256k1)
+            verified = vk.verify(
+                sig_compact, verif.encode("utf-8"), hashfunc=hashlib.sha256
+            )
+            return verified
+
+        except Exception:
+            LOGGER.exception("Substrate Signature verification error")
+            result = False
+
+        return result

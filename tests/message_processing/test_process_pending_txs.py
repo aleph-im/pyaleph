@@ -5,8 +5,9 @@ import pytest
 from bson.objectid import ObjectId
 from pymongo import DeleteOne, InsertOne
 
-from aleph.jobs.process_pending_txs import handle_pending_tx
+from aleph.jobs.process_pending_txs import PendingTxProcessor
 from aleph.model.pending import PendingMessage, PendingTX
+from aleph.storage import StorageService
 from .load_fixtures import load_fixture_messages
 
 
@@ -19,11 +20,11 @@ async def get_fixture_chaindata_messages(
 
 
 @pytest.mark.asyncio
-async def test_process_pending_tx(mocker, test_db):
-    mocker.patch(
-        "aleph.jobs.process_pending_txs.get_chaindata_messages",
-        get_fixture_chaindata_messages,
-    )
+async def test_process_pending_tx(mocker, test_storage_service: StorageService):
+    chain_data_service = mocker.AsyncMock()
+    chain_data_service.get_chaindata_messages = get_fixture_chaindata_messages
+    pending_tx_processor = PendingTxProcessor(storage_service=test_storage_service)
+    pending_tx_processor.chain_data_service = chain_data_service
 
     pending_tx = {
         "_id": ObjectId("624ee76595d0a7ca46f4392d"),
@@ -41,8 +42,10 @@ async def test_process_pending_tx(mocker, test_db):
         },
     }
 
-    seen_ids = []
-    db_operations = await handle_pending_tx(pending_tx=pending_tx, seen_ids=seen_ids)
+    seen_ids: List[str] = []
+    db_operations = await pending_tx_processor.handle_pending_tx(
+        pending_tx=pending_tx, seen_ids=seen_ids
+    )
 
     db_operations_by_collection = defaultdict(list)
     for op in db_operations:
