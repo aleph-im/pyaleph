@@ -1,29 +1,20 @@
 import json
 import logging
-from typing import Coroutine, Dict, List
+from typing import Coroutine, List
 from urllib.parse import unquote
 
 from aleph_p2p_client import AlephP2PServiceClient
 
+from aleph.chains.chain_service import ChainService
+from aleph.handlers.message_handler import MessageHandler
 from aleph.exceptions import InvalidMessageError
-from aleph.register_chain import VERIFIER_REGISTER
+from aleph.model import make_gridfs_client
 from aleph.schemas.pending_messages import BasePendingMessage, parse_message
 from aleph.services.ipfs.pubsub import incoming_channel as incoming_ipfs_channel
+from aleph.services.storage.gridfs_engine import GridFsStorageEngine
+from aleph.storage import StorageService
 
 LOGGER = logging.getLogger("NETWORK")
-
-
-INCOMING_MESSAGE_AUTHORIZED_FIELDS = [
-    "item_hash",
-    "item_content",
-    "item_type",
-    "chain",
-    "channel",
-    "sender",
-    "type",
-    "time",
-    "signature",
-]
 
 
 async def decode_pubsub_message(message_data: bytes) -> BasePendingMessage:
@@ -44,27 +35,25 @@ async def decode_pubsub_message(message_data: bytes) -> BasePendingMessage:
     return message
 
 
-async def verify_signature(message: BasePendingMessage) -> None:
-    chain = message.chain
-    signer = VERIFIER_REGISTER.get(chain, None)
-    if signer is None:
-        raise InvalidMessageError("Unknown chain for validation %r" % chain)
-    try:
-        if await signer(message):
-            return
-        else:
-            raise InvalidMessageError("The signature of the message is invalid")
-    except ValueError:
-        raise InvalidMessageError("Signature validation error")
-
-
 def listener_tasks(config, p2p_client: AlephP2PServiceClient) -> List[Coroutine]:
     from aleph.services.p2p.protocol import incoming_channel as incoming_p2p_channel
 
+    storage_service = StorageService(
+        storage_engine=GridFsStorageEngine(gridfs_client=make_gridfs_client())
+    )
+    chain_service = ChainService(storage_service=storage_service)
+    message_processor = MessageHandler(
+        chain_service=chain_service, storage_service=storage_service
+    )
+
     # for now (1st milestone), we only listen on a single global topic...
     tasks: List[Coroutine] = [
-        incoming_p2p_channel(p2p_client, config.aleph.queue_topic.value)
+        incoming_p2p_channel(
+            p2p_client, config.aleph.queue_topic.value, message_processor
+        )
     ]
     if config.ipfs.enabled.value:
-        tasks.append(incoming_ipfs_channel(config.aleph.queue_topic.value))
+        tasks.append(
+            incoming_ipfs_channel(config.aleph.queue_topic.value, message_processor)
+        )
     return tasks

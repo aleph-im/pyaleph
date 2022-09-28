@@ -1,30 +1,15 @@
 import pytest
 
-# Mandatory import, otherwise VERIFIER_REGISTER is not populated. TODO: improve the registration system.
-import aleph.chains
 from aleph.exceptions import InvalidMessageError
-from aleph.chains.common import IncomingStatus
-from aleph.network import verify_signature
+from aleph.handlers.message_handler import IncomingStatus, MessageHandler
+from aleph.chains.chain_service import ChainService
 from aleph.schemas.pending_messages import parse_message
-
-__author__ = "Moshe Malawach"
-__copyright__ = "Moshe Malawach"
-__license__ = "mit"
-
-
-# @pytest.mark.asyncio
-# async def test_check_message_trusted():
-#     passed_msg = {'foo': 1, 'bar': 2}
-#     msg = await check_message(passed_msg, trusted=True)
-#     assert len(msg.keys()) == 3, "same key count plus content_type"
-#     print(msg)
-#     assert msg['item_type'] == 'ipfs', "ipfs should be the default"
-#     assert msg is passed_msg, "same object should be returned"
+from aleph.storage import StorageService
 
 
 @pytest.mark.skip("TODO: NULS signature verification does not work with the fixture.")
 @pytest.mark.asyncio
-async def test_valid_message():
+async def test_valid_message(mocker):
     sample_message_dict = {
         "item_hash": "QmfDkHXdGND7e8uwJr4yvXSAvbPc8rothM6UN5ABQPsLkF",
         "item_type": "ipfs",
@@ -36,8 +21,9 @@ async def test_valid_message():
         "signature": "2103041b0b357446927d2c8c62fdddd27910d82f665f16a4907a2be927b5901f5e6c004730450221009a54ecaff6869664e94ad68554520c79c21d4f63822864bd910f9916c32c1b5602201576053180d225ec173fb0b6e4af5efb2dc474ce6aa77a3bdd67fd14e1d806b4",
     }
 
+    chain_service = ChainService(storage_service=mocker.MagicMock())
     sample_message = parse_message(sample_message_dict)
-    await verify_signature(sample_message)
+    await chain_service.verify_signature(sample_message)
 
 
 @pytest.mark.asyncio
@@ -58,7 +44,7 @@ async def test_invalid_chain_message():
 
 
 @pytest.mark.asyncio
-async def test_invalid_signature_message():
+async def test_invalid_signature_message(mocker):
     sample_message_dict = {
         "item_hash": "QmfDkHXdGND7e8uwJr4yvXSAvbPc8rothM6UN5ABQPsLkF",
         "item_type": "ipfs",
@@ -70,13 +56,15 @@ async def test_invalid_signature_message():
         "signature": "BAR",
     }
 
+    chain_service = ChainService(storage_service=mocker.MagicMock())
+
     sample_message = parse_message(sample_message_dict)
     with pytest.raises(InvalidMessageError):
-        _ = await verify_signature(sample_message)
+        _ = await chain_service.verify_signature(sample_message)
 
 
 @pytest.mark.asyncio
-async def test_invalid_signature_message_2():
+async def test_invalid_signature_message_2(mocker):
     sample_message_dict = {
         "item_hash": "QmfDkHXdGND7e8uwJr4yvXSAvbPc8rothM6UN5ABQPsLkF",
         "item_type": "ipfs",
@@ -87,24 +75,15 @@ async def test_invalid_signature_message_2():
         "time": 1563279102.3155158,
         "signature": "2153041b0b357446927d2c8c62fdddd27910d82f665f16a4907a2be927b5901f5e6c004730450221009a54ecaff6869664e94ad68554525c79c21d4f63822864bd910f9916c32c1b5602201576053180d225ec173fb0b6e4af5efb2dc474ce6aa77a3bdd67fd14e1d806b4",
     }
+    chain_service = ChainService(storage_service=mocker.MagicMock())
 
     sample_message = parse_message(sample_message_dict)
     with pytest.raises(InvalidMessageError):
-        _ = await verify_signature(sample_message)
+        _ = await chain_service.verify_signature(sample_message)
 
 
 @pytest.mark.asyncio
-async def test_incoming_inline_content(mocker):
-    from aleph.chains.common import incoming
-    from unittest.mock import MagicMock
-
-    async def async_magic():
-        pass
-
-    MagicMock.__await__ = lambda x: async_magic().__await__()
-
-    mocker.patch("aleph.model.db")
-
+async def test_incoming_inline_content(test_storage_service: StorageService):
     message_dict = {
         "chain": "NULS",
         "channel": "SYSINFO",
@@ -116,6 +95,12 @@ async def test_incoming_inline_content(mocker):
         "item_hash": "84afd8484912d3fa11a402e480d17e949fbf600fcdedd69674253be0320fa62c",
         "signature": "21027c108022f992f090bbe5c78ca8822f5b7adceb705ae2cd5318543d7bcdd2a74700473045022100b59f7df5333d57080a93be53b9af74e66a284170ec493455e675eb2539ac21db022077ffc66fe8dde7707038344496a85266bf42af1240017d4e1fa0d7068c588ca7",
     }
+
+    message_handler = MessageHandler(
+        chain_service=ChainService(storage_service=test_storage_service),
+        storage_service=test_storage_service,
+    )
+
     message = parse_message(message_dict)
-    status, ops = await incoming(message, check_message=False)
+    status, ops = await message_handler.incoming(message)
     assert status == IncomingStatus.MESSAGE_HANDLED

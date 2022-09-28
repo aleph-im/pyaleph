@@ -4,9 +4,21 @@ from typing import List, Optional
 from pymongo import ASCENDING, DESCENDING, IndexModel
 
 from aleph.model.base import BaseClass
-from aleph.network import INCOMING_MESSAGE_AUTHORIZED_FIELDS
 
 logger = logging.getLogger(__name__)
+
+
+INCOMING_MESSAGE_AUTHORIZED_FIELDS = [
+    "item_hash",
+    "item_content",
+    "item_type",
+    "chain",
+    "channel",
+    "sender",
+    "type",
+    "time",
+    "signature",
+]
 
 RAW_MSG_PROJECTION = {field: 1 for field in INCOMING_MESSAGE_AUTHORIZED_FIELDS}
 RAW_MSG_PROJECTION.update({"_id": 0})

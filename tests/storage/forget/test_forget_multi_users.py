@@ -6,19 +6,17 @@ from pathlib import Path
 
 import pytest
 
-from aleph.chains.common import process_one_message
-from aleph.model.hashes import (
-    get_value as read_gridfs_file,
-    set_value as store_gridfs_file,
-)
+from aleph.chains.chain_service import ChainService
+from aleph.handlers.message_handler import MessageHandler
 from aleph.model.messages import Message
 from aleph.schemas.pending_messages import parse_message
+from aleph.storage import StorageService
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
 @pytest.mark.asyncio
-async def test_forget_multiusers_storage(mocker, test_db):
+async def test_forget_multiusers_storage(test_storage_service: StorageService):
     """
     Tests that a file stored by two different users is not deleted if one of the users
     deletes the content with a forget message.
@@ -64,13 +62,20 @@ async def test_forget_multiusers_storage(mocker, test_db):
         "signature": "0x6682e797c424c8e5def6758867e25f08279afc3e976dbaaefdb9f650eee18d26595fc4e2f18fd4cdd853558140ecbb824e0ea8d221e12267862903fa904fabee1c",
     }
 
+    storage_engine = test_storage_service.storage_engine
+
     # Store the file in the DB to make it accessible to the tests
     with open(FIXTURES_DIR / "forget_multi_users_fixture.txt", "rb") as f:
         file_content = f.read()
-    await store_gridfs_file(key=file_hash, value=file_content)
+    await storage_engine.write(filename=file_hash, content=file_content)
+
+    message_handler = MessageHandler(
+        chain_service=ChainService(storage_service=test_storage_service),
+        storage_service=test_storage_service,
+    )
 
     message_user1 = parse_message(message_user1_dict)
-    await process_one_message(message_user1)
+    await message_handler.process_one_message(message_user1)
 
     message1_db = await Message.collection.find_one(
         {"item_hash": message_user1.item_hash}
@@ -78,14 +83,14 @@ async def test_forget_multiusers_storage(mocker, test_db):
     assert message1_db is not None
 
     message_user2 = parse_message(message_user2_dict)
-    await process_one_message(message_user2)
+    await message_handler.process_one_message(message_user2)
 
     # Sanity check: check that the file exists
-    db_file_data = await read_gridfs_file(file_hash)
+    db_file_data = await storage_engine.read(file_hash)
     assert db_file_data == file_content
 
     forget_message_user1 = parse_message(forget_message_user1_dict)
-    await process_one_message(forget_message_user1)
+    await message_handler.process_one_message(forget_message_user1)
 
     # Check that the message was properly forgotten
     forgotten_message = await Message.collection.find_one(
@@ -103,5 +108,5 @@ async def test_forget_multiusers_storage(mocker, test_db):
     assert message_user2_db["item_content"] == message_user2.item_content
 
     # Check that the file still exists
-    db_file_data = await read_gridfs_file(file_hash)
+    db_file_data = await storage_engine.read(file_hash)
     assert db_file_data == file_content
