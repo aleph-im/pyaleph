@@ -9,8 +9,8 @@ from operator import itemgetter
 from typing import AsyncIterator, Dict, Tuple
 
 import aiohttp
-from aiocache import cached, SimpleMemoryCache
 from coincurve.keys import PrivateKey
+from configmanager import Config
 from nuls2.api.server import get_server
 from nuls2.model.data import (
     hash_from_address,
@@ -20,21 +20,13 @@ from nuls2.model.data import (
 )
 from nuls2.model.transaction import Transaction
 
-from aleph.chains.common import (
-    get_verification_buffer,
-    get_chaindata,
-    incoming_chaindata,
-)
+from aleph.chains.common import get_verification_buffer
 from aleph.model.chains import Chain
 from aleph.model.messages import Message
 from aleph.model.pending import pending_messages_count, pending_txs_count
-from aleph.register_chain import (
-    register_verifier,
-    register_incoming_worker,
-    register_outgoing_worker,
-    register_balance_getter,
-)
 from aleph.utils import run_in_executor
+from .chaindata import ChainDataService
+from .connector import Verifier, ChainWriter
 from .tx_context import TxContext
 from ..schemas.pending_messages import BasePendingMessage
 
@@ -45,95 +37,115 @@ PAGINATION = 500
 DECIMALS = None  # will get populated later... bad?
 
 
-async def verify_signature(message: BasePendingMessage) -> bool:
-    """Verifies a signature of a message, return True if verified, false if not"""
+class Nuls2Connector(Verifier, ChainWriter):
+    def __init__(self, chain_data_service: ChainDataService):
+        self.chain_data_service = chain_data_service
 
-    if message.signature is None:
-        LOGGER.warning("'%s': missing signature.", message.item_hash)
-        return False
+    async def verify_signature(self, message: BasePendingMessage) -> bool:
+        """Verifies a signature of a message, return True if verified, false if not"""
+        sig_raw = base64.b64decode(message.signature)
 
-    sig_raw = base64.b64decode(message.signature)
+        sender_hash = hash_from_address(message.sender)
+        (sender_chain_id,) = struct.unpack("h", sender_hash[:2])
+        verification = get_verification_buffer(message)
+        try:
+            address = await run_in_executor(
+                None,
+                functools.partial(
+                    recover_message_address,
+                    sig_raw,
+                    verification,
+                    chain_id=sender_chain_id,
+                ),
+            )
+        except Exception:
+            LOGGER.exception("NULS Signature verification error")
+            return False
 
-    sender_hash = hash_from_address(message.sender)
-    (sender_chain_id,) = struct.unpack("h", sender_hash[:2])
-    verification = get_verification_buffer(message)
-    try:
-        address = await run_in_executor(
-            None,
-            functools.partial(
-                recover_message_address, sig_raw, verification, chain_id=sender_chain_id
-            ),
-        )
-        # address = recover_message_address(sig_raw, verification,
-        #                                   chain_id=sender_chain_id)
-    except Exception:
-        LOGGER.exception("NULS Signature verification error")
-        return False
+        if address != message.sender:
+            LOGGER.warning(
+                "Received bad signature from %s for %s" % (address, message.sender)
+            )
+            return False
+        else:
+            return True
 
-    if address != message.sender:
-        LOGGER.warning(
-            "Received bad signature from %s for %s" % (address, message.sender)
-        )
-        return False
-    else:
-        return True
+    async def get_last_height(self) -> int:
+        """Returns the last height for which we already have the nuls data."""
+        last_height = await Chain.get_last_height(CHAIN_NAME)
 
+        if last_height is None:
+            last_height = -1
 
-register_verifier(CHAIN_NAME, verify_signature)
+        return last_height
 
-# def broadcast_content(config, contract, web3, account,
-#                       gas_price, nonce, content):
-#     # content = json.dumps(content)
-#     tx = contract.functions.doEmit(content).buildTransaction({
-#             'chainId': config.ethereum.chain_id.value,
-#             'gasPrice': gas_price,
-#             'nonce': nonce,
-#             })
-#     signed_tx = account.signTransaction(tx)
-#     return web3.eth.sendRawTransaction(signed_tx.rawTransaction)
+    async def fetcher(self, config: Config):
+        last_stored_height = await self.get_last_height()
 
+        LOGGER.info("Last block is #%d" % last_stored_height)
+        async with aiohttp.ClientSession() as session:
+            while True:
+                last_stored_height = await self.get_last_height()
+                async for jdata, context in request_transactions(
+                    config, session, last_stored_height + 1
+                ):
+                    await self.chain_data_service.incoming_chaindata(jdata, context)
+                await asyncio.sleep(10)
 
-async def get_last_height():
-    """Returns the last height for which we already have the nuls data."""
-    last_height = await Chain.get_last_height(CHAIN_NAME)
+    async def packer(self, config: Config):
+        server = get_server(config.nuls2.api_url.value)
+        target_addr = config.nuls2.sync_address.value
+        remark = config.nuls2.remark.value.encode("utf-8")
 
-    if last_height is None:
-        last_height = -1
+        pri_key = bytes.fromhex(config.nuls2.private_key.value)
+        privkey = PrivateKey(pri_key)
+        pub_key = privkey.public_key.format()
+        chain_id = config.nuls2.chain_id.value
+        address = get_address(pub_key, config.nuls2.chain_id.value)
 
-    return last_height
+        LOGGER.info("NULS2 Connector set up with address %s" % address)
+        i = 0
+        nonce = await get_nonce(server, address, chain_id)
 
+        while True:
+            if (await pending_txs_count(chain=CHAIN_NAME)) or (
+                await pending_messages_count(source_chain=CHAIN_NAME)
+            ):
+                await asyncio.sleep(30)
+                continue
 
-# async def get_transactions(config, server, chain_id,
-#                            target_addr, start_height,
-#                            end_height=None):
+            if i >= 100:
+                await asyncio.sleep(30)  # wait three (!!) blocks
+                nonce = await get_nonce(server, address, chain_id)
+                i = 0
 
-#     if end_height is None:
-#         end_height = -1
-#     result = await server.getAccountTxs(
-#         chain_id, 1, PAGINATION,
-#         target_addr, 2, start_height, end_height)
+            messages = [
+                message
+                async for message in (
+                    await Message.get_unconfirmed_raw(limit=10000, for_chain=CHAIN_NAME)
+                )
+            ]
 
-#     seen_hashes = list()
+            if len(messages):
+                content = await self.chain_data_service.get_chaindata(messages)
 
-#     if result['totalCount'] >= PAGINATION:
-#         if end_height is None:
-#             # If we have no end_time, we ensure we have a non-slipping range
-#             # while we iterate.
-#             end_height = result['list'][0]['height']
+                tx = await prepare_transfer_tx(
+                    address,
+                    [(target_addr, CHEAP_UNIT_FEE)],
+                    nonce,
+                    chain_id=chain_id,
+                    asset_id=1,
+                    raw_tx_data=content.encode("utf-8"),
+                    remark=remark,
+                )
+                await tx.sign_tx(pri_key)
+                tx_hex = (await tx.serialize(update_data=False)).hex()
+                ret = await broadcast(server, tx_hex, chain_id=chain_id)
+                LOGGER.info("Broadcasted %r on %s" % (ret["hash"], CHAIN_NAME))
+                nonce = ret["hash"][-16:]
 
-#         for i in reversed(range(math.ceil(result['total']/PAGINATION))):
-#             nresult = await server.getAccountTxs(
-#                         chain_id, i, PAGINATION,
-#                         target_addr, 2, start_height, end_height)
-#             for tx in sorted(nresult['list'], key=itemgetter('height')):
-#                 if tx['txHash'] not in seen_hashes:
-#                     yield tx
-#                     seen_hashes.append(tx['txHash'])
-#     else:
-#         for tx in sorted(result['list'], key=itemgetter('height')):
-#             if tx['txHash'] not in seen_hashes:
-#                 yield tx
-#                 seen_hashes.append(tx['txHash'])
+            await asyncio.sleep(config.nuls2.commit_delay.value)
+            i += 1
 
 
 async def get_base_url(config):
@@ -162,7 +174,9 @@ async def get_transactions(
             yield tx
 
 
-async def request_transactions(config, session, start_height) -> AsyncIterator[Tuple[Dict, TxContext]]:
+async def request_transactions(
+    config, session, start_height
+) -> AsyncIterator[Tuple[Dict, TxContext]]:
     """Continuously request data from the NULS blockchain."""
     target_addr = config.nuls2.sync_address.value
     remark = config.nuls2.remark.value
@@ -194,34 +208,6 @@ async def request_transactions(config, session, start_height) -> AsyncIterator[T
 
     if last_height:
         await Chain.set_last_height(CHAIN_NAME, last_height)
-
-
-async def check_incoming(config):
-    last_stored_height = await get_last_height()
-
-    LOGGER.info("Last block is #%d" % last_stored_height)
-    async with aiohttp.ClientSession() as session:
-        while True:
-            last_stored_height = await get_last_height()
-            async for jdata, context in request_transactions(
-                config, session, last_stored_height + 1
-            ):
-                await incoming_chaindata(jdata, context)
-            await asyncio.sleep(10)
-
-
-async def nuls_incoming_worker(config):
-    if config.nuls2.enabled.value:
-        while True:
-            try:
-                await check_incoming(config)
-
-            except Exception:
-                LOGGER.exception("ERROR, relaunching incoming in 10 seconds")
-                await asyncio.sleep(10)
-
-
-register_incoming_worker(CHAIN_NAME, nuls_incoming_worker)
 
 
 async def broadcast(server, tx_hex, chain_id=1):
@@ -278,97 +264,3 @@ async def prepare_transfer_tx(
 async def get_nonce(server, account_address, chain_id, asset_id=1):
     balance_info = await get_balance(server, account_address, chain_id, asset_id)
     return balance_info["nonce"]
-
-
-async def nuls2_packer(config):
-    server = get_server(config.nuls2.api_url.value)
-    target_addr = config.nuls2.sync_address.value
-    remark = config.nuls2.remark.value.encode("utf-8")
-
-    pri_key = bytes.fromhex(config.nuls2.private_key.value)
-    privkey = PrivateKey(pri_key)
-    pub_key = privkey.public_key.format()
-    chain_id = config.nuls2.chain_id.value
-    address = get_address(pub_key, config.nuls2.chain_id.value)
-
-    LOGGER.info("NULS2 Connector set up with address %s" % address)
-    # utxo = await get_utxo(config, address)
-    i = 0
-    nonce = await get_nonce(server, address, chain_id)
-
-    while True:
-        if (await pending_txs_count(chain=CHAIN_NAME)) or (
-            await pending_messages_count(source_chain=CHAIN_NAME)
-        ):
-            await asyncio.sleep(30)
-            continue
-
-        if i >= 100:
-            await asyncio.sleep(30)  # wait three (!!) blocks
-            nonce = await get_nonce(server, address, chain_id)
-            # utxo = await get_utxo(config, address)
-            i = 0
-
-        messages = [
-            message
-            async for message in (
-                await Message.get_unconfirmed_raw(limit=10000, for_chain=CHAIN_NAME)
-            )
-        ]
-
-        if len(messages):
-            content = await get_chaindata(messages)
-
-            tx = await prepare_transfer_tx(
-                address,
-                [(target_addr, CHEAP_UNIT_FEE)],
-                nonce,
-                chain_id=chain_id,
-                asset_id=1,
-                raw_tx_data=content.encode("utf-8"),
-                remark=remark,
-            )
-            await tx.sign_tx(pri_key)
-            tx_hex = (await tx.serialize(update_data=False)).hex()
-            ret = await broadcast(server, tx_hex, chain_id=chain_id)
-            LOGGER.info("Broadcasted %r on %s" % (ret["hash"], CHAIN_NAME))
-            nonce = ret["hash"][-16:]
-
-        await asyncio.sleep(config.nuls2.commit_delay.value)
-        i += 1
-
-
-async def nuls2_outgoing_worker(config):
-    if config.nuls2.packing_node.value:
-        while True:
-            try:
-                await nuls2_packer(config)
-
-            except Exception:
-                LOGGER.exception("ERROR, relaunching outgoing in 10 seconds")
-                await asyncio.sleep(10)
-
-
-register_outgoing_worker(CHAIN_NAME, nuls2_outgoing_worker)
-
-
-@cached(ttl=60 * 10, cache=SimpleMemoryCache, timeout=120)
-async def nuls2_balance_getter(address, config=None):
-    global DECIMALS
-    if config is None:
-        from aleph.config import get_config
-        config = get_config()
-
-    server = get_server(config.nuls2.api_url.value)
-    contract_address = get_server(config.nuls2.contract_address.value)
-    chain_id = config.nuls2.chain_id.value
-
-    if DECIMALS is None:
-        response = await server.invokeView([chain_id, "decimals", "", []])
-        DECIMALS = int(response["result"])
-
-    response = await server.invokeView([chain_id, "balanceOf", "", [address]])
-    return int(response["result"]) / (10 ** DECIMALS)
-
-
-register_balance_getter(CHAIN_NAME, nuls2_balance_getter)

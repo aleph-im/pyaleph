@@ -1,14 +1,14 @@
 import hashlib
+import logging
+import struct
+
 import base58
 import bech32
-import struct
 from coincurve.keys import PublicKey
+
 from aleph.chains.common import get_verification_buffer
-from aleph.register_chain import register_verifier
-
-import logging
-
 from aleph.schemas.pending_messages import BasePendingMessage
+from .connector import Verifier
 
 LOGGER = logging.getLogger("chains.avalanche")
 CHAIN_NAME = "AVAX"
@@ -51,45 +51,38 @@ async def get_chain_info(address):
     return chain_id, hrp
 
 
-async def verify_signature(message: BasePendingMessage):
-
-    """Verifies a signature of a message, return True if verified, false if not"""
-    try:
-        if message.signature is None:
-            LOGGER.warning("'%s': missing signature.", message.item_hash)
+class AvalancheConnector(Verifier):
+    async def verify_signature(self, message: BasePendingMessage) -> bool:
+        """Verifies a signature of a message, return True if verified, false if not"""
+        try:
+            chain_id, hrp = await get_chain_info(message.sender)
+        except Exception:
+            LOGGER.exception("Avalanche sender address deserialization error")
             return False
 
-        chain_id, hrp = await get_chain_info(message.sender)
-    except Exception:
-        LOGGER.exception("Avalanche sender address deserialization error")
-        return False
-
-    try:
-        signature = base58.b58decode(message.signature)
-        signature, status = await validate_checksum(signature)
-        if not status:
-            LOGGER.exception("Avalanche signature checksum error")
+        try:
+            signature = base58.b58decode(message.signature)
+            signature, status = await validate_checksum(signature)
+            if not status:
+                LOGGER.exception("Avalanche signature checksum error")
+                return False
+        except Exception:
+            LOGGER.exception("Avalanche signature deserialization error")
             return False
-    except Exception:
-        LOGGER.exception("Avalanche signature deserialization error")
-        return False
 
-    try:
-        verification = get_verification_buffer(message)
-        verification = await pack_message(verification)
+        try:
+            verification = get_verification_buffer(message)
+            verification = await pack_message(verification)
 
-        public_key = PublicKey.from_signature_and_message(signature, verification)
+            public_key = PublicKey.from_signature_and_message(signature, verification)
 
-        address = await address_from_public_key(public_key.format())
-        address = await address_to_string(chain_id, hrp, address)
+            address = await address_from_public_key(public_key.format())
+            address = await address_to_string(chain_id, hrp, address)
 
-        result = address == message.sender
+            result = address == message.sender
 
-    except Exception as e:
-        LOGGER.exception("Error processing signature for %s" % message.sender)
-        result = False
+        except Exception as e:
+            LOGGER.exception("Error processing signature for %s" % message.sender)
+            result = False
 
-    return result
-
-
-register_verifier(CHAIN_NAME, verify_signature)
+        return result

@@ -2,11 +2,11 @@ import base64
 import logging
 
 from aiohttp import web
+from aleph_message.models import ItemType
 
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.handlers.forget import count_file_references
-from aleph.storage import add_json, get_hash_content, add_file
-from aleph_message.models import ItemType
+from aleph.storage import StorageService
 from aleph.utils import run_in_executor, item_type_from_hash
 
 logger = logging.getLogger(__name__)
@@ -14,25 +14,37 @@ logger = logging.getLogger(__name__)
 
 async def add_ipfs_json_controller(request):
     """Forward the json content to IPFS server and return an hash"""
-    data = await request.json()
+    storage_service: StorageService = request.app["storage_service"]
 
-    output = {"status": "success", "hash": await add_json(data, engine=ItemType.ipfs)}
+    data = await request.json()
+    output = {
+        "status": "success",
+        "hash": await storage_service.add_json(data, engine=ItemType.ipfs),
+    }
     return web.json_response(output)
 
 
 async def add_storage_json_controller(request):
     """Forward the json content to IPFS server and return an hash"""
-    data = await request.json()
+    storage_service: StorageService = request.app["storage_service"]
 
-    output = {"status": "success", "hash": await add_json(data, engine=ItemType.storage)}
+    data = await request.json()
+    output = {
+        "status": "success",
+        "hash": await storage_service.add_json(data, engine=ItemType.storage),
+    }
     return web.json_response(output)
 
 
 async def storage_add_file(request):
+    storage_service: StorageService = request.app["storage_service"]
+
     # No need to pin it here anymore.
     # TODO: find a way to specify linked ipfs hashes in posts/aggr.
     post = await request.post()
-    file_hash = await add_file(post["file"].file, engine=ItemType.storage)
+    file_hash = await storage_service.add_file(
+        post["file"].file, engine=ItemType.storage
+    )
 
     output = {"status": "success", "hash": file_hash}
     return web.json_response(output)
@@ -52,8 +64,10 @@ async def get_hash(request):
         logger.warning(e.args[0])
         return web.HTTPBadRequest(text="Invalid hash provided")
 
+    storage_service: StorageService = request.app["storage_service"]
+
     try:
-        hash_content = await get_hash_content(
+        hash_content = await storage_service.get_hash_content(
             item_hash,
             use_network=False,
             use_ipfs=True,
@@ -87,8 +101,10 @@ async def get_raw_hash(request):
     except UnknownHashError:
         raise web.HTTPBadRequest(text="Invalid hash")
 
+    storage_service: StorageService = request.app["storage_service"]
+
     try:
-        content = await get_hash_content(
+        content = await storage_service.get_hash_content(
             item_hash,
             use_network=False,
             use_ipfs=True,

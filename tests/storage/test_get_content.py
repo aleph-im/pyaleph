@@ -1,25 +1,45 @@
 import json
+from typing import Optional, Dict
 
 import pytest
+from aleph.services.storage.engine import StorageEngine
 
 from aleph.exceptions import InvalidContent
 from aleph.schemas.message_content import ContentSource
 from aleph.schemas.pending_messages import parse_message
-from aleph.storage import get_hash_content, get_json, get_message_content
+from aleph.storage import StorageService
+
+
+class MockStorageEngine(StorageEngine):
+    def __init__(self, files: Dict[str, bytes]):
+        self.files = files
+
+    async def read(self, filename: str) -> Optional[bytes]:
+        try:
+            return self.files[filename]
+        except KeyError:
+            return None
+
+    async def write(self, filename: str, content: bytes):
+        self.files[filename] = content
+
+    async def delete(self, filename: str):
+        del self.files[filename]
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "use_network,use_ipfs", [(False, False), (True, False), (False, True), (True, True)]
 )
-async def test_hash_content_from_db(
-    mocker, mock_config, use_network: bool, use_ipfs: bool
-):
+async def test_hash_content_from_db(use_network: bool, use_ipfs: bool):
+    storage_manager = StorageService(
+        MockStorageEngine(files={"1234": b"fluctuat nec mergitur"})
+    )
+
     expected_content = b"fluctuat nec mergitur"
-    mocker.patch("aleph.storage.get_value", return_value=expected_content)
 
     content_hash = "1234"
-    content = await get_hash_content(
+    content = await storage_manager.get_hash_content(
         content_hash, use_network=use_network, use_ipfs=use_ipfs
     )
     assert content.value == expected_content
@@ -30,15 +50,17 @@ async def test_hash_content_from_db(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("use_ipfs", [False, True])
-async def test_hash_content_from_network(mocker, mock_config, use_ipfs: bool):
+async def test_hash_content_from_network(mocker, use_ipfs: bool):
     content_hash = "1234"
     expected_content = b"elementary my dear Watson"
 
-    mocker.patch("aleph.storage.get_value", return_value=None)
     mocker.patch("aleph.storage.p2p_http_request_hash", return_value=expected_content)
-    mocker.patch("aleph.storage.verify_content_hash")
+    mocker.patch.object(StorageService, "_verify_content_hash")
 
-    content = await get_hash_content(
+    # No files in the local storage
+    storage_manager = StorageService(MockStorageEngine(files={}))
+
+    content = await storage_manager.get_hash_content(
         content_hash, use_network=True, use_ipfs=use_ipfs, store_value=False
     )
     assert content.value == expected_content
@@ -49,18 +71,18 @@ async def test_hash_content_from_network(mocker, mock_config, use_ipfs: bool):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("use_ipfs", [False, True])
-async def test_hash_content_from_network_store_value(
-    mocker, mock_config, use_ipfs: bool
-):
+async def test_hash_content_from_network_store_value(mocker, use_ipfs: bool):
     content_hash = "1234"
     expected_content = b"mais ou est donc ornicar?"
 
-    mocker.patch("aleph.storage.get_value", return_value=None)
     mocker.patch("aleph.storage.p2p_http_request_hash", return_value=expected_content)
-    mocker.patch("aleph.storage.verify_content_hash", return_value=content_hash)
-    set_value_mock = mocker.patch("aleph.storage.set_value")
+    mocker.patch.object(
+        StorageService, "_verify_content_hash", return_value=content_hash
+    )
 
-    content = await get_hash_content(
+    storage_manager = StorageService(MockStorageEngine(files={}))
+
+    content = await storage_manager.get_hash_content(
         content_hash, use_network=True, use_ipfs=use_ipfs, store_value=True
     )
     assert content.value == expected_content
@@ -68,67 +90,73 @@ async def test_hash_content_from_network_store_value(
     assert content.source == ContentSource.P2P
     assert len(content) == len(expected_content)
 
-    set_value_mock.assert_called_once_with(content_hash, expected_content)
+    content = await storage_manager.storage_engine.read(content_hash)
+    assert content == expected_content
 
 
 @pytest.mark.asyncio
-async def test_hash_content_from_network_invalid_hash(mocker, mock_config):
+async def test_hash_content_from_network_invalid_hash(mocker):
     content_hash = "1234"
     expected_content = b"carpe diem"
 
-    mocker.patch("aleph.storage.get_value", return_value=None)
     mocker.patch("aleph.storage.p2p_http_request_hash", return_value=expected_content)
     mocker.patch("aleph.storage.get_cid_version", return_value=1)
-    mocker.patch("aleph.storage.add_ipfs_bytes", return_value="not-the-same-hash")
+    mocker.patch(
+        "aleph.storage.add_ipfs_bytes", return_value="not-the-same-hash"
+    )
+
+    storage_manager = StorageService(MockStorageEngine(files={}))
 
     with pytest.raises(InvalidContent):
-        _content = await get_hash_content(
+        _content = await storage_manager.get_hash_content(
             content_hash, use_network=True, use_ipfs=False, store_value=False
         )
 
 
 @pytest.mark.asyncio
-async def test_hash_content_from_ipfs(mocker, mock_config):
+async def test_hash_content_from_ipfs(mocker):
     content_hash = "1234"
     expected_content = b"cave canem"
 
-    mocker.patch("aleph.storage.get_value", return_value=None)
     mocker.patch("aleph.storage.p2p_http_request_hash", return_value=expected_content)
     mocker.patch("aleph.storage.get_cid_version", return_value=1)
     mocker.patch(
         "aleph.storage.add_ipfs_bytes", return_value="not-the-hash-you're-looking-for"
     )
 
+    storage_manager = StorageService(MockStorageEngine(files={}))
+
     with pytest.raises(InvalidContent):
-        _content = await get_hash_content(
+        _content = await storage_manager.get_hash_content(
             content_hash, use_network=True, use_ipfs=False, store_value=False
         )
 
 
 @pytest.mark.asyncio
-async def test_get_valid_json(mocker, mock_config):
+async def test_get_valid_json():
     content_hash = "some-json-hash"
     json_content = {"1": "one", "2": "two", "3": "three"}
     json_bytes = json.dumps(json_content).encode("utf-8")
-    mocker.patch("aleph.storage.get_value", return_value=json_bytes)
 
-    content = await get_json(content_hash)
+    storage_manager = StorageService(MockStorageEngine(files={content_hash: json_bytes}))
+
+    content = await storage_manager.get_json(content_hash)
     assert content.value == json_content
     assert content.hash == content_hash
     assert content.raw_value == json_bytes
 
 
 @pytest.mark.asyncio
-async def test_get_invalid_json(mocker, mock_config):
+async def test_get_invalid_json():
     """
     Checks that retrieving non-JSON content using get_json fails.
     """
 
     non_json_content = b"<span>How do you like HTML?</span"
-    mocker.patch("aleph.storage.get_value", return_value=non_json_content)
+    storage_manager = StorageService(MockStorageEngine(files={"1234": non_json_content}))
 
     with pytest.raises(InvalidContent):
-        _content = await get_json("1234")
+        _content = await storage_manager.get_json("1234")
 
 
 @pytest.mark.asyncio
@@ -149,8 +177,10 @@ async def test_get_inline_content_full_message():
         "item_type": "inline",
     }
 
+    storage_manager = StorageService(MockStorageEngine(files={}))
+
     message = parse_message(message_dict)
-    content = await get_message_content(message)
+    content = await storage_manager.get_message_content(message)
     item_content = content.value
 
     assert len(content.raw_value) == len(message.item_content)
@@ -161,7 +191,7 @@ async def test_get_inline_content_full_message():
 
 
 @pytest.mark.asyncio
-async def test_get_stored_message_content(mocker, mock_config):
+async def test_get_stored_message_content():
     message_dict = {
         "chain": "ETH",
         "channel": "TEST",
@@ -175,10 +205,10 @@ async def test_get_stored_message_content(mocker, mock_config):
     }
     json_content = {"I": "Inter", "P": "Planetary", "F": "File", "S": "System"}
     json_bytes = json.dumps(json_content).encode("utf-8")
-    mocker.patch("aleph.storage.get_value", return_value=json_bytes)
 
     message = parse_message(message_dict)
+    storage_manager = StorageService(MockStorageEngine(files={message.item_hash: json_bytes}))
 
-    content = await get_message_content(message)
+    content = await storage_manager.get_message_content(message)
     assert content.value == json_content
     assert content.hash == message.item_hash
