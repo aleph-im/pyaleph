@@ -44,8 +44,8 @@ RUN chown source:source /opt/build-frozen-requirements.txt
 
 # - User 'aleph' to run the code itself
 RUN useradd -s /bin/bash aleph
-RUN mkdir /opt/pyaleph
-RUN chown aleph:aleph /opt/pyaleph
+RUN mkdir /opt/pyaleph /var/lib/pyaleph
+RUN chown aleph:aleph /opt/pyaleph /var/lib/pyaleph
 
 # === Install Python environment and dependencies ===
 USER source

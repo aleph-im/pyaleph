@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from aleph_p2p_client import AlephP2PServiceClient
 
-from aleph.services.ipfs.pubsub import pub as pub_ipfs
+from aleph.services.ipfs import IpfsService
 
 LOGGER = logging.getLogger("peers.publish")
 
@@ -13,6 +13,7 @@ LOGGER = logging.getLogger("peers.publish")
 async def publish_host(
     address: str,
     p2p_client: AlephP2PServiceClient,
+    ipfs_service: IpfsService,
     p2p_alive_topic: str,
     ipfs_alive_topic: str,
     interests: Optional[List[str]] = None,
@@ -36,7 +37,7 @@ async def publish_host(
             if use_ipfs:
                 LOGGER.debug("Publishing alive message on ipfs pubsub")
                 await asyncio.wait_for(
-                    pub_ipfs(ipfs_alive_topic, msg.decode("utf-8")), 1
+                    ipfs_service.pub(ipfs_alive_topic, msg.decode("utf-8")), 1
                 )
         except Exception:
             LOGGER.warning("Can't publish alive message on ipfs")
