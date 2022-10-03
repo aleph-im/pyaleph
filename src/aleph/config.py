@@ -39,7 +39,7 @@ def get_defaults():
             ],
             "topics": ["ALIVE", "ALEPH-TEST"],
         },
-        "storage": {"folder": "./data/", "store_files": False, "engine": "mongodb"},
+        "storage": {"folder": "./data/", "store_files": True, "engine": "filesystem"},
         "nuls": {
             "chain_id": 8964,
             "enabled": False,

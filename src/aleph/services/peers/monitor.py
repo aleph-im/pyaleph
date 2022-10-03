@@ -5,7 +5,7 @@ from urllib.parse import unquote
 
 from aleph_p2p_client import AlephP2PServiceClient
 
-from aleph.services.ipfs.pubsub import sub as sub_ipfs
+from aleph.services.ipfs import IpfsService
 from aleph.types import Protocol
 
 LOGGER = logging.getLogger("P2P.peers")
@@ -64,10 +64,10 @@ async def monitor_hosts_p2p(
         await asyncio.sleep(2)
 
 
-async def monitor_hosts_ipfs(alive_topic: str):
+async def monitor_hosts_ipfs(ipfs_service: IpfsService, alive_topic: str):
     while True:
         try:
-            async for message in sub_ipfs(alive_topic):
+            async for message in ipfs_service.sub(alive_topic):
                 await handle_incoming_host(
                     data=message["data"], sender=message["from"], source=Protocol.IPFS
                 )

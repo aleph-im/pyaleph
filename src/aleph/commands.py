@@ -31,12 +31,13 @@ from aleph.exceptions import InvalidConfigException, KeyNotFoundException
 from aleph.jobs import start_jobs
 from aleph.jobs.job_utils import prepare_loop
 from aleph.logging import setup_logging
-from aleph.model import make_gridfs_client
 from aleph.network import listener_tasks
 from aleph.services import p2p
+from aleph.services.ipfs import IpfsService
+from aleph.services.ipfs.common import make_ipfs_client
 from aleph.services.keys import generate_keypair, save_keys
 from aleph.services.p2p import singleton, init_p2p_client
-from aleph.services.storage.gridfs_engine import GridFsStorageEngine
+from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
 from aleph.web import app
 
@@ -77,15 +78,18 @@ async def run_server(
     LOGGER.debug("Setup of runner")
     p2p_client = await init_p2p_client(config, service_name=f"api-server-{port}")
 
+    ipfs_client = make_ipfs_client(config)
+    ipfs_service = IpfsService(ipfs_client=ipfs_client)
+    storage_service = StorageService(
+        storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
+        ipfs_service=ipfs_service,
+    )
+
     app["config"] = config
     app["extra_config"] = extra_web_config
     app["shared_stats"] = shared_stats
     app["p2p_client"] = p2p_client
-    app["storage_service"] = StorageService(
-        storage_engine=GridFsStorageEngine(gridfs_client=make_gridfs_client())
-    )
-
-    print(f"extra_web_config: {extra_web_config}")
+    app["storage_service"] = storage_service
 
     runner = web.AppRunner(app)
     await runner.setup()
@@ -204,7 +208,11 @@ async def main(args):
     model.init_db(config, ensure_indexes=True)
     LOGGER.info("Database initialized.")
 
-    storage_service = StorageService(storage_engine=GridFsStorageEngine(make_gridfs_client()))
+    ipfs_service = IpfsService(ipfs_client=make_ipfs_client(config))
+    storage_service = StorageService(
+        storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
+        ipfs_service=ipfs_service,
+    )
     chain_service = ChainService(storage_service=storage_service)
 
     set_start_method("spawn")
@@ -219,22 +227,26 @@ async def main(args):
         if not args.no_jobs:
             LOGGER.debug("Creating jobs")
             tasks += start_jobs(
-                config,
+                config=config,
                 shared_stats=shared_stats,
+                ipfs_service=ipfs_service,
                 api_servers=api_servers,
                 use_processes=True,
             )
 
         LOGGER.debug("Initializing p2p")
         p2p_client, p2p_tasks = await p2p.init_p2p(
-            config, service_name="network-monitor", api_servers=api_servers
+            config=config,
+            service_name="network-monitor",
+            ipfs_service=ipfs_service,
+            api_servers=api_servers,
         )
         tasks += p2p_tasks
         LOGGER.debug("Initialized p2p")
 
         LOGGER.debug("Initializing listeners")
         tasks += listener_tasks(config, p2p_client)
-        tasks += chain_service.chain_event_loop(config)
+        tasks.append(chain_service.chain_event_loop(config))
         LOGGER.debug("Initialized listeners")
 
         # Need to be passed here otherwise it gets lost in the fork
@@ -268,17 +280,6 @@ async def main(args):
         p2.start()
         LOGGER.debug("Started processes")
 
-        # fp2p = loop.create_server(handler,
-        #                           config.p2p.daemon_host.value,
-        #                           config.p2p.http_port.value)
-        # srvp2p = loop.run_until_complete(fp2p)
-        # LOGGER.info('Serving on %s', srvp2p.sockets[0].getsockname())
-
-        # f = loop.create_server(handler,
-        #                        config.aleph.host.value,
-        #                        config.aleph.port.value)
-        # srv = loop.run_until_complete(f)
-        # LOGGER.info('Serving on %s', srv.sockets[0].getsockname())
         LOGGER.debug("Running event loop")
         await asyncio.gather(*tasks)
 

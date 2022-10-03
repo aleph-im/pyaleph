@@ -10,7 +10,7 @@ except ImportError:  # pragma: no cover
     # Backward compatibility with PyMongo 2.2
     from pymongo import Connection as MongoClient
 
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
+from motor.motor_asyncio import AsyncIOMotorClient
 
 LOGGER = getLogger("model")
 
@@ -25,14 +25,6 @@ def init_db_globals(config: Config):
     global connection, db
     connection = AsyncIOMotorClient(config.mongodb.uri.value, tz_aware=True)
     db = connection[config.mongodb.database.value]
-
-
-def make_gridfs_client():
-    global db
-    if db is None:
-        raise ValueError("DB is not initialized")
-
-    return AsyncIOMotorGridFSBucket(db)
 
 
 def init_db(config: Config, ensure_indexes: bool = True):

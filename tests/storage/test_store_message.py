@@ -11,6 +11,9 @@ from aleph.schemas.validated_message import (
 from aleph.schemas.message_confirmation import MessageConfirmation
 from message_test_helpers import make_validated_message_from_dict
 
+from aleph.services.ipfs import IpfsService
+from aleph.storage import StorageService
+
 
 @pytest.fixture
 def fixture_message_file():
@@ -71,7 +74,7 @@ async def test_handle_new_storage_file(
         source=ContentSource.IPFS,
         value=b"alea jacta est",
     )
-    mock_ipfs_api = mocker.MagicMock()
+    mock_ipfs_client = mocker.MagicMock()
     ipfs_stats = {
         "Hash": "QmWxcFfKfmDddodV2iUKvkhGQ931AyakgkZRUNVPUq9E6G",
         "Size": 141863,
@@ -79,12 +82,14 @@ async def test_handle_new_storage_file(
         "Blocks": 0,
         "Type": "file",
     }
-    mock_ipfs_api.files.stat = mocker.AsyncMock(return_value=ipfs_stats)
-    mocker.patch("aleph.handlers.storage.get_ipfs_api", return_value=mock_ipfs_api)
+    mock_ipfs_client.files.stat = mocker.AsyncMock(return_value=ipfs_stats)
 
     message = fixture_message_file
-    storage_service = mocker.AsyncMock()
-    storage_service.get_hash_content = mocker.AsyncMock(return_value=raw_content)
+    storage_service = StorageService(
+        storage_engine=mocker.AsyncMock(),
+        ipfs_service=IpfsService(ipfs_client=mock_ipfs_client),
+    )
+    storage_service.get_hash_content = get_hash_content_mock = mocker.AsyncMock(return_value=raw_content)  # type: ignore
     store_message_handler = StoreMessageHandler(storage_service=storage_service)
     result = await store_message_handler.handle_new_storage(message)
     assert result
@@ -95,14 +100,14 @@ async def test_handle_new_storage_file(
     assert message.content.size == len(raw_content)
     assert message.content.content_type == "file"
 
-    assert storage_service.get_hash_content.called_once
+    assert get_hash_content_mock.called_once
 
 
 @pytest.mark.asyncio
 async def test_handle_new_storage_directory(
     mocker, mock_config, fixture_message_directory: ValidatedStoreMessage
 ):
-    mock_ipfs_api = mocker.MagicMock()
+    mock_ipfs_client = mocker.MagicMock()
     ipfs_stats = {
         "Hash": "QmPZrod87ceK4yVvXQzRexDcuDgmLxBiNJ1ajLjLoMx9sU",
         "Size": 0,
@@ -110,12 +115,17 @@ async def test_handle_new_storage_directory(
         "Blocks": 2,
         "Type": "directory",
     }
-    mock_ipfs_api.files.stat = mocker.AsyncMock(return_value=ipfs_stats)
-    mocker.patch("aleph.handlers.storage.get_ipfs_api", return_value=mock_ipfs_api)
+    mock_ipfs_client.files.stat = mocker.AsyncMock(return_value=ipfs_stats)
 
     message = fixture_message_directory
-    storage_service = mocker.AsyncMock()
+    storage_engine = mocker.AsyncMock()
+
+    storage_service = StorageService(
+        storage_engine=storage_engine,
+        ipfs_service=IpfsService(ipfs_client=mock_ipfs_client),
+    )
     store_message_handler = StoreMessageHandler(storage_service=storage_service)
+
     result = await store_message_handler.handle_new_storage(message)
     assert result
 
@@ -132,4 +142,4 @@ async def test_handle_new_storage_directory(
     assert message.content.size == ipfs_stats["CumulativeSize"]
     assert message.content.content_type == "directory"
 
-    assert not storage_service.called
+    assert not storage_engine.called

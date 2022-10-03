@@ -3,6 +3,7 @@ from typing import Coroutine, List, Tuple
 from aleph_p2p_client import AlephP2PServiceClient, make_p2p_service_client
 from configmanager import Config
 
+from aleph.services.ipfs import IpfsService
 from . import singleton
 from .manager import initialize_host
 
@@ -24,14 +25,20 @@ async def init_p2p_client(config: Config, service_name: str) -> AlephP2PServiceC
 
 
 async def init_p2p(
-    config: Config, service_name: str, api_servers: List[str], listen: bool = True
+    config: Config,
+    service_name: str,
+    ipfs_service: IpfsService,
+    api_servers: List[str],
+    listen: bool = True,
 ) -> Tuple[AlephP2PServiceClient, List[Coroutine]]:
+
     p2p_client = await init_p2p_client(config, service_name)
 
     port = config.p2p.port.value
     tasks = await initialize_host(
         config=config,
         p2p_client=p2p_client,
+        ipfs_service=ipfs_service,
         api_servers=api_servers,
         host=config.p2p.daemon_host.value,
         port=port,

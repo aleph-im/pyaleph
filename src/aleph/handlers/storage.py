@@ -13,7 +13,6 @@ import logging
 from typing import Optional
 
 import aioipfs
-from aioipfs import InvalidCIDError
 from aleph_message.models import ItemType
 
 from aleph.config import get_config
@@ -23,7 +22,6 @@ from aleph.schemas.validated_message import (
     ValidatedStoreMessage,
     EngineInfo,
 )
-from aleph.services.ipfs.common import get_ipfs_api
 from aleph.storage import StorageService
 from aleph.utils import item_type_from_hash
 
@@ -61,13 +59,14 @@ class StoreMessageHandler:
                 LOGGER.warning("Invalid IPFS hash: '%s'", item_hash)
                 raise UnknownHashError(f"Invalid IPFS hash: '{item_hash}'")
 
-            api = await get_ipfs_api(timeout=5)
+            ipfs_client = self.storage_service.ipfs_service.ipfs_client
+
             try:
                 try:
                     stats = await asyncio.wait_for(
-                        api.files.stat(f"/ipfs/{item_hash}"), 5
+                        ipfs_client.files.stat(f"/ipfs/{item_hash}"), 5
                     )
-                except InvalidCIDError as e:
+                except aioipfs.InvalidCIDError as e:
                     raise UnknownHashError(
                         f"Invalid IPFS hash from API: '{item_hash}'"
                     ) from e
@@ -83,10 +82,9 @@ class StoreMessageHandler:
                 else:
                     output_content.size = stats["CumulativeSize"]
                     output_content.engine_info = EngineInfo(**stats)
-                    pin_api = await get_ipfs_api(timeout=60)
                     timer = 0
                     is_folder = stats["Type"] == "directory"
-                    async for status in pin_api.pin.add(item_hash):
+                    async for status in ipfs_client.pin.add(item_hash):
                         timer += 1
                         if timer > 30 and "Pins" not in status:
                             return None  # Can't retrieve data now.

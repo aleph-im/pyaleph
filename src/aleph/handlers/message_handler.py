@@ -272,9 +272,11 @@ class MessageHandler:
             bulk_ops = [DbBulkOperation(Message, update_op)]
 
             # Capped collections do not accept updates that increase the size, so
-            # we must ignore confirmations.
+            # we must ignore confirmations. We also ignore on-chain messages for
+            # performance reasons (bulk inserts on capped collections are slow).
             if existing is None:
-                bulk_ops.append(DbBulkOperation(CappedMessage, update_op))
+                if tx_hash is None:
+                    bulk_ops.append(DbBulkOperation(CappedMessage, update_op))
 
             return IncomingStatus.MESSAGE_HANDLED, bulk_ops
 

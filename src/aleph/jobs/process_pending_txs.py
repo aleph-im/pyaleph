@@ -20,11 +20,12 @@ from aleph.logging import setup_logging
 from aleph.model.db_bulk_operation import DbBulkOperation
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.schemas.pending_messages import parse_message
+from aleph.services.ipfs.common import make_ipfs_client
+from aleph.services.ipfs.service import IpfsService
 from aleph.services.p2p import singleton
-from aleph.services.storage.gridfs_engine import GridFsStorageEngine
+from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
 from .job_utils import prepare_loop, process_job_results
-from ..model import make_gridfs_client
 
 LOGGER = logging.getLogger("jobs.pending_txs")
 
@@ -42,9 +43,12 @@ class PendingTxProcessor:
         tx_context = TxContext(**pending_tx["context"])
         LOGGER.info("%s Handling TX in block %s", tx_context.chain, tx_context.height)
 
+        # If the chain data file is unavailable, we leave it to the pending tx
+        # processor to log the content unavailable exception and retry later.
         messages = await self.chain_data_service.get_chaindata_messages(
             pending_tx["content"], tx_context, seen_ids=seen_ids
         )
+
         if messages:
             for i, message_dict in enumerate(messages):
 
@@ -133,8 +137,11 @@ async def handle_txs_task(config: Config):
     max_concurrent_tasks = config.aleph.jobs.pending_txs.max_concurrency.value
     await asyncio.sleep(4)
 
+    ipfs_client = make_ipfs_client(config)
+    ipfs_service = IpfsService(ipfs_client=ipfs_client)
     storage_service = StorageService(
-        storage_engine=GridFsStorageEngine(make_gridfs_client())
+        storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
+        ipfs_service=ipfs_service,
     )
     pending_tx_processor = PendingTxProcessor(storage_service=storage_service)
 
