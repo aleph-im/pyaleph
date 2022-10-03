@@ -35,7 +35,7 @@ from aleph.schemas.validated_message import (
     ValidatedStoreMessage,
     ValidatedForgetMessage,
     make_confirmation_update_query,
-make_message_upsert_query,
+    make_message_upsert_query,
 )
 
 LOGGER = logging.getLogger("chains.common")
@@ -215,7 +215,9 @@ async def incoming(
             return IncomingStatus.RETRYING_LATER, []
 
         validated_message = validate_pending_message(
-            pending_message=pending_message, content=content, confirmations=confirmations
+            pending_message=pending_message,
+            content=content,
+            confirmations=confirmations,
         )
 
         # warning: those handlers can modify message and content in place
@@ -300,7 +302,7 @@ async def process_one_message(message: BasePendingMessage, *args, **kwargs):
         await op.collection.collection.bulk_write([op.operation])
 
 
-async def get_chaindata(messages, bulk_threshold=2000):
+async def get_chaindata(messages: List[Dict], bulk_threshold: int = 2000) -> str:
     """Returns content ready to be broadcasted on-chain (aka chaindata).
 
     If message length is over bulk_threshold (default 2000 chars), store list

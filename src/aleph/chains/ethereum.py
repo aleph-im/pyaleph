@@ -29,6 +29,7 @@ from aleph.register_chain import (
 )
 from aleph.utils import run_in_executor
 from .tx_context import TxContext
+from ..model.hashes import delete_value
 from ..schemas.pending_messages import BasePendingMessage
 
 LOGGER = logging.getLogger("chains.ethereum")
@@ -304,18 +305,24 @@ async def ethereum_packer(config):
 
         if len(messages):
             content = await get_chaindata(messages, bulk_threshold=200)
-            response = await run_in_executor(
-                None,
-                broadcast_content,
-                config,
-                contract,
-                web3,
-                account,
-                int(gas_price * 1.1),
-                nonce,
-                content,
-            )
-            LOGGER.info("Broadcasted %r on %s" % (response, CHAIN_NAME))
+            try:
+                response = await run_in_executor(
+                    None,
+                    broadcast_content,
+                    config,
+                    contract,
+                    web3,
+                    account,
+                    int(gas_price * 1.1),
+                    nonce,
+                    content,
+                )
+                LOGGER.info("Broadcasted %r on %s" % (response, CHAIN_NAME))
+            except Exception:
+                # If the broadcast fails, delete the generated chain data file from the node.
+                # TODO: delete the file from IPFS as well.
+                await delete_value(content)
+
 
         await asyncio.sleep(config.ethereum.commit_delay.value)
         i += 1
