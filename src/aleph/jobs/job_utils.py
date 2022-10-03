@@ -12,8 +12,6 @@ from configmanager import Config
 import aleph.config
 from aleph.model import init_db_globals
 from aleph.model.db_bulk_operation import DbBulkOperation
-from aleph.services.ipfs.common import init_ipfs_globals
-from aleph.services.p2p import init_p2p_client
 from aleph.toolkit.exceptions import ignore_exceptions
 from aleph.toolkit.split import split_iterable
 from aleph.toolkit.timer import Timer
@@ -37,7 +35,6 @@ def prepare_loop(config_values: Dict) -> Tuple[asyncio.AbstractEventLoop, Config
     config.load_values(config_values)
 
     init_db_globals(config)
-    init_ipfs_globals(config)
     return loop, config
 
 

@@ -16,7 +16,7 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
 @pytest.mark.asyncio
-async def test_forget_multiusers_storage(test_storage_service: StorageService):
+async def test_forget_multiusers_storage(test_db, test_storage_service: StorageService):
     """
     Tests that a file stored by two different users is not deleted if one of the users
     deletes the content with a forget message.

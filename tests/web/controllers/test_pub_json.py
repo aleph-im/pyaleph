@@ -7,7 +7,6 @@ import pytest
 async def test_pub_valid_aleph_message(mock_config, ccn_api_client, mocker):
     message_topic = mock_config.aleph.queue_topic.value
 
-    mocker.patch("aleph.web.controllers.p2p.pub_ipfs")
     mocker.patch("aleph.web.controllers.p2p.pub_p2p")
 
     message = {
@@ -27,13 +26,15 @@ async def test_pub_valid_aleph_message(mock_config, ccn_api_client, mocker):
         json={"topic": message_topic, "data": json.dumps(message)},
     )
     assert response.status == 200, await response.text()
+    response_json = await response.json()
+    assert response_json["status"] == "success"
+    assert response_json["failed"] == []
 
 
 @pytest.mark.asyncio
 async def test_pub_invalid_aleph_message(mock_config, ccn_api_client, mocker):
     message_topic = mock_config.aleph.queue_topic.value
 
-    mocker.patch("aleph.web.controllers.p2p.pub_ipfs")
     mocker.patch("aleph.web.controllers.p2p.pub_p2p")
 
     response = await ccn_api_client.post(

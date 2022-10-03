@@ -1,6 +1,8 @@
 import asyncio
 import os
+import shutil
 import sys
+from pathlib import Path
 
 import pymongo
 import pytest
@@ -9,8 +11,10 @@ from configmanager import Config
 
 import aleph.config
 from aleph.config import get_defaults
-from aleph.model import init_db, make_gridfs_client
-from aleph.services.storage.gridfs_engine import GridFsStorageEngine
+from aleph.model import init_db
+from aleph.services.ipfs import IpfsService
+from aleph.services.ipfs.common import make_ipfs_client
+from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
 from aleph.web import create_app
 
@@ -20,7 +24,7 @@ TEST_DB = "ccn_automated_tests"
 # Add the helpers to the PYTHONPATH.
 # Note: mark the "helpers" directory as a source directory to tell PyCharm
 # about this trick and avoid IDE errors.
-sys.path.append(os.path.join(os.path.dirname(__file__), 'helpers'))
+sys.path.append(os.path.join(os.path.dirname(__file__), "helpers"))
 
 
 def drop_db(db_name: str, config: Config):
@@ -59,22 +63,31 @@ def mock_config(mocker):
 
 
 @pytest_asyncio.fixture
-async def test_storage_service(test_db) -> StorageService:
-    from aleph import model
+async def test_storage_service(mock_config) -> StorageService:
+    data_folder = Path("./data")
 
-    storage_engine = GridFsStorageEngine(make_gridfs_client())
-    storage_service = StorageService(storage_engine=storage_engine)
+    # Delete files from previous runs
+    if data_folder.is_dir():
+        shutil.rmtree(data_folder)
+    data_folder.mkdir(parents=True)
+
+    storage_engine = FileSystemStorageEngine(folder=data_folder)
+    ipfs_client = make_ipfs_client(mock_config)
+    ipfs_service = IpfsService(ipfs_client=ipfs_client)
+    storage_service = StorageService(storage_engine=storage_engine, ipfs_service=ipfs_service)
     return storage_service
 
 
 @pytest_asyncio.fixture
-async def ccn_api_client(aiohttp_client, mock_config):
+async def ccn_api_client(mocker, aiohttp_client, mock_config):
     # Make aiohttp return the stack trace on 500 errors
     event_loop = asyncio.get_event_loop()
     event_loop.set_debug(True)
 
     app = create_app(debug=True)
     app["config"] = mock_config
+    app["p2p_client"] = mocker.AsyncMock()
+    app["storage_service"] = mocker.AsyncMock()
     client = await aiohttp_client(app)
 
     return client

@@ -5,6 +5,7 @@ from typing import Dict, List, Coroutine
 from aleph.jobs.process_pending_messages import pending_messages_subprocess, retry_messages_task
 from aleph.jobs.process_pending_txs import pending_txs_subprocess, handle_txs_task
 from aleph.jobs.reconnect_ipfs import reconnect_ipfs_job
+from aleph.services.ipfs import IpfsService
 
 LOGGER = logging.getLogger("jobs")
 
@@ -12,6 +13,7 @@ LOGGER = logging.getLogger("jobs")
 def start_jobs(
     config,
     shared_stats: Dict,
+    ipfs_service: IpfsService,
     api_servers: List[str],
     use_processes=True,
 ) -> List[Coroutine]:
@@ -39,6 +41,6 @@ def start_jobs(
         tasks.append(handle_txs_task(config))
 
     if config.ipfs.enabled.value:
-        tasks.append(reconnect_ipfs_job(config))
+        tasks.append(reconnect_ipfs_job(config, ipfs_service=ipfs_service))
 
     return tasks

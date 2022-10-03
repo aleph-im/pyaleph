@@ -6,13 +6,14 @@ import asyncio
 import logging
 
 import aioipfs
+
 from aleph.model.p2p import get_peers
-from aleph.services.ipfs.common import connect_ipfs_peer
+from aleph.services.ipfs import IpfsService
 
 LOGGER = logging.getLogger("jobs.reconnect_ipfs")
 
 
-async def reconnect_ipfs_job(config):
+async def reconnect_ipfs_job(config, ipfs_service: IpfsService):
     from aleph.services.utils import get_IP
 
     my_ip = await get_IP()
@@ -22,7 +23,7 @@ async def reconnect_ipfs_job(config):
             LOGGER.info("Reconnecting to peers")
             for peer in config.ipfs.peers.value:
                 try:
-                    ret = await connect_ipfs_peer(peer)
+                    ret = await ipfs_service.connect(peer)
                     if "Strings" in ret:
                         LOGGER.info("\n".join(ret["Strings"]))
                 except aioipfs.APIError:
@@ -36,7 +37,7 @@ async def reconnect_ipfs_job(config):
                     continue
 
                 try:
-                    ret = await connect_ipfs_peer(peer)
+                    ret = await ipfs_service.connect(peer)
                     if ret and "Strings" in ret:
                         LOGGER.info("\n".join(ret["Strings"]))
                 except aioipfs.APIError:

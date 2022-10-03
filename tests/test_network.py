@@ -83,7 +83,7 @@ async def test_invalid_signature_message_2(mocker):
 
 
 @pytest.mark.asyncio
-async def test_incoming_inline_content(test_storage_service: StorageService):
+async def test_incoming_inline_content(test_db, test_storage_service: StorageService):
     message_dict = {
         "chain": "NULS",
         "channel": "SYSINFO",

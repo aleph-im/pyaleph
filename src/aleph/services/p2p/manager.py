@@ -4,7 +4,7 @@ from typing import Coroutine, List
 from aleph_p2p_client import AlephP2PServiceClient
 from configmanager import Config
 
-from aleph.services.ipfs.common import get_public_address
+from aleph.services.ipfs import IpfsService
 from aleph.services.peers.monitor import monitor_hosts_ipfs, monitor_hosts_p2p
 from aleph.services.peers.publish import publish_host
 from aleph.services.utils import get_IP
@@ -19,6 +19,7 @@ public_adresses = []
 async def initialize_host(
     config: Config,
     p2p_client: AlephP2PServiceClient,
+    ipfs_service: IpfsService,
     api_servers: List[str],
     host: str = "0.0.0.0",
     port: int = 4025,
@@ -50,7 +51,8 @@ async def initialize_host(
         tasks += [
             publish_host(
                 public_address,
-                p2p_client,
+                p2p_client=p2p_client,
+                ipfs_service=ipfs_service,
                 p2p_alive_topic=config.p2p.alive_topic.value,
                 ipfs_alive_topic=config.ipfs.alive_topic.value,
                 peer_type="P2P",
@@ -58,7 +60,8 @@ async def initialize_host(
             ),
             publish_host(
                 public_http_address,
-                p2p_client,
+                p2p_client=p2p_client,
+                ipfs_service=ipfs_service,
                 p2p_alive_topic=config.p2p.alive_topic.value,
                 ipfs_alive_topic=config.ipfs.alive_topic.value,
                 peer_type="HTTP",
@@ -69,14 +72,17 @@ async def initialize_host(
 
         if config.ipfs.enabled.value:
             tasks.append(
-                monitor_hosts_ipfs(alive_topic=config.ipfs.alive_topic.value)
+                monitor_hosts_ipfs(
+                    ipfs_service=ipfs_service, alive_topic=config.ipfs.alive_topic.value
+                )
             )
             try:
-                public_ipfs_address = await get_public_address()
+                public_ipfs_address = await ipfs_service.get_public_address()
                 tasks.append(
                     publish_host(
                         public_ipfs_address,
-                        p2p_client,
+                        p2p_client=p2p_client,
+                        ipfs_service=ipfs_service,
                         p2p_alive_topic=config.p2p.alive_topic.value,
                         ipfs_alive_topic=config.ipfs.alive_topic.value,
                         peer_type="IPFS",

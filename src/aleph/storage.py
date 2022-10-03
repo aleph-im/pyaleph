@@ -14,10 +14,7 @@ from aleph.exceptions import InvalidContent, ContentCurrentlyUnavailable
 from aleph.schemas.message_content import ContentSource, RawContent, MessageContent
 from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.services.ipfs.common import get_cid_version
-from aleph.services.ipfs.storage import add_bytes as add_ipfs_bytes
-from aleph.services.ipfs.storage import add_file as ipfs_add_file
-from aleph.services.ipfs.storage import get_ipfs_content
-from aleph.services.ipfs.storage import pin_add as ipfs_pin_add
+from aleph.services.ipfs import IpfsService
 from aleph.services.p2p.http import request_hash as p2p_http_request_hash
 from aleph.services.storage.engine import StorageEngine
 from aleph.utils import get_sha256, run_in_executor
@@ -32,8 +29,9 @@ async def json_async_loads(s: AnyStr):
 
 
 class StorageService:
-    def __init__(self, storage_engine: StorageEngine):
+    def __init__(self, storage_engine: StorageEngine, ipfs_service: IpfsService):
         self.storage_engine = storage_engine
+        self.ipfs_service = ipfs_service
 
     async def get_message_content(self, message: BasePendingMessage) -> MessageContent:
         item_type = message.item_type
@@ -90,7 +88,9 @@ class StorageService:
 
         # TODO: get a better way to compare hashes (without depending on the IPFS daemon)
         try:
-            computed_hash = await add_ipfs_bytes(content, cid_version=cid_version)
+            computed_hash = await self.ipfs_service.add_bytes(
+                content, cid_version=cid_version
+            )
             return computed_hash
 
         except asyncio.TimeoutError:
@@ -163,7 +163,7 @@ class StorageService:
 
         if content is None:
             if ipfs_enabled and engine == ItemType.ipfs and use_ipfs:
-                content = await get_ipfs_content(
+                content = await self.ipfs_service.get_ipfs_content(
                     content_hash, timeout=timeout, tries=tries
                 )
                 source = ContentSource.IPFS
@@ -203,14 +203,14 @@ class StorageService:
         )
 
     async def pin_hash(self, chash: str, timeout: int = 2, tries: int = 1):
-        return await ipfs_pin_add(chash, timeout=timeout, tries=tries)
+        return await self.ipfs_service.pin_add(chash, timeout=timeout, tries=tries)
 
     async def add_json(self, value: Any, engine: ItemType = ItemType.ipfs) -> str:
         # TODO: determine which storage engine to use
         content = await run_in_executor(None, json.dumps, value)
         content = content.encode("utf-8")
         if engine == ItemType.ipfs:
-            chash = await add_ipfs_bytes(content)
+            chash = await self.ipfs_service.add_bytes(content)
         elif engine == ItemType.storage:
             if isinstance(content, str):
                 content = content.encode("utf-8")
@@ -224,7 +224,7 @@ class StorageService:
     async def add_file(self, fileobject: IO, engine: ItemType = ItemType.ipfs) -> str:
 
         if engine == ItemType.ipfs:
-            output = await ipfs_add_file(fileobject)
+            output = await self.ipfs_service.add_file(fileobject)
             file_hash = output["Hash"]
             fileobject.seek(0)
             file_content = fileobject.read()

@@ -67,7 +67,7 @@ class ChainDataService:
                     seen_ids.append(chaindata["content"])
             try:
                 content = await self.storage_service.get_json(
-                    chaindata["content"], timeout=10
+                    chaindata["content"], timeout=60
                 )
             except AlephStorageException:
                 # Let the caller handle unavailable/invalid content
