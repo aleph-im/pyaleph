@@ -38,17 +38,18 @@ function wait_for_it()
   "${SCRIPT_DIR}"/wait-for-it.sh "$@"
 }
 
-DB_URI=$(get_config mongodb.uri | sed "s-mongodb://--")
+POSTGRES_HOST=$(get_config postgres.host)
+POSTGRES_PORT=$(get_config postgres.port)
 IPFS_HOST=$(get_config ipfs.host)
 IPFS_PORT=$(get_config ipfs.port)
 RABBITMQ_HOST=$(get_config rabbitmq.host)
 RABBITMQ_PORT=$(get_config rabbitmq.port)
 
-wait_for_it "${DB_URI}"
-
 if [ "$(get_config ipfs.enabled)" = "True" ]; then
   wait_for_it -h "${IPFS_HOST}" -p "${IPFS_PORT}"
 fi
+
+wait_for_it -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}"
 wait_for_it -h "${RABBITMQ_HOST}" -p "${RABBITMQ_PORT}"
 
 exec pyaleph "${PYALEPH_ARGS[@]}"

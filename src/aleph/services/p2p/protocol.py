@@ -4,14 +4,15 @@ import logging
 from aleph_p2p_client import AlephP2PServiceClient
 
 from aleph.handlers.message_handler import MessageHandler
-from aleph.exceptions import InvalidMessageError
 from aleph.network import decode_pubsub_message
+from aleph.toolkit.timestamp import utc_now
+from aleph.types.message_status import InvalidMessageException
 
-LOGGER = logging.getLogger("P2P.protocol")
+LOGGER = logging.getLogger(__name__)
 
 
 async def incoming_channel(
-    p2p_client: AlephP2PServiceClient, topic: str, message_processor: MessageHandler
+    p2p_client: AlephP2PServiceClient, topic: str, message_handler: MessageHandler
 ) -> None:
     LOGGER.debug("incoming channel started...")
 
@@ -32,8 +33,8 @@ async def incoming_channel(
                     # we should check the sender here to avoid spam
                     # and such things...
                     try:
-                        message = await decode_pubsub_message(message.body)
-                    except InvalidMessageError:
+                        message_dict = await decode_pubsub_message(message.body)
+                    except InvalidMessageException:
                         LOGGER.warning(
                             "Received invalid message on P2P topic %s from %s",
                             topic,
@@ -41,8 +42,9 @@ async def incoming_channel(
                         )
                         continue
 
-                    LOGGER.debug("New message %r" % message)
-                    await message_processor.delayed_incoming(message)
+                    await message_handler.add_pending_message(
+                        message_dict=message_dict, reception_time=utc_now()
+                    )
                 except Exception:
                     LOGGER.exception("Can't handle message")
 

@@ -4,9 +4,11 @@ import logging
 from enum import Enum
 
 from aleph_pytezos.crypto.key import Key
+from nacl.exceptions import BadSignatureError
 
 from aleph.chains.common import get_verification_buffer
 from aleph.chains.connector import Verifier
+from aleph.db.models import PendingMessageDb
 from aleph.schemas.pending_messages import BasePendingMessage
 
 LOGGER = logging.getLogger(__name__)
@@ -20,7 +22,7 @@ class TezosSignatureType(str, Enum):
     MICHELINE = "micheline"
 
 
-def timestamp_to_iso_8601(timestamp: float) -> str:
+def datetime_to_iso_8601(datetime: dt.datetime) -> str:
     """
     Returns the timestamp formatted to ISO-8601, JS-style.
 
@@ -30,18 +32,18 @@ def timestamp_to_iso_8601(timestamp: float) -> str:
 
     Example: 2022-09-23T14:41:19.029Z
 
-    :param timestamp: The timestamp to format.
+    :param datetime: The timestamp to format.
     :return: The formatted timestamp.
     """
 
-    return (
-        dt.datetime.utcfromtimestamp(timestamp).isoformat(timespec="milliseconds") + "Z"
-    )
+    date_str = datetime.strftime("%Y-%m-%d")
+    time_str = f"{datetime.hour:02d}:{datetime.minute:02d}:{datetime.second:02d}.{datetime.microsecond // 1000:03d}"
+    return f"{date_str}T{time_str}Z"
 
 
 def micheline_verification_buffer(
     verification_buffer: bytes,
-    timestamp: float,
+    datetime: dt.datetime,
     dapp_url: str,
 ) -> bytes:
     """
@@ -51,13 +53,13 @@ def micheline_verification_buffer(
     See https://tezostaquito.io/docs/signing/#generating-a-signature-with-beacon-sdk.
 
     :param verification_buffer: The original (non-Tezos) verification buffer for the Aleph message.
-    :param timestamp: Timestamp of the message.
+    :param datetime: Timestamp of the message.
     :param dapp_url: The URL of the dApp, for use as part of the verification buffer.
     :return: The verification buffer used for the signature by the web wallet.
     """
 
     prefix = b"Tezos Signed Message:"
-    timestamp = timestamp_to_iso_8601(timestamp).encode("utf-8")
+    timestamp = datetime_to_iso_8601(datetime).encode("utf-8")
 
     payload = b" ".join(
         (prefix, dapp_url.encode("utf-8"), timestamp, verification_buffer)
@@ -69,9 +71,9 @@ def micheline_verification_buffer(
 
 
 def get_tezos_verification_buffer(
-    message: BasePendingMessage, signature_type: TezosSignatureType, dapp_url: str
+    message: PendingMessageDb, signature_type: TezosSignatureType, dapp_url: str
 ) -> bytes:
-    verification_buffer = get_verification_buffer(message)
+    verification_buffer = get_verification_buffer(message)  # type: ignore
 
     if signature_type == TezosSignatureType.RAW:
         return verification_buffer
@@ -92,14 +94,18 @@ class TezosConnector(Verifier):
         try:
             signature_dict = json.loads(message.signature)
         except json.JSONDecodeError:
-            LOGGER.warning("Signature field for Tezos message is not JSON deserializable.")
+            LOGGER.warning(
+                "Signature field for Tezos message is not JSON deserializable."
+            )
             return False
 
         try:
             signature = signature_dict["signature"]
             public_key = signature_dict["publicKey"]
         except KeyError as e:
-            LOGGER.exception("'%s' key missing from Tezos signature dictionary.", e.args[0])
+            LOGGER.exception(
+                "'%s' key missing from Tezos signature dictionary.", e.args[0]
+            )
             return False
 
         signature_type = TezosSignatureType(signature_dict.get("signingType", "raw"))
@@ -117,14 +123,16 @@ class TezosConnector(Verifier):
             )
 
         verification_buffer = get_tezos_verification_buffer(
-            message, signature_type, dapp_url
+            message, signature_type, dapp_url   # type: ignore
         )
 
         # Check the signature
         try:
             key.verify(signature, verification_buffer)
-        except ValueError:
-            LOGGER.warning("Received message with bad signature from %s" % message.sender)
+        except (ValueError, BadSignatureError):
+            LOGGER.warning(
+                "Received message with bad signature from %s" % message.sender
+            )
             return False
 
         return True

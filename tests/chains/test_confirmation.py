@@ -1,14 +1,19 @@
+import datetime as dt
 import json
-from typing import Dict, Mapping
+from typing import Mapping
 
 import pytest
+import pytz
+from aleph_message.models import Chain
+from configmanager import Config
 
-from aleph.chains.tx_context import TxContext
 from aleph.chains.chain_service import ChainService
+from aleph.db.accessors.messages import get_message_by_item_hash
+from aleph.db.models import ChainTxDb, PendingMessageDb
 from aleph.handlers.message_handler import MessageHandler
-from aleph.model.messages import CappedMessage, Message
-from aleph.schemas.pending_messages import parse_message
 from aleph.storage import StorageService
+from aleph.types.chain_sync import ChainSyncProtocol
+from aleph.types.db_session import DbSessionFactory
 
 MESSAGE_DICT: Mapping = {
     "chain": "ETH",
@@ -23,107 +28,143 @@ MESSAGE_DICT: Mapping = {
 }
 
 
-def remove_id_key(mongodb_object: Dict) -> Dict:
-    return {k: v for k, v in mongodb_object.items() if k != "_id"}
+@pytest.fixture
+def chain_tx() -> ChainTxDb:
+    return ChainTxDb(
+        hash="123",
+        chain=Chain.ETH,
+        height=8000,
+        datetime=pytz.utc.localize(dt.datetime(2022, 10, 1)),
+        publisher="0xabadbabe",
+        protocol=ChainSyncProtocol.OFF_CHAIN,
+        protocol_version=1,
+        content="Qmsomething",
+    )
+
+
+def compare_chain_txs(expected: ChainTxDb, actual: ChainTxDb):
+    assert actual.chain == expected.chain
+    assert actual.hash == expected.hash
+    assert actual.height == expected.height
+    assert actual.datetime == expected.datetime
+    assert actual.publisher == expected.publisher
 
 
 @pytest.mark.asyncio
-async def test_confirm_message(test_db, test_storage_service: StorageService):
+async def test_confirm_message(
+    mock_config: Config,
+    session_factory: DbSessionFactory,
+    test_storage_service: StorageService,
+    chain_tx: ChainTxDb,
+):
     """
     Tests the flow of confirmation for real-time messages.
     1. We process the message unconfirmed, as if it came through the P2P
        network
-    2. We process the message again, this time as it it was fetched from
+    2. We process the message again, this time as if it was fetched from
        on-chain data.
 
     We then check that the message was correctly updated in the messages
-    collection. We also check the capped messages collection used for
-    the websockets.
+    table.
     """
 
     item_hash = MESSAGE_DICT["item_hash"]
     content = json.loads(MESSAGE_DICT["item_content"])
 
     message_handler = MessageHandler(
-        chain_service=ChainService(storage_service=test_storage_service),
+        session_factory=session_factory,
+        chain_service=ChainService(
+            session_factory=session_factory, storage_service=test_storage_service
+        ),
         storage_service=test_storage_service,
+        config=mock_config,
     )
 
-    message = parse_message(MESSAGE_DICT)
-    await message_handler.process_one_message(message)
-    message_in_db = await Message.collection.find_one({"item_hash": item_hash})
+    pending_message = PendingMessageDb.from_message_dict(
+        MESSAGE_DICT, reception_time=dt.datetime(2022, 1, 1), fetched=True,
+    )
+    await message_handler.fetch_and_process_one_message_db(pending_message)
+
+    with session_factory() as session:
+        message_in_db = get_message_by_item_hash(
+            session=session, item_hash=item_hash
+        )
 
     assert message_in_db is not None
-    assert message_in_db["content"] == content
-    assert not message_in_db["confirmed"]
-
-    capped_message_in_db = await CappedMessage.collection.find_one(
-        {"item_hash": item_hash}
-    )
-    assert capped_message_in_db is not None
-    assert remove_id_key(message_in_db) == remove_id_key(capped_message_in_db)
+    assert message_in_db.content == content
+    assert not message_in_db.confirmed
 
     # Now, confirm the message
-    tx_context = TxContext(
-        chain="ETH",
-        hash="123",
-        height=8000,
-        time=120000,
-        publisher="0xdeadbeef",
-    )
-    await message_handler.process_one_message(message, tx_context=tx_context)
 
-    message_in_db = await Message.collection.find_one({"item_hash": item_hash})
+    # Insert a transaction in the DB to validate the foreign key constraint
+    with session_factory() as session:
+        session.add(chain_tx)
+        session.commit()
+
+    pending_message.tx = chain_tx
+    pending_message.tx_hash = chain_tx.hash
+
+    await message_handler.fetch_and_process_one_message_db(
+        pending_message=pending_message
+    )
+
+    with session_factory() as session:
+        message_in_db = get_message_by_item_hash(
+            session=session, item_hash=item_hash
+        )
 
     assert message_in_db is not None
-    assert message_in_db["confirmed"]
-    expected_confirmations = [tx_context.dict()]
-    assert message_in_db["confirmations"] == expected_confirmations
-
-    capped_message_after_confirmation = await CappedMessage.collection.find_one(
-        {"item_hash": item_hash}
-    )
-
-    assert capped_message_after_confirmation == capped_message_in_db
-    assert not capped_message_after_confirmation["confirmed"]
-    assert "confirmations" not in capped_message_after_confirmation
+    assert message_in_db.confirmed
+    assert len(message_in_db.confirmations) == 1
+    confirmation = message_in_db.confirmations[0]
+    compare_chain_txs(expected=chain_tx, actual=confirmation)
 
 
 @pytest.mark.asyncio
-async def test_process_confirmed_message(test_db, test_storage_service: StorageService):
+async def test_process_confirmed_message(
+    mock_config: Config,
+    session_factory: DbSessionFactory,
+    test_storage_service: StorageService,
+    chain_tx: ChainTxDb,
+):
     """
     Tests that a confirmed message coming directly from the on-chain integration flow
-    is processed correctly, and that we get one confirmed entry in messages and one
-    in capped messages.
+    is processed correctly, and that we get one confirmed entry in messages and none
+    in capped messages (historical data/confirmations are not added to capped messages).
     """
 
     item_hash = MESSAGE_DICT["item_hash"]
 
     message_handler = MessageHandler(
-        chain_service=ChainService(storage_service=test_storage_service),
+        session_factory=session_factory,
+        chain_service=ChainService(
+            session_factory=session_factory, storage_service=test_storage_service
+        ),
         storage_service=test_storage_service,
+        config=mock_config,
     )
 
-    # Confirm the message
-    message = parse_message(MESSAGE_DICT)
-    tx_context = TxContext(
-        chain="ETH", hash="123", height=8000, time=120000, publisher="0xdeadbeef"
-    )
-    await message_handler.process_one_message(message, tx_context=tx_context)
+    # Insert a transaction in the DB to validate the foreign key constraint
+    with session_factory() as session:
+        session.add(chain_tx)
+        session.commit()
 
-    # Now, confirm the message
-    message_in_db = await Message.collection.find_one({"item_hash": item_hash})
+    pending_message = PendingMessageDb.from_message_dict(
+        MESSAGE_DICT, reception_time=dt.datetime(2022, 1, 1), fetched=True,
+    )
+    pending_message.tx_hash = chain_tx.hash
+    pending_message.tx = chain_tx
+    await message_handler.fetch_and_process_one_message_db(
+        pending_message=pending_message
+    )
+
+    with session_factory() as session:
+        message_in_db = get_message_by_item_hash(
+            session=session, item_hash=item_hash
+        )
 
     assert message_in_db is not None
-    assert message_in_db["confirmed"]
-
-    expected_confirmations = [tx_context.dict()]
-    assert message_in_db["confirmations"] == expected_confirmations
-
-    capped_message_in_db = await CappedMessage.collection.find_one(
-        {"item_hash": item_hash}
-    )
-
-    assert remove_id_key(message_in_db) == remove_id_key(capped_message_in_db)
-    assert capped_message_in_db["confirmed"]
-    assert capped_message_in_db["confirmations"] == [tx_context.dict()]
+    assert message_in_db.confirmed
+    assert len(message_in_db.confirmations) == 1
+    confirmation = message_in_db.confirmations[0]
+    compare_chain_txs(expected=chain_tx, actual=confirmation)

@@ -17,13 +17,14 @@ ethereum:
   token_contract: "0x27702a26126e0B3702af63Ee09aC4d1A084EF628"
   token_start_height: 10939074
 
-mongodb:
-  uri: "mongodb://mongodb:27017"
-  database: aleph
+
+postgres:
+    host: postgres
 
 storage:
   store_files: true
-  engine: mongodb
+  engine: filesystem
+  folder: /var/lib/pyaleph
 
 ipfs:
   enabled: true

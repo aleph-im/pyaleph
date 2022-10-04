@@ -2,23 +2,25 @@ version: '2.2'
 
 volumes:
   pyaleph-ipfs:
-  pyaleph-mongodb:
+  pyaleph-local-storage:
+  pyaleph-postgres:
   pyaleph-caddy-data:
   pyaleph-caddy-config:
 
 services:
   pyaleph:
     restart: always
-    image: alephim/pyaleph-node:v0.4.3
-    command: --config /opt/pyaleph/config.yml --key-dir /opt/pyaleph/keys -vv
+    image: alephim/pyaleph-node:latest
+    command: --config /opt/pyaleph/config.yml --key-dir /opt/pyaleph/keys -v
     ports:
       - "127.0.0.1:8000:8000/tcp"
       - "4024:4024/tcp"
     volumes:
       - ./config.yml:/opt/pyaleph/config.yml
       - ./keys:/opt/pyaleph/keys
+      - pyaleph-local-storage:/var/lib/pyaleph
     depends_on:
-      - mongodb
+      - postgres
       - ipfs
       - p2p-service
     networks:
@@ -48,6 +50,20 @@ services:
       - "--private-key-file"
       - "/etc/p2p-service/node-secret.pkcs8.der"
 
+  postgres:
+    restart: always
+    image: postgres:15.1
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pyaleph-postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: aleph
+      POSTGRES_PASSWORD: decentralize-everything
+      POSTGRES_DB: aleph
+    networks:
+      - pyaleph
+
   rabbitmq:
     restart: always
     image: rabbitmq:3.10.7-management
@@ -73,15 +89,6 @@ services:
     networks:
       - pyaleph
     command: ["daemon", "--enable-pubsub-experiment", "--migrate"]
-
-  mongodb:
-    restart: always
-    image: mongo:4.4
-    volumes:
-      - pyaleph-mongodb:/data/db
-    command: mongod --storageEngine wiredTiger
-    networks:
-      - pyaleph
 
   prometheus:
     restart: always

@@ -18,19 +18,21 @@ from multiprocessing import Manager, Process, set_start_method
 from multiprocessing.managers import SyncManager
 from typing import Any, Coroutine, Dict, List, Optional
 
+import alembic.config
+import alembic.command
 import sentry_sdk
 from aleph_message.models import MessageType
 from configmanager import Config
 from setproctitle import setproctitle
 
 import aleph.config
-from aleph import model
 from aleph.chains.chain_service import ChainService
 from aleph.cli.args import parse_args
+from aleph.db.connection import make_engine, make_session_factory, make_db_url
 from aleph.exceptions import InvalidConfigException, KeyNotFoundException
 from aleph.jobs import start_jobs
 from aleph.jobs.job_utils import prepare_loop
-from aleph.logging import setup_logging
+from aleph.toolkit.logging import setup_logging
 from aleph.network import listener_tasks
 from aleph.services import p2p
 from aleph.services.ipfs import IpfsService
@@ -46,6 +48,14 @@ __copyright__ = "Moshe Malawach"
 __license__ = "mit"
 
 LOGGER = logging.getLogger(__name__)
+
+
+def run_db_migrations(config: Config):
+    db_url = make_db_url(driver="psycopg2", config=config)
+    alembic_cfg = alembic.config.Config("alembic.ini")
+    alembic_cfg.attributes["configure_logger"] = False
+    logging.getLogger("alembic").setLevel(logging.CRITICAL)
+    alembic.command.upgrade(alembic_cfg, "head", tag=db_url)
 
 
 def init_shared_stats(shared_memory_manager: SyncManager) -> Dict[str, Any]:
@@ -73,10 +83,16 @@ async def run_server(
 ):
     # These imports will run in different processes
     from aiohttp import web
-    from aleph.web.controllers.listener import broadcast
 
     LOGGER.debug("Setup of runner")
     p2p_client = await init_p2p_client(config, service_name=f"api-server-{port}")
+
+    engine = make_engine(
+        config,
+        echo=config.logging.level.value == logging.DEBUG,
+        application_name=f"aleph-api-{port}",
+    )
+    session_factory = make_session_factory(engine)
 
     ipfs_client = make_ipfs_client(config)
     ipfs_service = IpfsService(ipfs_client=ipfs_client)
@@ -89,18 +105,21 @@ async def run_server(
     app["extra_config"] = extra_web_config
     app["shared_stats"] = shared_stats
     app["p2p_client"] = p2p_client
+    # Reuse the connection of the P2P client to avoid opening two connections
+    app["mq_conn"] = p2p_client.mq_client.connection
     app["storage_service"] = storage_service
+    app["session_factory"] = session_factory
 
     runner = web.AppRunner(app)
     await runner.setup()
 
-    LOGGER.debug("Starting site")
+    LOGGER.info("Starting API server on port %d...", port)
     site = web.TCPSite(runner, host, port)
     await site.start()
 
-    LOGGER.debug("Running broadcast server")
-    await broadcast()
-    LOGGER.debug("Finished broadcast server")
+    # Wait forever
+    while True:
+        await asyncio.sleep(3600)
 
 
 def run_server_coroutine(
@@ -204,16 +223,28 @@ async def main(args):
 
     config_values = config.dump_values()
 
-    LOGGER.debug("Initializing database")
-    model.init_db(config, ensure_indexes=True)
+    LOGGER.info("Initializing database...")
+    run_db_migrations(config)
     LOGGER.info("Database initialized.")
+
+    engine = make_engine(
+        config,
+        echo=args.loglevel == logging.DEBUG,
+        application_name="aleph-conn-manager",
+    )
+    session_factory = make_session_factory(engine)
+
+    # TODO: find a way to prevent alembic from messing up the logging config
+    setup_logging(args.loglevel)
 
     ipfs_service = IpfsService(ipfs_client=make_ipfs_client(config))
     storage_service = StorageService(
         storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
         ipfs_service=ipfs_service,
     )
-    chain_service = ChainService(storage_service=storage_service)
+    chain_service = ChainService(
+        session_factory=session_factory, storage_service=storage_service
+    )
 
     set_start_method("spawn")
 
@@ -228,6 +259,7 @@ async def main(args):
             LOGGER.debug("Creating jobs")
             tasks += start_jobs(
                 config=config,
+                session_factory=session_factory,
                 shared_stats=shared_stats,
                 ipfs_service=ipfs_service,
                 api_servers=api_servers,
@@ -237,6 +269,7 @@ async def main(args):
         LOGGER.debug("Initializing p2p")
         p2p_client, p2p_tasks = await p2p.init_p2p(
             config=config,
+            session_factory=session_factory,
             service_name="network-monitor",
             ipfs_service=ipfs_service,
             api_servers=api_servers,
@@ -245,7 +278,9 @@ async def main(args):
         LOGGER.debug("Initialized p2p")
 
         LOGGER.debug("Initializing listeners")
-        tasks += listener_tasks(config, p2p_client)
+        tasks += listener_tasks(
+            config=config, session_factory=session_factory, p2p_client=p2p_client
+        )
         tasks.append(chain_service.chain_event_loop(config))
         LOGGER.debug("Initialized listeners")
 

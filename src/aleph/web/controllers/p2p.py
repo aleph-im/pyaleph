@@ -7,11 +7,11 @@ from aiohttp import web
 from aleph_p2p_client import AlephP2PServiceClient
 from configmanager import Config
 
-from aleph.exceptions import InvalidMessageError
 from aleph.schemas.pending_messages import parse_message
 from aleph.services.ipfs import IpfsService
 from aleph.services.p2p.pubsub import publish as pub_p2p
-from aleph.types import Protocol
+from aleph.types.message_status import InvalidMessageException
+from aleph.types.protocol import Protocol
 
 LOGGER = logging.getLogger("web.controllers.p2p")
 
@@ -33,7 +33,7 @@ def validate_request_data(config: Config, request_data: Dict) -> None:
         message = json.loads(cast(str, request_data.get("data")))
         try:
             _ = parse_message(message)
-        except InvalidMessageError as e:
+        except InvalidMessageException as e:
             raise web.HTTPUnprocessableEntity(body=str(e))
 
 

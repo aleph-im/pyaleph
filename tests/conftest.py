@@ -4,22 +4,19 @@ import shutil
 import sys
 from pathlib import Path
 
-import pymongo
 import pytest
 import pytest_asyncio
 from configmanager import Config
 
 import aleph.config
-from aleph.config import get_defaults
-from aleph.model import init_db
+from aleph.db.connection import make_engine, make_session_factory
+from aleph.db.models.base import Base
 from aleph.services.ipfs import IpfsService
 from aleph.services.ipfs.common import make_ipfs_client
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
+from aleph.types.db_session import DbSessionFactory
 from aleph.web import create_app
-
-TEST_DB = "ccn_automated_tests"
-
 
 # Add the helpers to the PYTHONPATH.
 # Note: mark the "helpers" directory as a source directory to tell PyCharm
@@ -27,26 +24,38 @@ TEST_DB = "ccn_automated_tests"
 sys.path.append(os.path.join(os.path.dirname(__file__), "helpers"))
 
 
-def drop_db(db_name: str, config: Config):
-    client = pymongo.MongoClient(config.mongodb.uri.value)
-    client.drop_database(db_name)
+@pytest.fixture
+def session_factory(mock_config):
+    engine = make_engine(config=mock_config, echo=False, application_name="aleph-tests")
 
+    with engine.begin() as conn:
+        Base.metadata.drop_all(conn)
+        # TODO: run migrations instead
+        Base.metadata.create_all(conn)
 
-@pytest_asyncio.fixture
-async def test_db():
-    """
-    Initializes and cleans a MongoDB database dedicated to automated tests.
-    """
+        # Here go all the annoying patchworks that are required because we do not run
+        # the migration scripts. Address the todo above and these can all disappear!
 
-    config = Config(schema=get_defaults())
-    config.mongodb.database.value = TEST_DB
+        # Aggregates are not described in SQLAlchemy, so we need to create them manually.
+        conn.execute("DROP AGGREGATE IF EXISTS jsonb_merge(jsonb)")
+        conn.execute(
+            """
+        CREATE AGGREGATE jsonb_merge(jsonb) (
+            SFUNC = 'jsonb_concat',
+            STYPE = jsonb,
+            INITCOND = '{}'
+        )"""
+        )
 
-    drop_db(TEST_DB, config)
-    init_db(config, ensure_indexes=True)
+        # Indexes with NULLS NOT DISTINCT are not yet supported in SQLA.
+        conn.execute(
+            "ALTER TABLE balances DROP CONSTRAINT balances_address_chain_dapp_uindex"
+        )
+        conn.execute(
+            "ALTER TABLE balances ADD CONSTRAINT balances_address_chain_dapp_uindex UNIQUE NULLS NOT DISTINCT (address, chain, dapp)"
+        )
 
-    from aleph.model import db
-
-    yield db
+    return make_session_factory(engine)
 
 
 @pytest.fixture
@@ -74,12 +83,16 @@ async def test_storage_service(mock_config) -> StorageService:
     storage_engine = FileSystemStorageEngine(folder=data_folder)
     ipfs_client = make_ipfs_client(mock_config)
     ipfs_service = IpfsService(ipfs_client=ipfs_client)
-    storage_service = StorageService(storage_engine=storage_engine, ipfs_service=ipfs_service)
+    storage_service = StorageService(
+        storage_engine=storage_engine, ipfs_service=ipfs_service
+    )
     return storage_service
 
 
 @pytest_asyncio.fixture
-async def ccn_api_client(mocker, aiohttp_client, mock_config):
+async def ccn_api_client(
+    mocker, aiohttp_client, mock_config, session_factory: DbSessionFactory
+):
     # Make aiohttp return the stack trace on 500 errors
     event_loop = asyncio.get_event_loop()
     event_loop.set_debug(True)
@@ -88,6 +101,7 @@ async def ccn_api_client(mocker, aiohttp_client, mock_config):
     app["config"] = mock_config
     app["p2p_client"] = mocker.AsyncMock()
     app["storage_service"] = mocker.AsyncMock()
+    app["session_factory"] = session_factory
     client = await aiohttp_client(app)
 
     return client

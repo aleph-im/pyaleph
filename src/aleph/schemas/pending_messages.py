@@ -31,8 +31,9 @@ from aleph_message.models import ItemType, MessageType
 from pydantic import ValidationError
 from pydantic import root_validator
 
-from aleph.exceptions import InvalidMessageError, UnknownHashError
+from aleph.exceptions import UnknownHashError
 from aleph.schemas.base_messages import AlephBaseMessage, MType, ContentType
+from aleph.types.message_status import InvalidMessageFormat
 from aleph.utils import item_type_from_hash
 
 MAX_INLINE_SIZE = 200000  # 200kb max inline content size.
@@ -127,17 +128,17 @@ MESSAGE_TYPE_TO_CLASS = {
 
 def parse_message(message_dict: Any) -> BasePendingMessage:
     if not isinstance(message_dict, dict):
-        raise InvalidMessageError("Message is not a dictionary")
+        raise InvalidMessageFormat("Message is not a dictionary")
 
     raw_message_type = message_dict.get("type")
     try:
         message_type = MessageType(raw_message_type)
     except ValueError as e:
-        raise InvalidMessageError(f"Invalid message_type: '{raw_message_type}'") from e
+        raise InvalidMessageFormat(f"Invalid message_type: '{raw_message_type}'") from e
 
     msg_cls = MESSAGE_TYPE_TO_CLASS[message_type]
 
     try:
         return msg_cls(**message_dict)
     except ValidationError as e:
-        raise InvalidMessageError(json.dumps(e.json())) from e
+        raise InvalidMessageFormat(e.errors()) from e
