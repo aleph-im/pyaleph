@@ -322,7 +322,7 @@ async def ethereum_packer(config):
                 # If the broadcast fails, delete the generated chain data file from the node.
                 # TODO: delete the file from IPFS as well.
                 await delete_value(content)
-
+                raise
 
         await asyncio.sleep(config.ethereum.commit_delay.value)
         i += 1
