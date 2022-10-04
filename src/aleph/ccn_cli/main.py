@@ -7,6 +7,7 @@ from .cli_config import CliConfig
 from .commands.garbage_collector import gc_ns
 from .commands.keys import keys_ns
 from .commands.migrations import migrations_ns
+from .commands.repair import repair_ns
 
 app = typer.Typer()
 
@@ -68,6 +69,11 @@ def main(
 app.add_typer(gc_ns, name="gc", help="Invoke the garbage collector.")
 app.add_typer(keys_ns, name="keys", help="Operations on private keys.")
 app.add_typer(migrations_ns, name="migrations", help="Run DB migrations.")
+app.add_typer(
+    repair_ns,
+    name="repair",
+    help="Performs checks on the local install and fixes issues like missing files.",
+)
 
 
 if __name__ == "__main__":

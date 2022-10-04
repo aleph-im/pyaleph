@@ -1,7 +1,9 @@
 from typing import Any, Dict, FrozenSet, List, Optional
-from aleph.model.messages import Message
-from aleph.model.filepin import PermanentPin
+
 from aleph_message.models import MessageType
+
+from aleph.model.filepin import PermanentPin
+from aleph.model.messages import Message
 
 
 async def get_hashes(
