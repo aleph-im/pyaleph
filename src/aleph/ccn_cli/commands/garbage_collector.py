@@ -5,55 +5,21 @@ deletion.
 """
 import asyncio
 import datetime as dt
-from typing import Any, Dict, FrozenSet, List, Optional
+from typing import Dict, FrozenSet
 from typing import cast
 
 import pytz
 import typer
-from aleph_message.models import MessageType
 from configmanager import Config
 
 import aleph.model
 from aleph.ccn_cli.cli_config import CliConfig
 from aleph.config import get_defaults
 from aleph.model import init_db_globals
-from aleph.model.filepin import PermanentPin
 from aleph.model.hashes import delete_value as delete_gridfs_file
-from aleph.model.messages import Message
+from .toolkit.local_storage import list_expected_local_files
 
 gc_ns = typer.Typer()
-
-
-async def get_hashes(
-    item_type_field: str, item_hash_field: str, msg_type: Optional[MessageType] = None
-) -> FrozenSet[str]:
-    def rgetitem(dictionary: Any, fields: List[str]) -> Any:
-        value = dictionary[fields[0]]
-        if len(fields) > 1:
-            return rgetitem(value, fields[1:])
-        return value
-
-    filters = {
-        # Check if the hash field exists in case the message was forgotten
-        item_hash_field: {"$exists": 1},
-        item_type_field: {"$in": ["ipfs", "storage"]},
-    }
-    if msg_type:
-        filters["type"] = msg_type
-
-    hashes = [
-        rgetitem(msg, item_hash_field.split("."))
-        async for msg in Message.collection.find(
-            filters,
-            {item_hash_field: 1},
-            batch_size=1000,
-        )
-    ]
-
-    # Temporary fix for api2. A message has a list of dicts as item hash.
-    hashes = [h for h in hashes if isinstance(h, str)]
-
-    return frozenset(hashes)
 
 
 def print_files_to_preserve(files_to_preserve: Dict[str, FrozenSet[str]]) -> None:
@@ -79,26 +45,8 @@ async def list_files_to_preserve(
         ]
     )
 
-    # Get all the messages that potentially store data in local storage:
-    # * any message with item_type in ["storage", "ipfs"]
-    # * STOREs with content.item_type in ["storage", "ipfs"]
-    files_to_preserve_dict["non-inline messages"] = await get_hashes(
-        item_type_field="item_type",
-        item_hash_field="item_hash",
-    )
-    files_to_preserve_dict["stores"] = await get_hashes(
-        item_type_field="content.item_type",
-        item_hash_field="content.item_hash",
-        msg_type=MessageType.store,
-    )
-
-    # We also keep permanent pins, even if they are also stored on IPFS
-    files_to_preserve_dict["file pins"] = frozenset(
-        [
-            pin["multihash"]
-            async for pin in PermanentPin.collection.find({}, {"multihash": 1})
-        ]
-    )
+    expected_local_files = await list_expected_local_files()
+    files_to_preserve_dict.update(expected_local_files)
 
     return files_to_preserve_dict
 
