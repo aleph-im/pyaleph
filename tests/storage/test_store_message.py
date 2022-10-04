@@ -1,23 +1,23 @@
 import json
+from typing import Mapping, Any
 
 import pytest
+from configmanager import Config
+from sqlalchemy import select
 
-from aleph.handlers.storage import StoreMessageHandler
+from aleph.db.models import MessageDb, StoredFileDb
+from aleph.handlers.content.store import StoreMessageHandler
 from aleph.schemas.message_content import ContentSource, RawContent
-from aleph.schemas.validated_message import (
-    ValidatedStoreMessage,
-    StoreContentWithMetadata,
-)
-from aleph.schemas.message_confirmation import MessageConfirmation
-from message_test_helpers import make_validated_message_from_dict
-
 from aleph.services.ipfs import IpfsService
 from aleph.storage import StorageService
+from aleph.types.db_session import DbSessionFactory
+from aleph.types.files import FileType
+from message_test_helpers import make_validated_message_from_dict
 
 
 @pytest.fixture
-def fixture_message_file():
-    message_dict = {
+def fixture_message_file() -> MessageDb:
+    message_dict: Mapping[str, Any] = {
         "chain": "ETH",
         "item_hash": "7e4f914865028356704919810073ec5690ecc4bb0ee3bd6bdb24829fd532398f",
         "sender": "0x1772213F07b98eBf3e85CCf88Ac29482ff97d9B1",
@@ -31,21 +31,12 @@ def fixture_message_file():
     return make_validated_message_from_dict(
         message_dict,
         raw_content=message_dict["item_content"],
-        confirmations=[
-            MessageConfirmation(
-                chain="ETH",
-                hash="0x28fd852984b1f2222ca1870a97f44cc34b535a49d2618f5689a10a67985935d5",
-                height=14276536,
-                time=9000,
-                publisher="0xsomething",
-            )
-        ],
     )
 
 
 @pytest.fixture
-def fixture_message_directory():
-    message_dict = {
+def fixture_message_directory() -> MessageDb:
+    message_dict: Mapping[str, Any] = {
         "chain": "ETH",
         "item_hash": "b3d17833bcefb7a6eb2d9fa7c77cca3eed3a3fa901a904d35c529a71be25fc6d",
         "sender": "0xdeadbeef",
@@ -64,7 +55,10 @@ def fixture_message_directory():
 
 @pytest.mark.asyncio
 async def test_handle_new_storage_file(
-    mocker, mock_config, fixture_message_file: ValidatedStoreMessage
+    mocker,
+    session_factory: DbSessionFactory,
+    mock_config: Config,
+    fixture_message_file: MessageDb,
 ):
     assert fixture_message_file.item_content is not None  # for mypy
     content = json.loads(fixture_message_file.item_content)
@@ -91,21 +85,31 @@ async def test_handle_new_storage_file(
     )
     storage_service.get_hash_content = get_hash_content_mock = mocker.AsyncMock(return_value=raw_content)  # type: ignore
     store_message_handler = StoreMessageHandler(storage_service=storage_service)
-    result = await store_message_handler.handle_new_storage(message)
-    assert result
+    with session_factory() as session:
+        await store_message_handler.fetch_related_content(
+            session=session, message=message
+        )
+        session.commit()
 
-    # The IPFS stats are not added for files
-    assert isinstance(message.content, StoreContentWithMetadata)
-    assert message.content.engine_info is None
-    assert message.content.size == len(raw_content)
-    assert message.content.content_type == "file"
+    with session_factory() as session:
+        stored_files = list((session.execute(select(StoredFileDb))).scalars())
+
+    assert len(stored_files) == 1
+    stored_file: StoredFileDb = stored_files[0]
+
+    assert stored_file.hash == content["item_hash"]
+    assert stored_file.type == FileType.FILE
+    assert stored_file.size == len(raw_content)
 
     assert get_hash_content_mock.called_once
 
 
 @pytest.mark.asyncio
 async def test_handle_new_storage_directory(
-    mocker, mock_config, fixture_message_directory: ValidatedStoreMessage
+    mocker,
+    session_factory: DbSessionFactory,
+    mock_config: Config,
+    fixture_message_directory: MessageDb,
 ):
     mock_ipfs_client = mocker.MagicMock()
     ipfs_stats = {
@@ -126,20 +130,21 @@ async def test_handle_new_storage_directory(
     )
     store_message_handler = StoreMessageHandler(storage_service=storage_service)
 
-    result = await store_message_handler.handle_new_storage(message)
-    assert result
+    with session_factory() as session:
+        await store_message_handler.fetch_related_content(
+            session=session, message=message
+        )
+        session.commit()
+
+    with session_factory() as session:
+        stored_files = list((session.execute(select(StoredFileDb))).scalars())
+
+    assert len(stored_files) == 1
+    stored_file = stored_files[0]
 
     # Check the updates to the message content
-    assert isinstance(message.content, StoreContentWithMetadata)
-    assert message.content.engine_info is not None
-
-    assert message.content.engine_info.hash == ipfs_stats["Hash"]
-    assert message.content.engine_info.size == ipfs_stats["Size"]
-    assert message.content.engine_info.cumulative_size == ipfs_stats["CumulativeSize"]
-    assert message.content.engine_info.blocks == ipfs_stats["Blocks"]
-    assert message.content.engine_info.type == ipfs_stats["Type"]
-
-    assert message.content.size == ipfs_stats["CumulativeSize"]
-    assert message.content.content_type == "directory"
+    assert stored_file.hash == ipfs_stats["Hash"]
+    assert stored_file.size == ipfs_stats["CumulativeSize"]
+    assert stored_file.type == FileType.DIRECTORY
 
     assert not storage_engine.called

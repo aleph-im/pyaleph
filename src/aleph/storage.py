@@ -5,27 +5,41 @@ import asyncio
 import json
 import logging
 from hashlib import sha256
-from typing import Any, AnyStr, IO, Optional, cast
+from typing import Any, IO, Optional, cast, Final
 
 from aleph_message.models import ItemType
 
+import aleph.toolkit.json as aleph_json
 from aleph.config import get_config
+from aleph.db.models import PendingMessageDb
 from aleph.exceptions import InvalidContent, ContentCurrentlyUnavailable
 from aleph.schemas.message_content import ContentSource, RawContent, MessageContent
-from aleph.schemas.pending_messages import BasePendingMessage
-from aleph.services.ipfs.common import get_cid_version
 from aleph.services.ipfs import IpfsService
+from aleph.services.ipfs.common import get_cid_version
 from aleph.services.p2p.http import request_hash as p2p_http_request_hash
 from aleph.services.storage.engine import StorageEngine
+from aleph.types.message_status import InvalidMessageException
 from aleph.utils import get_sha256, run_in_executor
 
-LOGGER = logging.getLogger("STORAGE")
+LOGGER = logging.getLogger(__name__)
 
 
-async def json_async_loads(s: AnyStr):
-    """Deserialize ``s`` (a ``str``, ``bytes`` or ``bytearray`` instance
-    containing a JSON document) to a Python object in an asynchronous executor."""
-    return await run_in_executor(None, json.loads, s)
+U0000_STR: Final = "\\u0000"
+U0000_BYTES: Final = U0000_STR.encode("utf-8")
+
+
+def check_for_u0000(item_content: aleph_json.SerializedJsonInput):
+    # Note: this condition is a bit longer than it should be to make it clear
+    #       for mypy that we are comparing the correct types.
+    if isinstance(item_content, str):
+        contains_u0000 = U0000_STR in item_content
+    else:
+        contains_u0000 = U0000_BYTES in item_content
+
+    if contains_u0000:
+        error_msg = f"Unsupported character in message: \\u0000"
+        LOGGER.warning(error_msg)
+        raise InvalidContent(error_msg)
 
 
 class StorageService:
@@ -33,33 +47,41 @@ class StorageService:
         self.storage_engine = storage_engine
         self.ipfs_service = ipfs_service
 
-    async def get_message_content(self, message: BasePendingMessage) -> MessageContent:
+    async def get_message_content(self, message: PendingMessageDb) -> MessageContent:
         item_type = message.item_type
         item_hash = message.item_hash
 
+        item_content: aleph_json.SerializedJsonInput
+
         if item_type in (ItemType.ipfs, ItemType.storage):
-            return await self.get_json(item_hash, engine=ItemType(item_type))
+            hash_content = await self.get_hash_content(
+                item_hash, engine=ItemType(item_type)
+            )
+            item_content = hash_content.value
+            source = hash_content.source
         elif item_type == ItemType.inline:
             # This hypothesis is validated at schema level
             item_content = cast(str, message.item_content)
-
-            try:
-                content = await json_async_loads(item_content)
-            except (json.JSONDecodeError, KeyError) as e:
-                error_msg = f"Can't decode JSON: {e}"
-                LOGGER.warning(error_msg)
-                raise InvalidContent(error_msg)
-
-            return MessageContent(
-                hash=item_hash,
-                source=ContentSource.INLINE,
-                value=content,
-                raw_value=item_content,
-            )
+            source = ContentSource.INLINE
         else:
             # unknown, could retry later? shouldn't have arrived this far though.
-            error_msg = f"Unknown item type: '{item_type}'."
-            raise ContentCurrentlyUnavailable(error_msg)
+            raise ValueError(f"Unknown item type: '{item_type}'.")
+
+        check_for_u0000(item_content)
+
+        try:
+            content = aleph_json.loads(item_content)
+        except aleph_json.DecodeError as e:
+            error_msg = f"Can't decode JSON: {e}"
+            LOGGER.warning(error_msg)
+            raise InvalidContent(error_msg)
+
+        return MessageContent(
+            hash=item_hash,
+            source=source,
+            value=content,
+            raw_value=item_content,
+        )
 
     async def _fetch_content_from_network(
         self, content_hash: str, engine: ItemType, timeout: int
@@ -190,8 +212,8 @@ class StorageService:
         )
 
         try:
-            json_content = await json_async_loads(content.value)
-        except json.JSONDecodeError as e:
+            json_content = aleph_json.loads(content.value)
+        except aleph_json.DecodeError as e:
             LOGGER.exception("Can't decode JSON")
             raise InvalidContent("Cannot decode JSON") from e
 

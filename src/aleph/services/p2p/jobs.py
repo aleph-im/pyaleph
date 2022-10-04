@@ -6,7 +6,9 @@ from typing import List, Optional
 from aleph_p2p_client import AlephP2PServiceClient
 from configmanager import Config
 
-from aleph.model.p2p import get_peers
+from aleph.db.accessors.peers import get_all_addresses_by_peer_type
+from aleph.db.models import PeerType
+from aleph.types.db_session import DbSessionFactory
 from .http import api_get_request
 from .peers import connect_peer
 
@@ -21,13 +23,22 @@ class PeerStatus:
 LOGGER = logging.getLogger("P2P.jobs")
 
 
-async def reconnect_p2p_job(config: Config, p2p_client: AlephP2PServiceClient) -> None:
+async def reconnect_p2p_job(
+    config: Config, session_factory: DbSessionFactory, p2p_client: AlephP2PServiceClient
+) -> None:
     await asyncio.sleep(2)
+
     while True:
         try:
-            peers = set(
-                config.p2p.peers.value + [a async for a in get_peers(peer_type="P2P")]
-            )
+            peers = set(config.p2p.peers.value)
+
+            with session_factory() as session:
+                peers |= set(
+                    get_all_addresses_by_peer_type(
+                        session=session, peer_type=PeerType.P2P
+                    )
+                )
+
             for peer in peers:
                 try:
                     await connect_peer(p2p_client=p2p_client, peer_maddr=peer)
@@ -52,7 +63,9 @@ async def check_peer(peer_uri: str, timeout: int = 1) -> PeerStatus:
     return PeerStatus(peer_uri=peer_uri, is_online=False, version=None)
 
 
-async def tidy_http_peers_job(config: Config, api_servers: List[str]) -> None:
+async def tidy_http_peers_job(
+    config: Config, session_factory: DbSessionFactory, api_servers: List[str]
+) -> None:
     """Check that HTTP peers are reachable, else remove them from the list"""
     from aleph.services.utils import get_IP
 
@@ -63,7 +76,12 @@ async def tidy_http_peers_job(config: Config, api_servers: List[str]) -> None:
         jobs = []
 
         try:
-            async for peer in get_peers(peer_type="HTTP"):
+            with session_factory() as session:
+                peers = get_all_addresses_by_peer_type(
+                    session=session, peer_type=PeerType.HTTP
+                )
+
+            for peer in peers:
                 if my_ip in peer:
                     continue
 

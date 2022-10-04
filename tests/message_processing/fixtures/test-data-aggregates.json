@@ -1,0 +1,127 @@
+[
+  {
+    "chain": "ETH",
+    "item_hash": "53c2b16aa84b10878982a2920844625546f5db32337ecd9dd15928095a30381c",
+    "sender": "0x720F319A9c3226dCDd7D8C49163D79EDa1084E98",
+    "type": "AGGREGATE",
+    "channel": "INTEGRATION_TESTS",
+    "content": {
+      "address": "0x720F319A9c3226dCDd7D8C49163D79EDa1084E98",
+      "time": 1644857371.391834,
+      "key": "test_reference",
+      "content": {
+        "a": 1,
+        "b": 2
+      }
+    },
+    "item_content": "{\"address\":\"0x720F319A9c3226dCDd7D8C49163D79EDa1084E98\",\"time\":1644857371.391834,\"key\":\"test_reference\",\"content\":{\"a\":1,\"b\":2}}",
+    "item_type": "inline",
+    "signature": "0x7eee4cfc03b963ec51f04f60f6f7d58b0f24e0309d209feecb55af9e411ed1c01cfb547bb13539e91308b044c3661d93ddf272426542bc1a47722614cb0cd3621c",
+    "size": 128,
+    "time": 1644859283.101
+  },
+  {
+    "chain": "ETH",
+    "item_hash": "0022ed09d16a1c3d6cbb3c7e2645657ebaa0382eba65be06264b106f528b85bf",
+    "sender": "0x720F319A9c3226dCDd7D8C49163D79EDa1084E98",
+    "type": "AGGREGATE",
+    "channel": "INTEGRATION_TESTS",
+    "content": {
+      "address": "0x720F319A9c3226dCDd7D8C49163D79EDa1084E98",
+      "time": 1644857704.6253593,
+      "key": "test_reference",
+      "content": {
+        "c": 3,
+        "d": 4
+      }
+    },
+    "item_content": "{\"address\":\"0x720F319A9c3226dCDd7D8C49163D79EDa1084E98\",\"time\":1644857704.6253593,\"key\":\"test_reference\",\"content\":{\"c\":3,\"d\":4}}",
+    "item_type": "inline",
+    "signature": "0xe6129196c36b066302692b53bcb78a9d8c996854b170238ebfe56924f0b6be604883c30a66d75250de489e1edb683c7da8ddb1ccb50a39d1bbbdad617e5c958f1b",
+    "size": 129,
+    "time": 1644859283.12
+  },
+  {
+    "chain": "ETH",
+    "item_hash": "a87004aa03f8ae63d2c4bbe84b93b9ce70ca6482ce36c82ab0b0f689fc273f34",
+    "sender": "0xaC033C1cA5C49Eff98A1D9a56BeDBC4840010BA4",
+    "type": "AGGREGATE",
+    "channel": "INTEGRATION_TESTS",
+    "content": {
+      "address": "0xaC033C1cA5C49Eff98A1D9a56BeDBC4840010BA4",
+      "time": 1648215802.3821976,
+      "key": "test_reference",
+      "content": {
+        "c": 3,
+        "d": 4
+      }
+    },
+    "item_content": "{\"address\":\"0xaC033C1cA5C49Eff98A1D9a56BeDBC4840010BA4\",\"time\":1648215802.3821976,\"key\":\"test_reference\",\"content\":{\"c\":3,\"d\":4}}",
+    "item_type": "inline",
+    "signature": "0xc0f6ce2e4e9561b3949d51a97b8746125e1f031bbc13813cc74f1f61eea654fe300ad5e9ec098d41374bc0e43f83f2d66b834672abb811ae6a2dcdbd09f2565f1c",
+    "size": 129,
+    "time": 1648467547.771
+  },
+  {
+    "chain": "ETH",
+    "item_hash": "f875631a6c4a70ce44143bdd9a64861a5ce6f68e2267a00979ff0ad399a6c780",
+    "sender": "0x720F319A9c3226dCDd7D8C49163D79EDa1084E98",
+    "type": "AGGREGATE",
+    "channel": "INTEGRATION_TESTS",
+    "confirmations": [
+      {
+        "chain": "ETH",
+        "height": 14205580,
+        "hash": "0x234b3cb25e893780c4cf50ec82c4ae9a61d61b766a367b559ae8192463e84a1b",
+        "time": 1648467550,
+        "publisher": "0xabadbabe"
+      }
+    ],
+    "confirmed": true,
+    "content": {
+      "address": "0x720F319A9c3226dCDd7D8C49163D79EDa1084E98",
+      "time": 1644857371.1748412,
+      "key": "test_target",
+      "content": {
+        "a": 1,
+        "b": 2
+      }
+    },
+    "item_content": "{\"address\":\"0x720F319A9c3226dCDd7D8C49163D79EDa1084E98\",\"time\":1644857371.1748412,\"key\":\"test_target\",\"content\":{\"a\":1,\"b\":2}}",
+    "item_type": "inline",
+    "signature": "0xaa28dafaecfd063bd30f65c877260bcdab37931fe7d8ef13173a952ae57a79e544d9fc9ae9131ba6ce6638bdbd62996467eb4a999416603ff2d1eaff372427bd1b",
+    "size": 126,
+    "time": 1644859283.1
+  },
+  {
+    "chain": "ETH",
+    "item_hash": "8c83e020b1f0661de3238ecaf2a41fd2f9dfe4a6c56453ccdf3ddd3fa4fae147",
+    "sender": "0x720F319A9c3226dCDd7D8C49163D79EDa1084E98",
+    "type": "AGGREGATE",
+    "channel": "INTEGRATION_TESTS",
+    "confirmations": [
+      {
+        "chain": "ETH",
+        "height": 14205311,
+        "hash": "0x805dcf51856c813d5524f5b64555145fce6487b81dc605e6657fd208bebb2e05",
+        "time": 1644853200,
+        "publisher": "0xabadbabe"
+      }
+    ],
+    "confirmed": true,
+    "content": {
+      "address": "0x720F319A9c3226dCDd7D8C49163D79EDa1084E98",
+      "time": 1644853185.0710306,
+      "key": "test_key",
+      "content": {
+        "a": 1,
+        "b": 2
+      }
+    },
+    "item_content": "{\"address\":\"0x720F319A9c3226dCDd7D8C49163D79EDa1084E98\",\"time\":1644853185.0710306,\"key\":\"test_key\",\"content\":{\"a\":1,\"b\":2}}",
+    "item_type": "inline",
+    "signature": "0x4e3060c596de77b19f2791fbc34eff3d6c89c63d29250c960e9c1b752898d22d0f7d7759dc0b0d935b93e29534e6861d7a8deeb75cd69836acf0ad0e6e8626601b",
+    "size": 123,
+    "time": 1644855661.089
+  }
+]

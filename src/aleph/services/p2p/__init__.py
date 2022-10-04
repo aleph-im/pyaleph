@@ -6,6 +6,7 @@ from configmanager import Config
 from aleph.services.ipfs import IpfsService
 from . import singleton
 from .manager import initialize_host
+from aleph.types.db_session import DbSessionFactory
 
 
 async def init_p2p_client(config: Config, service_name: str) -> AlephP2PServiceClient:
@@ -26,6 +27,7 @@ async def init_p2p_client(config: Config, service_name: str) -> AlephP2PServiceC
 
 async def init_p2p(
     config: Config,
+    session_factory: DbSessionFactory,
     service_name: str,
     ipfs_service: IpfsService,
     api_servers: List[str],
@@ -37,6 +39,7 @@ async def init_p2p(
     port = config.p2p.port.value
     tasks = await initialize_host(
         config=config,
+        session_factory=session_factory,
         p2p_client=p2p_client,
         ipfs_service=ipfs_service,
         api_servers=api_servers,

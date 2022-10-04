@@ -1,11 +1,15 @@
-from typing import List, Optional
+import logging
+from typing import List, Optional, Any, Dict, Tuple
 
 from aiohttp import web
 from pydantic import BaseModel, validator, ValidationError
+from sqlalchemy import select
 
-from aleph.model.messages import get_computed_address_aggregates
+from aleph.db.accessors.aggregates import get_aggregates_by_owner, refresh_aggregate
+from aleph.db.models import AggregateDb
 from .utils import LIST_FIELD_SEPARATOR
 
+LOGGER = logging.getLogger(__name__)
 
 DEFAULT_LIMIT = 1000
 
@@ -38,12 +42,32 @@ async def address_aggregate(request):
             text=e.json(), content_type="application/json"
         )
 
-    aggregates = await get_computed_address_aggregates(
-        address_list=[address], key_list=query_params.keys, limit=query_params.limit
-    )
+    session_factory = request.app["session_factory"]
 
-    if not aggregates.get(address):
+    with session_factory() as session:
+        dirty_aggregates = session.execute(
+            select(AggregateDb.key).where(
+                (AggregateDb.owner == address)
+                & (AggregateDb.owner == address)
+                & AggregateDb.dirty
+            )
+        ).scalars()
+        for key in dirty_aggregates:
+            LOGGER.info("Refreshing dirty aggregate %s/%s", address, key)
+            refresh_aggregate(session=session, owner=address, key=key)
+            session.commit()
+
+        aggregates: List[Tuple[str, Dict[str, Any]]] = list(
+            get_aggregates_by_owner(
+                session=session, owner=address, keys=query_params.keys
+            )
+        )
+
+    if not aggregates:
         return web.HTTPNotFound(text="No aggregate found for this address")
 
-    output = {"address": address, "data": aggregates.get(address, {})}
+    output = {
+        "address": address,
+        "data": {result[0]: result[1] for result in aggregates},
+    }
     return web.json_response(output)

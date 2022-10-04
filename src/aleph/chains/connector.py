@@ -1,15 +1,8 @@
 import abc
-from typing import AsyncIterator, Dict, Tuple
 
 from configmanager import Config
 
-from aleph.chains.tx_context import TxContext
-from aleph.exceptions import AlephException
 from aleph.schemas.pending_messages import BasePendingMessage
-
-
-class SignatureException(AlephException):
-    ...
 
 
 class ChainConnector:

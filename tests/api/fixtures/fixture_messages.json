@@ -57,7 +57,9 @@
       {
         "chain": "ETH",
         "height": 14474458,
-        "hash": "0xbb123b07933ce8d1d49c2ba287fb7942f272359a7f220b7fc2b662c65c960ccc"
+        "hash": "0xbb123b07933ce8d1d49c2ba287fb7942f272359a7f220b7fc2b662c65c960ccc",
+        "time": 1648216000,
+        "publisher": "0xabadbabe"
       }
     ]
   },
@@ -82,7 +84,9 @@
       {
         "chain": "ETH",
         "height": 14474458,
-        "hash": "0xbb123b07933ce8d1d49c2ba287fb7942f272359a7f220b7fc2b662c65c960ccc"
+        "hash": "0xbb123b07933ce8d1d49c2ba287fb7942f272359a7f220b7fc2b662c65c960ccc",
+        "time": 1648216000,
+        "publisher": "0xabadbabe"
       }
     ]
   },
@@ -110,7 +114,9 @@
       {
         "chain": "ETH",
         "height": 14474458,
-        "hash": "0xbb123b07933ce8d1d49c2ba287fb7942f272359a7f220b7fc2b662c65c960ccc"
+        "hash": "0xbb123b07933ce8d1d49c2ba287fb7942f272359a7f220b7fc2b662c65c960ccc",
+        "time": 1648216000,
+        "publisher": "0xabadbabe"
       }
     ]
   },
@@ -138,32 +144,10 @@
       {
         "chain": "ETH",
         "height": 14474458,
-        "hash": "0xbb123b07933ce8d1d49c2ba287fb7942f272359a7f220b7fc2b662c65c960ccc"
+        "hash": "0xbb123b07933ce8d1d49c2ba287fb7942f272359a7f220b7fc2b662c65c960ccc",
+        "time": 1648216000,
+        "publisher": "0xabadbabe"
       }
-    ]
-  },
-  {
-    "chain": "ETH",
-    "item_hash": "fea0e00f73102aa951794a3ea85f6f1bbfd3decb804fb73232f2a645a379ae54",
-    "sender": "0xaC033C1cA5C49Eff98A1D9a56BeDBC4840010BA4",
-    "type": "POST",
-    "channel": "INTEGRATION_TESTS",
-    "confirmed": true,
-    "content": null,
-    "item_content": null,
-    "item_type": "inline",
-    "signature": "0x1a2bddb50e94e4491dec6b555faf70716d0b18ffa48176857d0d7ca3ff9292be1e619679fda95d50e58250a703c295c02bb5d90833d3345d3238b173f19fea2c1c",
-    "size": 151,
-    "time": 1648215808.9630325,
-    "confirmations": [
-      {
-        "chain": "ETH",
-        "height": 14474458,
-        "hash": "0xbb123b07933ce8d1d49c2ba287fb7942f272359a7f220b7fc2b662c65c960ccc"
-      }
-    ],
-    "forgotten_by": [
-      "448b3c6f6455e6f4216b01b43522bddc3564a14c04799ed0ce8af4857c7ba15f"
     ]
   },
   {
@@ -191,7 +175,9 @@
       {
         "chain": "ETH",
         "height": 14500712,
-        "hash": "0x39e581f14409008fb7d3663c0a24bb5035aff1edbc30d024168ce9426b631e7c"
+        "hash": "0x39e581f14409008fb7d3663c0a24bb5035aff1edbc30d024168ce9426b631e7c",
+        "time": 1648216000,
+        "publisher": "0xabadbabe"
       }
     ]
   },
@@ -220,7 +206,9 @@
       {
         "chain": "ETH",
         "height": 14500712,
-        "hash": "0x39e581f14409008fb7d3663c0a24bb5035aff1edbc30d024168ce9426b631e7c"
+        "hash": "0x39e581f14409008fb7d3663c0a24bb5035aff1edbc30d024168ce9426b631e7c",
+        "time": 1648216000,
+        "publisher": "0xabadbabe"
       }
     ]
   }

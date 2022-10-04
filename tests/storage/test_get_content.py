@@ -13,6 +13,7 @@ from aleph.storage import StorageService
 
 
 class MockStorageEngine(StorageEngine):
+
     def __init__(self, files: Dict[str, bytes]):
         self.files = files
 
@@ -27,6 +28,9 @@ class MockStorageEngine(StorageEngine):
 
     async def delete(self, filename: str):
         del self.files[filename]
+
+    async def exists(self, filename: str) -> bool:
+        return filename in self.files
 
 
 @pytest.mark.asyncio

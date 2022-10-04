@@ -17,10 +17,6 @@ class InvalidConfigException(AlephException):
     ...
 
 
-class InvalidKeyDirException(AlephException):
-    ...
-
-
 class KeyNotFoundException(AlephException):
     ...
 
@@ -43,9 +39,4 @@ class ContentCurrentlyUnavailable(AlephStorageException):
 
 
 class UnknownHashError(AlephException):
-    ...
-
-
-class InvalidMessageError(AlephException):
-    """Error raised when an invalid message is processed"""
     ...

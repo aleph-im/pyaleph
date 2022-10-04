@@ -5,24 +5,28 @@ from urllib.parse import unquote
 
 from aleph_p2p_client import AlephP2PServiceClient
 
+from aleph.db.accessors.peers import upsert_peer
+from aleph.db.models import PeerType
 from aleph.services.ipfs import IpfsService
-from aleph.types.protocol import Protocol
+from aleph.toolkit.timestamp import utc_now
+from aleph.types.db_session import DbSessionFactory
 
-LOGGER = logging.getLogger("P2P.peers")
+LOGGER = logging.getLogger(__name__)
 
 
 async def handle_incoming_host(
-    data: bytes, sender: str, source: Protocol = Protocol.P2P
+    session_factory: DbSessionFactory,
+    data: bytes,
+    sender: str,
+    source: PeerType,
 ):
-    from aleph.model.p2p import add_peer
-
     try:
         LOGGER.debug("New message received from %s", sender)
         message_data = data.decode("utf-8")
         content = json.loads(unquote(message_data))
 
         # TODO: replace this validation by marshaling (ex: Pydantic)
-        peer_type = content.get("peer_type", "P2P")
+        peer_type = PeerType(content["peer_type"])
         if not isinstance(content["address"], str):
             raise ValueError("Bad address")
         if not isinstance(content["peer_type"], str):
@@ -30,15 +34,17 @@ async def handle_incoming_host(
 
         # TODO: handle interests and save it
 
-        if peer_type not in ["P2P", "HTTP", "IPFS"]:
-            raise ValueError("Unsupported peer type %r" % peer_type)
+        with session_factory() as session:
+            upsert_peer(
+                session=session,
+                peer_id=sender,
+                peer_type=peer_type,
+                address=content["address"],
+                source=source,
+                last_seen=utc_now(),
+            )
+            session.commit()
 
-        await add_peer(
-            address=content["address"],
-            peer_type=peer_type,
-            source=source,
-            sender=sender,
-        )
     except Exception as e:
         if isinstance(e, ValueError):
             LOGGER.info("Received a bad peer info %s from %s" % (e.args[0], sender))
@@ -47,7 +53,7 @@ async def handle_incoming_host(
 
 
 async def monitor_hosts_p2p(
-    p2p_client: AlephP2PServiceClient, alive_topic: str
+    p2p_client: AlephP2PServiceClient, session_factory: DbSessionFactory, alive_topic: str
 ) -> None:
     while True:
         try:
@@ -55,7 +61,10 @@ async def monitor_hosts_p2p(
             async for alive_message in p2p_client.receive_messages(alive_topic):
                 protocol, topic, peer_id = alive_message.routing_key.split(".")
                 await handle_incoming_host(
-                    data=alive_message.body, sender=peer_id, source=Protocol.P2P
+                    session_factory=session_factory,
+                    data=alive_message.body,
+                    sender=peer_id,
+                    source=PeerType.P2P,
                 )
 
         except Exception:
@@ -64,12 +73,17 @@ async def monitor_hosts_p2p(
         await asyncio.sleep(2)
 
 
-async def monitor_hosts_ipfs(ipfs_service: IpfsService, alive_topic: str):
+async def monitor_hosts_ipfs(
+    ipfs_service: IpfsService, session_factory: DbSessionFactory, alive_topic: str
+):
     while True:
         try:
             async for message in ipfs_service.sub(alive_topic):
                 await handle_incoming_host(
-                    data=message["data"], sender=message["from"], source=Protocol.IPFS
+                    session_factory=session_factory,
+                    data=message["data"],
+                    sender=message["from"],
+                    source=PeerType.IPFS,
                 )
         except Exception:
             LOGGER.exception("Exception in pubsub peers monitoring, resubscribing")

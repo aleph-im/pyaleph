@@ -1,0 +1,24 @@
+[
+  {
+    "chain": "ETH",
+    "sender": "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
+    "type": "POST",
+    "channel": "INTEGRATION_TESTS",
+    "signature": "0x271939ae35918d0e90877f2319dd0d9737f8334d52539125743caf2460b3896423ca69b1fc85662443cc0bd4ce91e2fb247d7d8291284d8c431e6962c611c4c31c",
+    "time": 1665758931.005458,
+    "item_type": "inline",
+    "item_content": "{\"address\":\"0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106\",\"time\":1665758931.0054002,\"content\":{\"title\":\"My first blog post\",\"body\":\"Ermahgerd, a bleug!\"},\"type\":\"test-post\"}",
+    "item_hash": "9f02e3b5efdbdc0b487359117ae3af40db654892487feae452689a0b84dc1025"
+  },
+  {
+    "chain": "ETH",
+    "sender": "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
+    "type": "POST",
+    "channel": "INTEGRATION_TESTS",
+    "signature": "0xe0fc46bf4e85b633cade35945390dfd72c02251c44d5fb38753591da298e795000b3461e3802a841c73a9804aa5c4a5c915e9a4785debec2f23ba3bf742609b81b",
+    "time": 1665759467.291409,
+    "item_type": "inline",
+    "item_content": "{\"address\":\"0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106\",\"time\":1665759467.2913437,\"content\":{\"title\":\"My first blog post\",\"body\":\"Okay, I was a bit excited. Let's do it again.\"},\"ref\":\"9f02e3b5efdbdc0b487359117ae3af40db654892487feae452689a0b84dc1025\",\"type\":\"amend\"}",
+    "item_hash": "93776ad67063b955869a7fa705ea2987add39486e1ed5951e9842291cf0f566c"
+  }
+]
