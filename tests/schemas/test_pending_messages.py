@@ -4,7 +4,6 @@ from typing import Dict
 import pytest
 from aleph_message.models import ItemType
 
-from aleph.exceptions import InvalidMessageError
 from aleph.schemas.pending_messages import (
     BasePendingMessage,
     PendingAggregateMessage,
@@ -14,6 +13,7 @@ from aleph.schemas.pending_messages import (
     PendingStoreMessage,
     parse_message,
 )
+from aleph.types.message_status import InvalidMessageException
 
 
 def check_basic_message_fields(pending_message: BasePendingMessage, message_dict: Dict):
@@ -221,7 +221,7 @@ def test_invalid_item_type():
         "type": "AGGREGATE",
     }
 
-    with pytest.raises(InvalidMessageError):
+    with pytest.raises(InvalidMessageException):
         _ = parse_message(message_dict)
 
 
@@ -243,7 +243,7 @@ def test_invalid_chain():
         "type": "AGGREGATE",
     }
 
-    with pytest.raises(InvalidMessageError):
+    with pytest.raises(InvalidMessageException):
         _ = parse_message(message_dict)
 
 
@@ -265,20 +265,20 @@ def test_invalid_hash():
         "type": "AGGREGATE",
     }
 
-    with pytest.raises(InvalidMessageError):
+    with pytest.raises(InvalidMessageException):
         _ = parse_message(message_dict)
 
 
 def test_parse_none():
-    with pytest.raises(InvalidMessageError):
+    with pytest.raises(InvalidMessageException):
         _ = parse_message(None)
 
 
 def test_parse_empty_dict():
-    with pytest.raises(InvalidMessageError):
+    with pytest.raises(InvalidMessageException):
         _ = parse_message({})
 
 
 def test_parse_storage_with_item_content():
-    with pytest.raises(InvalidMessageError):
+    with pytest.raises(InvalidMessageException):
         _ = parse_message({})

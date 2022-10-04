@@ -1,7 +1,9 @@
 import pytest
 
-from aleph.chains.tezos import TezosConnector
+from aleph.chains.tezos import TezosConnector, datetime_to_iso_8601
+from aleph.db.models import PendingMessageDb
 from aleph.schemas.pending_messages import parse_message
+import datetime as dt
 
 
 @pytest.mark.asyncio
@@ -62,5 +64,16 @@ async def test_tezos_verify_signature_micheline():
     }
     connector = TezosConnector()
 
-    message = parse_message(message_dict)
+    message = PendingMessageDb.from_message_dict(
+        message_dict,
+        reception_time=dt.datetime(2022, 1, 1),
+        fetched=True,
+    )
     assert await connector.verify_signature(message)
+
+
+def test_datetime_to_iso_8601():
+    naive_datetime = dt.datetime(2022, 1, 1, 12, 6, 23, 675789)
+    datetime_str = datetime_to_iso_8601(naive_datetime)
+
+    assert datetime_str == "2022-01-01T12:06:23.675Z"

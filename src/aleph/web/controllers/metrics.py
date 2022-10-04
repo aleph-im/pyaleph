@@ -8,14 +8,16 @@ from urllib.parse import urljoin
 
 import aiohttp
 from aiocache import cached
-from aleph_message.models import MessageType
+from aleph_message.models import MessageType, Chain
 from dataclasses_json import DataClassJsonMixin
 from requests import HTTPError
 from web3 import Web3
 
-import aleph.model
 from aleph import __version__
 from aleph.config import get_config
+from aleph.db.accessors.chains import get_last_height
+from aleph.db.models import PeerDb, MessageDb, FilePinDb, PendingMessageDb, PendingTxDb
+from aleph.types.db_session import DbSession
 
 LOGGER = getLogger("WEB.metrics")
 
@@ -139,27 +141,18 @@ async def fetch_eth_height() -> Optional[int]:
         return -1  # We got a boggus value!
 
 
-async def get_metrics(shared_stats: dict) -> Metrics:
+async def get_metrics(session: DbSession, shared_stats: Dict) -> Metrics:
     if shared_stats is None:
         LOGGER.info("Shared stats disabled")
         shared_stats = {}
 
-    if aleph.model.db is None:
-        raise ValueError("MongoDB client not initialized.")
-
     sync_messages_reference_total = await fetch_reference_total_messages()
     eth_reference_height = await fetch_eth_height()
 
-    sync_messages_total: int = await aleph.model.db.messages.estimated_document_count()
+    sync_messages_total: int = MessageDb.count(session=session)
+    peers_count = PeerDb.count(session=session)
 
-    peers_count = await aleph.model.db.peers.estimated_document_count()
-
-    eth_last_committed_height: Optional[int] = (
-        await aleph.model.db.chains.find_one(
-            {"name": "ETH"}, projection={"last_commited_height": 1}
-        )
-        or {}
-    ).get("last_commited_height")
+    eth_last_committed_height = get_last_height(session=session, chain=Chain.ETH)
 
     if not (sync_messages_reference_total is None or sync_messages_total is None):
         sync_messages_remaining_total = (
@@ -200,11 +193,11 @@ async def get_metrics(shared_stats: dict) -> Metrics:
             MessageType.store
         ],
         pyaleph_status_sync_messages_total=sync_messages_total,
-        pyaleph_status_sync_permanent_files_total=await aleph.model.db.filepins.estimated_document_count(),
+        pyaleph_status_sync_permanent_files_total=FilePinDb.count(session=session),
         pyaleph_status_sync_messages_reference_total=sync_messages_reference_total,
         pyaleph_status_sync_messages_remaining_total=sync_messages_remaining_total,
-        pyaleph_status_sync_pending_messages_total=await aleph.model.db.pending_messages.estimated_document_count(),
-        pyaleph_status_sync_pending_txs_total=await aleph.model.db.pending_txs.estimated_document_count(),
+        pyaleph_status_sync_pending_messages_total=PendingMessageDb.count(session=session),
+        pyaleph_status_sync_pending_txs_total=PendingTxDb.count(session=session),
         pyaleph_status_chain_eth_last_committed_height=eth_last_committed_height,
         pyaleph_status_chain_eth_height_reference_total=eth_reference_height,
         pyaleph_status_chain_eth_height_remaining_total=eth_remaining_height,

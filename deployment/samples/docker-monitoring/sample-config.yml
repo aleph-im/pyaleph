@@ -23,7 +23,8 @@ mongodb:
 
 storage:
   store_files: true
-  engine: mongodb
+  engine: filesystem
+  folder: /var/lib/pyaleph
 
 ipfs:
   enabled: true

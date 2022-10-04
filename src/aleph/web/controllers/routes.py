@@ -12,7 +12,7 @@ from aleph.web.controllers import (
     posts,
     stats,
     storage,
-    version,
+    version, balances,
 )
 from aleph.web.controllers.programs import get_programs_on_message
 
@@ -39,6 +39,7 @@ def register_routes(app: web.Application):
     app.router.add_post("/api/v0/ipfs/add_file", ipfs.ipfs_add_file)
 
     app.router.add_get("/api/v0/messages.json", messages.view_messages_list)
+    app.router.add_get("/api/v0/messages/{item_hash}", messages.view_message)
     app.router.add_get("/api/v0/messages/page/{page}.json", messages.view_messages_list)
     app.router.add_get("/api/ws0/messages", messages.messages_ws)
 
@@ -48,6 +49,7 @@ def register_routes(app: web.Application):
     app.router.add_get("/api/v0/posts.json", posts.view_posts_list)
     app.router.add_get("/api/v0/posts/page/{page}.json", posts.view_posts_list)
 
+    app.router.add_get("/api/v0/addresses/balances/{address}", balances.get_address_balance)
     app.router.add_get("/api/v0/addresses/stats.json", stats.addresses_stats_view)
 
     app.router.add_post("/api/v0/ipfs/add_json", storage.add_ipfs_json_controller)
@@ -56,7 +58,7 @@ def register_routes(app: web.Application):
     app.router.add_get("/api/v0/storage/{hash}", storage.get_hash)
     app.router.add_get("/api/v0/storage/raw/{hash}", storage.get_raw_hash)
     app.router.add_get(
-        "/api/v0/storage/count/{hash}", storage.get_file_references_count
+        "/api/v0/storage/count/{hash}", storage.get_file_pins_count
     )
 
     app.router.add_get("/version", version.version)

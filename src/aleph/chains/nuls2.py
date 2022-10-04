@@ -9,6 +9,7 @@ from operator import itemgetter
 from typing import AsyncIterator, Dict, Tuple
 
 import aiohttp
+from aleph_message.models import Chain
 from coincurve.keys import PrivateKey
 from configmanager import Config
 from nuls2.api.server import get_server
@@ -21,24 +22,27 @@ from nuls2.model.data import (
 from nuls2.model.transaction import Transaction
 
 from aleph.chains.common import get_verification_buffer
-from aleph.model.chains import Chain
-from aleph.model.messages import Message
-from aleph.model.pending import pending_messages_count, pending_txs_count
+from aleph.db.accessors.chains import get_last_height, upsert_chain_sync_status
+from aleph.db.accessors.messages import get_unconfirmed_messages
+from aleph.db.accessors.pending_messages import count_pending_messages
+from aleph.db.accessors.pending_txs import count_pending_txs
+from aleph.schemas.pending_messages import BasePendingMessage
+from aleph.toolkit.timestamp import utc_now
+from aleph.types.db_session import DbSessionFactory
 from aleph.utils import run_in_executor
 from .chaindata import ChainDataService
 from .connector import Verifier, ChainWriter
 from .tx_context import TxContext
-from ..schemas.pending_messages import BasePendingMessage
 
 LOGGER = logging.getLogger("chains.nuls2")
 CHAIN_NAME = "NULS2"
-PAGINATION = 500
-
-DECIMALS = None  # will get populated later... bad?
 
 
 class Nuls2Connector(Verifier, ChainWriter):
-    def __init__(self, chain_data_service: ChainDataService):
+    def __init__(
+        self, session_factory: DbSessionFactory, chain_data_service: ChainDataService
+    ):
+        self.session_factory = session_factory
         self.chain_data_service = chain_data_service
 
     async def verify_signature(self, message: BasePendingMessage) -> bool:
@@ -72,24 +76,72 @@ class Nuls2Connector(Verifier, ChainWriter):
 
     async def get_last_height(self) -> int:
         """Returns the last height for which we already have the nuls data."""
-        last_height = await Chain.get_last_height(CHAIN_NAME)
+        with self.session_factory() as session:
+            last_height = get_last_height(session=session, chain=Chain.NULS2)
 
         if last_height is None:
             last_height = -1
 
         return last_height
 
+    async def _request_transactions(
+        self, config, session, start_height
+    ) -> AsyncIterator[Tuple[Dict, TxContext]]:
+        """Continuously request data from the NULS blockchain."""
+        target_addr = config.nuls2.sync_address.value
+        remark = config.nuls2.remark.value
+        chain_id = config.nuls2.chain_id.value
+
+        last_height = None
+        async for tx in get_transactions(
+            config, session, chain_id, target_addr, start_height, remark=remark
+        ):
+            ldata = tx["txDataHex"]
+            LOGGER.info("Handling TX in block %s" % tx["height"])
+            try:
+                ddata = bytes.fromhex(ldata).decode("utf-8")
+                last_height = tx["height"]
+                jdata = json.loads(ddata)
+
+                context = TxContext(
+                    chain=CHAIN_NAME,
+                    hash=tx["hash"],
+                    height=tx["height"],
+                    time=tx["createTime"],
+                    publisher=tx["coinFroms"][0]["address"],
+                )
+                yield jdata, context
+
+            except json.JSONDecodeError:
+                # if it's not valid json, just ignore it...
+                LOGGER.info("Incoming logic data is not JSON, ignoring. %r" % ldata)
+
+        if last_height:
+            with self.session_factory() as session:
+                upsert_chain_sync_status(
+                    session=session,
+                    chain=Chain.NULS2,
+                    height=last_height,
+                    update_datetime=utc_now(),
+                )
+                session.commit()
+
     async def fetcher(self, config: Config):
         last_stored_height = await self.get_last_height()
 
         LOGGER.info("Last block is #%d" % last_stored_height)
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession() as http_session:
             while True:
                 last_stored_height = await self.get_last_height()
-                async for jdata, context in request_transactions(
-                    config, session, last_stored_height + 1
+                async for jdata, context in self._request_transactions(
+                    config, http_session, last_stored_height + 1
                 ):
-                    await self.chain_data_service.incoming_chaindata(jdata, context)
+                    with self.session_factory() as db_session:
+                        await self.chain_data_service.incoming_chaindata(
+                            session=db_session, content=jdata, context=context
+                        )
+                        db_session.commit()
+
                 await asyncio.sleep(10)
 
     async def packer(self, config: Config):
@@ -108,23 +160,23 @@ class Nuls2Connector(Verifier, ChainWriter):
         nonce = await get_nonce(server, address, chain_id)
 
         while True:
-            if (await pending_txs_count(chain=CHAIN_NAME)) or (
-                await pending_messages_count(source_chain=CHAIN_NAME)
-            ):
-                await asyncio.sleep(30)
-                continue
+            with self.session_factory() as session:
+                if (count_pending_txs(session=session, chain=Chain.NULS2)) or (
+                    count_pending_messages(session=session, chain=Chain.NULS2)
+                ):
+                    await asyncio.sleep(30)
+                    continue
 
-            if i >= 100:
-                await asyncio.sleep(30)  # wait three (!!) blocks
-                nonce = await get_nonce(server, address, chain_id)
-                i = 0
+                if i >= 100:
+                    await asyncio.sleep(30)  # wait three (!!) blocks
+                    nonce = await get_nonce(server, address, chain_id)
+                    i = 0
 
-            messages = [
-                message
-                async for message in (
-                    await Message.get_unconfirmed_raw(limit=10000, for_chain=CHAIN_NAME)
+                messages = list(
+                    get_unconfirmed_messages(
+                        session=session, limit=10000, chain=Chain.ETH
+                    )
                 )
-            ]
 
             if len(messages):
                 content = await self.chain_data_service.get_chaindata(messages)
@@ -172,42 +224,6 @@ async def get_transactions(
                 continue
 
             yield tx
-
-
-async def request_transactions(
-    config, session, start_height
-) -> AsyncIterator[Tuple[Dict, TxContext]]:
-    """Continuously request data from the NULS blockchain."""
-    target_addr = config.nuls2.sync_address.value
-    remark = config.nuls2.remark.value
-    chain_id = config.nuls2.chain_id.value
-
-    last_height = None
-    async for tx in get_transactions(
-        config, session, chain_id, target_addr, start_height, remark=remark
-    ):
-        ldata = tx["txDataHex"]
-        LOGGER.info("Handling TX in block %s" % tx["height"])
-        try:
-            ddata = bytes.fromhex(ldata).decode("utf-8")
-            last_height = tx["height"]
-            jdata = json.loads(ddata)
-
-            context = TxContext(
-                chain=CHAIN_NAME,
-                hash=tx["hash"],
-                height=tx["height"],
-                time=tx["createTime"],
-                publisher=tx["coinFroms"][0]["address"],
-            )
-            yield jdata, context
-
-        except json.JSONDecodeError:
-            # if it's not valid json, just ignore it...
-            LOGGER.info("Incoming logic data is not JSON, ignoring. %r" % ldata)
-
-    if last_height:
-        await Chain.set_last_height(CHAIN_NAME, last_height)
 
 
 async def broadcast(server, tx_hex, chain_id=1):

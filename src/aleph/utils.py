@@ -1,21 +1,11 @@
 import asyncio
-from copy import copy
 from hashlib import sha256
-from typing import Union, Dict
+from typing import Union
 
 from aleph_message.models import ItemType
 
 from aleph.exceptions import UnknownHashError
 from aleph.settings import settings
-
-
-def trim_mongo_id(message: Dict, inplace: bool = True):
-    """Remove the MongoDB id of a MongoDB record"""
-    if '_id' in message:
-        if inplace is False:
-            message = copy(message)
-        message.pop('_id')
-    return message
 
 
 async def run_in_executor(executor, func, *args):

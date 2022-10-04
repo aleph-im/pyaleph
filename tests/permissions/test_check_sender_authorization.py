@@ -1,12 +1,17 @@
+import datetime as dt
+from typing import Any, Mapping
+
 import pytest
 
-from aleph.model.messages import Message
+from aleph.db.models import AggregateDb, AggregateElementDb
 from aleph.permissions import check_sender_authorization
+from aleph.toolkit.timestamp import timestamp_to_datetime
+from aleph.types.db_session import DbSessionFactory
 from message_test_helpers import make_validated_message_from_dict
 
 
 @pytest.mark.asyncio
-async def test_owner_is_sender():
+async def test_owner_is_sender(mocker):
     message_dict = {
         "chain": "ETH",
         "item_hash": "2a5aaf71c8767bda8eb235223a3387b310af117f42fac08f02461e90aee073b0",
@@ -19,15 +24,19 @@ async def test_owner_is_sender():
         "time": 1652085236.777,
     }
 
-    message = make_validated_message_from_dict(message_dict, message_dict["item_content"])
+    message = make_validated_message_from_dict(
+        message_dict, message_dict["item_content"]
+    )
 
-    is_authorized = await check_sender_authorization(message)
+    is_authorized = await check_sender_authorization(
+        session=mocker.MagicMock(), message=message
+    )
     assert is_authorized
 
 
 @pytest.mark.asyncio
 async def test_store_unauthorized(mocker):
-    mocker.patch("aleph.permissions.get_computed_address_aggregates", return_value={})
+    mocker.patch("aleph.permissions.get_aggregate_by_key", return_value=None)
 
     message_dict = {
         "chain": "ETH",
@@ -41,13 +50,17 @@ async def test_store_unauthorized(mocker):
         "type": "POST",
     }
 
-    message = make_validated_message_from_dict(message_dict, message_dict["item_content"])
+    message = make_validated_message_from_dict(
+        message_dict, message_dict["item_content"]
+    )
 
-    is_authorized = await check_sender_authorization(message)
+    is_authorized = await check_sender_authorization(
+        session=mocker.MagicMock(), message=message
+    )
     assert not is_authorized
 
 
-AUTHORIZED_MESSAGE = {
+AUTHORIZED_MESSAGE: Mapping[str, Any] = {
     "chain": "ETH",
     "channel": "TEST",
     "item_content": '{"address":"0xA3c613b12e862EB6e0C9897E03F1deEb207b5B58","time":1651050219.3481126,"content":{"date":"2022-04-27T09:03:38.361081","test":true,"answer":42,"something":"interesting"},"type":"test"}',
@@ -63,60 +76,60 @@ AUTHORIZED_MESSAGE = {
 @pytest.mark.asyncio
 async def test_authorized(mocker):
     mocker.patch(
-        "aleph.permissions.get_computed_address_aggregates",
-        return_value={
-            "0xA3c613b12e862EB6e0C9897E03F1deEb207b5B58": {
-                "security": {
-                    "authorizations": [
-                        {"address": "0x86F39e17910E3E6d9F38412EB7F24Bf0Ba31eb2E"}
-                    ]
-                }
-            }
-        },
-    )
-
-    message = make_validated_message_from_dict(AUTHORIZED_MESSAGE, AUTHORIZED_MESSAGE["item_content"])
-
-    is_authorized = await check_sender_authorization(message)
-    assert is_authorized
-
-
-@pytest.mark.asyncio
-async def test_authorized_with_db(test_db):
-    security_message = {
-        "chain": "ETH",
-        "item_hash": "f58e4f46268bd665d90cb0a65cce0754394c9f3f27a9b9d9228a03c59ea61c56",
-        "sender": "0xA3c613b12e862EB6e0C9897E03F1deEb207b5B58",
-        "type": "AGGREGATE",
-        "channel": "security",
-        "confirmations": [
-            {
-                "chain": "ETH",
-                "height": 13753606,
-                "hash": "0xcadd015d263f0d713493d7ef489df70cdac70d4873382b5cb0dc9bc5ef348b56",
-            }
-        ],
-        "confirmed": True,
-        "content": {
-            "address": "0xA3c613b12e862EB6e0C9897E03F1deEb207b5B58",
-            "key": "security",
-            "content": {
+        "aleph.permissions.get_aggregate_by_key",
+        return_value=AggregateDb(
+            owner="0xA3c613b12e862EB6e0C9897E03F1deEb207b5B58",
+            key="security",
+            content={
                 "authorizations": [
                     {"address": "0x86F39e17910E3E6d9F38412EB7F24Bf0Ba31eb2E"}
                 ]
             },
-            "time": 1638808268.426,
-        },
-        "item_content": '{"address":"0xA3c613b12e862EB6e0C9897E03F1deEb207b5B58","key":"security","content":{"authorizations":[{"address":"0x86F39e17910E3E6d9F38412EB7F24Bf0Ba31eb2E"}]},"time":1638808268.426}',
-        "item_type": "inline",
-        "signature": "0xd76d59602ae23b0178664705fd5a03cc8109cc4753593dad4ebbd7dec8e9396119a5f96449fb7aee85313b79b05c83193165f13785f634b506a98826f8c076e51c",
-        "size": 183,
-        "time": 1638811994.011,
-    }
+            creation_datetime=dt.datetime(2022, 1, 1),
+            last_revision_hash="1234",
+        ),
+    )
 
-    await Message.collection.insert_one(security_message)
+    message = make_validated_message_from_dict(
+        AUTHORIZED_MESSAGE, AUTHORIZED_MESSAGE["item_content"]
+    )
 
-    message = make_validated_message_from_dict(AUTHORIZED_MESSAGE, AUTHORIZED_MESSAGE["item_content"])
-
-    is_authorized = await check_sender_authorization(message)
+    is_authorized = await check_sender_authorization(
+        session=mocker.MagicMock(), message=message
+    )
     assert is_authorized
+
+
+@pytest.mark.asyncio
+async def test_authorized_with_db(session_factory: DbSessionFactory):
+    aggregate_content = {
+        "authorizations": [{"address": "0x86F39e17910E3E6d9F38412EB7F24Bf0Ba31eb2E"}]
+    }
+    owner = "0xA3c613b12e862EB6e0C9897E03F1deEb207b5B58"
+    aggregate_datetime = timestamp_to_datetime(1638811994.011)
+    aggregate = AggregateDb(
+        key="security",
+        owner=owner,
+        content=aggregate_content,
+        creation_datetime=aggregate_datetime,
+        last_revision=AggregateElementDb(
+            item_hash="f58e4f46268bd665d90cb0a65cce0754394c9f3f27a9b9d9228a03c59ea61c56",
+            key="security",
+            owner=owner,
+            content=aggregate_content,
+            creation_datetime=aggregate_datetime,
+        ),
+        dirty=False,
+    )
+    message = make_validated_message_from_dict(
+        AUTHORIZED_MESSAGE, AUTHORIZED_MESSAGE["item_content"]
+    )
+
+    with session_factory() as session:
+        session.add(aggregate)
+        session.commit()
+
+        is_authorized = await check_sender_authorization(
+            session=session, message=message
+        )
+        assert is_authorized

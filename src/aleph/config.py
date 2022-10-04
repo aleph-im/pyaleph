@@ -15,9 +15,14 @@ def get_defaults():
             "port": 8000,
             "reference_node_url": None,
             "indexer_url": "https://multichain.api.aleph.cloud",
+            "balances": {
+                "address": "0xa1B3bb7d2332383D96b7796B908fB7f7F3c2Be10",
+                "post_type": "balances-update",
+            },
             "jobs": {
                 "pending_messages": {
-                    "max_concurrency": 2000,
+                    "max_retries": 1000,
+                    "max_concurrency": 10,
                     "store": 30,
                 },
                 "pending_txs": {
@@ -84,7 +89,14 @@ def get_defaults():
             "max_gas_price": 150000000000,
             "authorized_emitters": ["0x23eC28598DCeB2f7082Cc3a9D670592DfEd6e0dC"],
         },
-        "mongodb": {"uri": "mongodb://127.0.0.1:27017", "database": "aleph"},
+        "postgres": {
+            "host": "127.0.0.1",
+            "port": 5432,
+            "database": "aleph",
+            "user": "aleph",
+            "password": "decentralize-everything",
+            "pool_size": 50,
+        },
         "mail": {
             "email_sender": "aleph@localhost.localdomain",
             "smtp_url": "smtp://localhost",
@@ -110,6 +122,7 @@ def get_defaults():
             "password": "change-me!",
             "pub_exchange": "p2p-publish",
             "sub_exchange": "p2p-subscribe",
+            "message_exchange": "aleph-messages",
         },
         "sentry": {
             "dsn": None,

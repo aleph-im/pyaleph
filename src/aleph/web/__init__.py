@@ -6,7 +6,6 @@ import aiohttp_cors
 import aiohttp_jinja2
 import jinja2
 import pkg_resources
-import socketio
 from aiohttp import web
 
 from aleph.web.controllers.routes import register_routes
@@ -30,12 +29,6 @@ def init_cors(app: web.Application):
     for route in list(app.router.routes()):
         if "/socket.io/" not in repr(route.resource):
             cors.add(route)
-
-
-def init_sio(app: web.Application) -> socketio.AsyncServer:
-    sio = socketio.AsyncServer(async_mode="aiohttp", cors_allowed_origins="*")
-    sio.attach(app)
-    return sio
 
 
 def create_app(debug: bool = False) -> web.Application:
@@ -71,4 +64,3 @@ def create_app(debug: bool = False) -> web.Application:
 
 
 app = create_app()
-sio = init_sio(app)

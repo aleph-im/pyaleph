@@ -14,3 +14,7 @@ class StorageEngine(abc.ABC):
     @abc.abstractmethod
     async def delete(self, filename: str):
         ...
+
+    @abc.abstractmethod
+    async def exists(self, filename: str) -> bool:
+        ...

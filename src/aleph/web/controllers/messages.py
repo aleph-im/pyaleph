@@ -1,33 +1,47 @@
-import asyncio
 import logging
-from enum import IntEnum
-from typing import Any, List, Optional, Mapping
+from typing import List, Optional
 
+import aio_pika.abc
 from aiohttp import web
 from aleph_message.models import MessageType, ItemHash, Chain
-from bson.objectid import ObjectId
+from configmanager import Config
 from pydantic import BaseModel, Field, validator, ValidationError, root_validator
-from pymongo.cursor import CursorType
 
-from aleph.model.messages import CappedMessage, Message
 from aleph.web.controllers.utils import (
     DEFAULT_MESSAGES_PER_PAGE,
     DEFAULT_PAGE,
-    LIST_FIELD_SEPARATOR,
-    Pagination,
-    cond_output,
-    make_date_filters,
 )
+import aleph.toolkit.json as aleph_json
+from aleph.db.accessors.messages import (
+    get_matching_messages,
+    count_matching_messages,
+    get_message_status,
+    get_message_by_item_hash,
+    get_forgotten_message,
+    get_rejected_message,
+)
+from aleph.db.accessors.pending_messages import get_pending_messages
+from aleph.db.models import MessageStatusDb
+from aleph.schemas.api.messages import (
+    format_message,
+    MessageListResponse,
+    MessageWithStatus,
+    PendingMessageStatus,
+    ProcessedMessageStatus,
+    ForgottenMessageStatus,
+    ForgottenMessage,
+    RejectedMessageStatus,
+    PendingMessage,
+)
+from aleph.types.db_session import DbSessionFactory, DbSession
+from aleph.types.message_status import MessageStatus
+from aleph.types.sort_order import SortOrder
+from aleph.web.controllers.utils import LIST_FIELD_SEPARATOR
 
 LOGGER = logging.getLogger(__name__)
 
 
 DEFAULT_WS_HISTORY = 10
-
-
-class SortOrder(IntEnum):
-    ASCENDING = 1
-    DESCENDING = -1
 
 
 class BaseMessageQueryParams(BaseModel):
@@ -82,6 +96,7 @@ class BaseMessageQueryParams(BaseModel):
         return values
 
     @validator(
+        "hashes",
         "addresses",
         "refs",
         "content_hashes",
@@ -90,67 +105,12 @@ class BaseMessageQueryParams(BaseModel):
         "chains",
         "channels",
         "tags",
-        "hashes",
         pre=True,
     )
     def split_str(cls, v):
         if isinstance(v, str):
             return v.split(LIST_FIELD_SEPARATOR)
         return v
-
-    def to_filter_list(self) -> List[Mapping[str, Any]]:
-        filters: List[Mapping[str, Any]] = []
-
-        if self.message_type is not None:
-            filters.append({"type": self.message_type})
-
-        if self.addresses is not None:
-            filters.append(
-                {
-                    "$or": [
-                        {"content.address": {"$in": self.addresses}},
-                        {"sender": {"$in": self.addresses}},
-                    ]
-                }
-            )
-
-        if self.content_hashes is not None:
-            filters.append({"content.item_hash": {"$in": self.content_hashes}})
-        if self.content_keys is not None:
-            filters.append({"content.key": {"$in": self.content_keys}})
-        if self.content_types is not None:
-            filters.append({"content.type": {"$in": self.content_types}})
-        if self.refs is not None:
-            filters.append({"content.ref": {"$in": self.refs}})
-        if self.tags is not None:
-            filters.append({"content.content.tags": {"$elemMatch": {"$in": self.tags}}})
-        if self.chains is not None:
-            filters.append({"chain": {"$in": self.chains}})
-        if self.channels is not None:
-            filters.append({"channel": {"$in": self.channels}})
-        if self.hashes is not None:
-            filters.append(
-                {
-                    "$or": [
-                        {"item_hash": {"$in": self.hashes}},
-                        {"tx_hash": {"$in": self.hashes}},
-                    ]
-                }
-            )
-
-        return filters
-
-    def to_mongodb_filters(self) -> Mapping[str, Any]:
-        filters = self.to_filter_list()
-        return self._make_and_filter(filters)
-
-    @staticmethod
-    def _make_and_filter(filters: List[Mapping[str, Any]]) -> Mapping[str, Any]:
-        and_filter: Mapping[str, Any] = {}
-        if filters:
-            and_filter = {"$and": filters} if len(filters) > 1 else filters[0]
-
-        return and_filter
 
 
 class MessageQueryParams(BaseMessageQueryParams):
@@ -178,22 +138,13 @@ class MessageQueryParams(BaseMessageQueryParams):
         "a time field lower than this value will be returned.",
     )
 
-    def to_filter_list(self) -> List[Mapping[str, Any]]:
-        filters = super().to_filter_list()
-        date_filters = make_date_filters(
-            start=self.start_date, end=self.end_date, filter_key="time"
-        )
-        if date_filters:
-            filters.append(date_filters)
-        return filters
-
 
 class WsMessageQueryParams(BaseMessageQueryParams):
     history: Optional[int] = Field(
         DEFAULT_WS_HISTORY,
-        ge=10,
+        ge=0,
         lt=200,
-        description="Accepted values for the 'item_hash' field.",
+        description="Historical elements to send through the websocket.",
     )
 
 
@@ -210,106 +161,167 @@ async def view_messages_list(request):
     if url_page_param := request.match_info.get("page"):
         query_params.page = int(url_page_param)
 
-    find_filters = query_params.to_mongodb_filters()
+    find_filters = query_params.dict(exclude_none=True)
 
     pagination_page = query_params.page
     pagination_per_page = query_params.pagination
-    pagination_skip = (query_params.page - 1) * query_params.pagination
 
-    messages = [
-        msg
-        async for msg in Message.collection.find(
-            filter=find_filters,
-            projection={"_id": 0},
-            limit=pagination_per_page,
-            skip=pagination_skip,
-            sort=[("time", query_params.sort_order.value)],
-        )
-    ]
-
-    context = {"messages": messages}
-
-    if pagination_per_page is not None:
-        if find_filters:
-            total_msgs = await Message.collection.count_documents(find_filters)
-        else:
-            total_msgs = await Message.collection.estimated_document_count()
-
-        query_string = request.query_string
-        pagination = Pagination(
-            pagination_page,
-            pagination_per_page,
-            total_msgs,
-            url_base="/messages/posts/page/",
-            query_string=query_string,
+    session_factory: DbSessionFactory = request.app["session_factory"]
+    with session_factory() as session:
+        messages = get_matching_messages(
+            session, include_confirmations=True, **find_filters
         )
 
-        context.update(
-            {
-                "pagination": pagination,
-                "pagination_page": pagination_page,
-                "pagination_total": total_msgs,
-                "pagination_per_page": pagination_per_page,
-                "pagination_item": "messages",
-            }
+        formatted_messages = [
+            format_message(message).dict(exclude_defaults=True) for message in messages
+        ]
+
+        total_msgs = count_matching_messages(session, **find_filters)
+
+        response = MessageListResponse.construct(
+            messages=formatted_messages,
+            pagination_page=pagination_page,
+            pagination_total=total_msgs,
+            pagination_per_page=pagination_per_page,
         )
 
-    return cond_output(request, context, "TODO.html")
+    return web.json_response(text=response.json())
+
+
+async def declare_mq_queue(
+    mq_conn: aio_pika.abc.AbstractConnection, config: Config
+) -> aio_pika.abc.AbstractQueue:
+    channel = await mq_conn.channel()
+    mq_message_exchange = await channel.declare_exchange(
+        name=config.rabbitmq.message_exchange.value,
+        type=aio_pika.ExchangeType.FANOUT,
+        auto_delete=False,
+    )
+    mq_queue = await channel.declare_queue(auto_delete=True)
+    await mq_queue.bind(mq_message_exchange)
+    return mq_queue
 
 
 async def messages_ws(request: web.Request):
     ws = web.WebSocketResponse()
     await ws.prepare(request)
 
-    collection = CappedMessage.collection
-    last_id = None
+    mq_conn: aio_pika.abc.AbstractConnection = request.app["mq_conn"]
+    session_factory: DbSessionFactory = request.app["session_factory"]
+    config = request.app["config"]
+    mq_queue = await declare_mq_queue(mq_conn, config)
 
     query_params = WsMessageQueryParams.parse_obj(request.query)
-    find_filters = query_params.to_mongodb_filters()
+    find_filters = query_params.dict(exclude_none=True)
 
-    initial_count = query_params.history
+    history = query_params.history
 
-    items = [
-        item
-        async for item in collection.find(find_filters)
-        .sort([("$natural", -1)])
-        .limit(initial_count)
-    ]
-    for item in reversed(items):
-        item["_id"] = str(item["_id"])
-
-        last_id = item["_id"]
-        await ws.send_json(item)
-
-    closing = False
-
-    while not closing:
-        try:
-            cursor = collection.find(
-                {"_id": {"$gt": ObjectId(last_id)}},
-                cursor_type=CursorType.TAILABLE_AWAIT,
+    if history:
+        with session_factory() as session:
+            messages = get_matching_messages(
+                session=session,
+                pagination=history,
+                include_confirmations=True,
+                **find_filters,
             )
-            while cursor.alive:
-                async for item in cursor:
-                    if ws.closed:
-                        closing = True
-                        break
-                    item["_id"] = str(item["_id"])
+            for message in messages:
+                await ws.send_str(format_message(message).json())
 
-                    last_id = item["_id"]
-                    await ws.send_json(item)
-
-                await asyncio.sleep(1)
-
-                if closing:
+    try:
+        async with mq_queue.iterator() as queue_iter:
+            async for mq_message in queue_iter:
+                if ws.closed:
                     break
 
-        except ConnectionResetError:
-            break
+                await mq_message.ack()
+                item_hash = aleph_json.loads(mq_message.body)["item_hash"]
+                # A bastardized way to apply the filters on the message as well.
+                # TODO: put the filter key/values in the RabbitMQ message?
+                with session_factory() as session:
+                    matching_messages = get_matching_messages(
+                        session=session,
+                        hashes=[item_hash],
+                        include_confirmations=True,
+                        **find_filters,
+                    )
+                    for message in matching_messages:
+                        await ws.send_str(format_message(message).json())
 
-        except Exception:
-            if ws.closed:
-                break
+    except ConnectionResetError:
+        pass
 
-            LOGGER.exception("Error processing")
-            await asyncio.sleep(1)
+
+def _get_message_with_status(
+    session: DbSession, status_db: MessageStatusDb
+) -> MessageWithStatus:
+    status = status_db.status
+    item_hash = status_db.item_hash
+    reception_time = status_db.reception_time
+    if status == MessageStatus.PENDING:
+        # There may be several instances of the same pending message, return the first.
+        pending_messages_db = get_pending_messages(session=session, item_hash=item_hash)
+        pending_messages = [PendingMessage.from_orm(m) for m in pending_messages_db]
+        return PendingMessageStatus(
+            status=MessageStatus.PENDING,
+            item_hash=item_hash,
+            reception_time=reception_time,
+            messages=pending_messages,
+        )
+
+    if status == MessageStatus.PROCESSED:
+        message_db = get_message_by_item_hash(session=session, item_hash=item_hash)
+        if not message_db:
+            raise web.HTTPNotFound()
+
+        message = format_message(message_db)
+        return ProcessedMessageStatus(
+            item_hash=item_hash,
+            reception_time=reception_time,
+            message=message,
+        )
+
+    if status == MessageStatus.FORGOTTEN:
+        forgotten_message_db = get_forgotten_message(session=session, item_hash=item_hash)
+        if not forgotten_message_db:
+            raise web.HTTPNotFound()
+
+        return ForgottenMessageStatus(
+            item_hash=item_hash,
+            reception_time=reception_time,
+            message=ForgottenMessage.from_orm(forgotten_message_db),
+            forgotten_by=forgotten_message_db.forgotten_by,
+        )
+
+    if status == MessageStatus.REJECTED:
+        rejected_message_db = get_rejected_message(session=session, item_hash=item_hash)
+        if not rejected_message_db:
+            raise web.HTTPNotFound()
+
+        return RejectedMessageStatus(
+            item_hash=item_hash,
+            reception_time=reception_time,
+            error_code=rejected_message_db.error_code,
+            details=rejected_message_db.details,
+            message=rejected_message_db.message,
+        )
+
+    raise NotImplementedError(f"Unknown message status: {status}")
+
+
+async def view_message(request: web.Request):
+    item_hash_str = request.match_info.get("item_hash")
+    try:
+        item_hash = ItemHash(item_hash_str)
+    except ValueError:
+        raise web.HTTPUnprocessableEntity(body=f"Invalid message hash: {item_hash_str}")
+
+    session_factory: DbSessionFactory = request.app["session_factory"]
+    with session_factory() as session:
+        message_status_db = get_message_status(session=session, item_hash=item_hash)
+        if message_status_db is None:
+            raise web.HTTPNotFound()
+        message_with_status = _get_message_with_status(
+            session=session, status_db=message_status_db
+        )
+
+    return web.json_response(text=message_with_status.json())

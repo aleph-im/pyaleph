@@ -4,9 +4,10 @@ import logging
 from aiohttp import web
 from aleph_message.models import ItemType
 
+from aleph.db.accessors.files import count_file_pins
 from aleph.exceptions import AlephStorageException, UnknownHashError
-from aleph.handlers.forget import count_file_references
 from aleph.storage import StorageService
+from aleph.types.db_session import DbSessionFactory
 from aleph.utils import run_in_executor, item_type_from_hash
 
 logger = logging.getLogger(__name__)
@@ -119,7 +120,9 @@ async def get_raw_hash(request):
     return response
 
 
-async def get_file_references_count(request):
+async def get_file_pins_count(request):
     item_hash = request.match_info.get("hash", None)
-    count = await count_file_references(storage_hash=item_hash)
+    session_factory: DbSessionFactory = request.app["session_factory"]
+    with session_factory() as session:
+        count = count_file_pins(session=session, file_hash=item_hash)
     return web.json_response(data=count)

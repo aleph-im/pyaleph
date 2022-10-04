@@ -9,10 +9,12 @@ class FileSystemStorageEngine(StorageEngine):
 
         self.folder = folder if isinstance(folder, Path) else Path(folder)
 
-        if not self.folder.is_dir():
+        if self.folder.exists() and not self.folder.is_dir():
             raise ValueError(
                 f"'{self.folder}' exists and is not a directory."
             )
+
+        self.folder.mkdir(parents=True, exist_ok=True)
 
     async def read(self, filename: str) -> Optional[bytes]:
         file_path = self.folder / filename
@@ -29,3 +31,7 @@ class FileSystemStorageEngine(StorageEngine):
     async def delete(self, filename: str):
         file_path = self.folder / filename
         file_path.unlink(missing_ok=True)
+
+    async def exists(self, filename: str) -> bool:
+        file_path = self.folder / filename
+        return file_path.exists()

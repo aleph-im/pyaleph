@@ -49,14 +49,14 @@
     "channel": "INTEGRATION_TESTS",
     "content": {
       "address": "0xaC033C1cA5C49Eff98A1D9a56BeDBC4840010BA4",
-      "time": 1648215802.3821976,
+      "time": 1648215802.382197,
       "key": "test_reference",
       "content": {
         "c": 3,
         "d": 4
       }
     },
-    "item_content": "{\"address\":\"0xaC033C1cA5C49Eff98A1D9a56BeDBC4840010BA4\",\"time\":1648215802.3821976,\"key\":\"test_reference\",\"content\":{\"c\":3,\"d\":4}}",
+    "item_content": "{\"address\":\"0xaC033C1cA5C49Eff98A1D9a56BeDBC4840010BA4\",\"time\":1648215802.382197,\"key\":\"test_reference\",\"content\":{\"c\":3,\"d\":4}}",
     "item_type": "inline",
     "signature": "0xc0f6ce2e4e9561b3949d51a97b8746125e1f031bbc13813cc74f1f61eea654fe300ad5e9ec098d41374bc0e43f83f2d66b834672abb811ae6a2dcdbd09f2565f1c",
     "size": 129,
@@ -72,7 +72,9 @@
       {
         "chain": "ETH",
         "height": 14205580,
-        "hash": "0x234b3cb25e893780c4cf50ec82c4ae9a61d61b766a367b559ae8192463e84a1b"
+        "hash": "0x234b3cb25e893780c4cf50ec82c4ae9a61d61b766a367b559ae8192463e84a1b",
+        "time": 1644857371.174842,
+        "publisher": "0xabadbabe"
       }
     ],
     "confirmed": true,
@@ -101,7 +103,9 @@
       {
         "chain": "ETH",
         "height": 14205311,
-        "hash": "0x805dcf51856c813d5524f5b64555145fce6487b81dc605e6657fd208bebb2e05"
+        "hash": "0x805dcf51856c813d5524f5b64555145fce6487b81dc605e6657fd208bebb2e05",
+        "time": 1644853200,
+        "publisher": "0xabadbabe"
       }
     ],
     "confirmed": true,

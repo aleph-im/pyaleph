@@ -4,101 +4,95 @@ Job in charge of loading messages stored on-chain and put them in the pending me
 
 import asyncio
 import logging
-from typing import List, Dict, Optional
-from typing import Set
+from typing import List, Dict, Optional, Set
 
 import sentry_sdk
 from configmanager import Config
-from pymongo import DeleteOne, InsertOne
-from pymongo.errors import CursorNotFound
 from setproctitle import setproctitle
+from sqlalchemy import delete
 
+from aleph.chains.chain_service import ChainService
 from aleph.chains.chaindata import ChainDataService
 from aleph.chains.tx_context import TxContext
-from aleph.exceptions import InvalidMessageError
-from aleph.toolkit.logging import setup_logging
-from aleph.model.db_bulk_operation import DbBulkOperation
-from aleph.model.pending import PendingMessage, PendingTX
-from aleph.schemas.pending_messages import parse_message
+from aleph.db.accessors.pending_txs import get_pending_txs
+from aleph.db.connection import make_engine, make_session_factory
+from aleph.db.models.pending_txs import PendingTxDb
+from aleph.handlers.message_handler import MessageHandler
 from aleph.services.ipfs.common import make_ipfs_client
 from aleph.services.ipfs.service import IpfsService
 from aleph.services.p2p import singleton
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
-from .job_utils import prepare_loop, process_job_results
+from aleph.toolkit.logging import setup_logging
+from aleph.toolkit.timestamp import utc_now
+from aleph.types.db_session import DbSessionFactory
+from .job_utils import prepare_loop
 
-LOGGER = logging.getLogger("jobs.pending_txs")
+LOGGER = logging.getLogger(__name__)
 
 
 class PendingTxProcessor:
-    def __init__(self, storage_service: StorageService):
+    def __init__(
+        self,
+        session_factory: DbSessionFactory,
+        storage_service: StorageService,
+        message_handler: MessageHandler,
+    ):
+        self.session_factory = session_factory
         self.storage_service = storage_service
-        self.chain_data_service = ChainDataService(storage_service=storage_service)
+        self.message_handler = message_handler
+        self.chain_data_service = ChainDataService(
+            session_factory=session_factory, storage_service=storage_service
+        )
 
     async def handle_pending_tx(
-        self, pending_tx, seen_ids: Optional[List[str]] = None
-    ) -> List[DbBulkOperation]:
+        self, pending_tx: PendingTxDb, seen_ids: Optional[Set[str]] = None
+    ) -> None:
+        LOGGER.info(
+            "%s Handling TX in block %s", pending_tx.tx.chain, pending_tx.tx.height
+        )
 
-        db_operations: List[DbBulkOperation] = []
-        tx_context = TxContext(**pending_tx["context"])
-        LOGGER.info("%s Handling TX in block %s", tx_context.chain, tx_context.height)
+        # TODO: get rid of this compatibility layer. 'get_chaindata_messages' is recursive and this proves
+        #       to be tricky to refactor at this time of the night.
+        tx_content = {
+            "content": pending_tx.tx.content,
+            "protocol": pending_tx.tx.protocol,
+            "version": pending_tx.tx.protocol_version,
+        }
+        tx_context = TxContext(
+            chain=pending_tx.tx.chain,
+            hash=pending_tx.tx.hash,
+            height=pending_tx.tx.height,
+            time=pending_tx.tx.datetime.timestamp(),
+            publisher=pending_tx.tx.publisher,
+        )
 
         # If the chain data file is unavailable, we leave it to the pending tx
         # processor to log the content unavailable exception and retry later.
         messages = await self.chain_data_service.get_chaindata_messages(
-            pending_tx["content"], tx_context, seen_ids=seen_ids
+            tx_content, tx_context, seen_ids=seen_ids
         )
 
         if messages:
             for i, message_dict in enumerate(messages):
-
-                try:
-                    # we don't check signatures yet.
-                    message = parse_message(message_dict)
-                except InvalidMessageError as error:
-                    LOGGER.warning(error)
-                    continue
-
-                message.time = tx_context.time + (i / 1000)  # force order
-
-                # we add it to the message queue... bad idea? should we process it asap?
-                db_operations.append(
-                    DbBulkOperation(
-                        collection=PendingMessage,
-                        operation=InsertOne(
-                            {
-                                "message": message.dict(exclude={"content"}),
-                                "tx_context": tx_context.dict(),
-                                "check_message": True,
-                            }
-                        ),
-                    )
+                await self.message_handler.add_pending_message(
+                    message_dict=message_dict,
+                    reception_time=utc_now(),
+                    tx_hash=tx_context.hash,
                 )
-                await asyncio.sleep(0)
 
         else:
             LOGGER.debug("TX contains no message")
 
         if messages is not None:
             # bogus or handled, we remove it.
-            db_operations.append(
-                DbBulkOperation(
-                    collection=PendingTX,
-                    operation=DeleteOne({"_id": pending_tx["_id"]}),
+            with self.session_factory() as session:
+                session.execute(
+                    delete(PendingTxDb).where(
+                        PendingTxDb.tx_hash == pending_tx.tx_hash
+                    ),
                 )
-            )
-
-        return db_operations
-
-    @staticmethod
-    async def process_tx_job_results(tasks: Set[asyncio.Task]):
-        await process_job_results(
-            tasks,
-            on_error=lambda e: LOGGER.exception(
-                "error in incoming txs task",
-                exc_info=(type(e), e, e.__traceback__),
-            ),
-        )
+                session.commit()
 
     async def process_pending_txs(self, max_concurrent_tasks: int):
         """
@@ -108,34 +102,35 @@ class PendingTxProcessor:
         tasks: Set[asyncio.Task] = set()
 
         seen_offchain_hashes = set()
-        seen_ids: List[str] = []
+        seen_ids: Set[str] = set()
         LOGGER.info("handling TXs")
-        async for pending_tx in PendingTX.collection.find().sort([("context.time", 1)]):
-            if pending_tx["content"]["protocol"] == "aleph-offchain":
-                if pending_tx["content"]["content"] in seen_offchain_hashes:
+        with self.session_factory() as session:
+            for pending_tx in get_pending_txs(session):
+                if pending_tx.tx.content in seen_offchain_hashes:
                     continue
 
-            if len(tasks) == max_concurrent_tasks:
-                done, tasks = await asyncio.wait(
-                    tasks, return_when=asyncio.FIRST_COMPLETED
+                if len(tasks) == max_concurrent_tasks:
+                    done, tasks = await asyncio.wait(
+                        tasks, return_when=asyncio.FIRST_COMPLETED
+                    )
+
+                seen_offchain_hashes.add(pending_tx.tx.content)
+                tx_task = asyncio.create_task(
+                    self.handle_pending_tx(pending_tx, seen_ids=seen_ids)
                 )
-                await self.process_tx_job_results(done)
+                tasks.add(tx_task)
 
-            seen_offchain_hashes.add(pending_tx["content"]["content"])
-            tx_task = asyncio.create_task(
-                self.handle_pending_tx(pending_tx, seen_ids=seen_ids)
-            )
-            tasks.add(tx_task)
-
-        # Wait for the last tasks
-        if tasks:
-            done, _ = await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)
-            await self.process_tx_job_results(done)
+            # Wait for the last tasks
+            if tasks:
+                done, _ = await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)
 
 
 async def handle_txs_task(config: Config):
     max_concurrent_tasks = config.aleph.jobs.pending_txs.max_concurrency.value
     await asyncio.sleep(4)
+
+    engine = make_engine(config=config, application_name="aleph-txs")
+    session_factory = make_session_factory(engine)
 
     ipfs_client = make_ipfs_client(config)
     ipfs_service = IpfsService(ipfs_client=ipfs_client)
@@ -143,14 +138,26 @@ async def handle_txs_task(config: Config):
         storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
         ipfs_service=ipfs_service,
     )
-    pending_tx_processor = PendingTxProcessor(storage_service=storage_service)
+    chain_service = ChainService(
+        session_factory=session_factory, storage_service=storage_service
+    )
+
+    message_handler = MessageHandler(
+        session_factory=session_factory,
+        chain_service=chain_service,
+        storage_service=storage_service,
+        config=config,
+    )
+    pending_tx_processor = PendingTxProcessor(
+        session_factory=session_factory,
+        storage_service=storage_service,
+        message_handler=message_handler,
+    )
 
     while True:
         try:
             await pending_tx_processor.process_pending_txs(max_concurrent_tasks)
             await asyncio.sleep(5)
-        except CursorNotFound:
-            LOGGER.exception("Cursor error in pending txs job ")
         except Exception:
             LOGGER.exception("Error in pending txs job")
 
