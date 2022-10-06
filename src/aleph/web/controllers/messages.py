@@ -215,12 +215,10 @@ async def messages_ws(request: web.Request):
                     break
 
         except ConnectionResetError:
-            closing = True
             break
 
         except Exception:
             if ws.closed:
-                closing = True
                 break
 
             LOGGER.exception("Error processing")
