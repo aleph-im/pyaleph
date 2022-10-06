@@ -7,6 +7,7 @@ from bson import json_util
 
 PER_PAGE = 20
 PER_PAGE_SUMMARY = 50
+LIST_FIELD_SEPARATOR = ","
 
 
 class Pagination(object):
