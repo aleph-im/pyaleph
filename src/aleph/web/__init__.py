@@ -38,8 +38,8 @@ def init_sio(app: web.Application) -> socketio.AsyncServer:
     return sio
 
 
-def create_app() -> web.Application:
-    app = web.Application(client_max_size=1024 ** 2 * 64)
+def create_app(debug: bool = False) -> web.Application:
+    app = web.Application(client_max_size=1024**2 * 64, debug=debug)
 
     tpl_path = pkg_resources.resource_filename("aleph.web", "templates")
     jinja_loader = jinja2.ChoiceLoader(

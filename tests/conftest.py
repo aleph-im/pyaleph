@@ -62,7 +62,7 @@ async def ccn_api_client(aiohttp_client, mock_config):
     event_loop = asyncio.get_event_loop()
     event_loop.set_debug(True)
 
-    app = create_app()
+    app = create_app(debug=True)
     app["config"] = mock_config
     client = await aiohttp_client(app)
 

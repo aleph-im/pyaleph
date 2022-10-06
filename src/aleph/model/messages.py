@@ -228,7 +228,7 @@ async def get_merged_posts(filters, sort=None, limit=100, skip=0, amend_limit=1)
                 }
             }
         },
-        {"$project": {"amends": 0}},
+        {"$project": {"_id": 0, "amends": 0}},
         {"$replaceRoot": {"newRoot": {"$mergeObjects": ["$$ROOT", "$content"]}}},
     ]
 
