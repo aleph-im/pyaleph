@@ -43,8 +43,8 @@ def merge_aggregates(messages: Iterable[Dict]) -> List[Dict]:
     aggregates = []
 
     for key, group in itertools.groupby(
-            sorted(messages, key=lambda msg: msg["content"]["key"]),
-            lambda msg: msg["content"]["key"],
+        sorted(messages, key=lambda msg: msg["content"]["key"]),
+        lambda msg: msg["content"]["key"],
     ):
         sorted_messages = sorted(group, key=lambda msg: msg["time"])
         aggregates.append(merge_content(sorted_messages))
@@ -99,22 +99,30 @@ async def test_get_aggregates(ccn_api_client, fixture_aggregates: List[Dict]):
 
 
 @pytest.mark.asyncio
-async def test_get_aggregates_filter_by_key(ccn_api_client, fixture_aggregates: List[Dict]):
+async def test_get_aggregates_filter_by_key(
+    ccn_api_client, fixture_aggregates: List[Dict]
+):
     """
     Tests the 'keys' query parameter.
     """
 
     address, key = ADDRESS_1, "test_target"
-    aggregates = await get_aggregates_expect_success(ccn_api_client, address=address, keys=key)
+    aggregates = await get_aggregates_expect_success(
+        ccn_api_client, address=address, keys=key
+    )
     assert aggregates["address"] == address
     assert aggregates["data"][key] == EXPECTED_AGGREGATES[address][key]
 
     # Multiple keys
     address, keys = ADDRESS_1, ["test_target", "test_reference"]
-    aggregates = await get_aggregates_expect_success(ccn_api_client, address=address, keys=",".join(keys))
+    aggregates = await get_aggregates_expect_success(
+        ccn_api_client, address=address, keys=",".join(keys)
+    )
     assert aggregates["address"] == address
     for key in keys:
-        assert aggregates["data"][key] == EXPECTED_AGGREGATES[address][key], f"Key {key} does not match"
+        assert (
+            aggregates["data"][key] == EXPECTED_AGGREGATES[address][key]
+        ), f"Key {key} does not match"
 
 
 @pytest.mark.asyncio
@@ -124,13 +132,17 @@ async def test_get_aggregates_limit(ccn_api_client, fixture_aggregates: List[Dic
     """
 
     address, key = ADDRESS_1, "test_reference"
-    aggregates = await get_aggregates_expect_success(ccn_api_client, address=address, keys=key, limit=1)
+    aggregates = await get_aggregates_expect_success(
+        ccn_api_client, address=address, keys=key, limit=1
+    )
     assert aggregates["address"] == address
     assert aggregates["data"][key] == {"c": 3, "d": 4}
 
 
 @pytest.mark.asyncio
-async def test_get_aggregates_invalid_address(ccn_api_client, fixture_aggregates: List[Dict]):
+async def test_get_aggregates_invalid_address(
+    ccn_api_client, fixture_aggregates: List[Dict]
+):
     """
     Pass an unknown address.
     """
@@ -139,3 +151,21 @@ async def test_get_aggregates_invalid_address(ccn_api_client, fixture_aggregates
 
     response = await get_aggregates(ccn_api_client, invalid_address)
     assert response.status == 404
+
+
+@pytest.mark.asyncio
+async def test_get_aggregates_invalid_params(
+    ccn_api_client, fixture_aggregates: List[Dict]
+):
+    """
+    Tests that passing invalid parameters returns a 422 error.
+    """
+
+    # A string as limit
+    response = await get_aggregates(ccn_api_client, ADDRESS_1, limit="abc")
+    assert response.status == 422
+    assert response.content_type == "application/json"
+
+    errors = await response.json()
+    assert len(errors) == 1
+    assert errors[0]["loc"] == ["limit"], errors
