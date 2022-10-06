@@ -5,6 +5,7 @@ from typing import Coroutine, Dict, List
 from urllib.parse import unquote
 
 from p2pclient import Client as P2PClient
+from pydantic import ValidationError
 
 from aleph.exceptions import InvalidMessageError
 from aleph.register_chain import VERIFIER_REGISTER
@@ -67,7 +68,10 @@ async def check_message(
     TODO: Implement it fully! Dangerous!
     """
 
-    message = parse_message(message_dict)
+    try:
+        message = parse_message(message_dict)
+    except ValidationError as e:
+        raise InvalidMessageError(json.dumps(e.json())) from e
 
     if trusted:
         # only in the case of a message programmatically built here

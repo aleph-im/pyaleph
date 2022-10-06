@@ -5,6 +5,7 @@ from typing import Dict, cast
 
 from aiohttp import web
 from configmanager import Config
+from pydantic import ValidationError
 
 from aleph.exceptions import InvalidMessageError
 from aleph.schemas.pending_messages import parse_message
@@ -32,6 +33,8 @@ def validate_request_data(config: Config, request_data: Dict) -> None:
         message = json.loads(cast(str, request_data.get("data")))
         try:
             _ = parse_message(message)
+        except ValidationError as e:
+            raise web.HTTPUnprocessableEntity(json=e.json(indent=4)) from e
         except InvalidMessageError as e:
             raise web.HTTPUnprocessableEntity(body=str(e))
 

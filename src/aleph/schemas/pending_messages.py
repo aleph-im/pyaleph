@@ -204,7 +204,4 @@ def parse_message(message_dict: Any) -> BasePendingMessage:
 
     msg_cls = MESSAGE_TYPE_TO_CLASS[message_type]
 
-    try:
-        return msg_cls(**message_dict)
-    except ValidationError as e:
-        raise InvalidMessageError(json.dumps(e.json())) from e
+    return msg_cls(**message_dict)
