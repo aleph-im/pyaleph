@@ -1,11 +1,19 @@
 import itertools
-from typing import Dict, Iterable
+from typing import Dict, Iterable, List, Optional, Callable, Union
 
+import aiohttp
 import pytest
 
 from .utils import get_messages_by_keys
 
 MESSAGES_URI = "/api/v0/messages.json"
+MESSAGES_PAGE_URI = "/api/v0/messages/page/{page}.json"
+
+
+def get_messages_by_predicate(
+    messages: Iterable[Dict], predicate: Callable[[Dict], bool]
+) -> List[Dict]:
+    return [msg for msg in messages if predicate(msg)]
 
 
 def check_message_fields(messages: Iterable[Dict]):
@@ -83,38 +91,234 @@ async def test_get_messages_filter_by_channel(fixture_messages, ccn_api_client):
     assert data["messages"] == []
 
 
+async def fetch_messages_by_chain(api_client, chain: str) -> aiohttp.ClientResponse:
+    response = await api_client.get(MESSAGES_URI, params={"chains": chain})
+    return response
+
+
 @pytest.mark.asyncio
 async def test_get_messages_filter_by_chain(fixture_messages, ccn_api_client):
-    async def fetch_messages_by_chain(chain: str) -> Dict:
-        response = await ccn_api_client.get(MESSAGES_URI, params={"chains": chain})
-        assert response.status == 200, await response.text()
-        return await response.json()
+    response = await fetch_messages_by_chain(api_client=ccn_api_client, chain="ETH")
+    assert response.status == 200, await response.text()
 
-    eth_data = await fetch_messages_by_chain("ETH")
+    eth_data = await response.json()
     eth_messages = eth_data["messages"]
     assert_messages_equal(
         eth_messages, get_messages_by_keys(fixture_messages, chain="ETH")
     )
 
-    fake_chain_data = await fetch_messages_by_chain("2CHAINZ")
-    fake_chain_messages = fake_chain_data["messages"]
-    assert fake_chain_messages == []
+
+@pytest.mark.asyncio
+async def test_get_messages_filter_invalid_chain(fixture_messages, ccn_api_client):
+    response = await fetch_messages_by_chain(api_client=ccn_api_client, chain="2CHAINZ")
+    assert response.status == 422, await response.text()
+
+
+async def fetch_messages_by_content_hash(
+    api_client, item_hash: str
+) -> aiohttp.ClientResponse:
+    response = await api_client.get(MESSAGES_URI, params={"contentHashes": item_hash})
+    return response
 
 
 @pytest.mark.asyncio
 async def test_get_messages_filter_by_content_hash(fixture_messages, ccn_api_client):
-    async def fetch_messages_by_content_hash(item_hash: str) -> Dict:
-        response = await ccn_api_client.get(MESSAGES_URI, params={"contentHashes": item_hash})
-        assert response.status == 200, await response.text()
-        return await response.json()
-
     content_hash = "5ccdd7bccfbc5955e2e40166dd0cdea0b093154fd87bc2bea57e7c768cde2f21"
-    data = await fetch_messages_by_content_hash(content_hash)
+    response = await fetch_messages_by_content_hash(ccn_api_client, content_hash)
+    assert response.status == 200, await response.text()
+    data = await response.json()
+
     messages = data["messages"]
     assert_messages_equal(
-        messages, get_messages_by_keys(fixture_messages, item_hash="2953f0b52beb79fc0ed1bc455346fdcb530611605e16c636778a0d673d7184af")
+        messages,
+        get_messages_by_keys(
+            fixture_messages,
+            item_hash="2953f0b52beb79fc0ed1bc455346fdcb530611605e16c636778a0d673d7184af",
+        ),
     )
 
-    fake_hash_data = await fetch_messages_by_content_hash("1234")
-    fake_hash_messages = fake_hash_data["messages"]
-    assert fake_hash_messages == []
+
+@pytest.mark.asyncio
+async def test_get_messages_filter_by_invalid_content_hash(
+    fixture_messages, ccn_api_client
+):
+    response = await fetch_messages_by_content_hash(ccn_api_client, "1234")
+    assert response.status == 422, await response.text()
+
+
+async def fetch_messages_filter_time(
+    api_client,
+    start: Optional[float] = None,
+    end: Optional[float] = None,
+    sort_order: int = -1,
+) -> aiohttp.ClientResponse:
+
+    params: Dict[str, Union[float, int]] = {"sort_order": sort_order}
+    if start:
+        params["startDate"] = start
+    if end:
+        params["endDate"] = end
+
+    return await api_client.get(MESSAGES_URI, params=params)
+
+
+async def fetch_messages_filter_time_expect_success(
+    api_client,
+    start: Optional[float] = None,
+    end: Optional[float] = None,
+    sort_order: int = -1,
+) -> List[Dict]:
+    response = await fetch_messages_filter_time(api_client, start, end, sort_order)
+    assert response.status == 200, await response.text()
+    data = await response.json()
+    return data["messages"]
+
+
+@pytest.mark.asyncio
+async def test_time_filters(fixture_messages, ccn_api_client):
+    # Start and end time specified, should return all messages
+    start_time, end_time = 164821580, 1648215820
+    messages = await fetch_messages_filter_time_expect_success(
+        ccn_api_client, start=start_time, end=end_time
+    )
+    assert_messages_equal(
+        messages=messages,
+        expected_messages=get_messages_by_predicate(
+            fixture_messages, lambda msg: start_time <= msg["time"] < end_time
+        ),
+    )
+
+    # Only a start time
+    messages = await fetch_messages_filter_time_expect_success(
+        ccn_api_client, start=start_time
+    )
+    assert_messages_equal(
+        messages=messages,
+        expected_messages=get_messages_by_predicate(
+            fixture_messages, lambda msg: msg["time"] >= start_time
+        ),
+    )
+
+    # Only an end time
+    messages = await fetch_messages_filter_time_expect_success(
+        ccn_api_client, end=end_time
+    )
+    assert_messages_equal(
+        messages=messages,
+        expected_messages=get_messages_by_predicate(
+            fixture_messages, lambda msg: msg["time"] < end_time
+        ),
+    )
+
+    # Change the default order (ascending instead of descending)
+    messages = await fetch_messages_filter_time_expect_success(
+        ccn_api_client, start=start_time, end=end_time, sort_order=1
+    )
+    assert_messages_equal(
+        messages=messages,
+        expected_messages=get_messages_by_predicate(
+            fixture_messages, lambda msg: start_time <= msg["time"] < end_time
+        ),
+    )
+
+    # End time lower than start time
+    response = await fetch_messages_filter_time(
+        ccn_api_client, start=end_time, end=start_time
+    )
+    assert response.status == 422
+
+    # Negative value
+    response = await fetch_messages_filter_time(ccn_api_client, start=-8000)
+    assert response.status == 422
+
+    response = await fetch_messages_filter_time(ccn_api_client, end=-700)
+    assert response.status == 422
+
+    # Non-string value
+    response = await fetch_messages_filter_time(ccn_api_client, start="yes")
+    assert response.status == 422
+
+
+async def fetch_messages_with_pagination(
+    api_client, page: int = 1, pagination: int = 20, sort_order: int = -1
+):
+    return await api_client.get(
+        MESSAGES_URI,
+        params={"page": page, "pagination": pagination, "sort_order": sort_order},
+    )
+
+
+async def fetch_messages_with_pagination_expect_success(
+    api_client, page: int = 1, pagination: int = 20, sort_order: int = -1
+):
+    response = await fetch_messages_with_pagination(
+        api_client, page, pagination, sort_order
+    )
+    assert response.status == 200, await response.text()
+    data = await response.json()
+    return data["messages"]
+
+
+@pytest.mark.asyncio()
+async def test_pagination(fixture_messages, ccn_api_client):
+    sorted_messages_by_time = sorted(fixture_messages, key=lambda msg: msg["time"])
+
+    # More messages than available
+    messages = await fetch_messages_with_pagination_expect_success(
+        ccn_api_client, page=1, pagination=len(fixture_messages) + 1
+    )
+    assert_messages_equal(messages=messages, expected_messages=fixture_messages)
+
+    # All the messages
+    messages = await fetch_messages_with_pagination_expect_success(
+        ccn_api_client, page=1, pagination=0
+    )
+    assert_messages_equal(messages=messages, expected_messages=fixture_messages)
+
+    # Only some messages
+    messages = await fetch_messages_with_pagination_expect_success(
+        ccn_api_client, page=1, pagination=4
+    )
+    assert_messages_equal(messages, sorted_messages_by_time[-4:])
+
+    # Second page
+    messages = await fetch_messages_with_pagination_expect_success(
+        ccn_api_client, page=2, pagination=4
+    )
+    assert_messages_equal(messages, sorted_messages_by_time[-8:-4])
+
+    # Only one message
+    messages = await fetch_messages_with_pagination_expect_success(
+        ccn_api_client, page=1, pagination=1
+    )
+    assert_messages_equal(messages, sorted_messages_by_time[-1:])
+
+    # Some messages, reverse sort order
+    messages = await fetch_messages_with_pagination_expect_success(
+        ccn_api_client, page=1, pagination=3, sort_order=1
+    )
+    assert_messages_equal(messages, sorted_messages_by_time[:3])
+
+    # Several pages too far
+    messages = await fetch_messages_with_pagination_expect_success(
+        ccn_api_client, page=1000, pagination=4, sort_order=1
+    )
+    assert messages == []
+
+    # With the /page/{page} endpoint
+    response = await ccn_api_client.get(MESSAGES_PAGE_URI.format(page=2), params={"pagination": 4})
+    assert response.status == 200, await response.text()
+    messages = (await response.json())["messages"]
+    assert_messages_equal(messages, sorted_messages_by_time[-8:-4])
+
+    # Page 0
+    response = await fetch_messages_with_pagination(ccn_api_client, page=0)
+    assert response.status == 422
+
+    # Negative page
+    response = await fetch_messages_with_pagination(ccn_api_client, page=-3)
+    assert response.status == 422
+
+    # Negative pagination
+    response = await fetch_messages_with_pagination(ccn_api_client, pagination=-10)
+    assert response.status == 422
