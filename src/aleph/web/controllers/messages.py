@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from enum import IntEnum
-from typing import Any, Dict, List, Optional, Mapping
+from typing import Any, List, Optional, Mapping
 
 from aiohttp import web
 from aleph_message.models import MessageType, ItemHash, Chain
@@ -14,7 +14,6 @@ from aleph.web.controllers.utils import (
     LIST_FIELD_SEPARATOR,
     Pagination,
     cond_output,
-    make_date_filters,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -30,7 +29,7 @@ class SortOrder(IntEnum):
     DESCENDING = -1
 
 
-class MessageQueryParams(BaseModel):
+class BaseMessageQueryParams(BaseModel):
     sort_order: SortOrder = Field(
         default=SortOrder.DESCENDING,
         description="Order in which messages should be listed: "
@@ -72,34 +71,6 @@ class MessageQueryParams(BaseModel):
     hashes: Optional[List[ItemHash]] = Field(
         default=None, description="Accepted values for the 'item_hash' field."
     )
-    history: Optional[int] = Field(
-        DEFAULT_WS_HISTORY,
-        ge=10,
-        lt=200,
-        description="Accepted values for the 'item_hash' field.",
-    )
-    pagination: int = Field(
-        default=DEFAULT_MESSAGES_PER_PAGE,
-        ge=0,
-        description="Maximum number of messages to return. Specifying 0 removes this limit.",
-    )
-    page: int = Field(
-        default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
-    )
-    start_date: float = Field(
-        default=0,
-        ge=0,
-        alias="startDate",
-        description="Start date timestamp. If specified, only messages with "
-        "a time field greater or equal to this value will be returned.",
-    )
-    end_date: float = Field(
-        default=0,
-        ge=0,
-        alias="endDate",
-        description="End date timestamp. If specified, only messages with "
-        "a time field lower than this value will be returned.",
-    )
 
     @root_validator
     def validate_field_dependencies(cls, values):
@@ -124,8 +95,8 @@ class MessageQueryParams(BaseModel):
             return v.split(LIST_FIELD_SEPARATOR)
         return v
 
-    def to_mongodb_filters(self) -> Mapping[str, Any]:
-        filters: List[Dict[str, Any]] = []
+    def to_filter_list(self) -> List[Mapping[str, Any]]:
+        filters: List[Mapping[str, Any]] = []
 
         if self.message_type is not None:
             filters.append({"type": self.message_type})
@@ -164,17 +135,54 @@ class MessageQueryParams(BaseModel):
                 }
             )
 
-        date_filters = make_date_filters(
-            start=self.start_date, end=self.end_date, filter_key="time"
-        )
-        if date_filters:
-            filters.append(date_filters)
+        return filters
 
-        and_filter = {}
+    def to_mongodb_filters(self) -> Mapping[str, Any]:
+        filters = self.to_filter_list()
+        return self._make_and_filter(filters)
+
+    @staticmethod
+    def _make_and_filter(filters: List[Mapping[str, Any]]) -> Mapping[str, Any]:
+        and_filter: Mapping[str, Any] = {}
         if filters:
             and_filter = {"$and": filters} if len(filters) > 1 else filters[0]
 
         return and_filter
+
+
+class MessageQueryParams(BaseMessageQueryParams):
+    pagination: int = Field(
+        default=DEFAULT_MESSAGES_PER_PAGE,
+        ge=0,
+        description="Maximum number of messages to return. Specifying 0 removes this limit.",
+    )
+    page: int = Field(
+        default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
+    )
+
+    start_date: float = Field(
+        default=0,
+        ge=0,
+        alias="startDate",
+        description="Start date timestamp. If specified, only messages with "
+        "a time field greater or equal to this value will be returned.",
+    )
+    end_date: float = Field(
+        default=0,
+        ge=0,
+        alias="endDate",
+        description="End date timestamp. If specified, only messages with "
+        "a time field lower than this value will be returned.",
+    )
+
+
+class WsMessageQueryParams(BaseMessageQueryParams):
+    history: Optional[int] = Field(
+        DEFAULT_WS_HISTORY,
+        ge=10,
+        lt=200,
+        description="Accepted values for the 'item_hash' field.",
+    )
 
 
 async def view_messages_list(request):
@@ -244,7 +252,7 @@ async def messages_ws(request: web.Request):
     collection = CappedMessage.collection
     last_id = None
 
-    query_params = MessageQueryParams.parse_obj(request.query)
+    query_params = WsMessageQueryParams.parse_obj(request.query)
     find_filters = query_params.to_mongodb_filters()
 
     initial_count = query_params.history
