@@ -19,7 +19,9 @@ class Pagination(object):
         with_pagination = pagination_param != 0
 
         if pagination_page < 1:
-            raise web.HTTPBadRequest(text=f"Query field 'page' must be ≥ 1, not {pagination_page}")
+            raise web.HTTPBadRequest(
+                text=f"Query field 'page' must be ≥ 1, not {pagination_page}"
+            )
 
         if not with_pagination:
             pagination_per_page = None
@@ -64,6 +66,21 @@ class Pagination(object):
                     yield None
                 yield num
                 last = num
+
+
+def make_date_filters(start: float, end: float, filter_key: str):
+    filters = []
+    if start:
+        filters.append({filter_key: {"$gte": start}})
+    if end:
+        filters.append({filter_key: {"$lt": end}})
+
+    if len(filters) > 1:
+        return {"$and": filters}
+    if filters:
+        return filters[0]
+
+    return None
 
 
 def prepare_date_filters(request, filter_key):
