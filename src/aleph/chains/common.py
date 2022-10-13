@@ -1,11 +1,9 @@
 import asyncio
 import json
 import logging
-from dataclasses import asdict
 from enum import IntEnum
 from typing import Dict, Optional, Tuple, List
 
-from aleph_message.models import MessageConfirmation
 from bson import ObjectId
 from pymongo import UpdateOne
 
@@ -25,18 +23,17 @@ from aleph.model.messages import CappedMessage, Message
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.network import verify_signature
 from aleph.permissions import check_sender_authorization
-from aleph.storage import get_json, pin_hash, add_json, get_message_content
-from .tx_context import TxContext
-from aleph.schemas.pending_messages import (
-    BasePendingMessage,
-)
+from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.schemas.validated_message import (
     validate_pending_message,
     ValidatedStoreMessage,
     ValidatedForgetMessage,
     make_confirmation_update_query,
-make_message_upsert_query,
+    make_message_upsert_query,
 )
+from ..schemas.message_confirmation import MessageConfirmation
+from aleph.storage import get_json, pin_hash, add_json, get_message_content
+from .tx_context import TxContext
 
 LOGGER = logging.getLogger("chains.common")
 
@@ -64,21 +61,17 @@ async def mark_confirmed_data(chain_name, tx_hash, height):
 
 async def delayed_incoming(
     message: BasePendingMessage,
-    chain_name: Optional[str] = None,
-    tx_hash: Optional[str] = None,
-    height: Optional[int] = None,
+    tx_context: Optional[TxContext] = None,
+    check_message: bool = True,
 ):
     if message is None:
         return
+
     await PendingMessage.collection.insert_one(
         {
             "message": message.dict(exclude={"content"}),
-            "source": dict(
-                chain_name=chain_name,
-                tx_hash=tx_hash,
-                height=height,
-                check_message=True,  # should we store this?
-            ),
+            "tx_context": tx_context.dict() if tx_context else None,
+            "check_message": check_message,
         }
     )
 
@@ -91,9 +84,7 @@ class IncomingStatus(IntEnum):
 
 async def mark_message_for_retry(
     message: BasePendingMessage,
-    chain_name: Optional[str],
-    tx_hash: Optional[str],
-    height: Optional[int],
+    tx_context: Optional[TxContext],
     check_message: bool,
     retrying: bool,
     existing_id,
@@ -101,17 +92,7 @@ async def mark_message_for_retry(
     message_dict = message.dict(exclude={"content"})
 
     if not retrying:
-        await PendingMessage.collection.insert_one(
-            {
-                "message": message_dict,
-                "source": dict(
-                    chain_name=chain_name,
-                    tx_hash=tx_hash,
-                    height=height,
-                    check_message=check_message,  # should we store this?
-                ),
-            }
-        )
+        await delayed_incoming(message, tx_context, check_message)
     else:
         LOGGER.debug(f"Incrementing for {existing_id}")
         result = await PendingMessage.collection.update_one(
@@ -122,9 +103,7 @@ async def mark_message_for_retry(
 
 async def incoming(
     pending_message: BasePendingMessage,
-    chain_name: Optional[str] = None,
-    tx_hash: Optional[str] = None,
-    height: Optional[int] = None,
+    tx_context: Optional[TxContext] = None,
     seen_ids: Optional[Dict[Tuple, int]] = None,
     check_message: bool = False,
     retrying: bool = False,
@@ -139,16 +118,23 @@ async def incoming(
     item_hash = pending_message.item_hash
     sender = pending_message.sender
     confirmations = []
+    chain_name = tx_context.chain if tx_context is not None else None
     ids_key = (item_hash, sender, chain_name)
 
-    if chain_name and tx_hash and height:
+    if tx_context:
         if seen_ids is not None:
             if ids_key in seen_ids.keys():
-                if height > seen_ids[ids_key]:
+                if tx_context.height > seen_ids[ids_key]:
                     return IncomingStatus.MESSAGE_HANDLED, []
 
         confirmations.append(
-            MessageConfirmation(chain=chain_name, hash=tx_hash, height=height)
+            MessageConfirmation(
+                chain=tx_context.chain,
+                hash=tx_context.hash,
+                height=tx_context.height,
+                time=tx_context.time,
+                publisher=tx_context.publisher,
+            )
         )
 
     filters = {
@@ -178,14 +164,14 @@ async def incoming(
     updates: Dict[str, Dict] = {}
 
     if existing:
-        if seen_ids is not None and height is not None:
+        if seen_ids is not None and tx_context is not None:
             if ids_key in seen_ids.keys():
-                if height > seen_ids[ids_key]:
+                if tx_context.height > seen_ids[ids_key]:
                     return IncomingStatus.MESSAGE_HANDLED, []
                 else:
-                    seen_ids[ids_key] = height
+                    seen_ids[ids_key] = tx_context.height
             else:
-                seen_ids[ids_key] = height
+                seen_ids[ids_key] = tx_context.height
 
         LOGGER.debug("Updating %s." % item_hash)
 
@@ -205,9 +191,7 @@ async def incoming(
                 LOGGER.exception("Can't get content of object %r" % item_hash)
             await mark_message_for_retry(
                 message=pending_message,
-                chain_name=chain_name,
-                tx_hash=tx_hash,
-                height=height,
+                tx_context=tx_context,
                 check_message=check_message,
                 retrying=retrying,
                 existing_id=existing_id,
@@ -215,7 +199,9 @@ async def incoming(
             return IncomingStatus.RETRYING_LATER, []
 
         validated_message = validate_pending_message(
-            pending_message=pending_message, content=content, confirmations=confirmations
+            pending_message=pending_message,
+            content=content,
+            confirmations=confirmations,
         )
 
         # warning: those handlers can modify message and content in place
@@ -244,9 +230,7 @@ async def incoming(
             LOGGER.debug("Message type handler has failed, retrying later.")
             await mark_message_for_retry(
                 message=pending_message,
-                chain_name=chain_name,
-                tx_hash=tx_hash,
-                height=height,
+                tx_context=tx_context,
                 check_message=check_message,
                 retrying=retrying,
                 existing_id=existing_id,
@@ -264,14 +248,14 @@ async def incoming(
             LOGGER.warning("Invalid sender for %s" % item_hash)
             return IncomingStatus.MESSAGE_HANDLED, []
 
-        if seen_ids is not None and height is not None:
+        if seen_ids is not None and tx_context is not None:
             if ids_key in seen_ids.keys():
-                if height > seen_ids[ids_key]:
+                if tx_context.height > seen_ids[ids_key]:
                     return IncomingStatus.MESSAGE_HANDLED, []
                 else:
-                    seen_ids[ids_key] = height
+                    seen_ids[ids_key] = tx_context.height
             else:
-                seen_ids[ids_key] = height
+                seen_ids[ids_key] = tx_context.height
 
         LOGGER.debug("New message to store for %s." % item_hash)
 
@@ -386,5 +370,5 @@ async def incoming_chaindata(content: Dict, context: TxContext):
     For now we only add it to the database, it will be processed later.
     """
     await PendingTX.collection.insert_one(
-        {"content": content, "context": asdict(context)}
+        {"content": content, "context": context.dict()}
     )
