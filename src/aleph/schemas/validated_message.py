@@ -7,14 +7,12 @@ always present, unlike pending messages.
 from typing import List, Literal, Optional, Generic, Dict, Type, Any
 
 from aleph_message.models import (
-    MessageConfirmation,
     AggregateContent,
     ForgetContent,
     MessageType,
     PostContent,
     ProgramContent,
-    StoreContent,
-)
+    StoreContent, )
 from pydantic import BaseModel, Field
 
 from aleph.schemas.base_messages import AlephBaseMessage, ContentType, MType
@@ -26,6 +24,7 @@ from aleph.schemas.pending_messages import (
     PendingProgramMessage,
     PendingStoreMessage,
 )
+from .message_confirmation import MessageConfirmation
 from .message_content import MessageContent
 
 
