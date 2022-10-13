@@ -180,8 +180,8 @@ async def request_transactions(config, session, start_height) -> AsyncIterator[T
             jdata = json.loads(ddata)
 
             context = TxContext(
-                chain_name=CHAIN_NAME,
-                tx_hash=tx["hash"],
+                chain=CHAIN_NAME,
+                hash=tx["hash"],
                 height=tx["height"],
                 time=tx["createTime"],
                 publisher=tx["coinFroms"][0]["address"],

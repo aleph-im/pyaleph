@@ -1,11 +1,7 @@
-from dataclasses import dataclass
+from aleph.schemas.message_confirmation import MessageConfirmation
 
 
-@dataclass
-class TxContext:
-    chain_name: str
-    tx_hash: str
-    height: int
-    # Transaction timestamp, in Unix time (number of seconds since epoch).
-    time: float
-    publisher: str
+# At the moment, confirmation = chain transaction. This might change, but in the meantime
+# having TxContext inherit MessageConfirmation avoids code duplication.
+class TxContext(MessageConfirmation):
+    pass
