@@ -309,8 +309,8 @@ async def insert_pending_messages(
             {
                 "message": pending_message.dict(exclude={"content"}),
                 "source": dict(
-                    chain_name=tx_context.chain_name,
-                    tx_hash=tx_context.tx_hash,
+                    chain_name=tx_context.chain,
+                    tx_hash=tx_context.hash,
                     height=tx_context.height,
                     check_message=False,
                 ),

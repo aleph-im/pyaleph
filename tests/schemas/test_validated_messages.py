@@ -6,8 +6,6 @@ as the tests for the pending message schemas and check additional features.
 import json
 from typing import Dict
 
-from aleph_message.models import MessageConfirmation
-
 from aleph.schemas.message_content import MessageContent, ContentSource
 from aleph.schemas.pending_messages import (
     PendingAggregateMessage,
@@ -21,6 +19,7 @@ from aleph.schemas.validated_message import (
     ValidatedAggregateMessage,
     ValidatedStoreMessage,
 )
+from aleph.schemas.message_confirmation import MessageConfirmation
 
 
 def check_basic_message_fields(message: BaseValidatedMessage, message_dict: Dict):
@@ -132,7 +131,7 @@ def test_parse_store_message_inline_content():
     pending_message = parse_message(message_dict)
     assert isinstance(pending_message, PendingStoreMessage)
 
-    confirmations = [MessageConfirmation(chain="ETH", height=1234, hash="abcd")]
+    confirmations = [MessageConfirmation(chain="ETH", height=1234, hash="abcd", time=8000, publisher="0xsomething")]
     message_content = MessageContent(
         pending_message.item_hash, ContentSource.INLINE, content, item_content
     )

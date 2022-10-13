@@ -207,8 +207,8 @@ async def request_transactions(
         try:
             jdata = json.loads(message)
             context = TxContext(
-                chain_name=CHAIN_NAME,
-                tx_hash=event_data.transactionHash.hex(),
+                chain=CHAIN_NAME,
+                hash=event_data.transactionHash.hex(),
                 time=timestamp,
                 height=event_data.blockNumber,
                 publisher=publisher,
