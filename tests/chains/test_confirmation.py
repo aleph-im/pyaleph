@@ -4,6 +4,7 @@ from typing import Dict
 import pytest
 
 from aleph.chains.common import process_one_message
+from aleph.chains.tx_context import TxContext
 from aleph.model.messages import CappedMessage, Message
 from aleph.schemas.pending_messages import parse_message
 
@@ -56,18 +57,22 @@ async def test_confirm_message(test_db):
     assert remove_id_key(message_in_db) == remove_id_key(capped_message_in_db)
 
     # Now, confirm the message
-    chain_name, tx_hash, height = "ETH", "123", 8000
-    await process_one_message(
-        message, chain_name=chain_name, tx_hash=tx_hash, height=height
+    tx_context = TxContext(
+        chain="ETH",
+        hash="123",
+        height=8000,
+        time=120000,
+        publisher="0xdeadbeef",
     )
+
+    await process_one_message(message, tx_context)
 
     message_in_db = await Message.collection.find_one({"item_hash": item_hash})
 
     assert message_in_db is not None
     assert message_in_db["confirmed"]
-    assert {"chain": chain_name, "hash": tx_hash, "height": height} in message_in_db[
-        "confirmations"
-    ]
+    expected_confirmations = [tx_context.dict()]
+    assert message_in_db["confirmations"] == expected_confirmations
 
     capped_message_after_confirmation = await CappedMessage.collection.find_one(
         {"item_hash": item_hash}
@@ -89,18 +94,23 @@ async def test_process_confirmed_message(test_db):
     item_hash = MESSAGE_DICT["item_hash"]
 
     # Confirm the message
-    chain_name, tx_hash, height = "ETH", "123", 8000
     message = parse_message(MESSAGE_DICT)
-    await process_one_message(
-        message, chain_name=chain_name, tx_hash=tx_hash, height=height
+    tx_context = TxContext(
+        chain="ETH",
+        hash="123",
+        height=8000,
+        time=120000,
+        publisher="0xdeadbeef",
     )
+    await process_one_message(message, tx_context)
 
+    # Now, confirm the message
     message_in_db = await Message.collection.find_one({"item_hash": item_hash})
 
     assert message_in_db is not None
     assert message_in_db["confirmed"]
 
-    expected_confirmations = [{"chain": chain_name, "hash": tx_hash, "height": height}]
+    expected_confirmations = [tx_context.dict()]
     assert message_in_db["confirmations"] == expected_confirmations
 
     capped_message_in_db = await CappedMessage.collection.find_one(
@@ -109,4 +119,4 @@ async def test_process_confirmed_message(test_db):
 
     assert remove_id_key(message_in_db) == remove_id_key(capped_message_in_db)
     assert capped_message_in_db["confirmed"]
-    assert capped_message_in_db["confirmations"] == expected_confirmations
+    assert capped_message_in_db["confirmations"] == [tx_context.dict()]
