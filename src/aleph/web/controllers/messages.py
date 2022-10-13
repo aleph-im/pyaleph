@@ -1,129 +1,200 @@
-from typing import Any, Dict, List, Optional, Set
+import asyncio
+import logging
+from enum import IntEnum
+from typing import Any, Dict, List, Optional, Mapping
+
+from aiohttp import web
+from aleph_message.models import MessageType, ItemHash, Chain
+from bson.objectid import ObjectId
+from pydantic import BaseModel, Field, validator, ValidationError, root_validator
+from pymongo.cursor import CursorType
 
 from aleph.model.messages import CappedMessage, Message
-from aiohttp import web
-from aiohttp.web_exceptions import HTTPBadRequest
-import asyncio
-from pymongo.cursor import CursorType
-from bson.objectid import ObjectId
-from aleph.web.controllers.utils import Pagination, cond_output, prepare_date_filters
-import logging
+from aleph.web.controllers.utils import (
+    LIST_FIELD_SEPARATOR,
+    Pagination,
+    cond_output,
+    make_date_filters,
+)
 
-LOGGER = logging.getLogger("MESSAGES")
-
-KNOWN_QUERY_FIELDS = {
-    "sort_order",
-    "msgType",
-    "addresses",
-    "refs",
-    "contentHashes",
-    "contentKeys",
-    "contentTypes",
-    "chains",
-    "channels",
-    "tags",
-    "hashes",
-    "history",
-    "pagination",
-    "page",  # page is handled in Pagination.get_pagination_params
-    "startDate",
-    "endDate",
-}
+LOGGER = logging.getLogger(__name__)
 
 
-async def get_filters(request: web.Request):
-    def get_query_list_field(field: str, separator=",") -> Optional[List[str]]:
-        field_str = request.query.get(field, None)
-        return field_str.split(separator) if field_str is not None else None
+DEFAULT_MESSAGES_PER_PAGE = 20
+DEFAULT_PAGE = 1
+DEFAULT_WS_HISTORY = 10
 
-    unknown_query_fields: Set[str] = set(request.query.keys()).difference(
-        KNOWN_QUERY_FIELDS
+
+class SortOrder(IntEnum):
+    ASCENDING = 1
+    DESCENDING = -1
+
+
+class MessageQueryParams(BaseModel):
+    sort_order: SortOrder = Field(
+        default=SortOrder.DESCENDING,
+        description="Order in which messages should be listed: "
+        "-1 means most recent messages first, 1 means older messages first.",
     )
-    if unknown_query_fields:
-        raise ValueError(f"Unknown query fields: {unknown_query_fields}")
+    message_type: Optional[MessageType] = Field(
+        default=None, alias="msgType", description="Message type."
+    )
+    addresses: Optional[List[str]] = Field(
+        default=None, description="Accepted values for the 'sender' field."
+    )
+    refs: Optional[List[str]] = Field(
+        default=None, description="Accepted values for the 'content.ref' field."
+    )
+    content_hashes: Optional[List[ItemHash]] = Field(
+        default=None,
+        alias="contentHashes",
+        description="Accepted values for the 'content.item_hash' field.",
+    )
+    content_keys: Optional[List[ItemHash]] = Field(
+        default=None,
+        alias="contentKeys",
+        description="Accepted values for the 'content.keys' field.",
+    )
+    content_types: Optional[List[ItemHash]] = Field(
+        default=None,
+        alias="contentTypes",
+        description="Accepted values for the 'content.type' field.",
+    )
+    chains: Optional[List[Chain]] = Field(
+        default=None, description="Accepted values for the 'chain' field."
+    )
+    channels: Optional[List[str]] = Field(
+        default=None, description="Accepted values for the 'channel' field."
+    )
+    tags: Optional[List[str]] = Field(
+        default=None, description="Accepted values for the 'content.content.tag' field."
+    )
+    hashes: Optional[List[ItemHash]] = Field(
+        default=None, description="Accepted values for the 'item_hash' field."
+    )
+    history: Optional[int] = Field(
+        DEFAULT_WS_HISTORY,
+        ge=10,
+        lt=200,
+        description="Accepted values for the 'item_hash' field.",
+    )
+    pagination: int = Field(
+        default=DEFAULT_MESSAGES_PER_PAGE,
+        ge=0,
+        description="Maximum number of messages to return. Specifying 0 removes this limit.",
+    )
+    page: int = Field(
+        default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
+    )
+    start_date: float = Field(
+        default=0,
+        ge=0,
+        alias="startDate",
+        description="Start date timestamp. If specified, only messages with "
+        "a time field greater or equal to this value will be returned.",
+    )
+    end_date: float = Field(
+        default=0,
+        ge=0,
+        alias="endDate",
+        description="End date timestamp. If specified, only messages with "
+        "a time field lower than this value will be returned.",
+    )
 
-    find_filters: Dict[str, Any] = {}
+    @root_validator
+    def validate_field_dependencies(cls, values):
+        start_date = values.get("start_date")
+        end_date = values.get("end_date")
+        if start_date and end_date and (end_date < start_date):
+            raise ValueError("end date cannot be lower than start date.")
+        return values
 
-    msg_type = request.query.get("msgType", None)
+    @validator(
+        "addresses",
+        "content_hashes",
+        "content_keys",
+        "content_types",
+        "chains",
+        "channels",
+        "tags",
+        pre=True,
+    )
+    def split_str(cls, v):
+        if isinstance(v, str):
+            return v.split(LIST_FIELD_SEPARATOR)
+        return v
 
-    filters: List[Dict[str, Any]] = []
-    addresses = get_query_list_field("addresses")
-    refs = get_query_list_field("refs")
-    content_keys = get_query_list_field("contentKeys")
-    content_hashes = get_query_list_field("contentHashes")
-    content_types = get_query_list_field("contentTypes")
-    chains = get_query_list_field("chains")
-    channels = get_query_list_field("channels")
-    tags = get_query_list_field("tags")
-    hashes = get_query_list_field("hashes")
+    def to_mongodb_filters(self) -> Mapping[str, Any]:
+        filters: List[Dict[str, Any]] = []
 
-    date_filters = prepare_date_filters(request, "time")
+        if self.message_type is not None:
+            filters.append({"type": self.message_type})
 
-    if msg_type is not None:
-        filters.append({"type": msg_type})
+        if self.addresses is not None:
+            filters.append(
+                {
+                    "$or": [
+                        {"content.address": {"$in": self.addresses}},
+                        {"sender": {"$in": self.addresses}},
+                    ]
+                }
+            )
 
-    if addresses is not None:
-        filters.append(
-            {
-                "$or": [
-                    {"content.address": {"$in": addresses}},
-                    {"sender": {"$in": addresses}},
-                ]
-            }
+        if self.content_hashes is not None:
+            filters.append({"content.item_hash": {"$in": self.content_hashes}})
+        if self.content_keys is not None:
+            filters.append({"content.key": {"$in": self.content_keys}})
+        if self.content_types is not None:
+            filters.append({"content.type": {"$in": self.content_types}})
+        if self.refs is not None:
+            filters.append({"content.ref": {"$in": self.refs}})
+        if self.tags is not None:
+            filters.append({"content.content.tags": {"$elemMatch": {"$in": self.tags}}})
+        if self.chains is not None:
+            filters.append({"chain": {"$in": self.chains}})
+        if self.channels is not None:
+            filters.append({"channel": {"$in": self.channels}})
+        if self.hashes is not None:
+            filters.append(
+                {
+                    "$or": [
+                        {"item_hash": {"$in": self.hashes}},
+                        {"tx_hash": {"$in": self.hashes}},
+                    ]
+                }
+            )
+
+        date_filters = make_date_filters(
+            start=self.start_date, end=self.end_date, filter_key="time"
         )
+        if date_filters:
+            filters.append(date_filters)
 
-    if content_hashes is not None:
-        filters.append({"content.item_hash": {"$in": content_hashes}})
+        and_filter = {}
+        if filters:
+            and_filter = {"$and": filters} if len(filters) > 1 else filters[0]
 
-    if content_keys is not None:
-        filters.append({"content.key": {"$in": content_keys}})
-
-    if content_types is not None:
-        filters.append({"content.type": {"$in": content_types}})
-
-    if refs is not None:
-        filters.append({"content.ref": {"$in": refs}})
-
-    if tags is not None:
-        filters.append({"content.content.tags": {"$elemMatch": {"$in": tags}}})
-
-    if chains is not None:
-        filters.append({"chain": {"$in": chains}})
-
-    if channels is not None:
-        filters.append({"channel": {"$in": channels}})
-
-    if hashes is not None:
-        filters.append(
-            {"$or": [{"item_hash": {"$in": hashes}}, {"tx_hash": {"$in": hashes}}]}
-        )
-
-    if date_filters is not None:
-        filters.append(date_filters)
-
-    if len(filters) > 0:
-        find_filters = {"$and": filters} if len(filters) > 1 else filters[0]
-
-    return find_filters
+        return and_filter
 
 
 async def view_messages_list(request):
     """Messages list view with filters"""
 
     try:
-        find_filters = await get_filters(request)
-    except ValueError as error:
-        raise HTTPBadRequest(body=error.args[0])
+        query_params = MessageQueryParams.parse_obj(request.query)
+    except ValidationError as e:
+        raise web.HTTPUnprocessableEntity(body=e.json(indent=4))
 
-    (
-        pagination_page,
-        pagination_per_page,
-        pagination_skip,
-    ) = Pagination.get_pagination_params(request)
-    if pagination_per_page is None:
-        pagination_per_page = 0
-    if pagination_skip is None:
-        pagination_skip = 0
+    # If called from the messages/page/{page}.json endpoint, override the page
+    # parameters with the URL one
+    if url_page_param := request.match_info.get("page"):
+        query_params.page = int(url_page_param)
+
+    find_filters = query_params.to_mongodb_filters()
+
+    pagination_page = query_params.page
+    pagination_per_page = query_params.pagination
+    pagination_skip = (query_params.page - 1) * query_params.pagination
 
     messages = [
         msg
@@ -132,14 +203,14 @@ async def view_messages_list(request):
             projection={"_id": 0},
             limit=pagination_per_page,
             skip=pagination_skip,
-            sort=[("time", int(request.query.get("sort_order", "-1")))],
+            sort=[("time", query_params.sort_order.value)],
         )
     ]
 
     context = {"messages": messages}
 
     if pagination_per_page is not None:
-        if len(find_filters.keys()):
+        if find_filters:
             total_msgs = await Message.collection.count_documents(find_filters)
         else:
             total_msgs = await Message.collection.estimated_document_count()
@@ -173,11 +244,10 @@ async def messages_ws(request: web.Request):
     collection = CappedMessage.collection
     last_id = None
 
-    find_filters = await get_filters(request)
-    initial_count = int(request.query.get("history", 10))
-    initial_count = max(initial_count, 10)
-    # let's cap this to 200 historic messages max.
-    initial_count = min(initial_count, 200)
+    query_params = MessageQueryParams.parse_obj(request.query)
+    find_filters = query_params.to_mongodb_filters()
+
+    initial_count = query_params.history
 
     items = [
         item
