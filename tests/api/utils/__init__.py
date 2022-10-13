@@ -22,6 +22,9 @@ def get_messages_by_keys(messages: Iterable[Dict], **keys) -> List[Dict]:
     >>> )
 
     """
-    return get_messages_by_predicate(
-        messages, lambda msg: all(msg[k] == v for k, v in keys.items())
+    return list(
+        filter(
+            lambda msg: all(msg[k] == v for k, v in keys.items()),
+            messages,
+        )
     )
