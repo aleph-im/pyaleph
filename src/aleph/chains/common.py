@@ -300,7 +300,7 @@ async def process_one_message(message: BasePendingMessage, *args, **kwargs):
         await op.collection.collection.bulk_write([op.operation])
 
 
-async def get_chaindata(messages, bulk_threshold=2000):
+async def get_chaindata(messages: List[Dict], bulk_threshold: int = 2000) -> str:
     """Returns content ready to be broadcasted on-chain (aka chaindata).
 
     If message length is over bulk_threshold (default 2000 chars), store list
