@@ -11,6 +11,8 @@ from pymongo.cursor import CursorType
 
 from aleph.model.messages import CappedMessage, Message
 from aleph.web.controllers.utils import (
+    DEFAULT_MESSAGES_PER_PAGE,
+    DEFAULT_PAGE,
     LIST_FIELD_SEPARATOR,
     Pagination,
     cond_output,
@@ -19,8 +21,6 @@ from aleph.web.controllers.utils import (
 LOGGER = logging.getLogger(__name__)
 
 
-DEFAULT_MESSAGES_PER_PAGE = 20
-DEFAULT_PAGE = 1
 DEFAULT_WS_HISTORY = 10
 
 
