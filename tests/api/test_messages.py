@@ -171,7 +171,7 @@ async def fetch_messages_filter_time_expect_success(
 @pytest.mark.asyncio
 async def test_time_filters(fixture_messages, ccn_api_client):
     # Start and end time specified, should return all messages
-    start_time, end_time = 164821580, 1648215820
+    start_time, end_time = 1648215900, 1652126600
     messages = await fetch_messages_filter_time_expect_success(
         ccn_api_client, start=start_time, end=end_time
     )
