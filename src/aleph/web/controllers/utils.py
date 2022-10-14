@@ -5,8 +5,8 @@ import aiohttp_jinja2
 from aiohttp import web
 from bson import json_util
 
-PER_PAGE = 20
-PER_PAGE_SUMMARY = 50
+DEFAULT_MESSAGES_PER_PAGE = 20
+DEFAULT_PAGE = 1
 LIST_FIELD_SEPARATOR = ","
 
 
@@ -15,7 +15,7 @@ class Pagination(object):
     def get_pagination_params(request):
         pagination_page = int(request.match_info.get("page", "1"))
         pagination_page = int(request.query.get("page", pagination_page))
-        pagination_param = int(request.query.get("pagination", PER_PAGE))
+        pagination_param = int(request.query.get("pagination", DEFAULT_MESSAGES_PER_PAGE))
         with_pagination = pagination_param != 0
 
         if pagination_page < 1:
