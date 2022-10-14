@@ -8,22 +8,39 @@ volumes:
   pyaleph-mongodb:
 
 services:
-  p2pd:
+
+  rabbitmq:
     restart: always
-    image: alephim/jsp2pd:0.10.2-1.0.0
+    image: rabbitmq:3.10.7-management
     networks:
       - pyaleph
     environment:
-      PRIVATE_KEY_FILE: "/etc/jsp2pd/keys/serialized-node-secret.key"
-      LISTEN_MADDR: "/ip4/0.0.0.0/tcp/4030"
-      HOST_MADDRS: "/ip4/0.0.0.0/tcp/4025"
-      PUBSUB: "true"
-      PUBSUB_ROUTER: "floodsub"
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+
+  p2p-service:
+    restart: always
+    image: alephim/p2p-service:0.1.1
+    networks:
+      - pyaleph
+    volumes:
+      - ../../config.yml:/etc/p2p-service/config.yml
+      - ../../keys/node-secret.pkcs8.der:/etc/p2p-service/node-secret.pkcs8.der
+    depends_on:
+      - rabbitmq
+    environment:
+      RUST_LOG: info
     ports:
       - "4025:4025"
-      - "4030:4030"
-    volumes:
-      - ../../keys:/etc/jsp2pd/keys
+      - "127.0.0.1:4030:4030"
+    command:
+      - "--config"
+      - "/etc/p2p-service/config.yml"
+      - "--private-key-file"
+      - "/etc/p2p-service/node-secret.pkcs8.der"
 
   ipfs:
     restart: always
@@ -31,8 +48,8 @@ services:
     ports:
       - "4001:4001"
       - "4001:4001/udp"
-      - "5001:5001"
-      - "8080:8080"
+      - "127.0.0.1:5001:5001"
+      - "127.0.0.1:8080:8080"
     volumes:
       - "pyaleph-ipfs:/data/ipfs"
     environment:
@@ -50,7 +67,7 @@ services:
     networks:
       - pyaleph
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
 
 networks:
   pyaleph:

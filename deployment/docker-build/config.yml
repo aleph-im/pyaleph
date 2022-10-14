@@ -43,7 +43,6 @@ p2p:
     http_port: 4024
     port: 4025
     control_port: 4030
-    listen_port: 4031
     reconnect_delay: 60
 
 sentry:

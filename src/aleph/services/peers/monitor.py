@@ -1,29 +1,24 @@
 import asyncio
 import json
 import logging
-from typing import Any, Dict
 from urllib.parse import unquote
 
-from anyio.exceptions import IncompleteRead
-from p2pclient import Client as P2PClient
-from p2pclient.pb.p2pd_pb2 import PSMessage
-from p2pclient.utils import read_pbmsg_safe
+from aleph_p2p_client import AlephP2PServiceClient
 
 from aleph.services.ipfs.pubsub import sub as sub_ipfs
-from aleph.services.utils import pubsub_msg_to_dict
 from aleph.types import Protocol
 
 LOGGER = logging.getLogger("P2P.peers")
 
 
-async def handle_incoming_host(pubsub_msg: Dict[str, Any], source: Protocol = Protocol.P2P):
+async def handle_incoming_host(
+    data: bytes, sender: str, source: Protocol = Protocol.P2P
+):
     from aleph.model.p2p import add_peer
 
-    sender = pubsub_msg["from"]
-
     try:
-        LOGGER.debug("New message received %r" % pubsub_msg)
-        message_data = pubsub_msg.get("data", b"").decode("utf-8")
+        LOGGER.debug("New message received from %s", sender)
+        message_data = data.decode("utf-8")
         content = json.loads(unquote(message_data))
 
         # TODO: replace this validation by marshaling (ex: Pydantic)
@@ -51,29 +46,18 @@ async def handle_incoming_host(pubsub_msg: Dict[str, Any], source: Protocol = Pr
             LOGGER.exception("Exception in pubsub peers monitoring")
 
 
-async def monitor_hosts_p2p(p2p_client: P2PClient, alive_topic: str) -> None:
-    # The communication with the P2P daemon sometimes fails repeatedly, spamming
-    # IncompleteRead exceptions. We still want to log these to Sentry without sending
-    # thousands of logs.
-    incomplete_read_threshold = 150
-    incomplete_read_counter = 0
-
+async def monitor_hosts_p2p(
+    p2p_client: AlephP2PServiceClient, alive_topic: str
+) -> None:
     while True:
         try:
-            stream = await p2p_client.pubsub_subscribe(alive_topic)
-            while True:
-                pubsub_msg = PSMessage()
-                await read_pbmsg_safe(stream, pubsub_msg)
-                msg_dict = pubsub_msg_to_dict(pubsub_msg)
-                await handle_incoming_host(msg_dict, source=Protocol.P2P)
-
-        except IncompleteRead:
-            if (incomplete_read_counter % incomplete_read_threshold) == 0:
-                LOGGER.exception(
-                    "Incomplete read (%d times), reconnecting. Try to restart the application.",
-                    incomplete_read_counter,
+            await p2p_client.subscribe(alive_topic)
+            async for alive_message in p2p_client.receive_messages(alive_topic):
+                protocol, topic, peer_id = alive_message.routing_key.split(".")
+                await handle_incoming_host(
+                    data=alive_message.body, sender=peer_id, source=Protocol.P2P
                 )
-            incomplete_read_counter += 1
+
         except Exception:
             LOGGER.exception("Exception in pubsub peers monitoring, resubscribing")
 
@@ -83,7 +67,9 @@ async def monitor_hosts_p2p(p2p_client: P2PClient, alive_topic: str) -> None:
 async def monitor_hosts_ipfs(alive_topic: str):
     while True:
         try:
-            async for mvalue in sub_ipfs(alive_topic):
-                await handle_incoming_host(mvalue, source=Protocol.IPFS)
+            async for message in sub_ipfs(alive_topic):
+                await handle_incoming_host(
+                    data=message["data"], sender=message["from"], source=Protocol.IPFS
+                )
         except Exception:
             LOGGER.exception("Exception in pubsub peers monitoring, resubscribing")

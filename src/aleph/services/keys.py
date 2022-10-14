@@ -20,10 +20,11 @@ def generate_keypair(print_key: bool) -> KeyPair:
 
 def save_keys(key_pair: KeyPair, key_dir: str) -> None:
     """
-    Saves the private and public keys to the specified directory. The keys are stored in 3 formats:
-    - The private key is stored in PEM format for ease of use, and in a serialized format compatible with the P2P
-    daemon (DER + protobuf encoding).
+    Saves the private and public keys to the specified directory. The keys are stored in 2 formats:
+    - The private key is stored in PKCS8 DER (binary) format for compatibility with the Aleph.im P2P service.
     - The public key is stored in PEM format.
+
+    TODO review: do we really need to store the public key? If so, in which format, PEM or DER?
     """
     # Create the key directory if it does not exist
     if os.path.exists(key_dir):
@@ -33,15 +34,11 @@ def save_keys(key_pair: KeyPair, key_dir: str) -> None:
         os.makedirs(key_dir)
 
     # Save the private and public keys in the key directory, as well as the serialized private key for p2pd.
-    private_key_path = os.path.join(key_dir, "node-secret.key")
+    private_key_path = os.path.join(key_dir, "node-secret.pkcs8.der")
     public_key_path = os.path.join(key_dir, "node-pub.key")
-    serialized_key_path = os.path.join(key_dir, "serialized-node-secret.key")
 
     with open(private_key_path, "wb") as key_file:
-        key_file.write(key_pair.private_key.impl.export_key())
+        key_file.write(key_pair.private_key.impl.export_key(format="DER", pkcs=8))
 
     with open(public_key_path, "wb") as key_file:
         key_file.write(key_pair.public_key.impl.export_key())
-
-    with open(serialized_key_path, "wb") as f:
-        f.write(key_pair.private_key.serialize())

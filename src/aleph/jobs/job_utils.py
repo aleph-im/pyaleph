@@ -38,7 +38,6 @@ def prepare_loop(config_values: Dict) -> Tuple[asyncio.AbstractEventLoop, Config
 
     init_db_globals(config)
     init_ipfs_globals(config)
-    _ = init_p2p_client(config)
     return loop, config
 
 

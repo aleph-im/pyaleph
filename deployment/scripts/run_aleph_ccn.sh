@@ -41,8 +41,11 @@ function wait_for_it()
 DB_URI=$(get_config mongodb.uri | sed "s-mongodb://--")
 IPFS_HOST=$(get_config ipfs.host)
 IPFS_PORT=$(get_config ipfs.port)
+RABBITMQ_HOST=$(get_config rabbitmq.host)
+RABBITMQ_PORT=$(get_config rabbitmq.port)
 
 wait_for_it "${DB_URI}"
 wait_for_it -h "${IPFS_HOST}" -p "${IPFS_PORT}"
+wait_for_it -h "${RABBITMQ_HOST}" -p "${RABBITMQ_PORT}"
 
 exec pyaleph "${PYALEPH_ARGS[@]}"
