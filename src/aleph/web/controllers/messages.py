@@ -14,6 +14,7 @@ from aleph.web.controllers.utils import (
     LIST_FIELD_SEPARATOR,
     Pagination,
     cond_output,
+    make_date_filters,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -174,6 +175,15 @@ class MessageQueryParams(BaseMessageQueryParams):
         description="End date timestamp. If specified, only messages with "
         "a time field lower than this value will be returned.",
     )
+
+    def to_filter_list(self) -> List[Mapping[str, Any]]:
+        filters = super().to_filter_list()
+        date_filters = make_date_filters(
+            start=self.start_date, end=self.end_date, filter_key="time"
+        )
+        if date_filters:
+            filters.append(date_filters)
+        return filters
 
 
 class WsMessageQueryParams(BaseMessageQueryParams):
