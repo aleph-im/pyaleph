@@ -2,7 +2,7 @@
 Changelog
 =========
 
-Version 0.4.0
+Version 0.4.1
 =============
 
 * CCNs now use the Aleph.im P2P service for P2P communication instead of libp2p's P2P daemon.
