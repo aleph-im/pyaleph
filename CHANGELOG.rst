@@ -2,6 +2,15 @@
 Changelog
 =========
 
+Version 0.4.0
+=============
+
+* CCNs now use the Aleph.im P2P service for P2P communication instead of libp2p's P2P daemon.
+* Fixed a general 500 error on the posts GET endpoint.
+* Syntactically invalid pending messages are now dropped and not retried.
+* CCNs now support PROGRAM messages creating persistent VMs.
+* CCNs now use Pydantic models internally to validate and process messages.
+
 Version 0.3.3
 =============
 
