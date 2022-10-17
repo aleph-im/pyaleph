@@ -7,6 +7,7 @@ from typing import Dict, Optional, Tuple, List
 
 from aleph_message.models import MessageConfirmation
 from bson import ObjectId
+from pydantic import ValidationError
 from pymongo import UpdateOne
 
 from aleph.config import get_config
@@ -214,9 +215,14 @@ async def incoming(
             )
             return IncomingStatus.RETRYING_LATER, []
 
-        validated_message = validate_pending_message(
-            pending_message=pending_message, content=content, confirmations=confirmations
-        )
+        try:
+            validated_message = validate_pending_message(
+                pending_message=pending_message, content=content, confirmations=confirmations
+            )
+        except ValidationError as e:
+            LOGGER.warning("Invalid pending message: %s - %s", item_hash, str(e))
+            return IncomingStatus.FAILED_PERMANENTLY, []
+
 
         # warning: those handlers can modify message and content in place
         # and return a status. None has to be retried, -1 is discarded, True is
