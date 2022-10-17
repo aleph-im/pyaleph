@@ -36,7 +36,7 @@ ipfs:
     gateway_port: 8080
 
 aleph:
-    queue_topic: ALEPH-TEST
+    queue_topic: ALEPH-QUEUE
 
 p2p:
     host: 0.0.0.0
