@@ -83,12 +83,14 @@ class BaseMessageQueryParams(BaseModel):
 
     @validator(
         "addresses",
+        "refs",
         "content_hashes",
         "content_keys",
         "content_types",
         "chains",
         "channels",
         "tags",
+        "hashes",
         pre=True,
     )
     def split_str(cls, v):
