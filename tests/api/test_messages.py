@@ -133,6 +133,18 @@ async def test_get_messages_filter_by_content_hash(fixture_messages, ccn_api_cli
 
 
 @pytest.mark.asyncio
+async def test_get_messages_multiple_hashes(fixture_messages, ccn_api_client):
+    hashes = [
+        "2953f0b52beb79fc0ed1bc455346fdcb530611605e16c636778a0d673d7184af",
+        "bc411ae2ba89289458d0168714457e7c9394a29ca83159240585591f4f46444a",
+    ]
+    response = await ccn_api_client.get(MESSAGES_URI, params={"hashes": ",".join(hashes)})
+    assert response.status == 200, await response.text()
+    messages = (await response.json())["messages"]
+    assert len(messages) == 2
+
+
+@pytest.mark.asyncio
 async def test_get_messages_filter_by_invalid_content_hash(
     fixture_messages, ccn_api_client
 ):
