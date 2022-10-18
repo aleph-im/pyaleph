@@ -41,5 +41,11 @@ p2p:
   control_port: 4030
   reconnect_delay: 60
 
+rabbitmq:
+  host: rabbitmq
+  port: 5672
+  username: aleph-p2p
+  password: change-me!
+
 sentry:
     dsn: ""

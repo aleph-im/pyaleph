@@ -54,8 +54,8 @@ services:
     networks:
       - pyaleph
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_USER: aleph-p2p
+      RABBITMQ_DEFAULT_PASS: change-me!
     ports:
       - "127.0.0.1:5672:5672"
       - "127.0.0.1:15672:15672"

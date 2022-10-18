@@ -44,6 +44,8 @@ p2p:
 rabbitmq:
   host: rabbitmq
   port: 5672
+  username: aleph-p2p
+  password: change-me!
 
 sentry:
     dsn: ""

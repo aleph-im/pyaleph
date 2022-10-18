@@ -95,8 +95,8 @@ def get_defaults():
         "rabbitmq": {
             "host": "127.0.0.1",
             "port": 5672,
-            "username": "guest",
-            "password": "guest",
+            "username": "aleph-p2p",
+            "password": "change-me!",
             "pub_exchange": "p2p-publish",
             "sub_exchange": "p2p-subscribe",
         },
