@@ -2,7 +2,17 @@
 Changelog
 =========
 
+Version 0.4.2
+=============
+
+* Updated default configuration variables to simplify the upgrade to 0.4.x.
+
 Version 0.4.1
+=============
+
+* Fixed a message processing bug where some messages could be retried indefinitely.
+
+Version 0.4.0
 =============
 
 * CCNs now use the Aleph.im P2P service for P2P communication instead of libp2p's P2P daemon.

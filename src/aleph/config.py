@@ -10,7 +10,7 @@ def get_defaults():
             "max_log_file_size": 1_000_000_000,  # 1GB,
         },
         "aleph": {
-            "queue_topic": "ALEPH-QUEUE",
+            "queue_topic": "ALEPH-TEST",
             "host": "0.0.0.0",
             "port": 8000,
             "reference_node_url": None,
@@ -34,11 +34,10 @@ def get_defaults():
             "alive_topic": "ALIVE",
             "clients": ["http"],
             "peers": [
-                "/ip4/51.159.57.71/tcp/4025/p2p/QmZkurbY2G2hWay59yiTgQNaQxHSNzKZFt2jbnwJhQcKgV",
-                "/ip4/95.216.100.234/tcp/4025/p2p/Qmaxufiqdyt5uVWcy1Xh2nh3Rs3382ArnSP2umjCiNG2Vs",
-                "/ip4/62.210.93.220/tcp/4025/p2p/QmXdci5feFmA2pxTg8p3FCyWmSKnWYAAmr7Uys1YCTFD8U",
+                "/dns/api1.aleph.im/tcp/4025/p2p/Qmaxufiqdyt5uVWcy1Xh2nh3Rs3382ArnSP2umjCiNG2Vs",
+                "/dns/api2.aleph.im/tcp/4025/p2p/QmZkurbY2G2hWay59yiTgQNaQxHSNzKZFt2jbnwJhQcKgV",
             ],
-            "topics": ["ALIVE", "ALEPH-QUEUE"],
+            "topics": ["ALIVE", "ALEPH-TEST"],
         },
         "storage": {"folder": "./data/", "store_files": False, "engine": "mongodb"},
         "nuls": {
