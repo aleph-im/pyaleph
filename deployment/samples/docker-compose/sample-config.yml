@@ -32,7 +32,7 @@ ipfs:
   gateway_port: 8080
 
 aleph:
-  queue_topic: ALEPH-QUEUE
+  queue_topic: ALEPH-TEST
 
 p2p:
   daemon_host: p2p-service
@@ -44,6 +44,8 @@ p2p:
 rabbitmq:
   host: rabbitmq
   port: 5672
+  username: aleph-p2p
+  password: change-me!
 
 sentry:
     dsn: ""

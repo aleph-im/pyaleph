@@ -7,7 +7,7 @@ volumes:
 services:
   pyaleph:
     restart: always
-    image: alephim/pyaleph-node:v0.4.1
+    image: alephim/pyaleph-node:v0.4.2
     command: --config /opt/pyaleph/config.yml --key-dir /opt/pyaleph/keys -v
     ports:
       - "127.0.0.1:8000:8000/tcp"
@@ -52,8 +52,8 @@ services:
     networks:
       - pyaleph
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_USER: aleph-p2p
+      RABBITMQ_DEFAULT_PASS: change-me!
     ports:
       - "127.0.0.1:5672:5672"
       - "127.0.0.1:15672:15672"
