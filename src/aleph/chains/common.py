@@ -127,7 +127,7 @@ async def incoming(
     tx_hash: Optional[str] = None,
     height: Optional[int] = None,
     seen_ids: Optional[Dict[Tuple, int]] = None,
-    check_message: bool = False,
+    check_message: bool = True,
     retrying: bool = False,
     existing_id: Optional[ObjectId] = None,
 ) -> Tuple[IncomingStatus, List[DbBulkOperation]]:
