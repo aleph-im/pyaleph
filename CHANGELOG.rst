@@ -2,6 +2,11 @@
 Changelog
 =========
 
+Version 0.4.3
+=============
+
+* Fix: check all messages by default.
+
 Version 0.4.2
 =============
 
