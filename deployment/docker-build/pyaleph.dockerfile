@@ -1,6 +1,6 @@
 # Monolithic Docker image for easy setup of an Aleph.im node in demo scenarios.
 
-FROM ubuntu:20.04
+FROM ubuntu:20.04 as builder
 
 ENV DEBIAN_FRONTEND noninteractive
 
@@ -87,8 +87,28 @@ RUN /opt/venv/bin/pip freeze > /opt/build-frozen-requirements.txt
 USER root
 RUN chown -R aleph:aleph /opt/pyaleph/
 
+
+FROM ubuntu:20.04
+
+ENV DEBIAN_FRONTEND noninteractive
+
+# Install system dependencies
+RUN apt-get update && apt-get -y upgrade && apt-get install -y \
+     libsnappy-dev \
+     zlib1g-dev \
+     libbz2-dev \
+     libgflags-dev \
+     liblz4-dev \
+     libgmp-dev \
+     libsecp256k1-dev \
+     pkg-config \
+     libssl-dev \
+     libleveldb-dev \
+     libyaml-dev && \
+     rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /opt/venv /opt/venv
+COPY --from=builder /opt/pyaleph /opt/pyaleph
+
 USER aleph
 ENTRYPOINT ["bash", "deployment/scripts/run_aleph_ccn.sh"]
-
-# CCN API
-EXPOSE 8000
