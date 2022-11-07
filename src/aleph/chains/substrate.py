@@ -14,6 +14,10 @@ CHAIN_NAME = "DOT"
 async def verify_signature(message: BasePendingMessage) -> bool:
     """Verifies a signature of a message, return True if verified, false if not"""
 
+    if message.signature is None:
+        LOGGER.warning("'%s': missing signature.", message.item_hash)
+        return False
+
     try:
         signature = json.loads(message.signature)
     except Exception:

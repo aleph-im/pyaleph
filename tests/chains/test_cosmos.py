@@ -12,7 +12,7 @@ TEST_MESSAGE = '{"chain": "CSDK", "channel": "TEST", "sender": "cosmos1rq3rcux05
 async def test_verify_signature_real():
     message = json.loads(TEST_MESSAGE)
     result = await verify_signature(message)
-    assert result == True
+    assert result is True
     
 @pytest.mark.asyncio
 async def test_verify_signature_nonexistent():
@@ -22,7 +22,7 @@ async def test_verify_signature_nonexistent():
         'type': 'TYPE',
         'item_hash': 'ITEM_HASH'
     })
-    assert result == False
+    assert result is False
     
 @pytest.mark.asyncio
 async def test_verify_signature_bad_json():
@@ -33,7 +33,7 @@ async def test_verify_signature_bad_json():
         'item_hash': 'ITEM_HASH',
         'signature': 'baba'
     })
-    assert result == False
+    assert result is False
     
 @pytest.mark.asyncio
 async def test_verify_signature_no_data():

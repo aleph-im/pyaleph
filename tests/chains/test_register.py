@@ -6,7 +6,7 @@ from aleph.register_chain import (VERIFIER_REGISTER, INCOMING_WORKERS,
                                   register_verifier,
                                   register_incoming_worker,
                                   register_outgoing_worker)
-from aleph.chains import ethereum, nuls, nuls2, substrate, cosmos, avalanche
+from aleph.chains import ethereum, nuls, nuls2, substrate, cosmos, avalanche, tezos
 
 @pytest.mark.asyncio
 async def test_register_verifier(monkeypatch):
@@ -82,8 +82,10 @@ async def test_register_incoming_worker(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_incoming():
-    assert len(INCOMING_WORKERS) == 2  # 2 verifiers are included by default
+    assert len(INCOMING_WORKERS) == 3  # 3 verifiers are included by default
     assert "ETH" in INCOMING_WORKERS.keys()
     assert INCOMING_WORKERS["ETH"] is ethereum.ethereum_incoming_worker
     assert "NULS2" in INCOMING_WORKERS.keys()
     assert INCOMING_WORKERS["NULS2"] is nuls2.nuls_incoming_worker
+    assert "TEZOS" in INCOMING_WORKERS.keys()
+    assert INCOMING_WORKERS["TEZOS"] is tezos.tezos_sync_worker

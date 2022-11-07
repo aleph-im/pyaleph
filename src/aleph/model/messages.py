@@ -81,10 +81,17 @@ class Message(BaseClass):
 
     @classmethod
     async def get_unconfirmed_raw(cls, limit=100, for_chain=None):
-        """Return raw unconfirmed txs, ready for broadcast."""
+        """
+        Return raw unconfirmed txs, ready for broadcast.
+
+        Ignore messages without a signature, i.e. sent by trusted smart contracts.
+        """
         if for_chain is None:
             return (
-                cls.collection.find({"confirmed": False}, projection=RAW_MSG_PROJECTION)
+                cls.collection.find(
+                    {"confirmed": False, "signature": {"$ne": None}},
+                    projection=RAW_MSG_PROJECTION,
+                )
                 .sort([("time", 1)])
                 .limit(limit)
             )
@@ -94,6 +101,7 @@ class Message(BaseClass):
                     {
                         "confirmations.chain": {"$ne": for_chain},
                         "tx_hash": {"$exists": False},
+                        "signature": {"$ne": None},
                     },  # tx_hash means chain native
                     projection=RAW_MSG_PROJECTION,
                 )
