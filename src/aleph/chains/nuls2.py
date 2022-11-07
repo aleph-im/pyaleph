@@ -47,6 +47,11 @@ DECIMALS = None  # will get populated later... bad?
 
 async def verify_signature(message: BasePendingMessage) -> bool:
     """Verifies a signature of a message, return True if verified, false if not"""
+
+    if message.signature is None:
+        LOGGER.warning("'%s': missing signature.", message.item_hash)
+        return False
+
     sig_raw = base64.b64decode(message.signature)
 
     sender_hash = hash_from_address(message.sender)

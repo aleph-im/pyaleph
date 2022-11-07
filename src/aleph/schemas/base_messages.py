@@ -28,7 +28,7 @@ class AlephBaseMessage(GenericModel, Generic[MType, ContentType]):
 
     sender: str
     chain: Chain
-    signature: str
+    signature: Optional[str]
     type: MType
     item_content: Optional[str]
     item_type: ItemType

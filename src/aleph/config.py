@@ -40,6 +40,13 @@ def get_defaults():
             "topics": ["ALIVE", "ALEPH-TEST"],
         },
         "storage": {"folder": "./data/", "store_files": False, "engine": "mongodb"},
+        "tezos": {
+            "enabled": False,
+            "indexer_url": "https://tezosdevnet.api.aleph.cloud",
+            "chain_id": "main",
+            "sync_contract": "KT1BfL57oZfptdtMFZ9LNakEPvuPPA2urdSW",
+            "authorized_emitters": ["0x23eC28598DCeB2f7082Cc3a9D670592DfEd6e0dC"],
+        },
         "nuls": {
             "chain_id": 8964,
             "enabled": False,

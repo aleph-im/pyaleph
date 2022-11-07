@@ -54,6 +54,10 @@ async def verify_signature(message: BasePendingMessage) -> bool:
     """Verifies a signature of a message, return True if verified, false if not"""
 
     try:
+        if message.signature is None:
+            LOGGER.warning("'%s': missing signature.", message.item_hash)
+            return False
+
         signature = json.loads(message.signature)
     except Exception:
         LOGGER.exception("Cosmos signature deserialization error")
