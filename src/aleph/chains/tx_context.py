@@ -7,5 +7,5 @@ class TxContext:
     tx_hash: str
     height: int
     # Transaction timestamp, in Unix time (number of seconds since epoch).
-    time: int
+    time: float
     publisher: str

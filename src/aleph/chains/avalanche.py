@@ -52,8 +52,13 @@ async def get_chain_info(address):
 
 
 async def verify_signature(message: BasePendingMessage):
+
     """Verifies a signature of a message, return True if verified, false if not"""
     try:
+        if message.signature is None:
+            LOGGER.warning("'%s': missing signature.", message.item_hash)
+            return False
+
         chain_id, hrp = await get_chain_info(message.sender)
     except Exception:
         LOGGER.exception("Avalanche sender address deserialization error")

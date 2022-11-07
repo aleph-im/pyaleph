@@ -1,6 +1,12 @@
 import pytest
+from aleph_message.models import Chain, MessageType, ItemType, StoreContent
 
+from aleph.chains.tezos import indexer_event_to_aleph_message
 from aleph.network import verify_signature
+from aleph.schemas.chains.tezos_indexer_response import (
+    IndexerMessageEvent,
+    MessageEventPayload,
+)
 from aleph.schemas.pending_messages import parse_message
 
 
@@ -43,3 +49,44 @@ async def test_tezos_verify_signature_ed25519():
 
     message = parse_message(message_dict)
     await verify_signature(message)
+
+
+def test_indexer_event_to_aleph_message():
+    indexer_event = IndexerMessageEvent(
+        source="KT1BfL57oZfptdtMFZ9LNakEPvuPPA2urdSW",
+        timestamp="2022-11-16T00:00:00Z",
+        type="MessageEvent",
+        blockHash="BMaSNJJCebD52e37nNEmSntx9UraJo2js5QT9siXA34E7a8gzRc",
+        blockLevel=584664,
+        payload=MessageEventPayload(
+            timestamp=1668611900,
+            addr="KT1VBeLD7hzKpj17aRJ3Kc6QQFeikCEXi7W6",
+            msgtype="STORE_IPFS",
+            msgcontent="QmaMLRsvmDRCezZe2iebcKWtEzKNjBaQfwcu7mcpdm8eY2",
+        ),
+    )
+
+    pending_message, tx_context = indexer_event_to_aleph_message(indexer_event)
+
+    assert (
+        pending_message.item_hash
+        == "c83c515d48a8df8538f3a13eb2ee31b30b8f80c820ef2771c34e4b0b9e97e00f"
+    )
+    assert pending_message.sender == indexer_event.payload.addr
+    assert pending_message.chain == Chain.TEZOS
+    assert pending_message.signature is None
+    assert pending_message.type == MessageType.store
+    assert pending_message.item_type == ItemType.inline
+    assert pending_message.channel is None
+
+    message_content = StoreContent.parse_raw(pending_message.item_content)
+    assert message_content.item_hash == indexer_event.payload.message_content
+    assert message_content.item_type == ItemType.ipfs
+    assert message_content.address == indexer_event.payload.addr
+    assert message_content.time == indexer_event.payload.timestamp
+
+    assert tx_context.chain_name == Chain.TEZOS
+    assert tx_context.time == indexer_event.timestamp.timestamp()
+    assert tx_context.publisher == indexer_event.source
+    assert tx_context.tx_hash == indexer_event.block_hash
+    assert tx_context.height == indexer_event.block_level

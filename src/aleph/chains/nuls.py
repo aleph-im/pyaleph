@@ -25,6 +25,11 @@ CHAIN_NAME = "NULS"
 
 async def verify_signature(message: BasePendingMessage) -> bool:
     """Verifies a signature of a message, return True if verified, false if not"""
+
+    if message.signature is None:
+        LOGGER.warning("'%s': missing signature.", message.item_hash)
+        return False
+
     sig_raw = bytes(bytearray.fromhex(message.signature))
     sig = NulsSignature(sig_raw)
 
