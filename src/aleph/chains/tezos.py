@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from typing import List, Sequence, Tuple
+from typing import List, Sequence, Tuple, Type
 
 import aiohttp
 from aleph_message.models import Chain, MessageType, StoreContent, ItemType
@@ -10,6 +10,7 @@ from configmanager import Config
 
 from aleph.chains.common import get_verification_buffer
 from aleph.chains.tx_context import TxContext
+from aleph.exceptions import InvalidMessageError
 from aleph.model.chains import Chain as ChainDb
 from aleph.model.pending import PendingMessage
 from aleph.register_chain import register_verifier, register_incoming_worker
@@ -18,7 +19,12 @@ from aleph.schemas.chains.tezos_indexer_response import (
     SyncStatus,
     IndexerMessageEvent,
 )
-from aleph.schemas.pending_messages import BasePendingMessage, PendingStoreMessage
+from aleph.schemas.pending_messages import (
+    BasePendingMessage,
+    PendingStoreMessage,
+    parse_message_content,
+    get_message_cls,
+)
 from aleph.utils import get_sha256
 
 LOGGER = logging.getLogger(__name__)
@@ -141,30 +147,47 @@ def indexer_event_to_aleph_message(
     indexer_event: IndexerMessageEvent,
 ) -> Tuple[BasePendingMessage, TxContext]:
 
-    if message_type := indexer_event.payload.message_type != "STORE_IPFS":
-        raise ValueError(f"Unexpected message type: {message_type}")
-
-    content = StoreContent(
-        address=indexer_event.payload.addr,
-        time=indexer_event.payload.timestamp,
-        item_type=ItemType.ipfs,
-        item_hash=indexer_event.payload.message_content,
-    )
-    item_content = content.json()
-    item_hash = get_sha256(item_content)
-
-    pending_message = PendingStoreMessage(
-        item_hash=item_hash,
-        sender=indexer_event.payload.addr,
-        chain=Chain.TEZOS,
-        signature=None,
-        type=MessageType.store,
-        item_content=StoreContent(
+    if (message_type_str := indexer_event.payload.message_type) == "STORE_IPFS":
+        content = StoreContent(
             address=indexer_event.payload.addr,
             time=indexer_event.payload.timestamp,
             item_type=ItemType.ipfs,
             item_hash=indexer_event.payload.message_content,
-        ).json(),
+        )
+        item_content = content.json()
+        message_type = MessageType.store
+        message_cls: Type[BasePendingMessage] = PendingStoreMessage
+
+    else:
+        try:
+            message_type = MessageType(message_type_str)
+        except ValueError as e:
+            raise InvalidMessageError(
+                f"Unsupported message type: {message_type_str}"
+            ) from e
+
+        item_content = indexer_event.payload.message_content
+        try:
+            content = parse_message_content(
+                message_type=MessageType(message_type),
+                content_dict=json.loads(item_content),
+            )
+        except json.JSONDecodeError as e:
+            raise InvalidMessageError(
+                f"Message content is not JSON: {item_content}"
+            ) from e
+
+        message_cls = get_message_cls(message_type)
+
+    item_hash = get_sha256(item_content)
+
+    pending_message = message_cls(
+        item_hash=item_hash,
+        sender=indexer_event.payload.addr,
+        chain=Chain.TEZOS,
+        signature=None,
+        type=message_type,
+        item_content=item_content,
         content=content,
         item_type=ItemType.inline,
         time=indexer_event.timestamp.timestamp(),
@@ -187,7 +210,16 @@ async def extract_aleph_messages_from_indexer_response(
 ) -> List[Tuple[BasePendingMessage, TxContext]]:
 
     events = indexer_response.data.events
-    return [indexer_event_to_aleph_message(event) for event in events]
+    pending_messages = []
+
+    for event in events:
+        try:
+            pending_messages.append(indexer_event_to_aleph_message(event))
+        except InvalidMessageError as e:
+            LOGGER.warning("Invalid on-chain message: %s", str(e))
+            continue
+
+    return pending_messages
 
 
 async def insert_pending_messages(
