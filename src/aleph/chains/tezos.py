@@ -86,7 +86,7 @@ def make_graphql_query(
     recentBlock
     status
   }
-  stats {
+  stats(address: "%s") {
     totalEvents
   }
   events(limit: %d, skip: %d, source: "%s", type: "%s") {
@@ -99,6 +99,7 @@ def make_graphql_query(
   }
 }
 """ % (
+        sync_contract_address,
         limit,
         skip,
         sync_contract_address,
