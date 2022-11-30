@@ -45,7 +45,10 @@ RABBITMQ_HOST=$(get_config rabbitmq.host)
 RABBITMQ_PORT=$(get_config rabbitmq.port)
 
 wait_for_it "${DB_URI}"
-wait_for_it -h "${IPFS_HOST}" -p "${IPFS_PORT}"
+
+if [ "$(get_config ipfs.enabled)" = "True" ]; then
+  wait_for_it -h "${IPFS_HOST}" -p "${IPFS_PORT}"
+fi
 wait_for_it -h "${RABBITMQ_HOST}" -p "${RABBITMQ_PORT}"
 
 exec pyaleph "${PYALEPH_ARGS[@]}"
