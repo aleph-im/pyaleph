@@ -12,7 +12,7 @@ from aleph.model.messages import Message
 #          be better if volume starts to be too big.
 @cached(ttl=60 * 120, cache=SimpleMemoryCache, timeout=120)
 # 60*120 seconds or 2 hours minutes, 120 seconds timeout
-async def addresses_stats(check_time=None, address_list=None, limit=None):
+async def addresses_stats(check_time=None, address_list=None, limit=0):
     if check_time is None:
         check_time = datetime.datetime.now()
 
@@ -82,13 +82,13 @@ async def addresses_stats_view(request):
 
     addresses = request.query.getall("addresses[]", [])
     check_time = None
-    limit = request.query.get("limit", None)
+    limit = request.query.get("limit", 0)
 
-    if limit is not None:
+    if limit is not 0:
         try:
             limit = int(limit)
         except ValueError:
-            limit = None
+            limit = 0
 
     if len(addresses) and (len(addresses) < 200):  # don't use cached values
         check_time = datetime.datetime.now()
