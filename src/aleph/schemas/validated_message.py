@@ -49,6 +49,7 @@ class StoreContentWithMetadata(StoreContent):
             time=store_content.time,
             item_type=store_content.item_type,
             item_hash=store_content.item_hash,
+            ref=store_content.ref,
             content_type="file",
             size=0,
             engine_info=None,
