@@ -46,14 +46,24 @@ async def pub_json(request: web.Request):
 
     try:
         if request.app["config"].ipfs.enabled.value:
-            await asyncio.wait_for(pub_ipfs(request_data.get("topic"), request_data.get("data")), 1)
+            await asyncio.wait_for(
+                pub_ipfs(request_data.get("topic"), request_data.get("data")), 1
+            )
     except Exception:
         LOGGER.exception("Can't publish on ipfs")
         failed_publications.append(Protocol.IPFS)
 
     try:
         p2p_client: AlephP2PServiceClient = request.app["p2p_client"]
-        await asyncio.wait_for(pub_p2p(p2p_client, request_data.get("topic"), request_data.get("data")), 10)
+        await asyncio.wait_for(
+            pub_p2p(
+                p2p_client,
+                request_data.get("topic"),
+                request_data.get("data"),
+                loopback=True,
+            ),
+            10,
+        )
     except Exception:
         LOGGER.exception("Can't publish on p2p")
         failed_publications.append(Protocol.P2P)
