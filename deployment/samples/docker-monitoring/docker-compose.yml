@@ -29,7 +29,7 @@ services:
 
   p2p-service:
     restart: always
-    image: alephim/p2p-service:0.1.1
+    image: alephim/p2p-service:0.1.2
     networks:
       - pyaleph
     volumes:
