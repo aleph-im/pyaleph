@@ -38,7 +38,7 @@ def forget_handler(mocker) -> ForgetMessageHandler:
     content_handlers = {
         MessageType.aggregate: AggregateMessageHandler(),
         MessageType.post: PostMessageHandler(
-            balances_address="nope",
+            balances_addresses=["nope"],
             balances_post_type="no-balances-in-tests",
         ),
         MessageType.program: ProgramMessageHandler(),

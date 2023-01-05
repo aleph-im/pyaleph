@@ -16,7 +16,10 @@ def get_defaults():
             "reference_node_url": None,
             "indexer_url": "https://multichain.api.aleph.cloud",
             "balances": {
-                "address": "0xa1B3bb7d2332383D96b7796B908fB7f7F3c2Be10",
+                "addresses": [
+                    "0xB34f25f2c935bCA437C061547eA12851d719dEFb",
+                    "0xa1B3bb7d2332383D96b7796B908fB7f7F3c2Be10",
+                ],
                 "post_type": "balances-update",
             },
             "jobs": {
