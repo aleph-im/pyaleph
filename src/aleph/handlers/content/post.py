@@ -74,8 +74,8 @@ class PostMessageHandler(ContentHandler):
     in case a user decides to delete a version with a FORGET.
     """
 
-    def __init__(self, balances_address: str, balances_post_type: str):
-        self.balances_address = balances_address
+    def __init__(self, balances_addresses: List[str], balances_post_type: str):
+        self.balances_addresses = balances_addresses
         self.balances_post_type = balances_post_type
 
     async def check_dependencies(self, session: DbSession, message: MessageDb):
@@ -125,7 +125,7 @@ class PostMessageHandler(ContentHandler):
 
         if (
             content.type == self.balances_post_type
-            and content.address == self.balances_address
+            and content.address in self.balances_addresses
         ):
             LOGGER.info("Updating balances...")
             update_balances(session=session, content=content.content)

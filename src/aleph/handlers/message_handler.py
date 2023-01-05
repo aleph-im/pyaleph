@@ -65,7 +65,7 @@ class MessageHandler:
         self.content_handlers = {
             MessageType.aggregate: AggregateMessageHandler(),
             MessageType.post: PostMessageHandler(
-                balances_address=config.aleph.balances.address.value,
+                balances_addresses=config.aleph.balances.addresses.value,
                 balances_post_type=config.aleph.balances.post_type.value,
             ),
             MessageType.program: ProgramMessageHandler(),
