@@ -56,8 +56,8 @@ class AvalancheConnector(Verifier):
         """Verifies a signature of a message, return True if verified, false if not"""
         try:
             chain_id, hrp = await get_chain_info(message.sender)
-        except Exception:
-            LOGGER.exception("Avalanche sender address deserialization error")
+        except ValueError as e:
+            LOGGER.warning("Avalanche sender address deserialization error: %s", str(e))
             return False
 
         try:
