@@ -359,7 +359,7 @@ def mark_pending_message_as_rejected(
     item_hash: str,
     pending_message_dict: Mapping[str, Any],
     exception: BaseException,
-) -> None:
+) -> RejectedMessageDb:
     if isinstance(exception, MessageProcessingException):
         error_code = exception.error_code
         details = exception.details()
@@ -391,6 +391,14 @@ def mark_pending_message_as_rejected(
     session.execute(upsert_status_stmt)
     session.execute(upsert_rejected_message_stmt)
 
+    return RejectedMessageDb(
+        item_hash=item_hash,
+        message=pending_message_dict,
+        traceback=exc_traceback,
+        error_code=error_code,
+        details=details,
+    )
+
 
 @overload
 def reject_new_pending_message(
@@ -414,7 +422,7 @@ def reject_new_pending_message(
     session: DbSession,
     pending_message: Union[Mapping[str, Any], PendingMessageDb],
     exception: BaseException,
-) -> None:
+) -> Optional[RejectedMessageDb]:
     """
     Reject a pending message that is not yet in the DB.
     """
@@ -439,7 +447,7 @@ def reject_new_pending_message(
     try:
         item_hash = pending_message_dict["item_hash"]
     except KeyError:
-        return
+        return None
 
     # The message may already be processed and someone is sending invalid copies.
     # Just do nothing if that is the case. We just consider the case where a previous
@@ -448,9 +456,9 @@ def reject_new_pending_message(
     message_status = get_message_status(session=session, item_hash=item_hash)
     if message_status:
         if message_status.status != MessageStatus.REJECTED:
-            return
+            return None
 
-    mark_pending_message_as_rejected(
+    return mark_pending_message_as_rejected(
         session=session,
         item_hash=item_hash,
         pending_message_dict=pending_message_dict,
@@ -462,7 +470,7 @@ def reject_existing_pending_message(
     session: DbSession,
     pending_message: PendingMessageDb,
     exception: BaseException,
-) -> None:
+) -> Optional[RejectedMessageDb]:
     item_hash = pending_message.item_hash
 
     # The message may already be processed and someone is sending invalid copies.
@@ -471,7 +479,7 @@ def reject_existing_pending_message(
     if message_status:
         if message_status.status not in (MessageStatus.PENDING, MessageStatus.REJECTED):
             delete_pending_message(session=session, pending_message=pending_message)
-            return
+            return None
 
     # TODO: use Pydantic schema
     pending_message_dict = pending_message.to_dict(
@@ -486,13 +494,14 @@ def reject_existing_pending_message(
     )
     pending_message_dict["time"] = pending_message_dict["time"].timestamp()
 
-    mark_pending_message_as_rejected(
+    rejected_message = mark_pending_message_as_rejected(
         session=session,
         item_hash=item_hash,
         pending_message_dict=pending_message_dict,
         exception=exception,
     )
     delete_pending_message(session=session, pending_message=pending_message)
+    return rejected_message
 
 
 def get_programs_triggered_by_messages(session: DbSession, sort_order: SortOrder):

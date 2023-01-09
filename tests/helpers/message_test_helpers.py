@@ -6,7 +6,7 @@ from typing import List, Optional, Union, Any, Mapping, Sequence, Iterable
 from aleph_message.models import ItemType, MessageConfirmation
 
 from aleph.db.models import MessageDb, PendingMessageDb, MessageStatusDb
-from aleph.jobs.process_pending_messages import PendingMessageProcessor
+from aleph.jobs.process_pending_messages import PendingMessageProcessor, MessageProcessingResult
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import MessageStatus
@@ -45,7 +45,7 @@ async def process_pending_messages(
     message_processor: PendingMessageProcessor,
     pending_messages: Sequence[PendingMessageDb],
     session: DbSession,
-) -> Iterable[MessageDb]:
+) -> Iterable[MessageProcessingResult]:
 
     for pending_message in pending_messages:
         session.add(pending_message)
@@ -61,4 +61,4 @@ async def process_pending_messages(
 
     pipeline = message_processor.make_pipeline()
 
-    return itertools.chain.from_iterable([messages async for messages in pipeline])
+    return itertools.chain.from_iterable([results async for results in pipeline])
