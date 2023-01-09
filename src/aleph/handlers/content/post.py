@@ -37,8 +37,13 @@ def get_post_content(message: MessageDb) -> PostContent:
 
 
 def update_balances(session: DbSession, content: Mapping[str, Any]) -> None:
-    chain = Chain(content["chain"])
-    height = content["main_height"]
+    try:
+        chain = Chain(content["chain"])
+        height = content["main_height"]
+    except KeyError:
+        raise InvalidMessageFormat(
+            "Missing field(s) chain and/or main_height for balance post"
+        )
     dapp = content.get("dapp")
 
     LOGGER.info("Updating balances for %s (dapp: %s)", chain, dapp)

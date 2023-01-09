@@ -2,8 +2,10 @@ import json
 from math import ceil
 from typing import Optional
 
+import aio_pika
 import aiohttp_jinja2
 from aiohttp import web
+from configmanager import Config
 
 DEFAULT_MESSAGES_PER_PAGE = 20
 DEFAULT_PAGE = 1
@@ -123,3 +125,19 @@ def cond_output(request, context, template):
     response.enable_compression()
 
     return response
+
+
+async def mq_make_aleph_message_topic_queue(
+    mq_conn: aio_pika.abc.AbstractConnection,
+    config: Config,
+    routing_key: Optional[str] = None,
+) -> aio_pika.abc.AbstractQueue:
+    channel = await mq_conn.channel()
+    mq_message_exchange = await channel.declare_exchange(
+        name=config.rabbitmq.message_exchange.value,
+        type=aio_pika.ExchangeType.TOPIC,
+        auto_delete=False,
+    )
+    mq_queue = await channel.declare_queue(auto_delete=True)
+    await mq_queue.bind(mq_message_exchange, routing_key=routing_key)
+    return mq_queue

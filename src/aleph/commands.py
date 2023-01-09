@@ -18,8 +18,8 @@ from multiprocessing import Manager, Process, set_start_method
 from multiprocessing.managers import SyncManager
 from typing import Any, Coroutine, Dict, List, Optional
 
-import alembic.config
 import alembic.command
+import alembic.config
 import sentry_sdk
 from aleph_message.models import MessageType
 from configmanager import Config
@@ -32,7 +32,6 @@ from aleph.db.connection import make_engine, make_session_factory, make_db_url
 from aleph.exceptions import InvalidConfigException, KeyNotFoundException
 from aleph.jobs import start_jobs
 from aleph.jobs.job_utils import prepare_loop
-from aleph.toolkit.logging import setup_logging
 from aleph.network import listener_tasks
 from aleph.services import p2p
 from aleph.services.ipfs import IpfsService
@@ -41,11 +40,22 @@ from aleph.services.keys import generate_keypair, save_keys
 from aleph.services.p2p import singleton, init_p2p_client
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
+from aleph.toolkit.logging import setup_logging
 from aleph.web import app
+from aleph.web.controllers.app_state_getters import (
+    APP_STATE_CONFIG,
+    APP_STATE_P2P_CLIENT,
+    APP_STATE_STORAGE_SERVICE,
+    APP_STATE_EXTRA_CONFIG,
+    APP_STATE_SHARED_STATS,
+    APP_STATE_MQ_CONN,
+    APP_STATE_SESSION_FACTORY,
+)
 
 __author__ = "Moshe Malawach"
 __copyright__ = "Moshe Malawach"
 __license__ = "mit"
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -101,14 +111,14 @@ async def run_server(
         ipfs_service=ipfs_service,
     )
 
-    app["config"] = config
-    app["extra_config"] = extra_web_config
-    app["shared_stats"] = shared_stats
-    app["p2p_client"] = p2p_client
+    app[APP_STATE_CONFIG] = config
+    app[APP_STATE_EXTRA_CONFIG] = extra_web_config
+    app[APP_STATE_SHARED_STATS] = shared_stats
+    app[APP_STATE_P2P_CLIENT] = p2p_client
     # Reuse the connection of the P2P client to avoid opening two connections
-    app["mq_conn"] = p2p_client.mq_client.connection
-    app["storage_service"] = storage_service
-    app["session_factory"] = session_factory
+    app[APP_STATE_MQ_CONN] = p2p_client.mq_client.connection
+    app[APP_STATE_STORAGE_SERVICE] = storage_service
+    app[APP_STATE_SESSION_FACTORY] = session_factory
 
     runner = web.AppRunner(app)
     await runner.setup()
