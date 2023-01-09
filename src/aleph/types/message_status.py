@@ -9,10 +9,19 @@ class MessageStatus(str, Enum):
     FORGOTTEN = "forgotten"
 
 
-class MessageProcessingStatus(IntEnum):
-    NEW_MESSAGE = 1
-    NEW_CONFIRMATION = 2
-    MESSAGE_ALREADY_PROCESSED = 3
+class MessageProcessingStatus(str, Enum):
+    PROCESSED_NEW_MESSAGE = "processed"
+    PROCESSED_CONFIRMATION = "confirmed"
+    FAILED_WILL_RETRY = "retry"
+    FAILED_REJECTED = "rejected"
+
+    def to_message_status(self) -> MessageStatus:
+        if self == self.PROCESSED_CONFIRMATION or self == self.PROCESSED_NEW_MESSAGE:
+            return MessageStatus.PROCESSED
+        elif self == self.FAILED_WILL_RETRY:
+            return MessageStatus.PENDING
+        else:
+            return MessageStatus.REJECTED
 
 
 class ErrorCode(IntEnum):

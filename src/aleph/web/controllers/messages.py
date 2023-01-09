@@ -194,11 +194,11 @@ async def declare_mq_queue(
     channel = await mq_conn.channel()
     mq_message_exchange = await channel.declare_exchange(
         name=config.rabbitmq.message_exchange.value,
-        type=aio_pika.ExchangeType.FANOUT,
+        type=aio_pika.ExchangeType.TOPIC,
         auto_delete=False,
     )
     mq_queue = await channel.declare_queue(auto_delete=True)
-    await mq_queue.bind(mq_message_exchange)
+    await mq_queue.bind(mq_message_exchange, routing_key="processed.*")
     return mq_queue
 
 
@@ -281,7 +281,9 @@ def _get_message_with_status(
         )
 
     if status == MessageStatus.FORGOTTEN:
-        forgotten_message_db = get_forgotten_message(session=session, item_hash=item_hash)
+        forgotten_message_db = get_forgotten_message(
+            session=session, item_hash=item_hash
+        )
         if not forgotten_message_db:
             raise web.HTTPNotFound()
 

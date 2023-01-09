@@ -1,7 +1,6 @@
 """
 Job in charge of (re-) processing Aleph messages waiting in the pending queue.
 """
-
 import asyncio
 from logging import getLogger
 from typing import (
@@ -9,6 +8,8 @@ from typing import (
     List,
     AsyncIterator,
     Sequence,
+    Protocol,
+    Union,
 )
 
 import aio_pika.abc
@@ -40,10 +41,64 @@ from aleph.types.message_status import (
     InvalidMessageException,
     RetryMessageException,
     FileNotFoundException,
+    ErrorCode,
+    MessageProcessingStatus,
 )
 from .job_utils import prepare_loop
 
 LOGGER = getLogger(__name__)
+
+
+class MessageProcessingResult(Protocol):
+    status: MessageProcessingStatus
+
+    @property
+    def item_hash(self) -> str:
+        pass
+
+
+class ProcessedMessage(MessageProcessingResult):
+    def __init__(self, message: MessageDb, is_confirmation: bool = False):
+        self.message = message
+        self.status = (
+            MessageProcessingStatus.PROCESSED_CONFIRMATION
+            if is_confirmation
+            else MessageProcessingStatus.PROCESSED_NEW_MESSAGE
+        )
+
+    @property
+    def item_hash(self) -> str:
+        return self.message.item_hash
+
+
+class FailedMessage(MessageProcessingResult):
+    status = MessageProcessingStatus.FAILED_WILL_RETRY
+
+    def __init__(
+        self, pending_message: PendingMessageDb, error_code: ErrorCode, will_retry: bool
+    ):
+        self.pending_message = pending_message
+        self.error_code = error_code
+
+        self.status = (
+            MessageProcessingStatus.FAILED_WILL_RETRY
+            if will_retry
+            else MessageProcessingStatus.FAILED_REJECTED
+        )
+
+    @property
+    def item_hash(self) -> str:
+        return self.pending_message.item_hash
+
+
+class WillRetryMessage(FailedMessage):
+    def __init__(self, pending_message: PendingMessageDb, error_code: ErrorCode):
+        super().__init__(pending_message, error_code, will_retry=True)
+
+
+class RejectedMessage(FailedMessage):
+    def __init__(self, pending_message: PendingMessageDb, error_code: ErrorCode):
+        super().__init__(pending_message, error_code, will_retry=False)
 
 
 class PendingMessageProcessor:
@@ -79,7 +134,7 @@ class PendingMessageProcessor:
         channel = await mq_conn.channel()
         mq_message_exchange = await channel.declare_exchange(
             name=message_exchange_name,
-            type=aio_pika.ExchangeType.FANOUT,
+            type=aio_pika.ExchangeType.TOPIC,
             auto_delete=False,
         )
         return cls(
@@ -93,65 +148,103 @@ class PendingMessageProcessor:
     async def close(self):
         await self.mq_conn.close()
 
+    def _handle_rejection(
+        self,
+        session: DbSession,
+        pending_message: PendingMessageDb,
+        exception: BaseException,
+    ) -> RejectedMessage:
+        rejected_message_db = reject_existing_pending_message(
+            session=session,
+            pending_message=pending_message,
+            exception=exception,
+        )
+        # The call to reject the message can actually return None if the message was not
+        # actually marked as rejected (ex: a valid version of the message exists).
+        # In that case, determine the error code here.
+        error_code = (
+            rejected_message_db.error_code
+            if rejected_message_db
+            else getattr(exception, "error_code", ErrorCode.INTERNAL_ERROR)
+        )
+
+        return RejectedMessage(pending_message=pending_message, error_code=error_code)
+
+    def _handle_retry(
+        self,
+        session: DbSession,
+        pending_message: PendingMessageDb,
+        exception: BaseException,
+    ) -> Union[RejectedMessage, WillRetryMessage]:
+        if isinstance(exception, FileNotFoundException):
+            LOGGER.warning(
+                "Could not fetch message %s, putting it back in the fetch queue: %s",
+                pending_message.item_hash,
+                str(exception),
+            )
+            error_code = exception.error_code
+            session.execute(
+                update(PendingMessageDb)
+                .where(PendingMessageDb.id == pending_message.id)
+                .values(fetched=False)
+            )
+        elif isinstance(exception, RetryMessageException):
+            LOGGER.warning(
+                "%s error (%d) - message %s marked for retry",
+                exception.error_code.name,
+                exception.error_code.value,
+                pending_message.item_hash,
+            )
+            error_code = exception.error_code
+            increase_pending_message_retry_count(
+                session=session, pending_message=pending_message
+            )
+        else:
+            LOGGER.exception(
+                "Unexpected error while fetching message", exc_info=exception
+            )
+            error_code = ErrorCode.INTERNAL_ERROR
+        if pending_message.retries >= self.max_retries:
+            LOGGER.warning(
+                "Rejecting pending message: %s - too many retries",
+                pending_message.item_hash,
+            )
+            return self._handle_rejection(
+                session=session,
+                pending_message=pending_message,
+                exception=exception,
+            )
+        else:
+            increase_pending_message_retry_count(
+                session=session, pending_message=pending_message
+            )
+            return WillRetryMessage(
+                pending_message=pending_message, error_code=error_code
+            )
+
     async def handle_processing_error(
         self,
         session: DbSession,
         pending_message: PendingMessageDb,
         exception: BaseException,
-    ):
+    ) -> Union[RejectedMessage, WillRetryMessage]:
         if isinstance(exception, InvalidMessageException):
             LOGGER.warning(
                 "Rejecting invalid pending message: %s - %s",
                 pending_message.item_hash,
                 str(exception),
             )
-            reject_existing_pending_message(
-                session=session,
-                pending_message=pending_message,
-                exception=exception,
+            return self._handle_rejection(
+                session=session, pending_message=pending_message, exception=exception
             )
         else:
-            if isinstance(exception, FileNotFoundException):
-                LOGGER.warning(
-                    "Could not fetch message %s, putting it back in the fetch queue: %s",
-                    pending_message.item_hash,
-                    str(exception),
-                )
-                session.execute(
-                    update(PendingMessageDb)
-                    .where(PendingMessageDb.id == pending_message.id)
-                    .values(fetched=False)
-                )
-            elif isinstance(exception, RetryMessageException):
-                LOGGER.warning(
-                    "%s error (%d) - message %s marked for retry",
-                    exception.error_code.name,
-                    exception.error_code.value,
-                    pending_message.item_hash,
-                )
-                increase_pending_message_retry_count(
-                    session=session, pending_message=pending_message
-                )
-            else:
-                LOGGER.exception(
-                    "Unexpected error while fetching message", exc_info=exception
-                )
-            if pending_message.retries >= self.max_retries:
-                LOGGER.warning(
-                    "Rejecting pending message: %s - too many retries",
-                    pending_message.item_hash,
-                )
-                reject_existing_pending_message(
-                    session=session,
-                    pending_message=pending_message,
-                    exception=exception,
-                )
-            else:
-                increase_pending_message_retry_count(
-                    session=session, pending_message=pending_message
-                )
+            return self._handle_retry(
+                session=session, pending_message=pending_message, exception=exception
+            )
 
-    async def process_messages(self) -> AsyncIterator[Sequence[MessageDb]]:
+    async def process_messages(
+        self,
+    ) -> AsyncIterator[Sequence[MessageProcessingResult]]:
         while True:
             with self.session_factory() as session:
                 pending_message = get_next_pending_message(
@@ -165,31 +258,36 @@ class PendingMessageProcessor:
                         session=session, pending_message=pending_message
                     )
                     session.commit()
-                    yield [message]
+                    result: MessageProcessingResult = ProcessedMessage(message)
 
                 except Exception as e:
                     session.rollback()
-                    await self.handle_processing_error(
+                    result = await self.handle_processing_error(
                         session=session,
                         pending_message=pending_message,
                         exception=e,
                     )
                     session.commit()
 
+                yield [result]
+
     async def publish_to_mq(
-        self, message_iterator: AsyncIterator[Sequence[MessageDb]]
-    ) -> AsyncIterator[Sequence[MessageDb]]:
-        async for messages in message_iterator:
-            for message in messages:
-                body = {"item_hash": message.item_hash}
+        self, message_iterator: AsyncIterator[Sequence[MessageProcessingResult]]
+    ) -> AsyncIterator[Sequence[MessageProcessingResult]]:
+        async for processing_results in message_iterator:
+            for result in processing_results:
+                body = {"item_hash": result.item_hash}
                 mq_message = aio_pika.Message(
                     body=aleph_json.dumps(body).encode("utf-8")
                 )
-                await self.mq_message_exchange.publish(mq_message, routing_key="")
+                await self.mq_message_exchange.publish(
+                    mq_message,
+                    routing_key=f"{result.status.value}.{result.item_hash}",
+                )
 
-            yield messages
+            yield processing_results
 
-    def make_pipeline(self) -> AsyncIterator[Sequence[MessageDb]]:
+    def make_pipeline(self) -> AsyncIterator[Sequence[MessageProcessingResult]]:
         message_processor = self.process_messages()
         return self.publish_to_mq(message_iterator=message_processor)
 
@@ -231,11 +329,9 @@ async def fetch_and_process_messages_task(config: Config, shared_stats: Dict):
         with session_factory() as session:
             try:
                 message_processing_pipeline = pending_message_processor.make_pipeline()
-                async for processed_messages in message_processing_pipeline:
-                    for processed_message in processed_messages:
-                        LOGGER.info(
-                            "Successfully processed %s", processed_message.item_hash
-                        )
+                async for processing_results in message_processing_pipeline:
+                    for result in processing_results:
+                        LOGGER.info("Successfully processed %s", result.item_hash)
 
             except Exception as e:
                 print(e)

@@ -22,7 +22,7 @@ from aleph.handlers.content.forget import ForgetMessageHandler
 from aleph.handlers.content.post import PostMessageHandler
 from aleph.handlers.content.program import ProgramMessageHandler
 from aleph.handlers.content.store import StoreMessageHandler
-from aleph.jobs.process_pending_messages import PendingMessageProcessor
+from aleph.jobs.process_pending_messages import PendingMessageProcessor, ProcessedMessage, RejectedMessage
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
@@ -97,26 +97,30 @@ async def test_forget_post_message(
     )
 
     with session_factory() as session:
-        target_message = one(
+        target_message_result = one(
             await process_pending_messages(
                 message_processor=message_processor,
                 pending_messages=[pending_message],
                 session=session,
             )
         )
+        assert isinstance(target_message_result, ProcessedMessage)
+        target_message = target_message_result.message
 
         # Sanity check
         post = get_post(session=session, item_hash=target_message.item_hash)
         assert post
 
         # Now process, the forget message
-        forget_message = one(
+        forget_message_result = one(
             await process_pending_messages(
                 message_processor=message_processor,
                 pending_messages=[pending_forget_message],
                 session=session,
             )
         )
+        assert isinstance(forget_message_result, ProcessedMessage)
+        forget_message = forget_message_result.message
 
         target_message_status = get_message_status(
             session=session, item_hash=target_message.item_hash
@@ -187,25 +191,27 @@ async def test_forget_store_message(
     )
 
     with session_factory() as session:
-        _target_message = one(
+        target_message_result = one(
             await process_pending_messages(
                 message_processor=message_processor,
                 pending_messages=[pending_message],
                 session=session,
             )
         )
+        assert isinstance(target_message_result, ProcessedMessage)
 
         # Sanity check
         nb_references = count_file_pins(session=session, file_hash=file_hash)
         assert nb_references == 1
 
-        _forget_message = one(
+        forget_message_result = one(
             await process_pending_messages(
                 message_processor=message_processor,
                 pending_messages=[pending_forget_message],
                 session=session,
             )
         )
+        assert isinstance(forget_message_result, ProcessedMessage)
 
         # Check that the file was deleted from storage
         content = await storage_engine.read(filename=file_hash)
@@ -280,7 +286,7 @@ async def test_forget_forget_message(
         )
         session.commit()
 
-        processed_messages = list(
+        processed_message_results = list(
             await process_pending_messages(
                 message_processor=message_processor,
                 pending_messages=[pending_forget_message],
@@ -289,7 +295,8 @@ async def test_forget_forget_message(
         )
 
         # The message should have been rejected
-        assert processed_messages == []
+        for result in processed_message_results:
+            assert isinstance(result, RejectedMessage)
 
         target_message_status = get_message_status(
             session=session, item_hash=target_message.item_hash
@@ -428,13 +435,14 @@ async def test_forget_store_multi_users(
         )
 
         # Process the FORGET message
-        _forget_message = one(
+        forget_message_result = one(
             await process_pending_messages(
                 message_processor=message_processor,
                 pending_messages=[pending_forget_message],
                 session=session,
             )
         )
+        assert isinstance(forget_message_result, ProcessedMessage)
 
         message1_status = get_message_status(
             session=session, item_hash=store_message_user1.item_hash
