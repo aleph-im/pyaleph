@@ -21,7 +21,7 @@ from aleph.schemas.api.messages import (
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
-from aleph.types.message_status import MessageStatus
+from aleph.types.message_status import MessageStatus, ErrorCode
 
 MESSAGE_URI = "/api/v0/messages/{}"
 
@@ -137,7 +137,7 @@ def fixture_messages_with_status(
                 "signature": "0xe36ff18a728d2666f7ba0519d745c43de7f6e2ce41406cf49650183c844014c53b265ae48ceefd5e3d82cce3ce3e8e2e49bd2e83bb031a3677c2b4eed7ff08f01c",
                 "item_content": '{"address":"0xD498D9267b68Da05dd986B00f6fEF42f46e134Da","time":1672671290.836,"hashes":[],"reason":"None"}',
             },
-            error_code=500,
+            error_code=ErrorCode.FORGET_NO_TARGET,
             details=None,
         )
     ]

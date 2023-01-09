@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 from aleph.db.accessors.aggregates import get_aggregate_by_key, get_aggregate_elements
 from aleph.db.models import PendingMessageDb, AggregateContent, MessageDb
 from aleph.handlers.message_handler import MessageHandler
-from aleph.jobs.process_pending_messages import PendingMessageProcessor
+from aleph.jobs.process_pending_messages import PendingMessageProcessor, ProcessedMessage
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
@@ -147,14 +147,15 @@ async def process_aggregates_one_by_one(
         session.add(pending_aggregate)
         session.commit()
 
-        message = one(
+        result = one(
             await process_pending_messages(
                 message_processor=message_processor,
                 pending_messages=[pending_aggregate],
                 session=session,
             )
         )
-        messages.append(message)
+        assert isinstance(result, ProcessedMessage)
+        messages.append(result.message)
 
     return messages
 

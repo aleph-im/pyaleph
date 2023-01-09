@@ -1,5 +1,5 @@
 import datetime as dt
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Dict, List, Optional, Type, Union, Mapping
 
 from aleph_message.models import (
     Chain,
@@ -31,7 +31,7 @@ from sqlalchemy_utils.types.choice import ChoiceType
 
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
-from aleph.types.message_status import MessageStatus
+from aleph.types.message_status import MessageStatus, ErrorCode
 from .base import Base
 from .chains import ChainTxDb
 from .pending_messages import PendingMessageDb
@@ -217,7 +217,7 @@ class RejectedMessageDb(Base):
     __tablename__ = "rejected_messages"
 
     item_hash: str = Column(String, primary_key=True)
-    message: Dict[str, Any] = Column(JSONB, nullable=False)
-    error_code: int = Column(Integer, nullable=False)
+    message: Mapping[str, Any] = Column(JSONB, nullable=False)
+    error_code: ErrorCode = Column(ChoiceType(ErrorCode, impl=Integer()), nullable=False)
     details: Optional[Dict[str, Any]] = Column(JSONB, nullable=True)
     traceback: Optional[str] = Column(String, nullable=True)
