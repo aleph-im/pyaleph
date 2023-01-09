@@ -36,7 +36,10 @@ from aleph.schemas.api.messages import (
 from aleph.types.db_session import DbSessionFactory, DbSession
 from aleph.types.message_status import MessageStatus
 from aleph.types.sort_order import SortOrder
-from aleph.web.controllers.utils import LIST_FIELD_SEPARATOR
+from aleph.web.controllers.utils import (
+    LIST_FIELD_SEPARATOR,
+    mq_make_aleph_message_topic_queue,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -209,7 +212,9 @@ async def messages_ws(request: web.Request):
     mq_conn: aio_pika.abc.AbstractConnection = request.app["mq_conn"]
     session_factory: DbSessionFactory = request.app["session_factory"]
     config = request.app["config"]
-    mq_queue = await declare_mq_queue(mq_conn, config)
+    mq_queue = await mq_make_aleph_message_topic_queue(
+        mq_conn=mq_conn, config=config, routing_key="processed.*"
+    )
 
     query_params = WsMessageQueryParams.parse_obj(request.query)
     find_filters = query_params.dict(exclude_none=True)
