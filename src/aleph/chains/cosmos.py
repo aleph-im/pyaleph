@@ -6,6 +6,7 @@ from typing import Dict
 
 import ecdsa
 from cosmospy import pubkey_to_address
+from ecdsa import BadSignatureError
 
 from aleph.chains.common import get_verification_buffer
 from .connector import Verifier
@@ -98,8 +99,10 @@ class CosmosConnector(Verifier):
             )
             return verified
 
+        except BadSignatureError:
+            return False
         except Exception:
-            LOGGER.exception("Substrate Signature verification error")
+            LOGGER.exception("Substrate signature verification error")
             result = False
 
         return result
