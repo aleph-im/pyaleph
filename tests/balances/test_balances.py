@@ -125,27 +125,6 @@ async def test_update_balances(session_factory: DbSessionFactory):
         )
 
 
-# @pytest.mark.asyncio
-# async def test_update_large_files(session_factory: DbSessionFactory):
-#     fixtures_dir = Path(__file__).parent / "fixtures"
-#     file_1 = fixtures_dir / "large_balance_file_1.json"
-#     file_2 = fixtures_dir / "large_balance_file_2.json"
-#
-#     with file_1.open() as f:
-#         content_1 = json.load(f)
-#
-#     with file_2.open() as f:
-#         content_2 = json.load(f)
-#
-#     with session_factory() as session:
-#         await update_balances(session, content_1)
-#         session.commit()
-#
-#     with session_factory() as session:
-#         await update_balances(session, content_2)
-#         session.commit()
-
-
 def test_get_total_balance(session_factory: DbSessionFactory):
     address_1 = "my-address"
     address_2 = "your-address"
