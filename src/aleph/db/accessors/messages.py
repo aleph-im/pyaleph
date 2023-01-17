@@ -55,6 +55,7 @@ def make_matching_messages_query(
     start_date: Optional[Union[float, dt.datetime]] = None,
     end_date: Optional[Union[float, dt.datetime]] = None,
     content_hashes: Optional[Sequence[ItemHash]] = None,
+    content_types: Optional[Sequence[str]] = None,
     channels: Optional[Sequence[str]] = None,
     sort_order: SortOrder = SortOrder.DESCENDING,
     page: int = 1,
@@ -95,6 +96,10 @@ def make_matching_messages_query(
     if content_hashes:
         select_stmt = select_stmt.where(
             MessageDb.content["item_hash"].astext.in_(content_hashes)
+        )
+    if content_types:
+        select_stmt = select_stmt.where(
+            MessageDb.content["type"].astext.in_(content_types)
         )
     if channels:
         select_stmt = select_stmt.where(MessageDb.channel.in_(channels))
