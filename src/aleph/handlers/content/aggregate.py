@@ -1,6 +1,6 @@
 import itertools
 import logging
-from typing import List, cast, Sequence
+from typing import List, cast, Sequence, Set
 
 from aleph_message.models import AggregateContent
 
@@ -222,7 +222,7 @@ class AggregateMessageHandler(ContentHandler):
                 session=session, key=key, owner=owner, elements=aggregate_elements
             )
 
-    async def forget_message(self, session: DbSession, message: MessageDb) -> None:
+    async def forget_message(self, session: DbSession, message: MessageDb) -> Set[str]:
         content = _get_aggregate_content(message)
 
         LOGGER.debug("Deleting aggregate element %s...", message.item_hash)
@@ -230,3 +230,5 @@ class AggregateMessageHandler(ContentHandler):
 
         LOGGER.debug("Refreshing aggregate %s/%s...", content.address, content.key)
         refresh_aggregate(session=session, owner=content.address, key=content.key)
+
+        return set()

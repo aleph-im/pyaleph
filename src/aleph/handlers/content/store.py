@@ -10,7 +10,7 @@ TODO:
 
 import asyncio
 import logging
-from typing import List, Tuple, Optional
+from typing import List, Optional, Set
 
 import aioipfs
 from aioipfs import NotPinnedError
@@ -33,7 +33,7 @@ from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.handlers.content.content_handler import ContentHandler
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.db_session import DbSessionFactory, DbSession
+from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag, FileType
 from aleph.types.message_status import (
     PermissionDenied,
@@ -292,7 +292,7 @@ class StoreMessageHandler(ContentHandler):
             raise ValueError(f"Invalid storage type {storage_type}")
         LOGGER.debug(f"Removed from {storage_type}: {storage_hash}")
 
-    async def forget_message(self, session: DbSession, message: MessageDb) -> None:
+    async def forget_message(self, session: DbSession, message: MessageDb) -> Set[str]:
         content = _get_store_content(message)
 
         delete_file_pin(session=session, item_hash=message.item_hash)
@@ -309,3 +309,5 @@ class StoreMessageHandler(ContentHandler):
             storage_hash=content.item_hash,
             storage_type=content.item_type,
         )
+
+        return set()

@@ -108,14 +108,6 @@ class PermissionDenied(InvalidMessageException):
     error_code = ErrorCode.PERMISSION_DENIED
 
 
-class MissingDependency(RetryMessageException):
-    """
-    An object targeted by the message is missing.
-    """
-
-    ...
-
-
 class FileNotFoundException(RetryMessageException):
     """
     A file required to process the message could not be found, locally and/or
