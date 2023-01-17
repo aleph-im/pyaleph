@@ -1,3 +1,4 @@
+import datetime as dt
 from typing import Optional, Iterable, Any, Dict, Sequence, Collection
 
 from aleph_message.models import Chain
@@ -11,15 +12,17 @@ from aleph.types.db_session import DbSession
 
 def get_next_pending_message(
     session: DbSession,
+    current_time: dt.datetime,
     offset: int = 0,
     fetched: Optional[bool] = None,
     exclude_item_hashes: Optional[Sequence[str]] = None,
 ) -> Optional[PendingMessageDb]:
     select_stmt = (
         select(PendingMessageDb)
-        .order_by(PendingMessageDb.retries.asc(), PendingMessageDb.time.asc())
+        .order_by(PendingMessageDb.next_attempt.asc())
         .offset(offset)
         .options(selectinload(PendingMessageDb.tx))
+        .where(PendingMessageDb.next_attempt <= current_time)
     )
 
     if fetched is not None:
@@ -31,11 +34,12 @@ def get_next_pending_message(
         )
 
     select_stmt = select_stmt.limit(1)
-    return (session.execute(select_stmt)).scalar()
+    return (session.execute(select_stmt)).scalar_one_or_none()
 
 
 def get_next_pending_messages(
     session: DbSession,
+    current_time: dt.datetime,
     limit: int = 10000,
     offset: int = 0,
     fetched: Optional[bool] = None,
@@ -43,9 +47,10 @@ def get_next_pending_messages(
 ) -> Iterable[PendingMessageDb]:
     select_stmt = (
         select(PendingMessageDb)
-        .order_by(PendingMessageDb.retries.asc(), PendingMessageDb.time.asc())
+        .order_by(PendingMessageDb.next_attempt.asc())
         .offset(offset)
         .options(selectinload(PendingMessageDb.tx))
+        .where(PendingMessageDb.next_attempt <= current_time)
     )
 
     if fetched is not None:
@@ -99,13 +104,13 @@ def make_pending_message_fetched_statement(
     return update_stmt
 
 
-def increase_pending_message_retry_count(
-    session: DbSession, pending_message: PendingMessageDb
+def set_next_retry(
+    session: DbSession, pending_message: PendingMessageDb, next_attempt: dt.datetime
 ) -> None:
     update_stmt = (
         update(PendingMessageDb)
         .where(PendingMessageDb.id == pending_message.id)
-        .values(retries=PendingMessageDb.retries + 1)
+        .values(retries=PendingMessageDb.retries + 1, next_attempt=next_attempt)
     )
     session.execute(update_stmt)
 

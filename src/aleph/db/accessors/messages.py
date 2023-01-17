@@ -524,6 +524,7 @@ def reject_existing_pending_message(
             "id",
             "check_message",
             "retries",
+            "next_attempt",
             "fetched",
             "tx_hash",
             "reception_time",

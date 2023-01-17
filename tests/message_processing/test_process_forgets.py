@@ -22,7 +22,8 @@ from aleph.handlers.content.forget import ForgetMessageHandler
 from aleph.handlers.content.post import PostMessageHandler
 from aleph.handlers.content.program import ProgramMessageHandler
 from aleph.handlers.content.store import StoreMessageHandler
-from aleph.jobs.process_pending_messages import PendingMessageProcessor, ProcessedMessage, RejectedMessage
+from aleph.jobs.job_utils import ProcessedMessage, RejectedMessage
+from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
@@ -163,6 +164,7 @@ async def test_forget_store_message(
         item_content='{"address":"0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106","time":1652794362.5736332,"item_type":"storage","item_hash":"5ccdd7bccfbc5955e2e40166dd0cdea0b093154fd87bc2bea57e7c768cde2f21","mime_type":"text/plain"}',
         channel=Channel("TEST"),
         retries=0,
+        next_attempt=dt.datetime(2023, 1, 1),
         check_message=True,
         fetched=True,
         reception_time=dt.datetime(2022, 1, 1),
@@ -179,6 +181,7 @@ async def test_forget_store_message(
         item_content='{"address":"0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106","time":1652794384.3101473,"hashes":["f6fc4884e3ec3624bd3f60a3c37abf83a130777086061b1a373e659f2bab4d06"]}',
         channel=Channel("TEST"),
         retries=0,
+        next_attempt=dt.datetime(2023, 1, 2),
         check_message=True,
         fetched=True,
         reception_time=dt.datetime(2022, 1, 2),
@@ -270,6 +273,7 @@ async def test_forget_forget_message(
         item_content='{"address":"0xB68B9D4f3771c246233823ed1D3Add451055F9Ef","time":1639058312.376,"hashes":["e3b24727335e34016247c0d37e2b0203bb8c2d76deddafc1700b4cf0e13845c5"],"reason":"None"}',
         channel=Channel("TEST"),
         retries=0,
+        next_attempt=dt.datetime(2023, 1, 1),
         check_message=True,
         fetched=True,
         reception_time=dt.datetime(2022, 1, 2),
@@ -384,6 +388,7 @@ async def test_forget_store_multi_users(
         item_content='{"address": "0x971300C78A38e0F85E60A3b04ae3fA70b4276B64", "time": 1651757583.4974332, "hashes": ["50635384e43c7af6b3297f6571644c30f3f07ac681bfd14b9c556c63e661a69e"], "reason": "I do not like this file"}',
         channel=Channel("TESTS_FORGET"),
         retries=0,
+        next_attempt=dt.datetime(2023, 1, 1),
         check_message=True,
         fetched=True,
         reception_time=dt.datetime(2022, 1, 2),

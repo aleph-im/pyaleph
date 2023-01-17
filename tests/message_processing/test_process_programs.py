@@ -6,7 +6,12 @@ from typing import List
 import pytest
 import pytz
 from aleph_message.models import ItemType, Chain, MessageType
-from aleph_message.models.program import MachineType, VolumePersistence, ProgramContent, ImmutableVolume
+from aleph_message.models.program import (
+    MachineType,
+    VolumePersistence,
+    ProgramContent,
+    ImmutableVolume,
+)
 from configmanager import Config
 from more_itertools import one
 from sqlalchemy import select
@@ -49,6 +54,7 @@ def fixture_program_message(session_factory: DbSessionFactory) -> PendingMessage
         fetched=True,
         check_message=True,
         retries=0,
+        next_attempt=dt.datetime(2023, 1, 1),
     )
     with session_factory() as session:
         session.add(pending_message)
@@ -82,6 +88,7 @@ def fixture_program_message_with_subscriptions(
         fetched=True,
         check_message=True,
         retries=0,
+        next_attempt=dt.datetime(2023, 1, 1),
     )
     with session_factory() as session:
         session.add(pending_message)
@@ -97,7 +104,7 @@ def fixture_program_message_with_subscriptions(
     return pending_message
 
 
-def get_volumes_with_ref(content:ProgramContent) -> List:
+def get_volumes_with_ref(content: ProgramContent) -> List:
     volumes = [content.code, content.runtime]
     if content.data:
         volumes.append(content.data)
@@ -107,6 +114,7 @@ def get_volumes_with_ref(content:ProgramContent) -> List:
             volumes.append(volume)
 
     return volumes
+
 
 def insert_volume_refs(session: DbSession, message: PendingMessageDb):
     """

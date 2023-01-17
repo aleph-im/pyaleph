@@ -18,11 +18,7 @@ from configmanager import Config
 from setproctitle import setproctitle
 
 from aleph.chains.chain_service import ChainService
-from aleph.db.accessors.messages import (
-    reject_existing_pending_message,
-)
 from aleph.db.accessors.pending_messages import (
-    increase_pending_message_retry_count,
     make_pending_message_fetched_statement,
     get_next_pending_messages,
 )
@@ -35,12 +31,9 @@ from aleph.services.p2p import singleton
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
 from aleph.toolkit.logging import setup_logging
-from aleph.types.db_session import DbSession, DbSessionFactory
-from aleph.types.message_status import (
-    InvalidMessageException,
-    RetryMessageException,
-)
-from .job_utils import prepare_loop
+from aleph.types.db_session import DbSessionFactory
+from .job_utils import prepare_loop, MessageJob
+from ..toolkit.timestamp import utc_now
 
 LOGGER = getLogger(__name__)
 
@@ -48,60 +41,18 @@ LOGGER = getLogger(__name__)
 MessageId = NewType("MessageId", str)
 
 
-async def handle_fetch_error(
-    session: DbSession,
-    pending_message: PendingMessageDb,
-    exception: BaseException,
-    max_retries: int,
-):
-    if isinstance(exception, InvalidMessageException):
-        LOGGER.warning(
-            "Rejecting invalid pending message: %s - %s",
-            pending_message.item_hash,
-            str(exception),
-        )
-        reject_existing_pending_message(
-            session=session,
-            pending_message=pending_message,
-            exception=exception,
-        )
-    else:
-        if isinstance(exception, RetryMessageException):
-            LOGGER.warning(
-                "Could not fetch message %s, retrying later: %s",
-                pending_message.item_hash,
-                str(exception),
-            )
-        else:
-            LOGGER.exception(
-                "Unexpected error while fetching message", exc_info=exception
-            )
-        if pending_message.retries >= max_retries:
-            LOGGER.warning(
-                "Rejecting pending message: %s - too many retries",
-                pending_message.item_hash,
-            )
-            reject_existing_pending_message(
-                session=session,
-                pending_message=pending_message,
-                exception=exception,
-            )
-        else:
-            increase_pending_message_retry_count(
-                session=session, pending_message=pending_message
-            )
-
-
-class PendingMessageFetcher:
+class PendingMessageFetcher(MessageJob):
     def __init__(
         self,
         session_factory: DbSessionFactory,
         message_handler: MessageHandler,
         max_retries: int,
     ):
-        self.session_factory = session_factory
-        self.message_handler = message_handler
-        self.max_retries = max_retries
+        super().__init__(
+            session_factory=session_factory,
+            message_handler=message_handler,
+            max_retries=max_retries,
+        )
 
     async def fetch_pending_message(self, pending_message: PendingMessageDb):
         with self.session_factory() as session:
@@ -119,11 +70,10 @@ class PendingMessageFetcher:
 
             except Exception as e:
                 session.rollback()
-                await handle_fetch_error(
+                _ = await self.handle_processing_error(
                     session=session,
                     pending_message=pending_message,
                     exception=e,
-                    max_retries=self.max_retries,
                 )
                 session.commit()
 
@@ -154,6 +104,7 @@ class PendingMessageFetcher:
                 if len(fetch_tasks) < max_concurrent_tasks:
                     pending_messages = get_next_pending_messages(
                         session=session,
+                        current_time=utc_now(),
                         limit=max_concurrent_tasks - len(fetch_tasks),
                         offset=len(fetch_tasks),
                         exclude_item_hashes=messages_being_fetched,
@@ -188,8 +139,8 @@ class PendingMessageFetcher:
                         break
                     # If we are done, wait a few seconds until retrying
                     if not fetch_tasks:
-                        LOGGER.info("waiting 5 seconds for new pending messages")
-                        await asyncio.sleep(5)
+                        LOGGER.info("waiting 1 second(s) for new pending messages...")
+                        await asyncio.sleep(1)
 
     def make_pipeline(
         self,

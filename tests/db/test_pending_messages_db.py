@@ -27,6 +27,7 @@ def fixture_pending_messages():
             item_content='{"address":"0xaC033C1cA5C49Eff98A1D9a56BeDBC4840010BA4","time":1648215809.0270267,"hashes":["fea0e00f73102aa951794a3ea85f6f1bbfd3decb804fb73232f2a645a379ae54"],"reason":"This well thought-out content offends me!"}',
             channel="INTEGRATION_TESTS",
             time=dt.datetime(2022, 10, 7, 17, 5),
+            next_attempt=dt.datetime(2022, 10, 7, 17, 5),
             retries=0,
             check_message=True,
             tx=ChainTxDb(
@@ -53,6 +54,7 @@ def fixture_pending_messages():
             item_content='{"address":"0x720F319A9c3226dCDd7D8C49163D79EDa1084E98","time":1644857371.391834,"key":"test_reference","content":{"a":1,"b":2}}',
             channel="INTEGRATION_TESTS",
             time=dt.datetime(2022, 10, 7, 22, 10),
+            next_attempt=dt.datetime(2022, 10, 7, 22, 10),
             retries=3,
             check_message=True,
             reception_time=dt.datetime(2022, 10, 7, 22, 10, 10),
@@ -69,6 +71,7 @@ def fixture_pending_messages():
             item_content='{"address":"0x720F319A9c3226dCDd7D8C49163D79EDa1084E98","time":1644857371.391834,"key":"test_reference","content":{"a":1,"b":2}}',
             channel="TEST",
             time=dt.datetime(2022, 10, 7, 21, 53),
+            next_attempt=dt.datetime(2022, 10, 7, 21, 53),
             retries=0,
             check_message=True,
             tx=ChainTxDb(
@@ -120,8 +123,14 @@ async def test_get_pending_messages(
         session.add_all(fixture_pending_messages)
         session.commit()
 
+    current_time = max(
+        pending_message.next_attempt for pending_message in fixture_pending_messages
+    )
+
     with session_factory() as session:
-        pending_messages = list(get_next_pending_messages(session=session))
+        pending_messages = list(
+            get_next_pending_messages(session=session, current_time=current_time)
+        )
 
         assert len(pending_messages) == 3
         # Check the order of messages
@@ -131,6 +140,7 @@ async def test_get_pending_messages(
         pending_messages = list(
             get_next_pending_messages(
                 session=session,
+                current_time=current_time,
                 exclude_item_hashes={
                     "588ac154509de449b0915844fa1117c72b9136eaaabd078494ea5c5c39cd14b2"
                 },
