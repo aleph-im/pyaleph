@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Set
 
 from aleph_message.models import ProgramContent
 from aleph_message.models.program import (
@@ -141,5 +141,6 @@ class ProgramMessageHandler(ContentHandler):
         for message in messages:
             await self.process_program_message(session=session, message=message)
 
-    async def forget_message(self, session: DbSession, message: MessageDb) -> None:
+    async def forget_message(self, session: DbSession, message: MessageDb) -> Set[str]:
         delete_program(session=session, item_hash=message.item_hash)
+        return set()

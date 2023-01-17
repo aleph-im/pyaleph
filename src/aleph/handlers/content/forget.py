@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import List, cast, Sequence, Dict
+from typing import List, cast, Sequence, Dict, Set
 
 from aleph_message.models import (
     MessageType,
@@ -131,13 +131,15 @@ class ForgetMessageHandler(ContentHandler):
                     f"Cannot forget message {target_hash} because it belongs to another user"
                 )
 
-    async def _forget_by_message_type(self, session: DbSession, message: MessageDb):
+    async def _forget_by_message_type(
+        self, session: DbSession, message: MessageDb
+    ) -> Set[str]:
         """
         When processing a FORGET message, performs additional cleanup depending
         on the type of message that is being forgotten.
         """
         content_handler = self.content_handlers[message.type]
-        await content_handler.forget_message(session=session, message=message)
+        return await content_handler.forget_message(session=session, message=message)
 
     async def _forget_message(
         self, session: DbSession, message: MessageDb, forgotten_by: MessageDb
@@ -149,7 +151,15 @@ class ForgetMessageHandler(ContentHandler):
             forget_message_hash=forgotten_by.item_hash,
         )
 
-        await self._forget_by_message_type(session=session, message=message)
+        additional_messages_to_forget = await self._forget_by_message_type(
+            session=session, message=message
+        )
+        for item_hash in additional_messages_to_forget:
+            forget_message(
+                session=session,
+                item_hash=item_hash,
+                forget_message_hash=forgotten_by.item_hash,
+            )
 
     async def _forget_item_hash(
         self, session: DbSession, item_hash: str, forgotten_by: MessageDb
@@ -216,5 +226,5 @@ class ForgetMessageHandler(ContentHandler):
         for message in messages:
             await self._process_forget_message(session=session, message=message)
 
-    async def forget_message(self, session: DbSession, message: MessageDb):
+    async def forget_message(self, session: DbSession, message: MessageDb) -> Set[str]:
         raise CannotForgetForgetMessage(target_hash=message.item_hash)
