@@ -11,7 +11,8 @@ from sqlalchemy.orm import selectinload
 from aleph.db.accessors.aggregates import get_aggregate_by_key, get_aggregate_elements
 from aleph.db.models import PendingMessageDb, AggregateContent, MessageDb
 from aleph.handlers.message_handler import MessageHandler
-from aleph.jobs.process_pending_messages import PendingMessageProcessor, ProcessedMessage
+from aleph.jobs.job_utils import ProcessedMessage
+from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
@@ -89,7 +90,6 @@ async def test_process_aggregate_first_element(
 @pytest.mark.asyncio
 async def test_process_aggregates(
     session_factory: DbSessionFactory,
-    mock_config: Config,
     message_processor: PendingMessageProcessor,
     fixture_aggregate_messages: List[Dict],
 ):
@@ -114,6 +114,7 @@ def aggregate_updates() -> Sequence[PendingMessageDb]:
         check_message=True,
         fetched=True,
         retries=0,
+        next_attempt=dt.datetime(2023, 1, 1),
         reception_time=dt.datetime(2022, 1, 1),
     )
     update = PendingMessageDb(
@@ -129,6 +130,7 @@ def aggregate_updates() -> Sequence[PendingMessageDb]:
         check_message=True,
         fetched=True,
         retries=0,
+        next_attempt=dt.datetime(2023, 1, 1, 1, 0, 0),
         reception_time=dt.datetime(2022, 1, 1),
     )
 
@@ -138,7 +140,6 @@ def aggregate_updates() -> Sequence[PendingMessageDb]:
 async def process_aggregates_one_by_one(
     session: DbSession,
     message_processor: PendingMessageProcessor,
-    config: Config,
     aggregates: Iterable[PendingMessageDb],
 ) -> Sequence[MessageDb]:
 
@@ -164,14 +165,12 @@ async def process_aggregates_one_by_one(
 async def test_process_aggregates_in_order(
     session_factory: DbSessionFactory,
     message_processor: PendingMessageProcessor,
-    mock_config: Config,
     aggregate_updates: Sequence[PendingMessageDb],
 ):
     with session_factory() as session:
         original, update = await process_aggregates_one_by_one(
             session=session,
             message_processor=message_processor,
-            config=mock_config,
             aggregates=aggregate_updates,
         )
 
@@ -193,14 +192,12 @@ async def test_process_aggregates_in_order(
 async def test_process_aggregates_reverse_order(
     session_factory: DbSessionFactory,
     message_processor: PendingMessageProcessor,
-    mock_config: Config,
     aggregate_updates: Sequence[PendingMessageDb],
 ):
     with session_factory() as session:
         update, original = await process_aggregates_one_by_one(
             session=session,
             message_processor=message_processor,
-            config=mock_config,
             aggregates=reversed(aggregate_updates),
         )
 

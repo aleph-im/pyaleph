@@ -23,7 +23,7 @@ def get_defaults():
             },
             "jobs": {
                 "pending_messages": {
-                    "max_retries": 1000,
+                    "max_retries": 10,
                     "max_concurrency": 10,
                     "store": 30,
                 },

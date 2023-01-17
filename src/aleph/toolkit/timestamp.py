@@ -27,4 +27,9 @@ def coerce_to_datetime(
 
 
 def utc_now() -> dt.datetime:
+    """
+    Returns the current time as a UTC-localized datetime object.
+    This differs from datetime.utcnow() because `utcnow()` is not localized.
+    """
+
     return pytz.utc.localize(dt.datetime.utcnow())

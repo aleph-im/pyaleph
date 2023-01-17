@@ -6,7 +6,8 @@ from typing import List, Optional, Union, Any, Mapping, Sequence, Iterable
 from aleph_message.models import ItemType, MessageConfirmation
 
 from aleph.db.models import MessageDb, PendingMessageDb, MessageStatusDb
-from aleph.jobs.process_pending_messages import PendingMessageProcessor, MessageProcessingResult
+from aleph.jobs.job_utils import MessageProcessingResult
+from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import MessageStatus
