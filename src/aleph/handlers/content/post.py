@@ -1,5 +1,5 @@
 import logging
-from typing import List, Any, Dict, Mapping, Union, Optional
+from typing import List, Any, Dict, Mapping, Union, Optional, Set
 
 from aleph_message.models import PostContent, ChainRef, Chain
 from sqlalchemy import update
@@ -10,6 +10,7 @@ from aleph.db.accessors.posts import (
     get_original_post,
     delete_post,
     refresh_latest_amend,
+    delete_amends,
 )
 from aleph.db.models.messages import MessageDb
 from aleph.db.models.posts import PostDb
@@ -141,10 +142,11 @@ class PostMessageHandler(ContentHandler):
         for message in messages:
             await self.process_post(session=session, message=message)
 
-    async def forget_message(self, session: DbSession, message: MessageDb) -> None:
+    async def forget_message(self, session: DbSession, message: MessageDb) -> Set[str]:
         content = get_post_content(message)
 
         LOGGER.debug("Deleting post %s...", message.item_hash)
+        amend_hashes = delete_amends(session=session, item_hash=message.item_hash)
         delete_post(session=session, item_hash=message.item_hash)
 
         if content.type == "amend":
@@ -156,3 +158,5 @@ class PostMessageHandler(ContentHandler):
 
             if original_post.latest_amend == message.item_hash:
                 refresh_latest_amend(session, original_post.item_hash)
+
+        return set(amend_hashes)
