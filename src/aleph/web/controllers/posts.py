@@ -4,7 +4,11 @@ from aiohttp import web
 from aleph_message.models import ItemHash
 from pydantic import BaseModel, Field, root_validator, validator, ValidationError
 
-from aleph.db.accessors.posts import get_matching_posts, MergedPost, count_matching_posts
+from aleph.db.accessors.posts import (
+    get_matching_posts,
+    MergedPost,
+    count_matching_posts,
+)
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.sort_order import SortOrder
 from aleph.web.controllers.utils import (
@@ -12,7 +16,8 @@ from aleph.web.controllers.utils import (
     DEFAULT_PAGE,
     LIST_FIELD_SEPARATOR,
     Pagination,
-    cond_output, get_path_page,
+    cond_output,
+    get_path_page,
 )
 
 
@@ -27,7 +32,9 @@ class PostQueryParams(BaseModel):
         default=None, description="Accepted values for the 'content.ref' field."
     )
     post_types: Optional[List[str]] = Field(
-        default=None, description="Accepted values for the 'content.type' field."
+        default=None,
+        alias="types",
+        description="Accepted values for the 'content.type' field.",
     )
     tags: Optional[List[str]] = Field(
         default=None, description="Accepted values for the 'content.content.tag' field."
@@ -101,8 +108,7 @@ def merged_post_to_dict(merged_post: MergedPost) -> Dict[str, Any]:
 
 
 async def view_posts_list(request):
-    """Posts list view with filters
-    """
+    """Posts list view with filters"""
 
     query_string = request.query_string
 
@@ -125,10 +131,7 @@ async def view_posts_list(request):
         # TODO: should return the count of matching posts
         total_posts = count_matching_posts(session=session, **find_filters)
         results = get_matching_posts(session=session, **find_filters)
-        posts = [
-            merged_post_to_dict(post)
-            for post in results
-        ]
+        posts = [merged_post_to_dict(post) for post in results]
 
     context = {"posts": posts}
 
