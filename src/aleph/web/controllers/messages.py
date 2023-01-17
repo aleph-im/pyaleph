@@ -72,7 +72,7 @@ class BaseMessageQueryParams(BaseModel):
         alias="contentKeys",
         description="Accepted values for the 'content.keys' field.",
     )
-    content_types: Optional[List[ItemHash]] = Field(
+    content_types: Optional[List[str]] = Field(
         default=None,
         alias="contentTypes",
         description="Accepted values for the 'content.type' field.",
