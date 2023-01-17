@@ -1,5 +1,6 @@
+import datetime as dt
 import itertools
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Union, Tuple
 
 import aiohttp
 import pytest
@@ -159,10 +160,14 @@ async def fetch_messages_filter_time(
     api_client,
     start: Optional[float] = None,
     end: Optional[float] = None,
+    sort_by: str = "tx-time",
     sort_order: int = -1,
 ) -> aiohttp.ClientResponse:
 
-    params: Dict[str, Union[float, int]] = {"sort_order": sort_order}
+    params: Dict[str, Union[float, int, str]] = {
+        "sort_by": sort_by,
+        "sort_order": sort_order,
+    }
     if start:
         params["startDate"] = start
     if end:
@@ -175,9 +180,12 @@ async def fetch_messages_filter_time_expect_success(
     api_client,
     start: Optional[float] = None,
     end: Optional[float] = None,
+    sort_by: str = "tx-time",
     sort_order: int = -1,
 ) -> List[Dict]:
-    response = await fetch_messages_filter_time(api_client, start, end, sort_order)
+    response = await fetch_messages_filter_time(
+        api_client, start=start, end=end, sort_order=sort_order
+    )
     print(await response.text())
     assert response.status == 200, await response.text()
     data = await response.json()
@@ -338,3 +346,30 @@ async def test_pagination(fixture_messages, ccn_api_client):
     # Negative pagination
     response = await fetch_messages_with_pagination(ccn_api_client, pagination=-10)
     assert response.status == 422
+
+
+@pytest.mark.asyncio()
+@pytest.mark.parametrize("sort_order", [-1, 1])
+async def test_sort_by_tx_time(fixture_messages, ccn_api_client, sort_order: int):
+    def get_confirmed_time(msg: Dict) -> Tuple[float, float]:
+        try:
+            return msg["confirmations"][0]["time"], msg["time"]
+        except KeyError:
+            # Return a high timestamp to make unconfirmed messages last
+            return dt.datetime(3000, 1, 1).timestamp(), msg["time"]
+
+    sorted_messages_by_time = sorted(fixture_messages, key=get_confirmed_time)
+
+    # Descending order
+    messages = await fetch_messages_filter_time_expect_success(
+        ccn_api_client, sort_by="tx-time", sort_order=sort_order
+    )
+    assert_messages_equal(messages=messages, expected_messages=sorted_messages_by_time)
+
+    if sort_order == -1:
+        # Note: list() is used for mypy
+        sorted_messages_by_time = list(reversed(sorted_messages_by_time))
+
+    assert [msg["item_hash"] for msg in messages] == [
+        msg["item_hash"] for msg in sorted_messages_by_time
+    ]
