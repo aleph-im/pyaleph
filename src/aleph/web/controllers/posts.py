@@ -10,7 +10,7 @@ from aleph.db.accessors.posts import (
     count_matching_posts,
 )
 from aleph.types.db_session import DbSessionFactory
-from aleph.types.sort_order import SortOrder
+from aleph.types.sort_order import SortOrder, SortBy
 from aleph.web.controllers.utils import (
     DEFAULT_MESSAGES_PER_PAGE,
     DEFAULT_PAGE,
@@ -63,6 +63,12 @@ class PostQueryParams(BaseModel):
     )
     page: int = Field(
         default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
+    )
+    sort_by: SortBy = Field(
+        default=SortBy.TIME,
+        description="Key to use to sort the posts. "
+        "'time' uses the post creation time field. "
+        "'tx-time' uses the first on-chain confirmation time.",
     )
     sort_order: SortOrder = Field(
         default=SortOrder.DESCENDING,
@@ -128,7 +134,6 @@ async def view_posts_list(request):
 
     session_factory: DbSessionFactory = request.app["session_factory"]
     with session_factory() as session:
-        # TODO: should return the count of matching posts
         total_posts = count_matching_posts(session=session, **find_filters)
         results = get_matching_posts(session=session, **find_filters)
         posts = [merged_post_to_dict(post) for post in results]

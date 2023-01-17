@@ -1,9 +1,9 @@
 import datetime as dt
 import traceback
-from typing import Optional, Sequence, Union, Iterable, Any, Mapping, overload
+from typing import Optional, Sequence, Union, Iterable, Any, Mapping, overload, Tuple
 
 from aleph_message.models import ItemHash, Chain, MessageType
-from sqlalchemy import func, select, update, text, delete
+from sqlalchemy import func, select, update, text, delete, nullsfirst, nullslast
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import selectinload, load_only
 from sqlalchemy.sql import Insert, Select
@@ -17,7 +17,7 @@ from aleph.types.message_status import (
     MessageProcessingException,
     ErrorCode,
 )
-from aleph.types.sort_order import SortOrder
+from aleph.types.sort_order import SortOrder, SortBy
 from .pending_messages import delete_pending_message
 from ..models.chains import ChainTxDb
 from ..models.messages import (
@@ -57,6 +57,7 @@ def make_matching_messages_query(
     content_hashes: Optional[Sequence[ItemHash]] = None,
     content_types: Optional[Sequence[str]] = None,
     channels: Optional[Sequence[str]] = None,
+    sort_by: SortBy = SortBy.TIME,
     sort_order: SortOrder = SortOrder.DESCENDING,
     page: int = 1,
     pagination: int = 20,
@@ -104,13 +105,43 @@ def make_matching_messages_query(
     if channels:
         select_stmt = select_stmt.where(MessageDb.channel.in_(channels))
 
-    order_by_column = (
-        MessageDb.time.desc()
-        if sort_order == SortOrder.DESCENDING
-        else MessageDb.time.asc()
-    )
+    order_by_columns: Tuple  # For mypy to leave us alone until SQLA2
 
-    select_stmt = select_stmt.order_by(order_by_column).offset((page - 1) * pagination)
+    if sort_by == SortBy.TX_TIME:
+        select_earliest_confirmation = (
+            select(
+                message_confirmations.c.item_hash,
+                func.min(ChainTxDb.datetime).label("earliest_confirmation"),
+            )
+            .join(ChainTxDb, message_confirmations.c.tx_hash == ChainTxDb.hash)
+            .group_by(message_confirmations.c.item_hash)
+        ).subquery()
+        select_stmt = select_stmt.join(
+            select_earliest_confirmation,
+            MessageDb.item_hash == select_earliest_confirmation.c.item_hash,
+            isouter=True,
+        )
+        order_by_columns = (
+            (
+                nullsfirst(select_earliest_confirmation.c.earliest_confirmation.desc()),
+                MessageDb.time.desc(),
+            )
+            if sort_order == SortOrder.DESCENDING
+            else (
+                nullslast(select_earliest_confirmation.c.earliest_confirmation.asc()),
+                MessageDb.time.asc(),
+            )
+        )
+    else:
+        order_by_columns = (
+            (
+                MessageDb.time.desc()
+                if sort_order == SortOrder.DESCENDING
+                else MessageDb.time.asc()
+            ),
+        )
+
+    select_stmt = select_stmt.order_by(*order_by_columns).offset((page - 1) * pagination)
 
     # If pagination == 0, return all matching results
     if pagination:
@@ -123,6 +154,7 @@ def count_matching_messages(
     session: DbSession,
     start_date: float = 0.0,
     end_date: float = 0.0,
+    sort_by: SortBy = SortBy.TIME,
     sort_order: SortOrder = SortOrder.DESCENDING,
     page: int = 1,
     pagination: int = 0,

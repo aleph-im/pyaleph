@@ -1,17 +1,28 @@
 import datetime as dt
-from typing import Optional, Protocol, Dict, Any, Sequence, Union, List, cast
+from typing import Optional, Protocol, Dict, Any, Sequence, Union, List, cast, Tuple
 
 from aleph_message.models import ItemHash
-from sqlalchemy import func, select, literal_column, TIMESTAMP, String, delete, update
+from sqlalchemy import (
+    func,
+    select,
+    literal_column,
+    TIMESTAMP,
+    String,
+    delete,
+    update,
+    nullsfirst,
+    nullslast,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql import Select
 
+from aleph.db.models import message_confirmations, ChainTxDb
 from aleph.db.models.posts import PostDb
 from aleph.toolkit.timestamp import coerce_to_datetime
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSession
-from aleph.types.sort_order import SortOrder
+from aleph.types.sort_order import SortOrder, SortBy
 
 
 class MergedPost(Protocol):
@@ -75,13 +86,10 @@ def refresh_latest_amend(session: DbSession, item_hash: str) -> None:
         .subquery()
     )
 
-    select_stmt = (
-        select(PostDb.item_hash)
-        .join(
-            select_latest_amend,
-            (PostDb.amends == select_latest_amend.c.amends)
-            & (PostDb.creation_datetime == select_latest_amend.c.creation_datetime),
-        )
+    select_stmt = select(PostDb.item_hash).join(
+        select_latest_amend,
+        (PostDb.amends == select_latest_amend.c.amends)
+        & (PostDb.creation_datetime == select_latest_amend.c.creation_datetime),
     )
 
     latest_amend_hash = session.execute(select_stmt).scalar()
@@ -104,6 +112,7 @@ def make_matching_posts_query(
     channels: Optional[Sequence[Channel]] = None,
     start_date: Optional[Union[float, dt.datetime]] = None,
     end_date: Optional[Union[float, dt.datetime]] = None,
+    sort_by: Optional[SortBy] = None,
     sort_order: Optional[SortOrder] = None,
     page: int = 0,
     pagination: int = 20,
@@ -137,13 +146,50 @@ def make_matching_posts_query(
     if end_datetime:
         select_stmt = select_stmt.where(last_updated_column < end_datetime)
 
+    order_by_columns: Tuple  # For mypy to leave us alone until SQLA2
+
     if sort_order:
-        order_by_column = (
-            last_updated_column.desc()
-            if sort_order == SortOrder.DESCENDING
-            else last_updated_column.asc()
-        )
-        select_stmt = select_stmt.order_by(order_by_column)
+        if sort_by == SortBy.TX_TIME:
+            select_earliest_confirmation = (
+                select(
+                    message_confirmations.c.item_hash,
+                    func.min(ChainTxDb.datetime).label("earliest_confirmation"),
+                )
+                .join(ChainTxDb, message_confirmations.c.tx_hash == ChainTxDb.hash)
+                .group_by(message_confirmations.c.item_hash)
+            ).subquery()
+
+            select_stmt = select_stmt.join(
+                select_earliest_confirmation,
+                select_merged_post_subquery.c.original_item_hash
+                == select_earliest_confirmation.c.item_hash,
+                isouter=True,
+            )
+
+            order_by_columns = (
+                (
+                    nullsfirst(
+                        select_earliest_confirmation.c.earliest_confirmation.desc()
+                    ),
+                    select_merged_post_subquery.c.created.desc(),
+                )
+                if sort_order == SortOrder.DESCENDING
+                else (
+                    nullslast(
+                        select_earliest_confirmation.c.earliest_confirmation.asc()
+                    ),
+                    select_merged_post_subquery.c.created.asc(),
+                )
+            )
+        else:
+            order_by_columns = (
+                (
+                    last_updated_column.desc()
+                    if sort_order == SortOrder.DESCENDING
+                    else last_updated_column.asc()
+                ),
+            )
+        select_stmt = select_stmt.order_by(*order_by_columns)
 
     # If pagination == 0, return all matching results
     if pagination:
@@ -158,6 +204,8 @@ def count_matching_posts(
     session: DbSession,
     page: int = 1,
     pagination: int = 0,
+    sort_by: SortBy = SortBy.TIME,
+    sort_order: SortOrder = SortOrder.DESCENDING,
     start_date: float = 0,
     end_date: float = 0,
     **kwargs,

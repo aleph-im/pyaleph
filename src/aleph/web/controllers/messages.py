@@ -35,7 +35,7 @@ from aleph.schemas.api.messages import (
 )
 from aleph.types.db_session import DbSessionFactory, DbSession
 from aleph.types.message_status import MessageStatus
-from aleph.types.sort_order import SortOrder
+from aleph.types.sort_order import SortOrder, SortBy
 from aleph.web.controllers.utils import (
     LIST_FIELD_SEPARATOR,
     mq_make_aleph_message_topic_queue,
@@ -48,6 +48,12 @@ DEFAULT_WS_HISTORY = 10
 
 
 class BaseMessageQueryParams(BaseModel):
+    sort_by: SortBy = Field(
+        default=SortBy.TIME,
+        description="Key to use to sort the messages. "
+        "'time' uses the message time field. "
+        "'tx-time' uses the first on-chain confirmation time.",
+    )
     sort_order: SortOrder = Field(
         default=SortOrder.DESCENDING,
         description="Order in which messages should be listed: "
