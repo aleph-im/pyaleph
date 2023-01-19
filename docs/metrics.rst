@@ -26,9 +26,9 @@ Below are the current metrics, a lot more are coming in the future as we improve
 +-------------------------------------------------+---------------+--------------------------------------------------------------------------------------------+
 | pyaleph_status_sync_messages_total              | int           | Total number of treated message                                                            |
 +-------------------------------------------------+---------------+--------------------------------------------------------------------------------------------+
-| pyaleph_status_sync_pending_messages_total      | int           | Number of messages that are pending treatement or need to be retried                       |
+| pyaleph_status_sync_permanent_files_total       | int           | Total number of permanent files stored                                                     |
 +-------------------------------------------------+---------------+--------------------------------------------------------------------------------------------+
-| pyaleph_status_sync_messages_total              | int           | Number of messages that are pending treatement or need to be retried                       |
+| pyaleph_status_sync_pending_messages_total      | int           | Number of messages that are pending treatement or need to be retried                       |
 +-------------------------------------------------+---------------+--------------------------------------------------------------------------------------------+
 | pyaleph_status_sync_pending_txs_total           | int           | Number of transactions that are pending treatment or need to be retried                    |
 +-------------------------------------------------+---------------+--------------------------------------------------------------------------------------------+
