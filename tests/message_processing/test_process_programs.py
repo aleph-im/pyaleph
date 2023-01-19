@@ -1,13 +1,22 @@
+import datetime as dt
 import itertools
 import json
+from typing import List
 
 import pytest
+import pytz
 from aleph_message.models import ItemType, Chain, MessageType
-from aleph_message.models.program import MachineType, VolumePersistence
+from aleph_message.models.program import MachineType, VolumePersistence, ProgramContent, ImmutableVolume
 from configmanager import Config
 from more_itertools import one
 from sqlalchemy import select
 
+from aleph.db.accessors.files import (
+    insert_message_file_pin,
+    upsert_file_tag,
+)
+from aleph.db.accessors.messages import get_message_status, get_rejected_message
+from aleph.db.accessors.programs import get_program
 from aleph.db.models import (
     PendingMessageDb,
     MessageStatusDb,
@@ -15,11 +24,13 @@ from aleph.db.models import (
     ImmutableVolumeDb,
     EphemeralVolumeDb,
     PersistentVolumeDb,
+    StoredFileDb,
 )
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.db_session import DbSessionFactory
-from aleph.types.message_status import MessageStatus
+from aleph.types.db_session import DbSessionFactory, DbSession
+from aleph.types.files import FileTag, FileType
+from aleph.types.message_status import MessageStatus, ErrorCode
 
 
 @pytest.fixture
@@ -86,13 +97,61 @@ def fixture_program_message_with_subscriptions(
     return pending_message
 
 
+def get_volumes_with_ref(content:ProgramContent) -> List:
+    volumes = [content.code, content.runtime]
+    if content.data:
+        volumes.append(content.data)
+
+    for volume in content.volumes:
+        if isinstance(volume, ImmutableVolume):
+            volumes.append(volume)
+
+    return volumes
+
+def insert_volume_refs(session: DbSession, message: PendingMessageDb):
+    """
+    Insert volume references in the DB to make the program processable.
+    """
+
+    content = ProgramContent.parse_raw(message.item_content)
+    volumes = get_volumes_with_ref(content)
+
+    created = pytz.utc.localize(dt.datetime(2023, 1, 1))
+
+    for volume in volumes:
+        # Note: we use the reversed ref to generate the file hash for style points,
+        # but it could be set to any valid hash.
+        file_hash = volume.ref[::-1]
+
+        session.add(StoredFileDb(hash=file_hash, size=1024 * 1024, type=FileType.FILE))
+        session.flush()
+        insert_message_file_pin(
+            session=session,
+            file_hash=volume.ref[::-1],
+            owner=content.address,
+            item_hash=volume.ref,
+            ref=None,
+            created=created,
+        )
+        if volume.use_latest:
+            upsert_file_tag(
+                session=session,
+                tag=FileTag(volume.ref),
+                owner=content.address,
+                file_hash=volume.ref[::-1],
+                last_updated=created,
+            )
+
+
 @pytest.mark.asyncio
 async def test_process_program(
     session_factory: DbSessionFactory,
-    mock_config: Config,
     message_processor: PendingMessageProcessor,
     fixture_program_message: PendingMessageDb,
 ):
+    with session_factory() as session:
+        insert_volume_refs(session, fixture_program_message)
+        session.commit()
 
     pipeline = message_processor.make_pipeline()
     # Exhaust the iterator
@@ -102,7 +161,10 @@ async def test_process_program(
     content_dict = json.loads(fixture_program_message.item_content)
 
     with session_factory() as session:
-        program: ProgramDb = session.execute(select(ProgramDb)).scalar_one()
+        program = get_program(
+            session=session, item_hash=fixture_program_message.item_hash
+        )
+        assert program is not None
 
         assert program.owner == fixture_program_message.sender
         assert program.type == MachineType.vm_function
@@ -156,11 +218,13 @@ async def test_process_program(
 @pytest.mark.asyncio
 async def test_program_with_subscriptions(
     session_factory: DbSessionFactory,
-    mock_config: Config,
     message_processor: PendingMessageProcessor,
     fixture_program_message_with_subscriptions: PendingMessageDb,
 ):
     program_message = fixture_program_message_with_subscriptions
+    with session_factory() as session:
+        insert_volume_refs(session, program_message)
+        session.commit()
 
     pipeline = message_processor.make_pipeline()
     # Exhaust the iterator
@@ -178,3 +242,39 @@ async def test_program_with_subscriptions(
 
         assert message_trigger["channel"] == "TEST"
         assert message_trigger["sender"] == "0xE221373557Cc8e6094dB6cC3E8EFeb90003dE9ea"
+
+
+@pytest.mark.asyncio
+async def test_process_program_missing_volumes(
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    fixture_program_message_with_subscriptions: PendingMessageDb,
+):
+    """
+    Check that a program message with volumes not references in file_tags/file_pins
+    is rejected.
+    """
+
+    program_message = fixture_program_message_with_subscriptions
+    program_hash = program_message.item_hash
+    pipeline = message_processor.make_pipeline()
+    # Exhaust the iterator
+    _ = [message async for message in pipeline]
+
+    with session_factory() as session:
+        program_db = get_program(session=session, item_hash=program_hash)
+        assert program_db is None
+
+        message_status = get_message_status(session=session, item_hash=program_hash)
+        assert message_status is not None
+        assert message_status.status == MessageStatus.REJECTED
+
+        rejected_message = get_rejected_message(session=session, item_hash=program_hash)
+        assert rejected_message is not None
+        assert rejected_message.error_code == ErrorCode.PROGRAM_VOLUME_NOT_FOUND
+
+        content = ProgramContent.parse_raw(program_message.item_content)
+        volume_refs = set(volume.ref for volume in get_volumes_with_ref(content))
+        assert isinstance(rejected_message.details, dict)
+        assert set(rejected_message.details["errors"]) == volume_refs
+        assert rejected_message.traceback is None
