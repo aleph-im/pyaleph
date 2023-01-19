@@ -27,6 +27,7 @@ from aleph.db.accessors.files import (
     delete_file_pin,
     refresh_file_tag,
     is_pinned_file,
+    get_message_file_pin,
 )
 from aleph.db.models import MessageDb, StoredFileDb
 from aleph.exceptions import AlephStorageException, UnknownHashError
@@ -39,6 +40,8 @@ from aleph.types.message_status import (
     PermissionDenied,
     FileUnavailable,
     InvalidMessageFormat,
+    StoreRefNotFound,
+    StoreCannotUpdateStoreWithRef,
 )
 from aleph.utils import item_type_from_hash
 
@@ -195,7 +198,37 @@ class StoreMessageHandler(ContentHandler):
         )
         upsert_stored_file(session=session, file=stored_file)
 
+    async def check_dependencies(self, session: DbSession, message: MessageDb) -> None:
+        content = _get_store_content(message)
+        if content.ref is None:
+            return
+
+        # Determine whether the ref field represents a message hash or a user-defined
+        # string. If it is a user-defined string, we simply consider the file as a
+        # revision. It does not matter if the original message or other revisions
+        # were processed beforehand as the tag system supports out of order updates
+        # and there is no way to determine which message originally defined the ref/tag.
+        # On the other hand, if the ref is a message hash, we must check if the target
+        # file is itself a revision of another file as we do not support revision trees.
+        try:
+            _ = ItemHash(content.ref)
+            ref_is_hash = True
+        except ValueError:
+            ref_is_hash = False
+
+        if not ref_is_hash:
+            return
+
+        ref_file_pin_db = get_message_file_pin(session=session, item_hash=content.ref)
+
+        if ref_file_pin_db is None:
+            raise StoreRefNotFound(content.ref)
+
+        if ref_file_pin_db.ref is not None:
+            raise StoreCannotUpdateStoreWithRef()
+
     async def check_permissions(self, session: DbSession, message: MessageDb):
+        await super().check_permissions(session=session, message=message)
         content = _get_store_content(message)
         if content.ref is None:
             return

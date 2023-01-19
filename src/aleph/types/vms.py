@@ -1,4 +1,7 @@
 from enum import Enum
+from typing import NewType
+
+ProgramVersion = NewType("ProgramVersion", str)
 
 
 class CpuArchitecture(str, Enum):

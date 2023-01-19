@@ -34,6 +34,12 @@ class ErrorCode(IntEnum):
     POST_AMEND_NO_TARGET = 100
     POST_AMEND_TARGET_NOT_FOUND = 101
     POST_AMEND_AMEND = 102
+    STORE_REF_NOT_FOUND = 200
+    STORE_UPDATE_UPDATE = 201
+    PROGRAM_REF_NOT_FOUND = 300
+    PROGRAM_VOLUME_NOT_FOUND = 301
+    PROGRAM_AMEND_NOT_ALLOWED = 302
+    PROGRAM_UPDATE_UPDATE = 303
     FORGET_NO_TARGET = 500
     FORGET_TARGET_NOT_FOUND = 501
     FORGET_FORGET = 502
@@ -164,6 +170,57 @@ class NoForgetTarget(InvalidMessageException):
     """
 
     error_code = ErrorCode.FORGET_NO_TARGET
+
+
+class StoreRefNotFound(RetryMessageException):
+    """
+    The original store message hash specified in the `ref` field could not be found.
+    """
+
+    error_code = ErrorCode.STORE_REF_NOT_FOUND
+
+
+class StoreCannotUpdateStoreWithRef(InvalidMessageException):
+    """
+    The store message targeted by the `ref` field has a value in the `ref` field itself.
+    Update trees are not supported.
+    """
+
+    error_code = ErrorCode.STORE_UPDATE_UPDATE
+
+
+class ProgramRefNotFound(RetryMessageException):
+    """
+    The original program specified in the `ref` field could not be found.
+    """
+
+    error_code = ErrorCode.PROGRAM_REF_NOT_FOUND
+
+
+class ProgramVolumeNotFound(RetryMessageException):
+    """
+    One or more volume files could not be found.
+    """
+
+    error_code = ErrorCode.PROGRAM_VOLUME_NOT_FOUND
+
+
+class ProgramUpdateNotAllowed(InvalidMessageException):
+    """
+    The message attempts to amend an immutable program, i.e. for which allow_amend
+    is set to False.
+    """
+
+    error_code = ErrorCode.PROGRAM_AMEND_NOT_ALLOWED
+
+
+class ProgramCannotUpdateUpdate(InvalidMessageException):
+    """
+    The program hash in the `replaces` field has a value for the `replaces` field
+    itself. Update trees are not supported.
+    """
+
+    error_code = ErrorCode.PROGRAM_UPDATE_UPDATE
 
 
 class ForgetTargetNotFound(RetryMessageException):
