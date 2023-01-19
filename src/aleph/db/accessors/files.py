@@ -1,5 +1,5 @@
 import datetime as dt
-from typing import Optional
+from typing import Optional, Iterable, Sequence, Collection
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -17,9 +17,7 @@ from ..models.files import (
 
 
 def is_pinned_file(session: DbSession, file_hash: str) -> bool:
-    return FilePinDb.exists(
-        session=session, where=FilePinDb.file_hash == file_hash
-    )
+    return FilePinDb.exists(session=session, where=FilePinDb.file_hash == file_hash)
 
 
 def upsert_tx_file_pin(
@@ -61,11 +59,26 @@ def count_file_pins(session: DbSession, file_hash: str) -> int:
     return session.execute(select_count_stmt).scalar_one()
 
 
+def find_file_pins(session: DbSession, item_hashes: Collection[str]) -> Iterable[str]:
+    select_stmt = select(MessageFilePinDb.item_hash).where(
+        MessageFilePinDb.item_hash.in_(item_hashes)
+    )
+    return session.execute(select_stmt).scalars()
+
+
 def delete_file_pin(session: DbSession, item_hash: str) -> None:
     delete_stmt = delete(MessageFilePinDb).where(
         MessageFilePinDb.item_hash == item_hash
     )
     session.execute(delete_stmt)
+
+
+def get_message_file_pin(
+    session: DbSession, item_hash: str
+) -> Optional[MessageFilePinDb]:
+    return session.execute(
+        select(MessageFilePinDb).where(MessageFilePinDb.item_hash == item_hash)
+    ).scalar_one_or_none()
 
 
 def upsert_stored_file(session: DbSession, file: StoredFileDb) -> None:
@@ -85,6 +98,15 @@ def delete_file(session: DbSession, file_hash: str) -> None:
 def get_file_tag(session: DbSession, tag: FileTag) -> Optional[FileTagDb]:
     select_stmt = select(FileTagDb).where(FileTagDb.tag == tag)
     return session.execute(select_stmt).scalar()
+
+
+def file_tag_exists(session: DbSession, tag: FileTag) -> bool:
+    return FileTagDb.exists(session=session, where=FileTagDb.tag == tag)
+
+
+def find_file_tags(session: DbSession, tags: Collection[FileTag]) -> Iterable[FileTag]:
+    select_stmt = select(FileTagDb.tag).where(FileTagDb.tag.in_(tags))
+    return session.execute(select_stmt).scalars()
 
 
 def upsert_file_tag(

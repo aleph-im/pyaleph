@@ -1,12 +1,13 @@
+import datetime as dt
 from typing import Any, Optional, Dict, List
 
 from aleph_message.models.program import MachineType, Encoding, VolumePersistence
-from sqlalchemy import Column, String, ForeignKey, Boolean, Integer
+from sqlalchemy import Column, String, ForeignKey, Boolean, Integer, TIMESTAMP
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship, declared_attr, Mapped
 from sqlalchemy_utils import ChoiceType
 
-from aleph.types.vms import CpuArchitecture
+from aleph.types.vms import CpuArchitecture, ProgramVersion
 from .base import Base
 
 
@@ -14,7 +15,9 @@ class RootVolumeMixin:
     @declared_attr
     def program_hash(cls) -> Mapped[str]:
         return Column(
-            "program_hash", ForeignKey("programs.item_hash"), primary_key=True
+            "program_hash",
+            ForeignKey("programs.item_hash", ondelete="CASCADE"),
+            primary_key=True,
         )
 
     encoding: Encoding = Column(ChoiceType(Encoding), nullable=False)
@@ -49,7 +52,7 @@ class RuntimeDb(Base, VolumeWithRefMixin):
     __tablename__ = "program_runtimes"
 
     program_hash: Mapped[str] = Column(
-        ForeignKey("programs.item_hash"), primary_key=True
+        ForeignKey("programs.item_hash", ondelete="CASCADE"), primary_key=True
     )
     comment: str = Column(String, nullable=False)
     program: "ProgramDb" = relationship("ProgramDb", back_populates="runtime")
@@ -61,7 +64,7 @@ class MachineVolumeBaseDb(Base):
     id: int = Column(Integer, primary_key=True)
     type: str = Column(String, nullable=False)
     program_hash: str = Column(
-        ForeignKey("programs.item_hash"), nullable=False, index=True
+        ForeignKey("programs.item_hash", ondelete="CASCADE"), nullable=False, index=True
     )
     comment: Optional[str] = Column(String, nullable=True)
     mount: Optional[str] = Column(String, nullable=True)
@@ -123,6 +126,7 @@ class ProgramDb(Base):
     node_address_regex: Optional[str] = Column(String, nullable=True)
 
     replaces: Optional[str] = Column(ForeignKey(item_hash), nullable=True)
+    created: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
 
     code_volume: CodeVolumeDb = relationship(
         "CodeVolumeDb",
@@ -145,3 +149,12 @@ class ProgramDb(Base):
     volumes: List[MachineVolumeBaseDb] = relationship(
         MachineVolumeBaseDb, back_populates="program", uselist=True
     )
+
+
+class ProgramVersionDb(Base):
+    __tablename__ = "program_versions"
+
+    program_hash: str = Column(String, primary_key=True)
+    owner: str = Column(String, nullable=False)
+    current_version: ProgramVersion = Column(String, nullable=False)
+    last_updated: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
