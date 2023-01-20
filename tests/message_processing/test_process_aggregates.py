@@ -1,15 +1,16 @@
+import datetime as dt
 import json
 from typing import Dict, List, Sequence, Iterable
 
 import pytest
-from aleph_message.models import ItemType, Chain, MessageType
+from aleph_message.models import ItemType, Chain, MessageType, AggregateContent
 from configmanager import Config
 from more_itertools import one
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from aleph.db.accessors.aggregates import get_aggregate_by_key, get_aggregate_elements
-from aleph.db.models import PendingMessageDb, AggregateContent, MessageDb
+from aleph.db.models import PendingMessageDb, MessageDb
 from aleph.handlers.message_handler import MessageHandler
 from aleph.jobs.job_utils import ProcessedMessage
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
@@ -18,8 +19,6 @@ from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory, DbSession
 from message_test_helpers import process_pending_messages
-
-import datetime as dt
 
 
 @pytest.mark.asyncio
