@@ -1,19 +1,18 @@
 import datetime as dt
-from typing import Any, Dict, List, Optional, Type, Union, Mapping
+from typing import Any, Dict, List, Optional, Type, Mapping
 
 from aleph_message.models import (
     Chain,
     MessageType,
     ItemType,
+    AggregateContent,
     BaseContent,
-    # AggregateContent,
     ForgetContent,
     PostContent,
     ProgramContent,
     StoreContent,
-    AggregateContentKey,
 )
-from pydantic import Field, Extra, ValidationError
+from pydantic import ValidationError
 from pydantic.error_wrappers import ErrorWrapper
 from sqlalchemy import (
     Column,
@@ -35,20 +34,6 @@ from aleph.types.message_status import MessageStatus, ErrorCode
 from .base import Base
 from .chains import ChainTxDb
 from .pending_messages import PendingMessageDb
-
-
-# TODO: remove once aleph-message is updated
-class AggregateContent(BaseContent):
-    """Content of an AGGREGATE message"""
-
-    key: Union[str, AggregateContentKey] = Field(
-        description="The aggregate key can be either a string of a dict containing the key in field 'name'"
-    )
-    content: Dict = Field(description="The content of an aggregate must be a dict")
-
-    class Config:
-        extra = Extra.forbid
-
 
 CONTENT_TYPE_MAP: Dict[MessageType, Type[BaseContent]] = {
     MessageType.aggregate: AggregateContent,
@@ -218,6 +203,8 @@ class RejectedMessageDb(Base):
 
     item_hash: str = Column(String, primary_key=True)
     message: Mapping[str, Any] = Column(JSONB, nullable=False)
-    error_code: ErrorCode = Column(ChoiceType(ErrorCode, impl=Integer()), nullable=False)
+    error_code: ErrorCode = Column(
+        ChoiceType(ErrorCode, impl=Integer()), nullable=False
+    )
     details: Optional[Dict[str, Any]] = Column(JSONB, nullable=True)
     traceback: Optional[str] = Column(String, nullable=True)
