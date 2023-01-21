@@ -15,7 +15,7 @@ def get_balance_by_chain(
     return session.execute(
         select(AlephBalanceDb.balance).where(
             (AlephBalanceDb.address == address)
-            & (AlephBalanceDb.chain == chain)
+            & (AlephBalanceDb.chain == chain.value)
             & (AlephBalanceDb.dapp == dapp)
         )
     ).scalar()
@@ -69,7 +69,7 @@ def update_balances(
     csv_balances = StringIO(
         "\n".join(
             [
-                f"{address};{chain};{dapp or ''};{balance};{eth_height}"
+                f"{address};{chain.value};{dapp or ''};{balance};{eth_height}"
                 for address, balance in balances.items()
             ]
         )

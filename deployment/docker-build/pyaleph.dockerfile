@@ -1,95 +1,74 @@
-# Monolithic Docker image for easy setup of an Aleph.im node in demo scenarios.
-
-FROM ubuntu:20.04
+FROM ubuntu:22.04 as base
 
 ENV DEBIAN_FRONTEND noninteractive
 
-# Install Python dependencies
-RUN apt-get update && apt-get -y upgrade && apt-get install -y \
-     python3 \
-     python3-dev \
-     python3-pip \
-     python3-venv \
-     build-essential \
-     git && \
-     rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get -y upgrade && apt-get install -y software-properties-common
+RUN add-apt-repository -y ppa:deadsnakes/ppa
 
-# Install system dependencies
+# Runtime + build packages
 RUN apt-get update && apt-get -y upgrade && apt-get install -y \
-     libsnappy-dev \
-     zlib1g-dev \
-     libbz2-dev \
-     libgflags-dev \
-     liblz4-dev \
+     git \
      libgmp-dev \
      libsecp256k1-dev \
-     pkg-config \
-     libssl-dev \
-     libleveldb-dev \
-     libyaml-dev && \
-     rm -rf /var/lib/apt/lists/*
+     python3.11
 
-# ===  Create unprivileged users ===
+FROM base as builder
 
-# - User 'source' to install code and dependencies -
-RUN useradd -s /bin/bash source
-RUN mkdir /opt/venv
-RUN chown source:source /opt/venv
+RUN openssl version
+RUN cat /etc/ssl/openssl.cnf
+RUN echo "$OPENSSL_CONF"
 
-RUN mkdir /opt/build
-RUN chown source:source /opt/build
-# - Installed Python libraries will be saved in this file
-RUN touch /opt/build-frozen-requirements.txt
-RUN chown source:source /opt/build-frozen-requirements.txt
+# Build-only packages
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    pkg-config \
+    python3.11-dev \
+    python3.11-venv \
+    software-properties-common
 
-# - User 'aleph' to run the code itself
-RUN useradd -s /bin/bash aleph
-RUN mkdir /opt/pyaleph /var/lib/pyaleph
-RUN chown aleph:aleph /opt/pyaleph /var/lib/pyaleph
+# Install Rust to build Python packages
+RUN curl https://sh.rustup.rs > rustup-installer.sh
+RUN sh rustup-installer.sh -y
+ENV PATH="/root/.cargo/bin:${PATH}"
 
-# === Install Python environment and dependencies ===
-USER source
+# Some packages (py-ed25519-bindings, required by substrate-interface) need the nightly
+# Rust toolchain to be built at this time
+RUN rustup default nightly
 
 # Create virtualenv
-RUN python3 -m venv /opt/venv
+RUN python3.11 -m venv /opt/venv
 
 # Install pip
 ENV PIP_NO_CACHE_DIR yes
-RUN /opt/venv/bin/python3 -m pip install --upgrade pip wheel
+RUN /opt/venv/bin/python3.11 -m pip install --upgrade pip wheel
 ENV PATH="/opt/venv/bin:${PATH}"
 
-# === Install CCN dependencies ===
-# Install dependencies early to cache them and accelerate incremental builds.
-COPY setup.cfg /opt/pyaleph/
-COPY deployment/scripts /opt/pyaleph/deployment/scripts
-RUN /opt/venv/bin/python3 /opt/pyaleph/deployment/scripts/extract_requirements.py /opt/pyaleph/setup.cfg -o /opt/build/requirements.txt
-RUN /opt/venv/bin/pip install --no-cache-dir -r /opt/build/requirements.txt
-RUN rm /opt/build/requirements.txt
-
-# === Install the CCN itself ===
-COPY alembic.ini /opt/pyaleph/
-COPY deployment/migrations /opt/pyaleph/deployment/migrations
-COPY setup.py /opt/pyaleph/
-COPY src /opt/pyaleph/src
-# Git data is used to determine the version of the CCN
-COPY .git /opt/pyaleph/.git
-
-USER root
-RUN chown -R source:source /opt/pyaleph/
-
-USER source
 WORKDIR /opt/pyaleph
+COPY alembic.ini setup.cfg setup.py ./
+COPY deployment/migrations ./deployment/migrations
+COPY deployment/scripts ./deployment/scripts
+COPY .git ./.git
+COPY src ./src
+RUN pip install -e .
 
-RUN /opt/venv/bin/pip install --no-cache-dir "."
 
-# Save installed Python requirements for debugging
-RUN /opt/venv/bin/pip freeze > /opt/build-frozen-requirements.txt
+FROM base
 
-USER root
-RUN chown -R aleph:aleph /opt/pyaleph/
+RUN useradd -s /bin/bash aleph
 
+COPY --from=builder --chown=aleph /opt/venv /opt/venv
+COPY --from=builder --chown=aleph /opt/pyaleph /opt/pyaleph
+
+# OpenSSL 3 disabled some hash algorithms by default. They must be reenabled
+# by enabling the "legacy" providers in /etc/ssl/openssl.cnf.
+COPY ./deployment/docker-build/openssl.cnf.patch /etc/ssl/openssl.cnf.patch
+RUN patch /etc/ssl/openssl.cnf /etc/ssl/openssl.cnf.patch
+
+RUN mkdir /var/lib/pyaleph
+RUN chown -R aleph:aleph /var/lib/pyaleph
+
+ENV PATH="/opt/venv/bin:${PATH}"
+WORKDIR /opt/pyaleph
 USER aleph
 ENTRYPOINT ["bash", "deployment/scripts/run_aleph_ccn.sh"]
-
-# CCN API
-EXPOSE 8000

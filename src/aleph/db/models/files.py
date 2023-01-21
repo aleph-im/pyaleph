@@ -9,7 +9,7 @@ from aleph.types.files import FileType
 from .base import Base
 import datetime as dt
 
-from ...types.files import FileTag
+from aleph.types.files import FileTag
 
 
 class FilePinType(str, Enum):

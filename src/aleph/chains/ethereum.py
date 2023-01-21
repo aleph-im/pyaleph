@@ -38,7 +38,7 @@ def get_web3(config) -> Web3:
     if config.ethereum.chain_id.value == 4:  # rinkeby
         web3.middleware_onion.inject(geth_poa_middleware, layer=0)
     web3.middleware_onion.add(local_filter_middleware)
-    web3.eth.setGasPriceStrategy(rpc_gas_price_strategy)
+    web3.eth.set_gas_price_strategy(rpc_gas_price_strategy)
 
     return web3
 
@@ -248,14 +248,14 @@ class EthereumConnector(Verifier, ChainWriter):
             }
         )
         signed_tx = account.signTransaction(tx)
-        return web3.eth.sendRawTransaction(signed_tx.rawTransaction)
+        return web3.eth.send_raw_transaction(signed_tx.rawTransaction)
 
     async def packer(self, config: Config):
         web3 = await run_in_executor(None, get_web3, config)
         contract = await get_contract(config, web3)
 
         pri_key = HexBytes(config.ethereum.private_key.value)
-        account = Account.privateKeyToAccount(pri_key)
+        account = Account.from_key(pri_key)
         address = account.address
 
         LOGGER.info("Ethereum Connector set up with address %s" % address)
