@@ -16,7 +16,7 @@ on:
 
 jobs:
   tests:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     services:
       postgres:
         image: postgres:15.1
@@ -27,17 +27,22 @@ jobs:
           POSTGRES_PASSWORD: decentralize-everything
           POSTGRES_DATABASE: aleph
 
-
     steps:
     - uses: actions/checkout@v2
       with:
         # Fetch the whole history for all tags and branches (required for aleph.__version__)
         fetch-depth: 0
-    - name: Set up Python 3.8
+    - name: Set up Python 3.11
       id: setup-python
       uses: actions/setup-python@v2
       with:
-        python-version: 3.8
+        python-version: 3.11
+    - name: Install latest Rust nightly toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
+        components: rustfmt, clippy
     - name: Get pip cache dir
       id: pip-cache
       run: |
@@ -48,7 +53,9 @@ jobs:
         key: ${{ runner.os }}-python-${{ steps.setup-python.outputs.python-version }}-pip-${{ hashFiles('setup.cfg') }}
     - name: Install Python dependencies
       run: |
-        pip install .[testing]
+        rustup default nightly  # Required to build some dependencies
+        pip install wheel
+        pip install --upgrade .[testing]
     - name: Check types
       run: |
         mypy src/
@@ -57,10 +64,11 @@ jobs:
         mypy tests/
     - name: Run unit tests
       run: |
+        sudo cp .github/openssl-ci.cnf /etc/ssl/openssl.cnf
+        export OPENSSL_CONF=/etc/ssl/openssl.cnf
         pytest -v .
-
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     needs: tests
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
