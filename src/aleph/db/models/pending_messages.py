@@ -116,7 +116,7 @@ class PendingMessageDb(Base):
 
         return cls(
             item_hash=item_hash,
-            type=message_dict["type"],
+            type=MessageType(message_dict["type"]),
             chain=Chain(message_dict["chain"]),
             sender=message_dict["sender"],
             signature=message_dict["signature"],

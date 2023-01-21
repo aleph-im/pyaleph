@@ -1,7 +1,7 @@
 import logging
 import struct
 
-from aleph_client.chains.nuls1 import (
+from .nuls_aleph_sdk import (
     NulsSignature,
     hash_from_address,
     public_key_to_hash,

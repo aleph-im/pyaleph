@@ -1,0 +1,10 @@
+59a60
+> legacy = legacy_sect
+73c74,78
+< # activate = 1
+---
+> activate = 1
+> 
+> [legacy_sect]
+> activate = 1
+> 
