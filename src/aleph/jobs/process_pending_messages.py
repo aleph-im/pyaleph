@@ -123,9 +123,7 @@ class PendingMessageProcessor(MessageJob):
         async for processing_results in message_iterator:
             for result in processing_results:
                 body = {"item_hash": result.item_hash}
-                mq_message = aio_pika.Message(
-                    body=aleph_json.dumps(body).encode("utf-8")
-                )
+                mq_message = aio_pika.Message(body=aleph_json.dumps(body))
                 await self.mq_message_exchange.publish(
                     mq_message,
                     routing_key=f"{result.status.value}.{result.item_hash}",
