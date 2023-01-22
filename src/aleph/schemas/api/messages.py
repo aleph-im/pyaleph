@@ -14,6 +14,7 @@ from aleph_message.models import MessageType, ItemType
 from pydantic import BaseModel
 from pydantic.generics import GenericModel
 
+import aleph.toolkit.json as aleph_json
 from aleph.types.message_status import MessageStatus, ErrorCode
 
 MType = TypeVar("MType", bound=MessageType)
@@ -35,6 +36,7 @@ class MessageConfirmation(BaseModel):
 class BaseMessage(GenericModel, Generic[MType, ContentType]):
     class Config:
         orm_mode = True
+        json_loads = aleph_json.loads
 
     sender: str
     chain: Chain
