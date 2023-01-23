@@ -135,17 +135,18 @@ def upgrade() -> None:
         """
         create view costs_view as
         SELECT coalesce(program_prices.owner, storage.owner) address,
-               program_prices.total_price AS                 program_cost,
-               storage_cost,
+               total_program_cost,
+               total_storage_cost,
                total_cost
-        FROM program_costs_view program_prices
+        FROM (SELECT owner, sum(total_price) total_program_cost FROM program_costs_view GROUP BY owner) program_prices
                  FULL OUTER JOIN (SELECT owner, sum(f.size) storage_size
                                   FROM file_pins
                                            JOIN files f on file_pins.file_hash = f.hash
                                   WHERE owner is not null
                                   GROUP BY owner) storage ON program_prices.owner = storage.owner,
-             LATERAL (SELECT 3 * storage_size / 1000000 storage_cost) sc,
-             LATERAL (SELECT coalesce(program_prices.total_price, 0) + coalesce(storage_cost, 0) AS total_cost ) tc;
+             LATERAL (SELECT 3 * storage_size / 1000000 total_storage_cost) sc,
+             LATERAL (SELECT coalesce(program_prices.total_program_cost, 0) +
+                             coalesce(total_storage_cost, 0) AS total_cost ) tc;
         """
     )
 
