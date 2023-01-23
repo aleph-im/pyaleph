@@ -1,7 +1,9 @@
+import datetime as dt
 import json
 from typing import Dict
 
 import pytest
+import pytz
 from aleph_message.models import ItemType
 
 from aleph.schemas.pending_messages import (
@@ -24,6 +26,9 @@ def check_basic_message_fields(pending_message: BasePendingMessage, message_dict
     assert pending_message.channel == message_dict["channel"]
     assert pending_message.signature == message_dict["signature"]
     assert pending_message.channel == message_dict["channel"]
+    assert pending_message.time == pytz.utc.localize(
+        dt.datetime.utcfromtimestamp(message_dict["time"])
+    )
 
 
 def test_parse_aggregate_inline_message():
@@ -267,6 +272,25 @@ def test_invalid_hash():
 
     with pytest.raises(InvalidMessageException):
         _ = parse_message(message_dict)
+
+
+def test_invalid_time_field():
+    message_dict = {
+        "_id": None,
+        "chain": "ETH",
+        "channel": "ANIMA_MAINNET",
+        "confirmed": False,
+        "item_hash": "c6c9df8d5b5dcd5cf74562c9d383308c354a5238d3b0d9db10d931b250490600",
+        "item_type": "storage",
+        "sender": "0x989Cfa25243C07b90Bedc673Fe6Df69B5B0D675C",
+        "signature": "0x63e9dd351ff6735bb41c2658d95828bd0dbc14fc64eee119114fd7e84fa737f157c3b38ae7c5ca30a73c03e3794f35c94282b5fc9379d31b43f913d1c18300ca01",
+        "time": 255402210800,
+        "type": "AGGREGATE",
+    }
+    with pytest.raises(InvalidMessageException) as exc_info:
+        _ = parse_message(message_dict)
+    exc_details = exc_info.value.details()
+    assert "time" in exc_details["errors"][0]["loc"]
 
 
 def test_parse_none():
