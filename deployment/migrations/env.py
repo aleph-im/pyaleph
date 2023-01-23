@@ -38,7 +38,11 @@ def get_db_url():
     default_config_file = Path.cwd() / "config.yml"
     config_file = cli_args.get("config_file") or default_config_file
     with config_file.open() as f:
-        config.yaml.load(f)
+        user_config = f.read()
+
+    # Little trick to allow empty config files
+    if user_config:
+        config.yaml.loads(user_config)
 
     return make_db_url(driver="psycopg2", config=config)
 

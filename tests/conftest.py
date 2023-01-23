@@ -1,16 +1,19 @@
 import asyncio
+import contextlib
+import logging
 import os
 import shutil
 import sys
 from pathlib import Path
 
+import alembic.command
+import alembic.config
 import pytest
 import pytest_asyncio
 from configmanager import Config
 
 import aleph.config
-from aleph.db.connection import make_engine, make_session_factory
-from aleph.db.models.base import Base
+from aleph.db.connection import make_engine, make_session_factory, make_db_url
 from aleph.services.ipfs import IpfsService
 from aleph.services.ipfs.common import make_ipfs_client
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
@@ -24,37 +27,39 @@ from aleph.web import create_app
 sys.path.append(os.path.join(os.path.dirname(__file__), "helpers"))
 
 
+@contextlib.contextmanager
+def change_dir(directory: Path):
+    current_directory = Path.cwd()
+    try:
+        os.chdir(directory)
+        yield
+    finally:
+        os.chdir(current_directory)
+
+
+def run_db_migrations(config: Config):
+    logging.basicConfig(level=logging.DEBUG)
+
+    project_dir = Path(__file__).parent.parent
+
+    db_url = make_db_url(driver="psycopg2", config=config)
+    alembic_cfg = alembic.config.Config("alembic.ini")
+    alembic_cfg.attributes["configure_logger"] = False
+    logging.getLogger("alembic").setLevel(logging.CRITICAL)
+
+    with change_dir(project_dir):
+        alembic.command.upgrade(alembic_cfg, "head", tag=db_url)
+
+
 @pytest.fixture
 def session_factory(mock_config):
     engine = make_engine(config=mock_config, echo=False, application_name="aleph-tests")
 
     with engine.begin() as conn:
-        Base.metadata.drop_all(conn)
-        # TODO: run migrations instead
-        Base.metadata.create_all(conn)
+        conn.execute("drop schema public cascade")
+        conn.execute("create schema public")
 
-        # Here go all the annoying patchworks that are required because we do not run
-        # the migration scripts. Address the todo above and these can all disappear!
-
-        # Aggregates are not described in SQLAlchemy, so we need to create them manually.
-        conn.execute("DROP AGGREGATE IF EXISTS jsonb_merge(jsonb)")
-        conn.execute(
-            """
-        CREATE AGGREGATE jsonb_merge(jsonb) (
-            SFUNC = 'jsonb_concat',
-            STYPE = jsonb,
-            INITCOND = '{}'
-        )"""
-        )
-
-        # Indexes with NULLS NOT DISTINCT are not yet supported in SQLA.
-        conn.execute(
-            "ALTER TABLE balances DROP CONSTRAINT balances_address_chain_dapp_uindex"
-        )
-        conn.execute(
-            "ALTER TABLE balances ADD CONSTRAINT balances_address_chain_dapp_uindex UNIQUE NULLS NOT DISTINCT (address, chain, dapp)"
-        )
-
+    run_db_migrations(config=mock_config)
     return make_session_factory(engine)
 
 
