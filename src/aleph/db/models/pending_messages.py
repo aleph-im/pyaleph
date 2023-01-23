@@ -76,8 +76,6 @@ class PendingMessageDb(Base):
         fetched: bool = False,
     ) -> "PendingMessageDb":
 
-        message_time = timestamp_to_datetime(obj.time)
-
         return cls(
             item_hash=obj.item_hash,
             type=obj.type,
@@ -86,10 +84,10 @@ class PendingMessageDb(Base):
             signature=obj.signature,
             item_type=obj.item_type,
             item_content=obj.item_content,
-            time=message_time,
+            time=obj.time,
             channel=Channel(obj.channel) if obj.channel is not None else None,
             check_message=check_message,
-            next_attempt=_default_first_attempt_datetime(message_time),
+            next_attempt=_default_first_attempt_datetime(obj.time),
             retries=0,
             tx_hash=tx_hash,
             reception_time=reception_time,
