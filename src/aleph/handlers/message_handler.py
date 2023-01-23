@@ -52,11 +52,11 @@ class MessageHandler:
     content_handlers: Dict[MessageType, ContentHandler]
 
     def __init__(
-        self,
-        session_factory: DbSessionFactory,
-        chain_service: ChainService,
-        storage_service: StorageService,
-        config: Config,
+            self,
+            session_factory: DbSessionFactory,
+            chain_service: ChainService,
+            storage_service: StorageService,
+            config: Config,
     ):
         self.session_factory = session_factory
         self.chain_service = chain_service
@@ -86,7 +86,7 @@ class MessageHandler:
             await self.chain_service.verify_signature(pending_message)  # type: ignore
 
     async def fetch_pending_message(
-        self, pending_message: PendingMessageDb
+            self, pending_message: PendingMessageDb
     ) -> MessageDb:
         item_hash = pending_message.item_hash
 
@@ -127,9 +127,9 @@ class MessageHandler:
 
     @staticmethod
     async def confirm_existing_message(
-        session: DbSession,
-        existing_message: MessageDb,
-        pending_message: PendingMessageDb,
+            session: DbSession,
+            existing_message: MessageDb,
+            pending_message: PendingMessageDb,
     ):
         if pending_message.signature != existing_message.signature:
             raise InvalidSignature(f"Invalid signature for {pending_message.item_hash}")
@@ -143,7 +143,7 @@ class MessageHandler:
             )
 
     async def load_fetched_content(
-        self, session: DbSession, pending_message: PendingMessageDb
+            self, session: DbSession, pending_message: PendingMessageDb
     ) -> PendingMessageDb:
         if pending_message.item_type != ItemType.inline:
             pending_message.fetched = False
@@ -162,10 +162,10 @@ class MessageHandler:
         return pending_message
 
     async def add_pending_message(
-        self,
-        message_dict: Mapping[str, Any],
-        reception_time: dt.datetime,
-        tx_hash: Optional[str] = None,
+            self,
+            message_dict: Mapping[str, Any],
+            reception_time: dt.datetime,
+            tx_hash: Optional[str] = None,
     ) -> Optional[PendingMessageDb]:
 
         # TODO: this implementation is just messy, improve it.
@@ -181,19 +181,11 @@ class MessageHandler:
                 session.commit()
                 return None
 
-            try:
-                pending_message = PendingMessageDb.from_obj(
-                    message,
-                    reception_time=reception_time,
-                    tx_hash=tx_hash,
-                )
-            except ValueError as e:
-                LOGGER.warning("Invalid message: %s - %s", message.item_hash, str(e))
-                reject_new_pending_message(
-                    session=session, pending_message=message_dict, exception=e
-                )
-                session.commit()
-                return None
+            pending_message = PendingMessageDb.from_obj(
+                message,
+                reception_time=reception_time,
+                tx_hash=tx_hash,
+            )
 
             try:
                 pending_message = await self.load_fetched_content(
@@ -239,7 +231,7 @@ class MessageHandler:
                 return None
 
     async def insert_message(
-        self, session: DbSession, pending_message: PendingMessageDb, message: MessageDb
+            self, session: DbSession, pending_message: PendingMessageDb, message: MessageDb
     ):
         session.execute(make_message_upsert_query(message))
         delete_pending_message(session=session, pending_message=pending_message)
@@ -260,7 +252,7 @@ class MessageHandler:
             )
 
     async def verify_and_fetch(
-        self, session: DbSession, pending_message: PendingMessageDb
+            self, session: DbSession, pending_message: PendingMessageDb
     ) -> MessageDb:
         await self.verify_signature(pending_message=pending_message)
         validated_message = await self.fetch_pending_message(
@@ -270,7 +262,7 @@ class MessageHandler:
         return validated_message
 
     async def process(
-        self, session: DbSession, pending_message: PendingMessageDb
+            self, session: DbSession, pending_message: PendingMessageDb
     ) -> MessageDb:
         existing_message = get_message_by_item_hash(
             session=session, item_hash=pending_message.item_hash

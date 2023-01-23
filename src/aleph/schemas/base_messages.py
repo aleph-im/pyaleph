@@ -2,17 +2,16 @@
 Base (abstract) class for messages.
 """
 
+import datetime as dt
 from hashlib import sha256
 from typing import Optional, Generic, TypeVar
 
-from aleph_message.models import (
-    BaseContent,
-    Chain,
-)
+from aleph_message.models import BaseContent, Chain
 from aleph_message.models import MessageType, ItemType
 from pydantic import root_validator, validator
 from pydantic.generics import GenericModel
 
+from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.utils import item_type_from_hash
 
 MType = TypeVar("MType", bound=MessageType)
@@ -33,7 +32,7 @@ class AlephBaseMessage(GenericModel, Generic[MType, ContentType]):
     item_content: Optional[str]
     item_type: ItemType
     item_hash: str
-    time: float
+    time: dt.datetime
     channel: Optional[str] = None
     content: Optional[ContentType] = None
 
@@ -91,3 +90,14 @@ class AlephBaseMessage(GenericModel, Generic[MType, ContentType]):
             if item_type != ItemType.storage:
                 raise ValueError(f"Unknown item type: '{item_type}'")
         return v
+
+    @validator("time", pre=True)
+    def check_time(cls, v, values):
+        """
+        Parses the time field as a UTC datetime. Contrary to the default datetime
+        validator, this implementation raises an exception if the time field is
+        too far in the future.
+        """
+
+        d = timestamp_to_datetime(v)
+        return d

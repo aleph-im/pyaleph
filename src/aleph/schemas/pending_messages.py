@@ -17,21 +17,20 @@ TODO: this module should reasonably be part of aleph message, if only
       in aleph-client.
 """
 
-import json
-from typing import Any, Literal, Generic, Type
+from typing import Any, Literal, Generic
 
 from aleph_message.models import (
     AggregateContent,
-    BaseContent,
     ForgetContent,
     PostContent,
     ProgramContent,
-    StoreContent, BaseContent,
+    StoreContent,
 )
 from aleph_message.models import ItemType, MessageType
 from pydantic import ValidationError
 from pydantic import root_validator
 
+import aleph.toolkit.json as aleph_json
 from aleph.exceptions import UnknownHashError
 from aleph.schemas.base_messages import AlephBaseMessage, MType, ContentType
 from aleph.types.message_status import InvalidMessageFormat
@@ -78,8 +77,8 @@ class BasePendingMessage(AlephBaseMessage, Generic[MType, ContentType]):
             if len(item_content) > MAX_INLINE_SIZE:
                 raise ValueError("Message too long")
             try:
-                values["content"] = json.loads(item_content)
-            except json.JSONDecodeError as e:
+                values["content"] = aleph_json.loads(item_content)
+            except aleph_json.DecodeError as e:
                 raise ValueError("Message content is not valid JSON data") from e
         else:
             if item_content is not None:
@@ -118,15 +117,6 @@ class PendingStoreMessage(BasePendingMessage[Literal[MessageType.store], StoreCo
     pass
 
 
-MESSAGE_TYPE_TO_CONTENT_CLASS = {
-    MessageType.aggregate: AggregateContent,
-    MessageType.forget: ForgetContent,
-    MessageType.post: PostContent,
-    MessageType.program: ProgramContent,
-    MessageType.store: StoreContent,
-}
-
-
 MESSAGE_TYPE_TO_CLASS = {
     MessageType.aggregate: PendingAggregateMessage,
     MessageType.forget: PendingForgetMessage,
@@ -134,19 +124,6 @@ MESSAGE_TYPE_TO_CLASS = {
     MessageType.program: PendingProgramMessage,
     MessageType.store: PendingStoreMessage,
 }
-
-
-def get_message_cls(message_type: MessageType) -> Type[BasePendingMessage]:
-    return MESSAGE_TYPE_TO_CLASS[message_type]
-
-
-def parse_message_content(message_type: MessageType, content_dict: Any) -> BaseContent:
-    content_cls = MESSAGE_TYPE_TO_CONTENT_CLASS[message_type]
-
-    try:
-        return content_cls.parse_obj(content_dict)
-    except ValidationError as e:
-        raise InvalidMessageError(json.dumps(e.json())) from e
 
 
 def parse_message(message_dict: Any) -> BasePendingMessage:
