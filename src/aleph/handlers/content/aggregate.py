@@ -3,6 +3,7 @@ import logging
 from typing import List, cast, Sequence, Set
 
 from aleph_message.models import AggregateContent
+from sqlalchemy import update, delete
 
 from aleph.db.accessors.aggregates import (
     get_aggregate_by_key,
@@ -14,7 +15,7 @@ from aleph.db.accessors.aggregates import (
     count_aggregate_elements,
     mark_aggregate_as_dirty,
     get_aggregate_content_keys,
-    delete_aggregate_element,
+    delete_aggregate_element, delete_aggregate,
 )
 from aleph.db.models import MessageDb, AggregateElementDb, AggregateDb
 from aleph.handlers.content.content_handler import ContentHandler
@@ -224,11 +225,14 @@ class AggregateMessageHandler(ContentHandler):
 
     async def forget_message(self, session: DbSession, message: MessageDb) -> Set[str]:
         content = _get_aggregate_content(message)
+        owner = content.address
+        key = content.key
 
         LOGGER.debug("Deleting aggregate element %s...", message.item_hash)
+        delete_aggregate(session=session, owner=owner, key=key)
         delete_aggregate_element(session=session, item_hash=message.item_hash)
 
-        LOGGER.debug("Refreshing aggregate %s/%s...", content.address, content.key)
-        refresh_aggregate(session=session, owner=content.address, key=content.key)
+        LOGGER.debug("Refreshing aggregate %s/%s...", owner, key)
+        refresh_aggregate(session=session, owner=owner, key=key)
 
         return set()
