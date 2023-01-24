@@ -2,6 +2,7 @@ from aiohttp import web
 import pkg_resources
 
 from aleph.web.controllers import (
+    accounts,
     aggregates,
     channels,
     info,
@@ -10,9 +11,8 @@ from aleph.web.controllers import (
     messages,
     p2p,
     posts,
-    stats,
     storage,
-    version, balances,
+    version,
 )
 from aleph.web.controllers.programs import get_programs_on_message
 
@@ -52,17 +52,20 @@ def register_routes(app: web.Application):
     app.router.add_get("/api/v0/posts.json", posts.view_posts_list)
     app.router.add_get("/api/v0/posts/page/{page}.json", posts.view_posts_list)
 
-    app.router.add_get("/api/v0/addresses/balances/{address}", balances.get_address_balance)
-    app.router.add_get("/api/v0/addresses/stats.json", stats.addresses_stats_view)
+    app.router.add_get("/api/v0/addresses/stats.json", accounts.addresses_stats_view)
+    app.router.add_get(
+        "/api/v0/addresses/{address}/balance", accounts.get_account_balance
+    )
+    app.router.add_get(
+        "/api/v0/addresses/{address}/files", accounts.get_account_files
+    )
 
     app.router.add_post("/api/v0/ipfs/add_json", storage.add_ipfs_json_controller)
     app.router.add_post("/api/v0/storage/add_json", storage.add_storage_json_controller)
     app.router.add_post("/api/v0/storage/add_file", storage.storage_add_file)
     app.router.add_get("/api/v0/storage/{hash}", storage.get_hash)
     app.router.add_get("/api/v0/storage/raw/{hash}", storage.get_raw_hash)
-    app.router.add_get(
-        "/api/v0/storage/count/{hash}", storage.get_file_pins_count
-    )
+    app.router.add_get("/api/v0/storage/count/{hash}", storage.get_file_pins_count)
 
     app.router.add_get("/version", version.version)
     app.router.add_get("/api/v0/version", version.version)

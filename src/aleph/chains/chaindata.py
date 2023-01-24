@@ -127,7 +127,7 @@ class ChainDataService:
             raise ContentCurrentlyUnavailable(error_msg) from e
 
         try:
-            messages = self._get_sync_messages(sync_file_content.value)
+            messages = self._get_sync_messages(sync_file_content.value["content"])
         except AlephStorageException:
             LOGGER.debug("Got no message")
             raise
