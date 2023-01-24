@@ -1,8 +1,9 @@
 import datetime as dt
-from typing import Optional, Iterable, Sequence, Collection
+from typing import Optional, Iterable, Collection, Tuple
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.engine import Row
 
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag
@@ -14,6 +15,7 @@ from ..models.files import (
     MessageFilePinDb,
     FilePinType,
 )
+from ...types.sort_order import SortOrder
 
 
 def is_pinned_file(session: DbSession, file_hash: str) -> bool:
@@ -79,6 +81,52 @@ def get_message_file_pin(
     return session.execute(
         select(MessageFilePinDb).where(MessageFilePinDb.item_hash == item_hash)
     ).scalar_one_or_none()
+
+
+def get_address_files_stats(session: DbSession, owner: str) -> Tuple[int, int]:
+    select_stmt = (
+        select(
+            func.count().label("nb_files"),
+            func.sum(StoredFileDb.size).label("total_size"),
+        )
+        .select_from(MessageFilePinDb)
+        .join(StoredFileDb, MessageFilePinDb.file_hash == StoredFileDb.hash)
+        .where(MessageFilePinDb.owner == owner)
+    )
+    result = session.execute(select_stmt).one()
+    return result.nb_files, result.total_size
+
+
+def get_address_files_for_api(
+    session: DbSession,
+    owner: str,
+    pagination: int = 0,
+    page: int = 1,
+    sort_order: SortOrder = SortOrder.DESCENDING,
+) -> Iterable[Row]:
+    select_stmt = (
+        select(
+            MessageFilePinDb.file_hash,
+            MessageFilePinDb.created,
+            MessageFilePinDb.item_hash,
+            StoredFileDb.size,
+            StoredFileDb.type,
+        )
+        .join(StoredFileDb, MessageFilePinDb.file_hash == StoredFileDb.hash)
+        .where(MessageFilePinDb.owner == owner)
+    )
+
+    if pagination:
+        select_stmt = select_stmt.limit(pagination).offset((page - 1) * pagination)
+
+    order_by = (
+        MessageFilePinDb.created.desc()
+        if sort_order == SortOrder.DESCENDING
+        else MessageFilePinDb.created.asc()
+    )
+    select_stmt = select_stmt.order_by(order_by)
+
+    return session.execute(select_stmt).all()
 
 
 def upsert_stored_file(session: DbSession, file: StoredFileDb) -> None:

@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Optional, List, Any, Dict
 
-from sqlalchemy import BigInteger, Column, String, ForeignKey, TIMESTAMP
+from sqlalchemy import BigInteger, Column, String, ForeignKey, TIMESTAMP, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy_utils import ChoiceType
 
@@ -36,12 +36,8 @@ class StoredFileDb(Base):
     size: Optional[int] = Column(BigInteger, nullable=True)
     type: FileType = Column(ChoiceType(FileType), nullable=False)
 
-    pins: List["FilePinDb"] = relationship(
-        "FilePinDb", back_populates="file"
-    )
-    tags: List["FileTagDb"] = relationship(
-        "FileTagDb", back_populates="file"
-    )
+    pins: List["FilePinDb"] = relationship("FilePinDb", back_populates="file")
+    tags: List["FileTagDb"] = relationship("FileTagDb", back_populates="file")
 
 
 class FileTagDb(Base):
@@ -80,10 +76,17 @@ class TxFilePinDb(FilePinDb):
 
 
 class MessageFilePinDb(FilePinDb):
-    owner = Column(String, nullable=True)
+    owner = Column(String, nullable=True, index=True)
     item_hash = Column(String, nullable=True, unique=True)
     ref = Column(String, nullable=True)
 
     __mapper_args__ = {
         "polymorphic_identity": FilePinType.MESSAGE.value,
     }
+
+
+Index(
+    "ix_file_pins_owner",
+    MessageFilePinDb.owner,
+    postgresql_where=MessageFilePinDb.owner.isnot(None),
+)
