@@ -3,6 +3,7 @@ import json
 from typing import Dict, List, Sequence, Iterable
 
 import pytest
+import pytz
 from aleph_message.models import ItemType, Chain, MessageType, AggregateContent
 from configmanager import Config
 from more_itertools import one
@@ -10,7 +11,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from aleph.db.accessors.aggregates import get_aggregate_by_key, get_aggregate_elements
-from aleph.db.models import PendingMessageDb, MessageDb
+from aleph.db.models import PendingMessageDb, MessageDb, AggregateElementDb, AggregateDb
+from aleph.handlers.content.aggregate import AggregateMessageHandler
 from aleph.handlers.message_handler import MessageHandler
 from aleph.jobs.job_utils import ProcessedMessage
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
@@ -208,3 +210,134 @@ async def test_process_aggregates_reverse_order(
         assert aggregate
 
         assert aggregate.content == {"a": 1, "c": 3, "d": 4}
+
+
+@pytest.mark.asyncio
+async def test_delete_aggregate_one_element(
+    mocker,
+    session_factory: DbSessionFactory,
+):
+    with session_factory() as session:
+        element = AggregateElementDb(
+            item_hash="d73d50b2d2c670d4c6c8e03ad0e4e2145642375f92784c68539a3400e0e4e242",
+            key="my-aggregate",
+            owner="0xme",
+            content={"Hello": "world"},
+            creation_datetime=dt.datetime(2023, 1, 1),
+        )
+        session.add(element)
+        session.add(
+            AggregateDb(
+                key=element.key,
+                owner=element.owner,
+                content=element.content,
+                creation_datetime=element.creation_datetime,
+                last_revision_hash=element.item_hash,
+                dirty=False,
+            )
+        )
+        session.commit()
+
+        message = mocker.MagicMock()
+        message.item_hash = element.item_hash
+        message.parsed_content = AggregateContent(
+            key=element.key,
+            address=element.owner,
+            time=element.creation_datetime.timestamp(),
+            content=element.content,
+        )
+
+        aggregate_handler = AggregateMessageHandler()
+        await aggregate_handler.forget_message(session=session, message=message)
+        session.commit()
+
+        aggregate = get_aggregate_by_key(
+            session=session, owner=element.owner, key=element.key
+        )
+        assert aggregate is None
+        aggregate_elements = list(
+            get_aggregate_elements(
+                session=session, owner=element.owner, key=element.key
+            )
+        )
+        assert aggregate_elements == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("element_to_forget", ["first", "last"])
+async def test_delete_aggregate_two_elements(
+    mocker,
+    session_factory: DbSessionFactory,
+    element_to_forget: str,
+):
+    with session_factory() as session:
+        first_element = AggregateElementDb(
+            item_hash="d73d50b2d2c670d4c6c8e03ad0e4e2145642375f92784c68539a3400e0e4e242",
+            key="my-aggregate",
+            owner="0xme",
+            content={"Hello": "world"},
+            creation_datetime=pytz.utc.localize(dt.datetime(2023, 1, 1)),
+        )
+        last_element = AggregateElementDb(
+            item_hash="37a2ca64f9fdd35a2aac386003179c594b3f0963e064c0663ff84368bc3c1bb5",
+            key=first_element.key,
+            owner=first_element.owner,
+            content={"Goodbye": "blue sky"},
+            creation_datetime=pytz.utc.localize(dt.datetime(2023, 1, 2)),
+        )
+        session.add(first_element)
+        session.add(last_element)
+        session.add(
+            AggregateDb(
+                key=first_element.key,
+                owner=first_element.owner,
+                content={"Hello": "world", "Goodbye": "blue sky"},
+                creation_datetime=first_element.creation_datetime,
+                last_revision_hash=last_element.item_hash,
+                dirty=False,
+            )
+        )
+        session.commit()
+
+        if element_to_forget == "first":
+            element_to_delete, element_to_keep = first_element, last_element
+        else:
+            element_to_delete, element_to_keep = last_element, first_element
+
+        message = mocker.MagicMock()
+        message.item_hash = element_to_delete.item_hash
+        message.parsed_content = AggregateContent(
+            key=element_to_delete.key,
+            address=element_to_delete.owner,
+            time=element_to_delete.creation_datetime.timestamp(),
+            content=element_to_delete.content,
+        )
+
+        aggregate_handler = AggregateMessageHandler()
+        await aggregate_handler.forget_message(session=session, message=message)
+        session.commit()
+
+        aggregate = get_aggregate_by_key(
+            session=session, owner=first_element.owner, key=first_element.key
+        )
+        assert aggregate is not None
+        assert not aggregate.dirty
+        assert aggregate.owner == element_to_keep.owner
+        assert aggregate.key == element_to_keep.key
+        assert aggregate.content == element_to_keep.content
+        assert aggregate.last_revision_hash == element_to_keep.item_hash
+        assert aggregate.creation_datetime == element_to_keep.creation_datetime
+
+        aggregate_elements = list(
+            get_aggregate_elements(
+                session=session, owner=first_element.owner, key=first_element.key
+            )
+        )
+        assert len(aggregate_elements) == 1
+        element_db = aggregate_elements[0]
+
+        assert element_db.owner == element_to_keep.owner
+        assert element_db.key == element_to_keep.key
+        assert element_db.content == element_to_keep.content
+        assert element_db.creation_datetime == element_to_keep.creation_datetime
+        assert element_db.content == element_to_keep.content
