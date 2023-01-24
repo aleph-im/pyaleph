@@ -231,6 +231,13 @@ def refresh_aggregate(session: DbSession, owner: str, key: str) -> None:
     session.execute(upsert_aggregate_stmt)
 
 
+def delete_aggregate(session: DbSession, owner: str, key: str) -> None:
+    delete_aggregate_stmt = delete(AggregateDb).where(
+        (AggregateDb.key == key) & (AggregateDb.owner == owner)
+    )
+    session.execute(delete_aggregate_stmt)
+
+
 def delete_aggregate_element(session: DbSession, item_hash: str) -> None:
     delete_element_stmt = delete(AggregateElementDb).where(
         AggregateElementDb.item_hash == item_hash
