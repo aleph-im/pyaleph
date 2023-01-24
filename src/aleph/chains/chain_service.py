@@ -21,7 +21,9 @@ class ChainService:
     readers: Dict[Chain, ChainReader]
     writers: Dict[Chain, ChainWriter]
 
-    def __init__(self, session_factory: DbSessionFactory, storage_service: StorageService):
+    def __init__(
+        self, session_factory: DbSessionFactory, storage_service: StorageService
+    ):
 
         self._session_factory = session_factory
 
@@ -85,6 +87,9 @@ class ChainService:
             listener_tasks.append(self.chain_reader_task(Chain.ETH, config))
             if config.ethereum.packing_node.value:
                 publisher_tasks.append(self.chain_writer_task(Chain.ETH, config))
+
+        if config.tezos.enabled.value:
+            listener_tasks.append(self.chain_reader_task(Chain.TEZOS, config))
 
         await asyncio.gather(*(listener_tasks + publisher_tasks))
 
@@ -156,6 +161,12 @@ class ChainService:
         try:
             from .tezos import TezosConnector
 
-            self._add_chain(Chain.TEZOS, TezosConnector())
+            self._add_chain(
+                Chain.TEZOS,
+                TezosConnector(
+                    session_factory=self._session_factory,
+                    chain_data_service=self._chain_data_service,
+                ),
+            )
         except ModuleNotFoundError as error:
             LOGGER.warning("Can't load Tezos: %s", error.msg)

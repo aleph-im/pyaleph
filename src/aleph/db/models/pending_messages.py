@@ -11,6 +11,7 @@ from sqlalchemy import (
     Integer,
     ForeignKey,
     Index,
+    CheckConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
@@ -50,7 +51,7 @@ class PendingMessageDb(Base):
     type: MessageType = Column(ChoiceType(MessageType), nullable=False)
     chain: Chain = Column(ChoiceType(Chain), nullable=False)
     sender: str = Column(String, nullable=False)
-    signature: str = Column(String, nullable=False)
+    signature: Optional[str] = Column(String, nullable=True)
     item_type: ItemType = Column(ChoiceType(ItemType), nullable=False)
     item_content = Column(String, nullable=True)
     content: Optional[Dict[str, Any]] = Column(JSONB, nullable=True)
@@ -63,6 +64,13 @@ class PendingMessageDb(Base):
     retries: int = Column(Integer, nullable=False)
     tx_hash: Optional[str] = Column(ForeignKey("chain_txs.hash"), nullable=True)
     fetched: bool = Column(Boolean, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "signature is not null or not check_message",
+            name="signature_not_null_if_check_message",
+        ),
+    )
 
     tx: Optional[ChainTxDb] = relationship("ChainTxDb")
 

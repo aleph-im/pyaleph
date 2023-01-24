@@ -13,7 +13,6 @@ from sqlalchemy import delete
 
 from aleph.chains.chain_service import ChainService
 from aleph.chains.chaindata import ChainDataService
-from aleph.chains.tx_context import TxContext
 from aleph.db.accessors.pending_txs import get_pending_txs
 from aleph.db.connection import make_engine, make_session_factory
 from aleph.db.models.pending_txs import PendingTxDb
@@ -27,6 +26,7 @@ from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSessionFactory
 from .job_utils import prepare_loop
+from ..types.chain_sync import ChainSyncProtocol
 
 LOGGER = logging.getLogger(__name__)
 
@@ -52,25 +52,12 @@ class PendingTxProcessor:
             "%s Handling TX in block %s", pending_tx.tx.chain, pending_tx.tx.height
         )
 
-        # TODO: get rid of this compatibility layer. 'get_chaindata_messages' is recursive and this proves
-        #       to be tricky to refactor at this time of the night.
-        tx_content = {
-            "content": pending_tx.tx.content,
-            "protocol": pending_tx.tx.protocol,
-            "version": pending_tx.tx.protocol_version,
-        }
-        tx_context = TxContext(
-            chain=pending_tx.tx.chain,
-            hash=pending_tx.tx.hash,
-            height=pending_tx.tx.height,
-            time=pending_tx.tx.datetime.timestamp(),
-            publisher=pending_tx.tx.publisher,
-        )
+        tx = pending_tx.tx
 
         # If the chain data file is unavailable, we leave it to the pending tx
         # processor to log the content unavailable exception and retry later.
-        messages = await self.chain_data_service.get_chaindata_messages(
-            tx_content, tx_context, seen_ids=seen_ids
+        messages = await self.chain_data_service.get_tx_messages(
+            tx=pending_tx.tx, seen_ids=seen_ids
         )
 
         if messages:
@@ -78,7 +65,8 @@ class PendingTxProcessor:
                 await self.message_handler.add_pending_message(
                     message_dict=message_dict,
                     reception_time=utc_now(),
-                    tx_hash=tx_context.hash,
+                    tx_hash=tx.hash,
+                    check_message=tx.protocol != ChainSyncProtocol.SMART_CONTRACT,
                 )
 
         else:

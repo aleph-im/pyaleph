@@ -36,7 +36,7 @@ def chain_tx() -> ChainTxDb:
         height=8000,
         datetime=pytz.utc.localize(dt.datetime(2022, 10, 1)),
         publisher="0xabadbabe",
-        protocol=ChainSyncProtocol.OFF_CHAIN,
+        protocol=ChainSyncProtocol.OFF_CHAIN_SYNC,
         protocol_version=1,
         content="Qmsomething",
     )
