@@ -54,6 +54,11 @@ async def get_chain_info(address):
 class AvalancheConnector(Verifier):
     async def verify_signature(self, message: BasePendingMessage) -> bool:
         """Verifies a signature of a message, return True if verified, false if not"""
+
+        if message.signature is None:
+            LOGGER.warning("'%s': missing signature.", message.item_hash)
+            return False
+
         try:
             chain_id, hrp = await get_chain_info(message.sender)
         except ValueError as e:

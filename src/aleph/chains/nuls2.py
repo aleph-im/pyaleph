@@ -32,7 +32,8 @@ from aleph.types.db_session import DbSessionFactory
 from aleph.utils import run_in_executor
 from .chaindata import ChainDataService
 from .connector import Verifier, ChainWriter
-from .tx_context import TxContext
+from aleph.schemas.chains.tx_context import TxContext
+from ..db.models import ChainTxDb
 
 LOGGER = logging.getLogger("chains.nuls2")
 CHAIN_NAME = "NULS2"
@@ -47,6 +48,11 @@ class Nuls2Connector(Verifier, ChainWriter):
 
     async def verify_signature(self, message: BasePendingMessage) -> bool:
         """Verifies a signature of a message, return True if verified, false if not"""
+
+        if message.signature is None:
+            LOGGER.warning("'%s': missing signature.", message.item_hash)
+            return False
+
         sig_raw = base64.b64decode(message.signature)
 
         sender_hash = hash_from_address(message.sender)
@@ -136,9 +142,12 @@ class Nuls2Connector(Verifier, ChainWriter):
                 async for jdata, context in self._request_transactions(
                     config, http_session, last_stored_height + 1
                 ):
+                    tx = ChainTxDb.from_sync_tx_context(
+                        tx_context=context, tx_data=jdata
+                    )
                     with self.session_factory() as db_session:
                         await self.chain_data_service.incoming_chaindata(
-                            session=db_session, content=jdata, context=context
+                            session=db_session, tx=tx
                         )
                         db_session.commit()
 

@@ -21,7 +21,7 @@ def fixture_txs() -> Sequence[PendingTxDb]:
                 height=1200,
                 datetime=dt.datetime(2022, 1, 1),
                 publisher="0xabadbabe",
-                protocol=ChainSyncProtocol.OFF_CHAIN,
+                protocol=ChainSyncProtocol.OFF_CHAIN_SYNC,
                 protocol_version=1,
                 content="1",
             )
@@ -33,7 +33,7 @@ def fixture_txs() -> Sequence[PendingTxDb]:
                 height=30000000,
                 datetime=dt.datetime(2022, 1, 2),
                 publisher="SOLMATE",
-                protocol=ChainSyncProtocol.OFF_CHAIN,
+                protocol=ChainSyncProtocol.OFF_CHAIN_SYNC,
                 protocol_version=1,
                 content="2",
             )
@@ -45,7 +45,7 @@ def fixture_txs() -> Sequence[PendingTxDb]:
                 height=1202,
                 datetime=dt.datetime(2022, 1, 3),
                 publisher="0xabadbabe",
-                protocol=ChainSyncProtocol.OFF_CHAIN,
+                protocol=ChainSyncProtocol.OFF_CHAIN_SYNC,
                 protocol_version=1,
                 content="3",
             )

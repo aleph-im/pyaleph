@@ -1,15 +1,32 @@
+import asyncio
 import datetime as dt
-import json
 import logging
 from enum import Enum
+from typing import Tuple, List
 
+import aiohttp
+from aleph_message.models import Chain, ItemType, StoreContent, MessageType
 from aleph_pytezos.crypto.key import Key
+from configmanager import Config
 from nacl.exceptions import BadSignatureError
 
+import aleph.toolkit.json as aleph_json
+from aleph.chains.chaindata import ChainDataService
 from aleph.chains.common import get_verification_buffer
-from aleph.chains.connector import Verifier
-from aleph.db.models import PendingMessageDb
-from aleph.schemas.pending_messages import BasePendingMessage
+from aleph.chains.connector import Verifier, ChainReader
+from aleph.db.accessors.chains import get_last_height, upsert_chain_sync_status
+from aleph.schemas.chains.tx_context import TxContext
+from aleph.db.models import PendingMessageDb, ChainTxDb
+from aleph.schemas.chains.tezos_indexer_response import (
+    IndexerResponse,
+    IndexerMessageEvent,
+    SyncStatus,
+)
+from aleph.schemas.pending_messages import BasePendingMessage, PendingStoreMessage
+from aleph.toolkit.timestamp import utc_now
+from aleph.types.chain_sync import ChainSyncProtocol
+from aleph.types.db_session import DbSessionFactory, DbSession
+from aleph.utils import get_sha256
 
 LOGGER = logging.getLogger(__name__)
 
@@ -85,15 +102,148 @@ def get_tezos_verification_buffer(
     raise ValueError(f"Unsupported signature type: {signature_type}")
 
 
-class TezosConnector(Verifier):
+def make_graphql_status_query():
+    return "{indexStatus {status}}"
+
+
+def make_graphql_query(
+    sync_contract_address: str, event_type: str, limit: int, skip: int
+):
+    return """
+{
+  indexStatus {
+    oldestBlock
+    recentBlock
+    status
+  }
+  stats(address: "%s") {
+    totalEvents
+  }
+  events(limit: %d, skip: %d, source: "%s", type: "%s") {
+    source
+    timestamp
+    blockLevel
+    operationHash
+    type
+    payload
+  }
+}
+""" % (
+        sync_contract_address,
+        limit,
+        skip,
+        sync_contract_address,
+        event_type,
+    )
+
+
+async def get_indexer_status(http_session: aiohttp.ClientSession) -> SyncStatus:
+    response = await http_session.post("/", json={"query": make_graphql_status_query()})
+    response.raise_for_status()
+    response_json = await response.json()
+
+    return SyncStatus(response_json["data"]["indexStatus"]["status"])
+
+
+async def fetch_messages(
+    http_session: aiohttp.ClientSession,
+    sync_contract_address: str,
+    event_type: str,
+    limit: int,
+    skip: int,
+) -> IndexerResponse[IndexerMessageEvent]:
+
+    query = make_graphql_query(
+        limit=limit,
+        skip=skip,
+        sync_contract_address=sync_contract_address,
+        event_type=event_type,
+    )
+
+    response = await http_session.post("/", json={"query": query})
+    response.raise_for_status()
+    response_json = await response.json()
+
+    return IndexerResponse[IndexerMessageEvent].parse_obj(response_json)
+
+
+def indexer_event_to_chain_tx(
+    indexer_event: IndexerMessageEvent,
+) -> ChainTxDb:
+
+    if message_type := indexer_event.payload.message_type != "STORE_IPFS":
+        raise ValueError(f"Unexpected message type: {message_type}")
+
+    content = StoreContent(
+        address=indexer_event.payload.addr,
+        time=indexer_event.payload.timestamp,
+        item_type=ItemType.ipfs,
+        item_hash=indexer_event.payload.message_content,
+    )
+    item_content = content.json()
+    item_hash = get_sha256(item_content)
+
+    # Use Pydantic for validation and then transform it into a SQLA object.
+    # Not ideal performance-wise but will catch a lot of potential errors.
+    pending_message = PendingStoreMessage(
+        item_hash=item_hash,
+        sender=indexer_event.payload.addr,
+        chain=Chain.TEZOS,
+        signature=None,
+        type=MessageType.store,
+        item_content=StoreContent(
+            address=indexer_event.payload.addr,
+            time=indexer_event.payload.timestamp,
+            item_type=ItemType.ipfs,
+            item_hash=indexer_event.payload.message_content,
+        ).json(),
+        content=content,
+        item_type=ItemType.inline,
+        time=indexer_event.timestamp.timestamp(),
+        channel=None,
+    )
+
+    chain_tx = ChainTxDb(
+        hash=indexer_event.operation_hash,
+        chain=Chain.TEZOS,
+        height=indexer_event.block_level,
+        datetime=indexer_event.timestamp,
+        publisher=indexer_event.source,
+        protocol=ChainSyncProtocol.SMART_CONTRACT,
+        protocol_version=1,
+        content=indexer_event.payload.dict(),
+    )
+
+    return chain_tx
+
+
+async def extract_aleph_messages_from_indexer_response(
+    indexer_response: IndexerResponse[IndexerMessageEvent],
+) -> List[ChainTxDb]:
+
+    events = indexer_response.data.events
+    return [indexer_event_to_chain_tx(event) for event in events]
+
+
+class TezosConnector(Verifier, ChainReader):
+    def __init__(
+        self, session_factory: DbSessionFactory, chain_data_service: ChainDataService
+    ):
+        self.session_factory = session_factory
+        self.chain_data_service = chain_data_service
+
     async def verify_signature(self, message: BasePendingMessage) -> bool:
         """
         Verifies the cryptographic signature of a message signed with a Tezos key.
         """
 
+        if message.signature is None:
+            LOGGER.warning("'%s': missing signature.", message.item_hash)
+            return False
+
         try:
-            signature_dict = json.loads(message.signature)
-        except json.JSONDecodeError:
+            signature_dict = aleph_json.loads(message.signature)
+        except aleph_json.DecodeError:
             LOGGER.warning(
                 "Signature field for Tezos message is not JSON deserializable."
             )
@@ -103,7 +253,7 @@ class TezosConnector(Verifier):
             signature = signature_dict["signature"]
             public_key = signature_dict["publicKey"]
         except KeyError as e:
-            LOGGER.exception(
+            LOGGER.warning(
                 "'%s' key missing from Tezos signature dictionary.", e.args[0]
             )
             return False
@@ -123,7 +273,7 @@ class TezosConnector(Verifier):
             )
 
         verification_buffer = get_tezos_verification_buffer(
-            message, signature_type, dapp_url   # type: ignore
+            message, signature_type, dapp_url  # type: ignore
         )
 
         # Check the signature
@@ -136,3 +286,84 @@ class TezosConnector(Verifier):
             return False
 
         return True
+
+    async def get_last_height(self) -> int:
+        """Returns the last height for which we already have the ethereum data."""
+        with self.session_factory() as session:
+            last_height = get_last_height(session=session, chain=Chain.ETH)
+
+        if last_height is None:
+            last_height = -1
+
+        return last_height
+
+    async def fetch_incoming_messages(
+        self, session: DbSession, indexer_url: str, sync_contract_address: str
+    ) -> None:
+        """
+        Fetch the latest message events from the Aleph sync smart contract.
+        :param session: DB session.
+        :param indexer_url: URL of the Tezos indexer.
+        :param sync_contract_address: Tezos address of the Aleph sync smart contract.
+        """
+
+        async with aiohttp.ClientSession(indexer_url) as http_session:
+            status = await get_indexer_status(http_session)
+
+            if status != SyncStatus.SYNCED:
+                LOGGER.warning("Tezos indexer is not yet synced, waiting until it is")
+                return
+
+            last_stored_height = await self.get_last_height()
+            limit = 100
+
+            try:
+                while True:
+                    indexer_response_data = await fetch_messages(
+                        http_session,
+                        sync_contract_address=sync_contract_address,
+                        event_type="MessageEvent",
+                        limit=limit,
+                        skip=last_stored_height,
+                    )
+                    txs = await extract_aleph_messages_from_indexer_response(
+                        indexer_response_data
+                    )
+                    for tx in txs:
+                        await self.chain_data_service.incoming_chaindata(
+                            session=session, tx=tx
+                        )
+
+                    last_stored_height += limit
+                    if (
+                        last_stored_height
+                        >= indexer_response_data.data.stats.total_events
+                    ):
+                        last_stored_height = (
+                            indexer_response_data.data.stats.total_events
+                        )
+                        break
+
+            finally:
+                upsert_chain_sync_status(
+                    session=session,
+                    chain=Chain.TEZOS,
+                    height=last_stored_height,
+                    update_datetime=utc_now(),
+                )
+
+    async def fetcher(self, config: Config):
+        while True:
+            try:
+                with self.session_factory() as session:
+                    await self.fetch_incoming_messages(
+                        session=session,
+                        indexer_url=config.tezos.indexer_url.value,
+                        sync_contract_address=config.tezos.sync_contract.value,
+                    )
+            except Exception:
+                LOGGER.exception(
+                    "An unexpected exception occurred, "
+                    "relaunching Tezos message sync in 10 seconds"
+                )
+            await asyncio.sleep(10)
