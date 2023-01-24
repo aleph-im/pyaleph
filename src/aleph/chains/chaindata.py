@@ -167,6 +167,7 @@ class ChainDataService:
 
         This function may still be a bit specific to Tezos as this is the first and
         only supported chain, but it is meant to be generic. Update accordingly.
+        Message validation should be left to the message processing pipeline.
         """
 
         try:
@@ -174,30 +175,33 @@ class ChainDataService:
         except ValidationError:
             raise InvalidContent(f"Incompatible tx content for {tx.chain}/{tx.hash}")
 
-        if message_type := payload.message_type != "STORE_IPFS":
-            raise ValueError(f"Unexpected message type: {message_type}")
+        message_type = payload.message_type
 
-        content = StoreContent(
-            address=payload.addr,
-            time=payload.timestamp,
-            item_type=ItemType.ipfs,
-            item_hash=payload.message_content,
-        )
-        item_content = content.json()
-        item_hash = get_sha256(item_content)
+        message_dict = {
+            "sender": payload.addr,
+            "chain": Chain.TEZOS.value,
+            "signature": None,
+            "item_type": ItemType.inline,
+            "time": tx.datetime.timestamp(),
+        }
 
-        return [
-            {
-                "item_hash": item_hash,
-                "sender": payload.addr,
-                "chain": Chain.TEZOS.value,
-                "signature": None,
-                "type": MessageType.store.value,
-                "item_content": item_content,
-                "item_type": ItemType.inline,
-                "time": tx.datetime.timestamp(),
-            }
-        ]
+        if message_type == "STORE_IPFS":
+            message_type = MessageType.store.value
+            content = StoreContent(
+                address=payload.addr,
+                time=payload.timestamp,
+                item_type=ItemType.ipfs,
+                item_hash=payload.message_content,
+            )
+            item_content = content.json()
+        else:
+            item_content = payload.message_content
+
+        message_dict["item_hash"] = get_sha256(item_content)
+        message_dict["type"] = message_type
+        message_dict["item_content"] = item_content
+
+        return [message_dict]
 
     async def get_tx_messages(
         self, tx: ChainTxDb, seen_ids: Optional[Set[str]] = None
