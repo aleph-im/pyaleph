@@ -1,16 +1,23 @@
-from typing import Optional, Dict, Mapping
+import datetime as dt
+import json
+from typing import Optional, Mapping
 
 import pytest
 from aleph_message.models import Chain, MessageType, ItemType
 from configmanager import Config
 
-from aleph.db.models import PendingMessageDb
+from aleph.db.accessors.files import get_message_file_pin
+from aleph.db.accessors.messages import get_message_by_item_hash
+from aleph.db.models import PendingMessageDb, MessageStatusDb
+from aleph.handlers.content.store import StoreMessageHandler
 from aleph.handlers.message_handler import MessageHandler
+from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.services.storage.engine import StorageEngine
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
+from aleph.types.message_status import MessageStatus
 
 
 @pytest.fixture()
@@ -26,6 +33,8 @@ def fixture_store_message() -> PendingMessageDb:
         time=timestamp_to_datetime(1665478676.658627),
         channel=Channel("TEST"),
         check_message=True,
+        retries=0,
+        next_attempt=dt.datetime(2023, 1, 1),
         fetched=False,
         reception_time=timestamp_to_datetime(1665478677),
     )
@@ -51,7 +60,10 @@ class MockStorageEngine(StorageEngine):
 
 @pytest.mark.asyncio
 async def test_process_store(
-    mocker, mock_config: Config, session_factory: DbSessionFactory, fixture_store_message: PendingMessageDb
+    mocker,
+    mock_config: Config,
+    session_factory: DbSessionFactory,
+    fixture_store_message: PendingMessageDb,
 ):
     storage_service = StorageService(
         storage_engine=MockStorageEngine(
@@ -70,3 +82,67 @@ async def test_process_store(
     )
 
     await message_handler.fetch_and_process_one_message_db(fixture_store_message)
+
+
+@pytest.mark.asyncio
+async def test_process_store_no_signature(
+    mocker,
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    fixture_store_message: PendingMessageDb,
+):
+    """
+    Test that a STORE message with no signature (i.e., coming from a smart contract)
+    can be processed.
+    """
+
+    fixture_store_message.check_message = False
+    fixture_store_message.signature = None
+    fixture_store_message.fetched = True
+    assert fixture_store_message.item_content  # for mypy
+    content = json.loads(fixture_store_message.item_content)
+    fixture_store_message.content = content
+
+    with session_factory() as session:
+        session.add(fixture_store_message)
+        session.add(
+            MessageStatusDb(
+                item_hash=fixture_store_message.item_hash,
+                status=MessageStatus.PENDING,
+                reception_time=fixture_store_message.reception_time,
+            )
+        )
+        session.commit()
+
+    storage_service = StorageService(
+        storage_engine=MockStorageEngine(
+            files={
+                "c25b0525bc308797d3e35763faf5c560f2974dab802cb4a734ae4e9d1040319e": b"Hello Aleph.im"
+            }
+        ),
+        ipfs_service=mocker.AsyncMock(),
+    )
+    message_processor.message_handler.storage_service = storage_service
+    storage_handler = message_processor.message_handler.content_handlers[
+        MessageType.store
+    ]
+    assert isinstance(storage_handler, StoreMessageHandler)
+    storage_handler.storage_service = storage_service
+
+    pipeline = message_processor.make_pipeline()
+    # Exhaust the iterator
+    _ = [message async for message in pipeline]
+
+    with session_factory() as session:
+        message_db = get_message_by_item_hash(
+            session=session, item_hash=fixture_store_message.item_hash
+        )
+
+        assert message_db is not None
+        assert message_db.signature is None
+
+        file_pin = get_message_file_pin(
+            session=session, item_hash=fixture_store_message.item_hash
+        )
+        assert file_pin is not None
+        assert file_pin.file_hash == content["item_hash"]

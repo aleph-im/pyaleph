@@ -90,7 +90,7 @@ def message_processor(mocker, mock_config: Config, session_factory: DbSessionFac
     message_processor = PendingMessageProcessor(
         session_factory=session_factory,
         message_handler=message_handler,
-        max_retries=1,
+        max_retries=0,
         mq_message_exchange=mocker.AsyncMock(),
         mq_conn=mocker.AsyncMock(),
     )

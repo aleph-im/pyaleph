@@ -7,12 +7,15 @@ from aleph_message.models import Chain
 from configmanager import Config
 from sqlalchemy import select
 
+from aleph.chains.chaindata import ChainDataService
 from aleph.db.models import PendingMessageDb, MessageStatusDb
 from aleph.db.models.chains import ChainTxDb
 from aleph.db.models.pending_txs import PendingTxDb
 from aleph.handlers.message_handler import MessageHandler
 from aleph.jobs.process_pending_txs import PendingTxProcessor
+from aleph.schemas.chains.tezos_indexer_response import MessageEventPayload
 from aleph.storage import StorageService
+from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.message_status import MessageStatus
@@ -22,20 +25,20 @@ from .load_fixtures import load_fixture_messages
 # TODO: try to replace this fixture by a get_json fixture. Currently, the pinning
 #       of the message content gets in the way in the real get_chaindata_messages function.
 async def get_fixture_chaindata_messages(
-    pending_tx_content, pending_tx_context, seen_ids: List[str]
+    tx: ChainTxDb, seen_ids: List[str]
 ) -> List[Dict]:
-    return load_fixture_messages(f"{pending_tx_content['content']}.json")
+    return load_fixture_messages(f"{tx.content}.json")
 
 
 @pytest.mark.asyncio
-async def test_process_pending_tx(
+async def test_process_pending_tx_on_chain_protocol(
     mocker,
     mock_config: Config,
     session_factory: DbSessionFactory,
     test_storage_service: StorageService,
 ):
     chain_data_service = mocker.AsyncMock()
-    chain_data_service.get_chaindata_messages = get_fixture_chaindata_messages
+    chain_data_service.get_tx_messages = get_fixture_chaindata_messages
     pending_tx_processor = PendingTxProcessor(
         session_factory=session_factory,
         storage_service=test_storage_service,
@@ -54,7 +57,7 @@ async def test_process_pending_tx(
         datetime=pytz.utc.localize(dt.datetime.utcfromtimestamp(1632835747)),
         height=13314512,
         publisher="0x23eC28598DCeB2f7082Cc3a9D670592DfEd6e0dC",
-        protocol=ChainSyncProtocol.ON_CHAIN,
+        protocol=ChainSyncProtocol.ON_CHAIN_SYNC,
         protocol_version=1,
         content="test-data-pending-tx-messages",
     )
@@ -98,3 +101,73 @@ async def test_process_pending_tx(
             # TODO: need utils to compare message DB types to dictionaries / Pydantic classes / etc
             assert pending_message_db.sender == fixture_message["sender"]
             assert pending_message_db.item_content == fixture_message["item_content"]
+
+
+@pytest.mark.asyncio
+async def test_process_pending_tx_smart_contract_protocol(
+    mocker,
+    mock_config: Config,
+    session_factory: DbSessionFactory,
+    test_storage_service: StorageService,
+):
+    chain_data_service = ChainDataService(
+        session_factory=session_factory, storage_service=mocker.AsyncMock()
+    )
+    pending_tx_processor = PendingTxProcessor(
+        session_factory=session_factory,
+        storage_service=test_storage_service,
+        message_handler=MessageHandler(
+            session_factory=session_factory,
+            chain_service=mocker.AsyncMock(),
+            storage_service=test_storage_service,
+            config=mock_config,
+        ),
+    )
+    pending_tx_processor.chain_data_service = chain_data_service
+
+    payload = MessageEventPayload(
+        timestamp=1668611900,
+        addr="KT1VBeLD7hzKpj17aRJ3Kc6QQFeikCEXi7W6",
+        msgtype="STORE_IPFS",
+        msgcontent="QmaMLRsvmDRCezZe2iebcKWtEzKNjBaQfwcu7mcpdm8eY2",
+    )
+
+    tx = ChainTxDb(
+        hash="oorMNgusX6RxZ4NhzYriVDN8HDeMBNkjD3E8kx9a7j7dRRDGkzz",
+        chain=Chain.TEZOS,
+        height=584664,
+        datetime=timestamp_to_datetime(1668611900),
+        publisher="KT1BfL57oZfptdtMFZ9LNakEPvuPPA2urdSW",
+        protocol=ChainSyncProtocol.SMART_CONTRACT,
+        protocol_version=1,
+        content=payload.dict(),
+    )
+
+    pending_tx = PendingTxDb(tx=tx)
+
+    with session_factory() as session:
+        session.add(pending_tx)
+        session.commit()
+
+    await pending_tx_processor.handle_pending_tx(pending_tx=pending_tx)
+
+    with session_factory() as session:
+        pending_txs = session.execute(select(PendingTxDb)).scalars().all()
+        assert not pending_txs
+
+        pending_messages = list(session.execute(select(PendingMessageDb)).scalars())
+        assert len(pending_messages) == 1
+        pending_message_db = pending_messages[0]
+
+        assert pending_message_db.signature is None
+        assert not pending_message_db.check_message
+        assert pending_message_db.sender == payload.addr
+
+        message_status_db = (
+            session.execute(
+                select(MessageStatusDb).where(
+                    MessageStatusDb.item_hash == pending_message_db.item_hash
+                )
+            )
+        ).scalar_one()
+        assert message_status_db.status == MessageStatus.PENDING

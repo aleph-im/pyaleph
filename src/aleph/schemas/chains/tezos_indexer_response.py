@@ -1,11 +1,9 @@
 import datetime as dt
-from typing import Any, List, Generic, TypeVar
+from enum import Enum
+from typing import List, Generic, TypeVar
 
 from pydantic import BaseModel, Field
-from enum import Enum
-
 from pydantic.generics import GenericModel
-
 
 PayloadType = TypeVar("PayloadType")
 
@@ -29,13 +27,16 @@ class IndexerStats(BaseModel):
 class IndexerEvent(GenericModel, Generic[PayloadType]):
     source: str
     timestamp: dt.datetime
-    block_hash: str = Field(alias="blockHash")
     block_level: int = Field(alias="blockLevel")
+    operation_hash: str = Field(alias="operationHash")
     type: str
     payload: PayloadType
 
 
 class MessageEventPayload(BaseModel):
+    class Config:
+        allow_population_by_field_name = True
+
     timestamp: float
     addr: str
     message_type: str = Field(alias="msgtype")
