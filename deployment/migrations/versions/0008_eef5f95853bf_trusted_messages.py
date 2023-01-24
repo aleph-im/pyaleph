@@ -32,18 +32,6 @@ def upgrade() -> None:
             CHECK(signature is not null or not check_message)
     """
     )
-
-    # Allow null protocol for chain txs as confirmations can now come from indexers
-    op.alter_column("chain_txs", "protocol", existing_type=sa.VARCHAR(), nullable=True)
-    op.alter_column(
-        "chain_txs", "protocol_version", existing_type=sa.INTEGER(), nullable=True
-    )
-    op.alter_column(
-        "chain_txs",
-        "content",
-        existing_type=postgresql.JSONB(astext_type=sa.Text()),
-        nullable=True,
-    )
     # ### end Alembic commands ###
 
 
@@ -59,15 +47,4 @@ def downgrade() -> None:
     op.alter_column(
         "forgotten_messages", "signature", existing_type=sa.VARCHAR(), nullable=False
     )
-
-    op.alter_column(
-        "chain_txs",
-        "content",
-        existing_type=postgresql.JSONB(astext_type=sa.Text()),
-        nullable=False,
-    )
-    op.alter_column(
-        "chain_txs", "protocol_version", existing_type=sa.INTEGER(), nullable=False
-    )
-    op.alter_column("chain_txs", "protocol", existing_type=sa.VARCHAR(), nullable=False)
     # ### end Alembic commands ###
