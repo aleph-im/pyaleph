@@ -2,7 +2,7 @@ import asyncio
 import datetime as dt
 import logging
 from enum import Enum
-from typing import Tuple, List
+from typing import List
 
 import aiohttp
 from aleph_message.models import Chain, ItemType, StoreContent, MessageType
@@ -15,7 +15,6 @@ from aleph.chains.chaindata import ChainDataService
 from aleph.chains.common import get_verification_buffer
 from aleph.chains.connector import Verifier, ChainReader
 from aleph.db.accessors.chains import get_last_height, upsert_chain_sync_status
-from aleph.schemas.chains.tx_context import TxContext
 from aleph.db.models import PendingMessageDb, ChainTxDb
 from aleph.schemas.chains.tezos_indexer_response import (
     IndexerResponse,
