@@ -94,15 +94,19 @@ class PendingTxProcessor:
         LOGGER.info("handling TXs")
         with self.session_factory() as session:
             for pending_tx in get_pending_txs(session):
-                if pending_tx.tx.content in seen_offchain_hashes:
-                    continue
+                # TODO: remove this feature? It doesn't seem necessary.
+                if pending_tx.tx.protocol == ChainSyncProtocol.OFF_CHAIN_SYNC:
+                    if pending_tx.tx.content in seen_offchain_hashes:
+                        continue
 
                 if len(tasks) == max_concurrent_tasks:
                     done, tasks = await asyncio.wait(
                         tasks, return_when=asyncio.FIRST_COMPLETED
                     )
 
-                seen_offchain_hashes.add(pending_tx.tx.content)
+                if pending_tx.tx.protocol == ChainSyncProtocol.OFF_CHAIN_SYNC:
+                    seen_offchain_hashes.add(pending_tx.tx.content)
+
                 tx_task = asyncio.create_task(
                     self.handle_pending_tx(pending_tx, seen_ids=seen_ids)
                 )
