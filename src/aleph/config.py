@@ -83,8 +83,8 @@ def get_defaults():
         },
         "tezos": {
             "enabled": True,
-            "indexer_url": "https://tezosdevnet.api.aleph.cloud",
-            "sync_contract": "KT1BfL57oZfptdtMFZ9LNakEPvuPPA2urdSW",
+            "indexer_url": "https://tezos-mainnet.api.aleph.cloud",
+            "sync_contract": "KT1FfEoaNvooDfYrP61Ykct6L8z7w7e2pgnT",
         },
         "postgres": {
             "host": "127.0.0.1",
