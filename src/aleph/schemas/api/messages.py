@@ -40,7 +40,7 @@ class BaseMessage(GenericModel, Generic[MType, ContentType]):
 
     sender: str
     chain: Chain
-    signature: str
+    signature: Optional[str]
     type: MType
     item_content: Optional[str]
     item_type: ItemType
@@ -115,7 +115,7 @@ class PendingMessage(BaseModel):
 
     sender: str
     chain: Chain
-    signature: str
+    signature: Optional[str]
     type: MessageType
     item_content: Optional[str]
     item_type: ItemType
@@ -148,7 +148,7 @@ class ForgottenMessage(BaseModel):
 
     sender: str
     chain: Chain
-    signature: str
+    signature: Optional[str]
     type: MessageType
     item_type: ItemType
     item_hash: str
