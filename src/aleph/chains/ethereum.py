@@ -145,7 +145,7 @@ class EthereumConnector(Verifier, ChainWriter):
                         yield log
 
                     if not logs:
-                        LOGGER.info("No recent transactions, waiting 10 seconds.")
+                        LOGGER.info("Processed all transactions, waiting 10 seconds.")
                         await asyncio.sleep(10)
 
                     start_height = end_height + 1
