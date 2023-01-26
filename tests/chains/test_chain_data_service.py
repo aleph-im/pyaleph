@@ -45,7 +45,7 @@ async def test_smart_contract_protocol_ipfs_store(
 
     assert (
         pending_message.item_hash
-        == "c83c515d48a8df8538f3a13eb2ee31b30b8f80c820ef2771c34e4b0b9e97e00f"
+        == "1eb440938336b13e7e4ad3f9ebea6de8dbf7fcbdba4c8861ea0a4f70e19e777d"
     )
     assert pending_message.sender == payload.addr
     assert pending_message.chain == Chain.TEZOS
