@@ -173,35 +173,6 @@ def indexer_event_to_chain_tx(
     if message_type := indexer_event.payload.message_type != "STORE_IPFS":
         raise ValueError(f"Unexpected message type: {message_type}")
 
-    content = StoreContent(
-        address=indexer_event.payload.addr,
-        time=indexer_event.payload.timestamp,
-        item_type=ItemType.ipfs,
-        item_hash=indexer_event.payload.message_content,
-    )
-    item_content = content.json()
-    item_hash = get_sha256(item_content)
-
-    # Use Pydantic for validation and then transform it into a SQLA object.
-    # Not ideal performance-wise but will catch a lot of potential errors.
-    pending_message = PendingStoreMessage(
-        item_hash=item_hash,
-        sender=indexer_event.payload.addr,
-        chain=Chain.TEZOS,
-        signature=None,
-        type=MessageType.store,
-        item_content=StoreContent(
-            address=indexer_event.payload.addr,
-            time=indexer_event.payload.timestamp,
-            item_type=ItemType.ipfs,
-            item_hash=indexer_event.payload.message_content,
-        ).json(),
-        content=content,
-        item_type=ItemType.inline,
-        time=indexer_event.timestamp.timestamp(),
-        channel=None,
-    )
-
     chain_tx = ChainTxDb(
         hash=indexer_event.operation_hash,
         chain=Chain.TEZOS,
@@ -289,8 +260,9 @@ class TezosConnector(Verifier, ChainReader):
     async def get_last_height(self) -> int:
         """Returns the last height for which we already have the ethereum data."""
         with self.session_factory() as session:
-            last_height = get_last_height(session=session, chain=Chain.ETH)
+            last_height = get_last_height(session=session, chain=Chain.TEZOS)
 
+        # Keep the same behavior as Ethereum for now
         if last_height is None:
             last_height = -1
 
@@ -314,6 +286,11 @@ class TezosConnector(Verifier, ChainReader):
                 return
 
             last_stored_height = await self.get_last_height()
+            # TODO: maybe get_last_height() should not return a negative number on startup?
+            # Avoid an off-by-one error at startup
+            if last_stored_height == -1:
+                last_stored_height = 0
+
             limit = 100
 
             try:
@@ -328,6 +305,7 @@ class TezosConnector(Verifier, ChainReader):
                     txs = await extract_aleph_messages_from_indexer_response(
                         indexer_response_data
                     )
+                    LOGGER.info("%d new txs", len(txs))
                     for tx in txs:
                         await self.chain_data_service.incoming_chaindata(
                             session=session, tx=tx
@@ -360,9 +338,12 @@ class TezosConnector(Verifier, ChainReader):
                         indexer_url=config.tezos.indexer_url.value,
                         sync_contract_address=config.tezos.sync_contract.value,
                     )
+                    session.commit()
             except Exception:
                 LOGGER.exception(
                     "An unexpected exception occurred, "
                     "relaunching Tezos message sync in 10 seconds"
                 )
+            else:
+                LOGGER.info("Processed all transactions, waiting 10 seconds.")
             await asyncio.sleep(10)
