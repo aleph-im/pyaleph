@@ -193,7 +193,7 @@ class ChainDataService:
                 item_type=ItemType.ipfs,
                 item_hash=payload.message_content,
             )
-            item_content = content.json()
+            item_content = content.json(exclude_none=True)
         else:
             item_content = payload.message_content
 
