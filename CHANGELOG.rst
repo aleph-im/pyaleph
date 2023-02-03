@@ -2,6 +2,14 @@
 Changelog
 =========
 
+Version 0.4.4
+=============
+
+* Fix: Messages sent to the `pubsub` endpoint were only forwarded to other nodes.
+* Fix: The ref field on STORE messages was not stored
+* Upgrade dependencies p2p-service and aleph-client
+* Support disabling IPFS in configuration
+
 Version 0.4.3
 =============
 
