@@ -19,6 +19,7 @@ from multiprocessing.managers import SyncManager
 from typing import Any, Coroutine, Dict, List, Optional
 
 import sentry_sdk
+from sentry_sdk.integrations.aiohttp import AioHttpIntegration
 from aleph_message.models import MessageType
 from configmanager import Config
 from setproctitle import setproctitle
@@ -119,6 +120,7 @@ def run_server_coroutine(
             dsn=config.sentry.dsn.value,
             traces_sample_rate=config.sentry.traces_sample_rate.value,
             ignore_errors=[KeyboardInterrupt],
+            integrations=[AioHttpIntegration()],
         )
 
     # Use a try-catch-capture_exception to work with multiprocessing, see
