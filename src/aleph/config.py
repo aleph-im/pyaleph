@@ -48,13 +48,7 @@ def get_defaults():
             ],
             "topics": ["ALIVE", "ALEPH-TEST"],
         },
-        "tezos": {
-            "enabled": True,
-            "indexer_url": "https://tezos-mainnet.api.aleph.cloud",
-            "chain_id": "main",
-            "sync_contract": "KT1FfEoaNvooDfYrP61Ykct6L8z7w7e2pgnT",
-        },
-        "storage": {"folder": "./data/", "store_files": True, "engine": "filesystem"},
+        "storage": {"folder": "/var/lib/pyaleph", "store_files": True, "engine": "filesystem"},
         "nuls": {
             "chain_id": 8964,
             "enabled": False,
