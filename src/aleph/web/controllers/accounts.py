@@ -11,7 +11,7 @@ from aleph.db.accessors.files import (
     get_address_files_for_api,
     get_address_files_stats,
 )
-from aleph.db.accessors.messages import get_message_stats_by_sender
+from aleph.db.accessors.messages import get_message_stats_by_address
 from aleph.schemas.api.accounts import (
     GetAccountBalanceResponse,
     GetAccountFilesResponse,
@@ -24,10 +24,10 @@ from aleph.web.controllers.app_state_getters import get_session_factory_from_req
 def make_stats_dict(stats) -> Dict[str, Any]:
     stats_dict = {}
 
-    sorted_stats = sorted(stats, key=lambda s: s.sender)
-    for sender, sender_stats in groupby(sorted_stats, key=lambda s: s.sender):
-        nb_messages_by_type = {s.type: s.nb_messages for s in sender_stats}
-        stats_dict[sender] = {
+    sorted_stats = sorted(stats, key=lambda s: s.address)
+    for address, address_stats in groupby(sorted_stats, key=lambda s: s.address):
+        nb_messages_by_type = {s.type: s.nb_messages for s in address_stats}
+        stats_dict[address] = {
             "messages": sum(val for val in nb_messages_by_type.values()),
             "aggregates": nb_messages_by_type.get(MessageType.aggregate, 0),
             "posts": nb_messages_by_type.get(MessageType.post, 0),
@@ -45,7 +45,7 @@ async def addresses_stats_view(request: web.Request):
     session_factory: DbSessionFactory = request.app["session_factory"]
 
     with session_factory() as session:
-        stats = get_message_stats_by_sender(session=session, addresses=addresses)
+        stats = get_message_stats_by_address(session=session, addresses=addresses)
 
     stats_dict = make_stats_dict(stats)
 

@@ -189,17 +189,33 @@ def get_matching_messages(
     return (session.execute(select_stmt)).scalars()
 
 
-def get_message_stats_by_sender(
+def get_message_stats_by_address(
     session: DbSession,
     addresses: Optional[Sequence[str]] = None,
 ):
-    select_stmt = select(
-        MessageDb.sender, MessageDb.type, func.count().label("nb_messages")
-    ).group_by(MessageDb.sender, MessageDb.type)
-    if addresses:
-        select_stmt = select_stmt.where(MessageDb.sender.in_(addresses))
+    """
+    Get message stats for user addresses.
 
-    return session.execute(select_stmt).all()
+    :param session: DB session object.
+    :param addresses: If specified, restricts the list of results to these addresses.
+                      otherwise, results for all addresses are returned.
+    :return: A list of (sender, message_type, count) tuples.
+    """
+    parameters = {}
+    select_stmt = "select address, type, nb_messages from address_stats_mat_view"
+
+    if addresses:
+        # Tuples are supported as array parameters by SQLAlchemy
+        addresses_tuple = addresses if isinstance(addresses, tuple) else tuple(addresses)
+
+        select_stmt += " where address in :addresses"
+        parameters = {"addresses": addresses_tuple}
+
+    return session.execute(text(select_stmt), parameters).all()
+
+
+def refresh_address_stats_mat_view(session: DbSession) -> None:
+    session.execute(text("refresh materialized view concurrently address_stats_mat_view"))
 
 
 # TODO: declare a type that will match the result (something like UnconfirmedMessageDb)

@@ -34,6 +34,7 @@ from aleph.jobs import start_jobs
 from aleph.jobs.job_utils import prepare_loop
 from aleph.network import listener_tasks
 from aleph.services import p2p
+from aleph.services.cache.materialized_views import refresh_cache_materialized_views
 from aleph.services.ipfs import IpfsService
 from aleph.services.ipfs.common import make_ipfs_client
 from aleph.services.keys import generate_keypair, save_keys
@@ -287,6 +288,10 @@ async def main(args):
         )
         tasks.append(chain_service.chain_event_loop(config))
         LOGGER.debug("Initialized listeners")
+
+        LOGGER.debug("Initializing cache tasks")
+        tasks.append(refresh_cache_materialized_views(session_factory))
+        LOGGER.debug("Initialized cache tasks")
 
         # Need to be passed here otherwise it gets lost in the fork
         from aleph.services.p2p import manager as p2p_manager
