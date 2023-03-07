@@ -175,7 +175,7 @@ def count_matching_messages(
         select_count_stmt = select(func.count()).select_from(select_stmt)
         return session.execute(select_count_stmt).scalar_one()
 
-    return MessageDb.count(session=session)
+    return MessageDb.fast_count(session=session)
 
 
 def get_matching_messages(

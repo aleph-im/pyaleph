@@ -4,7 +4,7 @@ from copy import copy
 import pytest
 import pytz
 from aleph_message.models import Chain, MessageType, ItemType
-from sqlalchemy import select, insert
+from sqlalchemy import select, insert, text
 
 from aleph.db.accessors.messages import (
     get_message_by_item_hash,
@@ -158,6 +158,28 @@ async def test_message_exists(session_factory: DbSessionFactory, fixture_message
         assert message_exists(
             session=session, item_hash=fixture_message.item_hash
         )
+
+
+@pytest.mark.asyncio
+async def test_message_count(session_factory: DbSessionFactory, fixture_message: MessageDb):
+    with session_factory() as session:
+        session.add(fixture_message)
+        session.commit()
+
+        # Analyze updates the table size estimate
+        session.execute(text("analyze messages"))
+        session.commit()
+
+    with session_factory() as session:
+        exact_count = MessageDb.count(session)
+        assert exact_count == 1
+
+        estimate_count = MessageDb.estimate_count(session)
+        assert isinstance(estimate_count, int)
+        assert estimate_count == 1
+
+        fast_count = MessageDb.fast_count(session)
+        assert fast_count == 1
 
 
 @pytest.mark.asyncio
