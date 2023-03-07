@@ -97,37 +97,38 @@ async def run_server(
     from aiohttp import web
 
     LOGGER.debug("Setup of runner")
-    p2p_client = await init_p2p_client(config, service_name=f"api-server-{port}")
+    with sentry_sdk.start_transaction(name=f"init-server-{port}"):
+        p2p_client = await init_p2p_client(config, service_name=f"api-server-{port}")
 
-    engine = make_engine(
-        config,
-        echo=config.logging.level.value == logging.DEBUG,
-        application_name=f"aleph-api-{port}",
-    )
-    session_factory = make_session_factory(engine)
+        engine = make_engine(
+            config,
+            echo=config.logging.level.value == logging.DEBUG,
+            application_name=f"aleph-api-{port}",
+        )
+        session_factory = make_session_factory(engine)
 
-    ipfs_client = make_ipfs_client(config)
-    ipfs_service = IpfsService(ipfs_client=ipfs_client)
-    storage_service = StorageService(
-        storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
-        ipfs_service=ipfs_service,
-    )
+        ipfs_client = make_ipfs_client(config)
+        ipfs_service = IpfsService(ipfs_client=ipfs_client)
+        storage_service = StorageService(
+            storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
+            ipfs_service=ipfs_service,
+        )
 
-    app[APP_STATE_CONFIG] = config
-    app[APP_STATE_EXTRA_CONFIG] = extra_web_config
-    app[APP_STATE_SHARED_STATS] = shared_stats
-    app[APP_STATE_P2P_CLIENT] = p2p_client
-    # Reuse the connection of the P2P client to avoid opening two connections
-    app[APP_STATE_MQ_CONN] = p2p_client.mq_client.connection
-    app[APP_STATE_STORAGE_SERVICE] = storage_service
-    app[APP_STATE_SESSION_FACTORY] = session_factory
+        app[APP_STATE_CONFIG] = config
+        app[APP_STATE_EXTRA_CONFIG] = extra_web_config
+        app[APP_STATE_SHARED_STATS] = shared_stats
+        app[APP_STATE_P2P_CLIENT] = p2p_client
+        # Reuse the connection of the P2P client to avoid opening two connections
+        app[APP_STATE_MQ_CONN] = p2p_client.mq_client.connection
+        app[APP_STATE_STORAGE_SERVICE] = storage_service
+        app[APP_STATE_SESSION_FACTORY] = session_factory
 
-    runner = web.AppRunner(app)
-    await runner.setup()
+        runner = web.AppRunner(app)
+        await runner.setup()
 
-    LOGGER.info("Starting API server on port %d...", port)
-    site = web.TCPSite(runner, host, port)
-    await site.start()
+        LOGGER.info("Starting API server on port %d...", port)
+        site = web.TCPSite(runner, host, port)
+        await site.start()
 
     # Wait forever
     while True:
@@ -157,7 +158,10 @@ def run_server_coroutine(
     )
 
     if enable_sentry:
-        setup_sentry(config)
+        if port == 8000:
+            setup_sentry(config, traces_sample_rate=1.0)
+        else:
+            setup_sentry(config)
 
     # Use a try-catch-capture_exception to work with multiprocessing, see
     # https://github.com/getsentry/raven-python/issues/1110
@@ -229,8 +233,13 @@ async def main(args):
     config_values = config.dump_values()
 
     LOGGER.info("Initializing database...")
-    run_db_migrations(config)
+    with sentry_sdk.start_transaction(name="run-migrations"):
+        run_db_migrations(config)
     LOGGER.info("Database initialized.")
+
+    with sentry_sdk.start_transaction(name="init-sleep"):
+        from time import sleep
+        sleep(3)
 
     engine = make_engine(
         config,
