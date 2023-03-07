@@ -6,7 +6,6 @@ import asyncio
 import logging
 from typing import List, Dict, Optional, Set
 
-import sentry_sdk
 from configmanager import Config
 from setproctitle import setproctitle
 from sqlalchemy import delete
@@ -23,10 +22,11 @@ from aleph.services.p2p import singleton
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
 from aleph.toolkit.logging import setup_logging
+from aleph.toolkit.monitoring import setup_sentry
 from aleph.toolkit.timestamp import utc_now
+from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.db_session import DbSessionFactory
 from .job_utils import prepare_loop
-from ..types.chain_sync import ChainSyncProtocol
 
 LOGGER = logging.getLogger(__name__)
 
@@ -160,11 +160,7 @@ def pending_txs_subprocess(config_values: Dict, api_servers: List):
     setproctitle("aleph.jobs.txs_task_loop")
     loop, config = prepare_loop(config_values)
 
-    sentry_sdk.init(
-        dsn=config.sentry.dsn.value,
-        traces_sample_rate=config.sentry.traces_sample_rate.value,
-        ignore_errors=[KeyboardInterrupt],
-    )
+    setup_sentry(config)
     setup_logging(
         loglevel=config.logging.level.value,
         filename="/tmp/txs_task_loop.log",
