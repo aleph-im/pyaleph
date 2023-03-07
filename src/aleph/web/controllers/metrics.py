@@ -149,7 +149,8 @@ async def get_metrics(session: DbSession, shared_stats: Dict) -> Metrics:
     sync_messages_reference_total = await fetch_reference_total_messages()
     eth_reference_height = await fetch_eth_height()
 
-    sync_messages_total: int = MessageDb.count(session=session)
+    # select count(*) can be slow, an estimate is sufficient.
+    sync_messages_total: int = MessageDb.fast_count(session=session)
     peers_count = PeerDb.count(session=session)
 
     eth_last_committed_height = get_last_height(session=session, chain=Chain.ETH)
