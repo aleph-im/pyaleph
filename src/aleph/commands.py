@@ -41,6 +41,7 @@ from aleph.services.p2p import singleton, init_p2p_client
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
 from aleph.toolkit.logging import setup_logging
+from aleph.toolkit.monitoring import setup_sentry
 from aleph.web import app
 from aleph.web.controllers.app_state_getters import (
     APP_STATE_CONFIG,
@@ -153,12 +154,9 @@ def run_server_coroutine(
         filename=f"/tmp/run_server_coroutine-{port}.log",
         max_log_file_size=config.logging.max_log_file_size.value,
     )
+
     if enable_sentry:
-        sentry_sdk.init(
-            dsn=config.sentry.dsn.value,
-            traces_sample_rate=config.sentry.traces_sample_rate.value,
-            ignore_errors=[KeyboardInterrupt],
-        )
+        setup_sentry(config)
 
     # Use a try-catch-capture_exception to work with multiprocessing, see
     # https://github.com/getsentry/raven-python/issues/1110
@@ -223,12 +221,8 @@ async def main(args):
 
     if args.sentry_disabled:
         LOGGER.info("Sentry disabled by CLI arguments")
-    elif config.sentry.dsn.value:
-        sentry_sdk.init(
-            dsn=config.sentry.dsn.value,
-            traces_sample_rate=config.sentry.traces_sample_rate.value,
-            ignore_errors=[KeyboardInterrupt],
-        )
+    else:
+        setup_sentry(config)
         LOGGER.info("Sentry enabled")
 
     config_values = config.dump_values()
