@@ -29,6 +29,7 @@ from aleph.types.db_session import DbSessionFactory
 from aleph.utils import run_in_executor
 from .chaindata import ChainDataService
 from .connector import ChainWriter, Verifier
+from ..types.chain_sync import ChainSyncType
 
 LOGGER = logging.getLogger("chains.ethereum")
 CHAIN_NAME = "ETH"
@@ -103,10 +104,12 @@ class EthereumConnector(Verifier, ChainWriter):
 
         return verified
 
-    async def get_last_height(self) -> int:
+    async def get_last_height(self, sync_type: ChainSyncType) -> int:
         """Returns the last height for which we already have the ethereum data."""
         with self.session_factory() as session:
-            last_height = get_last_height(session=session, chain=Chain.ETH)
+            last_height = get_last_height(
+                session=session, chain=Chain.ETH, sync_type=sync_type
+            )
 
         if last_height is None:
             last_height = -1
@@ -213,13 +216,14 @@ class EthereumConnector(Verifier, ChainWriter):
                     upsert_chain_sync_status(
                         session=session,
                         chain=Chain.ETH,
+                        sync_type=ChainSyncType.SYNC,
                         height=last_height,
                         update_datetime=utc_now(),
                     )
                     session.commit()
 
     async def fetcher(self, config: Config):
-        last_stored_height = await self.get_last_height()
+        last_stored_height = await self.get_last_height(sync_type=ChainSyncType.SYNC)
 
         LOGGER.info("Last block is #%d" % last_stored_height)
 
@@ -228,7 +232,7 @@ class EthereumConnector(Verifier, ChainWriter):
         abi = contract.events.SyncEvent._get_event_abi()
 
         while True:
-            last_stored_height = await self.get_last_height()
+            last_stored_height = await self.get_last_height(sync_type=ChainSyncType.SYNC)
             async for jdata, context in self._request_transactions(
                 config, web3, contract, abi, last_stored_height
             ):
