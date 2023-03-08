@@ -7,7 +7,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy_utils.types.choice import ChoiceType
 
 from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.chain_sync import ChainSyncProtocol
+from aleph.types.chain_sync import ChainSyncProtocol, ChainSyncType
 from .base import Base
 from aleph.schemas.chains.tx_context import TxContext
 
@@ -16,6 +16,7 @@ class ChainSyncStatusDb(Base):
     __tablename__ = "chains_sync_status"
 
     chain: Chain = Column(ChoiceType(Chain), primary_key=True)
+    type: ChainSyncType = Column(ChoiceType(ChainSyncType), primary_key=True)
     height: int = Column(Integer, nullable=False)
     last_update: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
 

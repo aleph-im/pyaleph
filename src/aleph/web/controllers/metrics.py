@@ -17,6 +17,7 @@ from aleph import __version__
 from aleph.config import get_config
 from aleph.db.accessors.chains import get_last_height
 from aleph.db.models import PeerDb, MessageDb, FilePinDb, PendingMessageDb, PendingTxDb
+from aleph.types.chain_sync import ChainSyncType
 from aleph.types.db_session import DbSession
 
 LOGGER = getLogger("WEB.metrics")
@@ -154,7 +155,9 @@ async def get_metrics(session: DbSession, shared_stats: Dict) -> Metrics:
     sync_messages_total: int = MessageDb.count(session=session)
     peers_count = PeerDb.count(session=session)
 
-    eth_last_committed_height = get_last_height(session=session, chain=Chain.ETH)
+    eth_last_committed_height = get_last_height(
+        session=session, chain=Chain.ETH, sync_type=ChainSyncType.SYNC
+    )
 
     if not (sync_messages_reference_total is None or sync_messages_total is None):
         sync_messages_remaining_total = (
@@ -198,7 +201,9 @@ async def get_metrics(session: DbSession, shared_stats: Dict) -> Metrics:
         pyaleph_status_sync_permanent_files_total=FilePinDb.count(session=session),
         pyaleph_status_sync_messages_reference_total=sync_messages_reference_total,
         pyaleph_status_sync_messages_remaining_total=sync_messages_remaining_total,
-        pyaleph_status_sync_pending_messages_total=PendingMessageDb.count(session=session),
+        pyaleph_status_sync_pending_messages_total=PendingMessageDb.count(
+            session=session
+        ),
         pyaleph_status_sync_pending_txs_total=PendingTxDb.count(session=session),
         pyaleph_status_chain_eth_last_committed_height=eth_last_committed_height,
         pyaleph_status_chain_eth_height_reference_total=eth_reference_height,

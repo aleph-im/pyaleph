@@ -4,7 +4,6 @@ from typing import List
 import pytest
 import pytz
 from aleph_message.models import Chain, ItemType, MessageType
-from sqlalchemy import select
 
 from aleph.db.accessors.messages import (
     get_message_stats_by_address,
@@ -14,9 +13,6 @@ from aleph.db.models import MessageDb
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
-
-from aleph.db.accessors.chains import upsert_chain_sync_status, get_last_height
-from aleph.db.models.chains import ChainSyncStatusDb
 
 
 @pytest.fixture
