@@ -21,10 +21,9 @@ def upgrade() -> None:
 
     # Add the new type column
     op.add_column("chains_sync_status", sa.Column("type", sa.String(), nullable=True))
-    op.execute("update chains_sync_status set type = 'sync' where chain = 'ETH'")
-    # The Tezos sync status used the page as height, which is an ugly hack.
-    # Delete the sync status and resync.
-    op.execute("delete from chains_sync_status where chain = 'TEZOS'")
+    # We only support message events on Tezos, every other chain connector fetches sync events
+    op.execute("update chains_sync_status set type = 'sync' where chain != 'TEZOS'")
+    op.execute("update chains_sync_status set type = 'message' where chain = 'TEZOS'")
     op.alter_column("chains_sync_status", "type", nullable=False)
 
     # Recreate the primary key
@@ -44,7 +43,4 @@ def downgrade() -> None:
         "chains_sync_status",
         ["chain"],
     )
-    # As mentioned above, the Tezos sync status uses the page height in older
-    # versions. Delete the sync status and resync.
-    op.execute("delete from chains_sync_status where chain = 'TEZOS'")
     # ### end Alembic commands ###

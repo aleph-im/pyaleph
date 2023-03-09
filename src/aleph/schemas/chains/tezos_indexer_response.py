@@ -5,6 +5,8 @@ from typing import List, Generic, TypeVar
 from pydantic import BaseModel, Field
 from pydantic.generics import GenericModel
 
+from aleph.schemas.chains.indexer_response import GenericMessageEvent
+
 PayloadType = TypeVar("PayloadType")
 
 
@@ -41,6 +43,24 @@ class MessageEventPayload(BaseModel):
     addr: str
     message_type: str = Field(alias="msgtype")
     message_content: str = Field(alias="msgcontent")
+
+    # The following properties are defined for interoperability with the generic
+    # MessageEvent class.
+    @property
+    def address(self) -> str:
+        return self.addr
+
+    @property
+    def type(self) -> str:
+        return self.message_type
+
+    @property
+    def content(self) -> str:
+        return self.message_content
+
+    @property
+    def timestamp_seconds(self) -> float:
+        return self.timestamp
 
 
 IndexerMessageEvent = IndexerEvent[MessageEventPayload]

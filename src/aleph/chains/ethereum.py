@@ -21,7 +21,6 @@ from aleph.db.accessors.chains import get_last_height, upsert_chain_sync_status
 from aleph.db.accessors.messages import get_unconfirmed_messages
 from aleph.db.accessors.pending_messages import count_pending_messages
 from aleph.db.accessors.pending_txs import count_pending_txs
-from aleph.db.models import ChainTxDb
 from aleph.schemas.chains.tx_context import TxContext
 from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.toolkit.timestamp import utc_now
@@ -29,7 +28,9 @@ from aleph.types.db_session import DbSessionFactory
 from aleph.utils import run_in_executor
 from .chaindata import ChainDataService
 from .connector import ChainWriter, Verifier
-from ..types.chain_sync import ChainSyncType
+from .indexer_reader import AlephIndexerReader
+from ..db.models import ChainTxDb
+from ..types.chain_sync import ChainEventType
 
 LOGGER = logging.getLogger("chains.ethereum")
 CHAIN_NAME = "ETH"
@@ -67,10 +68,18 @@ def get_logs_query(web3: Web3, contract, start_height, end_height):
 
 class EthereumConnector(Verifier, ChainWriter):
     def __init__(
-        self, session_factory: DbSessionFactory, chain_data_service: ChainDataService
+        self,
+        session_factory: DbSessionFactory,
+        chain_data_service: ChainDataService,
     ):
         self.session_factory = session_factory
         self.chain_data_service = chain_data_service
+
+        self.indexer_reader = AlephIndexerReader(
+            chain=Chain.ETH,
+            session_factory=session_factory,
+            chain_data_service=chain_data_service,
+        )
 
     async def verify_signature(self, message: BasePendingMessage) -> bool:
         """Verifies a signature of a message, return True if verified, false if not"""
@@ -104,7 +113,7 @@ class EthereumConnector(Verifier, ChainWriter):
 
         return verified
 
-    async def get_last_height(self, sync_type: ChainSyncType) -> int:
+    async def get_last_height(self, sync_type: ChainEventType) -> int:
         """Returns the last height for which we already have the ethereum data."""
         with self.session_factory() as session:
             last_height = get_last_height(
@@ -216,14 +225,14 @@ class EthereumConnector(Verifier, ChainWriter):
                     upsert_chain_sync_status(
                         session=session,
                         chain=Chain.ETH,
-                        sync_type=ChainSyncType.SYNC,
+                        sync_type=ChainEventType.SYNC,
                         height=last_height,
                         update_datetime=utc_now(),
                     )
                     session.commit()
 
-    async def fetcher(self, config: Config):
-        last_stored_height = await self.get_last_height(sync_type=ChainSyncType.SYNC)
+    async def fetch_ethereum_sync_events(self, config: Config):
+        last_stored_height = await self.get_last_height(sync_type=ChainEventType.SYNC)
 
         LOGGER.info("Last block is #%d" % last_stored_height)
 
@@ -232,7 +241,9 @@ class EthereumConnector(Verifier, ChainWriter):
         abi = contract.events.SyncEvent._get_event_abi()
 
         while True:
-            last_stored_height = await self.get_last_height(sync_type=ChainSyncType.SYNC)
+            last_stored_height = await self.get_last_height(
+                sync_type=ChainEventType.SYNC
+            )
             async for jdata, context in self._request_transactions(
                 config, web3, contract, abi, last_stored_height
             ):
@@ -242,6 +253,33 @@ class EthereumConnector(Verifier, ChainWriter):
                         session=session, tx=tx
                     )
                     session.commit()
+
+    async def fetch_sync_events_task(self, config: Config):
+        while True:
+            try:
+                with self.session_factory() as session:
+                    await self.fetch_ethereum_sync_events(config)
+                    session.commit()
+            except Exception:
+                LOGGER.exception(
+                    "An unexpected exception occurred, "
+                    "relaunching Ethereum message sync in 10 seconds"
+                )
+            else:
+                LOGGER.info("Processed all transactions, waiting 10 seconds.")
+            await asyncio.sleep(10)
+
+    async def fetcher(self, config: Config):
+        message_event_task = self.indexer_reader.fetcher(
+            indexer_url=config.aleph.indexer_url.value,
+            # The indexer requires the address to be in the same format as the address it was
+            # configured with. This appears to be lowercase for now.
+            smart_contract_address=config.ethereum.sync_contract.value.lower(),
+            event_type=ChainEventType.MESSAGE,
+        )
+        sync_event_task = self.fetch_sync_events_task(config)
+
+        await asyncio.gather(message_event_task, sync_event_task)
 
     @staticmethod
     def _broadcast_content(

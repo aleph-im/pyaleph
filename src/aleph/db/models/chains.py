@@ -1,24 +1,67 @@
+"""
+Chain-related tables. CCNs sync with chains in one of two ways:
+1. by fetching data from an indexer
+2. by indexing the chain directly.
+"""
+
 import datetime as dt
 from typing import Dict, Any, Union, Mapping
 
 from aleph_message.models import Chain
-from sqlalchemy import Column, Integer, String, TIMESTAMP
+from sqlalchemy import Column, Integer, String, TIMESTAMP, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy_utils.types.choice import ChoiceType
 
 from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.chain_sync import ChainSyncProtocol, ChainSyncType
+from aleph.types.chain_sync import ChainSyncProtocol, ChainEventType
 from .base import Base
 from aleph.schemas.chains.tx_context import TxContext
+from ...toolkit.range import Range
 
 
 class ChainSyncStatusDb(Base):
+    """
+    Keeps track of chains indexed by the CCN.
+    """
+
     __tablename__ = "chains_sync_status"
 
     chain: Chain = Column(ChoiceType(Chain), primary_key=True)
-    type: ChainSyncType = Column(ChoiceType(ChainSyncType), primary_key=True)
+    type: ChainEventType = Column(ChoiceType(ChainEventType), primary_key=True)
     height: int = Column(Integer, nullable=False)
     last_update: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
+
+
+class IndexerSyncStatusDb(Base):
+    """
+    Keeps track of the sync status with indexers.
+
+    Several rows can appear for one chain. The indexers work in chunks, meaning that
+    some ranges may be missing.
+    """
+
+    # TODO: use multiranges with SQLAlchemy 2.0
+    #       https://docs.sqlalchemy.org/en/20/dialects/postgresql.html#range-and-multirange-types
+
+    __tablename__ = "indexer_sync_status"
+
+    chain: Chain = Column(ChoiceType(Chain), primary_key=True)
+    event_type: ChainEventType = Column(ChoiceType(ChainEventType), primary_key=True)
+    start_block_datetime: dt.datetime = Column(
+        TIMESTAMP(timezone=True), primary_key=True
+    )
+    end_block_datetime: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
+    start_included: bool = Column(Boolean, nullable=False)
+    end_included: bool = Column(Boolean, nullable=False)
+    last_updated: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
+
+    def to_range(self) -> Range[dt.datetime]:
+        return Range(
+            self.start_block_datetime,
+            self.end_block_datetime,
+            lower_inc=self.start_included,
+            upper_inc=self.end_included,
+        )
 
 
 class ChainTxDb(Base):

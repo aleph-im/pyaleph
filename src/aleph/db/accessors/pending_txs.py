@@ -2,6 +2,7 @@ from typing import Optional, Iterable
 
 from aleph_message.models import Chain
 from sqlalchemy import select, func
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import selectinload
 
 from aleph.db.models import PendingTxDb, ChainTxDb
@@ -27,3 +28,8 @@ def count_pending_txs(session: DbSession, chain: Optional[Chain] = None) -> int:
         ).where(ChainTxDb.chain == chain)
 
     return (session.execute(select_stmt)).scalar_one()
+
+
+def upsert_pending_tx(session: DbSession, tx_hash: str) -> None:
+    upsert_stmt = insert(PendingTxDb).values(tx_hash=tx_hash).on_conflict_do_nothing()
+    session.execute(upsert_stmt)
