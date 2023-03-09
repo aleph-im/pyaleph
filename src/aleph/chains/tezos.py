@@ -23,7 +23,7 @@ from aleph.schemas.chains.tezos_indexer_response import (
 )
 from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.toolkit.timestamp import utc_now
-from aleph.types.chain_sync import ChainSyncProtocol, ChainSyncType
+from aleph.types.chain_sync import ChainSyncProtocol, ChainEventType
 from aleph.types.db_session import DbSessionFactory, DbSession
 
 LOGGER = logging.getLogger(__name__)
@@ -118,6 +118,7 @@ def make_graphql_query(
     totalEvents
   }
   events(limit: %d, skip: %d, source: "%s", type: "%s") {
+    _id
     source
     timestamp
     blockLevel
@@ -253,7 +254,7 @@ class TezosConnector(Verifier, ChainReader):
 
         return True
 
-    async def get_last_height(self, sync_type: ChainSyncType) -> int:
+    async def get_last_height(self, sync_type: ChainEventType) -> int:
         """Returns the last height for which we already have the ethereum data."""
         with self.session_factory() as session:
             last_height = get_last_height(
@@ -283,7 +284,9 @@ class TezosConnector(Verifier, ChainReader):
                 LOGGER.warning("Tezos indexer is not yet synced, waiting until it is")
                 return
 
-            last_stored_height = await self.get_last_height(sync_type=ChainSyncType.MESSAGE)
+            last_stored_height = await self.get_last_height(
+                sync_type=ChainEventType.MESSAGE
+            )
             # TODO: maybe get_last_height() should not return a negative number on startup?
             # Avoid an off-by-one error at startup
             if last_stored_height == -1:
@@ -323,7 +326,7 @@ class TezosConnector(Verifier, ChainReader):
                 upsert_chain_sync_status(
                     session=session,
                     chain=Chain.TEZOS,
-                    sync_type=ChainSyncType.MESSAGE,
+                    sync_type=ChainEventType.MESSAGE,
                     height=last_stored_height,
                     update_datetime=utc_now(),
                 )

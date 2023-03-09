@@ -62,7 +62,7 @@ class ChainService:
                 await connector.fetcher(config)
             except Exception:
                 LOGGER.exception(
-                    "Chain reader task for %s failed, retrying in 10 seconds.", chain
+                    "Chain reader task for %s failed, retrying in 60 seconds.", chain
                 )
 
             await asyncio.sleep(60)
@@ -82,6 +82,9 @@ class ChainService:
     async def chain_event_loop(self, config: Config):
         listener_tasks = []
         publisher_tasks = []
+
+        if config.bsc.enabled.value:
+            listener_tasks.append(self.chain_reader_task(Chain.BSC, config))
 
         if config.ethereum.enabled.value:
             listener_tasks.append(self.chain_reader_task(Chain.ETH, config))
@@ -110,6 +113,20 @@ class ChainService:
             self._add_chain(Chain.AVAX, AvalancheConnector())
         except ModuleNotFoundError as error:
             LOGGER.warning("Can't load AVAX: %s", error.msg)
+
+        try:
+            from .bsc import BscConnector
+
+            self._add_chain(
+                Chain.BSC,
+                BscConnector(
+                    session_factory=self._session_factory,
+                    chain_data_service=self._chain_data_service,
+                ),
+            )
+        except ModuleNotFoundError as error:
+            LOGGER.warning("Can't load: BSC: %s", error.msg)
+
         try:
             from .nuls import NulsConnector
 

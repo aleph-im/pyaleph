@@ -34,7 +34,7 @@ from .chaindata import ChainDataService
 from .connector import Verifier, ChainWriter
 from aleph.schemas.chains.tx_context import TxContext
 from ..db.models import ChainTxDb
-from ..types.chain_sync import ChainSyncType
+from ..types.chain_sync import ChainEventType
 
 LOGGER = logging.getLogger("chains.nuls2")
 CHAIN_NAME = "NULS2"
@@ -81,7 +81,7 @@ class Nuls2Connector(Verifier, ChainWriter):
         else:
             return True
 
-    async def get_last_height(self, sync_type: ChainSyncType) -> int:
+    async def get_last_height(self, sync_type: ChainEventType) -> int:
         """Returns the last height for which we already have the nuls data."""
         with self.session_factory() as session:
             last_height = get_last_height(session=session, chain=Chain.NULS2, sync_type=sync_type)
@@ -128,19 +128,19 @@ class Nuls2Connector(Verifier, ChainWriter):
                 upsert_chain_sync_status(
                     session=session,
                     chain=Chain.NULS2,
-                    sync_type=ChainSyncType.SYNC,
+                    sync_type=ChainEventType.SYNC,
                     height=last_height,
                     update_datetime=utc_now(),
                 )
                 session.commit()
 
     async def fetcher(self, config: Config):
-        last_stored_height = await self.get_last_height(sync_type=ChainSyncType.SYNC)
+        last_stored_height = await self.get_last_height(sync_type=ChainEventType.SYNC)
 
         LOGGER.info("Last block is #%d" % last_stored_height)
         async with aiohttp.ClientSession() as http_session:
             while True:
-                last_stored_height = await self.get_last_height(sync_type=ChainSyncType.SYNC)
+                last_stored_height = await self.get_last_height(sync_type=ChainEventType.SYNC)
                 async for jdata, context in self._request_transactions(
                     config, http_session, last_stored_height + 1
                 ):
