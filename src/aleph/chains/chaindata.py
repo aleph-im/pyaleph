@@ -1,27 +1,29 @@
 import asyncio
 import json
-from typing import Dict, Optional, List, Any, Mapping, Set
+from typing import Dict, Optional, List, Any, Mapping, Set, Type
 
 from aleph_message.models import StoreContent, ItemType, Chain, MessageType
 from pydantic import ValidationError
 
 from aleph.chains.common import LOGGER
 from aleph.config import get_config
+from aleph.db.accessors.chains import upsert_chain_tx
 from aleph.db.accessors.files import upsert_tx_file_pin, upsert_stored_file
+from aleph.db.accessors.pending_txs import upsert_pending_tx
 from aleph.db.models import ChainTxDb, MessageDb, StoredFileDb
-from aleph.db.models.pending_txs import PendingTxDb
 from aleph.exceptions import (
     InvalidContent,
     AlephStorageException,
     ContentCurrentlyUnavailable,
 )
-from aleph.schemas.chains.tezos_indexer_response import MessageEventPayload
+from aleph.schemas.chains.indexer_response import MessageEvent, GenericMessageEvent
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.db_session import DbSessionFactory, DbSession
 from aleph.types.files import FileType
 from aleph.utils import get_sha256
+from aleph.schemas.chains.tezos_indexer_response import MessageEventPayload as TezosMessageEventPayload
 
 INCOMING_MESSAGE_AUTHORIZED_FIELDS = [
     "item_hash",
@@ -170,16 +172,20 @@ class ChainDataService:
         Message validation should be left to the message processing pipeline.
         """
 
+        payload_model = (
+            TezosMessageEventPayload if tx.chain == Chain.TEZOS else MessageEvent
+        )
+
         try:
-            payload = MessageEventPayload.parse_obj(tx.content)
+            payload: GenericMessageEvent = payload_model.parse_obj(tx.content)
         except ValidationError:
             raise InvalidContent(f"Incompatible tx content for {tx.chain}/{tx.hash}")
 
-        message_type = payload.message_type
+        message_type = payload.type
 
         message_dict = {
-            "sender": payload.addr,
-            "chain": Chain.TEZOS.value,
+            "sender": payload.address,
+            "chain": tx.chain.value,
             "signature": None,
             "item_type": ItemType.inline,
             "time": tx.datetime.timestamp(),
@@ -188,14 +194,14 @@ class ChainDataService:
         if message_type == "STORE_IPFS":
             message_type = MessageType.store.value
             content = StoreContent(
-                address=payload.addr,
-                time=payload.timestamp,
+                address=payload.address,
+                time=payload.timestamp_seconds,
                 item_type=ItemType.ipfs,
-                item_hash=payload.message_content,
+                item_hash=payload.content,
             )
             item_content = content.json(exclude_none=True)
         else:
-            item_content = payload.message_content
+            item_content = payload.content
 
         message_dict["item_hash"] = get_sha256(item_content)
         message_dict["type"] = message_type
@@ -229,4 +235,5 @@ class ChainDataService:
         Content can be inline of "offchain" through an ipfs hash.
         For now, we only add it to the database, it will be processed later.
         """
-        session.add(PendingTxDb(tx=tx))
+        upsert_chain_tx(session=session, tx=tx)
+        upsert_pending_tx(session=session, tx_hash=tx.hash)
