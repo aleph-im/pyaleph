@@ -4,11 +4,7 @@ from configmanager import Config
 
 from aleph.model.filepin import PermanentPin
 
-try:
-    from pymongo import MongoClient
-except ImportError:  # pragma: no cover
-    # Backward compatibility with PyMongo 2.2
-    from pymongo import Connection as MongoClient
+from pymongo import MongoClient
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
 
@@ -31,7 +27,7 @@ def init_db_globals(config: Config):
 
 def init_db(config: Config, ensure_indexes: bool = True):
     init_db_globals(config)
-    sync_connection = MongoClient(config.mongodb.uri.value, tz_aware=True)
+    sync_connection: MongoClient = MongoClient(config.mongodb.uri.value, tz_aware=True)
     sync_db = sync_connection[config.mongodb.database.value]
 
     from aleph.model.messages import CappedMessage

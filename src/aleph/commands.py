@@ -30,7 +30,7 @@ from aleph.cli.args import parse_args
 from aleph.exceptions import InvalidConfigException, KeyNotFoundException
 from aleph.jobs import start_jobs
 from aleph.jobs.job_utils import prepare_loop
-from aleph.logging import setup_logging
+from aleph.toolkit.logging import setup_logging
 from aleph.network import listener_tasks
 from aleph.services import p2p
 from aleph.services.keys import generate_keypair, save_keys

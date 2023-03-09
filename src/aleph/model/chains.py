@@ -54,3 +54,9 @@ class Chain(BaseClass):
             },
             upsert=True,
         )
+
+
+class IndexerSyncStatus(BaseClass):
+    COLLECTION = "indexer_sync_status"
+
+    INDEXES = [IndexModel([("chain", ASCENDING)])]
