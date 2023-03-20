@@ -2,6 +2,11 @@
 Changelog
 =========
 
+Version 0.4.5
+=============
+
+* Feature: fetch messages from the Aleph smart contract on Ethereum and BSC.
+
 Version 0.4.4
 =============
 
