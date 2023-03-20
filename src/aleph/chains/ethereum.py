@@ -5,21 +5,24 @@ import logging
 from typing import AsyncIterator, Dict, Tuple
 
 import pkg_resources
+from aleph_message.models import Chain
+from configmanager import Config
 from eth_account import Account
 from eth_account.messages import encode_defunct
 from hexbytes import HexBytes
 from web3 import Web3
 from web3._utils.events import get_event_data
+from web3.exceptions import MismatchedABI
 from web3.gas_strategies.rpc import rpc_gas_price_strategy
 from web3.middleware.filter import local_filter_middleware
 from web3.middleware.geth_poa import geth_poa_middleware
 
 from aleph.chains.common import (
-    get_verification_buffer,
     get_chaindata,
     incoming_chaindata,
 )
-from aleph.model.chains import Chain
+from aleph.chains.common import get_verification_buffer
+from aleph.model.chains import Chain as ChainDb
 from aleph.model.messages import Message
 from aleph.model.pending import pending_messages_count, pending_txs_count
 from aleph.register_chain import (
@@ -27,10 +30,12 @@ from aleph.register_chain import (
     register_incoming_worker,
     register_outgoing_worker,
 )
+from aleph.schemas.pending_messages import BasePendingMessage
+from aleph.types.chain_sync import ChainEventType
 from aleph.utils import run_in_executor
+from .indexer_reader import AlephIndexerReader
 from .tx_context import TxContext
 from ..model.hashes import delete_value
-from ..schemas.pending_messages import BasePendingMessage
 
 LOGGER = logging.getLogger("chains.ethereum")
 CHAIN_NAME = "ETH"
@@ -85,7 +90,7 @@ register_verifier(CHAIN_NAME, verify_signature)
 
 async def get_last_height():
     """Returns the last height for which we already have the ethereum data."""
-    last_height = await Chain.get_last_height(CHAIN_NAME)
+    last_height = await ChainDb.get_last_height(CHAIN_NAME)
 
     if last_height is None:
         last_height = -1
@@ -175,7 +180,11 @@ async def request_transactions(
     logs = get_logs(config, web3, contract, start_height + 1)
 
     async for log in logs:
-        event_data = await run_in_executor(None, get_event_data, web3.codec, abi, log)
+        try:
+            event_data = await run_in_executor(None, get_event_data, web3.codec, abi, log)
+        except MismatchedABI:
+            # Ignore message events, they're handled by the indexer reader.
+            continue
         # event_data = get_event_data(web3.codec,
         #                             contract.events.SyncEvent._get_event_abi(),
         #                             log)
@@ -216,7 +225,7 @@ async def request_transactions(
         # Since we got no critical exception, save last received object
         # block height to do next requests from there.
         if last_height:
-            await Chain.set_last_height(CHAIN_NAME, last_height)
+            await ChainDb.set_last_height(CHAIN_NAME, last_height)
 
 
 async def check_incoming(config):
@@ -237,11 +246,33 @@ async def check_incoming(config):
         await asyncio.sleep(10)
 
 
+async def fetch_sync_messages(config: Config):
+    while True:
+        try:
+            await check_incoming(config)
+
+        except Exception:
+            LOGGER.exception(
+                "ERROR, relaunching Ethereum sync event fetcher in 10 seconds"
+            )
+            await asyncio.sleep(10)
+
+
 async def ethereum_incoming_worker(config):
+    indexer_reader = AlephIndexerReader(chain=Chain.ETH)
+
     if config.ethereum.enabled.value:
         while True:
             try:
-                await check_incoming(config)
+                sync_event_task = fetch_sync_messages(config)
+                message_event_task = indexer_reader.fetcher(
+                    indexer_url=config.aleph.indexer_url.value,
+                    # The indexer requires the address to be in the same format as the address it was
+                    # configured with. This appears to be lowercase for now.
+                    smart_contract_address=config.ethereum.sync_contract.value.lower(),
+                    event_type=ChainEventType.MESSAGE,
+                )
+                await asyncio.gather(sync_event_task, message_event_task)
 
             except Exception:
                 LOGGER.exception("ERROR, relaunching incoming in 10 seconds")

@@ -14,7 +14,7 @@ from pymongo import DeleteOne, DeleteMany, ASCENDING
 from setproctitle import setproctitle
 
 from aleph.chains.common import incoming, IncomingStatus
-from aleph.logging import setup_logging
+from aleph.toolkit.logging import setup_logging
 from aleph.model.db_bulk_operation import DbBulkOperation
 from aleph.model.pending import PendingMessage
 from aleph.services.p2p import singleton

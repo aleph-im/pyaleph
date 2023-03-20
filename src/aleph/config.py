@@ -14,6 +14,7 @@ def get_defaults():
             "host": "0.0.0.0",
             "port": 8000,
             "reference_node_url": None,
+            "indexer_url": "https://multichain.api.aleph.cloud",
             "jobs": {
                 "pending_messages": {
                     "max_concurrency": 2000,
@@ -64,6 +65,10 @@ def get_defaults():
             "commit_delay": 14,
             "remark": "ALEPH-SYNC",
             "token_contract": None,
+        },
+        "bsc": {
+            "enabled": True,
+            "sync_contract": "0xdF270752C8C71D08acbae4372687DA65AECe2D5D",
         },
         "ethereum": {
             "enabled": False,

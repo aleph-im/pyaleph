@@ -6,7 +6,7 @@ from urllib.parse import unquote
 from aleph_p2p_client import AlephP2PServiceClient
 
 from aleph.services.ipfs.pubsub import sub as sub_ipfs
-from aleph.types import Protocol
+from aleph.types.protocol import Protocol
 
 LOGGER = logging.getLogger("P2P.peers")
 

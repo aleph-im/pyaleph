@@ -15,7 +15,7 @@ from setproctitle import setproctitle
 from aleph.chains.common import get_chaindata_messages
 from aleph.chains.tx_context import TxContext
 from aleph.exceptions import InvalidMessageError
-from aleph.logging import setup_logging
+from aleph.toolkit.logging import setup_logging
 from aleph.model.db_bulk_operation import DbBulkOperation
 from aleph.model.pending import PendingMessage, PendingTX
 from aleph.services.p2p import singleton

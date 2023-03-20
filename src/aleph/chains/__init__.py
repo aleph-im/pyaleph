@@ -4,7 +4,10 @@ from typing import Coroutine, List
 from aleph.register_chain import OUTGOING_WORKERS, INCOMING_WORKERS
 
 logger = logging.getLogger(__name__)
-
+try:
+    from aleph.chains import bsc
+except ModuleNotFoundError as error:
+    logger.warning("Can't load BSC: %s", error.msg)
 try:
     from aleph.chains import nuls
 except ModuleNotFoundError as error:

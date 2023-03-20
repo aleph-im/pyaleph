@@ -11,7 +11,7 @@ from aleph.exceptions import InvalidMessageError
 from aleph.schemas.pending_messages import parse_message
 from aleph.services.ipfs.pubsub import pub as pub_ipfs
 from aleph.services.p2p.pubsub import publish as pub_p2p
-from aleph.types import Protocol
+from aleph.types.protocol import Protocol
 
 LOGGER = logging.getLogger("web.controllers.p2p")
 

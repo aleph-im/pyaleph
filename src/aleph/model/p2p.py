@@ -7,7 +7,7 @@ from typing import AsyncIterator, Optional
 from pymongo import ASCENDING, DESCENDING, IndexModel
 
 from aleph.model.base import BaseClass
-from aleph.types import Protocol
+from aleph.types.protocol import Protocol
 
 
 class Peer(BaseClass):

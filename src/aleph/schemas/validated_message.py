@@ -141,7 +141,10 @@ def make_confirmation_update_query(confirmations: List[MessageConfirmation]) -> 
         "$max": {"confirmed": True},
         "$addToSet": {
             "confirmations": {
-                "$each": [confirmation.dict() for confirmation in confirmations]
+                "$each": [
+                    confirmation.dict(exclude_none=True)
+                    for confirmation in confirmations
+                ]
             }
         },
     }
