@@ -26,7 +26,7 @@ from aleph_message.models import (
     ForgetContent,
     PostContent,
     ProgramContent,
-    StoreContent,
+    StoreContent, BaseContent,
 )
 from aleph_message.models import ItemType, MessageType
 from pydantic import ValidationError
