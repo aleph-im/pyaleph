@@ -2,6 +2,11 @@
 Changelog
 =========
 
+Version 0.4.6
+=============
+
+* Fix: use correct chain name in indexer messages.
+
 Version 0.4.5
 =============
 
