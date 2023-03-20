@@ -258,7 +258,7 @@ def indexer_event_to_aleph_message(
     )
 
     tx_context = TxContext(
-        chain_name=Chain.TEZOS,
+        chain_name=chain,
         tx_hash=indexer_event.transaction,
         height=indexer_event.height,
         time=indexer_event.timestamp,
