@@ -18,10 +18,11 @@ TODO: this module should reasonably be part of aleph message, if only
 """
 
 import json
-from typing import Any, Literal, Generic
+from typing import Any, Literal, Generic, Type
 
 from aleph_message.models import (
     AggregateContent,
+    BaseContent,
     ForgetContent,
     PostContent,
     ProgramContent,
@@ -116,6 +117,15 @@ class PendingStoreMessage(BasePendingMessage[Literal[MessageType.store], StoreCo
     pass
 
 
+MESSAGE_TYPE_TO_CONTENT_CLASS = {
+    MessageType.aggregate: AggregateContent,
+    MessageType.forget: ForgetContent,
+    MessageType.post: PostContent,
+    MessageType.program: ProgramContent,
+    MessageType.store: StoreContent,
+}
+
+
 MESSAGE_TYPE_TO_CLASS = {
     MessageType.aggregate: PendingAggregateMessage,
     MessageType.forget: PendingForgetMessage,
@@ -123,6 +133,19 @@ MESSAGE_TYPE_TO_CLASS = {
     MessageType.program: PendingProgramMessage,
     MessageType.store: PendingStoreMessage,
 }
+
+
+def get_message_cls(message_type: MessageType) -> Type[BasePendingMessage]:
+    return MESSAGE_TYPE_TO_CLASS[message_type]
+
+
+def parse_message_content(message_type: MessageType, content_dict: Any) -> BaseContent:
+    content_cls = MESSAGE_TYPE_TO_CONTENT_CLASS[message_type]
+
+    try:
+        return content_cls.parse_obj(content_dict)
+    except ValidationError as e:
+        raise InvalidMessageError(json.dumps(e.json())) from e
 
 
 def parse_message(message_dict: Any) -> BasePendingMessage:

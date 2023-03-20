@@ -12,6 +12,7 @@ from eth_account.messages import encode_defunct
 from hexbytes import HexBytes
 from web3 import Web3
 from web3._utils.events import get_event_data
+from web3.exceptions import MismatchedABI
 from web3.gas_strategies.rpc import rpc_gas_price_strategy
 from web3.middleware.filter import local_filter_middleware
 from web3.middleware.geth_poa import geth_poa_middleware
@@ -179,7 +180,11 @@ async def request_transactions(
     logs = get_logs(config, web3, contract, start_height + 1)
 
     async for log in logs:
-        event_data = await run_in_executor(None, get_event_data, web3.codec, abi, log)
+        try:
+            event_data = await run_in_executor(None, get_event_data, web3.codec, abi, log)
+        except MismatchedABI:
+            # Ignore message events, they're handled by the indexer reader.
+            continue
         # event_data = get_event_data(web3.codec,
         #                             contract.events.SyncEvent._get_event_abi(),
         #                             log)

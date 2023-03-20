@@ -13,6 +13,7 @@ PayloadType = TypeVar("PayloadType")
 class SyncStatus(str, Enum):
     SYNCED = "synced"
     IN_PROGRESS = "in_progress"
+    DOWN = "down"
 
 
 class IndexerStatus(BaseModel):

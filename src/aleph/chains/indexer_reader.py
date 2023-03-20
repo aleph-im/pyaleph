@@ -21,9 +21,11 @@ import aiohttp
 from aleph_message.models import Chain, StoreContent, MessageType
 from aleph_message.models.item_hash import ItemType
 from pydantic import BaseModel
+from pydantic.fields import Field
 
 from aleph.chains.common import incoming_chaindata
 from aleph.chains.tx_context import TxContext
+from aleph.exceptions import InvalidMessageError
 from aleph.model.chains import IndexerSyncStatus
 from aleph.model.pending import PendingMessage
 from aleph.schemas.chains.indexer_response import (
@@ -34,7 +36,12 @@ from aleph.schemas.chains.indexer_response import (
     MessageEvent,
     SyncEvent,
 )
-from aleph.schemas.pending_messages import PendingStoreMessage, BasePendingMessage
+from aleph.schemas.pending_messages import (
+    PendingStoreMessage,
+    BasePendingMessage,
+    parse_message_content,
+    get_message_cls,
+)
 from aleph.toolkit.range import Range, MultiRange
 from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.chain_sync import ChainEventType
@@ -190,37 +197,60 @@ class IndexerSyncState:
     last_block_datetime: dt.datetime
 
 
+class MessageEventPayload(BaseModel):
+    timestamp: float
+    addr: str
+    message_type: str = Field(alias="msgtype")
+    message_content: str = Field(alias="msgcontent")
+
+
 def indexer_event_to_aleph_message(
     chain: Chain,
     indexer_event: MessageEvent,
 ) -> Tuple[BasePendingMessage, TxContext]:
 
-    payload = json.loads(indexer_event.content)
+    if (message_type_str := indexer_event.type) == "STORE_IPFS":
+        content = StoreContent(
+            address=indexer_event.address,
+            time=indexer_event.timestamp,
+            item_type=ItemType.ipfs,
+            item_hash=indexer_event.content,
+        )
+        item_content = content.json()
+        message_type = MessageType.store
+        message_cls: Type[BasePendingMessage] = PendingStoreMessage
 
-    if message_type := payload["message_type"] != "STORE_IPFS":
-        raise ValueError(f"Unexpected message type: {message_type}")
+    else:
+        try:
+            message_type = MessageType(message_type_str)
+        except ValueError as e:
+            LOGGER.error("Unsupported message type: %s", message_type_str)
+            raise InvalidMessageError(
+                f"Unsupported message type: {message_type_str}"
+            ) from e
 
-    content = StoreContent(
-        address=payload["addr"],
-        time=payload["timestamp"],
-        item_type=ItemType.ipfs,
-        item_hash=payload["message_content"],
-    )
-    item_content = content.json()
+        item_content = indexer_event.content
+        try:
+            content = parse_message_content(
+                message_type=MessageType(message_type),
+                content_dict=json.loads(item_content),
+            )
+        except json.JSONDecodeError as e:
+            raise InvalidMessageError(
+                f"Message content is not JSON: {item_content}"
+            ) from e
+
+        message_cls = get_message_cls(message_type)
+
     item_hash = get_sha256(item_content)
 
-    pending_message = PendingStoreMessage(
+    pending_message = message_cls(
         item_hash=item_hash,
-        sender=payload["addr"],
+        sender=indexer_event.address,
         chain=chain,
         signature=None,
-        type=MessageType.store,
-        item_content=StoreContent(
-            address=payload["addr"],
-            time=payload["timestamp"],
-            item_type=ItemType.ipfs,
-            item_hash=payload["message_content"],
-        ).json(),
+        type=message_type,
+        item_content=item_content,
         content=content,
         item_type=ItemType.inline,
         time=indexer_event.timestamp,
@@ -421,12 +451,18 @@ class AlephIndexerReader:
 
                 LOGGER.info("%d new txs", len(pending_messages))
 
-                last_event_datetime = (
-                    timestamp_to_datetime(pending_messages[-1][1].time)
-                    if nb_events_fetched >= limit
-                    else end_datetime
+                if nb_events_fetched >= limit:
+                    last_event_datetime = timestamp_to_datetime(pending_messages[-1][1].time)
+                    upper_inc = False
+                else:
+                    last_event_datetime = end_datetime
+                    upper_inc = True
+
+                synced_range = Range(
+                    start_datetime,
+                    last_event_datetime,
+                    upper_inc=upper_inc,
                 )
-                synced_range = Range(start_datetime, last_event_datetime)
             else:
                 synced_range = Range(start_datetime, end_datetime, upper_inc=True)
 

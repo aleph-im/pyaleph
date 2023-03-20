@@ -47,21 +47,21 @@ class IndexerAccountStateResponse(BaseModel):
     data: IndexerAccountStateResponseData
 
 
-class MessageEvent(BaseModel):
+class IndexerEvent(BaseModel):
     id: str
     timestamp: float
     address: str
     height: int
+    transaction: str
+
+
+class MessageEvent(IndexerEvent):
     type: str
     content: str
 
 
-class SyncEvent(BaseModel):
-    id: str
-    timestamp: float
-    address: str
-    height: int
-    message: Any
+class SyncEvent(IndexerEvent):
+    message: str
 
 
 class IndexerEventResponseData(BaseModel):
