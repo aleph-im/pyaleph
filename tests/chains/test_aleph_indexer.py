@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from configmanager import Config
 
@@ -57,7 +59,7 @@ async def test_aleph_indexer_fetch_events(indexer_client: AlephIndexerClient):
     assert sync_event.address == "0x23eC28598DCeB2f7082Cc3a9D670592DfEd6e0dC"
     assert sync_event.height == 16698727
 
-    assert sync_event.message == {
+    assert json.loads(sync_event.message) == {
         "protocol": "aleph-offchain",
         "version": 1,
         "content": "QmV9tkuBEoSnmSuh7SakL7J33zCuUgDTckA17qyRpz3oDx",
