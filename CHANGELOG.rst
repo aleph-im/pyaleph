@@ -2,6 +2,11 @@
 Changelog
 =========
 
+Version 0.4.7
+=============
+
+* Fix: convert indexer timestamps to seconds.
+
 Version 0.4.6
 =============
 
