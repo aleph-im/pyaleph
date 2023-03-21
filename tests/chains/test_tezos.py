@@ -96,10 +96,10 @@ def test_indexer_event_to_aleph_message_store_ipfs():
     assert message_content.address == indexer_event.payload.addr
     assert message_content.time == indexer_event.payload.timestamp
 
-    assert tx_context.chain_name == Chain.TEZOS
+    assert tx_context.chain == Chain.TEZOS
     assert tx_context.time == indexer_event.timestamp.timestamp()
     assert tx_context.publisher == indexer_event.source
-    assert tx_context.tx_hash == indexer_event.block_hash
+    assert tx_context.hash == indexer_event.block_hash
     assert tx_context.height == indexer_event.block_level
 
 
@@ -146,10 +146,10 @@ def test_indexer_event_to_aleph_message_post():
     assert message_content.type == content.type
     assert message_content.content == content.content
 
-    assert tx_context.chain_name == Chain.TEZOS
+    assert tx_context.chain == Chain.TEZOS
     assert tx_context.time == indexer_event.timestamp.timestamp()
     assert tx_context.publisher == indexer_event.source
-    assert tx_context.tx_hash == indexer_event.block_hash
+    assert tx_context.hash == indexer_event.block_hash
     assert tx_context.height == indexer_event.block_level
 
 
@@ -194,10 +194,10 @@ def test_indexer_event_to_aleph_message_aggregate():
     assert message_content.key == content.key
     assert message_content.content == content.content
 
-    assert tx_context.chain_name == Chain.TEZOS
+    assert tx_context.chain == Chain.TEZOS
     assert tx_context.time == indexer_event.timestamp.timestamp()
     assert tx_context.publisher == indexer_event.source
-    assert tx_context.tx_hash == indexer_event.block_hash
+    assert tx_context.hash == indexer_event.block_hash
     assert tx_context.height == indexer_event.block_level
 
 
