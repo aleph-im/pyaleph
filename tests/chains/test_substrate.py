@@ -25,7 +25,8 @@ async def test_verify_signature_from_provider():
     message_dict = json.loads(TEST_MESSAGE_SIGNED_BY_PROVIDER)
     raw_message = parse_message(message_dict)
 
-    result = await verify_signature(raw_message)
+    connector = SubstrateConnector()
+    result = await connector.verify_signature(raw_message)
     assert result is True
 
 
