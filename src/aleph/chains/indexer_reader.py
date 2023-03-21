@@ -209,10 +209,13 @@ def indexer_event_to_aleph_message(
     indexer_event: MessageEvent,
 ) -> Tuple[BasePendingMessage, TxContext]:
 
+    # Indexer timestamps are expressed in milliseconds
+    timestamp = indexer_event.timestamp / 1000
+
     if (message_type_str := indexer_event.type) == "STORE_IPFS":
         content = StoreContent(
             address=indexer_event.address,
-            time=indexer_event.timestamp,
+            time=timestamp,
             item_type=ItemType.ipfs,
             item_hash=indexer_event.content,
         )
@@ -253,7 +256,7 @@ def indexer_event_to_aleph_message(
         item_content=item_content,
         content=content,
         item_type=ItemType.inline,
-        time=indexer_event.timestamp,
+        time=timestamp,
         channel=None,
     )
 
@@ -261,7 +264,7 @@ def indexer_event_to_aleph_message(
         chain_name=chain,
         tx_hash=indexer_event.transaction,
         height=indexer_event.height,
-        time=indexer_event.timestamp,
+        time=timestamp,
         publisher=indexer_event.address,
     )
 
