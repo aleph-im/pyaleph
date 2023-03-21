@@ -1,5 +1,12 @@
+import datetime as dt
+
 import pytest
-from aleph_message.models import Chain
+from aleph_message.models import (
+    Chain,
+    MessageType,
+    AggregateContent,
+    PostContent,
+)
 
 from aleph.chains.tezos import (
     TezosConnector,
@@ -12,8 +19,6 @@ from aleph.schemas.chains.tezos_indexer_response import (
     MessageEventPayload,
 )
 from aleph.schemas.pending_messages import parse_message
-import datetime as dt
-
 from aleph.types.chain_sync import ChainSyncProtocol
 
 
@@ -96,7 +101,32 @@ def test_datetime_to_iso_8601():
     assert datetime_str == "2022-01-01T12:06:23.675Z"
 
 
-def test_indexer_event_to_aleph_message():
+@pytest.mark.parametrize(
+    "message_type, message_content",
+    [
+        ("STORE_IPFS", "QmaMLRsvmDRCezZe2iebcKWtEzKNjBaQfwcu7mcpdm8eY2"),
+        (
+            MessageType.post.value,
+            PostContent(
+                content={"body": "My first post on Tezos"},
+                ref=None,
+                type="my-type",
+                address="KT1VBeLD7hzKpj17aRJ3Kc6QQFeikCEXi7W6",
+                time=1000,
+            ).json(),
+        ),
+        (
+            MessageType.aggregate.value,
+            AggregateContent(
+                key="my-aggregate",
+                content={"body": "My first post on Tezos"},
+                address="KT1VBeLD7hzKpj17aRJ3Kc6QQFeikCEXi7W6",
+                time=1000,
+            ).json(),
+        ),
+    ],
+)
+def test_indexer_event_to_aleph_message(message_type: str, message_content: str):
     indexer_event = IndexerMessageEvent(
         source="KT1BfL57oZfptdtMFZ9LNakEPvuPPA2urdSW",
         timestamp="2022-11-16T00:00:00Z",
@@ -106,8 +136,8 @@ def test_indexer_event_to_aleph_message():
         payload=MessageEventPayload(
             timestamp=1668611900,
             addr="KT1VBeLD7hzKpj17aRJ3Kc6QQFeikCEXi7W6",
-            msgtype="STORE_IPFS",
-            msgcontent="QmaMLRsvmDRCezZe2iebcKWtEzKNjBaQfwcu7mcpdm8eY2",
+            msgtype=message_type,
+            msgcontent=message_content,
         ),
     )
 

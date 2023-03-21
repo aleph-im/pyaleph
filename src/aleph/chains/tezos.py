@@ -5,7 +5,7 @@ from enum import Enum
 from typing import List
 
 import aiohttp
-from aleph_message.models import Chain, ItemType, StoreContent, MessageType
+from aleph_message.models import Chain
 from aleph_pytezos.crypto.key import Key
 from configmanager import Config
 from nacl.exceptions import BadSignatureError
@@ -21,11 +21,10 @@ from aleph.schemas.chains.tezos_indexer_response import (
     IndexerMessageEvent,
     SyncStatus,
 )
-from aleph.schemas.pending_messages import BasePendingMessage, PendingStoreMessage
+from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.db_session import DbSessionFactory, DbSession
-from aleph.utils import get_sha256
 
 LOGGER = logging.getLogger(__name__)
 
@@ -169,9 +168,6 @@ async def fetch_messages(
 def indexer_event_to_chain_tx(
     indexer_event: IndexerMessageEvent,
 ) -> ChainTxDb:
-
-    if message_type := indexer_event.payload.message_type != "STORE_IPFS":
-        raise ValueError(f"Unexpected message type: {message_type}")
 
     chain_tx = ChainTxDb(
         hash=indexer_event.operation_hash,
