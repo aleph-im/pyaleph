@@ -3,7 +3,7 @@ from typing import Dict, List, Set
 
 import pytest
 import pytz
-from aleph_message.models import Chain
+from aleph_message.models import Chain, MessageType, PostContent
 from configmanager import Config
 from sqlalchemy import select
 
@@ -103,12 +103,12 @@ async def test_process_pending_tx_on_chain_protocol(
             assert pending_message_db.item_content == fixture_message["item_content"]
 
 
-@pytest.mark.asyncio
-async def test_process_pending_tx_smart_contract_protocol(
+async def _process_smart_contract_tx(
     mocker,
     mock_config: Config,
     session_factory: DbSessionFactory,
     test_storage_service: StorageService,
+    payload: MessageEventPayload,
 ):
     chain_data_service = ChainDataService(
         session_factory=session_factory, storage_service=mocker.AsyncMock()
@@ -124,13 +124,6 @@ async def test_process_pending_tx_smart_contract_protocol(
         ),
     )
     pending_tx_processor.chain_data_service = chain_data_service
-
-    payload = MessageEventPayload(
-        timestamp=1668611900,
-        addr="KT1VBeLD7hzKpj17aRJ3Kc6QQFeikCEXi7W6",
-        msgtype="STORE_IPFS",
-        msgcontent="QmaMLRsvmDRCezZe2iebcKWtEzKNjBaQfwcu7mcpdm8eY2",
-    )
 
     tx = ChainTxDb(
         hash="oorMNgusX6RxZ4NhzYriVDN8HDeMBNkjD3E8kx9a7j7dRRDGkzz",
@@ -163,6 +156,11 @@ async def test_process_pending_tx_smart_contract_protocol(
         assert not pending_message_db.check_message
         assert pending_message_db.sender == payload.addr
 
+        if payload.message_type == "STORE_IPFS":
+            assert pending_message_db.type == MessageType.store
+        else:
+            assert pending_message_db.type == MessageType(payload.message_type)
+
         message_status_db = (
             session.execute(
                 select(MessageStatusDb).where(
@@ -171,3 +169,55 @@ async def test_process_pending_tx_smart_contract_protocol(
             )
         ).scalar_one()
         assert message_status_db.status == MessageStatus.PENDING
+
+
+@pytest.mark.asyncio
+async def test_process_pending_smart_contract_tx_store_ipfs(
+    mocker,
+    mock_config: Config,
+    session_factory: DbSessionFactory,
+    test_storage_service: StorageService,
+):
+    payload = MessageEventPayload(
+        timestamp=1668611900,
+        addr="KT1VBeLD7hzKpj17aRJ3Kc6QQFeikCEXi7W6",
+        msgtype="STORE_IPFS",
+        msgcontent="QmaMLRsvmDRCezZe2iebcKWtEzKNjBaQfwcu7mcpdm8eY2",
+    )
+
+    await _process_smart_contract_tx(
+        mocker=mocker,
+        mock_config=mock_config,
+        session_factory=session_factory,
+        test_storage_service=test_storage_service,
+        payload=payload,
+    )
+
+
+@pytest.mark.asyncio
+async def test_process_pending_smart_contract_tx_post(
+    mocker,
+    mock_config: Config,
+    session_factory: DbSessionFactory,
+    test_storage_service: StorageService,
+):
+    payload = MessageEventPayload(
+        timestamp=1668611900,
+        addr="KT1VBeLD7hzKpj17aRJ3Kc6QQFeikCEXi7W6",
+        msgtype=MessageType.post.value,
+        msgcontent=PostContent(
+            content={"body": "My first post on Tezos"},
+            ref=None,
+            type="my-type",
+            address="KT1VBeLD7hzKpj17aRJ3Kc6QQFeikCEXi7W6",
+            time=1000,
+        ).json(),
+    )
+
+    await _process_smart_contract_tx(
+        mocker=mocker,
+        mock_config=mock_config,
+        session_factory=session_factory,
+        test_storage_service=test_storage_service,
+        payload=payload,
+    )
