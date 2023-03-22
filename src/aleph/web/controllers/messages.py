@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional
+from typing import List, Optional, Any, Dict, Iterable
 
 import aio_pika.abc
 from aiohttp import web
@@ -7,10 +7,6 @@ from aleph_message.models import MessageType, ItemHash, Chain
 from configmanager import Config
 from pydantic import BaseModel, Field, validator, ValidationError, root_validator
 
-from aleph.web.controllers.utils import (
-    DEFAULT_MESSAGES_PER_PAGE,
-    DEFAULT_PAGE,
-)
 import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.messages import (
     get_matching_messages,
@@ -21,10 +17,9 @@ from aleph.db.accessors.messages import (
     get_rejected_message,
 )
 from aleph.db.accessors.pending_messages import get_pending_messages
-from aleph.db.models import MessageStatusDb
+from aleph.db.models import MessageStatusDb, MessageDb
 from aleph.schemas.api.messages import (
     format_message,
-    MessageListResponse,
     MessageWithStatus,
     PendingMessageStatus,
     ProcessedMessageStatus,
@@ -36,6 +31,10 @@ from aleph.schemas.api.messages import (
 from aleph.types.db_session import DbSessionFactory, DbSession
 from aleph.types.message_status import MessageStatus
 from aleph.types.sort_order import SortOrder, SortBy
+from aleph.web.controllers.utils import (
+    DEFAULT_MESSAGES_PER_PAGE,
+    DEFAULT_PAGE,
+)
 from aleph.web.controllers.utils import (
     LIST_FIELD_SEPARATOR,
     mq_make_aleph_message_topic_queue,
@@ -157,6 +156,45 @@ class WsMessageQueryParams(BaseMessageQueryParams):
     )
 
 
+def format_message_dict(message: MessageDb) -> Dict[str, Any]:
+    message_dict = message.to_dict()
+    message_dict["time"] = message.time.timestamp()
+    confirmations = [
+        {"chain": c.chain, "hash": c.hash, "height": c.height}
+        for c in message.confirmations
+    ]
+    message_dict["confirmations"] = confirmations
+    message_dict["confirmed"] = bool(confirmations)
+    return message_dict
+
+
+def format_response_dict(
+    messages: List[Dict[str, Any]], pagination: int, page: int, total_messages: int
+) -> Dict[str, Any]:
+    return {
+        "messages": messages,
+        "pagination_per_page": pagination,
+        "pagination_page": page,
+        "pagination_total": total_messages,
+        "pagination_item": "messages",
+    }
+
+
+def format_response(
+    messages: Iterable[MessageDb], pagination: int, page: int, total_messages: int
+) -> web.Response:
+    formatted_messages = [format_message_dict(message) for message in messages]
+
+    response = format_response_dict(
+        messages=formatted_messages,
+        pagination=pagination,
+        page=page,
+        total_messages=total_messages,
+    )
+
+    return web.json_response(text=aleph_json.dumps(response).decode("utf-8"))
+
+
 async def view_messages_list(request):
     """Messages list view with filters"""
 
@@ -180,21 +218,14 @@ async def view_messages_list(request):
         messages = get_matching_messages(
             session, include_confirmations=True, **find_filters
         )
-
-        formatted_messages = [
-            format_message(message).dict(exclude_defaults=True) for message in messages
-        ]
-
         total_msgs = count_matching_messages(session, **find_filters)
 
-        response = MessageListResponse.construct(
-            messages=formatted_messages,
-            pagination_page=pagination_page,
-            pagination_total=total_msgs,
-            pagination_per_page=pagination_per_page,
+        return format_response(
+            messages,
+            pagination=pagination_per_page,
+            page=pagination_page,
+            total_messages=total_msgs,
         )
-
-    return web.json_response(text=response.json())
 
 
 async def declare_mq_queue(

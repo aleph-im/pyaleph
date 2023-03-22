@@ -191,7 +191,6 @@ def get_matching_messages(
     Applies the specified filters on the message table and returns matching entries.
     """
     select_stmt = make_matching_messages_query(**kwargs)
-    print(select_stmt)
     return (session.execute(select_stmt)).scalars()
 
 
