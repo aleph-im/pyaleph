@@ -180,6 +180,7 @@ MessageWithStatus = Union[
 class MessageListResponse(BaseModel):
     class Config:
         json_encoders = {dt.datetime: lambda d: d.timestamp()}
+        json_loads = aleph_json.loads
 
     messages: List[AlephMessage]
     pagination_page: int

@@ -1,6 +1,6 @@
 import asyncio
 import json
-from typing import Dict, Optional, List, Any, Mapping, Set, Type
+from typing import Dict, Optional, List, Any, Mapping, Set, Type, cast
 
 from aleph_message.models import StoreContent, ItemType, Chain, MessageType
 from pydantic import ValidationError
@@ -177,7 +177,7 @@ class ChainDataService:
         )
 
         try:
-            payload: GenericMessageEvent = payload_model.parse_obj(tx.content)
+            payload = cast(GenericMessageEvent, payload_model.parse_obj(tx.content))
         except ValidationError:
             raise InvalidContent(f"Incompatible tx content for {tx.chain}/{tx.hash}")
 
