@@ -39,7 +39,7 @@ async def status_ws(request):
             except ConnectionResetError:
                 logger.warning("Websocket connection reset")
                 await ws.close()
-                return
+                return ws
             previous_status = status
 
         await asyncio.sleep(2)

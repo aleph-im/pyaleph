@@ -261,6 +261,8 @@ async def messages_ws(request: web.Request):
     except ConnectionResetError:
         pass
 
+    return ws
+
 
 def _get_message_with_status(
     session: DbSession, status_db: MessageStatusDb
