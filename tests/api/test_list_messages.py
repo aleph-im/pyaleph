@@ -149,6 +149,24 @@ async def test_get_messages_multiple_hashes(fixture_messages, ccn_api_client):
 
 
 @pytest.mark.asyncio
+async def test_get_messages_filter_by_tags(fixture_messages, ccn_api_client):
+    """
+    Tests getting messages by tags.
+    There's no example in the fixtures, we just test that the endpoint returns a 200.
+    # TODO: add a POST message fixture with tags.
+    """
+
+    tags = ["mainnet"]
+
+    response = await ccn_api_client.get(
+        MESSAGES_URI, params={"tags": ",".join(tags)}
+    )
+    assert response.status == 200, await response.text()
+    messages = (await response.json())["messages"]
+    assert len(messages) == 0
+
+
+@pytest.mark.asyncio
 async def test_get_messages_filter_by_invalid_content_hash(
     fixture_messages, ccn_api_client
 ):

@@ -56,6 +56,7 @@ def make_matching_messages_query(
     end_date: Optional[Union[float, dt.datetime]] = None,
     content_hashes: Optional[Sequence[ItemHash]] = None,
     content_types: Optional[Sequence[str]] = None,
+    tags: Optional[Sequence[str]] = None,
     channels: Optional[Sequence[str]] = None,
     sort_by: SortBy = SortBy.TIME,
     sort_order: SortOrder = SortOrder.DESCENDING,
@@ -102,6 +103,8 @@ def make_matching_messages_query(
         select_stmt = select_stmt.where(
             MessageDb.content["type"].astext.in_(content_types)
         )
+    if tags:
+        select_stmt = select_stmt.where(MessageDb.content["content"]["tags"].contains(tags))
     if channels:
         select_stmt = select_stmt.where(MessageDb.channel.in_(channels))
 
@@ -141,7 +144,9 @@ def make_matching_messages_query(
             ),
         )
 
-    select_stmt = select_stmt.order_by(*order_by_columns).offset((page - 1) * pagination)
+    select_stmt = select_stmt.order_by(*order_by_columns).offset(
+        (page - 1) * pagination
+    )
 
     # If pagination == 0, return all matching results
     if pagination:
@@ -186,6 +191,7 @@ def get_matching_messages(
     Applies the specified filters on the message table and returns matching entries.
     """
     select_stmt = make_matching_messages_query(**kwargs)
+    print(select_stmt)
     return (session.execute(select_stmt)).scalars()
 
 
@@ -206,7 +212,9 @@ def get_message_stats_by_address(
 
     if addresses:
         # Tuples are supported as array parameters by SQLAlchemy
-        addresses_tuple = addresses if isinstance(addresses, tuple) else tuple(addresses)
+        addresses_tuple = (
+            addresses if isinstance(addresses, tuple) else tuple(addresses)
+        )
 
         select_stmt += " where address in :addresses"
         parameters = {"addresses": addresses_tuple}
@@ -215,7 +223,9 @@ def get_message_stats_by_address(
 
 
 def refresh_address_stats_mat_view(session: DbSession) -> None:
-    session.execute(text("refresh materialized view concurrently address_stats_mat_view"))
+    session.execute(
+        text("refresh materialized view concurrently address_stats_mat_view")
+    )
 
 
 # TODO: declare a type that will match the result (something like UnconfirmedMessageDb)
