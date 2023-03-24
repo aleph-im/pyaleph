@@ -105,7 +105,7 @@ def merged_post_to_dict(merged_post: MergedPost) -> Dict[str, Any]:
         "content": merged_post.content,
         "original_item_hash": merged_post.original_item_hash,
         "original_type": merged_post.original_type,
-        "owner": merged_post.owner,
+        "address": merged_post.owner,
         "ref": merged_post.ref,
         "channel": merged_post.channel,
         "created": merged_post.created.isoformat(),

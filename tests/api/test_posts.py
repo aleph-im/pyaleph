@@ -16,7 +16,7 @@ def assert_posts_equal(posts: Iterable[Dict], expected_posts: Iterable[PostDb]):
         assert "_id" not in post
 
         assert post["channel"] == expected_post.channel
-        assert post["owner"] == expected_post.owner
+        assert post["address"] == expected_post.owner
         assert post["original_type"] == expected_post.type
         assert post["ref"] == expected_post.ref
 
