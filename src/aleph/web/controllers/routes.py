@@ -49,8 +49,10 @@ def register_routes(app: web.Application):
     app.router.add_post("/api/v0/ipfs/pubsub/pub", p2p.pub_json)
     app.router.add_post("/api/v0/p2p/pubsub/pub", p2p.pub_json)
 
-    app.router.add_get("/api/v0/posts.json", posts.view_posts_list)
-    app.router.add_get("/api/v0/posts/page/{page}.json", posts.view_posts_list)
+    app.router.add_get("/api/v0/posts.json", posts.view_posts_list_v0)
+    app.router.add_get("/api/v0/posts/page/{page}.json", posts.view_posts_list_v0)
+    app.router.add_get("/api/v1/posts.json", posts.view_posts_list_v1)
+    app.router.add_get("/api/v1/posts/page/{page}.json", posts.view_posts_list_v1)
 
     app.router.add_get("/api/v0/addresses/stats.json", accounts.addresses_stats_view)
     app.router.add_get(

@@ -5,7 +5,7 @@ import pytest
 
 from aleph.db.models.posts import PostDb
 
-POSTS_URI = "/api/v0/posts.json"
+POSTS_URI = "/api/v1/posts.json"
 
 
 def assert_posts_equal(posts: Iterable[Dict], expected_posts: Iterable[PostDb]):

@@ -1,9 +1,9 @@
 import datetime as dt
-from typing import Optional
+from typing import Optional, Any, Dict
 
 import pytest
 import pytz
-from aleph_message.models import ItemHash
+from aleph_message.models import ItemHash, ItemType, MessageType, Chain
 from more_itertools import one
 
 from aleph.db.accessors.posts import (
@@ -14,11 +14,30 @@ from aleph.db.accessors.posts import (
     refresh_latest_amend,
     get_original_post,
     delete_post,
+    get_matching_posts_legacy,
+    MergedPostV0,
 )
+from aleph.db.models import MessageDb
 from aleph.db.models.posts import PostDb
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.sort_order import SortOrder
+import json
+
+
+def message_fields_from_post(post: PostDb) -> Dict[str, Any]:
+    item_content = json.dumps(post.content)
+
+    return {
+        "item_hash": post.item_hash,
+        "type": MessageType.post,
+        "sender": post.owner,
+        "item_type": ItemType.inline,
+        "item_content": item_content,
+        "content": post.content,
+        "time": post.creation_datetime,
+        "size": len(item_content),
+    }
 
 
 @pytest.fixture
@@ -40,6 +59,15 @@ def original_post() -> PostDb:
 
 
 @pytest.fixture
+def original_message(original_post: PostDb) -> MessageDb:
+    return MessageDb(
+        **message_fields_from_post(original_post),
+        chain=Chain.ETH,
+        signature="sig-original"
+    )
+
+
+@pytest.fixture
 def first_amend_post(original_post: PostDb):
     item_hash = "cf315f88a3ab02a49df43114463ded42c266aa32c0168ee2bf231fda9e930ffb"
     amend = PostDb(
@@ -56,6 +84,15 @@ def first_amend_post(original_post: PostDb):
 
 
 @pytest.fixture
+def first_amend_message(first_amend_post: PostDb) -> MessageDb:
+    return MessageDb(
+        **message_fields_from_post(first_amend_post),
+        chain=Chain.ETH,
+        signature="sig-first-amend"
+    )
+
+
+@pytest.fixture
 def second_amend_post(original_post: PostDb):
     item_hash = "5189605b437e0a8808acb318f0fd3e73b3682c44a3f93e2d4d58c35c03caf2a2"
     amend = PostDb(
@@ -69,6 +106,15 @@ def second_amend_post(original_post: PostDb):
         creation_datetime=pytz.utc.localize(dt.datetime(2022, 12, 25)),
     )
     return amend
+
+
+@pytest.fixture
+def second_amend_message(second_amend_post: PostDb) -> MessageDb:
+    return MessageDb(
+        **message_fields_from_post(second_amend_post),
+        chain=Chain.ETH,
+        signature="sig-second-amend"
+    )
 
 
 @pytest.fixture
@@ -89,6 +135,15 @@ def post_from_second_user() -> PostDb:
     return post
 
 
+@pytest.fixture
+def message_from_second_user(post_from_second_user: PostDb) -> MessageDb:
+    return MessageDb(
+        **message_fields_from_post(post_from_second_user),
+        chain=Chain.ETH,
+        signature="sig-post-from-second-user"
+    )
+
+
 def assert_posts_equal(
     merged_post: MergedPost, original: PostDb, last_amend: Optional[PostDb] = None
 ):
@@ -106,6 +161,36 @@ def assert_posts_equal(
     assert merged_post.content == expected_content
     assert merged_post.last_updated == expected_last_updated
     assert merged_post.created == original.creation_datetime
+
+
+def assert_posts_v0_equal(
+    merged_post: MergedPostV0,
+    original: PostDb,
+    original_message: MessageDb,
+    last_amend: Optional[PostDb] = None,
+    amend_message: Optional[MessageDb] = None,
+):
+    expected_item_hash = last_amend.item_hash if last_amend else original.item_hash
+    expected_content = last_amend.content if last_amend else original.content
+    expected_ref = last_amend.ref if last_amend else original.ref
+    expected_last_updated = (
+        last_amend.creation_datetime if last_amend else original.creation_datetime
+    )
+
+    assert merged_post.item_hash == expected_item_hash
+    assert merged_post.original_item_hash == original.item_hash
+    assert merged_post.owner == original.owner
+    assert merged_post.ref == expected_ref
+    assert merged_post.channel == original.channel
+    assert merged_post.content == expected_content
+    assert merged_post.time == expected_last_updated.timestamp()
+
+    assert merged_post.original_signature == original_message.signature
+
+    if amend_message:
+        assert merged_post.signature == amend_message.signature
+    else:
+        assert merged_post.signature == original_message.signature
 
 
 @pytest.mark.asyncio
@@ -235,6 +320,85 @@ async def test_get_matching_posts(
         assert matching_channel_posts
         assert_posts_equal(
             merged_post=one(matching_channel_posts), original=post_from_second_user
+        )
+        nb_matching_channel_posts = count_matching_posts(
+            session=session, channels=[post_from_second_user.channel]
+        )
+        assert nb_matching_channel_posts == 1
+
+
+@pytest.mark.asyncio
+async def test_get_matching_posts_legacy(
+    original_post: PostDb,
+    original_message: MessageDb,
+    first_amend_post: PostDb,
+    first_amend_message: MessageDb,
+    post_from_second_user: PostDb,
+    message_from_second_user: MessageDb,
+    session_factory: DbSessionFactory,
+):
+    """
+    Tests that the list getter works with the legacy format. Same test logic as the test above.
+    """
+
+    with session_factory() as session:
+        session.add_all(
+            [original_message, first_amend_message, message_from_second_user]
+        )
+        session.add(original_post)
+        session.add(first_amend_post)
+        original_post.latest_amend = first_amend_post.item_hash
+        session.add(post_from_second_user)
+        session.commit()
+
+    with session_factory() as session:
+        # Get all posts, no filter
+        matching_posts = get_matching_posts_legacy(session=session)
+        assert len(matching_posts) == 2
+        nb_posts = count_matching_posts(session=session)
+        assert nb_posts == 2
+
+        # Get by hash
+        matching_hash_posts = get_matching_posts_legacy(
+            session=session, hashes=[original_post.item_hash]
+        )
+        assert matching_hash_posts
+        assert_posts_v0_equal(
+            merged_post=one(matching_hash_posts),
+            original=original_post,
+            original_message=original_message,
+            last_amend=first_amend_post,
+            amend_message=first_amend_message,
+        )
+        nb_matching_hash_posts = count_matching_posts(
+            session=session, hashes=[original_post.item_hash]
+        )
+        assert nb_matching_hash_posts == 1
+
+        # Get by owner address
+        matching_address_posts = get_matching_posts_legacy(
+            session=session, addresses=[post_from_second_user.owner]
+        )
+        assert matching_address_posts
+        assert_posts_v0_equal(
+            merged_post=one(matching_address_posts),
+            original=post_from_second_user,
+            original_message=message_from_second_user,
+        )
+        nb_matching_address_posts = count_matching_posts(
+            session=session, addresses=[post_from_second_user.owner]
+        )
+        assert nb_matching_address_posts == 1
+
+        # Get by channel
+        matching_channel_posts = get_matching_posts_legacy(
+            session=session, channels=[post_from_second_user.channel]
+        )
+        assert matching_channel_posts
+        assert_posts_v0_equal(
+            merged_post=one(matching_channel_posts),
+            original=post_from_second_user,
+            original_message=message_from_second_user,
         )
         nb_matching_channel_posts = count_matching_posts(
             session=session, channels=[post_from_second_user.channel]
