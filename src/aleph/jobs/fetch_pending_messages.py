@@ -194,8 +194,7 @@ async def fetch_messages_task(config: Config, shared_stats: Dict):
                             "Successfully fetched %s", fetched_message.item_hash
                         )
 
-            except Exception as e:
-                print(e)
+            except Exception:
                 LOGGER.exception("Error in pending messages job")
                 session.rollback()
 

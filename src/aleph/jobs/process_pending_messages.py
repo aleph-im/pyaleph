@@ -177,8 +177,7 @@ async def fetch_and_process_messages_task(config: Config, shared_stats: Dict):
                     for result in processing_results:
                         LOGGER.info("Successfully processed %s", result.item_hash)
 
-            except Exception as e:
-                print(e)
+            except Exception:
                 LOGGER.exception("Error in pending messages job")
                 session.rollback()
 

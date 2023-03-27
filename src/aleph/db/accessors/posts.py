@@ -12,7 +12,7 @@ from typing import (
     Tuple,
 )
 
-from aleph_message.models import ItemHash
+from aleph_message.models import ItemHash, Chain, ItemType
 from sqlalchemy import (
     func,
     select,
@@ -23,12 +23,16 @@ from sqlalchemy import (
     update,
     nullsfirst,
     nullslast,
+    extract,
+    cast as sqla_cast,
+    Float,
+    case,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql import Select
 
-from aleph.db.models import message_confirmations, ChainTxDb
+from aleph.db.models import message_confirmations, ChainTxDb, MessageDb
 from aleph.db.models.posts import PostDb
 from aleph.toolkit.timestamp import coerce_to_datetime
 from aleph.types.channel import Channel
@@ -48,11 +52,36 @@ class MergedPost(Protocol):
     created: dt.datetime
 
 
+class MergedPostV0(Protocol):
+    chain: Chain
+    item_hash: str
+    content: Dict[str, Any]
+    type: str
+    item_type: ItemType
+    item_content: Optional[str]
+    original_item_hash: str
+    original_type: str
+    owner: str
+    ref: Optional[str]
+    channel: Optional[Channel]
+    signature: str
+    original_signature: str
+    time: float
+    size: int
+
+
 Amend = aliased(PostDb)
 Original = aliased(PostDb)
 
+OriginalMessage = aliased(MessageDb)
+AmendMessage = aliased(MessageDb)
+
 
 def make_select_merged_post_stmt() -> Select:
+    """
+    Combines posts and their latest amends according to the v1 /posts/ endpoint spec.
+    """
+
     select_merged_post_stmt = (
         select(
             Original.item_hash.label("original_item_hash"),
@@ -71,6 +100,58 @@ def make_select_merged_post_stmt() -> Select:
             Original.latest_amend == Amend.item_hash,
             isouter=True,
         )
+    ).where(Original.amends.is_(None))
+
+    return select_merged_post_stmt
+
+
+def make_select_merged_post_with_message_info_stmt() -> Select:
+    """
+    Combines posts and their latest amends according to the v0 /posts/ endpoint spec.
+    """
+
+    select_merged_post_stmt = (
+        select(
+            Original.item_hash.label("original_item_hash"),
+            func.coalesce(Amend.item_hash, Original.item_hash).label("item_hash"),
+            OriginalMessage.chain,
+            func.coalesce(Amend.content, Original.content).label("content"),
+            case(
+                (AmendMessage.item_type.is_(None), OriginalMessage.item_content),
+                else_=AmendMessage.item_content,
+            ).label("item_content"),
+            func.coalesce(AmendMessage.item_type, OriginalMessage.item_type).label(
+                "item_type"
+            ),
+            Original.owner.label("owner"),
+            func.coalesce(Amend.ref, Original.ref).label("ref"),
+            func.coalesce(Amend.creation_datetime, Original.creation_datetime).label(
+                "last_updated"
+            ),
+            Original.channel.label("channel"),
+            Original.creation_datetime.label("created"),
+            func.coalesce(Amend.type, Original.type).label("type"),
+            Original.type.label("original_type"),
+            func.coalesce(Amend.item_hash, Original.item_hash).label("hash"),
+            func.coalesce(AmendMessage.signature, OriginalMessage.signature).label(
+                "signature"
+            ),
+            OriginalMessage.signature.label("original_signature"),
+            func.coalesce(AmendMessage.size, OriginalMessage.size).label("size"),
+            sqla_cast(
+                extract(
+                    "epoch", func.coalesce(AmendMessage.time, OriginalMessage.time)
+                ),
+                Float,
+            ).label("time"),
+        )
+        .join(
+            Amend,
+            Original.latest_amend == Amend.item_hash,
+            isouter=True,
+        )
+        .join(OriginalMessage, Original.item_hash == OriginalMessage.item_hash)
+        .join(AmendMessage, Amend.item_hash == AmendMessage.item_hash, isouter=True)
     ).where(Original.amends.is_(None))
 
     return select_merged_post_stmt
@@ -114,7 +195,8 @@ def refresh_latest_amend(session: DbSession, item_hash: str) -> None:
     session.execute(update_stmt)
 
 
-def make_matching_posts_query(
+def filter_post_select_stmt(
+    select_stmt: Select,
     hashes: Optional[Sequence[ItemHash]] = None,
     addresses: Optional[Sequence[str]] = None,
     refs: Optional[Sequence[str]] = None,
@@ -128,7 +210,7 @@ def make_matching_posts_query(
     page: int = 0,
     pagination: int = 20,
 ) -> Select:
-    select_merged_post_subquery = make_select_merged_post_stmt().subquery()
+    select_merged_post_subquery = select_stmt.subquery()
     select_stmt = select(select_merged_post_subquery)
 
     start_datetime = coerce_to_datetime(start_date)
@@ -225,7 +307,9 @@ def count_matching_posts(
     # the same parameters as get_matching_posts and get the total number of posts,
     # not just the number on a page.
     if kwargs:
-        select_stmt = make_matching_posts_query(
+        select_stmt = make_select_merged_post_stmt()
+        select_stmt = filter_post_select_stmt(
+            select_stmt=select_stmt,
             **kwargs,
             page=1,
             pagination=0,
@@ -240,13 +324,24 @@ def count_matching_posts(
     return session.execute(select_count_stmt).scalar_one()
 
 
+def get_matching_posts_legacy(
+    session: DbSession,
+    # Same as make_matching_posts_query
+    **kwargs,
+) -> List[MergedPostV0]:
+    select_stmt = make_select_merged_post_with_message_info_stmt()
+    filtered_select_stmt = filter_post_select_stmt(select_stmt, **kwargs)
+    return cast(List[MergedPostV0], session.execute(filtered_select_stmt).all())
+
+
 def get_matching_posts(
     session: DbSession,
     # Same as make_matching_posts_query
     **kwargs,
 ) -> List[MergedPost]:
-    select_stmt = make_matching_posts_query(**kwargs)
-    return cast(List[MergedPost], session.execute(select_stmt).all())
+    select_stmt = make_select_merged_post_stmt()
+    filtered_select_stmt = filter_post_select_stmt(select_stmt, **kwargs)
+    return cast(List[MergedPost], session.execute(filtered_select_stmt).all())
 
 
 def delete_amends(session: DbSession, item_hash: str) -> Iterable[str]:

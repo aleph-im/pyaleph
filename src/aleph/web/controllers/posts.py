@@ -3,13 +3,17 @@ from typing import Optional, List, Any, Dict
 from aiohttp import web
 from aleph_message.models import ItemHash
 from pydantic import BaseModel, Field, root_validator, validator, ValidationError
+from sqlalchemy import select
 
 from aleph.db.accessors.posts import (
     get_matching_posts,
     MergedPost,
     count_matching_posts,
+    get_matching_posts_legacy,
+    MergedPostV0,
 )
-from aleph.types.db_session import DbSessionFactory
+from aleph.db.models import message_confirmations, ChainTxDb
+from aleph.types.db_session import DbSessionFactory, DbSession
 from aleph.types.sort_order import SortOrder, SortBy
 from aleph.web.controllers.utils import (
     DEFAULT_MESSAGES_PER_PAGE,
@@ -113,7 +117,110 @@ def merged_post_to_dict(merged_post: MergedPost) -> Dict[str, Any]:
     }
 
 
-async def view_posts_list(request):
+def get_post_confirmations(
+    session: DbSession, post: MergedPostV0
+) -> List[Dict[str, Any]]:
+    select_stmt = (
+        select(
+            ChainTxDb.chain,
+            ChainTxDb.hash,
+            ChainTxDb.height,
+        )
+        .select_from(message_confirmations)
+        .join(ChainTxDb, message_confirmations.c.tx_hash == ChainTxDb.hash)
+        .where(message_confirmations.c.item_hash == post.item_hash)
+    )
+
+    results = session.execute(select_stmt).all()
+    return [
+        {"chain": row.chain, "hash": row.hash, "height": row.height} for row in results
+    ]
+
+
+def merged_post_v0_to_dict(
+    session: DbSession, merged_post: MergedPostV0
+) -> Dict[str, Any]:
+
+    confirmations = get_post_confirmations(session, merged_post)
+
+    return {
+        "chain": merged_post.chain,
+        "item_hash": merged_post.item_hash,
+        "sender": merged_post.owner,
+        "type": merged_post.type,
+        "channel": merged_post.channel,
+        "confirmed": bool(confirmations),
+        "content": merged_post.content,
+        "item_content": merged_post.item_content,
+        "item_type": merged_post.item_type,
+        "signature": merged_post.signature,
+        "size": merged_post.size,
+        "time": merged_post.time,
+        "confirmations": confirmations,
+        "original_item_hash": merged_post.original_item_hash,
+        "original_signature": merged_post.original_signature,
+        "original_type": merged_post.original_type,
+        "hash": merged_post.original_item_hash,
+        "address": merged_post.owner,
+        "ref": merged_post.ref,
+    }
+
+
+def get_query_params(request: web.Request) -> PostQueryParams:
+    try:
+        query_params = PostQueryParams.parse_obj(request.query)
+    except ValidationError as e:
+        raise web.HTTPUnprocessableEntity(body=e.json(indent=4))
+
+    path_page = get_path_page(request)
+    if path_page:
+        query_params.page = path_page
+
+    return query_params
+
+
+async def view_posts_list_v0(request: web.Request) -> web.Response:
+    query_string = request.query_string
+    query_params = get_query_params(request)
+
+    find_filters = query_params.dict(exclude_none=True)
+
+    pagination_page = query_params.page
+    pagination_per_page = query_params.pagination
+
+    session_factory: DbSessionFactory = request.app["session_factory"]
+
+    with session_factory() as session:
+        total_posts = count_matching_posts(session=session, **find_filters)
+        results = get_matching_posts_legacy(session=session, **find_filters)
+        posts = [merged_post_v0_to_dict(session, post) for post in results]
+
+    context: Dict[str, Any] = {"posts": posts}
+
+    if pagination_per_page is not None:
+
+        pagination = Pagination(
+            pagination_page,
+            pagination_per_page,
+            total_posts,
+            url_base="/messages/posts/page/",
+            query_string=query_string,
+        )
+
+        context.update(
+            {
+                "pagination": pagination,
+                "pagination_page": pagination_page,
+                "pagination_total": total_posts,
+                "pagination_per_page": pagination_per_page,
+                "pagination_item": "posts",
+            }
+        )
+
+    return cond_output(request, context, "TODO.html")
+
+
+async def view_posts_list_v1(request) -> web.Response:
     """Posts list view with filters"""
 
     query_string = request.query_string
@@ -138,7 +245,7 @@ async def view_posts_list(request):
         results = get_matching_posts(session=session, **find_filters)
         posts = [merged_post_to_dict(post) for post in results]
 
-    context = {"posts": posts}
+    context: Dict[str, Any] = {"posts": posts}
 
     if pagination_per_page is not None:
 
