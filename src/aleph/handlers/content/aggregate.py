@@ -3,7 +3,6 @@ import logging
 from typing import List, cast, Sequence, Set
 
 from aleph_message.models import AggregateContent
-from sqlalchemy import update, delete
 
 from aleph.db.accessors.aggregates import (
     get_aggregate_by_key,
