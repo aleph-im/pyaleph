@@ -21,6 +21,7 @@ async def refresh_cache_materialized_views(session_factory: DbSessionFactory) ->
         try:
             with session_factory() as session:
                 refresh_address_stats_mat_view(session)
+                session.commit()
                 LOGGER.info("Refreshed address stats materialized view")
 
         except Exception:
