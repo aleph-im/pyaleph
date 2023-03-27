@@ -44,6 +44,8 @@ IPFS_HOST=$(get_config ipfs.host)
 IPFS_PORT=$(get_config ipfs.port)
 RABBITMQ_HOST=$(get_config rabbitmq.host)
 RABBITMQ_PORT=$(get_config rabbitmq.port)
+P2P_SERVICE_HOST=$(get_config p2p.daemon_host)
+P2P_SERVICE_CONTROL_PORT=$(get_config p2p.control_port)
 
 if [ "$(get_config ipfs.enabled)" = "True" ]; then
   wait_for_it -h "${IPFS_HOST}" -p "${IPFS_PORT}"
@@ -51,5 +53,6 @@ fi
 
 wait_for_it -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}"
 wait_for_it -h "${RABBITMQ_HOST}" -p "${RABBITMQ_PORT}"
+wait_for_it -h "${P2P_SERVICE_HOST}" -p "${P2P_SERVICE_CONTROL_PORT}"
 
 exec pyaleph "${PYALEPH_ARGS[@]}"
