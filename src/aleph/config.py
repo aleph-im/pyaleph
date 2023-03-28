@@ -7,7 +7,7 @@ def get_defaults():
     return {
         "logging": {
             "level": logging.WARNING,
-            "max_log_file_size": 1_000_000_000,  # 1GB,
+            "max_log_file_size": 50_000_000,  # 50MB
         },
         "aleph": {
             "queue_topic": "ALEPH-TEST",
