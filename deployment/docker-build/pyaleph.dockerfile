@@ -71,4 +71,5 @@ RUN chown -R aleph:aleph /var/lib/pyaleph
 ENV PATH="/opt/venv/bin:${PATH}"
 WORKDIR /opt/pyaleph
 USER aleph
+VOLUME "/var/lib/aleph"
 ENTRYPOINT ["bash", "deployment/scripts/run_aleph_ccn.sh"]
