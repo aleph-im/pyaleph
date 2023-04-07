@@ -11,16 +11,16 @@ from aiohttp import web
 from aleph_p2p_client import AlephP2PServiceClient
 from configmanager import Config
 
+from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSessionFactory
 
 APP_STATE_CONFIG = "config"
-APP_STATE_EXTRA_CONFIG = "extra_config"
 APP_STATE_MQ_CONN = "mq_conn"
+APP_STATE_NODE_CACHE = "node_cache"
 APP_STATE_P2P_CLIENT = "p2p_client"
 APP_STATE_SESSION_FACTORY = "session_factory"
-APP_STATE_SHARED_STATS = "shared_stats"
 APP_STATE_STORAGE_SERVICE = "storage_service"
 
 
@@ -43,6 +43,10 @@ def get_ipfs_service_from_request(request: web.Request) -> Optional[IpfsService]
 
 def get_mq_conn_from_request(request: web.Request) -> aio_pika.abc.AbstractConnection:
     return cast(aio_pika.abc.AbstractConnection, request.app[APP_STATE_MQ_CONN])
+
+
+def get_node_cache_from_request(request: web.Request) -> NodeCache:
+    return cast(NodeCache, request.app[APP_STATE_NODE_CACHE])
 
 
 def get_p2p_client_from_request(request: web.Request) -> AlephP2PServiceClient:

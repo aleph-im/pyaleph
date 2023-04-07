@@ -13,7 +13,6 @@ from aleph.storage import StorageService
 
 
 class MockStorageEngine(StorageEngine):
-
     def __init__(self, files: Dict[str, bytes]):
         self.files = files
 
@@ -41,6 +40,7 @@ async def test_hash_content_from_db(mocker, use_network: bool, use_ipfs: bool):
     storage_manager = StorageService(
         MockStorageEngine(files={"1234": b"fluctuat nec mergitur"}),
         ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
     )
 
     expected_content = b"fluctuat nec mergitur"
@@ -66,7 +66,9 @@ async def test_hash_content_from_network(mocker, use_ipfs: bool):
 
     # No files in the local storage
     storage_manager = StorageService(
-        MockStorageEngine(files={}), ipfs_service=mocker.AsyncMock()
+        MockStorageEngine(files={}),
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
     )
 
     content = await storage_manager.get_hash_content(
@@ -90,7 +92,9 @@ async def test_hash_content_from_network_store_value(mocker, use_ipfs: bool):
     )
 
     storage_manager = StorageService(
-        MockStorageEngine(files={}), ipfs_service=mocker.AsyncMock()
+        MockStorageEngine(files={}),
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
     )
 
     content = await storage_manager.get_hash_content(
@@ -118,7 +122,9 @@ async def test_hash_content_from_network_invalid_hash(mocker):
     ipfs_service = IpfsService(ipfs_client=ipfs_client)
 
     storage_manager = StorageService(
-        MockStorageEngine(files={}), ipfs_service=ipfs_service
+        MockStorageEngine(files={}),
+        ipfs_service=ipfs_service,
+        node_cache=mocker.AsyncMock(),
     )
 
     with pytest.raises(InvalidContent):
@@ -142,7 +148,9 @@ async def test_hash_content_from_ipfs(mocker):
     ipfs_service = IpfsService(ipfs_client=ipfs_client)
 
     storage_manager = StorageService(
-        MockStorageEngine(files={}), ipfs_service=ipfs_service
+        MockStorageEngine(files={}),
+        ipfs_service=ipfs_service,
+        node_cache=mocker.AsyncMock(),
     )
 
     with pytest.raises(InvalidContent):
@@ -160,6 +168,7 @@ async def test_get_valid_json(mocker):
     storage_manager = StorageService(
         MockStorageEngine(files={content_hash: json_bytes}),
         ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
     )
 
     content = await storage_manager.get_json(content_hash)
@@ -178,6 +187,7 @@ async def test_get_invalid_json(mocker):
     storage_manager = StorageService(
         MockStorageEngine(files={"1234": non_json_content}),
         ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
     )
 
     with pytest.raises(InvalidContent):
@@ -203,7 +213,9 @@ async def test_get_inline_content_full_message(mocker):
     }
 
     storage_manager = StorageService(
-        MockStorageEngine(files={}), ipfs_service=mocker.AsyncMock()
+        MockStorageEngine(files={}),
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
     )
 
     message = parse_message(message_dict)
@@ -236,7 +248,8 @@ async def test_get_stored_message_content(mocker):
     message = parse_message(message_dict)
     storage_manager = StorageService(
         MockStorageEngine(files={message.item_hash: json_bytes}),
-        ipfs_service=mocker.AsyncMock()
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
     )
 
     content = await storage_manager.get_message_content(message)

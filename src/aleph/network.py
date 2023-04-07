@@ -7,6 +7,7 @@ from aleph_p2p_client import AlephP2PServiceClient
 import aleph.toolkit.json as aleph_json
 from aleph.chains.chain_service import ChainService
 from aleph.handlers.message_handler import MessageHandler
+from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.ipfs.common import make_ipfs_client
 from aleph.services.ipfs.pubsub import incoming_channel as incoming_ipfs_channel
@@ -36,7 +37,10 @@ async def decode_pubsub_message(message_data: bytes) -> Dict[str, Any]:
 
 
 def listener_tasks(
-    config, session_factory: DbSessionFactory, p2p_client: AlephP2PServiceClient
+    config,
+    session_factory: DbSessionFactory,
+    node_cache: NodeCache,
+    p2p_client: AlephP2PServiceClient,
 ) -> List[Coroutine]:
     from aleph.services.p2p.protocol import incoming_channel as incoming_p2p_channel
 
@@ -46,6 +50,7 @@ def listener_tasks(
     storage_service = StorageService(
         storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
         ipfs_service=ipfs_service,
+        node_cache=node_cache,
     )
     chain_service = ChainService(
         session_factory=session_factory, storage_service=storage_service

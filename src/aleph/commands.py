@@ -14,14 +14,12 @@ import asyncio
 import logging
 import os
 import sys
-from multiprocessing import Manager, Process, set_start_method
-from multiprocessing.managers import SyncManager
-from typing import Any, Coroutine, Dict, List, Optional
+from multiprocessing import Process, set_start_method
+from typing import Coroutine, Dict, List
 
 import alembic.command
 import alembic.config
 import sentry_sdk
-from aleph_message.models import MessageType
 from configmanager import Config
 from setproctitle import setproctitle
 
@@ -35,10 +33,11 @@ from aleph.jobs.job_utils import prepare_loop
 from aleph.network import listener_tasks
 from aleph.services import p2p
 from aleph.services.cache.materialized_views import refresh_cache_materialized_views
+from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.ipfs.common import make_ipfs_client
 from aleph.services.keys import generate_keypair, save_keys
-from aleph.services.p2p import singleton, init_p2p_client
+from aleph.services.p2p import init_p2p_client
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
 from aleph.toolkit.logging import setup_logging
@@ -46,12 +45,11 @@ from aleph.toolkit.monitoring import setup_sentry
 from aleph.web import app
 from aleph.web.controllers.app_state_getters import (
     APP_STATE_CONFIG,
-    APP_STATE_P2P_CLIENT,
-    APP_STATE_STORAGE_SERVICE,
-    APP_STATE_EXTRA_CONFIG,
-    APP_STATE_SHARED_STATS,
     APP_STATE_MQ_CONN,
+    APP_STATE_NODE_CACHE,
+    APP_STATE_P2P_CLIENT,
     APP_STATE_SESSION_FACTORY,
+    APP_STATE_STORAGE_SERVICE,
 )
 
 __author__ = "Moshe Malawach"
@@ -70,28 +68,20 @@ def run_db_migrations(config: Config):
     alembic.command.upgrade(alembic_cfg, "head", tag=db_url)
 
 
-def init_shared_stats(shared_memory_manager: SyncManager) -> Dict[str, Any]:
-    """
-    Initializes the shared stats dictionary. This dictionary is meant to be shared
-    across processes to publish internal statistics about each job.
-    """
-    shared_stats: Dict[str, Any] = shared_memory_manager.dict()
-    # Nested dicts must also be shared dictionaries, otherwise they will not be
-    # shared across processes.
-    message_jobs_dict = shared_memory_manager.dict()
-    for message_type in MessageType:
-        message_jobs_dict[message_type] = 0
-    shared_stats["message_jobs"] = message_jobs_dict
+async def init_node_cache(config: Config) -> NodeCache:
+    node_cache = NodeCache(
+        redis_host=config.redis.host.value, redis_port=config.redis.port.value
+    )
 
-    return shared_stats
+    # Reset the cache
+    await node_cache.reset()
+    return node_cache
 
 
 async def run_server(
     config: Config,
     host: str,
     port: int,
-    shared_stats: dict,
-    extra_web_config: dict,
 ):
     # These imports will run in different processes
     from aiohttp import web
@@ -107,19 +97,23 @@ async def run_server(
         )
         session_factory = make_session_factory(engine)
 
+        node_cache = NodeCache(
+            redis_host=config.redis.host.value, redis_port=config.redis.port.value
+        )
+
         ipfs_client = make_ipfs_client(config)
         ipfs_service = IpfsService(ipfs_client=ipfs_client)
         storage_service = StorageService(
             storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
             ipfs_service=ipfs_service,
+            node_cache=node_cache,
         )
 
         app[APP_STATE_CONFIG] = config
-        app[APP_STATE_EXTRA_CONFIG] = extra_web_config
-        app[APP_STATE_SHARED_STATS] = shared_stats
         app[APP_STATE_P2P_CLIENT] = p2p_client
         # Reuse the connection of the P2P client to avoid opening two connections
         app[APP_STATE_MQ_CONN] = p2p_client.mq_client.connection
+        app[APP_STATE_NODE_CACHE] = node_cache
         app[APP_STATE_STORAGE_SERVICE] = storage_service
         app[APP_STATE_SESSION_FACTORY] = session_factory
 
@@ -139,9 +133,7 @@ def run_server_coroutine(
     config_values: Dict,
     host: str,
     port: int,
-    shared_stats: Dict,
     enable_sentry: bool = True,
-    extra_web_config: Optional[Dict] = None,
 ):
     """Run the server coroutine in a synchronous way.
     Used as target of multiprocessing.Process.
@@ -150,7 +142,6 @@ def run_server_coroutine(
 
     loop, config = prepare_loop(config_values)
 
-    extra_web_config = extra_web_config or {}
     setup_logging(
         loglevel=config.logging.level.value,
         filename=f"/tmp/run_server_coroutine-{port}.log",
@@ -166,9 +157,7 @@ def run_server_coroutine(
     # Use a try-catch-capture_exception to work with multiprocessing, see
     # https://github.com/getsentry/raven-python/issues/1110
     try:
-        loop.run_until_complete(
-            run_server(config, host, port, shared_stats, extra_web_config)
-        )
+        loop.run_until_complete(run_server(config, host, port))
     except Exception as e:
         if enable_sentry:
             sentry_sdk.capture_exception(e)
@@ -239,6 +228,7 @@ async def main(args):
 
     with sentry_sdk.start_transaction(name="init-sleep"):
         from time import sleep
+
         sleep(3)
 
     engine = make_engine(
@@ -248,13 +238,14 @@ async def main(args):
     )
     session_factory = make_session_factory(engine)
 
-    # TODO: find a way to prevent alembic from messing up the logging config
     setup_logging(args.loglevel)
 
+    node_cache = await init_node_cache(config)
     ipfs_service = IpfsService(ipfs_client=make_ipfs_client(config))
     storage_service = StorageService(
         storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
         ipfs_service=ipfs_service,
+        node_cache=node_cache,
     )
     chain_service = ChainService(
         session_factory=session_factory, storage_service=storage_service
@@ -262,79 +253,68 @@ async def main(args):
 
     set_start_method("spawn")
 
-    with Manager() as shared_memory_manager:
-        tasks: List[Coroutine] = []
+    tasks: List[Coroutine] = []
 
-        shared_stats = init_shared_stats(shared_memory_manager)
-        api_servers = shared_memory_manager.list()
-        singleton.api_servers = api_servers
-
-        if not args.no_jobs:
-            LOGGER.debug("Creating jobs")
-            tasks += start_jobs(
-                config=config,
-                session_factory=session_factory,
-                shared_stats=shared_stats,
-                ipfs_service=ipfs_service,
-                api_servers=api_servers,
-                use_processes=True,
-            )
-
-        LOGGER.debug("Initializing p2p")
-        p2p_client, p2p_tasks = await p2p.init_p2p(
+    if not args.no_jobs:
+        LOGGER.debug("Creating jobs")
+        tasks += start_jobs(
             config=config,
             session_factory=session_factory,
-            service_name="network-monitor",
             ipfs_service=ipfs_service,
-            api_servers=api_servers,
+            use_processes=True,
         )
-        tasks += p2p_tasks
-        LOGGER.debug("Initialized p2p")
 
-        LOGGER.debug("Initializing listeners")
-        tasks += listener_tasks(
-            config=config, session_factory=session_factory, p2p_client=p2p_client
-        )
-        tasks.append(chain_service.chain_event_loop(config))
-        LOGGER.debug("Initialized listeners")
+    LOGGER.debug("Initializing p2p")
+    p2p_client, p2p_tasks = await p2p.init_p2p(
+        config=config,
+        session_factory=session_factory,
+        service_name="network-monitor",
+        ipfs_service=ipfs_service,
+        node_cache=node_cache,
+    )
+    tasks += p2p_tasks
+    LOGGER.debug("Initialized p2p")
 
-        LOGGER.debug("Initializing cache tasks")
-        tasks.append(refresh_cache_materialized_views(session_factory))
-        LOGGER.debug("Initialized cache tasks")
+    LOGGER.debug("Initializing listeners")
+    tasks += listener_tasks(
+        config=config,
+        session_factory=session_factory,
+        node_cache=node_cache,
+        p2p_client=p2p_client,
+    )
+    tasks.append(chain_service.chain_event_loop(config))
+    LOGGER.debug("Initialized listeners")
 
-        # Need to be passed here otherwise it gets lost in the fork
-        from aleph.services.p2p import manager as p2p_manager
+    LOGGER.debug("Initializing cache tasks")
+    tasks.append(refresh_cache_materialized_views(session_factory))
+    LOGGER.debug("Initialized cache tasks")
 
-        extra_web_config = {"public_adresses": p2p_manager.public_adresses}
+    # Need to be passed here otherwise it gets lost in the fork
 
-        p1 = Process(
-            target=run_server_coroutine,
-            args=(
-                config_values,
-                config.aleph.host.value,
-                config.p2p.http_port.value,
-                shared_stats,
-                args.sentry_disabled is False and config.sentry.dsn.value,
-                extra_web_config,
-            ),
-        )
-        p2 = Process(
-            target=run_server_coroutine,
-            args=(
-                config_values,
-                config.aleph.host.value,
-                config.aleph.port.value,
-                shared_stats,
-                args.sentry_disabled is False and config.sentry.dsn.value,
-                extra_web_config,
-            ),
-        )
-        p1.start()
-        p2.start()
-        LOGGER.debug("Started processes")
+    p1 = Process(
+        target=run_server_coroutine,
+        args=(
+            config_values,
+            config.aleph.host.value,
+            config.p2p.http_port.value,
+            args.sentry_disabled is False and config.sentry.dsn.value,
+        ),
+    )
+    p2 = Process(
+        target=run_server_coroutine,
+        args=(
+            config_values,
+            config.aleph.host.value,
+            config.aleph.port.value,
+            args.sentry_disabled is False and config.sentry.dsn.value,
+        ),
+    )
+    p1.start()
+    p2.start()
+    LOGGER.debug("Started processes")
 
-        LOGGER.debug("Running event loop")
-        await asyncio.gather(*tasks)
+    LOGGER.debug("Running event loop")
+    await asyncio.gather(*tasks)
 
 
 def run():

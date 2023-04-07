@@ -7,6 +7,7 @@ import aiohttp_jinja2
 from aiohttp import web
 
 from aleph.types.db_session import DbSessionFactory
+from aleph.web.controllers.app_state_getters import get_node_cache_from_request, get_session_factory_from_request
 from aleph.web.controllers.metrics import format_dataclass_for_prometheus, get_metrics
 
 logger = logging.getLogger(__name__)
@@ -15,23 +16,24 @@ logger = logging.getLogger(__name__)
 @aiohttp_jinja2.template("index.html")
 async def index(request) -> Dict:
     """Index of aleph."""
-    shared_stats = request.config_dict["shared_stats"]
-    session_factory: DbSessionFactory = request.app["session_factory"]
+
+    session_factory: DbSessionFactory = get_session_factory_from_request(request)
+    node_cache = get_node_cache_from_request(request)
     with session_factory() as session:
-        return asdict(await get_metrics(session=session, shared_stats=shared_stats))
+        return asdict(await get_metrics(session=session, node_cache=node_cache))
 
 
 async def status_ws(request):
     ws = web.WebSocketResponse()
     await ws.prepare(request)
-    session_factory: DbSessionFactory = request.app["session_factory"]
+
+    session_factory: DbSessionFactory = get_session_factory_from_request(request)
+    node_cache = get_node_cache_from_request(request)
 
     previous_status = None
     while True:
-        shared_stats = request.config_dict["shared_stats"]
-
         with session_factory() as session:
-            status = await get_metrics(session=session, shared_stats=shared_stats)
+            status = await get_metrics(session=session, node_cache=node_cache)
 
         if status != previous_status:
             try:
@@ -51,23 +53,24 @@ async def metrics(request):
     Naming convention:
     https://prometheus.io/docs/practices/naming/
     """
-    shared_stats = request.config_dict["shared_stats"]
-    session_factory: DbSessionFactory = request.app["session_factory"]
+    session_factory: DbSessionFactory = get_session_factory_from_request(request)
+    node_cache = get_node_cache_from_request(request)
+
     with session_factory() as session:
         return web.Response(
             text=format_dataclass_for_prometheus(
-                await get_metrics(session=session, shared_stats=shared_stats)
+                await get_metrics(session=session, node_cache=node_cache)
             )
         )
 
 
 async def metrics_json(request):
     """JSON version of the Prometheus metrics."""
-    shared_stats = request.config_dict["shared_stats"]
-    session_factory: DbSessionFactory = request.app["session_factory"]
+    session_factory: DbSessionFactory = get_session_factory_from_request(request)
+    node_cache = get_node_cache_from_request(request)
 
     with session_factory() as session:
         return web.Response(
-            text=(await get_metrics(session=session, shared_stats=shared_stats)).to_json(),
+            text=(await get_metrics(session=session, node_cache=node_cache)).to_json(),
             content_type="application/json",
         )

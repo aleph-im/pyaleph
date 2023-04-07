@@ -14,12 +14,14 @@ from configmanager import Config
 
 import aleph.config
 from aleph.db.connection import make_engine, make_session_factory, make_db_url
+from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.ipfs.common import make_ipfs_client
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSessionFactory
 from aleph.web import create_app
+import redis.asyncio as redis_asyncio
 
 # Add the helpers to the PYTHONPATH.
 # Note: mark the "helpers" directory as a source directory to tell PyCharm
@@ -77,7 +79,14 @@ def mock_config(mocker):
 
 
 @pytest_asyncio.fixture
-async def test_storage_service(mock_config) -> StorageService:
+async def node_cache(mock_config: Config):
+    return NodeCache(
+        redis_host=mock_config.redis.host.value, redis_port=mock_config.redis.port.value
+    )
+
+
+@pytest_asyncio.fixture
+async def test_storage_service(mock_config: Config, mocker) -> StorageService:
     data_folder = Path("./data")
 
     # Delete files from previous runs
@@ -89,7 +98,9 @@ async def test_storage_service(mock_config) -> StorageService:
     ipfs_client = make_ipfs_client(mock_config)
     ipfs_service = IpfsService(ipfs_client=ipfs_client)
     storage_service = StorageService(
-        storage_engine=storage_engine, ipfs_service=ipfs_service
+        storage_engine=storage_engine,
+        ipfs_service=ipfs_service,
+        node_cache=mocker.AsyncMock(),
     )
     return storage_service
 

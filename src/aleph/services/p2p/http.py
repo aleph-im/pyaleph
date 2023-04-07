@@ -6,11 +6,9 @@ import asyncio
 import base64
 import logging
 from random import sample
-from typing import Optional
+from typing import Optional, List, Sequence
 
 import aiohttp
-
-from . import singleton
 
 LOGGER = logging.getLogger("P2P.HTTP")
 
@@ -59,13 +57,10 @@ async def get_peer_hash_content(
     return result
 
 
-async def request_hash(item_hash: str, timeout: int = 1) -> Optional[bytes]:
-    if singleton.api_servers is None:
-        raise ValueError("Configuration error, api_servers is null.")
-
-    # random.sample is not compatible with multiprocessing lists like api_servers
-    uris = list(singleton.api_servers)
-    uris = sample(uris, k=len(uris))
+async def request_hash(
+    api_servers: Sequence[str], item_hash: str, timeout: int = 1
+) -> Optional[bytes]:
+    uris: List[str] = sample(api_servers, k=len(api_servers))
 
     for uri in uris:
         content = await get_peer_hash_content(uri, item_hash, timeout=timeout)

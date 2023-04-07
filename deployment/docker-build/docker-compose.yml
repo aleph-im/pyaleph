@@ -72,5 +72,13 @@ services:
     networks:
       - pyaleph
 
+  redis:
+    restart: always
+    image: redis:7.0.10
+    ports:
+      - "127.0.0.1:6380:6379"
+    networks:
+      - pyaleph
+
 networks:
   pyaleph:

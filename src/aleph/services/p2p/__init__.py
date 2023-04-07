@@ -4,9 +4,9 @@ from aleph_p2p_client import AlephP2PServiceClient, make_p2p_service_client
 from configmanager import Config
 
 from aleph.services.ipfs import IpfsService
-from . import singleton
 from .manager import initialize_host
 from aleph.types.db_session import DbSessionFactory
+from ..cache.node_cache import NodeCache
 
 
 async def init_p2p_client(config: Config, service_name: str) -> AlephP2PServiceClient:
@@ -30,7 +30,7 @@ async def init_p2p(
     session_factory: DbSessionFactory,
     service_name: str,
     ipfs_service: IpfsService,
-    api_servers: List[str],
+    node_cache: NodeCache,
     listen: bool = True,
 ) -> Tuple[AlephP2PServiceClient, List[Coroutine]]:
 
@@ -42,7 +42,7 @@ async def init_p2p(
         session_factory=session_factory,
         p2p_client=p2p_client,
         ipfs_service=ipfs_service,
-        api_servers=api_servers,
+        node_cache=node_cache,
         host=config.p2p.daemon_host.value,
         port=port,
         listen=listen,
