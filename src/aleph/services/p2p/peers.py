@@ -1,6 +1,6 @@
 from aleph_p2p_client import AlephP2PServiceClient
 from multiaddr import Multiaddr
-from p2pclient.libp2p_stubs.peer.peerinfo import info_from_p2p_addr
+from aleph.toolkit.libp2p_stubs.peer.peerinfo import info_from_p2p_addr
 
 
 async def connect_peer(p2p_client: AlephP2PServiceClient, peer_maddr: str) -> None:
