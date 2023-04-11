@@ -1,9 +1,7 @@
 import os.path
 
-from p2pclient.libp2p_stubs.crypto.rsa import (
-    KeyPair,
-    create_new_key_pair,
-)
+from aleph.toolkit.libp2p_stubs.crypto.keys import KeyPair
+from aleph.toolkit.libp2p_stubs.crypto.rsa import create_new_key_pair
 
 
 def generate_keypair(print_key: bool) -> KeyPair:
@@ -13,7 +11,7 @@ def generate_keypair(print_key: bool) -> KeyPair:
     key_pair = create_new_key_pair()
     if print_key:
         # Print the armored key pair for archiving
-        print(key_pair.private_key.impl.export_key().decode("utf-8"))
+        print(key_pair.private_key.impl.export_key().decode("utf-8"))  # type: ignore[attr-defined]
 
     return key_pair
 
@@ -38,7 +36,7 @@ def save_keys(key_pair: KeyPair, key_dir: str) -> None:
     public_key_path = os.path.join(key_dir, "node-pub.key")
 
     with open(private_key_path, "wb") as key_file:
-        key_file.write(key_pair.private_key.impl.export_key(format="DER", pkcs=8))
+        key_file.write(key_pair.private_key.impl.export_key(format="DER", pkcs=8))  # type: ignore[attr-defined]
 
     with open(public_key_path, "wb") as key_file:
-        key_file.write(key_pair.public_key.impl.export_key())
+        key_file.write(key_pair.public_key.impl.export_key())  # type: ignore[attr-defined]
