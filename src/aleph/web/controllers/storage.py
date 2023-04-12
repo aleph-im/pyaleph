@@ -4,11 +4,12 @@ import logging
 from aiohttp import web
 from aleph_message.models import ItemType
 
-from aleph.db.accessors.files import count_file_pins
+from aleph.db.accessors.files import count_file_pins, is_pinned_file
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSessionFactory
 from aleph.utils import run_in_executor, item_type_from_hash
+from aleph.web.controllers.app_state_getters import get_session_factory_from_request
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,15 @@ async def get_raw_hash(request):
         engine = item_type_from_hash(item_hash)
     except UnknownHashError:
         raise web.HTTPBadRequest(text="Invalid hash")
+
+    # Check if the file is supposed to be on the network.
+    # This filters out requests for files outside the network / nonexistent files.
+    session_factory: DbSessionFactory = get_session_factory_from_request(request)
+    with session_factory() as session:
+        is_pinned = is_pinned_file(session=session, file_hash=item_hash)
+
+    if not is_pinned:
+        raise web.HTTPNotFound(text="Not found")
 
     storage_service: StorageService = request.app["storage_service"]
 

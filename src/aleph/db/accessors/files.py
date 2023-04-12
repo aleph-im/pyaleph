@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import Row
 
 from aleph.types.db_session import DbSession
-from aleph.types.files import FileTag
+from aleph.types.files import FileTag, FileType
 from ..models.files import (
     FilePinDb,
     FileTagDb,
@@ -14,6 +14,7 @@ from ..models.files import (
     TxFilePinDb,
     MessageFilePinDb,
     FilePinType,
+    ContentFilePinDb,
 )
 from ...types.sort_order import SortOrder
 
@@ -33,6 +34,23 @@ def upsert_tx_file_pin(
         .on_conflict_do_nothing()
     )
     session.execute(upsert_stmt)
+
+
+def insert_content_file_pin(
+    session: DbSession,
+    file_hash: str,
+    owner: str,
+    item_hash: str,
+    created: dt.datetime,
+) -> None:
+    insert_stmt = insert(ContentFilePinDb).values(
+        file_hash=file_hash,
+        owner=owner,
+        item_hash=item_hash,
+        type=FilePinType.CONTENT,
+        created=created,
+    )
+    session.execute(insert_stmt)
 
 
 def insert_message_file_pin(
@@ -129,13 +147,22 @@ def get_address_files_for_api(
     return session.execute(select_stmt).all()
 
 
-def upsert_stored_file(session: DbSession, file: StoredFileDb) -> None:
+def upsert_file(session: DbSession, file_hash: str, size: Optional[int], file_type: FileType):
     upsert_file_stmt = (
         insert(StoredFileDb)
-        .values(file.to_dict(exclude={"id"}))
+        .values(hash=file_hash, size=size, type=file_type)
         .on_conflict_do_nothing(constraint="files_pkey")
     )
     session.execute(upsert_file_stmt)
+
+
+def upsert_stored_file(
+    session: DbSession,
+    file: StoredFileDb,
+) -> None:
+    upsert_file(
+        session=session, file_hash=file.hash, size=file.size, file_type=file.type
+    )
 
 
 def delete_file(session: DbSession, file_hash: str) -> None:
