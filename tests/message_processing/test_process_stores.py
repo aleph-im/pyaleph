@@ -72,6 +72,7 @@ async def test_process_store(
             }
         ),
         ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
     )
     chain_service = mocker.AsyncMock()
     message_handler = MessageHandler(
@@ -121,6 +122,7 @@ async def test_process_store_no_signature(
             }
         ),
         ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
     )
     message_processor.message_handler.storage_service = storage_service
     storage_handler = message_processor.message_handler.content_handlers[

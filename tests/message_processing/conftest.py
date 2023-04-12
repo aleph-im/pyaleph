@@ -76,7 +76,9 @@ async def fixture_post_messages(
 def message_processor(mocker, mock_config: Config, session_factory: DbSessionFactory):
     storage_engine = InMemoryStorageEngine(files={})
     storage_service = StorageService(
-        storage_engine=storage_engine, ipfs_service=mocker.AsyncMock()
+        storage_engine=storage_engine,
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
     )
     chain_service = ChainService(
         session_factory=session_factory, storage_service=storage_service

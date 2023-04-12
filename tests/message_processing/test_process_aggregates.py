@@ -31,7 +31,9 @@ async def test_process_aggregate_first_element(
     fixture_aggregate_messages: List[Dict],
 ):
     storage_service = StorageService(
-        storage_engine=mocker.AsyncMock(), ipfs_service=mocker.AsyncMock()
+        storage_engine=mocker.AsyncMock(),
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
     )
     chain_service = mocker.AsyncMock()
     message_handler = MessageHandler(
@@ -143,7 +145,6 @@ async def process_aggregates_one_by_one(
     message_processor: PendingMessageProcessor,
     aggregates: Iterable[PendingMessageDb],
 ) -> Sequence[MessageDb]:
-
     messages = []
     for pending_aggregate in aggregates:
         session.add(pending_aggregate)

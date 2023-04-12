@@ -18,9 +18,7 @@ LOGGER = logging.getLogger("jobs")
 def start_jobs(
     config,
     session_factory: DbSessionFactory,
-    shared_stats: Dict,
     ipfs_service: IpfsService,
-    api_servers: List[str],
     use_processes=True,
 ) -> List[Coroutine]:
     LOGGER.info("starting jobs")
@@ -30,30 +28,22 @@ def start_jobs(
         config_values = config.dump_values()
         p1 = Process(
             target=fetch_pending_messages_subprocess,
-            args=(
-                config_values,
-                shared_stats,
-                api_servers,
-            ),
+            args=(config_values,),
         )
         p2 = Process(
             target=pending_messages_subprocess,
-            args=(
-                config_values,
-                shared_stats,
-                api_servers,
-            ),
+            args=(config_values,),
         )
         p3 = Process(
             target=pending_txs_subprocess,
-            args=(config_values, api_servers),
+            args=(config_values,),
         )
         p1.start()
         p2.start()
         p3.start()
     else:
         tasks.append(
-            fetch_and_process_messages_task(config=config, shared_stats=shared_stats)
+            fetch_and_process_messages_task(config=config)
         )
         tasks.append(handle_txs_task(config))
 
