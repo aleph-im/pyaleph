@@ -4,7 +4,7 @@ Job in charge of loading messages stored on-chain and put them in the pending me
 
 import asyncio
 import logging
-from typing import List, Dict, Optional, Set
+from typing import Dict, Optional, Set
 
 from configmanager import Config
 from setproctitle import setproctitle
@@ -18,7 +18,6 @@ from aleph.db.models.pending_txs import PendingTxDb
 from aleph.handlers.message_handler import MessageHandler
 from aleph.services.ipfs.common import make_ipfs_client
 from aleph.services.ipfs.service import IpfsService
-from aleph.services.p2p import singleton
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
 from aleph.toolkit.logging import setup_logging
@@ -27,6 +26,7 @@ from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.db_session import DbSessionFactory
 from .job_utils import prepare_loop
+from ..services.cache.node_cache import NodeCache
 
 LOGGER = logging.getLogger(__name__)
 
@@ -124,11 +124,15 @@ async def handle_txs_task(config: Config):
     engine = make_engine(config=config, application_name="aleph-txs")
     session_factory = make_session_factory(engine)
 
+    node_cache = NodeCache(
+        redis_host=config.redis.host.value, redis_port=config.redis.port.value
+    )
     ipfs_client = make_ipfs_client(config)
     ipfs_service = IpfsService(ipfs_client=ipfs_client)
     storage_service = StorageService(
         storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
         ipfs_service=ipfs_service,
+        node_cache=node_cache,
     )
     chain_service = ChainService(
         session_factory=session_factory, storage_service=storage_service
@@ -156,7 +160,7 @@ async def handle_txs_task(config: Config):
         await asyncio.sleep(0.01)
 
 
-def pending_txs_subprocess(config_values: Dict, api_servers: List):
+def pending_txs_subprocess(config_values: Dict):
     setproctitle("aleph.jobs.txs_task_loop")
     loop, config = prepare_loop(config_values)
 
@@ -166,6 +170,5 @@ def pending_txs_subprocess(config_values: Dict, api_servers: List):
         filename="/tmp/txs_task_loop.log",
         max_log_file_size=config.logging.max_log_file_size.value,
     )
-    singleton.api_servers = api_servers
 
     loop.run_until_complete(handle_txs_task(config))

@@ -5,7 +5,6 @@ import asyncio
 from logging import getLogger
 from typing import (
     Dict,
-    List,
     AsyncIterator,
     Sequence,
 )
@@ -21,7 +20,6 @@ from aleph.db.connection import make_engine, make_session_factory
 from aleph.handlers.message_handler import MessageHandler
 from aleph.services.ipfs import IpfsService
 from aleph.services.ipfs.common import make_ipfs_client
-from aleph.services.p2p import singleton
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
 from aleph.toolkit.logging import setup_logging
@@ -34,6 +32,7 @@ from .job_utils import (
     MessageProcessingResult,
     ProcessedMessage,
 )
+from ..services.cache.node_cache import NodeCache
 
 LOGGER = getLogger(__name__)
 
@@ -136,18 +135,22 @@ class PendingMessageProcessor(MessageJob):
         return self.publish_to_mq(message_iterator=message_processor)
 
 
-async def fetch_and_process_messages_task(config: Config, shared_stats: Dict):
+async def fetch_and_process_messages_task(config: Config):
     # TODO: this sleep can probably be removed
     await asyncio.sleep(4)
 
     engine = make_engine(config=config, application_name="aleph-process")
     session_factory = make_session_factory(engine)
 
+    node_cache = NodeCache(
+        redis_host=config.redis.host.value, redis_port=config.redis.port.value
+    )
     ipfs_client = make_ipfs_client(config)
     ipfs_service = IpfsService(ipfs_client=ipfs_client)
     storage_service = StorageService(
         storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
         ipfs_service=ipfs_service,
+        node_cache=node_cache,
     )
     chain_service = ChainService(
         session_factory=session_factory, storage_service=storage_service
@@ -185,18 +188,11 @@ async def fetch_and_process_messages_task(config: Config, shared_stats: Dict):
         await asyncio.sleep(1)
 
 
-def pending_messages_subprocess(
-    config_values: Dict, shared_stats: Dict, api_servers: List
-):
+def pending_messages_subprocess(config_values: Dict):
     """
     Background task that processes all the messages received by the node.
 
     :param config_values: Application configuration, as a dictionary.
-    :param shared_stats: Dictionary of application metrics. This dictionary is updated by othe
-                         processes and must be allocated from shared memory.
-    :param api_servers: List of Core Channel Nodes with an HTTP interface found on the network.
-                        This list is updated by other processes and must be allocated from
-                        shared memory by the caller.
     """
 
     setproctitle("aleph.jobs.messages_task_loop")
@@ -208,8 +204,5 @@ def pending_messages_subprocess(
         filename="/tmp/messages_task_loop.log",
         max_log_file_size=config.logging.max_log_file_size.value,
     )
-    singleton.api_servers = api_servers
 
-    loop.run_until_complete(
-        fetch_and_process_messages_task(config=config, shared_stats=shared_stats)
-    )
+    loop.run_until_complete(fetch_and_process_messages_task(config=config))

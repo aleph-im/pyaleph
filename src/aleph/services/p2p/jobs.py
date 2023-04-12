@@ -11,6 +11,7 @@ from aleph.db.models import PeerType
 from aleph.types.db_session import DbSessionFactory
 from .http import api_get_request
 from .peers import connect_peer
+from ..cache.node_cache import NodeCache
 
 
 @dataclass
@@ -64,7 +65,7 @@ async def check_peer(peer_uri: str, timeout: int = 1) -> PeerStatus:
 
 
 async def tidy_http_peers_job(
-    config: Config, session_factory: DbSessionFactory, api_servers: List[str]
+    config: Config, session_factory: DbSessionFactory, node_cache: NodeCache
 ) -> None:
     """Check that HTTP peers are reachable, else remove them from the list"""
     from aleph.services.utils import get_IP
@@ -89,15 +90,15 @@ async def tidy_http_peers_job(
             peer_statuses = await asyncio.gather(*jobs)
 
             for peer_status in peer_statuses:
-                peer_in_api_servers = peer_status.peer_uri in api_servers
+                peer_in_api_servers = await node_cache.has_api_server(peer_status.peer_uri)
 
                 if peer_status.is_online:
                     if not peer_in_api_servers:
-                        api_servers.append(peer_status.peer_uri)
+                        await node_cache.add_api_server(peer_status.peer_uri)
 
                 else:
                     if peer_in_api_servers:
-                        api_servers.remove(peer_status.peer_uri)
+                        await node_cache.remove_api_server(peer_status.peer_uri)
 
         except Exception:
             LOGGER.exception("Error reconnecting to peers")

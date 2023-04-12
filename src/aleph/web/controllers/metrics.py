@@ -17,6 +17,7 @@ from aleph import __version__
 from aleph.config import get_config
 from aleph.db.accessors.chains import get_last_height
 from aleph.db.models import PeerDb, MessageDb, FilePinDb, PendingMessageDb, PendingTxDb
+from aleph.services.cache.node_cache import NodeCache
 from aleph.types.chain_sync import ChainEventType
 from aleph.types.db_session import DbSession
 
@@ -142,11 +143,7 @@ async def fetch_eth_height() -> Optional[int]:
         return -1  # We got a boggus value!
 
 
-async def get_metrics(session: DbSession, shared_stats: Dict) -> Metrics:
-    if shared_stats is None:
-        LOGGER.info("Shared stats disabled")
-        shared_stats = {}
-
+async def get_metrics(session: DbSession, node_cache: NodeCache) -> Metrics:
     sync_messages_reference_total = await fetch_reference_total_messages()
     eth_reference_height = await fetch_eth_height()
 
@@ -173,30 +170,13 @@ async def get_metrics(session: DbSession, shared_stats: Dict) -> Metrics:
     else:
         eth_remaining_height = None
 
+    retry_message_job_tasks = await node_cache.get("retry_messages_job_tasks")
+    nb_message_jobs = int(retry_message_job_tasks) if retry_message_job_tasks else 0
+
     return Metrics(
         pyaleph_build_info=pyaleph_build_info,
         pyaleph_status_peers_total=peers_count,
-        pyaleph_processing_pending_messages_seen_ids_total=shared_stats.get(
-            "retry_messages_job_seen_ids"
-        ),
-        pyaleph_processing_pending_messages_tasks_total=shared_stats.get(
-            "retry_messages_job_tasks"
-        ),
-        pyaleph_processing_pending_messages_aggregate_tasks=shared_stats[
-            "message_jobs"
-        ][MessageType.aggregate],
-        pyaleph_processing_pending_messages_forget_tasks=shared_stats["message_jobs"][
-            MessageType.forget
-        ],
-        pyaleph_processing_pending_messages_post_tasks=shared_stats["message_jobs"][
-            MessageType.post
-        ],
-        pyaleph_processing_pending_messages_program_tasks=shared_stats["message_jobs"][
-            MessageType.program
-        ],
-        pyaleph_processing_pending_messages_store_tasks=shared_stats["message_jobs"][
-            MessageType.store
-        ],
+        pyaleph_processing_pending_messages_tasks_total=nb_message_jobs,
         pyaleph_status_sync_messages_total=sync_messages_total,
         pyaleph_status_sync_permanent_files_total=FilePinDb.count(session=session),
         pyaleph_status_sync_messages_reference_total=sync_messages_reference_total,

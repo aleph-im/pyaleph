@@ -14,11 +14,11 @@ from aleph.config import get_config
 from aleph.db.models import PendingMessageDb
 from aleph.exceptions import InvalidContent, ContentCurrentlyUnavailable
 from aleph.schemas.message_content import ContentSource, RawContent, MessageContent
+from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.ipfs.common import get_cid_version
 from aleph.services.p2p.http import request_hash as p2p_http_request_hash
 from aleph.services.storage.engine import StorageEngine
-from aleph.types.message_status import InvalidMessageException
 from aleph.utils import get_sha256, run_in_executor
 
 LOGGER = logging.getLogger(__name__)
@@ -43,9 +43,15 @@ def check_for_u0000(item_content: aleph_json.SerializedJsonInput):
 
 
 class StorageService:
-    def __init__(self, storage_engine: StorageEngine, ipfs_service: IpfsService):
+    def __init__(
+        self,
+        storage_engine: StorageEngine,
+        ipfs_service: IpfsService,
+        node_cache: NodeCache,
+    ):
         self.storage_engine = storage_engine
         self.ipfs_service = ipfs_service
+        self.node_cache = node_cache
 
     async def get_message_content(self, message: PendingMessageDb) -> MessageContent:
         item_type = message.item_type
@@ -91,7 +97,10 @@ class StorageService:
         enabled_clients = config.p2p.clients.value
 
         if "http" in enabled_clients:
-            content = await p2p_http_request_hash(content_hash, timeout=timeout)
+            api_servers = list(await self.node_cache.get_api_servers())
+            content = await p2p_http_request_hash(
+                api_servers=api_servers, item_hash=content_hash, timeout=timeout
+            )
 
         if content is not None:
             await self._verify_content_hash(content, engine, content_hash)
@@ -244,7 +253,6 @@ class StorageService:
         return chash
 
     async def add_file(self, fileobject: IO, engine: ItemType = ItemType.ipfs) -> str:
-
         if engine == ItemType.ipfs:
             output = await self.ipfs_service.add_file(fileobject)
             file_hash = output["Hash"]

@@ -126,6 +126,10 @@ def get_defaults():
             "sub_exchange": "p2p-subscribe",
             "message_exchange": "aleph-messages",
         },
+        "redis": {
+            "host": "127.0.0.1",
+            "port": 6379,
+        },
         "sentry": {
             "dsn": None,
             "traces_sample_rate": None,
