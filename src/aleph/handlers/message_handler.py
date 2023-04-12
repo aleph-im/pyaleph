@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from sqlalchemy import insert
 
 from aleph.chains.chain_service import ChainService
+from aleph.db.accessors.files import insert_content_file_pin, upsert_file
 from aleph.db.accessors.messages import (
     get_message_by_item_hash,
     make_confirmation_upsert_query,
@@ -36,7 +37,9 @@ from aleph.handlers.content.program import ProgramMessageHandler
 from aleph.handlers.content.store import StoreMessageHandler
 from aleph.schemas.pending_messages import parse_message
 from aleph.storage import StorageService
+from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSessionFactory, DbSession
+from aleph.types.files import FileType
 from aleph.types.message_status import (
     InvalidMessageException,
     InvalidSignature,
@@ -236,6 +239,21 @@ class MessageHandler:
         self, session: DbSession, pending_message: PendingMessageDb, message: MessageDb
     ):
         session.execute(make_message_upsert_query(message))
+        if message.item_type != ItemType.inline:
+            upsert_file(
+                session=session,
+                file_hash=message.item_hash,
+                size=message.size,
+                file_type=FileType.FILE,
+            )
+            insert_content_file_pin(
+                session=session,
+                file_hash=message.item_hash,
+                owner=message.sender,
+                item_hash=message.item_hash,
+                created=timestamp_to_datetime(message.content["time"]),
+            )
+
         delete_pending_message(session=session, pending_message=pending_message)
         session.execute(
             make_message_status_upsert_query(
