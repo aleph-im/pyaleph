@@ -113,7 +113,7 @@ async def ccn_api_client(
     event_loop = asyncio.get_event_loop()
     event_loop.set_debug(True)
 
-    app = create_app(debug=True)
+    app = create_aiohttp_app(debug=True)
     app["config"] = mock_config
     app["p2p_client"] = mocker.AsyncMock()
     app["storage_service"] = mocker.AsyncMock()
