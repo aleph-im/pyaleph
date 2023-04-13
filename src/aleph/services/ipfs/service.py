@@ -8,6 +8,7 @@ import aiohttp
 import aioipfs
 
 from aleph.services.utils import get_IP
+from aleph.types.message_status import FileUnavailable
 from aleph.utils import run_in_executor
 
 LOGGER = logging.getLogger(__name__)
@@ -95,22 +96,47 @@ class IpfsService:
         result = await self.ipfs_client.add_bytes(value, cid_version=cid_version)
         return result["Hash"]
 
-    async def pin_add(self, hash: str, timeout: int = 2, tries: int = 1):
-        try_count = 0
-        result = None
-        while (result is None) and (try_count < tries):
-            try_count += 1
-            try:
-                result = None
-                async for ret in self.ipfs_client.pin.add(hash):
-                    result = ret
-            except (asyncio.TimeoutError, json.JSONDecodeError):
-                result = None
-            except concurrent.futures.CancelledError:
-                try_count -= 1  # do not count as a try.
-                await asyncio.sleep(0.1)
+    async def _pin_add(self, cid: str, timeout: int = 30):
+        # ipfs pin add returns a dictionary with a progress report in terms of blocks
+        # and a "Pins" key if the pinning is complete. The dictionary is empty if the daemon
+        # cannot find the file on the network.
+        # A value is returned every half second by the daemon. We consider that the operation
+        # fails if the same value is returned timeout * 2 times.
+        # This assumes that the daemon progress never goes backwards.
 
-        return result
+        tick_timeout = timeout * 2
+        last_progress = None
+
+        async for status in self.ipfs_client.pin.add(cid):
+            # If the Pins key appears, the file is pinned.
+            if "Pins" in status:
+                break
+
+            progress = status.get("Progress")
+            if progress == last_progress:
+                tick_timeout -= 1
+                if tick_timeout == 0:
+                    if progress is None:
+                        details = "file not found"
+                    else:
+                        details = "could not fetch some blocks"
+                    raise FileUnavailable(f"Could not pin IPFS content at this time ({details})")
+            else:
+                # Reset the timeout counter if there is some measure of progress
+                tick_timeout = timeout * 2
+
+    async def pin_add(self, cid: str, timeout: int = 30, tries: int = 1):
+        remaining_tries = tries
+
+        while remaining_tries:
+            try:
+                await self._pin_add(cid=cid, timeout=timeout)
+            except FileUnavailable:
+                remaining_tries -= 1
+                if not remaining_tries:
+                    raise
+            else:
+                break
 
     async def add_file(self, fileobject: IO):
         url = f"{self.ipfs_client.api_url}/api/v0/add"
