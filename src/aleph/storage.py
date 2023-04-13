@@ -176,8 +176,6 @@ class StorageService:
         store_value: bool = True,
     ) -> RawContent:
         # TODO: determine which storage engine to use
-        config = get_config()
-        ipfs_enabled = config.ipfs.enabled.value
 
         source = None
 
@@ -193,11 +191,14 @@ class StorageService:
             source = ContentSource.P2P
 
         if content is None:
-            if ipfs_enabled and engine == ItemType.ipfs and use_ipfs:
-                content = await self.ipfs_service.get_ipfs_content(
-                    content_hash, timeout=timeout, tries=tries
-                )
-                source = ContentSource.IPFS
+            if use_ipfs and engine == ItemType.ipfs:
+                config = get_config()
+                ipfs_enabled = config.ipfs.enabled.value
+                if ipfs_enabled:
+                    content = await self.ipfs_service.get_ipfs_content(
+                        content_hash, timeout=timeout, tries=tries
+                    )
+                    source = ContentSource.IPFS
 
         if content is None:
             raise ContentCurrentlyUnavailable(
