@@ -124,12 +124,16 @@ class StoreMessageHandler(ContentHandler):
         if engine == ItemType.ipfs and ipfs_enabled:
             if item_type_from_hash(item_hash) != ItemType.ipfs:
                 LOGGER.warning("Invalid IPFS hash: '%s'", item_hash)
-                raise UnknownHashError(f"Invalid IPFS hash: '{item_hash}'")
+                raise InvalidMessageFormat(
+                    f"Item hash is not an IPFS CID: '{item_hash}'"
+                )
 
-            ipfs_client = self.storage_service.ipfs_service.ipfs_client
+            ipfs_service = self.storage_service.ipfs_service
+            ipfs_client = ipfs_service.ipfs_client
 
             try:
                 try:
+                    # The timeout of the aioipfs client does not seem to work, time out manually
                     stats = await asyncio.wait_for(
                         ipfs_client.files.stat(f"/ipfs/{item_hash}"), 5
                     )
@@ -144,20 +148,14 @@ class StoreMessageHandler(ContentHandler):
 
                 if (
                     stats["Type"] == "file"
-                    and stats["CumulativeSize"] < 1024 ** 2
+                    and stats["CumulativeSize"] < 1024**2
                     and len(item_hash) == 46
                 ):
                     do_standard_lookup = True
                 else:
                     size = stats["CumulativeSize"]
-                    timer = 0
                     is_folder = stats["Type"] == "directory"
-                    async for status in ipfs_client.pin.add(item_hash):
-                        timer += 1
-                        if timer > 30 and "Pins" not in status:
-                            raise FileUnavailable(
-                                "Could not pin IPFS content at this time"
-                            )
+                    await ipfs_service.pin_add(cid=item_hash)
                     do_standard_lookup = False
 
             except asyncio.TimeoutError as error:
@@ -173,13 +171,12 @@ class StoreMessageHandler(ContentHandler):
                 do_standard_lookup = True
 
         if do_standard_lookup:
-            # TODO: We should check the balance here.
             try:
                 file_content = await self.storage_service.get_hash_content(
                     item_hash,
                     engine=engine,
                     tries=4,
-                    timeout=2,
+                    timeout=15,  # We only end up here for files < 1MB, a short timeout is okay
                     use_network=True,
                     use_ipfs=True,
                     store_value=True,
