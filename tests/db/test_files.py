@@ -18,11 +18,12 @@ from aleph.types.files import FileType, FileTag
 @pytest.mark.asyncio
 async def test_is_pinned_file(session_factory: DbSessionFactory):
     def is_pinned(_session_factory, _file_hash) -> bool:
-        with session_factory() as session:
-            return is_pinned_file(session=session, file_hash=_file_hash)
+        with _session_factory() as _session:
+            return is_pinned_file(session=_session, file_hash=_file_hash)
 
     file = StoredFileDb(
         hash="QmTm7g1Mh3BhrQPjnedVQ5g67DR7cwhyMN3MvFt1JPPdWd",
+        size=27,
         type=FileType.FILE,
     )
 
@@ -49,10 +50,12 @@ async def test_is_pinned_file(session_factory: DbSessionFactory):
 async def test_upsert_file_tag(session_factory: DbSessionFactory):
     original_file = StoredFileDb(
         hash="QmTm7g1Mh3BhrQPjnedVQ5g67DR7cwhyMN3MvFt1JPPdWd",
+        size=32,
         type=FileType.FILE,
     )
     new_version = StoredFileDb(
         hash="QmTm7g1Mh3BhrQPjnedVQ5g67DR7cwhyMN3MvFt1JPPdWe",
+        size=413,
         type=FileType.FILE,
     )
 
@@ -122,10 +125,12 @@ async def test_refresh_file_tag(session_factory: DbSessionFactory):
     files = [
         StoredFileDb(
             hash="QmTm7g1Mh3BhrQPjnedVQ5g67DR7cwhyMN3MvFt1JPPdWd",
+            size=123,
             type=FileType.FILE,
         ),
         StoredFileDb(
             hash="QmTm7g1Mh3BhrQPjnedVQ5g67DR7cwhyMN3MvFt1JPPdWe",
+            size=678,
             type=FileType.FILE,
         ),
     ]

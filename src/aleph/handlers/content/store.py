@@ -23,13 +23,13 @@ from aleph.db.accessors.files import (
     insert_message_file_pin,
     get_file_tag,
     upsert_file_tag,
-    upsert_stored_file,
     delete_file_pin,
     refresh_file_tag,
     is_pinned_file,
     get_message_file_pin,
+    upsert_file,
 )
-from aleph.db.models import MessageDb, StoredFileDb
+from aleph.db.models import MessageDb
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.handlers.content.content_handler import ContentHandler
 from aleph.storage import StorageService
@@ -121,7 +121,9 @@ class StoreMessageHandler(ContentHandler):
 
         ipfs_enabled = config.ipfs.enabled.value
         do_standard_lookup = True
-        size = None
+
+        # Sentinel value, the code below always sets a value but mypy does not see it.
+        size: int = -1
 
         if engine == ItemType.ipfs and ipfs_enabled:
             if item_type_from_hash(item_hash) != ItemType.ipfs:
@@ -190,12 +192,12 @@ class StoreMessageHandler(ContentHandler):
 
             size = len(file_content)
 
-        stored_file = StoredFileDb(
-            hash=item_hash,
-            type=FileType.DIRECTORY if is_folder else FileType.FILE,
+        upsert_file(
+            session=session,
+            file_hash=item_hash,
+            file_type=FileType.DIRECTORY if is_folder else FileType.FILE,
             size=size,
         )
-        upsert_stored_file(session=session, file=stored_file)
 
     async def check_dependencies(self, session: DbSession, message: MessageDb) -> None:
         content = _get_store_content(message)

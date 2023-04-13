@@ -1,6 +1,6 @@
 import asyncio
 import json
-from typing import Dict, Optional, List, Any, Mapping, Set, Type, cast
+from typing import Dict, Optional, List, Any, Mapping, Set, cast
 
 from aleph_message.models import StoreContent, ItemType, Chain, MessageType
 from pydantic import ValidationError
@@ -8,22 +8,24 @@ from pydantic import ValidationError
 from aleph.chains.common import LOGGER
 from aleph.config import get_config
 from aleph.db.accessors.chains import upsert_chain_tx
-from aleph.db.accessors.files import upsert_tx_file_pin, upsert_stored_file
+from aleph.db.accessors.files import upsert_tx_file_pin, upsert_file
 from aleph.db.accessors.pending_txs import upsert_pending_tx
-from aleph.db.models import ChainTxDb, MessageDb, StoredFileDb
+from aleph.db.models import ChainTxDb, MessageDb
 from aleph.exceptions import (
     InvalidContent,
     AlephStorageException,
     ContentCurrentlyUnavailable,
 )
 from aleph.schemas.chains.indexer_response import MessageEvent, GenericMessageEvent
+from aleph.schemas.chains.tezos_indexer_response import (
+    MessageEventPayload as TezosMessageEventPayload,
+)
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.db_session import DbSessionFactory, DbSession
 from aleph.types.files import FileType
 from aleph.utils import get_sha256
-from aleph.schemas.chains.tezos_indexer_response import MessageEventPayload as TezosMessageEventPayload
 
 INCOMING_MESSAGE_AUTHORIZED_FIELDS = [
     "item_hash",
@@ -140,12 +142,12 @@ class ChainDataService:
                 with self.session_factory() as session:
                     # Some chain data files are duplicated, and can be treated in parallel,
                     # hence the upsert.
-                    stored_file = StoredFileDb(
-                        hash=sync_file_content.hash,
-                        type=FileType.FILE,
+                    upsert_file(
+                        session=session,
+                        file_hash=sync_file_content.hash,
+                        file_type=FileType.FILE,
                         size=len(sync_file_content.raw_value),
                     )
-                    upsert_stored_file(session=session, file=stored_file)
                     upsert_tx_file_pin(
                         session=session,
                         file_hash=file_hash,

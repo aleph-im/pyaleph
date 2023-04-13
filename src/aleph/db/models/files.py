@@ -37,7 +37,7 @@ class StoredFileDb(Base):
 
     # size: int = Column(BigInteger, nullable=False)
     # TODO: compute the size from local storage
-    size: Optional[int] = Column(BigInteger, nullable=True)
+    size: int = Column(BigInteger, nullable=False)
     type: FileType = Column(ChoiceType(FileType), nullable=False)
 
     pins: List["FilePinDb"] = relationship("FilePinDb", back_populates="file")
