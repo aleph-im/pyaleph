@@ -4,14 +4,20 @@ import logging
 from aiohttp import web
 from aleph_message.models import ItemType
 
-from aleph.db.accessors.files import count_file_pins, is_pinned_file
+from aleph.db.accessors.files import count_file_pins, is_pinned_file, get_file
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.storage import StorageService
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import DbSessionFactory, DbSession
 from aleph.utils import run_in_executor, item_type_from_hash
-from aleph.web.controllers.app_state_getters import get_session_factory_from_request
+from aleph.web.controllers.app_state_getters import (
+    get_session_factory_from_request,
+    get_storage_service_from_request,
+)
 
 logger = logging.getLogger(__name__)
+
+
+MAX_FILE_SIZE = 100 * 1024 * 1024
 
 
 async def add_ipfs_json_controller(request):
@@ -52,6 +58,21 @@ async def storage_add_file(request):
     return web.json_response(output)
 
 
+def assert_file_is_downloadable(session: DbSession, file_hash: str) -> None:
+    """
+    Check if the file is on the aleph.im network and can be downloaded from the API.
+    This filters out requests for files outside the network / nonexistent files.
+    """
+    file_metadata = get_file(session=session, file_hash=file_hash)
+    if not file_metadata:
+        raise web.HTTPNotFound(text="Not found")
+
+    if file_metadata.size > MAX_FILE_SIZE:
+        raise web.HTTPRequestEntityTooLarge(
+            max_size=MAX_FILE_SIZE, actual_size=file_metadata.size
+        )
+
+
 def prepare_content(content):
     return base64.encodebytes(content).decode("utf-8")
 
@@ -66,7 +87,11 @@ async def get_hash(request):
         logger.warning(e.args[0])
         return web.HTTPBadRequest(text="Invalid hash provided")
 
-    storage_service: StorageService = request.app["storage_service"]
+    session_factory = get_session_factory_from_request(request)
+    with session_factory() as session:
+        assert_file_is_downloadable(session=session, file_hash=item_hash)
+
+    storage_service = get_storage_service_from_request(request)
 
     try:
         hash_content = await storage_service.get_hash_content(
@@ -75,6 +100,7 @@ async def get_hash(request):
             use_ipfs=True,
             engine=engine,
             store_value=False,
+            timeout=30,
         )
     except AlephStorageException:
         return web.HTTPNotFound(text=f"No file found for hash {item_hash}")
@@ -103,16 +129,11 @@ async def get_raw_hash(request):
     except UnknownHashError:
         raise web.HTTPBadRequest(text="Invalid hash")
 
-    # Check if the file is supposed to be on the network.
-    # This filters out requests for files outside the network / nonexistent files.
-    session_factory: DbSessionFactory = get_session_factory_from_request(request)
+    session_factory = get_session_factory_from_request(request)
     with session_factory() as session:
-        is_pinned = is_pinned_file(session=session, file_hash=item_hash)
+        assert_file_is_downloadable(session=session, file_hash=item_hash)
 
-    if not is_pinned:
-        raise web.HTTPNotFound(text="Not found")
-
-    storage_service: StorageService = request.app["storage_service"]
+    storage_service = get_storage_service_from_request(request)
 
     try:
         content = await storage_service.get_hash_content(
@@ -121,6 +142,7 @@ async def get_raw_hash(request):
             use_ipfs=True,
             engine=engine,
             store_value=False,
+            timeout=30,
         )
     except AlephStorageException as e:
         raise web.HTTPNotFound(text="Not found") from e
