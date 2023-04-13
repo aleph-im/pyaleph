@@ -104,6 +104,8 @@ class StoreMessageHandler(ContentHandler):
         self, session: DbSession, message: MessageDb
     ) -> None:
 
+        # TODO: simplify this function, it's overly complicated for no good reason.
+
         # TODO: this check is useless, remove it
         config = get_config()
         if not config.storage.store_files.value:
