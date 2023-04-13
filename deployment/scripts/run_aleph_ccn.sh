@@ -26,36 +26,7 @@ while test $# -gt 0; do
   shift
 done
 
-function get_config()
-{
-  config_key="$1"
-  config_value=$(python3 "${SCRIPT_DIR}/get_config_value.py" --config-file "${CONFIG_FILE}" "${config_key}")
-  echo "${config_value}"
-}
-
-function wait_for_it()
-{
-  "${SCRIPT_DIR}"/wait-for-it.sh "$@"
-}
-
-POSTGRES_HOST=$(get_config postgres.host)
-POSTGRES_PORT=$(get_config postgres.port)
-IPFS_HOST=$(get_config ipfs.host)
-IPFS_PORT=$(get_config ipfs.port)
-RABBITMQ_HOST=$(get_config rabbitmq.host)
-RABBITMQ_PORT=$(get_config rabbitmq.port)
-REDIS_HOST=$(get_config redis.host)
-REDIS_PORT=$(get_config redis.port)
-P2P_SERVICE_HOST=$(get_config p2p.daemon_host)
-P2P_SERVICE_CONTROL_PORT=$(get_config p2p.control_port)
-
-if [ "$(get_config ipfs.enabled)" = "True" ]; then
-  wait_for_it -h "${IPFS_HOST}" -p "${IPFS_PORT}"
-fi
-
-wait_for_it -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}"
-wait_for_it -h "${RABBITMQ_HOST}" -p "${RABBITMQ_PORT}"
-wait_for_it -h "${REDIS_HOST}" -p "${REDIS_PORT}"
-wait_for_it -h "${P2P_SERVICE_HOST}" -p "${P2P_SERVICE_CONTROL_PORT}"
+source ${SCRIPT_DIR}/wait_for_services.sh
+wait_for_services "${CONFIG_FILE}"
 
 exec pyaleph "${PYALEPH_ARGS[@]}"

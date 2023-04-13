@@ -31,7 +31,7 @@ def init_cors(app: web.Application):
             cors.add(route)
 
 
-def create_app(debug: bool = False) -> web.Application:
+def create_aiohttp_app(debug: bool = False) -> web.Application:
     app = web.Application(client_max_size=1024**2 * 64, debug=debug)
 
     tpl_path = pkg_resources.resource_filename("aleph.web", "templates")
@@ -61,6 +61,3 @@ def create_app(debug: bool = False) -> web.Application:
     init_cors(app)
 
     return app
-
-
-app = create_app()

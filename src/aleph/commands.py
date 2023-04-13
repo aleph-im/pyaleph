@@ -14,14 +14,13 @@ import asyncio
 import logging
 import os
 import sys
-from multiprocessing import Process, set_start_method
-from typing import Coroutine, Dict, List
+from multiprocessing import set_start_method
+from typing import Coroutine, List
 
 import alembic.command
 import alembic.config
 import sentry_sdk
 from configmanager import Config
-from setproctitle import setproctitle
 
 import aleph.config
 from aleph.chains.chain_service import ChainService
@@ -29,7 +28,6 @@ from aleph.cli.args import parse_args
 from aleph.db.connection import make_engine, make_session_factory, make_db_url
 from aleph.exceptions import InvalidConfigException, KeyNotFoundException
 from aleph.jobs import start_jobs
-from aleph.jobs.job_utils import prepare_loop
 from aleph.network import listener_tasks
 from aleph.services import p2p
 from aleph.services.cache.materialized_views import refresh_cache_materialized_views
@@ -37,20 +35,10 @@ from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.ipfs.common import make_ipfs_client
 from aleph.services.keys import generate_keypair, save_keys
-from aleph.services.p2p import init_p2p_client
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
 from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
-from aleph.web import app
-from aleph.web.controllers.app_state_getters import (
-    APP_STATE_CONFIG,
-    APP_STATE_MQ_CONN,
-    APP_STATE_NODE_CACHE,
-    APP_STATE_P2P_CLIENT,
-    APP_STATE_SESSION_FACTORY,
-    APP_STATE_STORAGE_SERVICE,
-)
 
 __author__ = "Moshe Malawach"
 __copyright__ = "Moshe Malawach"
@@ -76,93 +64,6 @@ async def init_node_cache(config: Config) -> NodeCache:
     # Reset the cache
     await node_cache.reset()
     return node_cache
-
-
-async def run_server(
-    config: Config,
-    host: str,
-    port: int,
-):
-    # These imports will run in different processes
-    from aiohttp import web
-
-    LOGGER.debug("Setup of runner")
-    with sentry_sdk.start_transaction(name=f"init-server-{port}"):
-        p2p_client = await init_p2p_client(config, service_name=f"api-server-{port}")
-
-        engine = make_engine(
-            config,
-            echo=config.logging.level.value == logging.DEBUG,
-            application_name=f"aleph-api-{port}",
-        )
-        session_factory = make_session_factory(engine)
-
-        node_cache = NodeCache(
-            redis_host=config.redis.host.value, redis_port=config.redis.port.value
-        )
-
-        ipfs_client = make_ipfs_client(config)
-        ipfs_service = IpfsService(ipfs_client=ipfs_client)
-        storage_service = StorageService(
-            storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
-            ipfs_service=ipfs_service,
-            node_cache=node_cache,
-        )
-
-        app[APP_STATE_CONFIG] = config
-        app[APP_STATE_P2P_CLIENT] = p2p_client
-        # Reuse the connection of the P2P client to avoid opening two connections
-        app[APP_STATE_MQ_CONN] = p2p_client.mq_client.connection
-        app[APP_STATE_NODE_CACHE] = node_cache
-        app[APP_STATE_STORAGE_SERVICE] = storage_service
-        app[APP_STATE_SESSION_FACTORY] = session_factory
-
-        runner = web.AppRunner(app)
-        await runner.setup()
-
-        LOGGER.info("Starting API server on port %d...", port)
-        site = web.TCPSite(runner, host, port)
-        await site.start()
-
-    # Wait forever
-    while True:
-        await asyncio.sleep(3600)
-
-
-def run_server_coroutine(
-    config_values: Dict,
-    host: str,
-    port: int,
-    enable_sentry: bool = True,
-):
-    """Run the server coroutine in a synchronous way.
-    Used as target of multiprocessing.Process.
-    """
-    setproctitle(f"pyaleph-run_server_coroutine-{port}")
-
-    loop, config = prepare_loop(config_values)
-
-    setup_logging(
-        loglevel=config.logging.level.value,
-        filename=f"/tmp/run_server_coroutine-{port}.log",
-        max_log_file_size=config.logging.max_log_file_size.value,
-    )
-
-    if enable_sentry:
-        if port == 8000:
-            setup_sentry(config, traces_sample_rate=1.0)
-        else:
-            setup_sentry(config)
-
-    # Use a try-catch-capture_exception to work with multiprocessing, see
-    # https://github.com/getsentry/raven-python/issues/1110
-    try:
-        loop.run_until_complete(run_server(config, host, port))
-    except Exception as e:
-        if enable_sentry:
-            sentry_sdk.capture_exception(e)
-            sentry_sdk.flush()
-        raise
 
 
 async def main(args):
@@ -288,30 +189,6 @@ async def main(args):
     LOGGER.debug("Initializing cache tasks")
     tasks.append(refresh_cache_materialized_views(session_factory))
     LOGGER.debug("Initialized cache tasks")
-
-    # Need to be passed here otherwise it gets lost in the fork
-
-    p1 = Process(
-        target=run_server_coroutine,
-        args=(
-            config_values,
-            config.aleph.host.value,
-            config.p2p.http_port.value,
-            args.sentry_disabled is False and config.sentry.dsn.value,
-        ),
-    )
-    p2 = Process(
-        target=run_server_coroutine,
-        args=(
-            config_values,
-            config.aleph.host.value,
-            config.aleph.port.value,
-            args.sentry_disabled is False and config.sentry.dsn.value,
-        ),
-    )
-    p1.start()
-    p2.start()
-    LOGGER.debug("Started processes")
 
     LOGGER.debug("Running event loop")
     await asyncio.gather(*tasks)
