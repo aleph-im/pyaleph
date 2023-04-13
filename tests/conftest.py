@@ -20,8 +20,7 @@ from aleph.services.ipfs.common import make_ipfs_client
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSessionFactory
-from aleph.web import create_app
-import redis.asyncio as redis_asyncio
+from aleph.web import create_aiohttp_app
 
 # Add the helpers to the PYTHONPATH.
 # Note: mark the "helpers" directory as a source directory to tell PyCharm
@@ -113,7 +112,7 @@ async def ccn_api_client(
     event_loop = asyncio.get_event_loop()
     event_loop.set_debug(True)
 
-    app = create_app(debug=True)
+    app = create_aiohttp_app(debug=True)
     app["config"] = mock_config
     app["p2p_client"] = mocker.AsyncMock()
     app["storage_service"] = mocker.AsyncMock()
