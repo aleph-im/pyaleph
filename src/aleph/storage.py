@@ -233,8 +233,8 @@ class StorageService:
             raw_value=content.value,
         )
 
-    async def pin_hash(self, chash: str, timeout: int = 2, tries: int = 1):
-        return await self.ipfs_service.pin_add(chash, timeout=timeout, tries=tries)
+    async def pin_hash(self, chash: str, timeout: int = 30, tries: int = 1):
+        await self.ipfs_service.pin_add(cid=chash, timeout=timeout, tries=tries)
 
     async def add_json(self, value: Any, engine: ItemType = ItemType.ipfs) -> str:
         # TODO: determine which storage engine to use
