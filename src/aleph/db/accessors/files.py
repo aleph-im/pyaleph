@@ -147,24 +147,13 @@ def get_address_files_for_api(
     return session.execute(select_stmt).all()
 
 
-def upsert_file(
-    session: DbSession, file_hash: str, size: Optional[int], file_type: FileType
-):
+def upsert_file(session: DbSession, file_hash: str, size: int, file_type: FileType):
     upsert_file_stmt = (
         insert(StoredFileDb)
         .values(hash=file_hash, size=size, type=file_type)
         .on_conflict_do_nothing(constraint="files_pkey")
     )
     session.execute(upsert_file_stmt)
-
-
-def upsert_stored_file(
-    session: DbSession,
-    file: StoredFileDb,
-) -> None:
-    upsert_file(
-        session=session, file_hash=file.hash, size=file.size, file_type=file.type
-    )
 
 
 def get_file(session: DbSession, file_hash: str) -> Optional[StoredFileDb]:
