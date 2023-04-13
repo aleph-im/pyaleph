@@ -7,6 +7,7 @@ from sqlalchemy.engine import Row
 
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag, FileType
+from aleph.types.sort_order import SortOrder
 from ..models.files import (
     FilePinDb,
     FileTagDb,
@@ -16,7 +17,6 @@ from ..models.files import (
     FilePinType,
     ContentFilePinDb,
 )
-from ...types.sort_order import SortOrder
 
 
 def is_pinned_file(session: DbSession, file_hash: str) -> bool:
@@ -147,7 +147,9 @@ def get_address_files_for_api(
     return session.execute(select_stmt).all()
 
 
-def upsert_file(session: DbSession, file_hash: str, size: Optional[int], file_type: FileType):
+def upsert_file(
+    session: DbSession, file_hash: str, size: Optional[int], file_type: FileType
+):
     upsert_file_stmt = (
         insert(StoredFileDb)
         .values(hash=file_hash, size=size, type=file_type)
@@ -163,6 +165,11 @@ def upsert_stored_file(
     upsert_file(
         session=session, file_hash=file.hash, size=file.size, file_type=file.type
     )
+
+
+def get_file(session: DbSession, file_hash: str) -> Optional[StoredFileDb]:
+    select_stmt = select(StoredFileDb).where(StoredFileDb.hash == file_hash)
+    return session.execute(select_stmt).scalar_one_or_none()
 
 
 def delete_file(session: DbSession, file_hash: str) -> None:
