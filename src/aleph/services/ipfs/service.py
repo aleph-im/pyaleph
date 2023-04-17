@@ -163,5 +163,8 @@ class IpfsService:
                 LOGGER.exception("Error handling message")
 
     async def pub(self, topic: str, message: Union[str, bytes]):
+        # aioipfs only accepts strings
+        message_str = message if isinstance(message, str) else message.decode("utf-8")
+
         ipfs_client = self.ipfs_client
-        await ipfs_client.pubsub.pub(topic, message)
+        await ipfs_client.pubsub.pub(topic, message_str)
