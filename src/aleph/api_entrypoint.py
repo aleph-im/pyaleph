@@ -76,3 +76,9 @@ async def create_app() -> web.Application:
         setup_sentry(config)
 
     return await configure_aiohttp_app(config=config)
+
+
+if __name__ == "__main__":
+    import asyncio
+    app = asyncio.run(create_app())
+    web.run_app(app, host="localhost", port=8000)
