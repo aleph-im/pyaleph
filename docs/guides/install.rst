@@ -119,11 +119,12 @@ We strongly advise to back up your keys once generated.
     docker run --rm --user root --entrypoint "" -v $(pwd)/keys:/opt/pyaleph/keys alephim/pyaleph-node:|pyaleph_version| chown aleph:aleph /opt/pyaleph/keys
     docker run --rm --entrypoint "" -v $(pwd)/keys:/opt/pyaleph/keys alephim/pyaleph-node:|pyaleph_version| pyaleph --gen-keys --key-dir /opt/pyaleph/keys
 
-To check that the generation of the keys succeeded, print your private key:
+To check that the generation of the keys succeeded, check the content of your keys directory:
 
 .. code-block:: bash
 
-    cat keys/node-secret.key
+    ls keys/
+    # node-pub.key  node-secret.pkcs8.der
 
 3. Run the node with Docker Compose
 ===================================
