@@ -70,7 +70,7 @@ jobs:
       run: |
         sudo cp .github/openssl-ci.cnf /etc/ssl/openssl.cnf
         export OPENSSL_CONF=/etc/ssl/openssl.cnf
-        cp .github/ci-config.yml config.yml
+        touch config.yml  # Fake config file for alembic
         pytest -v .
   build:
     runs-on: ubuntu-22.04
