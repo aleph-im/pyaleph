@@ -221,3 +221,16 @@ MongoDB message counts
     63
     > db.pending_messages.count()
     4
+
+5. Register your node
+=====================
+
+To get rewards, you will need to register your new node on `the aleph.im account page <account.aleph.im>`_.
+To do so, you will need the `multiaddress <https://multiformats.io/multiaddr/>`_ of your node.
+To retrieve it, run the following command (assuming that NODE_IP_ADDR is the IP address of your node):
+
+.. code-block:: bash
+
+    curl -s https://api1.aleph.im/api/v0/info/public.json | jq -r .node_multi_addresses[0]
+
+Simply copy-paste this address on the account page when registering your node.
