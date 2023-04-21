@@ -113,14 +113,5 @@ services:
       - pyaleph
     command: ["daemon", "--enable-pubsub-experiment", "--migrate"]
 
-  teeproxy:
-    restart: always
-    image: chrislusf/teeproxy:latest
-    ports:
-      - "127.0.0.1:8888:8888"
-    networks:
-      - pyaleph
-    command: ["-l", ":8888", "-a", "http://pyaleph-api:4024", "-b", "http://46.255.204.195:4024", "-a.timeout", "30000", "-b.timeout", "30000"]
-
 networks:
   pyaleph:

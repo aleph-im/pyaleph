@@ -67,6 +67,12 @@ def session_factory(mock_config):
 @pytest.fixture
 def mock_config(mocker):
     config = Config(aleph.config.get_defaults())
+
+    # The postgres/redis hosts use Docker network names in the default config.
+    # We always use localhost for tests.
+    config.postgres.host.value = "127.0.0.1"
+    config.redis.host.value = "127.0.0.1"
+
     # To test handle_new_storage
     config.storage.store_files.value = True
 
