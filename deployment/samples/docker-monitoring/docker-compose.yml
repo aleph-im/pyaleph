@@ -125,7 +125,7 @@ services:
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     networks:
-      - pyaleph-api
+      - pyaleph
       - grafana
 
   grafana:
