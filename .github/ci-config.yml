@@ -1,0 +1,5 @@
+postgres:
+  host: postgres
+
+redis:
+  host: redis
