@@ -204,6 +204,11 @@ Check IPFS
 
 IPFS Web UI: http://localhost:5001/webui
 
+.. warning::
+    This web interface is only accessible on localhost in the default Docker Compose configuration.
+    The API running on port 5001 gives complete control over the IPFS daemon without authentication.
+    Never expose this port on the Internet!
+
 Check PyAleph data via MongoDB
 ------------------------------
 
