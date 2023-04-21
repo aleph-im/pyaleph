@@ -92,7 +92,7 @@ def get_defaults():
             "sync_contract": "KT1FfEoaNvooDfYrP61Ykct6L8z7w7e2pgnT",
         },
         "postgres": {
-            "host": "127.0.0.1",
+            "host": "postgres",
             "port": 5432,
             "database": "aleph",
             "user": "aleph",
@@ -105,7 +105,7 @@ def get_defaults():
         },
         "ipfs": {
             "enabled": True,
-            "host": "127.0.0.1",
+            "host": "ipfs",
             "port": 5001,
             "gateway_port": 8080,
             "id": None,
@@ -118,7 +118,7 @@ def get_defaults():
             ],
         },
         "rabbitmq": {
-            "host": "127.0.0.1",
+            "host": "rabbitmq",
             "port": 5672,
             "username": "aleph-p2p",
             "password": "change-me!",
@@ -127,7 +127,7 @@ def get_defaults():
             "message_exchange": "aleph-messages",
         },
         "redis": {
-            "host": "127.0.0.1",
+            "host": "redis",
             "port": 6379,
         },
         "sentry": {
