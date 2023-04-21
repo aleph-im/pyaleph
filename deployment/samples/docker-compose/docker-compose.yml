@@ -28,8 +28,8 @@ services:
   pyaleph-api:
     restart: always
     image: alephim/pyaleph-node:v0.5.0-rc2
+    command: --config /opt/pyaleph/config.yml --key-dir /opt/pyaleph/keys -v
     entrypoint: ["bash", "deployment/scripts/run_aleph_ccn_api.sh"]
-    command: "--config /opt/pyaleph/config.yml"
     ports:
       - "4024:4024/tcp"
     volumes:
@@ -112,6 +112,15 @@ services:
     networks:
       - pyaleph
     command: ["daemon", "--enable-pubsub-experiment", "--migrate"]
+
+  teeproxy:
+    restart: always
+    image: chrislusf/teeproxy:latest
+    ports:
+      - "127.0.0.1:8888:8888"
+    networks:
+      - pyaleph
+    command: ["-l", ":8888", "-a", "http://pyaleph-api:4024", "-b", "http://46.255.204.195:4024", "-a.timeout", "30000", "-b.timeout", "30000"]
 
 networks:
   pyaleph:
