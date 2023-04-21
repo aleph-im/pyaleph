@@ -1,5 +1,5 @@
 postgres:
-  host: postgres
+  host: 127.0.0.1
 
 redis:
-  host: redis
+  host: 127.0.0.1
