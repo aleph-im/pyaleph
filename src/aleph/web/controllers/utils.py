@@ -1,15 +1,30 @@
 import json
+from io import BytesIO, StringIO
 from math import ceil
-from typing import Optional
+from typing import Optional, Union, IO
 
 import aio_pika
 import aiohttp_jinja2
 from aiohttp import web
+from aiohttp.web_request import FileField
 from configmanager import Config
+from multidict import MultiDictProxy
 
 DEFAULT_MESSAGES_PER_PAGE = 20
 DEFAULT_PAGE = 1
 LIST_FIELD_SEPARATOR = ","
+
+
+def multidict_proxy_to_io(
+    multi_dict: MultiDictProxy[Union[str, bytes, FileField]]
+) -> IO:
+    file_field = multi_dict["file"]
+    if isinstance(file_field, bytes):
+        return BytesIO(file_field)
+    elif isinstance(file_field, str):
+        return StringIO(file_field)
+
+    return file_field.file
 
 
 def get_path_page(request: web.Request) -> Optional[int]:

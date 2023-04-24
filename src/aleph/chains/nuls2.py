@@ -190,7 +190,10 @@ class Nuls2Connector(Verifier, ChainWriter):
                 )
 
             if len(messages):
-                content = await self.chain_data_service.get_chaindata(messages)
+                # This function prepares a chain data file and makes it downloadable from the node.
+                content = await self.chain_data_service.get_chaindata(session=session, messages=messages)
+                # Required to apply update to the files table in get_chaindata
+                session.commit()
 
                 tx = await prepare_transfer_tx(
                     address,
