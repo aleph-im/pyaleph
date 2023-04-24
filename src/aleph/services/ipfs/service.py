@@ -139,7 +139,7 @@ class IpfsService:
                 break
 
     async def add_file(self, fileobject: IO):
-        url = f"{self.ipfs_client.api_url}/api/v0/add"
+        url = f"{self.ipfs_client.api_url}add"
 
         async with aiohttp.ClientSession() as session:
             data = aiohttp.FormData()
