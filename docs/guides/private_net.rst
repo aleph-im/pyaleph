@@ -3,7 +3,7 @@ Setting up a private aleph.im network
 =====================================
 
 For testing some people and organizations might want to setup a private
-aleph.im network.
+Aleph network.
 
 Please note that it is not the recommended course of action: you will
 be completely separated from the network and lose all public P2P features.
@@ -13,112 +13,95 @@ The best way is to work in your own test channel with no incentives applied to i
 Peers
 -----
 
-You will need to setup a first pyaleph client that will serve as a seed node.
-Copy the sample_config.yaml file to privatenet.yml, then:
+To make your Aleph network private, you must exclude it from the official network.
+This can be achieved by changing the default bootstrap nodes and changing the P2P
+channels.
 
-- Set the enabled keys on all chains to false.
-- Ensure your peers list is empty
-- Use a specific queue topic so even if you connect to public network, messages don't slip.
+Changing bootstrap nodes
+^^^^^^^^^^^^^^^^^^^^^^^^
 
-Example of config file at this point (I disabled IPFS but you can leave it enabled):
+Bootstrap nodes are specified in the configuration under the `p2p.peers` section.
+If you only set up one node, just make this section an empty list:
 
 .. code-block:: yaml
 
-    nuls2:
-        chain_id: 1
-        enabled: False
-        packing_node: False
+    p2p:
+        peers: []
 
-    ethereum:
-        enabled: False
-        api_url: http://127.0.0.1:8545
-        chain_id: 4
-        packing_node: False
+If you wish to connect several nodes together, first set up one node with no peers
+and then configure the other nodes to point to the first node.
 
-    mongodb:
-        uri: "mongodb://127.0.0.1"
-        database: alephtest
+Changing the P2P channels
+^^^^^^^^^^^^^^^^^^^^^^^^^
 
-    storage:
-        store_files: true
-        engine: mongodb
+Aleph nodes communicate with other nodes using P2P and IPFS pubsub channels.
+To create a private network, we must make sure that our new network may not communicate
+with nodes from another network using these channels.
 
-    ipfs:
-        enabled: False
-        host: 127.0.0.1
-        port: 5001
-        gateway_port: 8080
+While changing bootstrap nodes is enough to guarantee isolation for P2P channels,
+IPFS channels are global. We recommend to rename the P2P channels as well as an additional
+guarantee of isolation.
+
+Here are the configuration options to change (use your own names, obviously):
+
+.. code-block:: yaml
 
     aleph:
-        queue_topic: PRIVATENET
+        queue_topic: TESTNET_P2P_MESSAGES
+
+    ipfs:
+        alive_topic: TESTNET_IPFS_ALIVE
 
     p2p:
-        host: 0.0.0.0
-        control_port: 4030
-        http_port: 4024
-        port: 4025
-        peers: []
-        reconnect_delay: 60
-        key: null
+        alive_topic: TESTNET_P2P_ALIVE
+        topics:
+            - TESTNET_P2P_ALIVE
+            - TESTNET_P2P_MESSAGES
 
-You then need to generate a private key to identify the node.
-PyAleph provides a command-line option to do so.
+Chains
+------
 
-.. code-block:: bash
-
-    pyaleph --gen-keys --gen-key <your-key-dir>
-
-This command creates a new directory that contains 3 keys: the private and public keys in PEM format,
-as well as the key serialized for compatibility with the P2P daemon.
-
-.. code-block:: bash
-
-    ls <your-key-dir>
-        node-pub.key  node-secret.key  serialized-node-secret.key
-
-This key directory must be provided to the PyAleph daemon on startup using the `--key-dir <your-key-dir>` option.
-You must also specify the path to the serialized key to the P2P daemon using the
-`--id <your-key-dir>/serialized-node-secret.key` option on the command line interface of jsp2pd.
-
-Your seed node will need to have the 4025 and 4024 ports open (those ports are
-configurable and you can change them).
-
-Now restart the pyaleph daemon the same way, and you will see lines like this appear:
-
-.. code-block:: 
-
-    2020-04-01 12:31:54 [INFO] P2P.host: Listening on /ip4/0.0.0.0/tcp/4025/p2p/QmesN1F17tkEUx8bQY7Sayxmq8GXHZm9cXV7QpE1gt4n3D
-    2020-04-01 12:31:54 [INFO] P2P.host: Probable public on /ip4/x.x.x.x/tcp/4025/p2p/QmesN1F17tkEUx8bQY7Sayxmq8GXHZm9cXV7QpE1gt4n3D
-
-`x.x.x.x` being your public IP, `/ip4/x.x.x.x/tcp/4025/p2p/QmesN1F17tkEUx8bQY7Sayxmq8GXHZm9cXV7QpE1gt4n3D`
-is your p2p multiaddress.
-
-Other nodes will need to have this string in the peers section to be able to find each other. Example:
+The last step is to disable the retrieval of archived messages on the supported blockchains.
+To do this, you simply need to disable the sync from the config:
 
 .. code-block:: yaml
 
-    p2p:
-        host: 0.0.0.0
-        port: 4025
-        http_port: 4024
-        reconnect_delay: 60
-        peers:
-            - /ip4/x.x.x.x/tcp/4025/p2p/QmesN1F17tkEUx8bQY7Sayxmq8GXHZm9cXV7QpE1gt4n3D
+    ethereum:
+        enabled: false
 
-For a healthy network it is recommended to have at least 2 seed nodes connected between each others,
-and all other clients having them in their peer lists.
+    nuls2:
+        enabled: false
 
 IPFS
 ----
 
-You might want your IPFS daemon to be in a private net too, I'll leave that to IPFS documentation.
+You might want your IPFS daemon to be in a private net too. We leave this topic to the IPFS documentation.
 
-Synchronisation
----------------
+Config file example
+-------------------
 
-To be able to keep your data synced you will need to write to at least one of the
-supported chains. Either NULS2 or ETH.
+Here is a config file that summarizes the different requirements to create your own private Aleph network.
 
-The easiest one is NULS2, just use the sample sync info in the sample_config.yml,
-using a target address (`sync_address` in config) you own, and using
-a private key of an address that has a few nuls inside.
+.. code-block:: yaml
+
+    aleph:
+        queue_topic: TESTNET_P2P_MESSAGES
+
+    ethereum:
+        enabled: false
+
+    ipfs:
+        alive_topic: TESTNET_IPFS_ALIVE
+
+    nuls2:
+        enabled: false
+
+    p2p:
+        alive_topic: TESTNET_P2P_ALIVE
+        peers: []
+        topics:
+            - TESTNET_P2P_ALIVE
+            - TESTNET_P2P_MESSAGES
+
+
+Refer to the install guide for explanations on how to set up your node(s).
