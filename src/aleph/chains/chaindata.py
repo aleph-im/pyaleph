@@ -47,10 +47,11 @@ class ChainDataService:
         self.session_factory = session_factory
         self.storage_service = storage_service
 
+    # TODO: split this function in severa
     async def get_chaindata(
-        self, messages: List[MessageDb], bulk_threshold: int = 2000
+        self, session: DbSession, messages: List[MessageDb], bulk_threshold: int = 2000
     ):
-        """Returns content ready to be broadcasted on-chain (aka chaindata).
+        """Returns content ready to be broadcast on-chain (aka chaindata).
 
         If message length is over bulk_threshold (default 2000 chars), store list
         in IPFS and store the object hash instead of raw list.
@@ -80,7 +81,9 @@ class ChainDataService:
         }
         content = json.dumps(chaindata)
         if len(content) > bulk_threshold:
-            ipfs_id = await self.storage_service.add_json(chaindata)
+            ipfs_id = await self.storage_service.add_json(
+                session=session, value=chaindata
+            )
             return json.dumps(
                 {
                     "protocol": ChainSyncProtocol.OFF_CHAIN_SYNC,

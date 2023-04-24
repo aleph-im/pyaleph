@@ -341,9 +341,12 @@ class EthereumConnector(Verifier, ChainWriter):
                 )
 
             if len(messages):
+                # This function prepares a chain data file and makes it downloadable from the node.
                 content = await self.chain_data_service.get_chaindata(
-                    messages, bulk_threshold=200
+                    session=session, messages=messages, bulk_threshold=200
                 )
+                # Required to apply update to the files table in get_chaindata
+                session.commit()
                 response = await run_in_executor(
                     None,
                     self._broadcast_content,
