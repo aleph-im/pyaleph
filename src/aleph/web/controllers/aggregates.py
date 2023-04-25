@@ -28,7 +28,7 @@ class AggregatesQueryParams(BaseModel):
         return v
 
 
-async def address_aggregate(request):
+async def address_aggregate(request: web.Request) -> web.Response:
     """Returns the aggregate of an address.
     TODO: handle filter on a single key, or even subkey.
     """

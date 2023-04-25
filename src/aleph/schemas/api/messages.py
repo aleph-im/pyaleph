@@ -1,5 +1,5 @@
 import datetime as dt
-from typing import Optional, Generic, TypeVar, Literal, List, Any, Union, Dict
+from typing import Optional, Generic, TypeVar, Literal, List, Any, Union, Dict, Mapping
 
 from aleph_message.models import (
     AggregateContent,
@@ -8,7 +8,7 @@ from aleph_message.models import (
     ForgetContent,
     PostContent,
     ProgramContent,
-    StoreContent,
+    StoreContent, AlephMessage,
 )
 from aleph_message.models import MessageType, ItemType
 from pydantic import BaseModel
@@ -91,7 +91,7 @@ MESSAGE_CLS_DICT = {
 }
 
 
-def format_message(message: Any) -> BaseMessage:
+def format_message(message: Any) -> AlephMessage:
     message_cls = MESSAGE_CLS_DICT[message.type]
     return message_cls.from_orm(message)
 
@@ -164,7 +164,7 @@ class ForgottenMessageStatus(BaseMessageStatus):
 
 class RejectedMessageStatus(BaseMessageStatus):
     status: MessageStatus = MessageStatus.REJECTED
-    message: Dict[str, Any]
+    message: Mapping[str, Any]
     error_code: ErrorCode
     details: Any
 

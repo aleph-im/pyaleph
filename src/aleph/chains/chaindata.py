@@ -1,6 +1,6 @@
 import asyncio
 import json
-from typing import Dict, Optional, List, Any, Mapping, Set, cast
+from typing import Dict, Optional, List, Any, Mapping, Set, cast, Type, Union
 
 from aleph_message.models import StoreContent, ItemType, Chain, MessageType
 from pydantic import ValidationError
@@ -177,7 +177,7 @@ class ChainDataService:
         Message validation should be left to the message processing pipeline.
         """
 
-        payload_model = (
+        payload_model: Union[Type[TezosMessageEventPayload], Type[MessageEvent]] = (
             TezosMessageEventPayload if tx.chain == Chain.TEZOS else MessageEvent
         )
 

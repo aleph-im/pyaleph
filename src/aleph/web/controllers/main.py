@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 @aiohttp_jinja2.template("index.html")
-async def index(request) -> Dict:
+async def index(request: web.Request) -> Dict:
     """Index of aleph."""
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
@@ -23,7 +23,7 @@ async def index(request) -> Dict:
         return asdict(await get_metrics(session=session, node_cache=node_cache))
 
 
-async def status_ws(request):
+async def status_ws(request: web.Request) -> web.WebSocketResponse:
     ws = web.WebSocketResponse()
     await ws.prepare(request)
 
@@ -47,13 +47,13 @@ async def status_ws(request):
         await asyncio.sleep(2)
 
 
-async def metrics(request):
+async def metrics(request: web.Request) -> web.Response:
     """Prometheus compatible metrics.
 
     Naming convention:
     https://prometheus.io/docs/practices/naming/
     """
-    session_factory: DbSessionFactory = get_session_factory_from_request(request)
+    session_factory = get_session_factory_from_request(request)
     node_cache = get_node_cache_from_request(request)
 
     with session_factory() as session:
@@ -64,7 +64,7 @@ async def metrics(request):
         )
 
 
-async def metrics_json(request):
+async def metrics_json(request: web.Request) -> web.Response:
     """JSON version of the Prometheus metrics."""
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
     node_cache = get_node_cache_from_request(request)

@@ -4,7 +4,7 @@ Base (abstract) class for messages.
 
 import datetime as dt
 from hashlib import sha256
-from typing import Optional, Generic, TypeVar
+from typing import Optional, Generic, TypeVar, Any, Mapping, cast
 
 from aleph_message.models import BaseContent, Chain
 from aleph_message.models import MessageType, ItemType
@@ -62,7 +62,7 @@ class AlephBaseMessage(GenericModel, Generic[MType, ContentType]):
         return values
 
     @validator("item_hash")
-    def check_item_hash(cls, v, values):
+    def check_item_hash(cls, v: Any, values: Mapping[str, Any]):
         """
         For inline item types, check that the item hash is equal to
         the hash of the item content.
@@ -73,7 +73,7 @@ class AlephBaseMessage(GenericModel, Generic[MType, ContentType]):
             raise ValueError("Could not determine item type")
 
         if item_type == ItemType.inline:
-            item_content: str = values.get("item_content")
+            item_content = cast(Optional[str], values.get("item_content"))
             if item_content is None:
                 raise ValueError("Could not find inline item content")
 

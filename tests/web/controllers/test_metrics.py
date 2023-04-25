@@ -14,7 +14,7 @@ def test_format_dict_for_prometheus():
     ) == '{a=1,b=2.2,c="3"}'
 
 
-def test_format_dataclass_for_prometheus():
+def test_format_dataclass_for_prometheus() -> None:
 
     @dataclass
     class Simple:
