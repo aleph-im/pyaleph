@@ -250,7 +250,7 @@ def get_unconfirmed_messages(
         )
 
     select_stmt = select(MessageDb).where(
-        ~select_message_confirmations.exists()
+        MessageDb.signature.isnot(None) & (~select_message_confirmations.exists())
     )
 
     return (session.execute(select_stmt.limit(limit))).scalars()
