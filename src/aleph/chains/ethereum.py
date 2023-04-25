@@ -63,7 +63,7 @@ async def get_contract(config, web3: Web3):
 
 def get_logs_query(web3: Web3, contract, start_height, end_height):
     return web3.eth.get_logs(
-        {"address": contract.address, "fromBlock": start_height, "toBlock": end_height}  # type: ignore[arg-type]
+        {"address": contract.address, "fromBlock": start_height, "toBlock": end_height}
     )
 
 

@@ -66,7 +66,7 @@ async def init_node_cache(config: Config) -> NodeCache:
     return node_cache
 
 
-async def main(args):
+async def main(args: List[str]) -> None:
     """Main entry point allowing external calls
 
     Args:
@@ -82,7 +82,7 @@ async def main(args):
         key_pair = generate_keypair(args.print_key)
         save_keys(key_pair, args.key_dir)
         if args.print_key:
-            print(key_pair.private_key.impl.export_key().decode("utf-8"))
+            print(key_pair.private_key.impl.export_key().decode("utf-8"))  # type: ignore[attr-defined]
 
         return
 

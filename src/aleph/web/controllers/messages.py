@@ -31,6 +31,7 @@ from aleph.schemas.api.messages import (
 from aleph.types.db_session import DbSessionFactory, DbSession
 from aleph.types.message_status import MessageStatus
 from aleph.types.sort_order import SortOrder, SortBy
+from aleph.web.controllers.app_state_getters import get_session_factory_from_request
 from aleph.web.controllers.utils import (
     DEFAULT_MESSAGES_PER_PAGE,
     DEFAULT_PAGE,
@@ -195,7 +196,7 @@ def format_response(
     return web.json_response(text=aleph_json.dumps(response).decode("utf-8"))
 
 
-async def view_messages_list(request):
+async def view_messages_list(request: web.Request) -> web.Response:
     """Messages list view with filters"""
 
     try:
@@ -213,7 +214,7 @@ async def view_messages_list(request):
     pagination_page = query_params.page
     pagination_per_page = query_params.pagination
 
-    session_factory: DbSessionFactory = request.app["session_factory"]
+    session_factory = get_session_factory_from_request(request)
     with session_factory() as session:
         messages = get_matching_messages(
             session, include_confirmations=True, **find_filters

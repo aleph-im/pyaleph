@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 
 from aiohttp import web
 from aleph_message.models import MessageType
-from pydantic import ValidationError
+from pydantic import ValidationError, parse_obj_as
 
 from aleph.db.accessors.balances import get_total_balance
 from aleph.db.accessors.files import (
@@ -15,7 +15,7 @@ from aleph.db.accessors.messages import get_message_stats_by_address
 from aleph.schemas.api.accounts import (
     GetAccountBalanceResponse,
     GetAccountFilesResponse,
-    GetAccountFilesQueryParams,
+    GetAccountFilesQueryParams, GetAccountFilesResponseItem,
 )
 from aleph.types.db_session import DbSessionFactory
 from aleph.web.controllers.app_state_getters import get_session_factory_from_request
@@ -105,7 +105,7 @@ async def get_account_files(request: web.Request) -> web.Response:
         response = GetAccountFilesResponse(
             address=address,
             total_size=total_size,
-            files=file_pins,
+            files=parse_obj_as(List[GetAccountFilesResponseItem], file_pins),
             pagination_page=query_params.page,
             pagination_total=nb_files,
             pagination_per_page=query_params.pagination,

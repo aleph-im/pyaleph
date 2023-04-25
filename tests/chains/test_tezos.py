@@ -129,7 +129,7 @@ def test_datetime_to_iso_8601():
 def test_indexer_event_to_aleph_message(message_type: str, message_content: str):
     indexer_event = IndexerMessageEvent(
         source="KT1BfL57oZfptdtMFZ9LNakEPvuPPA2urdSW",
-        timestamp="2022-11-16T00:00:00Z",
+        timestamp=dt.datetime(2022, 11, 16, tzinfo=dt.timezone.utc),
         type="MessageEvent",
         operationHash="oorMNgusX6RxZ4NhzYriVDN8HDeMBNkjD3E8kx9a7j7dRRDGkzz",
         blockLevel=584664,

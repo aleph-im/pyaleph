@@ -168,9 +168,13 @@ async def get_raw_hash(request):
     return response
 
 
-async def get_file_pins_count(request):
+async def get_file_pins_count(request: web.Request) -> web.Response:
     item_hash = request.match_info.get("hash", None)
-    session_factory: DbSessionFactory = request.app["session_factory"]
+
+    if item_hash is None:
+        raise web.HTTPBadRequest(text="No hash provided")
+
+    session_factory = get_session_factory_from_request(request)
     with session_factory() as session:
         count = count_file_pins(session=session, file_hash=item_hash)
     return web.json_response(data=count)
