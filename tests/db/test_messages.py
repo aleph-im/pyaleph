@@ -319,6 +319,18 @@ async def test_get_unconfirmed_messages(
 
 
 @pytest.mark.asyncio
+async def test_get_unconfirmed_messages_trusted_messages(session_factory:DbSessionFactory, fixture_message: MessageDb):
+    fixture_message.signature = None
+    with session_factory() as session:
+        session.add(fixture_message)
+        session.commit()
+
+    with session_factory() as session:
+        unconfirmed_messages = list(get_unconfirmed_messages(session))
+        assert unconfirmed_messages == []
+
+
+@pytest.mark.asyncio
 async def test_get_distinct_channels(
     session_factory: DbSessionFactory, fixture_message: MessageDb
 ):
