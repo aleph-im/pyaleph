@@ -290,14 +290,14 @@ class EthereumConnector(Verifier, ChainWriter):
     def _broadcast_content(
         config, contract, web3: Web3, account, gas_price, nonce, content
     ):
-        tx = contract.functions.doEmit(content).buildTransaction(
+        tx = contract.functions.doEmit(content).build_transaction(
             {
                 "chainId": config.ethereum.chain_id.value,
                 "gasPrice": gas_price,
                 "nonce": nonce,
             }
         )
-        signed_tx = account.signTransaction(tx)
+        signed_tx = account.sign_transaction(tx)
         return web3.eth.send_raw_transaction(signed_tx.rawTransaction)
 
     async def packer(self, config: Config):
@@ -310,7 +310,7 @@ class EthereumConnector(Verifier, ChainWriter):
 
         LOGGER.info("Ethereum Connector set up with address %s" % address)
         i = 0
-        gas_price = web3.eth.generateGasPrice()
+        gas_price = web3.eth.generate_gas_price()
         while True:
             with self.session_factory() as session:
 
@@ -320,11 +320,11 @@ class EthereumConnector(Verifier, ChainWriter):
                 ) > 1000:
                     await asyncio.sleep(30)
                     continue
-                gas_price = web3.eth.generateGasPrice()
+                gas_price = web3.eth.generate_gas_price()
 
                 if i >= 100:
                     await asyncio.sleep(30)  # wait three (!!) blocks
-                    gas_price = web3.eth.generateGasPrice()
+                    gas_price = web3.eth.generate_gas_price()
                     i = 0
 
                 if gas_price > config.ethereum.max_gas_price.value:
@@ -332,7 +332,7 @@ class EthereumConnector(Verifier, ChainWriter):
                     await asyncio.sleep(60)
                     continue
 
-                nonce = web3.eth.getTransactionCount(account.address)
+                nonce = web3.eth.get_transaction_count(account.address)
 
                 messages = list(
                     get_unconfirmed_messages(
@@ -340,7 +340,9 @@ class EthereumConnector(Verifier, ChainWriter):
                     )
                 )
 
-            if len(messages):
+            if messages:
+                LOGGER.info("Chain sync: %d unconfirmed messages")
+
                 # This function prepares a chain data file and makes it downloadable from the node.
                 content = await self.chain_data_service.get_chaindata(
                     session=session, messages=messages, bulk_threshold=200
@@ -358,7 +360,7 @@ class EthereumConnector(Verifier, ChainWriter):
                     nonce,
                     content,
                 )
-                LOGGER.info("Broadcasted %r on %s" % (response, CHAIN_NAME))
+                LOGGER.info("Broadcast %r on %s" % (response, CHAIN_NAME))
 
             await asyncio.sleep(config.ethereum.commit_delay.value)
             i += 1

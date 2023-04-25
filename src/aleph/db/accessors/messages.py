@@ -104,7 +104,9 @@ def make_matching_messages_query(
             MessageDb.content["type"].astext.in_(content_types)
         )
     if tags:
-        select_stmt = select_stmt.where(MessageDb.content["content"]["tags"].contains(tags))
+        select_stmt = select_stmt.where(
+            MessageDb.content["content"]["tags"].contains(tags)
+        )
     if channels:
         select_stmt = select_stmt.where(MessageDb.channel.in_(channels))
 
@@ -233,23 +235,22 @@ def get_unconfirmed_messages(
     session: DbSession, limit: int = 100, chain: Optional[Chain] = None
 ) -> Iterable[MessageDb]:
 
-    where_clause = message_confirmations.c.item_hash == MessageDb.item_hash
-    if chain:
-        where_clause = where_clause & (ChainTxDb.chain == chain)
+    if chain is None:
+        select_message_confirmations = select(message_confirmations.c.item_hash).where(
+            message_confirmations.c.item_hash == MessageDb.item_hash
+        )
+    else:
+        select_message_confirmations = (
+            select(message_confirmations.c.item_hash)
+            .join(ChainTxDb, message_confirmations.c.tx_hash == ChainTxDb.hash)
+            .where(
+                (message_confirmations.c.item_hash == MessageDb.item_hash)
+                & (ChainTxDb.chain == chain)
+            )
+        )
 
-    #         (MessageDb.item_hash,
-    #         MessageDb.message_type,
-    #         MessageDb.chain,
-    #         MessageDb.sender,
-    #         MessageDb.signature,
-    #         MessageDb.item_type,
-    #         MessageDb.item_content,
-    #         # TODO: exclude content field
-    #         MessageDb.content,
-    #         MessageDb.time,
-    #         MessageDb.channel,)
     select_stmt = select(MessageDb).where(
-        ~select(message_confirmations.c.item_hash).where(where_clause).exists()
+        ~select_message_confirmations.exists()
     )
 
     return (session.execute(select_stmt.limit(limit))).scalars()
