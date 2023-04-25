@@ -44,6 +44,15 @@ def api_client(ccn_api_client, mocker):
         }
     )
     ipfs_service.get_ipfs_content = mocker.AsyncMock(return_value=FILE_CONTENT)
+    ipfs_service.ipfs_client.files.stat = mocker.AsyncMock(
+        return_value={
+            "Hash": EXPECTED_FILE_CID,
+            "Size": 34,
+            "CumulativeSize": 42,
+            "Blocks": 0,
+            "Type": "file",
+        }
+    )
 
     ccn_api_client.app["storage_service"] = StorageService(
         storage_engine=InMemoryStorageEngine(files={}),

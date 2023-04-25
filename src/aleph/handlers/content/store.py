@@ -150,17 +150,19 @@ class StoreMessageHandler(ContentHandler):
                         "Could not retrieve IPFS content at this time"
                     )
 
-                if (
-                    stats["Type"] == "file"
-                    and stats["CumulativeSize"] < 1024**2
-                    and len(item_hash) == 46
-                ):
-                    do_standard_lookup = True
+                if stats["Type"] == "file":
+                    is_folder = False
+                    size = stats["Size"]
+                    do_standard_lookup = size < 1024 ** 2 and len(item_hash) == 46
                 else:
+                    is_folder = True
+                    # Size is 0 for folders, use cumulative size instead
                     size = stats["CumulativeSize"]
-                    is_folder = stats["Type"] == "directory"
-                    await ipfs_service.pin_add(cid=item_hash)
                     do_standard_lookup = False
+
+                # Pin folders and files larger than 1MB
+                if do_standard_lookup:
+                    await ipfs_service.pin_add(cid=item_hash)
 
             except asyncio.TimeoutError as error:
                 LOGGER.warning(

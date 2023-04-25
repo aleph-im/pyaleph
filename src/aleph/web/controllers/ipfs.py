@@ -1,3 +1,5 @@
+import asyncio
+
 from aiohttp import web
 
 from aleph.db.accessors.files import upsert_file
@@ -18,21 +20,29 @@ async def ipfs_add_file(request: web.Request):
 
     # No need to pin it here anymore.
     post = await request.post()
-    output = await ipfs_service.add_file(multidict_proxy_to_io(post))
+    ipfs_add_response = await ipfs_service.add_file(multidict_proxy_to_io(post))
+
+    cid = ipfs_add_response["Hash"]
+    name = ipfs_add_response["Name"]
+
+    # IPFS add returns the cumulative size and not the real file size.
+    # We need the real file size here.
+    stats = await asyncio.wait_for(ipfs_service.ipfs_client.files.stat(f"/ipfs/{cid}"), 5)
+    size = stats["Size"]
 
     with session_factory() as session:
         upsert_file(
             session=session,
-            file_hash=output["Hash"],
-            size=output["Size"],
+            file_hash=cid,
+            size=size,
             file_type=FileType.FILE,
         )
         session.commit()
 
     output = {
         "status": "success",
-        "hash": output["Hash"],
-        "name": output["Name"],
-        "size": output["Size"],
+        "hash": cid,
+        "name": name,
+        "size": size,
     }
     return web.json_response(output)
