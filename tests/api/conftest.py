@@ -1,7 +1,8 @@
 import json
 from pathlib import Path
-from typing import Any, Dict, Sequence, cast
+from typing import Any, Dict, Sequence, cast, Tuple
 
+import pytest
 import pytest_asyncio
 from aleph_message.models import AggregateContent, PostContent
 from sqlalchemy import insert
@@ -10,12 +11,13 @@ from aleph.db.accessors.aggregates import refresh_aggregate
 from aleph.db.models import (
     MessageDb,
     ChainTxDb,
-    AggregateElementDb, message_confirmations,
+    AggregateElementDb,
+    message_confirmations,
 )
 from aleph.db.models.posts import PostDb
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSessionFactory
-
+import datetime as dt
 
 # TODO: remove the raw parameter, it's just to avoid larger refactorings
 async def _load_fixtures(
@@ -122,3 +124,67 @@ async def fixture_posts(
         session.commit()
 
     return posts
+
+
+@pytest.fixture
+def post_with_refs_and_tags() -> Tuple[MessageDb, PostDb]:
+    message = MessageDb(
+        item_hash="1234",
+        sender="0xdeadbeef",
+        type="POST",
+        chain="ETH",
+        signature=None,
+        item_type="storage",
+        item_content=None,
+        content={"content": {"tags": ["original", "mainnet"], "swap": "this"}},
+        time=dt.datetime(2023, 5, 1, tzinfo=dt.timezone.utc),
+        channel=None,
+        size=254,
+    )
+
+    post = PostDb(
+        item_hash=message.item_hash,
+        owner=message.sender,
+        type=None,
+        ref="custom-ref",
+        amends=None,
+        channel=None,
+        content=message.content["content"],
+        creation_datetime=message.time,
+        latest_amend=None,
+    )
+
+    return message, post
+
+
+@pytest.fixture
+def amended_post_with_refs_and_tags(post_with_refs_and_tags: Tuple[MessageDb, PostDb]):
+    original_message, original_post = post_with_refs_and_tags
+
+    amend_message = MessageDb(
+        item_hash="5678",
+        sender="0xdeadbeef",
+        type="POST",
+        chain="ETH",
+        signature=None,
+        item_type="storage",
+        item_content=None,
+        content={"content": {"tags": ["amend", "mainnet"], "don't": "swap"}},
+        time=dt.datetime(2023, 5, 2, tzinfo=dt.timezone.utc),
+        channel=None,
+        size=277,
+    )
+
+    amend_post = PostDb(
+        item_hash=amend_message.item_hash,
+        owner=original_message.sender,
+        type="amend",
+        ref=original_message.item_hash,
+        amends=original_message.item_hash,
+        channel=None,
+        content=amend_message.content["content"],
+        creation_datetime=amend_message.time,
+        latest_amend=None,
+    )
+
+    return amend_message, amend_post

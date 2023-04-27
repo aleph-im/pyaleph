@@ -4,7 +4,7 @@ from typing import Optional, Sequence, Union, Iterable, Any, Mapping, overload, 
 
 from aleph_message.models import ItemHash, Chain, MessageType
 from sqlalchemy import func, select, update, text, delete, nullsfirst, nullslast
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.dialects.postgresql import insert, array
 from sqlalchemy.orm import selectinload, load_only
 from sqlalchemy.sql import Insert, Select
 from sqlalchemy.sql.elements import literal
@@ -105,7 +105,7 @@ def make_matching_messages_query(
         )
     if tags:
         select_stmt = select_stmt.where(
-            MessageDb.content["content"]["tags"].contains(tags)
+            MessageDb.content["content"]["tags"].has_any(array(tags))
         )
     if channels:
         select_stmt = select_stmt.where(MessageDb.channel.in_(channels))

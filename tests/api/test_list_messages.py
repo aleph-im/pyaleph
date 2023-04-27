@@ -5,6 +5,8 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Union, Tuple
 import aiohttp
 import pytest
 
+from aleph.db.models import MessageDb, PostDb
+from aleph.types.db_session import DbSessionFactory
 from .utils import get_messages_by_keys
 
 MESSAGES_URI = "/api/v0/messages.json"
@@ -149,18 +151,74 @@ async def test_get_messages_multiple_hashes(fixture_messages, ccn_api_client):
 
 
 @pytest.mark.asyncio
-async def test_get_messages_filter_by_tags(fixture_messages, ccn_api_client):
+async def test_get_messages_filter_by_tags(
+    fixture_messages,
+    ccn_api_client,
+    session_factory: DbSessionFactory,
+    post_with_refs_and_tags: Tuple[MessageDb, PostDb],
+    amended_post_with_refs_and_tags: Tuple[MessageDb, PostDb]
+):
     """
     Tests getting messages by tags.
     There's no example in the fixtures, we just test that the endpoint returns a 200.
-    # TODO: add a POST message fixture with tags.
     """
 
-    tags = ["mainnet"]
+    message_db, _ = post_with_refs_and_tags
+    amend_message_db, _ = amended_post_with_refs_and_tags
 
-    response = await ccn_api_client.get(
-        MESSAGES_URI, params={"tags": ",".join(tags)}
-    )
+    with session_factory() as session:
+        session.add_all([message_db, amend_message_db])
+        session.commit()
+
+    # Matching tag for both messages
+    response = await ccn_api_client.get(MESSAGES_URI, params={"tags": "mainnet"})
+    assert response.status == 200, await response.text()
+    messages = (await response.json())["messages"]
+    assert len(messages) == 2
+
+    # Matching tags for both messages
+    response = await ccn_api_client.get(MESSAGES_URI, params={"tags": "original,amend"})
+    assert response.status == 200, await response.text()
+    messages = (await response.json())["messages"]
+    assert len(messages) == 2
+
+    # Matching the original tag
+    response = await ccn_api_client.get(MESSAGES_URI, params={"tags": "original"})
+    assert response.status == 200, await response.text()
+    messages = (await response.json())["messages"]
+    assert len(messages) == 1
+    assert messages[0]["item_hash"] == message_db.item_hash
+
+    # Matching the amend tag
+    response = await ccn_api_client.get(MESSAGES_URI, params={"tags": "amend"})
+    assert response.status == 200, await response.text()
+    messages = (await response.json())["messages"]
+    assert len(messages) == 1
+    assert messages[0]["item_hash"] == amend_message_db.item_hash
+
+    # No match
+    response = await ccn_api_client.get(MESSAGES_URI, params={"tags": "not-a-tag"})
+    assert response.status == 200, await response.text()
+    messages = (await response.json())["messages"]
+    assert len(messages) == 0
+
+    # Matching the amend tag with other tags
+    response = await ccn_api_client.get(MESSAGES_URI, params={"tags": "amend,not-a-tag,not-a-tag-either"})
+    assert response.status == 200, await response.text()
+    messages = (await response.json())["messages"]
+    assert len(messages) == 1
+    assert messages[0]["item_hash"] == amend_message_db.item_hash
+
+
+@pytest.mark.asyncio
+async def test_get_messages_filter_by_tags_no_match(fixture_messages, ccn_api_client):
+    """
+    Tests getting messages by tags.
+    There's no example in the fixtures, we just test that the endpoint returns a 200.
+    """
+
+    # Matching tag
+    response = await ccn_api_client.get(MESSAGES_URI, params={"tags": "mainnet"})
     assert response.status == 200, await response.text()
     messages = (await response.json())["messages"]
     assert len(messages) == 0
