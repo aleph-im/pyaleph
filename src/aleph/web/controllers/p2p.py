@@ -222,7 +222,7 @@ async def pub_message(request: web.Request):
 
     # Ignore type checking here, we know that mq_queue is set at this point
     assert mq_queue is not None
-    response = await _mq_read_one_message(mq_queue, timeout=5)
+    response = await _mq_read_one_message(mq_queue, timeout=30)
 
     # Delete the queue immediately
     await mq_queue.delete(if_empty=False)
