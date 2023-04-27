@@ -62,11 +62,21 @@ def _validate_request_data(config: Config, request_data: Dict) -> None:
 
     topic = request_data.get("topic")
 
-    # Currently, we only check validate messages
+    # Only accept publishing on the message topic.
     message_topic = config.aleph.queue_topic.value
-    if topic == message_topic:
+    if topic != message_topic:
+        raise web.HTTPForbidden(reason=f"Unauthorized P2P topic: {topic}. Use {message_topic}.")
+
+    data = request_data.get("data")
+    if not isinstance(data, str):
+        raise web.HTTPUnprocessableEntity(reason="'data': expected a serialized JSON string.")
+
+    try:
         message_dict = json.loads(cast(str, request_data.get("data")))
-        _validate_message_dict(message_dict)
+    except ValueError:
+        raise web.HTTPUnprocessableEntity(reason="'data': must be deserializable as JSON.")
+
+    _validate_message_dict(message_dict)
 
 
 async def _pub_on_p2p_topics(
