@@ -172,7 +172,7 @@ def assert_posts_v0_equal(
 ):
     expected_item_hash = last_amend.item_hash if last_amend else original.item_hash
     expected_content = last_amend.content if last_amend else original.content
-    expected_ref = last_amend.ref if last_amend else original.ref
+    expected_ref = original.ref
     expected_last_updated = (
         last_amend.creation_datetime if last_amend else original.creation_datetime
     )

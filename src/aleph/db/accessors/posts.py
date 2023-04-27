@@ -124,7 +124,7 @@ def make_select_merged_post_with_message_info_stmt() -> Select:
                 "item_type"
             ),
             Original.owner.label("owner"),
-            func.coalesce(Amend.ref, Original.ref).label("ref"),
+            Original.ref.label("ref"),
             func.coalesce(Amend.creation_datetime, Original.creation_datetime).label(
                 "last_updated"
             ),
