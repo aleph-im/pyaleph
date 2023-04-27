@@ -28,7 +28,7 @@ from sqlalchemy import (
     Float,
     case,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, array
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql import Select
 
@@ -230,7 +230,7 @@ def filter_post_select_stmt(
         select_stmt = select_stmt.where(literal_column("original_type").in_(post_types))
     if tags:
         select_stmt = select_stmt.where(
-            literal_column("content", type_=JSONB)["tags"].astext.in_(tags)
+            literal_column("content", type_=JSONB)["tags"].has_any(array(tags))
         )
     if channels:
         select_stmt = select_stmt.where(literal_column("channel").in_(channels))
