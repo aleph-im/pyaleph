@@ -262,24 +262,33 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
                 await ws.send_str(format_message(message).json())
 
     try:
-        async with mq_queue.iterator() as queue_iter:
-            async for mq_message in queue_iter:
-                if ws.closed:
-                    break
+        # The timeout is necessary to check if the websocket connection is still open once in a while.
+        # Otherwise, we keep queues indefinitely if the user specifies filters that do not match
+        # a message.
+        async with mq_queue.iterator(timeout=300) as queue_iter:
+            while not ws.closed:
+                try:
+                    async for mq_message in queue_iter:
+                        if ws.closed:
+                            break
 
-                await mq_message.ack()
-                item_hash = aleph_json.loads(mq_message.body)["item_hash"]
-                # A bastardized way to apply the filters on the message as well.
-                # TODO: put the filter key/values in the RabbitMQ message?
-                with session_factory() as session:
-                    matching_messages = get_matching_messages(
-                        session=session,
-                        hashes=[item_hash],
-                        include_confirmations=True,
-                        **find_filters,
-                    )
-                    for message in matching_messages:
-                        await ws.send_str(format_message(message).json())
+                        await mq_message.ack()
+                        item_hash = aleph_json.loads(mq_message.body)["item_hash"]
+                        # A bastardized way to apply the filters on the message as well.
+                        # TODO: put the filter key/values in the RabbitMQ message?
+                        with session_factory() as session:
+                            matching_messages = get_matching_messages(
+                                session=session,
+                                hashes=[item_hash],
+                                include_confirmations=True,
+                                **find_filters,
+                            )
+                            for message in matching_messages:
+                                await ws.send_str(format_message(message).json())
+
+                except TimeoutError:
+                    LOGGER.info("Message ws timeout. ws closed? %s", ws.closed)
+                    pass
 
     except ConnectionResetError:
         pass
