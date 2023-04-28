@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from typing import Dict, cast, Optional, Any, Mapping, List, Collection, Union
+from typing import Dict, cast, Optional, Any, Mapping, List, Union
 
 import aio_pika.abc
 from aiohttp import web
@@ -23,7 +23,6 @@ from aleph.web.controllers.app_state_getters import (
     get_config_from_request,
     get_ipfs_service_from_request,
     get_p2p_client_from_request,
-    get_mq_conn_from_request,
     get_mq_channel_from_request,
 )
 from aleph.web.controllers.utils import mq_make_aleph_message_topic_queue
