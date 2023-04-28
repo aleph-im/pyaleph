@@ -21,7 +21,7 @@ from aleph.web.controllers.app_state_getters import (
     APP_STATE_NODE_CACHE,
     APP_STATE_P2P_CLIENT,
     APP_STATE_SESSION_FACTORY,
-    APP_STATE_STORAGE_SERVICE,
+    APP_STATE_STORAGE_SERVICE, APP_STATE_MQ_CHANNEL,
 )
 
 
@@ -52,10 +52,16 @@ async def configure_aiohttp_app(
 
         app = create_aiohttp_app()
 
+        # Reuse the connection of the P2P client to avoid opening two connections
+        mq_conn = p2p_client.mq_client.connection
+        # Channels are long-lived, so we create one at startup. Otherwise, we end up hitting
+        # the channel limit if we create a channel for each operation.
+        mq_channel = await mq_conn.channel()
+
         app[APP_STATE_CONFIG] = config
         app[APP_STATE_P2P_CLIENT] = p2p_client
-        # Reuse the connection of the P2P client to avoid opening two connections
-        app[APP_STATE_MQ_CONN] = p2p_client.mq_client.connection
+        app[APP_STATE_MQ_CONN] = mq_conn
+        app[APP_STATE_MQ_CHANNEL] = mq_channel
         app[APP_STATE_NODE_CACHE] = node_cache
         app[APP_STATE_STORAGE_SERVICE] = storage_service
         app[APP_STATE_SESSION_FACTORY] = session_factory

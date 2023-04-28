@@ -24,6 +24,7 @@ from aleph.web.controllers.app_state_getters import (
     get_ipfs_service_from_request,
     get_p2p_client_from_request,
     get_mq_conn_from_request,
+    get_mq_channel_from_request,
 )
 from aleph.web.controllers.utils import mq_make_aleph_message_topic_queue
 
@@ -65,16 +66,22 @@ def _validate_request_data(config: Config, request_data: Dict) -> None:
     # Only accept publishing on the message topic.
     message_topic = config.aleph.queue_topic.value
     if topic != message_topic:
-        raise web.HTTPForbidden(reason=f"Unauthorized P2P topic: {topic}. Use {message_topic}.")
+        raise web.HTTPForbidden(
+            reason=f"Unauthorized P2P topic: {topic}. Use {message_topic}."
+        )
 
     data = request_data.get("data")
     if not isinstance(data, str):
-        raise web.HTTPUnprocessableEntity(reason="'data': expected a serialized JSON string.")
+        raise web.HTTPUnprocessableEntity(
+            reason="'data': expected a serialized JSON string."
+        )
 
     try:
         message_dict = json.loads(cast(str, request_data.get("data")))
     except ValueError:
-        raise web.HTTPUnprocessableEntity(reason="'data': must be deserializable as JSON.")
+        raise web.HTTPUnprocessableEntity(
+            reason="'data': must be deserializable as JSON."
+        )
 
     _validate_message_dict(message_dict)
 
@@ -187,9 +194,11 @@ async def pub_message(request: web.Request):
     config = get_config_from_request(request)
 
     if request_data.sync:
-        mq_conn = get_mq_conn_from_request(request)
+        mq_channel = get_mq_channel_from_request(request)
         mq_queue = await mq_make_aleph_message_topic_queue(
-            mq_conn=mq_conn, config=config, routing_key=f"*.{pending_message.item_hash}"
+            channel=mq_channel,
+            config=config,
+            routing_key=f"*.{pending_message.item_hash}",
         )
     else:
         mq_queue = None
