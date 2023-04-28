@@ -31,7 +31,11 @@ from aleph.schemas.api.messages import (
 from aleph.types.db_session import DbSessionFactory, DbSession
 from aleph.types.message_status import MessageStatus
 from aleph.types.sort_order import SortOrder, SortBy
-from aleph.web.controllers.app_state_getters import get_session_factory_from_request
+from aleph.web.controllers.app_state_getters import (
+    get_session_factory_from_request,
+    get_mq_channel_from_request,
+    get_config_from_request,
+)
 from aleph.web.controllers.utils import (
     DEFAULT_MESSAGES_PER_PAGE,
     DEFAULT_PAGE,
@@ -229,29 +233,16 @@ async def view_messages_list(request: web.Request) -> web.Response:
         )
 
 
-async def declare_mq_queue(
-    mq_conn: aio_pika.abc.AbstractConnection, config: Config
-) -> aio_pika.abc.AbstractQueue:
-    channel = await mq_conn.channel()
-    mq_message_exchange = await channel.declare_exchange(
-        name=config.rabbitmq.message_exchange.value,
-        type=aio_pika.ExchangeType.TOPIC,
-        auto_delete=False,
-    )
-    mq_queue = await channel.declare_queue(auto_delete=True)
-    await mq_queue.bind(mq_message_exchange, routing_key="processed.*")
-    return mq_queue
-
-
-async def messages_ws(request: web.Request):
+async def messages_ws(request: web.Request) -> web.WebSocketResponse:
     ws = web.WebSocketResponse()
     await ws.prepare(request)
 
-    mq_conn: aio_pika.abc.AbstractConnection = request.app["mq_conn"]
-    session_factory: DbSessionFactory = request.app["session_factory"]
-    config = request.app["config"]
+    mq_channel: aio_pika.abc.AbstractChannel = get_mq_channel_from_request(request)
+    session_factory: DbSessionFactory = get_session_factory_from_request(request)
+    config = get_config_from_request(request)
+
     mq_queue = await mq_make_aleph_message_topic_queue(
-        mq_conn=mq_conn, config=config, routing_key="processed.*"
+        channel=mq_channel, config=config, routing_key="processed.*"
     )
 
     query_params = WsMessageQueryParams.parse_obj(request.query)

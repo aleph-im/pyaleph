@@ -143,11 +143,10 @@ def cond_output(request, context, template):
 
 
 async def mq_make_aleph_message_topic_queue(
-    mq_conn: aio_pika.abc.AbstractConnection,
+    channel: aio_pika.abc.AbstractChannel,
     config: Config,
     routing_key: Optional[str] = None,
 ) -> aio_pika.abc.AbstractQueue:
-    channel = await mq_conn.channel()
     mq_message_exchange = await channel.declare_exchange(
         name=config.rabbitmq.message_exchange.value,
         type=aio_pika.ExchangeType.TOPIC,
