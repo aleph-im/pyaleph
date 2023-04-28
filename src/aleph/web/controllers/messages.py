@@ -264,10 +264,12 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
     try:
         async with mq_queue.iterator() as queue_iter:
             async for mq_message in queue_iter:
+                # Always acknowledge the message
+                await mq_message.ack()
+
                 if ws.closed:
                     break
 
-                await mq_message.ack()
                 item_hash = aleph_json.loads(mq_message.body)["item_hash"]
                 # A bastardized way to apply the filters on the message as well.
                 # TODO: put the filter key/values in the RabbitMQ message?
