@@ -262,10 +262,8 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
                 await ws.send_str(format_message(message).json())
 
     try:
-        async with mq_queue.iterator() as queue_iter:
+        async with mq_queue.iterator(no_ack=True) as queue_iter:
             async for mq_message in queue_iter:
-                # Always acknowledge the message
-                await mq_message.ack()
 
                 if ws.closed:
                     break
