@@ -330,7 +330,6 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
 
         # Always delete the queue, auto-delete queues are only deleted once the channel is closed
         # and that's not meant to happen for the API.
-        # await mq_queue.purge(no_wait=True)
         await mq_queue.delete(if_unused=False, if_empty=False)
 
     return ws
