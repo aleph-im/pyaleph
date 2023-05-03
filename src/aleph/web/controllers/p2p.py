@@ -142,21 +142,25 @@ async def pub_json(request: web.Request):
 
 
 async def _mq_read_one_message(
-    queue: aio_pika.abc.AbstractQueue, timeout: float
+    mq_queue: aio_pika.abc.AbstractQueue, timeout: float
 ) -> Optional[aio_pika.abc.AbstractIncomingMessage]:
     """
-    Believe it or not, this is the only way I found to
-    :return:
+    Consume one element from a message queue and then return.
     """
+
+    queue: asyncio.Queue = asyncio.Queue()
+
+    async def _process_message(message: aio_pika.abc.AbstractMessage):
+        await queue.put(message)
+
+    consumer_tag = await mq_queue.consume(_process_message, no_ack=True)
+
     try:
-        async with queue.iterator(timeout=timeout, no_ack=True) as queue_iter:
-            async for message in queue_iter:
-                return message
-
+        return await asyncio.wait_for(queue.get(), timeout)
     except asyncio.TimeoutError:
-        pass
-
-    return None
+        return None
+    finally:
+        await mq_queue.cancel(consumer_tag)
 
 
 def _processing_status_to_http_status(status: MessageProcessingStatus) -> int:
