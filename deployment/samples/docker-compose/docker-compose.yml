@@ -84,7 +84,7 @@ services:
 
   rabbitmq:
     restart: always
-    image: rabbitmq:3.10.7-management
+    image: rabbitmq:3.11.15-management
     networks:
       - pyaleph
     environment:
