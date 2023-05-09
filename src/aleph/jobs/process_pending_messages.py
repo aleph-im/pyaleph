@@ -29,10 +29,9 @@ from aleph.types.db_session import DbSessionFactory
 from .job_utils import (
     prepare_loop,
     MessageJob,
-    MessageProcessingResult,
-    ProcessedMessage,
 )
 from ..services.cache.node_cache import NodeCache
+from ..types.message_processing_result import MessageProcessingResult
 
 LOGGER = getLogger(__name__)
 
@@ -99,11 +98,12 @@ class PendingMessageProcessor(MessageJob):
                     break
 
                 try:
-                    message = await self.message_handler.process(
-                        session=session, pending_message=pending_message
+                    result: MessageProcessingResult = (
+                        await self.message_handler.process(
+                            session=session, pending_message=pending_message
+                        )
                     )
                     session.commit()
-                    result: MessageProcessingResult = ProcessedMessage(message)
 
                 except Exception as e:
                     session.rollback()

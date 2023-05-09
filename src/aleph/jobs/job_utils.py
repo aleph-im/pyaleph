@@ -1,7 +1,7 @@
 import asyncio
 import datetime as dt
 import logging
-from typing import Dict, Union, Protocol
+from typing import Dict, Union
 from typing import Tuple
 
 from configmanager import Config
@@ -10,71 +10,19 @@ from sqlalchemy import update
 import aleph.config
 from aleph.db.accessors.messages import reject_existing_pending_message
 from aleph.db.accessors.pending_messages import set_next_retry
-from aleph.db.models import PendingMessageDb, MessageDb
+from aleph.db.models import PendingMessageDb
 from aleph.handlers.message_handler import MessageHandler
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.message_processing_result import RejectedMessage, WillRetryMessage
 from aleph.types.message_status import (
     ErrorCode,
     RetryMessageException,
     FileNotFoundException,
     InvalidMessageException,
-    MessageProcessingStatus,
 )
 
 LOGGER = logging.getLogger(__name__)
-
-
-class MessageProcessingResult(Protocol):
-    status: MessageProcessingStatus
-
-    @property
-    def item_hash(self) -> str:
-        pass
-
-
-class ProcessedMessage(MessageProcessingResult):
-    def __init__(self, message: MessageDb, is_confirmation: bool = False):
-        self.message = message
-        self.status = (
-            MessageProcessingStatus.PROCESSED_CONFIRMATION
-            if is_confirmation
-            else MessageProcessingStatus.PROCESSED_NEW_MESSAGE
-        )
-
-    @property
-    def item_hash(self) -> str:
-        return self.message.item_hash
-
-
-class FailedMessage(MessageProcessingResult):
-    status = MessageProcessingStatus.FAILED_WILL_RETRY
-
-    def __init__(
-        self, pending_message: PendingMessageDb, error_code: ErrorCode, will_retry: bool
-    ):
-        self.pending_message = pending_message
-        self.error_code = error_code
-
-        self.status = (
-            MessageProcessingStatus.FAILED_WILL_RETRY
-            if will_retry
-            else MessageProcessingStatus.FAILED_REJECTED
-        )
-
-    @property
-    def item_hash(self) -> str:
-        return self.pending_message.item_hash
-
-
-class WillRetryMessage(FailedMessage):
-    def __init__(self, pending_message: PendingMessageDb, error_code: ErrorCode):
-        super().__init__(pending_message, error_code, will_retry=True)
-
-
-class RejectedMessage(FailedMessage):
-    def __init__(self, pending_message: PendingMessageDb, error_code: ErrorCode):
-        super().__init__(pending_message, error_code, will_retry=False)
 
 
 MAX_RETRY_INTERVAL: int = 300

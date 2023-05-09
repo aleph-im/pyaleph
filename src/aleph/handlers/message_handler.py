@@ -40,6 +40,7 @@ from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSessionFactory, DbSession
 from aleph.types.files import FileType
+from aleph.types.message_processing_result import ProcessedMessage
 from aleph.types.message_status import (
     InvalidMessageException,
     InvalidSignature,
@@ -283,7 +284,20 @@ class MessageHandler:
 
     async def process(
         self, session: DbSession, pending_message: PendingMessageDb
-    ) -> MessageDb:
+    ) -> ProcessedMessage:
+        """
+        Process a pending message.
+
+        If the message is successfully processed, returns a handled message object
+        representing the processed message and some additional metadata.
+        Throws a MessageProcessingException if the message cannot be processed.
+
+        :param session: DB session.
+        :param pending_message: Pending message to process.
+        :return: The processed message with some metadata indicating whether the message
+                 is a new one or a confirmation.
+        """
+
         existing_message = get_message_by_item_hash(
             session=session, item_hash=pending_message.item_hash
         )
@@ -293,7 +307,7 @@ class MessageHandler:
                 existing_message=existing_message,
                 pending_message=pending_message,
             )
-            return existing_message
+            return ProcessedMessage(message=existing_message, is_confirmation=True)
 
         message = await self.verify_and_fetch(
             session=session, pending_message=pending_message
@@ -305,7 +319,7 @@ class MessageHandler:
             session=session, pending_message=pending_message, message=message
         )
         await content_handler.process(session=session, messages=[message])
-        return message
+        return ProcessedMessage(message=message, is_confirmation=False)
 
     async def check_permissions(self, session: DbSession, message: MessageDb):
         content_handler = self.get_content_handler(message.type)
@@ -314,5 +328,5 @@ class MessageHandler:
     # TODO: this method is only used in tests. Consider removing it.
     async def fetch_and_process_one_message_db(self, pending_message: PendingMessageDb):
         with self.session_factory() as session:
-            await self.process(session=session, pending_message=pending_message)
+            _ = await self.process(session=session, pending_message=pending_message)
             session.commit()
