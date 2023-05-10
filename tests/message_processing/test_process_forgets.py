@@ -22,12 +22,12 @@ from aleph.handlers.content.forget import ForgetMessageHandler
 from aleph.handlers.content.post import PostMessageHandler
 from aleph.handlers.content.program import ProgramMessageHandler
 from aleph.handlers.content.store import StoreMessageHandler
-from aleph.jobs.job_utils import ProcessedMessage, RejectedMessage
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.files import FileType
+from aleph.types.message_processing_result import ProcessedMessage, RejectedMessage
 from aleph.types.message_status import MessageStatus
 from message_test_helpers import (
     process_pending_messages,
