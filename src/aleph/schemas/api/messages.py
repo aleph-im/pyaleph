@@ -37,6 +37,7 @@ class BaseMessage(GenericModel, Generic[MType, ContentType]):
     class Config:
         orm_mode = True
         json_loads = aleph_json.loads
+        json_encoders = {dt.datetime: lambda d: d.timestamp()}
 
     sender: str
     chain: Chain
@@ -55,9 +56,7 @@ class BaseMessage(GenericModel, Generic[MType, ContentType]):
 class AggregateMessage(
     BaseMessage[Literal[MessageType.aggregate], AggregateContent]  # type: ignore
 ):
-    class Config:
-        orm_mode = True
-        json_encoders = {dt.datetime: lambda d: d.timestamp()}
+    ...
 
 
 class ForgetMessage(
