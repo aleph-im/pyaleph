@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 
+import aio_pika
 import sentry_sdk
 from aiohttp import web
 from configmanager import Config
@@ -21,7 +22,9 @@ from aleph.web.controllers.app_state_getters import (
     APP_STATE_NODE_CACHE,
     APP_STATE_P2P_CLIENT,
     APP_STATE_SESSION_FACTORY,
-    APP_STATE_STORAGE_SERVICE, APP_STATE_MQ_CHANNEL, APP_STATE_MQ_WS_CHANNEL,
+    APP_STATE_MQ_WS_CHANNEL,
+    APP_STATE_STORAGE_SERVICE,
+    APP_STATE_MQ_CHANNEL,
 )
 
 
@@ -52,9 +55,16 @@ async def configure_aiohttp_app(
 
         app = create_aiohttp_app()
 
-        # Reuse the connection of the P2P client to avoid opening two connections
-        mq_conn = p2p_client.mq_client.connection
-        # Channels are long-lived, so we create one at startup. Otherwise, we end up hitting
+        mq_conn = await aio_pika.connect_robust(
+            host=config.p2p.mq_host.value,
+            port=config.rabbitmq.port.value,
+            login=config.rabbitmq.username.value,
+            password=config.rabbitmq.password.value,
+            # Test to see if some long sync operations (ex: DB access) are responsible for closing
+            # channels unexpectedly.
+            heartbeat=300,
+        )
+        # Channels are long-lived, create one at startup. Otherwise, we end up hitting
         # the channel limit if we create a channel for each operation.
         mq_channel = await mq_conn.channel()
         mq_ws_channel = await mq_conn.channel()
@@ -87,5 +97,4 @@ async def create_app() -> web.Application:
 
 
 if __name__ == "__main__":
-    import asyncio
     web.run_app(create_app(), host="localhost", port=8000)
