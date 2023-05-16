@@ -34,7 +34,7 @@ from aleph.types.sort_order import SortOrder, SortBy
 from aleph.web.controllers.app_state_getters import (
     get_session_factory_from_request,
     get_mq_channel_from_request,
-    get_config_from_request,
+    get_config_from_request, get_mq_ws_channel_from_request,
 )
 from aleph.web.controllers.utils import (
     DEFAULT_MESSAGES_PER_PAGE,
@@ -301,7 +301,7 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
 
     config = get_config_from_request(request)
     session_factory = get_session_factory_from_request(request)
-    mq_channel = get_mq_channel_from_request(request)
+    mq_channel = get_mq_ws_channel_from_request(request)
 
     try:
         query_params = WsMessageQueryParams.parse_obj(request.query)

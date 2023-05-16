@@ -19,6 +19,10 @@ from aleph.types.db_session import DbSessionFactory
 APP_STATE_CONFIG = "config"
 APP_STATE_MQ_CONN = "mq_conn"
 APP_STATE_MQ_CHANNEL = "mq_channel"
+# RabbitMQ channel dedicated to websocket operations.
+# A yet to be understood issue causes the websocket channel to close unexpectedly.
+# We use a dedicated channel to avoid propagation of the issue to other endpoints.
+APP_STATE_MQ_WS_CHANNEL = "mq_ws_channel"
 APP_STATE_NODE_CACHE = "node_cache"
 APP_STATE_P2P_CLIENT = "p2p_client"
 APP_STATE_SESSION_FACTORY = "session_factory"
@@ -48,6 +52,10 @@ def get_mq_conn_from_request(request: web.Request) -> aio_pika.abc.AbstractConne
 
 def get_mq_channel_from_request(request: web.Request) -> aio_pika.abc.AbstractChannel:
     return cast(aio_pika.abc.AbstractChannel, request.app[APP_STATE_MQ_CHANNEL])
+
+
+def get_mq_ws_channel_from_request(request: web.Request) -> aio_pika.abc.AbstractChannel:
+    return cast(aio_pika.abc.AbstractChannel, request.app[APP_STATE_MQ_WS_CHANNEL])
 
 
 def get_node_cache_from_request(request: web.Request) -> NodeCache:
