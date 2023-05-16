@@ -3,7 +3,7 @@ Global objects used by API endpoints are stored in the aiohttp app object.
 This module provides an abstraction layer over the dictionary keys used to
 address these objects.
 """
-
+import logging
 from typing import Optional, cast, TypeVar
 
 import aio_pika.abc
@@ -50,12 +50,43 @@ def get_mq_conn_from_request(request: web.Request) -> aio_pika.abc.AbstractConne
     return cast(aio_pika.abc.AbstractConnection, request.app[APP_STATE_MQ_CONN])
 
 
-def get_mq_channel_from_request(request: web.Request) -> aio_pika.abc.AbstractChannel:
-    return cast(aio_pika.abc.AbstractChannel, request.app[APP_STATE_MQ_CHANNEL])
+async def _get_open_channel(
+    request: web.Request, channel_name: str, logger: logging.Logger
+) -> aio_pika.abc.AbstractChannel:
+    channel = cast(aio_pika.abc.AbstractChannel, request.app[channel_name])
+    if channel.is_closed:
+        # This should not happen, but does happen in practice because of RabbitMQ
+        # RPC timeouts. We need to figure out where this timeout comes from,
+        # but reopening the channel is mandatory to keep the endpoints using the MQ
+        # functional.
+        logger.error("%s channel is closed, reopening it", channel_name)
+        await channel.reopen()
+
+    return channel
 
 
-def get_mq_ws_channel_from_request(request: web.Request) -> aio_pika.abc.AbstractChannel:
-    return cast(aio_pika.abc.AbstractChannel, request.app[APP_STATE_MQ_WS_CHANNEL])
+async def get_mq_channel_from_request(
+    request: web.Request, logger: logging.Logger
+) -> aio_pika.abc.AbstractChannel:
+    """
+    Gets the MQ channel from the app state and reopens it if needed.
+    """
+
+    return await _get_open_channel(
+        request=request, channel_name=APP_STATE_MQ_CHANNEL, logger=logger
+    )
+
+
+async def get_mq_ws_channel_from_request(
+    request: web.Request, logger: logging.Logger
+) -> aio_pika.abc.AbstractChannel:
+    """
+    Gets the websocket MQ channel from the app state and reopens it if needed.
+    """
+
+    return await _get_open_channel(
+        request=request, channel_name=APP_STATE_MQ_WS_CHANNEL, logger=logger
+    )
 
 
 def get_node_cache_from_request(request: web.Request) -> NodeCache:

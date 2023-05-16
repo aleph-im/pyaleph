@@ -197,7 +197,7 @@ async def pub_message(request: web.Request):
     config = get_config_from_request(request)
 
     if request_data.sync:
-        mq_channel = get_mq_channel_from_request(request)
+        mq_channel = await get_mq_channel_from_request(request=request, logger=LOGGER)
         mq_queue = await mq_make_aleph_message_topic_queue(
             channel=mq_channel,
             config=config,

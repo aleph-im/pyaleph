@@ -301,7 +301,7 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
 
     config = get_config_from_request(request)
     session_factory = get_session_factory_from_request(request)
-    mq_channel = get_mq_ws_channel_from_request(request)
+    mq_channel = await get_mq_ws_channel_from_request(request=request, logger=LOGGER)
 
     try:
         query_params = WsMessageQueryParams.parse_obj(request.query)
