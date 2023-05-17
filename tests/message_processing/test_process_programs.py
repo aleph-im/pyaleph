@@ -6,13 +6,11 @@ from typing import List
 import pytest
 import pytz
 from aleph_message.models import ItemType, Chain, MessageType
-from aleph_message.models.program import (
+from aleph_message.models.execution.program import (
     MachineType,
-    VolumePersistence,
     ProgramContent,
-    ImmutableVolume,
 )
-from configmanager import Config
+from aleph_message.models.execution.volume import ImmutableVolume, VolumePersistence
 from more_itertools import one
 from sqlalchemy import select
 
@@ -21,11 +19,11 @@ from aleph.db.accessors.files import (
     upsert_file_tag,
 )
 from aleph.db.accessors.messages import get_message_status, get_rejected_message
-from aleph.db.accessors.programs import get_program
+from aleph.db.accessors.vms import get_program
 from aleph.db.models import (
     PendingMessageDb,
     MessageStatusDb,
-    ProgramDb,
+    VmBaseDb,
     ImmutableVolumeDb,
     EphemeralVolumeDb,
     PersistentVolumeDb,
@@ -175,7 +173,7 @@ async def test_process_program(
         assert program is not None
 
         assert program.owner == fixture_program_message.sender
-        assert program.type == MachineType.vm_function
+        assert program.program_type == MachineType.vm_function
         assert not program.allow_amend
         assert program.replaces is None
         assert program.http_trigger
@@ -242,7 +240,7 @@ async def test_program_with_subscriptions(
     content_dict = json.loads(program_message.item_content)
 
     with session_factory() as session:
-        program: ProgramDb = session.execute(select(ProgramDb)).scalar_one()
+        program: VmBaseDb = session.execute(select(VmBaseDb)).scalar_one()
         message_triggers = program.message_triggers
         assert message_triggers
         assert len(message_triggers) == 1
@@ -279,7 +277,7 @@ async def test_process_program_missing_volumes(
 
         rejected_message = get_rejected_message(session=session, item_hash=program_hash)
         assert rejected_message is not None
-        assert rejected_message.error_code == ErrorCode.PROGRAM_VOLUME_NOT_FOUND
+        assert rejected_message.error_code == ErrorCode.VM_VOLUME_NOT_FOUND
 
         content = ProgramContent.parse_raw(program_message.item_content)
         volume_refs = set(volume.ref for volume in get_volumes_with_ref(content))

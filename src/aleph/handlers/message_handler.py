@@ -33,7 +33,7 @@ from aleph.handlers.content.aggregate import AggregateMessageHandler
 from aleph.handlers.content.content_handler import ContentHandler
 from aleph.handlers.content.forget import ForgetMessageHandler
 from aleph.handlers.content.post import PostMessageHandler
-from aleph.handlers.content.program import ProgramMessageHandler
+from aleph.handlers.content.vm import VmMessageHandler
 from aleph.handlers.content.store import StoreMessageHandler
 from aleph.schemas.pending_messages import parse_message
 from aleph.storage import StorageService
@@ -66,13 +66,16 @@ class MessageHandler:
         self.chain_service = chain_service
         self.storage_service = storage_service
 
+        vm_handler = VmMessageHandler()
+
         self.content_handlers = {
             MessageType.aggregate: AggregateMessageHandler(),
+            MessageType.instance: vm_handler,
             MessageType.post: PostMessageHandler(
                 balances_addresses=config.aleph.balances.addresses.value,
                 balances_post_type=config.aleph.balances.post_type.value,
             ),
-            MessageType.program: ProgramMessageHandler(),
+            MessageType.program: vm_handler,
             MessageType.store: StoreMessageHandler(storage_service=storage_service),
         }
 

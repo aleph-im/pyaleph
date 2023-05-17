@@ -20,7 +20,7 @@ from aleph.db.models import (
 from aleph.handlers.content.aggregate import AggregateMessageHandler
 from aleph.handlers.content.forget import ForgetMessageHandler
 from aleph.handlers.content.post import PostMessageHandler
-from aleph.handlers.content.program import ProgramMessageHandler
+from aleph.handlers.content.vm import VmMessageHandler
 from aleph.handlers.content.store import StoreMessageHandler
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.toolkit.timestamp import timestamp_to_datetime
@@ -42,7 +42,7 @@ def forget_handler(mocker) -> ForgetMessageHandler:
             balances_addresses=["nope"],
             balances_post_type="no-balances-in-tests",
         ),
-        MessageType.program: ProgramMessageHandler(),
+        MessageType.program: VmMessageHandler(),
         MessageType.store: StoreMessageHandler(storage_service=mocker.AsyncMock()),
     }
     return ForgetMessageHandler(content_handlers=content_handlers)

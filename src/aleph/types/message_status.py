@@ -36,10 +36,10 @@ class ErrorCode(IntEnum):
     POST_AMEND_AMEND = 102
     STORE_REF_NOT_FOUND = 200
     STORE_UPDATE_UPDATE = 201
-    PROGRAM_REF_NOT_FOUND = 300
-    PROGRAM_VOLUME_NOT_FOUND = 301
-    PROGRAM_AMEND_NOT_ALLOWED = 302
-    PROGRAM_UPDATE_UPDATE = 303
+    VM_REF_NOT_FOUND = 300
+    VM_VOLUME_NOT_FOUND = 301
+    VM_AMEND_NOT_ALLOWED = 302
+    VM_UPDATE_UPDATE = 303
     FORGET_NO_TARGET = 500
     FORGET_TARGET_NOT_FOUND = 501
     FORGET_FORGET = 502
@@ -194,7 +194,7 @@ class ProgramRefNotFound(RetryMessageException):
     The original program specified in the `ref` field could not be found.
     """
 
-    error_code = ErrorCode.PROGRAM_REF_NOT_FOUND
+    error_code = ErrorCode.VM_REF_NOT_FOUND
 
 
 class ProgramVolumeNotFound(RetryMessageException):
@@ -202,7 +202,7 @@ class ProgramVolumeNotFound(RetryMessageException):
     One or more volume files could not be found.
     """
 
-    error_code = ErrorCode.PROGRAM_VOLUME_NOT_FOUND
+    error_code = ErrorCode.VM_VOLUME_NOT_FOUND
 
 
 class ProgramUpdateNotAllowed(InvalidMessageException):
@@ -211,7 +211,7 @@ class ProgramUpdateNotAllowed(InvalidMessageException):
     is set to False.
     """
 
-    error_code = ErrorCode.PROGRAM_AMEND_NOT_ALLOWED
+    error_code = ErrorCode.VM_AMEND_NOT_ALLOWED
 
 
 class ProgramCannotUpdateUpdate(InvalidMessageException):
@@ -220,7 +220,7 @@ class ProgramCannotUpdateUpdate(InvalidMessageException):
     itself. Update trees are not supported.
     """
 
-    error_code = ErrorCode.PROGRAM_UPDATE_UPDATE
+    error_code = ErrorCode.VM_UPDATE_UPDATE
 
 
 class ForgetTargetNotFound(RetryMessageException):

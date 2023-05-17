@@ -10,7 +10,7 @@ from aleph_message.models import (
     ForgetContent,
     PostContent,
     ProgramContent,
-    StoreContent,
+    StoreContent, InstanceContent,
 )
 from pydantic import ValidationError
 from pydantic.error_wrappers import ErrorWrapper
@@ -38,6 +38,7 @@ from .pending_messages import PendingMessageDb
 CONTENT_TYPE_MAP: Dict[MessageType, Type[BaseContent]] = {
     MessageType.aggregate: AggregateContent,
     MessageType.forget: ForgetContent,
+    MessageType.instance: InstanceContent,
     MessageType.post: PostContent,
     MessageType.program: ProgramContent,
     MessageType.store: StoreContent,
