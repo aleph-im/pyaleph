@@ -40,6 +40,7 @@ class ErrorCode(IntEnum):
     VM_VOLUME_NOT_FOUND = 301
     VM_AMEND_NOT_ALLOWED = 302
     VM_UPDATE_UPDATE = 303
+    VM_VOLUME_TOO_SMALL = 304
     FORGET_NO_TARGET = 500
     FORGET_TARGET_NOT_FOUND = 501
     FORGET_FORGET = 502
@@ -189,7 +190,7 @@ class StoreCannotUpdateStoreWithRef(InvalidMessageException):
     error_code = ErrorCode.STORE_UPDATE_UPDATE
 
 
-class ProgramRefNotFound(RetryMessageException):
+class VmRefNotFound(RetryMessageException):
     """
     The original program specified in the `ref` field could not be found.
     """
@@ -197,7 +198,7 @@ class ProgramRefNotFound(RetryMessageException):
     error_code = ErrorCode.VM_REF_NOT_FOUND
 
 
-class ProgramVolumeNotFound(RetryMessageException):
+class VmVolumeNotFound(RetryMessageException):
     """
     One or more volume files could not be found.
     """
@@ -205,7 +206,7 @@ class ProgramVolumeNotFound(RetryMessageException):
     error_code = ErrorCode.VM_VOLUME_NOT_FOUND
 
 
-class ProgramUpdateNotAllowed(InvalidMessageException):
+class VmUpdateNotAllowed(InvalidMessageException):
     """
     The message attempts to amend an immutable program, i.e. for which allow_amend
     is set to False.
@@ -214,13 +215,49 @@ class ProgramUpdateNotAllowed(InvalidMessageException):
     error_code = ErrorCode.VM_AMEND_NOT_ALLOWED
 
 
-class ProgramCannotUpdateUpdate(InvalidMessageException):
+class VmCannotUpdateUpdate(InvalidMessageException):
     """
     The program hash in the `replaces` field has a value for the `replaces` field
     itself. Update trees are not supported.
     """
 
     error_code = ErrorCode.VM_UPDATE_UPDATE
+
+
+class VmVolumeTooSmall(InvalidMessageException):
+    """
+    A volume with a parent volume has a size inferior to the size of the parent.
+    Ex: attempting to use a 4GB Ubuntu rootfs to a 2GB volume.
+    """
+
+    error_code = ErrorCode.VM_VOLUME_TOO_SMALL
+
+    def __init__(
+        self,
+        volume_name: str,
+        volume_size: int,
+        parent_ref: str,
+        parent_file: str,
+        parent_size: int,
+    ):
+        self.volume_name = volume_name
+        self.volume_size = volume_size
+        self.parent_ref = parent_ref
+        self.parent_file = parent_file
+        self.parent_size = parent_size
+
+    def details(self) -> Optional[Dict[str, Any]]:
+        return {
+            "errors": [
+                {
+                    "volume_name": self.volume_name,
+                    "parent_ref": self.parent_ref,
+                    "parent_file": self.parent_file,
+                    "parent_size": self.parent_size,
+                    "volume_size": self.volume_size,
+                }
+            ]
+        }
 
 
 class ForgetTargetNotFound(RetryMessageException):

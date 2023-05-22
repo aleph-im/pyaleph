@@ -35,12 +35,12 @@ class RootfsVolumeDb(Base):
     instance_hash: str = Column(
         ForeignKey("vms.item_hash", ondelete="CASCADE"), primary_key=True
     )
-    parent: Optional[str] = Column(String, nullable=True)
+    parent_ref: str = Column(String, nullable=False)
+    parent_use_latest: bool = Column(Boolean, nullable=False)
     size_mib: int = Column(Integer, nullable=False)
     persistence: VolumePersistence = Column(
         ChoiceType(VolumePersistence), nullable=False
     )
-    comment: Optional[str] = Column(String, nullable=True)
 
     instance: "VmInstanceDb" = relationship("VmInstanceDb", back_populates="rootfs")
 
@@ -103,7 +103,8 @@ class EphemeralVolumeDb(MachineVolumeBaseDb):
 
 
 class PersistentVolumeDb(MachineVolumeBaseDb):
-    parent: Optional[str] = Column(String, nullable=True)
+    parent_ref: Optional[str] = Column(String, nullable=True)
+    parent_use_latest: Optional[bool] = Column(Boolean, nullable=True)
     persistence: VolumePersistence = Column(
         ChoiceType(VolumePersistence), nullable=True
     )

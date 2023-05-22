@@ -56,7 +56,10 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessag
         "resources": {"vcpus": 1, "memory": 128, "seconds": 30},
         "requirements": {"cpu": {"architecture": "x86_64"}},
         "rootfs": {
-            "parent": "549ec451d9b099cad112d4aaa2c00ac40fb6729a92ff252ff22eef0b5c3cb613",
+            "parent": {
+                "ref": "549ec451d9b099cad112d4aaa2c00ac40fb6729a92ff252ff22eef0b5c3cb613",
+                "use_latest": True,
+            },
             "persistence": "host",
             "name": "test-rootfs",
             "size_mib": 20000,
@@ -167,12 +170,6 @@ class Volume(Protocol):
     use_latest: bool
 
 
-class Rootfs(Volume):
-    def __init__(self, parent: str):
-        self.ref = parent
-        self.use_latest = True
-
-
 def get_volume_refs(content: ExecutableContent) -> List[Volume]:
     volumes = []
 
@@ -187,7 +184,7 @@ def get_volume_refs(content: ExecutableContent) -> List[Volume]:
 
     elif isinstance(content, InstanceContent):
         if parent := content.rootfs.parent:
-            volumes.append(Rootfs(parent))
+            volumes.append(parent)
 
     return volumes
 
@@ -275,10 +272,11 @@ async def test_process_instance(
         assert instance.variables == content_dict["variables"]
 
         rootfs = instance.rootfs
-        assert rootfs.parent == content_dict["rootfs"]["parent"]
+        assert rootfs.parent_ref == content_dict["rootfs"]["parent"]["ref"]
+        assert rootfs.parent_use_latest == content_dict["rootfs"]["parent"]["use_latest"]
+        assert rootfs.parent_use_latest == content_dict["rootfs"]["parent"]["use_latest"]
         assert rootfs.size_mib == content_dict["rootfs"]["size_mib"]
         assert rootfs.persistence == content_dict["rootfs"]["persistence"]
-        assert rootfs.comment == content_dict["rootfs"].get("comment")
 
         assert len(instance.volumes) == 5
 

@@ -181,10 +181,10 @@ def upgrade() -> None:
     op.create_table(
         "instance_rootfs",
         sa.Column("instance_hash", sa.String(), nullable=False),
-        sa.Column("parent", sa.String(), nullable=True),
+        sa.Column("parent_ref", sa.String(), nullable=False),
+        sa.Column("parent_use_latest", sa.Boolean(), nullable=False),
         sa.Column("size_mib", sa.Integer(), nullable=False),
         sa.Column("persistence", sa.String(), nullable=False),
-        sa.Column("comment", sa.String(), nullable=True),
         sa.ForeignKeyConstraint(
             ["instance_hash"],
             ["vms.item_hash"],
@@ -200,8 +200,14 @@ def upgrade() -> None:
     # Recreate the cost views (some column names must change)
     recreate_cost_views()
 
-    # Add the parent column for persistent volumes
-    op.add_column("vm_machine_volumes", sa.Column("parent", sa.String(), nullable=True))
+    # Add the parent columns for persistent volumes
+    op.add_column(
+        "vm_machine_volumes", sa.Column("parent_ref", sa.String(), nullable=True)
+    )
+    op.add_column(
+        "vm_machine_volumes",
+        sa.Column("parent_use_latest", sa.Boolean(), nullable=True),
+    )
 
     # Add the instance columns to the vms (ex programs) table
     op.add_column(
@@ -224,6 +230,9 @@ def upgrade() -> None:
     )
     op.execute(
         "UPDATE error_codes SET description = 'VM update not targeting the original version of the VM' WHERE code = 303"
+    )
+    op.execute(
+        "INSERT INTO error_codes(code, description) VALUES (304, 'VM volume parent is larger than the child volume')"
     )
 
     # ### end Alembic commands ###
@@ -421,5 +430,6 @@ def downgrade() -> None:
         "UPDATE error_codes "
         "SET description = 'Program update not targeting the original version of the program' WHERE code = 303"
     )
+    op.execute("DELETE FROM error_codes WHERE code = 304")
 
     # ### end Alembic commands ###

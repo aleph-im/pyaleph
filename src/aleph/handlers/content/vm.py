@@ -1,5 +1,5 @@
 import logging
-from typing import List, Set, overload
+from typing import List, Set, overload, Protocol, Optional
 
 from aleph_message.models import ProgramContent, ExecutableContent, InstanceContent
 from aleph_message.models.execution.volume import (
@@ -7,9 +7,15 @@ from aleph_message.models.execution.volume import (
     ImmutableVolume,
     EphemeralVolume,
     PersistentVolume,
+    ParentVolume,
 )
 
-from aleph.db.accessors.files import find_file_tags, find_file_pins
+from aleph.db.accessors.files import (
+    find_file_tags,
+    find_file_pins,
+    get_file_tag,
+    get_message_file_pin,
+)
 from aleph.db.accessors.vms import (
     delete_vm,
     get_program,
@@ -32,6 +38,7 @@ from aleph.db.models import (
     ProgramDb,
     RootfsVolumeDb,
     VmBaseDb,
+    StoredFileDb,
 )
 from aleph.handlers.content.content_handler import ContentHandler
 from aleph.toolkit.timestamp import timestamp_to_datetime
@@ -40,10 +47,11 @@ from aleph.types.files import FileTag
 from aleph.types.message_status import (
     InternalError,
     InvalidMessageFormat,
-    ProgramRefNotFound,
-    ProgramVolumeNotFound,
-    ProgramUpdateNotAllowed,
-    ProgramCannotUpdateUpdate,
+    VmRefNotFound,
+    VmVolumeNotFound,
+    VmUpdateNotAllowed,
+    VmCannotUpdateUpdate,
+    VmVolumeTooSmall,
 )
 from aleph.types.vms import VmVersion
 
@@ -124,12 +132,19 @@ def map_volume(volume: AbstractVolume) -> MachineVolumeBaseDb:
     elif isinstance(volume, EphemeralVolume):
         return EphemeralVolumeDb(comment=comment, mount=mount, size_mib=volume.size_mib)
     elif isinstance(volume, PersistentVolume):
+        if parent := volume.parent:
+            parent_ref, parent_use_latest = parent.ref, parent.use_latest
+        else:
+            parent_ref, parent_use_latest = None, None
+
         return PersistentVolumeDb(
             comment=comment,
             mount=mount,
             persistence=volume.persistence,
             name=volume.name,
             size_mib=volume.size_mib,
+            parent_ref=parent_ref,
+            parent_use_latest=parent_use_latest,
         )
     else:
         raise InternalError(f"Unsupported volume type: {volume.__class__.__name__}")
@@ -174,11 +189,12 @@ def vm_message_to_db(message: MessageDb) -> VmBaseDb:
             vm.export_volume = ExportVolumeDb(encoding=content.export.encoding)
 
     elif isinstance(content, InstanceContent):
+        parent = content.rootfs.parent
         vm.rootfs = RootfsVolumeDb(
-            parent=content.rootfs.parent,
+            parent_ref=parent.ref,
+            parent_use_latest=parent.use_latest,
             size_mib=content.rootfs.size_mib,
             persistence=content.rootfs.persistence,
-            comment=content.rootfs.comment,
         )
         vm.cloud_config = content.cloud_config
 
@@ -207,17 +223,15 @@ def find_missing_volumes(
             add_ref_to_check(content.data)
 
     elif isinstance(content, InstanceContent):
-        if rootfs_parent := content.rootfs.parent:
-            tags_to_check.add(FileTag(rootfs_parent))
+        add_ref_to_check(content.rootfs.parent)
 
     for volume in content.volumes:
         if isinstance(volume, ImmutableVolume):
             add_ref_to_check(volume)
 
         if isinstance(volume, PersistentVolume):
-            # Assume `use_latest` for persistent volume parents
             if parent := volume.parent:
-                tags_to_check.add(FileTag(parent))
+                add_ref_to_check(parent)
 
     # For each volume, if use_latest is set check the tags and otherwise check
     # the file pins.
@@ -226,6 +240,53 @@ def find_missing_volumes(
     file_pins_db = set(find_file_pins(session=session, item_hashes=pins_to_check))
 
     return (pins_to_check - file_pins_db) | (tags_to_check - file_tags_db)
+
+
+def check_parent_volumes_size_requirements(
+    session: DbSession, content: ExecutableContent
+) -> None:
+    def _get_parent_volume_file(_parent: ParentVolume) -> StoredFileDb:
+        if _parent.use_latest:
+            file_tag = get_file_tag(session=session, tag=_parent.ref)
+            if file_tag is None:
+                raise InternalError(
+                    f"Could not find latest version of parent volume {volume.parent.ref}"
+                )
+
+            return file_tag.file
+
+        file_pin = get_message_file_pin(session=session, item_hash=_parent.ref)
+        if file_pin is None:
+            raise InternalError(
+                f"Could not find original version of parent volume {volume.parent.ref}"
+            )
+
+        return file_pin.file
+
+    class HasParent(Protocol):
+        parent: ParentVolume
+        size_mib: int
+
+    volumes_with_parent: List[HasParent] = [
+        volume
+        for volume in content.volumes
+        if isinstance(volume, PersistentVolume) and volume.parent is not None
+    ]
+
+    if isinstance(content, InstanceContent):
+        volumes_with_parent.append(content.rootfs)
+
+    for volume in volumes_with_parent:
+        volume_metadata = _get_parent_volume_file(volume.parent)
+        volume_size = volume.size_mib * 1024 * 1024
+        if volume_size < volume_metadata.size:
+            raise VmVolumeTooSmall(
+                parent_size=volume_metadata.size,
+                parent_ref=volume.parent.ref,
+                parent_file=volume_metadata.hash,
+                volume_name=getattr(volume, "name", "rootfs"),
+                volume_size=volume_size,
+            )
 
 
 class VmMessageHandler(ContentHandler):
@@ -242,22 +303,25 @@ class VmMessageHandler(ContentHandler):
 
         missing_volumes = find_missing_volumes(session=session, content=content)
         if missing_volumes:
-            raise ProgramVolumeNotFound([volume for volume in missing_volumes])
+            raise VmVolumeNotFound([volume for volume in missing_volumes])
 
+        check_parent_volumes_size_requirements(session=session, content=content)
+
+        # Check dependencies if the message updates an existing instance/program
         if (ref := content.replaces) is not None:
             original_program = get_program(session=session, item_hash=ref)
             if original_program is None:
-                raise ProgramRefNotFound(ref)
+                raise VmRefNotFound(ref)
 
             if original_program.replaces is not None:
-                raise ProgramCannotUpdateUpdate()
+                raise VmCannotUpdateUpdate()
 
             is_amend_allowed = is_vm_amend_allowed(session=session, vm_hash=ref)
             if is_amend_allowed is None:
                 raise InternalError(f"Could not find current version of program {ref}")
 
             if not is_amend_allowed:
-                raise ProgramUpdateNotAllowed()
+                raise VmUpdateNotAllowed()
 
     @staticmethod
     async def process_vm_message(session: DbSession, message: MessageDb):
