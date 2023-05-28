@@ -1,5 +1,6 @@
 import datetime as dt
 import traceback
+import warnings
 from typing import Optional, Sequence, Union, Iterable, Any, Mapping, overload, Tuple
 
 from aleph_message.models import ItemHash, Chain, MessageType
@@ -52,6 +53,7 @@ def make_matching_messages_query(
     refs: Optional[Sequence[str]] = None,
     chains: Optional[Sequence[Chain]] = None,
     message_type: Optional[MessageType] = None,
+    message_types: Optional[Sequence[MessageType]] = None,
     start_date: Optional[Union[float, dt.datetime]] = None,
     end_date: Optional[Union[float, dt.datetime]] = None,
     content_hashes: Optional[Sequence[ItemHash]] = None,
@@ -87,7 +89,15 @@ def make_matching_messages_query(
         select_stmt = select_stmt.where(MessageDb.sender.in_(addresses))
     if chains:
         select_stmt = select_stmt.where(MessageDb.chain.in_(chains))
+    if message_types:
+        if len(message_types) == 1:
+            select_stmt = select_stmt.where(MessageDb.type == message_types[0])
+        else:
+            select_stmt = select_stmt.where(MessageDb.type.in_(message_types))
     if message_type:
+        warnings.warn(
+            "Warning: `msgType`/`message_type` query parameter is deprecated in favor of `msgTypes`\`message_types` and will be removed in future versions."
+        )
         select_stmt = select_stmt.where(MessageDb.type == message_type)
     if start_datetime:
         select_stmt = select_stmt.where(MessageDb.time >= start_datetime)
@@ -234,7 +244,6 @@ def refresh_address_stats_mat_view(session: DbSession) -> None:
 def get_unconfirmed_messages(
     session: DbSession, limit: int = 100, chain: Optional[Chain] = None
 ) -> Iterable[MessageDb]:
-
     if chain is None:
         select_message_confirmations = select(message_confirmations.c.item_hash).where(
             message_confirmations.c.item_hash == MessageDb.item_hash
