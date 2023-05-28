@@ -63,8 +63,6 @@ def make_matching_messages_query(
     page: int = 1,
     pagination: int = 20,
     include_confirmations: bool = False,
-    # TODO: remove once all filters are supported
-    **kwargs,
 ) -> Select:
     select_stmt = select(MessageDb)
 
@@ -82,11 +80,20 @@ def make_matching_messages_query(
     end_datetime = coerce_to_datetime(end_date)
 
     if hashes:
-        select_stmt = select_stmt.where(MessageDb.item_hash.in_(hashes))
+        if len(hashes) == 1:
+            select_stmt = select_stmt.where(MessageDb.item_hash == hashes[0])
+        else:
+            select_stmt = select_stmt.where(MessageDb.item_hash.in_(hashes))
     if addresses:
-        select_stmt = select_stmt.where(MessageDb.sender.in_(addresses))
+        if len(addresses) == 1:
+            select_stmt = select_stmt.where(MessageDb.sender == addresses[0])
+        else:
+            select_stmt = select_stmt.where(MessageDb.sender.in_(addresses))
     if chains:
-        select_stmt = select_stmt.where(MessageDb.chain.in_(chains))
+        if len(chains) == 1:
+            select_stmt = select_stmt.where(MessageDb.chain == chains[0])
+        else:
+            select_stmt = select_stmt.where(MessageDb.chain.in_(chains))
     if message_type:
         select_stmt = select_stmt.where(MessageDb.type == message_type)
     if start_datetime:
@@ -96,19 +103,32 @@ def make_matching_messages_query(
     if refs:
         select_stmt = select_stmt.where(MessageDb.content["ref"].astext.in_(refs))
     if content_hashes:
-        select_stmt = select_stmt.where(
-            MessageDb.content["item_hash"].astext.in_(content_hashes)
-        )
+        if len(content_hashes) == 1:
+            select_stmt = select_stmt.where(
+                MessageDb.content["item_hash"].astext == content_hashes[0]
+            )
+        else:
+            select_stmt = select_stmt.where(
+                MessageDb.content["item_hash"].astext.in_(content_hashes)
+            )
     if content_types:
-        select_stmt = select_stmt.where(
-            MessageDb.content["type"].astext.in_(content_types)
-        )
+        if len(content_types) == 1:
+            select_stmt = select_stmt.where(
+                MessageDb.content["type"].astext == content_types[0]
+            )
+        else:
+            select_stmt = select_stmt.where(
+                MessageDb.content["type"].astext.in_(content_types)
+            )
     if tags:
         select_stmt = select_stmt.where(
             MessageDb.content["content"]["tags"].has_any(array(tags))
         )
     if channels:
-        select_stmt = select_stmt.where(MessageDb.channel.in_(channels))
+        if len(channels) == 1:
+            select_stmt = select_stmt.where(MessageDb.channel == channels[0])
+        else:
+            select_stmt = select_stmt.where(MessageDb.channel.in_(channels))
 
     order_by_columns: Tuple  # For mypy to leave us alone until SQLA2
 
