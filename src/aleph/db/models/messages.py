@@ -10,7 +10,8 @@ from aleph_message.models import (
     ForgetContent,
     PostContent,
     ProgramContent,
-    StoreContent, InstanceContent,
+    StoreContent,
+    InstanceContent,
 )
 from pydantic import ValidationError
 from pydantic.error_wrappers import ErrorWrapper
@@ -59,7 +60,6 @@ def validate_message_content(
     message_type: MessageType,
     content_dict: Dict[str, Any],
 ) -> BaseContent:
-
     content_type = CONTENT_TYPE_MAP[message_type]
     content = content_type.parse_obj(content_dict)
     # Validate that the content time can be converted to datetime. This will
@@ -133,7 +133,6 @@ class MessageDb(Base):
         content_dict: Dict[str, Any],
         content_size: int,
     ) -> "MessageDb":
-
         content_dict = cls._coerce_content(pending_message, content_dict)
         parsed_content = validate_message_content(pending_message.type, content_dict)
 
