@@ -1,7 +1,12 @@
 from enum import Enum
 from typing import NewType
 
-ProgramVersion = NewType("ProgramVersion", str)
+VmVersion = NewType("VmVersion", str)
+
+
+class VmType(str, Enum):
+    INSTANCE = "instance"
+    PROGRAM = "program"
 
 
 class CpuArchitecture(str, Enum):

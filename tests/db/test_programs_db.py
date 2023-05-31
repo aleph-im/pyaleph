@@ -5,28 +5,29 @@ from typing import Optional
 import pytest
 import pytz
 from aleph_message.models import ItemHash
-from aleph_message.models.program import MachineType, Encoding, VolumePersistence
+from aleph_message.models.execution.program import MachineType, Encoding
+from aleph_message.models.execution.volume import VolumePersistence
 from sqlalchemy import select
 
-from aleph.db.accessors.programs import (
+from aleph.db.accessors.vms import (
     get_program,
-    is_program_amend_allowed,
-    refresh_program_version,
-    delete_program,
+    is_vm_amend_allowed,
+    refresh_vm_version,
+    delete_vm,
 )
 from aleph.db.models import (
-    ProgramDb,
+    VmBaseDb,
     CodeVolumeDb,
     RuntimeDb,
-    ProgramVersionDb,
+    VmVersionDb,
     DataVolumeDb,
     ExportVolumeDb,
     ImmutableVolumeDb,
     EphemeralVolumeDb,
-    PersistentVolumeDb,
+    PersistentVolumeDb, ProgramDb,
 )
 from aleph.types.db_session import DbSessionFactory
-from aleph.types.vms import ProgramVersion
+from aleph.types.vms import VmVersion
 
 
 @pytest.fixture
@@ -49,7 +50,7 @@ def original_program() -> ProgramDb:
     program = ProgramDb(
         item_hash=program_hash,
         owner="0xabadbabe",
-        type=MachineType.vm_function,
+        program_type=MachineType.vm_function,
         allow_amend=True,
         metadata_=None,
         variables=None,
@@ -186,19 +187,19 @@ def test_program_accessors(
         session.add(original_program)
         session.add(program_update)
         session.add(
-            ProgramVersionDb(
-                program_hash=original_program.item_hash,
+            VmVersionDb(
+                vm_hash=original_program.item_hash,
                 owner=original_program.owner,
-                current_version=ProgramVersion(program_update.item_hash),
+                current_version=VmVersion(program_update.item_hash),
                 last_updated=program_update.created,
             )
         )
         session.add(program_with_many_volumes)
         session.add(
-            ProgramVersionDb(
-                program_hash=program_with_many_volumes.item_hash,
+            VmVersionDb(
+                vm_hash=program_with_many_volumes.item_hash,
                 owner=program_with_many_volumes.owner,
-                current_version=ProgramVersion(program_with_many_volumes.item_hash),
+                current_version=VmVersion(program_with_many_volumes.item_hash),
                 last_updated=program_with_many_volumes.created,
             )
         )
@@ -225,13 +226,13 @@ def test_program_accessors(
             expected=program_with_many_volumes_db, actual=program_with_many_volumes
         )
 
-        is_amend_allowed = is_program_amend_allowed(
-            session=session, program_hash=original_program.item_hash
+        is_amend_allowed = is_vm_amend_allowed(
+            session=session, vm_hash=original_program.item_hash
         )
         assert is_amend_allowed is False
 
-        is_amend_allowed = is_program_amend_allowed(
-            session=session, program_hash=program_with_many_volumes.item_hash
+        is_amend_allowed = is_vm_amend_allowed(
+            session=session, vm_hash=program_with_many_volumes.item_hash
         )
         assert is_amend_allowed is True
 
@@ -243,11 +244,9 @@ def test_refresh_program(
 ):
     program_hash = original_program.item_hash
 
-    def get_program_version(session) -> Optional[ProgramVersionDb]:
+    def get_program_version(session) -> Optional[VmVersionDb]:
         return session.execute(
-            select(ProgramVersionDb).where(
-                ProgramVersionDb.program_hash == program_hash
-            )
+            select(VmVersionDb).where(VmVersionDb.vm_hash == program_hash)
         ).scalar_one_or_none()
 
     # Insert program version with refresh_program_version
@@ -255,7 +254,7 @@ def test_refresh_program(
         session.add(original_program)
         session.commit()
 
-        refresh_program_version(session=session, program_hash=program_hash)
+        refresh_vm_version(session=session, vm_hash=program_hash)
         session.commit()
 
         program_version_db = get_program_version(session)
@@ -268,7 +267,7 @@ def test_refresh_program(
         session.add(program_update)
         session.commit()
 
-        refresh_program_version(session=session, program_hash=program_hash)
+        refresh_vm_version(session=session, vm_hash=program_hash)
         session.commit()
 
         program_version_db = get_program_version(session)
@@ -278,10 +277,10 @@ def test_refresh_program(
 
     # Delete the update, the original should be back in program_versions
     with session_factory() as session:
-        delete_program(session=session, item_hash=program_update.item_hash)
+        delete_vm(session=session, vm_hash=program_update.item_hash)
         session.commit()
 
-        refresh_program_version(session=session, program_hash=program_hash)
+        refresh_vm_version(session=session, vm_hash=program_hash)
         session.commit()
 
         program_version_db = get_program_version(session)
@@ -291,10 +290,10 @@ def test_refresh_program(
 
     # Delete the original, no entry should be left in program_versions
     with session_factory() as session:
-        delete_program(session=session, item_hash=original_program.item_hash)
+        delete_vm(session=session, vm_hash=original_program.item_hash)
         session.commit()
 
-        refresh_program_version(session=session, program_hash=program_hash)
+        refresh_vm_version(session=session, vm_hash=program_hash)
         session.commit()
 
         program_version_db = get_program_version(session)

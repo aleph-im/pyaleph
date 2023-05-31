@@ -1,22 +1,23 @@
 import datetime as dt
 from typing import Any, Optional, Dict, List
 
-from aleph_message.models.program import MachineType, Encoding, VolumePersistence
+from aleph_message.models.execution.program import MachineType, Encoding
+from aleph_message.models.execution.volume import VolumePersistence
 from sqlalchemy import Column, String, ForeignKey, Boolean, Integer, TIMESTAMP
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship, declared_attr, Mapped
 from sqlalchemy_utils import ChoiceType
 
-from aleph.types.vms import CpuArchitecture, ProgramVersion
+from aleph.types.vms import CpuArchitecture, VmVersion, VmType
 from .base import Base
 
 
-class RootVolumeMixin:
+class ProgramVolumeMixin:
     @declared_attr
     def program_hash(cls) -> Mapped[str]:
         return Column(
             "program_hash",
-            ForeignKey("programs.item_hash", ondelete="CASCADE"),
+            ForeignKey("vms.item_hash", ondelete="CASCADE"),
             primary_key=True,
         )
 
@@ -28,21 +29,37 @@ class VolumeWithRefMixin:
     use_latest: bool = Column(Boolean, nullable=True)
 
 
-class CodeVolumeDb(Base, RootVolumeMixin, VolumeWithRefMixin):
+class RootfsVolumeDb(Base):
+    __tablename__ = "instance_rootfs"
+
+    instance_hash: str = Column(
+        ForeignKey("vms.item_hash", ondelete="CASCADE"), primary_key=True
+    )
+    parent_ref: str = Column(String, nullable=False)
+    parent_use_latest: bool = Column(Boolean, nullable=False)
+    size_mib: int = Column(Integer, nullable=False)
+    persistence: VolumePersistence = Column(
+        ChoiceType(VolumePersistence), nullable=False
+    )
+
+    instance: "VmInstanceDb" = relationship("VmInstanceDb", back_populates="rootfs")
+
+
+class CodeVolumeDb(Base, ProgramVolumeMixin, VolumeWithRefMixin):
     __tablename__ = "program_code_volumes"
 
     entrypoint: str = Column(String, nullable=False)
     program: "ProgramDb" = relationship("ProgramDb", back_populates="code_volume")
 
 
-class DataVolumeDb(Base, RootVolumeMixin, VolumeWithRefMixin):
+class DataVolumeDb(Base, ProgramVolumeMixin, VolumeWithRefMixin):
     __tablename__ = "program_data_volumes"
 
     mount: str = Column(String, nullable=False)
     program: "ProgramDb" = relationship("ProgramDb", back_populates="data_volume")
 
 
-class ExportVolumeDb(Base, RootVolumeMixin):
+class ExportVolumeDb(Base, ProgramVolumeMixin):
     __tablename__ = "program_export_volumes"
 
     program: "ProgramDb" = relationship("ProgramDb", back_populates="export_volume")
@@ -52,25 +69,25 @@ class RuntimeDb(Base, VolumeWithRefMixin):
     __tablename__ = "program_runtimes"
 
     program_hash: Mapped[str] = Column(
-        ForeignKey("programs.item_hash", ondelete="CASCADE"), primary_key=True
+        ForeignKey("vms.item_hash", ondelete="CASCADE"), primary_key=True
     )
     comment: str = Column(String, nullable=False)
     program: "ProgramDb" = relationship("ProgramDb", back_populates="runtime")
 
 
 class MachineVolumeBaseDb(Base):
-    __tablename__ = "program_machine_volumes"
+    __tablename__ = "vm_machine_volumes"
 
     id: int = Column(Integer, primary_key=True)
     type: str = Column(String, nullable=False)
-    program_hash: str = Column(
-        ForeignKey("programs.item_hash", ondelete="CASCADE"), nullable=False, index=True
+    vm_hash: str = Column(
+        ForeignKey("vms.item_hash", ondelete="CASCADE"), nullable=False, index=True
     )
     comment: Optional[str] = Column(String, nullable=True)
     mount: Optional[str] = Column(String, nullable=True)
     size_mib: int = Column(Integer, nullable=True)
 
-    program: "ProgramDb" = relationship("ProgramDb", back_populates="volumes")
+    vm: "VmBaseDb" = relationship("VmBaseDb", back_populates="volumes")
 
     __mapper_args__: Dict[str, Any] = {
         "polymorphic_on": type,
@@ -86,6 +103,8 @@ class EphemeralVolumeDb(MachineVolumeBaseDb):
 
 
 class PersistentVolumeDb(MachineVolumeBaseDb):
+    parent_ref: Optional[str] = Column(String, nullable=True)
+    parent_use_latest: Optional[bool] = Column(Boolean, nullable=True)
     persistence: VolumePersistence = Column(
         ChoiceType(VolumePersistence), nullable=True
     )
@@ -94,20 +113,19 @@ class PersistentVolumeDb(MachineVolumeBaseDb):
     __mapper_args__ = {"polymorphic_identity": "persistent"}
 
 
-class ProgramDb(Base):
-    __tablename__ = "programs"
+class VmBaseDb(Base):
+    __tablename__ = "vms"
 
     item_hash: str = Column(String, primary_key=True)
     owner: str = Column(String, nullable=False, index=True)
 
-    type: MachineType = Column(ChoiceType(MachineType), nullable=False)
+    type: VmType = Column(ChoiceType(VmType), nullable=False)
+
     allow_amend: bool = Column(Boolean, nullable=False)
     # Note: metadata is a reserved keyword for SQLAlchemy
     metadata_: Optional[Dict[str, Any]] = Column("metadata", JSONB, nullable=True)
     variables: Optional[Dict[str, Any]] = Column(JSONB, nullable=True)
-    http_trigger: bool = Column(Boolean, nullable=False)
     message_triggers: Optional[List[Dict[str, Any]]] = Column(JSONB, nullable=True)
-    persistent: bool = Column(Boolean, nullable=False)
 
     environment_reproducible: bool = Column(Boolean, nullable=False)
     environment_internet: bool = Column(Boolean, nullable=False)
@@ -128,6 +146,36 @@ class ProgramDb(Base):
     replaces: Optional[str] = Column(ForeignKey(item_hash), nullable=True)
     created: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
 
+    __mapper_args__: Dict[str, Any] = {
+        "polymorphic_on": type,
+    }
+
+    volumes: List[MachineVolumeBaseDb] = relationship(
+        MachineVolumeBaseDb, back_populates="vm", uselist=True
+    )
+
+
+class VmInstanceDb(VmBaseDb):
+    __mapper_args__ = {
+        "polymorphic_identity": VmType.INSTANCE.value,
+    }
+
+    cloud_config: Dict[str, Any] = Column(JSONB, nullable=True)
+
+    rootfs: RootfsVolumeDb = relationship(
+        "RootfsVolumeDb", back_populates="instance", uselist=False
+    )
+
+
+class ProgramDb(VmBaseDb):
+    __mapper_args__ = {
+        "polymorphic_identity": VmType.PROGRAM.value,
+    }
+
+    program_type: MachineType = Column(ChoiceType(MachineType), nullable=True)
+    http_trigger: bool = Column(Boolean, nullable=True)
+    persistent: bool = Column(Boolean, nullable=True)
+
     code_volume: CodeVolumeDb = relationship(
         "CodeVolumeDb",
         back_populates="program",
@@ -146,15 +194,12 @@ class ProgramDb(Base):
         back_populates="program",
         uselist=False,
     )
-    volumes: List[MachineVolumeBaseDb] = relationship(
-        MachineVolumeBaseDb, back_populates="program", uselist=True
-    )
 
 
-class ProgramVersionDb(Base):
-    __tablename__ = "program_versions"
+class VmVersionDb(Base):
+    __tablename__ = "vm_versions"
 
-    program_hash: str = Column(String, primary_key=True)
+    vm_hash: str = Column(String, primary_key=True)
     owner: str = Column(String, nullable=False)
-    current_version: ProgramVersion = Column(String, nullable=False)
+    current_version: VmVersion = Column(String, nullable=False)
     last_updated: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
