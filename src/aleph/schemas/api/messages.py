@@ -97,11 +97,6 @@ MESSAGE_CLS_DICT = {
 }
 
 
-def format_message(message: Any) -> AlephMessage:
-    message_cls = MESSAGE_CLS_DICT[message.type]
-    return message_cls.from_orm(message)
-
-
 AlephMessage = Union[
     AggregateMessage,
     ForgetMessage,
@@ -110,6 +105,11 @@ AlephMessage = Union[
     ProgramMessage,
     StoreMessage,
 ]
+
+
+def format_message(message: Any) -> AlephMessage:
+    message_cls = MESSAGE_CLS_DICT[message.type]
+    return message_cls.from_orm(message)
 
 
 class BaseMessageStatus(BaseModel):

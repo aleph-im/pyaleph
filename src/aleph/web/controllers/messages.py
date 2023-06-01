@@ -27,14 +27,15 @@ from aleph.schemas.api.messages import (
     ForgottenMessage,
     RejectedMessageStatus,
     PendingMessage,
+    AlephMessage,
 )
 from aleph.types.db_session import DbSessionFactory, DbSession
 from aleph.types.message_status import MessageStatus
 from aleph.types.sort_order import SortOrder, SortBy
 from aleph.web.controllers.app_state_getters import (
     get_session_factory_from_request,
-    get_mq_channel_from_request,
-    get_config_from_request, get_mq_ws_channel_from_request,
+    get_config_from_request,
+    get_mq_ws_channel_from_request,
 )
 from aleph.web.controllers.utils import (
     DEFAULT_MESSAGES_PER_PAGE,
@@ -237,25 +238,68 @@ async def _send_history_to_ws(
     ws: aiohttp.web_ws.WebSocketResponse,
     session_factory: DbSessionFactory,
     history: int,
-    message_filters: Dict[str, Any],
+    query_params: WsMessageQueryParams,
 ) -> None:
-
     with session_factory() as session:
         messages = get_matching_messages(
             session=session,
             pagination=history,
             include_confirmations=True,
-            **message_filters,
+            **query_params.dict(exclude_none=True),
         )
         for message in messages:
             await ws.send_str(format_message(message).json())
 
 
+def message_matches_filters(
+    message: AlephMessage, query_params: WsMessageQueryParams
+) -> bool:
+    if message_type := query_params.message_type:
+        if message.type != message_type:
+            return False
+
+    # For simple filters, this reduces the amount of boilerplate
+    filters_by_message_field = {
+        "sender": "addresses",
+        "type": "message_type",
+        "item_hash": "hashes",
+        "ref": "refs",
+        "chain": "chains",
+        "channel": "channels",
+    }
+
+    for message_field, query_field in filters_by_message_field.items():
+        if user_filters := getattr(query_params, query_field):
+            if not isinstance(user_filters, list):
+                user_filters = [user_filters]
+            if not getattr(message, message_field) in user_filters:
+                return False
+
+    # Process filters on content.content
+    content = getattr(message.content, "content")
+    if content_types := query_params.content_types:
+        content_type = getattr(content, "type")
+        if content_type not in content_types:
+            return False
+
+    if content_hashes := query_params.content_hashes:
+        content_hash = getattr(content, "item_hash")
+        if content_hash not in content_hashes:
+            return False
+
+    # For tags, we only need to match one filter
+    if query_tags := query_params.tags:
+        content_tags = set(getattr(content, "tags"))
+        if (content_tags & set(query_tags)) == set():
+            return False
+
+    return True
+
+
 async def _start_mq_consumer(
     ws: aiohttp.web_ws.WebSocketResponse,
     mq_queue: aio_pika.abc.AbstractQueue,
-    session_factory: DbSessionFactory,
-    message_filters: Dict[str, Any],
+    query_params: WsMessageQueryParams,
 ) -> aio_pika.abc.ConsumerTag:
     """
     Starts the consumer task responsible for forwarding new aleph.im messages from
@@ -263,24 +307,16 @@ async def _start_mq_consumer(
 
     :param ws: Websocket.
     :param mq_queue: Message queue object.
-    :param session_factory: DB session factory.
-    :param message_filters: Filters to apply to select outgoing messages.
+    :param query_params: Message filters specified by the caller.
     """
 
     async def _process_message(mq_message: aio_pika.abc.AbstractMessage):
-        item_hash = aleph_json.loads(mq_message.body)["item_hash"]
-        # A bastardized way to apply the filters on the message as well.
-        # TODO: put the filter key/values in the RabbitMQ message?
-        with session_factory() as session:
-            matching_messages = get_matching_messages(
-                session=session,
-                hashes=[item_hash],
-                include_confirmations=True,
-                **message_filters,
-            )
+        message_bytes = mq_message.body
+        message_dict = aleph_json.loads(message_bytes)
+        message = format_message(message_dict)
+        if message_matches_filters(message=message, query_params=query_params):
             try:
-                for message in matching_messages:
-                    await ws.send_str(format_message(message).json())
+                await ws.send_str(message_bytes.decode())
             except ConnectionResetError:
                 # We can detect the WS closing in this task in addition to the main one.
                 # The main task will also detect the close event.
@@ -307,6 +343,7 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
         query_params = WsMessageQueryParams.parse_obj(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(body=e.json(indent=4))
+
     message_filters = query_params.dict(exclude_none=True)
     history = query_params.history
 
@@ -316,7 +353,7 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
                 ws=ws,
                 session_factory=session_factory,
                 history=history,
-                message_filters=message_filters,
+                query_params=query_params,
             )
         except ConnectionResetError:
             LOGGER.info("Could not send history, aborting message websocket")
@@ -332,8 +369,7 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
         consumer_tag = await _start_mq_consumer(
             ws=ws,
             mq_queue=mq_queue,
-            session_factory=session_factory,
-            message_filters=message_filters,
+            query_params=query_params,
         )
         LOGGER.debug(
             "Started consuming mq %s for websocket. Consumer tag: %s",
