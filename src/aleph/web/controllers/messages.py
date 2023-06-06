@@ -67,10 +67,10 @@ class BaseMessageQueryParams(BaseModel):
         "-1 means most recent messages first, 1 means older messages first.",
     )
     message_type: Optional[MessageType] = Field(
-        default=None, alias="msgType", description="[DEPRECATED] Message type."
+        default=None, alias="msgType", description="Message type. Deprecated: use msgTypes instead"
     )
     message_types: Optional[List[MessageType]] = Field(
-        default=None, alias="msgTypes", description="Accepted types of messages."
+        default=None, alias="msgTypes", description="Accepted message types."
     )
     addresses: Optional[List[str]] = Field(
         default=None, description="Accepted values for the 'sender' field."
