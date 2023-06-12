@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 from pydantic.generics import GenericModel
 
 import aleph.toolkit.json as aleph_json
+from aleph.db.models import MessageDb
 from aleph.types.message_status import MessageStatus, ErrorCode
 
 MType = TypeVar("MType", bound=MessageType)
@@ -120,9 +121,17 @@ AlephMessage = Annotated[
 ]
 
 
-def format_message(message: Any) -> AlephMessage:
-    message_cls = MESSAGE_CLS_DICT[message.type]
-    return message_cls.from_orm(message)    # type: ignore[return-value]
+def format_message(message: MessageDb) -> AlephMessage:
+    message_type = message.type
+
+    message_cls = MESSAGE_CLS_DICT[message_type]
+    return message_cls.from_orm(message)  # type: ignore[return-value]
+
+
+def format_message_dict(message: Dict[str, Any]) -> AlephMessage:
+    message_type = message.get("type")
+    message_cls = MESSAGE_CLS_DICT[message_type]
+    return message_cls.parse_obj(message)
 
 
 class BaseMessageStatus(BaseModel):

@@ -28,6 +28,8 @@ from aleph.schemas.api.messages import (
     RejectedMessageStatus,
     PendingMessage,
     AlephMessage,
+    format_message_dict,
+    PostMessage,
 )
 from aleph.types.db_session import DbSessionFactory, DbSession
 from aleph.types.message_status import MessageStatus
@@ -162,7 +164,7 @@ class WsMessageQueryParams(BaseMessageQueryParams):
     )
 
 
-def format_message_dict(message: MessageDb) -> Dict[str, Any]:
+def message_to_dict(message: MessageDb) -> Dict[str, Any]:
     message_dict = message.to_dict()
     message_dict["time"] = message.time.timestamp()
     confirmations = [
@@ -189,7 +191,7 @@ def format_response_dict(
 def format_response(
     messages: Iterable[MessageDb], pagination: int, page: int, total_messages: int
 ) -> web.Response:
-    formatted_messages = [format_message_dict(message) for message in messages]
+    formatted_messages = [message_to_dict(message) for message in messages]
 
     response = format_response_dict(
         messages=formatted_messages,
@@ -275,21 +277,25 @@ def message_matches_filters(
             if not getattr(message, message_field) in user_filters:
                 return False
 
-    # Process filters on content.content
-    content = getattr(message.content, "content")
+    # Process filters on content and content.content
+    message_content = message.content
     if content_types := query_params.content_types:
-        content_type = getattr(content, "type")
+        content_type = getattr(message_content, "type", None)
         if content_type not in content_types:
             return False
 
     if content_hashes := query_params.content_hashes:
-        content_hash = getattr(content, "item_hash")
+        content_hash = getattr(message_content, "item_hash", None)
         if content_hash not in content_hashes:
             return False
 
     # For tags, we only need to match one filter
     if query_tags := query_params.tags:
-        content_tags = set(getattr(content, "tags"))
+        nested_content = getattr(message.content, "content")
+        if not nested_content:
+            return False
+
+        content_tags = set(getattr(nested_content, "tags", []))
         if (content_tags & set(query_tags)) == set():
             return False
 
@@ -311,12 +317,13 @@ async def _start_mq_consumer(
     """
 
     async def _process_message(mq_message: aio_pika.abc.AbstractMessage):
-        message_bytes = mq_message.body
-        message_dict = aleph_json.loads(message_bytes)
-        message = format_message(message_dict)
+        payload_bytes = mq_message.body
+        payload_dict = aleph_json.loads(payload_bytes)
+        message = format_message_dict(payload_dict["message"])
+
         if message_matches_filters(message=message, query_params=query_params):
             try:
-                await ws.send_str(message_bytes.decode())
+                await ws.send_str(message.json())
             except ConnectionResetError:
                 # We can detect the WS closing in this task in addition to the main one.
                 # The main task will also detect the close event.
