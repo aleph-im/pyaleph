@@ -146,6 +146,8 @@ class VmBaseDb(Base):
     replaces: Optional[str] = Column(ForeignKey(item_hash), nullable=True)
     created: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
 
+    authorized_keys: Optional[List[str]] = Column(JSONB, nullable=True)
+
     __mapper_args__: Dict[str, Any] = {
         "polymorphic_on": type,
     }
@@ -159,8 +161,6 @@ class VmInstanceDb(VmBaseDb):
     __mapper_args__ = {
         "polymorphic_identity": VmType.INSTANCE.value,
     }
-
-    cloud_config: Dict[str, Any] = Column(JSONB, nullable=True)
 
     rootfs: RootfsVolumeDb = relationship(
         "RootfsVolumeDb", back_populates="instance", uselist=False

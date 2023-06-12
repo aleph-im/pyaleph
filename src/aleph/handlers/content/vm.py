@@ -196,7 +196,7 @@ def vm_message_to_db(message: MessageDb) -> VmBaseDb:
             size_mib=content.rootfs.size_mib,
             persistence=content.rootfs.persistence,
         )
-        vm.cloud_config = content.cloud_config
+        vm.authorized_keys = content.authorized_keys
 
     else:
         raise TypeError(f"Unexpected VM message content type: {type(content)}")
