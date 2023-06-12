@@ -8,7 +8,9 @@ from aleph_message.models import (
     ForgetContent,
     PostContent,
     ProgramContent,
-    StoreContent, AlephMessage,
+    StoreContent,
+    AlephMessage,
+    InstanceContent,
 )
 from aleph_message.models import MessageType, ItemType
 from pydantic import BaseModel
@@ -65,6 +67,10 @@ class ForgetMessage(
     ...
 
 
+class InstanceMessage(BaseMessage[Literal[MessageType.instance], InstanceContent]):  # type: ignore
+    ...
+
+
 class PostMessage(BaseMessage[Literal[MessageType.post], PostContent]):  # type: ignore
     ...
 
@@ -84,6 +90,7 @@ class StoreMessage(
 MESSAGE_CLS_DICT = {
     MessageType.aggregate: AggregateMessage,
     MessageType.forget: ForgetMessage,
+    MessageType.instance: InstanceMessage,
     MessageType.post: PostMessage,
     MessageType.program: ProgramMessage,
     MessageType.store: StoreMessage,
@@ -96,7 +103,12 @@ def format_message(message: Any) -> AlephMessage:
 
 
 AlephMessage = Union[
-    AggregateMessage, ForgetMessage, PostMessage, ProgramMessage, StoreMessage
+    AggregateMessage,
+    ForgetMessage,
+    InstanceMessage,
+    PostMessage,
+    ProgramMessage,
+    StoreMessage,
 ]
 
 
