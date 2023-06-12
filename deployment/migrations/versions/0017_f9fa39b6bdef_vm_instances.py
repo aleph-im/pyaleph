@@ -209,11 +209,11 @@ def upgrade() -> None:
         sa.Column("parent_use_latest", sa.Boolean(), nullable=True),
     )
 
-    # Add the instance columns to the vms (ex programs) table
+    # Add new columns to the vms (ex programs) table
     op.add_column(
         "vms",
         sa.Column(
-            "cloud_config", postgresql.JSONB(astext_type=sa.Text()), nullable=True
+            "authorized_keys", postgresql.JSONB(astext_type=sa.Text()), nullable=True
         ),
     )
     op.add_column("vms", sa.Column("program_type", sa.String(), nullable=True))
@@ -397,7 +397,7 @@ def downgrade() -> None:
     op.execute("ALTER INDEX ix_vms_owner RENAME TO ix_programs_owner")
 
     op.drop_column("programs", "program_type")
-    op.drop_column("programs", "cloud_config")
+    op.drop_column('programs', 'authorized_keys')
 
     # Drop the parent column for persistent VMs
     op.drop_column("program_machine_volumes", "parent")

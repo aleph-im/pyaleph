@@ -64,7 +64,10 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessag
             "name": "test-rootfs",
             "size_mib": 20000,
         },
-        "cloud_config": {"password": "password"},
+        "authorized_keys": [
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGULT6A41Msmw2KEu0R9MvUjhuWNAsbdeZ0DOwYbt4Qt user@example",
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH0jqdc5dmt75QhTrWqeHDV9xN8vxbgFyOYs2fuQl7CI",
+        ],
         "volumes": [
             {
                 "comment": "Python libraries. Read-only since a 'ref' is specified.",
@@ -273,8 +276,12 @@ async def test_process_instance(
 
         rootfs = instance.rootfs
         assert rootfs.parent_ref == content_dict["rootfs"]["parent"]["ref"]
-        assert rootfs.parent_use_latest == content_dict["rootfs"]["parent"]["use_latest"]
-        assert rootfs.parent_use_latest == content_dict["rootfs"]["parent"]["use_latest"]
+        assert (
+            rootfs.parent_use_latest == content_dict["rootfs"]["parent"]["use_latest"]
+        )
+        assert (
+            rootfs.parent_use_latest == content_dict["rootfs"]["parent"]["use_latest"]
+        )
         assert rootfs.size_mib == content_dict["rootfs"]["size_mib"]
         assert rootfs.persistence == content_dict["rootfs"]["persistence"]
 
