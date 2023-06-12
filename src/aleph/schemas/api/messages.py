@@ -9,7 +9,6 @@ from aleph_message.models import (
     PostContent,
     ProgramContent,
     StoreContent,
-    AlephMessage,
     InstanceContent,
 )
 from aleph_message.models import MessageType, ItemType
@@ -107,7 +106,7 @@ AlephMessage = Union[
 ]
 
 
-def format_message(message: Any) -> AlephMessage:
+def format_message(message: Any) -> BaseMessage:
     message_cls = MESSAGE_CLS_DICT[message.type]
     return message_cls.from_orm(message)
 
@@ -150,7 +149,7 @@ class ProcessedMessageStatus(BaseMessageStatus):
         orm_mode = True
 
     status: MessageStatus = MessageStatus.PROCESSED
-    message: AlephMessage
+    message: BaseMessage
 
 
 class ForgottenMessage(BaseModel):
