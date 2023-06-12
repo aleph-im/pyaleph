@@ -4,8 +4,17 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Union, Tuple
 
 import aiohttp
 import pytest
+from aleph_message.models import Chain, ItemType, MessageType, InstanceContent
+from aleph_message.models.execution.environment import (
+    MachineResources,
+    FunctionEnvironment,
+)
+from aleph_message.models.execution.instance import RootfsVolume
+from aleph_message.models.execution.volume import ImmutableVolume, ParentVolume
 
 from aleph.db.models import MessageDb, PostDb
+from aleph.toolkit.timestamp import timestamp_to_datetime
+from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
 from .utils import get_messages_by_keys
 
@@ -156,7 +165,7 @@ async def test_get_messages_filter_by_tags(
     ccn_api_client,
     session_factory: DbSessionFactory,
     post_with_refs_and_tags: Tuple[MessageDb, PostDb],
-    amended_post_with_refs_and_tags: Tuple[MessageDb, PostDb]
+    amended_post_with_refs_and_tags: Tuple[MessageDb, PostDb],
 ):
     """
     Tests getting messages by tags.
@@ -203,7 +212,9 @@ async def test_get_messages_filter_by_tags(
     assert len(messages) == 0
 
     # Matching the amend tag with other tags
-    response = await ccn_api_client.get(MESSAGES_URI, params={"tags": "amend,not-a-tag,not-a-tag-either"})
+    response = await ccn_api_client.get(
+        MESSAGES_URI, params={"tags": "amend,not-a-tag,not-a-tag-either"}
+    )
     assert response.status == 200, await response.text()
     messages = (await response.json())["messages"]
     assert len(messages) == 1
@@ -449,3 +460,70 @@ async def test_sort_by_tx_time(fixture_messages, ccn_api_client, sort_order: int
     assert [msg["item_hash"] for msg in messages] == [
         msg["item_hash"] for msg in sorted_messages_by_time
     ]
+
+
+@pytest.fixture
+def instance_message_fixture() -> MessageDb:
+    return MessageDb(
+        item_hash="9f29cdb6579d94be1053b1e1400ee3440958da4cf4feb9b44b674746fdb17c9c",
+        chain=Chain.ETH,
+        sender="0xB68B9D4f3771c246233823ed1D3Add451055F9Ef",
+        signature="0xabfa661aab1a9f58955940ea213387de4773f8b1f244c2236cd4ac5ba7bf2ba902e17074bc4b289ba200807bb40951f4249668b055dc15af145b8842ecfad0601c",
+        item_type=ItemType.storage,
+        type=MessageType.instance,
+        item_content=None,
+        content=InstanceContent(
+            address="0xB68B9D4f3771c246233823ed1D3Add451055F9Ef",
+            time=1686572207.89381,
+            allow_amend=True,
+            metadata=None,
+            authorized_keys=[
+                "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGULT6A41Msmw2KEu0R9MvUjhuWNAsbdeZ0DOwYbt4Qt user@example",
+                "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH0jqdc5dmt75QhTrWqeHDV9xN8vxbgFyOYs2fuQl7CI",
+            ],
+            variables={"USE_ALEPH": True},
+            environment=FunctionEnvironment(
+                reproducible=False, internet=True, aleph_api=True, shared_cache=True
+            ),
+            resources=MachineResources(),
+            requirements=None,
+            rootfs=RootfsVolume(
+                parent=ParentVolume(
+                    ref="24695709b7ce4dc343ede66fc31a1133149b3a3ea6b460a1b3d19112ebb7ab64"
+                ),
+                persistence="host",
+                size_mib=1024,
+            ),
+            volumes=[
+                ImmutableVolume(
+                    ref="7db5ed835b6770a770973c03a40f6af6404b375d59e990b959eb476208bd5fb7",
+                    use_latest=True,
+                )
+            ],
+        ).dict(),
+        size=3000,
+        time=timestamp_to_datetime(1686572207.89381),
+        channel=Channel("TEST"),
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_instance(
+    ccn_api_client,
+    instance_message_fixture: MessageDb,
+    session_factory: DbSessionFactory,
+):
+    with session_factory() as session:
+        session.add(instance_message_fixture)
+        session.commit()
+
+    response = await ccn_api_client.get(
+        MESSAGES_URI, params={"hashes": instance_message_fixture.item_hash}
+    )
+    assert response.status == 200, await response.text()
+
+    messages = (await response.json())["messages"]
+    assert len(messages) == 1
+
+    message = messages[0]
+    assert message["item_hash"] == instance_message_fixture.item_hash
