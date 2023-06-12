@@ -27,7 +27,7 @@ from aleph.schemas.api.messages import (
     ForgottenMessage,
     RejectedMessageStatus,
     PendingMessage,
-    AlephMessage, BaseMessage,
+    AlephMessage,
 )
 from aleph.types.db_session import DbSessionFactory, DbSession
 from aleph.types.message_status import MessageStatus
@@ -252,7 +252,7 @@ async def _send_history_to_ws(
 
 
 def message_matches_filters(
-    message: BaseMessage, query_params: WsMessageQueryParams
+    message: AlephMessage, query_params: WsMessageQueryParams
 ) -> bool:
     if message_type := query_params.message_type:
         if message.type != message_type:

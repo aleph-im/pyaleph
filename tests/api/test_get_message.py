@@ -175,7 +175,7 @@ async def test_get_processed_message_status(
         response = await ccn_api_client.get(
             MESSAGE_URI.format(processed_message.item_hash)
         )
-        assert response.status == 200
+        assert response.status == 200, await response.text()
         response_json = await response.json()
         parsed_response = ProcessedMessageStatus.parse_obj(response_json)
         assert parsed_response.status == MessageStatus.PROCESSED

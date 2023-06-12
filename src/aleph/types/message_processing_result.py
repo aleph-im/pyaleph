@@ -33,7 +33,7 @@ class ProcessedMessage(MessageProcessingResult):
         return self.message.item_hash
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"status": self.status.value, "message": format_message(self.message)}
+        return {"status": self.status.value, "message": format_message(self.message).dict()}
 
 
 class FailedMessage(MessageProcessingResult):

@@ -1,5 +1,16 @@
 import datetime as dt
-from typing import Optional, Generic, TypeVar, Literal, List, Any, Union, Dict, Mapping
+from typing import (
+    Optional,
+    Generic,
+    TypeVar,
+    Literal,
+    List,
+    Any,
+    Union,
+    Dict,
+    Mapping,
+    Annotated,
+)
 
 from aleph_message.models import (
     AggregateContent,
@@ -12,7 +23,7 @@ from aleph_message.models import (
     InstanceContent,
 )
 from aleph_message.models import MessageType, ItemType
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic.generics import GenericModel
 
 import aleph.toolkit.json as aleph_json
@@ -96,19 +107,22 @@ MESSAGE_CLS_DICT = {
 }
 
 
-AlephMessage = Union[
-    AggregateMessage,
-    ForgetMessage,
-    InstanceMessage,
-    PostMessage,
-    ProgramMessage,
-    StoreMessage,
+AlephMessage = Annotated[
+    Union[
+        AggregateMessage,
+        ForgetMessage,
+        InstanceMessage,
+        PostMessage,
+        ProgramMessage,
+        StoreMessage,
+    ],
+    Field(discriminator="type"),
 ]
 
 
-def format_message(message: Any) -> BaseMessage:
+def format_message(message: Any) -> AlephMessage:
     message_cls = MESSAGE_CLS_DICT[message.type]
-    return message_cls.from_orm(message)
+    return message_cls.from_orm(message)    # type: ignore[return-value]
 
 
 class BaseMessageStatus(BaseModel):
@@ -149,7 +163,7 @@ class ProcessedMessageStatus(BaseMessageStatus):
         orm_mode = True
 
     status: MessageStatus = MessageStatus.PROCESSED
-    message: BaseMessage
+    message: AlephMessage
 
 
 class ForgottenMessage(BaseModel):
