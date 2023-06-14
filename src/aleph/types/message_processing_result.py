@@ -1,6 +1,7 @@
-from typing import Protocol
+from typing import Any, Dict, Protocol
 
 from aleph.db.models import PendingMessageDb, MessageDb
+from aleph.schemas.api.messages import format_message
 from aleph.types.message_status import (
     ErrorCode,
     MessageProcessingStatus,
@@ -12,6 +13,9 @@ class MessageProcessingResult(Protocol):
 
     @property
     def item_hash(self) -> str:
+        pass
+
+    def to_dict(self) -> Dict[str, Any]:
         pass
 
 
@@ -28,10 +32,11 @@ class ProcessedMessage(MessageProcessingResult):
     def item_hash(self) -> str:
         return self.message.item_hash
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {"status": self.status.value, "message": format_message(self.message).dict()}
+
 
 class FailedMessage(MessageProcessingResult):
-    status = MessageProcessingStatus.FAILED_WILL_RETRY
-
     def __init__(
         self, pending_message: PendingMessageDb, error_code: ErrorCode, will_retry: bool
     ):
@@ -47,6 +52,12 @@ class FailedMessage(MessageProcessingResult):
     @property
     def item_hash(self) -> str:
         return self.pending_message.item_hash
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "status": self.status.value,
+            "item_hash": self.item_hash,
+        }
 
 
 class WillRetryMessage(FailedMessage):

@@ -1,5 +1,16 @@
 import datetime as dt
-from typing import Optional, Generic, TypeVar, Literal, List, Any, Union, Dict, Mapping
+from typing import (
+    Optional,
+    Generic,
+    TypeVar,
+    Literal,
+    List,
+    Any,
+    Union,
+    Dict,
+    Mapping,
+    Annotated,
+)
 
 from aleph_message.models import (
     AggregateContent,
@@ -9,14 +20,14 @@ from aleph_message.models import (
     PostContent,
     ProgramContent,
     StoreContent,
-    AlephMessage,
     InstanceContent,
 )
 from aleph_message.models import MessageType, ItemType
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic.generics import GenericModel
 
 import aleph.toolkit.json as aleph_json
+from aleph.db.models import MessageDb
 from aleph.types.message_status import MessageStatus, ErrorCode
 
 MType = TypeVar("MType", bound=MessageType)
@@ -97,19 +108,30 @@ MESSAGE_CLS_DICT = {
 }
 
 
-def format_message(message: Any) -> AlephMessage:
-    message_cls = MESSAGE_CLS_DICT[message.type]
-    return message_cls.from_orm(message)
-
-
-AlephMessage = Union[
-    AggregateMessage,
-    ForgetMessage,
-    InstanceMessage,
-    PostMessage,
-    ProgramMessage,
-    StoreMessage,
+AlephMessage = Annotated[
+    Union[
+        AggregateMessage,
+        ForgetMessage,
+        InstanceMessage,
+        PostMessage,
+        ProgramMessage,
+        StoreMessage,
+    ],
+    Field(discriminator="type"),
 ]
+
+
+def format_message(message: MessageDb) -> AlephMessage:
+    message_type = message.type
+
+    message_cls = MESSAGE_CLS_DICT[message_type]
+    return message_cls.from_orm(message)  # type: ignore[return-value]
+
+
+def format_message_dict(message: Dict[str, Any]) -> AlephMessage:
+    message_type = message.get("type")
+    message_cls = MESSAGE_CLS_DICT[message_type]
+    return message_cls.parse_obj(message)  # type: ignore[return-value]
 
 
 class BaseMessageStatus(BaseModel):
