@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import List, Optional, Any, Dict, Iterable
 
@@ -31,6 +32,7 @@ from aleph.schemas.api.messages import (
     format_message_dict,
     PostMessage,
 )
+from aleph.toolkit.shield import shielded
 from aleph.types.db_session import DbSessionFactory, DbSession
 from aleph.types.message_status import MessageStatus
 from aleph.types.sort_order import SortOrder, SortBy
@@ -338,6 +340,7 @@ async def _start_mq_consumer(
     return consumer_tag
 
 
+@shielded
 async def messages_ws(request: web.Request) -> web.WebSocketResponse:
     ws = web.WebSocketResponse()
     await ws.prepare(request)

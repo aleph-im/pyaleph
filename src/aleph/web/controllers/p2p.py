@@ -13,6 +13,7 @@ import aleph.toolkit.json as aleph_json
 from aleph.schemas.pending_messages import parse_message, BasePendingMessage
 from aleph.services.ipfs import IpfsService
 from aleph.services.p2p.pubsub import publish as pub_p2p
+from aleph.toolkit.shield import shielded
 from aleph.types.message_status import (
     InvalidMessageException,
     MessageStatus,
@@ -183,6 +184,7 @@ class PubMessageResponse(BaseModel):
     message_status: Optional[MessageStatus]
 
 
+@shielded
 async def pub_message(request: web.Request):
     try:
         request_data = PubMessageRequest.parse_obj(await request.json())
