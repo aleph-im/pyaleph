@@ -8,5 +8,6 @@ from .messages import *
 from .peers import *
 from .pending_messages import *
 from .pending_txs import *
+from .permissions import *
 from .posts import *
 from .vms import *
