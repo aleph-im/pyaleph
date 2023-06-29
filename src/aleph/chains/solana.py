@@ -2,6 +2,7 @@ import json
 import logging
 
 import base58
+from nacl.exceptions import BadSignatureError
 from nacl.signing import VerifyKey
 
 from aleph.chains.common import get_verification_buffer
@@ -24,21 +25,18 @@ class SolanaConnector(Verifier):
             signature = json.loads(message.signature)
             sigdata = base58.b58decode(signature["signature"])
             public_key = base58.b58decode(signature["publicKey"])
-        except Exception:
-            LOGGER.exception("Solana signature deserialization error")
+        except ValueError:
+            LOGGER.warning("Solana signature deserialization error")
             return False
 
-        try:
-            if signature.get("version", 1) != 1:
-                LOGGER.warning(
-                    "Unsupported signature version %d" % signature.get("version")
-                )
-        except Exception:
-            LOGGER.exception("Solana signature version error")
+        if signature.get("version", 1) != 1:
+            LOGGER.warning(
+                "Unsupported signature version %s" % signature.get("version")
+            )
             return False
 
         if message.sender != signature["publicKey"]:
-            LOGGER.exception("Solana signature source error")
+            LOGGER.warning("Solana signature source error")
             return False
 
         try:
@@ -46,6 +44,8 @@ class SolanaConnector(Verifier):
             verification_buffer = get_verification_buffer(message)
             verif = verify_key.verify(verification_buffer, signature=sigdata)
             result = verif == verification_buffer
+        except BadSignatureError:
+            result = False
         except Exception:
             LOGGER.exception("Solana Signature verification error")
             result = False

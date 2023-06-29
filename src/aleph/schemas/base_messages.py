@@ -99,5 +99,7 @@ class AlephBaseMessage(GenericModel, Generic[MType, ContentType]):
         too far in the future.
         """
 
-        d = timestamp_to_datetime(v)
-        return d
+        if isinstance(v, dt.datetime):
+            return v
+
+        return timestamp_to_datetime(v)
