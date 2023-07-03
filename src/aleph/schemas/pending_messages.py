@@ -104,7 +104,7 @@ class PendingForgetMessage(
     pass
 
 
-class PendingPermissionMessage(BasePendingMessage[Literal[MessageType.permission, PermissionContent]]):  # type: ignore
+class PendingPermissionMessage(BasePendingMessage[Literal[MessageType.permission], PermissionContent]):  # type: ignore
     pass
 
 

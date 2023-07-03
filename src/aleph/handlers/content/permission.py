@@ -10,7 +10,7 @@ TODO:
 
 import asyncio
 import logging
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Tuple
 
 import aioipfs
 from aioipfs import NotPinnedError
@@ -34,7 +34,7 @@ from aleph.db.accessors.permissions import (
     get_permissions,
     expire_permissions,
 )
-from aleph.db.models import MessageDb
+from aleph.db.models import MessageDb, BasePermissionDb
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.handlers.content.content_handler import ContentHandler
 from aleph.schemas.permissions import PermissionContent, DelegationPermission
@@ -49,7 +49,8 @@ from aleph.types.message_status import (
     StoreRefNotFound,
     StoreCannotUpdateStoreWithRef,
     CannotForgetForgetMessage,
-    CannotForgetPermissionMessage, PermissionCannotDelegateDelegation,
+    CannotForgetPermissionMessage,
+    PermissionCannotDelegateDelegation,
 )
 from aleph.utils import item_type_from_hash
 
@@ -63,6 +64,39 @@ def _get_permission_content(message: MessageDb) -> PermissionContent:
             f"Unexpected content type for permission message: {message.item_hash}"
         )
     return content
+
+
+def _get_permission_diff(
+    current_permissions: Set[BasePermissionDb], new_permissions: Set[BasePermissionDb]
+) -> Tuple[Set[BasePermissionDb], Set[BasePermissionDb]]:
+
+    permissions_to_keep = set()
+    permissions_to_add = set()
+    permissions_to_expire = set()
+
+    for new_permission in new_permissions:
+        for current_permission in current_permissions:
+            if new_permission.extends(current_permission):
+                permissions_to_keep.add(current_permission)
+            elif new_permission.is_reduced_subset(current_permission):
+                if current_permission.children:
+                    for child in current_permission.children:
+                        if not child.is_subset(new_permission):
+                            permissions_to_expire.add(child)
+
+                    permissions_to_expire |= set(current_permission.children)
+                    new_permission.children = []
+
+                permissions_to_add.add(new_permission)
+            else:
+                permissions_to_add.add(new_permission)
+
+    permissions_to_expire |= (current_permissions - permissions_to_keep)
+
+    return permissions_to_expire, permissions_to_add
+
+
+
 
 
 class PermissionMessageHandler(ContentHandler):
@@ -103,7 +137,9 @@ class PermissionMessageHandler(ContentHandler):
         for address, permissions in content.permissions.items():
             for permission in permissions:
                 if isinstance(permission, DelegationPermission):
-                    raise PermissionCannotDelegateDelegation("Cannot delegate delegation permission")
+                    raise PermissionCannotDelegateDelegation(
+                        "Cannot delegate delegation permission"
+                    )
                 if not is_subset(permission, sender_permissions):
                     raise PermissionDenied(
                         f"Address {sender} is not authorized to "
@@ -117,18 +153,29 @@ class PermissionMessageHandler(ContentHandler):
         message_datetime = timestamp_to_datetime(content.time)
 
         for address, permissions in content.permissions.items():
-            current_permissions = get_permissions(session=session, address=address, on_behalf_of=on_behalf_of, datetime=message_datetime)
+            current_permissions = get_permissions(
+                session=session,
+                address=address,
+                on_behalf_of=on_behalf_of,
+                datetime=message_datetime,
+            )
 
             # Isolate new permissions (diff DB vs message).
-            expired_permissions, new_permissions = _get_permission_diff(current_permissions, permissions)
+            expired_permissions, new_permissions = _get_permission_diff(
+                current_permissions, permissions
+            )
 
             # Nothing to do, move on to the next address.
             if not (expired_permissions or new_permissions):
                 continue
 
             # If message deletes delegation permission, expire all delegations.
-            if any(isinstance(permission, DelegationPermission) for permission in expired_permissions):
-                expire_permissions(session=session, address=)
+            if any(
+                isinstance(permission, DelegationPermission)
+                for permission in expired_permissions
+            ):
+                ...
+                # expire_permissions(session=session, address=)
 
             # If message still has delegation permission but changes other permissions, check the current
             # delegations and expire the ones that are not valid anymore (invalid subset delegated)?
@@ -136,13 +183,20 @@ class PermissionMessageHandler(ContentHandler):
 
             # Expire invalid permissions, insert new ones.
 
-            if has_delegation_permission(session=session, address=address, on_behalf_of=on_behalf_of, datetime=message_datetime):
-                if any(isinstance(permission, DelegationPermission) for permission in permissions):
+            if has_delegation_permission(
+                session=session,
+                address=address,
+                on_behalf_of=on_behalf_of,
+                datetime=message_datetime,
+            ):
+                if any(
+                    isinstance(permission, DelegationPermission)
+                    for permission in permissions
+                ):
                     # Do nothing? We need to check if the permissions granted to the address are still
                     # a superset of all the permissions that are delegated to the address, or expire them
                     # if that's not the case.
                     ...
-
 
             expire_permissions(
                 session=session,
