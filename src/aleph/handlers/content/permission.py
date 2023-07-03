@@ -78,7 +78,7 @@ def _get_permission_diff(
         for current_permission in current_permissions:
             if new_permission.extends(current_permission):
                 permissions_to_keep.add(current_permission)
-            elif new_permission.is_reduced_subset(current_permission):
+            elif new_permission.is_subset(current_permission):
                 if current_permission.children:
                     for child in current_permission.children:
                         if not child.is_subset(new_permission):

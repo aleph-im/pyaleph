@@ -69,17 +69,16 @@ class BasePermissionDb(Base):
             and self.granted_by == other.granted_by
             and self.address == other.address
             and self.channel == other.channel
-            and other.valid_from <= self.valid_until
+            and self.valid_from <= other.valid_until
         )
 
-    def is_reduced_subset(self, other: "BasePermissionDb") -> bool:
+    def is_subset(self, other: "BasePermissionDb") -> bool:
         return (
             self.type == other.type
             and self.owner == other.owner
             and self.granted_by == other.granted_by
             and self.address == other.address
-            and self.channel == other.channel
-            and
+            and (self.channel == other.channel or other.channel is None)
         )
 
     def __hash__(self):
@@ -116,12 +115,23 @@ class CrudPermissionDb(BasePermissionDb):
             and self.create == other.create
             and self.update == other.update
             and self.delete == other.delete
-            and tuple(self.refs) == tuple(other.refs)
-            and tuple(self.addresses) == tuple(other.addresses)
+            and tuple(self.refs or []) == tuple(other.refs or [])
+            and tuple(self.addresses or []) == tuple(other.addresses or [])
         )
 
-    def is_reduced_subset(self, other: BasePermissionDb) -> bool:
-        return
+    def is_subset(self, other: BasePermissionDb) -> bool:
+        return (
+            super().is_subset(other)
+            and isinstance(other, CrudPermissionDb)
+            and (other.create or self.create == other.create)
+            and (other.update or self.update == other.update)
+            and (other.delete or self.delete == other.delete)
+            and (other.refs is None or (set(self.refs or []) & set(other.refs)))
+            and (
+                other.addresses is None
+                or (set(self.addresses or []) & set(other.addresses))
+            )
+        )
 
 
 class AggregatePermissionDb(CrudPermissionDb):
@@ -141,7 +151,13 @@ class PostPermissionDb(CrudPermissionDb):
         return (
             super().extends(other)
             and isinstance(other, PostPermissionDb)
-            and tuple(self.post_types) == tuple(other.post_types)
+            and tuple(self.post_types or []) == tuple(other.post_types or [])
+        )
+
+    def is_subset(self, other: BasePermissionDb) -> bool:
+        return super().is_subset(other) and (
+            other.post_types is None
+            or (set(self.post_types or []) & set(other.post_types))
         )
 
 
