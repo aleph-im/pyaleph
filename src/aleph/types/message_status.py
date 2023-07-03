@@ -41,9 +41,12 @@ class ErrorCode(IntEnum):
     VM_AMEND_NOT_ALLOWED = 302
     VM_UPDATE_UPDATE = 303
     VM_VOLUME_TOO_SMALL = 304
+    PERMISSION_DELEGATE_DELEGATION = 400
+    PERMISSION_GRANT_TO_SELF = 401
     FORGET_NO_TARGET = 500
     FORGET_TARGET_NOT_FOUND = 501
     FORGET_FORGET = 502
+    FORGET_PERMISSION = 503
 
 
 class MessageProcessingException(Exception):
@@ -260,6 +263,23 @@ class VmVolumeTooSmall(InvalidMessageException):
         }
 
 
+class PermissionCannotDelegateDelegation(InvalidMessageException):
+    """
+    An address with the delegation permission cannot grant the delegation permission
+    for the original address to another address.
+    """
+
+    error_code = ErrorCode.PERMISSION_DELEGATE_DELEGATION
+
+
+class PermissionCannotGrantToSelf(InvalidMessageException):
+    """
+    An address cannot grant permissions to itself.
+    """
+
+    error_code = ErrorCode.PERMISSION_GRANT_TO_SELF
+
+
 class ForgetTargetNotFound(RetryMessageException):
     """
     A target specified in the FORGET message could not be found.
@@ -289,6 +309,20 @@ class CannotForgetForgetMessage(InvalidMessageException):
     """
 
     error_code = ErrorCode.FORGET_FORGET
+
+    def __init__(self, target_hash: str):
+        self.target_hash = target_hash
+
+    def details(self) -> Optional[Dict[str, Any]]:
+        return {"errors": [{"message": self.target_hash}]}
+
+
+class CannotForgetPermissionMessage(InvalidMessageException):
+    """
+    The FORGET message targets a PERMISSION message, which is forbidden.
+    """
+
+    error_code = ErrorCode.FORGET_PERMISSION
 
     def __init__(self, target_hash: str):
         self.target_hash = target_hash

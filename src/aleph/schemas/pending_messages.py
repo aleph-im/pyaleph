@@ -35,6 +35,7 @@ from aleph.exceptions import UnknownHashError
 from aleph.schemas.base_messages import AlephBaseMessage, MType, ContentType
 from aleph.types.message_status import InvalidMessageFormat
 from aleph.utils import item_type_from_hash
+from aleph.schemas.permissions import PermissionContent
 
 MAX_INLINE_SIZE = 200000  # 200kb max inline content size.
 
@@ -103,6 +104,10 @@ class PendingForgetMessage(
     pass
 
 
+class PendingPermissionMessage(BasePendingMessage[Literal[MessageType.permission, PermissionContent]]):  # type: ignore
+    pass
+
+
 class PendingPostMessage(BasePendingMessage[Literal[MessageType.post], PostContent]):  # type: ignore
     pass
 
@@ -120,6 +125,7 @@ class PendingStoreMessage(BasePendingMessage[Literal[MessageType.store], StoreCo
 MESSAGE_TYPE_TO_CLASS = {
     MessageType.aggregate: PendingAggregateMessage,
     MessageType.forget: PendingForgetMessage,
+    MessageType.permission: PendingPermissionMessage,
     MessageType.post: PendingPostMessage,
     MessageType.program: PendingProgramMessage,
     MessageType.store: PendingStoreMessage,

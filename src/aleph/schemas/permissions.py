@@ -1,5 +1,5 @@
 import datetime as dt
-from typing import Optional, List, Literal
+from typing import Optional, List, Literal, Dict, Annotated, Union
 
 from aleph_message.models import BaseContent
 from pydantic import BaseModel, Field
@@ -8,9 +8,8 @@ from aleph.types.channel import Channel
 
 
 class BasePermission(BaseModel):
+    # Discriminator field for the different permission types.
     type: str
-    address: str
-    valid_from: Optional[dt.datetime] = None
     valid_until: Optional[dt.datetime] = None
     channel: Optional[Channel] = None
 
@@ -32,8 +31,8 @@ class CrudPermission(BasePermission):
     create: bool = False
     update: bool = False
     delete: bool = False
-    ref: Optional[str] = Field(
-        ...,
+    refs: Optional[List[str]] = Field(
+        default=None,
         description="Restricts CRUD operations to objects with the specified ref.",
     )
     addresses: Optional[List[str]] = Field(
@@ -44,21 +43,38 @@ class CrudPermission(BasePermission):
 
 class AggregatePermission(CrudPermission):
     type: Literal["aggregate"]
-    key: Optional[str] = Field(
-        ..., description="Restricts aggregate operations to a specific aggregate key."
+    keys: Optional[List[str]] = Field(
+        default=None,
+        description="Restricts aggregate operations to a specific aggregate key.",
     )
 
 
 class PostPermission(CrudPermission):
     type: Literal["post"]
-    post_type: Optional[str] = Field(
-        ..., description="Restricts post operations to a specific post type."
+    post_types: Optional[List[str]] = Field(
+        default=None, description="Restricts post operations to a specific post type."
     )
 
 
-class VmPermission(CrudPermission):
-    type: Literal["vm"]
+class StorePermission(CrudPermission):
+    type: Literal["store"]
+
+
+class ExecutablePermission(CrudPermission):
+    type: Literal["executable"]
+
+
+Permission = Annotated[
+    Union[
+        DelegationPermission,
+        AggregatePermission,
+        PostPermission,
+        StorePermission,
+        ExecutablePermission,
+    ],
+    Field(discriminator="type"),
+]
 
 
 class PermissionContent(BaseContent):
-    permissions: List[BasePermission]
+    permissions: Dict[str, List[Permission]]

@@ -12,7 +12,8 @@ class PermissionType(str, Enum):
     AGGREGATE = "aggregate"
     DELEGATE = "delegate"
     POST = "post"
-    VM = "vm"
+    STORE = "store"
+    EXECUTABLE = "executable"
 
 
 class BasePermissionDb(Base):
@@ -20,6 +21,7 @@ class BasePermissionDb(Base):
 
     id: int = Column(Integer, primary_key=True)
     owner: str = Column(String, nullable=False)
+    granted_by: str = Column(String, nullable=False, index=True)
     address: str = Column(String, nullable=False)
     type: str = Column(String, nullable=False)
     valid_from: Optional[dt.datetime] = Column(TIMESTAMP(timezone=True), nullable=True)
@@ -32,9 +34,9 @@ class BasePermissionDb(Base):
     __table_args__ = (Index("ix_owner_address", owner, address),)
 
 
-class DelegationPermission(BasePermissionDb):
+class DelegationPermissionDb(BasePermissionDb):
     __mapper_args__ = {
-        "polymorphic_identity": PermissionType.DELEGATE,
+        "polymorphic_identity": PermissionType.DELEGATE.value,
     }
 
 
@@ -50,7 +52,7 @@ class AggregatePermissionDb(CrudPermissionDb):
     key: Optional[str] = Column(String, nullable=True)
 
     __mapper_args__ = {
-        "polymorphic_identity": PermissionType.AGGREGATE,
+        "polymorphic_identity": PermissionType.AGGREGATE.value,
     }
 
 
@@ -58,12 +60,18 @@ class PostPermissionDb(CrudPermissionDb):
     post_type: Optional[str] = Column(String, nullable=True)
 
     __mapper_args__ = {
-        "polymorphic_identity": PermissionType.POST,
+        "polymorphic_identity": PermissionType.POST.value,
     }
 
 
-class VmPermissionDb(CrudPermissionDb):
+class StorePermissionDb(CrudPermissionDb):
+    __mapper_args__ = {
+        "polymorphic_identity": PermissionType.STORE.value,
+    }
+
+
+class ExecutablePermissionDb(CrudPermissionDb):
 
     __mapper_args__ = {
-        "polymorphic_identity": PermissionType.VM,
+        "polymorphic_identity": PermissionType.EXECUTABLE.value,
     }
