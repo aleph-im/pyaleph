@@ -36,13 +36,15 @@ from message_test_helpers import (
 
 @pytest.fixture
 def forget_handler(mocker) -> ForgetMessageHandler:
+    vm_handler = VmMessageHandler()
     content_handlers = {
         MessageType.aggregate: AggregateMessageHandler(),
+        MessageType.instance: vm_handler,
         MessageType.post: PostMessageHandler(
             balances_addresses=["nope"],
             balances_post_type="no-balances-in-tests",
         ),
-        MessageType.program: VmMessageHandler(),
+        MessageType.program: vm_handler,
         MessageType.store: StoreMessageHandler(storage_service=mocker.AsyncMock()),
     }
     return ForgetMessageHandler(content_handlers=content_handlers)
