@@ -22,6 +22,7 @@ from typing import Any, Literal, Generic
 from aleph_message.models import (
     AggregateContent,
     ForgetContent,
+    InstanceContent,
     PostContent,
     ProgramContent,
     StoreContent,
@@ -103,6 +104,12 @@ class PendingForgetMessage(
     pass
 
 
+class PendingInstanceMessage(
+    BasePendingMessage[Literal[MessageType.instance], InstanceContent]  # type: ignore
+):
+    pass
+
+
 class PendingPostMessage(BasePendingMessage[Literal[MessageType.post], PostContent]):  # type: ignore
     pass
 
@@ -120,6 +127,7 @@ class PendingStoreMessage(BasePendingMessage[Literal[MessageType.store], StoreCo
 MESSAGE_TYPE_TO_CLASS = {
     MessageType.aggregate: PendingAggregateMessage,
     MessageType.forget: PendingForgetMessage,
+    MessageType.instance: PendingInstanceMessage,
     MessageType.post: PendingPostMessage,
     MessageType.program: PendingProgramMessage,
     MessageType.store: PendingStoreMessage,
