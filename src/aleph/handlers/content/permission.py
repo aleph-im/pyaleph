@@ -71,38 +71,22 @@ def _get_permission_diff(
 ) -> Tuple[Set[BasePermissionDb], Set[BasePermissionDb]]:
 
     permissions_to_keep = set()
-    permissions_with_new_validity_range = set()
+    permissions_with_new_validity_range = dict()
     permissions_to_add = set()
     permissions_to_expire = set()
 
     # Remove identical permissions
     for new_permission in new_permissions:
         for current_permission in current_permissions:
-            if new_permission == current_permission:
-                permissions_to_keep.add(current_permission)
-
-
-
-
-            elif new_permission.is_subset(current_permission):
-                if current_permission.children:
-                    for child in current_permission.children:
-                        if not child.is_subset(new_permission):
-                            permissions_to_expire.add(child)
-
-                    permissions_to_expire |= set(current_permission.children)
-                    new_permission.children = []
-
-                permissions_to_add.add(new_permission)
-            else:
-                permissions_to_add.add(new_permission)
-
-    permissions_to_expire |= (current_permissions - permissions_to_keep)
+            if new_permission.is_equivalent_to(current_permission):
+                if new_permission.valid_until == current_permission.valid_until:
+                    permissions_to_keep.add(current_permission)
+                else:
+                    permissions_with_new_validity_range[
+                        current_permission.id
+                    ] = new_permission.valid_until
 
     return permissions_to_expire, permissions_to_add
-
-
-
 
 
 class PermissionMessageHandler(ContentHandler):

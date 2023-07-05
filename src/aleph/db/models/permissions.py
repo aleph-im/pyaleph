@@ -59,10 +59,10 @@ class BasePermissionDb(Base):
 
     __table_args__ = (Index("ix_owner_address", owner, address),)
 
-    def __eq__(self, other: "BasePermissionDb") -> bool:
-        if not isinstance(other, self.__class__):
-            return False
-
+    def is_equivalent_to(self, other: "BasePermissionDb") -> bool:
+        """
+        Returns whether the permission `other` is equal to this one, ignoring validity ranges.
+        """
         return (
                 self.type == other.type
                 and self.owner == other.owner
