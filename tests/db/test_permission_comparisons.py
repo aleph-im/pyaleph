@@ -63,17 +63,25 @@ def post_permission_do_everything() -> PostPermissionDb:
 @pytest.mark.parametrize(
     "fixture_name", ["post_permission", "post_permission_do_everything"]
 )
+def test_permission_extends_self(fixture_name: str, request):
+    permission: BasePermissionDb = request.getfixturevalue(fixture_name)
+    assert permission.__eq__(permission)
+
+
+@pytest.mark.parametrize(
+    "fixture_name", ["post_permission", "post_permission_do_everything"]
+)
 def test_permissions_extends(fixture_name: str, request):
     old_permission: BasePermissionDb = request.getfixturevalue(fixture_name)
     new_permission = copy.deepcopy(old_permission)
 
     new_permission.valid_from = dt.datetime(2024, 1, 1, tzinfo=dt.timezone.utc)
     new_permission.valid_until = dt.datetime(2025, 1, 1, tzinfo=dt.timezone.utc)
-    assert new_permission.extends(old_permission)
+    assert new_permission.__eq__(old_permission)
 
     new_permission.valid_from = dt.datetime(2027, 1, 1, tzinfo=dt.timezone.utc)
     new_permission.valid_until = dt.datetime(2028, 1, 1, tzinfo=dt.timezone.utc)
-    assert not new_permission.extends(old_permission)
+    assert not new_permission.__eq__(old_permission)
 
 
 @pytest.mark.parametrize(

@@ -43,7 +43,7 @@ class BasePermissionDb(Base):
     granted_by: str = Column(String, nullable=False, index=True)
     address: str = Column(String, nullable=False)
     type: str = Column(String, nullable=False)
-    valid_from: Optional[dt.datetime] = Column(TIMESTAMP(timezone=True), nullable=True)
+    valid_from: Optional[dt.datetime] = Column(TIMESTAMP(timezone=True), nullable=False)
     valid_until: Optional[dt.datetime] = Column(TIMESTAMP(timezone=True), nullable=True)
     channel: Optional[Channel] = Column(String, nullable=True)
 
@@ -59,17 +59,17 @@ class BasePermissionDb(Base):
 
     __table_args__ = (Index("ix_owner_address", owner, address),)
 
-    def extends(self, other: "BasePermissionDb") -> bool:
+    def __eq__(self, other: "BasePermissionDb") -> bool:
         if not isinstance(other, self.__class__):
             return False
 
         return (
-            self.type == other.type
-            and self.owner == other.owner
-            and self.granted_by == other.granted_by
-            and self.address == other.address
-            and self.channel == other.channel
-            and self.valid_from <= other.valid_until
+                self.type == other.type
+                and self.owner == other.owner
+                and self.granted_by == other.granted_by
+                and self.address == other.address
+                and self.channel == other.channel
+                and self.valid_until == other.valid_until
         )
 
     def is_subset(self, other: "BasePermissionDb") -> bool:
@@ -108,9 +108,9 @@ class CrudPermissionDb(BasePermissionDb):
     refs: Optional[List[str]] = Column(ARRAY(String), nullable=True)
     addresses: Optional[List[str]] = Column(ARRAY(String), nullable=True)
 
-    def extends(self, other: BasePermissionDb) -> bool:
+    def __eq__(self, other: BasePermissionDb) -> bool:
         return (
-            super().extends(other)
+            super().__eq__(other)
             and isinstance(other, CrudPermissionDb)
             and self.create == other.create
             and self.update == other.update
@@ -147,9 +147,9 @@ class PostPermissionDb(CrudPermissionDb):
         "polymorphic_identity": PermissionType.POST.value,
     }
 
-    def extends(self, other: BasePermissionDb) -> bool:
+    def __eq__(self, other: BasePermissionDb) -> bool:
         return (
-            super().extends(other)
+            super().__eq__(other)
             and isinstance(other, PostPermissionDb)
             and tuple(self.post_types or []) == tuple(other.post_types or [])
         )
