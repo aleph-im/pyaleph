@@ -8,51 +8,44 @@ TODO:
 - handle garbage collection of unused hashes
 """
 
-import asyncio
 import logging
-from typing import List, Optional, Set, Tuple
+from copy import deepcopy
+from typing import List, Set, Tuple
 
-import aioipfs
-from aioipfs import NotPinnedError
-from aioipfs.api import RepoAPI
-from aleph_message.models import ItemType, StoreContent, ItemHash
-
-from aleph.config import get_config
-from aleph.db.accessors.files import (
-    delete_file as delete_file_db,
-    insert_message_file_pin,
-    get_file_tag,
-    upsert_file_tag,
-    delete_file_pin,
-    refresh_file_tag,
-    is_pinned_file,
-    get_message_file_pin,
-    upsert_file,
-)
 from aleph.db.accessors.permissions import (
     has_delegation_permission,
     get_permissions,
     expire_permissions,
 )
-from aleph.db.models import MessageDb, BasePermissionDb
-from aleph.exceptions import AlephStorageException, UnknownHashError
+from aleph.db.models import (
+    MessageDb,
+    BasePermissionDb,
+    DelegationPermissionDb,
+    PostPermissionDb,
+    ExecutablePermissionDb,
+    AggregatePermissionDb,
+    StorePermissionDb,
+)
 from aleph.handlers.content.content_handler import ContentHandler
-from aleph.schemas.permissions import PermissionContent, DelegationPermission
+from aleph.schemas.permissions import (
+    PermissionContent,
+    DelegationPermission,
+    Permission,
+    PostPermission,
+    AggregatePermission,
+    StorePermission,
+    ExecutablePermission,
+    CrudPermission,
+)
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession
-from aleph.types.files import FileTag, FileType
 from aleph.types.message_status import (
     PermissionDenied,
-    FileUnavailable,
     InvalidMessageFormat,
-    StoreRefNotFound,
-    StoreCannotUpdateStoreWithRef,
-    CannotForgetForgetMessage,
     CannotForgetPermissionMessage,
     PermissionCannotDelegateDelegation,
 )
-from aleph.utils import item_type_from_hash
 
 LOGGER = logging.getLogger(__name__)
 
@@ -66,27 +59,81 @@ def _get_permission_content(message: MessageDb) -> PermissionContent:
     return content
 
 
-def _get_permission_diff(
-    current_permissions: Set[BasePermissionDb], new_permissions: Set[BasePermissionDb]
-) -> Tuple[Set[BasePermissionDb], Set[BasePermissionDb]]:
+PERMISSION_TYPE_MAP = {
+    AggregatePermission: AggregatePermissionDb,
+    DelegationPermission: DelegationPermissionDb,
+    ExecutablePermission: ExecutablePermissionDb,
+    PostPermission: PostPermissionDb,
+    StorePermission: StorePermissionDb,
+}
 
-    permissions_to_keep = set()
-    permissions_with_new_validity_range = dict()
-    permissions_to_add = set()
-    permissions_to_expire = set()
+
+def map_permission_to_db(
+    permission: Permission,
+    content: PermissionContent,
+    address: str,
+    message: MessageDb,
+) -> BasePermissionDb:
+    db_model_args = {
+        "owner": content.address,
+        "granted_by": message.sender,
+        "address": address,
+        "channel": message.channel,
+        "valid_from": timestamp_to_datetime(content.time),
+        "valid_until": None,
+        "expires": None,
+    }
+
+    if isinstance(permission, CrudPermission):
+        db_model_args["create"] = permission.create
+        db_model_args["update"] = permission.update
+        db_model_args["delete"] = permission.delete
+        db_model_args["refs"] = permission.refs
+        db_model_args["addresses"] = permission.addresses
+
+    if isinstance(permission, PostPermission):
+        db_model_args["post_types"] = permission.post_types
+
+    return PERMISSION_TYPE_MAP[type(permission)](**db_model_args)
+
+
+PermissionSet = Set[BasePermissionDb]
+
+
+def get_permission_diff(
+    current_permissions: PermissionSet, new_permissions: PermissionSet
+) -> Tuple[PermissionSet, PermissionSet, PermissionSet]:
 
     # Remove identical permissions
-    for new_permission in new_permissions:
-        for current_permission in current_permissions:
-            if new_permission.is_equivalent_to(current_permission):
-                if new_permission.valid_until == current_permission.valid_until:
-                    permissions_to_keep.add(current_permission)
-                else:
-                    permissions_with_new_validity_range[
-                        current_permission.id
-                    ] = new_permission.valid_until
+    permissions_to_add = new_permissions - current_permissions
+    permissions_to_keep = current_permissions & new_permissions
+    permissions_to_expire = current_permissions - new_permissions
 
-    return permissions_to_expire, permissions_to_add
+    return permissions_to_keep, permissions_to_add, permissions_to_expire
+
+
+def make_new_delegated_permission(
+    delegated_permission: BasePermissionDb, replaced_by: BasePermissionDb
+) -> BasePermissionDb:
+    new_delegated_permission = deepcopy(replaced_by)
+    new_delegated_permission.address = delegated_permission.address
+    new_delegated_permission.granted_by = delegated_permission.granted_by
+    return new_delegated_permission
+
+
+def update_delegated_permissions(
+    permissions_to_expire: PermissionSet, new_permissions: PermissionSet
+) -> None:
+    for current_permission in permissions_to_expire:
+        for new_permission in new_permissions:
+            if new_permission.is_subset(current_permission):
+                updated_delegations = [
+                    make_new_delegated_permission(
+                        delegated_permission=delegation, replaced_by=new_permission
+                    )
+                    for delegation in current_permission.delegations
+                ]
+                new_permission.delegations += updated_delegations
 
 
 class PermissionMessageHandler(ContentHandler):
@@ -150,19 +197,34 @@ class PermissionMessageHandler(ContentHandler):
                 datetime=message_datetime,
             )
 
+            new_permissions_set = set(
+                map_permission_to_db(
+                    permission=permission,
+                    content=content,
+                    address=address,
+                    message=message,
+                )
+                for permission in permissions
+            )
+
             # Isolate new permissions (diff DB vs message).
-            expired_permissions, new_permissions = _get_permission_diff(
-                current_permissions, permissions
+            (
+                permissions_to_keep,
+                permissions_to_add,
+                permissions_to_expire,
+            ) = get_permission_diff(
+                current_permissions=set(current_permissions),
+                new_permissions=new_permissions_set,
             )
 
             # Nothing to do, move on to the next address.
-            if not (expired_permissions or new_permissions):
+            if not (permissions_to_expire or permissions_to_add):
                 continue
 
             # If message deletes delegation permission, expire all delegations.
             if any(
                 isinstance(permission, DelegationPermission)
-                for permission in expired_permissions
+                for permission in permissions_to_expire
             ):
                 ...
                 # expire_permissions(session=session, address=)
@@ -179,14 +241,10 @@ class PermissionMessageHandler(ContentHandler):
                 on_behalf_of=on_behalf_of,
                 datetime=message_datetime,
             ):
-                if any(
-                    isinstance(permission, DelegationPermission)
-                    for permission in permissions
-                ):
-                    # Do nothing? We need to check if the permissions granted to the address are still
-                    # a superset of all the permissions that are delegated to the address, or expire them
-                    # if that's not the case.
-                    ...
+                update_delegated_permissions(
+                    permissions_to_expire=permissions_to_expire,
+                    new_permissions=permissions_to_add,
+                )
 
             expire_permissions(
                 session=session,

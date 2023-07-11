@@ -43,14 +43,15 @@ class BasePermissionDb(Base):
     granted_by: str = Column(String, nullable=False, index=True)
     address: str = Column(String, nullable=False)
     type: str = Column(String, nullable=False)
+    channel: Optional[Channel] = Column(String, nullable=True)
     valid_from: Optional[dt.datetime] = Column(TIMESTAMP(timezone=True), nullable=False)
     valid_until: Optional[dt.datetime] = Column(TIMESTAMP(timezone=True), nullable=True)
-    channel: Optional[Channel] = Column(String, nullable=True)
+    expires: Optional[dt.datetime] = Column(TIMESTAMP(timezone=True), nullable=True)
 
     __mapper_args__: Dict[str, Any] = {
         "polymorphic_on": type,
     }
-    children: List["BasePermissionDb"] = relationship(
+    delegations: List["BasePermissionDb"] = relationship(
         "BasePermissionDb",
         secondary=delegations_table,
         primaryjoin=id == delegations_table.c.parent,
@@ -64,12 +65,12 @@ class BasePermissionDb(Base):
         Returns whether the permission `other` is equal to this one, ignoring validity ranges.
         """
         return (
-                self.type == other.type
-                and self.owner == other.owner
-                and self.granted_by == other.granted_by
-                and self.address == other.address
-                and self.channel == other.channel
-                and self.valid_until == other.valid_until
+            self.type == other.type
+            and self.owner == other.owner
+            and self.granted_by == other.granted_by
+            and self.address == other.address
+            and self.channel == other.channel
+            and self.valid_until == other.valid_until
         )
 
     def is_subset(self, other: "BasePermissionDb") -> bool:
@@ -88,8 +89,9 @@ class BasePermissionDb(Base):
                 self.type,
                 self.address,
                 self.granted_by,
-                self.valid_from,
-                self.valid_until,
+                # TODO: should we exclude these from __hash__ or use HashWrapper?
+                # self.valid_from,
+                # self.valid_until,
                 self.channel,
             )
         )

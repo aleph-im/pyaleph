@@ -1,4 +1,3 @@
-import datetime as dt
 from typing import Optional, List, Literal, Dict, Annotated, Union
 
 from aleph_message.models import BaseContent
@@ -10,7 +9,6 @@ from aleph.types.channel import Channel
 class BasePermission(BaseModel):
     # Discriminator field for the different permission types.
     type: str
-    valid_until: Optional[dt.datetime] = None
     channel: Optional[Channel] = None
 
 
