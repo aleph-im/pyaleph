@@ -161,7 +161,7 @@ class StoreMessageHandler(ContentHandler):
                     do_standard_lookup = False
 
                 # Pin folders and files larger than 1MB
-                if do_standard_lookup:
+                if not do_standard_lookup:
                     await ipfs_service.pin_add(cid=item_hash)
 
             except asyncio.TimeoutError as error:
