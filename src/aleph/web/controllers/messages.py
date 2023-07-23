@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from typing import List, Optional, Any, Dict, Iterable
 
@@ -30,7 +29,6 @@ from aleph.schemas.api.messages import (
     PendingMessage,
     AlephMessage,
     format_message_dict,
-    PostMessage,
 )
 from aleph.toolkit.shield import shielded
 from aleph.types.db_session import DbSessionFactory, DbSession
@@ -267,7 +265,6 @@ def message_matches_filters(
         "sender": "addresses",
         "type": "message_type",
         "item_hash": "hashes",
-        "ref": "refs",
         "chain": "chains",
         "channel": "channels",
     }
@@ -281,6 +278,11 @@ def message_matches_filters(
 
     # Process filters on content and content.content
     message_content = message.content
+    if refs := query_params.refs:
+        ref = getattr(message_content, "ref", None)
+        if ref not in refs:
+            return False
+
     if content_types := query_params.content_types:
         content_type = getattr(message_content, "type", None)
         if content_type not in content_types:
