@@ -109,7 +109,7 @@ def recreate_cost_views():
                                     LEFT JOIN files ON volume.volume_to_use = files.hash
                            GROUP BY volume.vm_hash) file_volumes_size
                           ON vm_versions.current_version = file_volumes_size.vm_hash
-                     JOIN (SELECT instance_hash, size_mib * 1024 * 1024 rootfs_size FROM instance_rootfs) rootfs_size
+                     JOIN (SELECT instance_hash, size_mib::bigint * 1024 * 1024 rootfs_size FROM instance_rootfs) rootfs_size
                      ON vm_versions.vm_hash = rootfs_size.instance_hash
                      JOIN (SELECT vm_hash, SUM(size_mib) * 1024 * 1024 other_volumes_size
                            FROM vm_machine_volumes
@@ -119,7 +119,7 @@ def recreate_cost_views():
                  LATERAL ( SELECT ceil(GREATEST(ceil(vms.resources_vcpus / 1),
                                                 vms.resources_memory / 2000)) AS compute_units_required) cu,
                  LATERAL ( SELECT CASE
-                                      WHEN vms.persistent
+                                      WHEN COALESCE(vms.persistent, true)
                                           THEN 20000000000 * cu.compute_units_required
                                       ELSE 2000000000 * cu.compute_units_required
                                       END AS included_disk_space) free_disk,
@@ -129,7 +129,7 @@ def recreate_cost_views():
                                            free_disk.included_disk_space,
                                            0) AS additional_disk_space) additional_disk,
                  LATERAL ( SELECT CASE
-                                      WHEN vms.persistent THEN 2000
+                                      WHEN COALESCE(vms.persistent, true) THEN 2000
                                       ELSE 200
                                       END AS base_compute_unit_price) bcp,
                  LATERAL ( SELECT 1 + vms.environment_internet::integer AS compute_unit_price_multiplier) m,
