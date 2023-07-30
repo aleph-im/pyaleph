@@ -401,6 +401,7 @@ def make_upsert_rejected_message_statement(
     error_code: int,
     details: Optional[Mapping[str, Any]] = None,
     exc_traceback: Optional[str] = None,
+    tx_hash: Optional[str] = None,
 ) -> Insert:
     insert_rejected_message_stmt = insert(RejectedMessageDb).values(
         item_hash=item_hash,
@@ -408,6 +409,7 @@ def make_upsert_rejected_message_statement(
         error_code=error_code,
         details=details,
         traceback=exc_traceback,
+        tx_hash=tx_hash,
     )
     upsert_rejected_message_stmt = insert_rejected_message_stmt.on_conflict_do_update(
         constraint="rejected_messages_pkey",
@@ -415,6 +417,7 @@ def make_upsert_rejected_message_statement(
             "error_code": insert_rejected_message_stmt.excluded.error_code,
             "details": details,
             "traceback": insert_rejected_message_stmt.excluded.traceback,
+            "tx_hash": tx_hash,
         },
     )
     return upsert_rejected_message_stmt
@@ -425,6 +428,7 @@ def mark_pending_message_as_rejected(
     item_hash: str,
     pending_message_dict: Mapping[str, Any],
     exception: BaseException,
+    tx_hash: Optional[str],
 ) -> RejectedMessageDb:
     if isinstance(exception, MessageProcessingException):
         error_code = exception.error_code
@@ -452,6 +456,7 @@ def mark_pending_message_as_rejected(
         details=details,
         error_code=error_code,
         exc_traceback=exc_traceback,
+        tx_hash=tx_hash,
     )
 
     session.execute(upsert_status_stmt)
@@ -463,6 +468,7 @@ def mark_pending_message_as_rejected(
         traceback=exc_traceback,
         error_code=error_code,
         details=details,
+        tx_hash=tx_hash,
     )
 
 
@@ -471,6 +477,7 @@ def reject_new_pending_message(
     session: DbSession,
     pending_message: Mapping[str, Any],
     exception: BaseException,
+        tx_hash: Optional[str],
 ) -> None:
     ...
 
@@ -480,6 +487,7 @@ def reject_new_pending_message(
     session: DbSession,
     pending_message: PendingMessageDb,
     exception: BaseException,
+    tx_hash: Optional[str],
 ) -> None:
     ...
 
@@ -488,6 +496,7 @@ def reject_new_pending_message(
     session: DbSession,
     pending_message: Union[Mapping[str, Any], PendingMessageDb],
     exception: BaseException,
+    tx_hash: Optional[str],
 ) -> Optional[RejectedMessageDb]:
     """
     Reject a pending message that is not yet in the DB.
@@ -529,6 +538,7 @@ def reject_new_pending_message(
         item_hash=item_hash,
         pending_message_dict=pending_message_dict,
         exception=exception,
+        tx_hash=tx_hash,
     )
 
 
@@ -566,6 +576,7 @@ def reject_existing_pending_message(
         item_hash=item_hash,
         pending_message_dict=pending_message_dict,
         exception=exception,
+        tx_hash=pending_message.tx_hash,
     )
     delete_pending_message(session=session, pending_message=pending_message)
     return rejected_message
