@@ -47,6 +47,19 @@ class ContentHandler(abc.ABC):
         """
         pass
 
+    async def check_balance(self, session: DbSession, message: MessageDb) -> None:
+        """
+        Check user's balance and cost.
+
+        This function should verify whether the user has sufficient balance to perform
+        the requested action.
+        It's raise InsufficientBalanceException
+
+        :param session: DB session.
+        :param message: Message being processed.
+        """
+        pass
+
     async def check_dependencies(self, session: DbSession, message: MessageDb) -> None:
         """
         Check dependencies of a message.

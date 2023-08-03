@@ -1,5 +1,6 @@
 from enum import Enum, IntEnum
 from typing import Optional, Any, Dict, Sequence, Union
+from decimal import Decimal
 
 
 class MessageStatus(str, Enum):
@@ -31,6 +32,7 @@ class ErrorCode(IntEnum):
     PERMISSION_DENIED = 2
     CONTENT_UNAVAILABLE = 3
     FILE_UNAVAILABLE = 4
+    BALANCE_INSUFFICIENT = 5
     POST_AMEND_NO_TARGET = 100
     POST_AMEND_TARGET_NOT_FOUND = 101
     POST_AMEND_AMEND = 102
@@ -295,3 +297,22 @@ class CannotForgetForgetMessage(InvalidMessageException):
 
     def details(self) -> Optional[Dict[str, Any]]:
         return {"errors": [{"message": self.target_hash}]}
+
+
+class InsufficientBalanceException(InvalidMessageException):
+    """
+    You don't have enough in balance
+    """
+
+    def __init__(
+        self,
+        balance: float,
+        required_balance: float,
+    ):
+        self.balance = balance
+        self.required_balance = required_balance
+        super().__init__(
+            f"Insufficient balances : {self.balance} required : {self.required_balance}"
+        )
+
+    error_code = ErrorCode.BALANCE_INSUFFICIENT

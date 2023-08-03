@@ -1,4 +1,5 @@
 import logging
+import math
 from typing import List, Set, overload, Protocol, Optional
 
 from aleph_message.models import ProgramContent, ExecutableContent, InstanceContent
@@ -9,7 +10,9 @@ from aleph_message.models.execution.volume import (
     PersistentVolume,
     ParentVolume,
 )
+from decimal import Decimal
 
+from aleph.db.accessors.balances import get_total_balance
 from aleph.db.accessors.files import (
     find_file_tags,
     find_file_pins,
@@ -23,6 +26,7 @@ from aleph.db.accessors.vms import (
     delete_vm_updates,
     refresh_vm_version,
     is_vm_amend_allowed,
+    get_total_cost_for_address,
 )
 from aleph.db.models import (
     MessageDb,
@@ -39,6 +43,7 @@ from aleph.db.models import (
     RootfsVolumeDb,
     VmBaseDb,
     StoredFileDb,
+    FilePinDb,
 )
 from aleph.handlers.content.content_handler import ContentHandler
 from aleph.toolkit.timestamp import timestamp_to_datetime
@@ -52,6 +57,7 @@ from aleph.types.message_status import (
     VmUpdateNotAllowed,
     VmCannotUpdateUpdate,
     VmVolumeTooSmall,
+    InsufficientBalanceException,
 )
 from aleph.types.vms import VmVersion
 
@@ -65,6 +71,12 @@ def _get_vm_content(message: MessageDb) -> ExecutableContent:
             f"Unexpected content type for program message: {message.item_hash}"
         )
     return content
+
+
+from aleph_message.models.execution.program import (
+    MachineType,
+    ProgramContent,
+)
 
 
 @overload
@@ -289,6 +301,50 @@ def check_parent_volumes_size_requirements(
             )
 
 
+def get_extra_storage(content: InstanceContent, session: DbSession) -> int:
+    volumes: int = 0
+    for i in content.volumes:
+        try:
+            if hasattr(i, "ref") and i.ref:
+                file_pin = (
+                    session.query(FilePinDb)
+                    .filter(FilePinDb.item_hash == i.ref)
+                    .first()
+                )
+                if not file_pin:
+                    raise VmRefNotFound()
+                file_record = (
+                    session.query(StoredFileDb)
+                    .filter(StoredFileDb.hash == file_pin.file_hash)
+                    .first()
+                )
+                if file_record:
+                    volumes += file_record.size / (1024 * 1024)
+            else:
+                volumes += i.size_mib
+        except:
+            pass
+    volumes += content.rootfs.size_mib
+    return volumes
+
+
+def get_additional_storage_price(content, session: DbSession) -> float:
+    size_plus = get_extra_storage(content, session)
+    additional_storage = (size_plus * 1024 * 1024) - (
+        20_000_000_000 * content.resources.vcpus
+    )
+    price = (additional_storage * 20) / 1_000_000
+    return price
+
+
+def compute_cost(session: DbSession, message: MessageDb) -> float:
+    content = _get_vm_content(message)
+    compute_unit_cost: int = 2_000
+    return (compute_unit_cost * content.resources.vcpus) + get_additional_storage_price(
+        content, session
+    )
+
+
 class VmMessageHandler(ContentHandler):
     """
     Handles both PROGRAM and INSTANCE messages.
@@ -297,6 +353,24 @@ class VmMessageHandler(ContentHandler):
     in the same handler.
 
     """
+
+    async def check_balance(self, session: DbSession, message: MessageDb):
+        content = _get_vm_content(message)
+        if isinstance(content, ProgramContent):
+            return
+
+        required_tokens = compute_cost(session=session, message=message)
+        current_balance = (
+            get_total_balance(address=content.address, session=session) or 0
+        )
+        current_instance_costs = get_total_cost_for_address(
+            session=session, address=content.address
+        )
+        if current_balance < current_instance_costs + required_tokens:
+            raise InsufficientBalanceException(
+                balance=float(current_balance),
+                required_balance=current_instance_costs + required_tokens,
+            )
 
     async def check_dependencies(self, session: DbSession, message: MessageDb) -> None:
         content = _get_vm_content(message)

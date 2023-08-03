@@ -2,6 +2,7 @@ import datetime as dt
 import itertools
 import json
 from typing import List, Protocol
+from decimal import Decimal
 
 import pytest
 import pytz
@@ -29,7 +30,7 @@ from aleph.db.models import (
     ImmutableVolumeDb,
     EphemeralVolumeDb,
     PersistentVolumeDb,
-    StoredFileDb,
+    StoredFileDb, AlephBalanceDb,
 )
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.toolkit.timestamp import timestamp_to_datetime
@@ -233,6 +234,17 @@ async def test_process_instance(
     message_processor: PendingMessageProcessor,
     fixture_instance_message: PendingMessageDb,
 ):
+    with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
+                chain=Chain.ETH,
+                balance=Decimal(22_192),
+                eth_height=0,
+            )
+        )
+        session.commit()
+
     with session_factory() as session:
         insert_volume_refs(session, fixture_instance_message)
         session.commit()
