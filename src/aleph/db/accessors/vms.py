@@ -57,11 +57,11 @@ def get_vm_version(session: DbSession, vm_hash: str) -> Optional[VmVersionDb]:
 
 
 def upsert_vm_version(
-    session: DbSession,
-    vm_hash: str,
-    owner: str,
-    current_version: VmVersion,
-    last_updated: dt.datetime,
+        session: DbSession,
+        vm_hash: str,
+        owner: str,
+        current_version: VmVersion,
+        last_updated: dt.datetime,
 ) -> None:
     insert_stmt = insert(VmVersionDb).values(
         vm_hash=vm_hash,
@@ -123,4 +123,4 @@ def get_total_cost_for_address(session: DbSession, address: str) -> Decimal:
     ).params(address=address)
 
     total_cost = session.execute(select_stmt).scalar()
-    return Decimal(total_cost) or Decimal(0)
+    return Decimal(total_cost) if total_cost is not None else Decimal(0)

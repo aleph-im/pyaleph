@@ -368,7 +368,7 @@ class VmMessageHandler(ContentHandler):
 
         if current_balance < current_instance_costs + required_tokens:
             raise InsufficientBalanceException(
-                balance=current_balance,
+                balance= Decimal(current_balance),
                 required_balance=current_instance_costs + required_tokens,
             )
 
