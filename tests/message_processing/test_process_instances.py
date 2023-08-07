@@ -395,3 +395,26 @@ async def test_forget_instance_message(
 
         instance_version = get_vm_version(session=session, vm_hash=vm_hash)
         assert instance_version is None
+
+@pytest.mark.asyncio
+async def test_process_instance_balance(
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    fixture_instance_message: PendingMessageDb,
+):
+    with session_factory() as session:
+        insert_volume_refs(session, fixture_instance_message)
+        session.commit()
+
+    pipeline = message_processor.make_pipeline()
+    # Exhaust the iterator
+    _ = [message async for message in pipeline]
+
+    assert fixture_instance_message.item_content
+    content_dict = json.loads(fixture_instance_message.item_content)
+
+    with session_factory() as session:
+        status = get_message_status(
+            session=session, item_hash=fixture_instance_message.item_hash
+        )
+        assert status.status == MessageStatus.REJECTED
