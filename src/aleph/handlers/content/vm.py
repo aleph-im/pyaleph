@@ -217,7 +217,7 @@ def vm_message_to_db(message: MessageDb) -> VmBaseDb:
 
 
 def find_missing_volumes(
-    session: DbSession, content: ExecutableContent
+        session: DbSession, content: ExecutableContent
 ) -> Set[FileTag]:
     tags_to_check = set()
     pins_to_check = set()
@@ -255,7 +255,7 @@ def find_missing_volumes(
 
 
 def check_parent_volumes_size_requirements(
-    session: DbSession, content: ExecutableContent
+        session: DbSession, content: ExecutableContent
 ) -> None:
     def _get_parent_volume_file(_parent: ParentVolume) -> StoredFileDb:
         if _parent.use_latest:
@@ -304,34 +304,33 @@ def check_parent_volumes_size_requirements(
 def get_volume_size(content: InstanceContent, session: DbSession) -> int:
     total_volume_size: int = 0
     for volume in content.volumes:
-        try:
-            if hasattr(volume, "ref") and volume.ref:
-                file_pin = (
-                    session.query(FilePinDb)
-                    .filter(FilePinDb.item_hash == volume.ref)
-                    .first()
-                )
-                if not file_pin:
-                    raise VmRefNotFound()
-                file_record = (
-                    session.query(StoredFileDb)
-                    .filter(StoredFileDb.hash == file_pin.file_hash)
-                    .first()
-                )
-                if file_record:
-                    total_volume_size += file_record.size
-            else:
+        if hasattr(volume, "ref") and volume.ref:
+            file_pin = (
+                session.query(FilePinDb)
+                .filter(FilePinDb.item_hash == volume.ref)
+                .first()
+            )
+            if not file_pin:
+                raise VmRefNotFound()
+            file_record = (
+                session.query(StoredFileDb)
+                .filter(StoredFileDb.hash == file_pin.file_hash)
+                .first()
+            )
+            if file_record:
+                total_volume_size += file_record.size
+        else:
+            if hasattr(volume, "size_mib"):
                 total_volume_size += volume.size_mib * (1024 * 1024)
-        except:
-            pass
-    total_volume_size += content.rootfs.size_mib * (1024 * 1024)
+    if hasattr(content.rootfs, "size_mib"):
+        total_volume_size += content.rootfs.size_mib * (1024 * 1024)
     return total_volume_size
 
 
 def get_additional_storage_price(content, session: DbSession) -> Decimal:
     size_plus = get_volume_size(content, session) / (1024 * 1024)
     additional_storage = (size_plus * 1024 * 1024) - (
-        20_000_000_000 * content.resources.vcpus
+            20_000_000_000 * content.resources.vcpus
     )
     price = (additional_storage * 20) / 1_000_000
     return Decimal(price)
@@ -361,11 +360,12 @@ class VmMessageHandler(ContentHandler):
 
         required_tokens = compute_cost(session=session, message=message)
         current_balance = (
-            get_total_balance(address=content.address, session=session) or 0
+                get_total_balance(address=content.address, session=session) or 0
         )
         current_instance_costs = get_total_cost_for_address(
             session=session, address=content.address
         )
+
         if current_balance < current_instance_costs + required_tokens:
             raise InsufficientBalanceException(
                 balance=current_balance,
