@@ -1,6 +1,6 @@
 import datetime as dt
 from typing import Optional, Iterable
-
+from decimal import Decimal
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.dialects.postgresql import insert
 
@@ -115,7 +115,7 @@ def refresh_vm_version(session: DbSession, vm_hash: str) -> None:
     session.execute(upsert_stmt)
 
 
-def get_total_cost_for_address(session: DbSession, address: str) -> int:
+def get_total_cost_for_address(session: DbSession, address: str) -> Decimal:
     select_stmt = (
         select(func.sum(text("total_cost")))
         .select_from(text("public.costs_view"))
@@ -123,4 +123,4 @@ def get_total_cost_for_address(session: DbSession, address: str) -> int:
     ).params(address=address)
 
     total_cost = session.execute(select_stmt).scalar()
-    return total_cost or 0
+    return Decimal(total_cost) or Decimal(0)

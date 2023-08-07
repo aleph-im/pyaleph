@@ -302,13 +302,13 @@ def check_parent_volumes_size_requirements(
 
 
 def get_extra_storage(content: InstanceContent, session: DbSession) -> int:
-    volumes: int = 0
-    for i in content.volumes:
+    total_volume_size: int = 0
+    for volume in content.volumes:
         try:
-            if hasattr(i, "ref") and i.ref:
+            if hasattr(volume, "ref") and volume.ref:
                 file_pin = (
                     session.query(FilePinDb)
-                    .filter(FilePinDb.item_hash == i.ref)
+                    .filter(FilePinDb.item_hash == volume.ref)
                     .first()
                 )
                 if not file_pin:
@@ -319,30 +319,30 @@ def get_extra_storage(content: InstanceContent, session: DbSession) -> int:
                     .first()
                 )
                 if file_record:
-                    volumes += file_record.size / (1024 * 1024)
+                    total_volume_size += file_record.size
             else:
-                volumes += i.size_mib
+                total_volume_size += volume.size_mib * (1024 * 1024)
         except:
             pass
-    volumes += content.rootfs.size_mib
-    return volumes
+    total_volume_size += content.rootfs.size_mib * (1024 * 1024)
+    return total_volume_size
 
 
-def get_additional_storage_price(content, session: DbSession) -> float:
-    size_plus = get_extra_storage(content, session)
+def get_additional_storage_price(content, session: DbSession) -> Decimal:
+    size_plus = get_extra_storage(content, session) / (1024 * 1024)
     additional_storage = (size_plus * 1024 * 1024) - (
         20_000_000_000 * content.resources.vcpus
     )
     price = (additional_storage * 20) / 1_000_000
-    return price
+    return Decimal(price)
 
 
-def compute_cost(session: DbSession, message: MessageDb) -> float:
+def compute_cost(session: DbSession, message: MessageDb) -> Decimal:
     content = _get_vm_content(message)
-    compute_unit_cost: int = 2_000
-    return (compute_unit_cost * content.resources.vcpus) + get_additional_storage_price(
+    compute_unit_cost: Decimal = Decimal("2000.0")
+    return (compute_unit_cost * content.resources.vcpus) + Decimal(get_additional_storage_price(
         content, session
-    )
+    ))
 
 
 class VmMessageHandler(ContentHandler):
@@ -354,7 +354,7 @@ class VmMessageHandler(ContentHandler):
 
     """
 
-    async def check_balance(self, session: DbSession, message: MessageDb):
+    async def check_balance(self, session: DbSession, message: MessageDb) -> None:
         content = _get_vm_content(message)
         if isinstance(content, ProgramContent):
             return
@@ -368,7 +368,7 @@ class VmMessageHandler(ContentHandler):
         )
         if current_balance < current_instance_costs + required_tokens:
             raise InsufficientBalanceException(
-                balance=float(current_balance),
+                balance=current_balance,
                 required_balance=current_instance_costs + required_tokens,
             )
 

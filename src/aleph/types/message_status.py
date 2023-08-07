@@ -306,8 +306,8 @@ class InsufficientBalanceException(InvalidMessageException):
 
     def __init__(
         self,
-        balance: float,
-        required_balance: float,
+        balance: Decimal,
+        required_balance: Decimal,
     ):
         self.balance = balance
         self.required_balance = required_balance
