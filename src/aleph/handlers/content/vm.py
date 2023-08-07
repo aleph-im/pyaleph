@@ -301,7 +301,7 @@ def check_parent_volumes_size_requirements(
             )
 
 
-def get_extra_storage(content: InstanceContent, session: DbSession) -> int:
+def get_volume_size(content: InstanceContent, session: DbSession) -> int:
     total_volume_size: int = 0
     for volume in content.volumes:
         try:
@@ -329,7 +329,7 @@ def get_extra_storage(content: InstanceContent, session: DbSession) -> int:
 
 
 def get_additional_storage_price(content, session: DbSession) -> Decimal:
-    size_plus = get_extra_storage(content, session) / (1024 * 1024)
+    size_plus = get_volume_size(content, session) / (1024 * 1024)
     additional_storage = (size_plus * 1024 * 1024) - (
         20_000_000_000 * content.resources.vcpus
     )
