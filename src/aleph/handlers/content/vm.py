@@ -2,7 +2,7 @@ import logging
 import math
 from typing import List, Set, overload, Protocol, Optional
 
-from aleph_message.models import ProgramContent, ExecutableContent, InstanceContent
+from aleph_message.models import ProgramContent, ExecutableContent, InstanceContent, MessageType
 from aleph_message.models.execution.volume import (
     AbstractVolume,
     ImmutableVolume,
@@ -354,6 +354,8 @@ class VmMessageHandler(ContentHandler):
     """
 
     async def check_balance(self, session: DbSession, message: MessageDb) -> None:
+        if message.type != MessageType.post:
+            return
         content = _get_vm_content(message)
         if isinstance(content, ProgramContent):
             return
