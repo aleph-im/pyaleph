@@ -125,6 +125,15 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessag
         next_attempt=dt.datetime(2023, 1, 1),
     )
     with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
+                chain=Chain.ETH,
+                balance=Decimal(22_192),
+                eth_height=0,
+            )
+        )
+        session.commit()
         session.add(pending_message)
         session.add(
             MessageStatusDb(
@@ -235,17 +244,6 @@ async def test_process_instance(
         fixture_instance_message: PendingMessageDb,
 ):
     with session_factory() as session:
-        session.add(
-            AlephBalanceDb(
-                address="0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
-                chain=Chain.ETH,
-                balance=Decimal(22_192),
-                eth_height=0,
-            )
-        )
-        session.commit()
-
-    with session_factory() as session:
         insert_volume_refs(session, fixture_instance_message)
         session.commit()
 
@@ -340,17 +338,6 @@ async def test_process_instance_missing_volumes(
     _ = [message async for message in pipeline]
 
     with session_factory() as session:
-        session.add(
-            AlephBalanceDb(
-                address="0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
-                chain=Chain.ETH,
-                balance=Decimal(22_192),
-                eth_height=0,
-            )
-        )
-        session.commit()
-
-    with session_factory() as session:
         instance = get_instance(session=session, item_hash=vm_hash)
         assert instance is None
 
@@ -427,5 +414,4 @@ async def test_process_instance_balance(
 
     with session_factory() as session:
         rejected_message = get_rejected_message(session=session, item_hash=fixture_instance_message.item_hash)
-        assert rejected_message is not None
         assert rejected_message.error_code == ErrorCode.BALANCE_INSUFFICIENT
