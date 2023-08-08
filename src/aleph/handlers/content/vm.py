@@ -306,7 +306,8 @@ def get_volume_size(content: InstanceContent, session: DbSession) -> int:
     for volume in content.volumes:
         if hasattr(volume, "ref") and volume.ref:
             pin_file = get_message_file_pin(session=session, item_hash=volume.ref)
-            total_volume_size += pin_file.file.size
+            if pin_file and pin_file.file:
+                total_volume_size += pin_file.file.size
         else:
             if hasattr(volume, "size_mib"):
                 total_volume_size += volume.size_mib * (1024 * 1024)
