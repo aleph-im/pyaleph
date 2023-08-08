@@ -2,7 +2,12 @@ import logging
 import math
 from typing import List, Set, overload, Protocol, Optional
 
-from aleph_message.models import ProgramContent, ExecutableContent, InstanceContent, MessageType
+from aleph_message.models import (
+    ProgramContent,
+    ExecutableContent,
+    InstanceContent,
+    MessageType,
+)
 from aleph_message.models.execution.volume import (
     AbstractVolume,
     ImmutableVolume,
@@ -217,7 +222,7 @@ def vm_message_to_db(message: MessageDb) -> VmBaseDb:
 
 
 def find_missing_volumes(
-        session: DbSession, content: ExecutableContent
+    session: DbSession, content: ExecutableContent
 ) -> Set[FileTag]:
     tags_to_check = set()
     pins_to_check = set()
@@ -255,7 +260,7 @@ def find_missing_volumes(
 
 
 def check_parent_volumes_size_requirements(
-        session: DbSession, content: ExecutableContent
+    session: DbSession, content: ExecutableContent
 ) -> None:
     def _get_parent_volume_file(_parent: ParentVolume) -> StoredFileDb:
         if _parent.use_latest:
@@ -301,25 +306,25 @@ def check_parent_volumes_size_requirements(
             )
 
 
-def get_volume_size(content: InstanceContent, session: DbSession) -> int:
-    total_volume_size: int = 0
+def get_volume_size(content: InstanceContent, session: DbSession) -> Decimal:
+    total_volume_size: Decimal = Decimal(0)
     for volume in content.volumes:
         if hasattr(volume, "ref") and volume.ref:
             pin_file = get_message_file_pin(session=session, item_hash=volume.ref)
             if pin_file and pin_file.file:
-                total_volume_size += pin_file.file.size
+                total_volume_size += Decimal(pin_file.file.size)
         else:
             if hasattr(volume, "size_mib"):
-                total_volume_size += volume.size_mib * (1024 * 1024)
+                total_volume_size += Decimal(volume.size_mib * (1024 * 1024))
     if hasattr(content.rootfs, "size_mib"):
-        total_volume_size += content.rootfs.size_mib * (1024 * 1024)
+        total_volume_size += Decimal(content.rootfs.size_mib * (1024 * 1024))
     return total_volume_size
 
 
 def get_additional_storage_price(content, session: DbSession) -> Decimal:
     size_plus = get_volume_size(content, session) / (1024 * 1024)
     additional_storage = (size_plus * 1024 * 1024) - (
-            20_000_000_000 * content.resources.vcpus
+        20_000_000_000 * content.resources.vcpus
     )
     price = (additional_storage * 20) / 1_000_000
     return Decimal(price)
@@ -328,9 +333,9 @@ def get_additional_storage_price(content, session: DbSession) -> Decimal:
 def compute_cost(session: DbSession, message: MessageDb) -> Decimal:
     content = _get_vm_content(message)
     compute_unit_cost: Decimal = Decimal("2000.0")
-    return (compute_unit_cost * content.resources.vcpus) + Decimal(get_additional_storage_price(
-        content, session
-    ))
+    return (compute_unit_cost * content.resources.vcpus) + Decimal(
+        get_additional_storage_price(content, session)
+    )
 
 
 class VmMessageHandler(ContentHandler):
@@ -351,7 +356,7 @@ class VmMessageHandler(ContentHandler):
 
         required_tokens = compute_cost(session=session, message=message)
         current_balance = (
-                get_total_balance(address=content.address, session=session) or 0
+            get_total_balance(address=content.address, session=session) or 0
         )
         current_instance_costs = get_total_cost_for_address(
             session=session, address=content.address
