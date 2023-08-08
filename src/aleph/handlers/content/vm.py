@@ -354,7 +354,7 @@ class VmMessageHandler(ContentHandler):
     """
 
     async def check_balance(self, session: DbSession, message: MessageDb) -> None:
-        if message.type != MessageType.post:
+        if message.type != MessageType.instance:
             return
         content = _get_vm_content(message)
         if isinstance(content, ProgramContent):
