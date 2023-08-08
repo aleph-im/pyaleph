@@ -1,11 +1,11 @@
-from aleph_message.models import InstanceContent
+from aleph_message.models import InstanceContent, ExecutableContent
 from decimal import Decimal
 
 from aleph.db.accessors.files import get_file_tag
 from aleph.types.db_session import DbSession
 
 
-def get_volume_size(content: InstanceContent, session: DbSession) -> Decimal:
+def get_volume_size(content: ExecutableContent, session: DbSession) -> Decimal:
     total_volume_size: Decimal = Decimal(0)
     for volume in content.volumes:
         if hasattr(volume, "ref") and volume.ref:
@@ -20,7 +20,7 @@ def get_volume_size(content: InstanceContent, session: DbSession) -> Decimal:
     return total_volume_size
 
 
-def get_additional_storage_price(content: InstanceContent, session: DbSession) -> Decimal:
+def get_additional_storage_price(content: ExecutableContent, session: DbSession) -> Decimal:
     size_plus = get_volume_size(content, session) / (1024 * 1024)
     additional_storage = (size_plus * 1024 * 1024) - (
             20_000_000_000 * content.resources.vcpus
@@ -29,7 +29,7 @@ def get_additional_storage_price(content: InstanceContent, session: DbSession) -
     return Decimal(price)
 
 
-def compute_cost(session: DbSession, content: InstanceContent) -> Decimal:
+def compute_cost(session: DbSession, content: ExecutableContent) -> Decimal:
     compute_unit_cost: Decimal = Decimal("2000.0")
     return (compute_unit_cost * content.resources.vcpus) + Decimal(
         get_additional_storage_price(content, session)
