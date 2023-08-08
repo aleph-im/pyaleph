@@ -305,20 +305,8 @@ def get_volume_size(content: InstanceContent, session: DbSession) -> int:
     total_volume_size: int = 0
     for volume in content.volumes:
         if hasattr(volume, "ref") and volume.ref:
-            file_pin = (
-                session.query(FilePinDb)
-                .filter(FilePinDb.item_hash == volume.ref)
-                .first()
-            )
-            if not file_pin:
-                raise VmRefNotFound()
-            file_record = (
-                session.query(StoredFileDb)
-                .filter(StoredFileDb.hash == file_pin.file_hash)
-                .first()
-            )
-            if file_record:
-                total_volume_size += file_record.size
+            pin_file = get_message_file_pin(session=session, item_hash=volume.ref)
+            total_volume_size += pin_file.file.size
         else:
             if hasattr(volume, "size_mib"):
                 total_volume_size += volume.size_mib * (1024 * 1024)
@@ -370,7 +358,7 @@ class VmMessageHandler(ContentHandler):
 
         if current_balance < current_instance_costs + required_tokens:
             raise InsufficientBalanceException(
-                balance= Decimal(current_balance),
+                balance=Decimal(current_balance),
                 required_balance=current_instance_costs + required_tokens,
             )
 
