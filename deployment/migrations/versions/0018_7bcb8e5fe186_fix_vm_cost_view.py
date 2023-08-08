@@ -156,6 +156,14 @@ def upgrade() -> None:
          LATERAL ( SELECT additional_disk.additional_disk_space * 20::double precision /
                           (1024 * 1024)::double precision AS disk_price) adp,
          LATERAL ( SELECT cpm.compute_unit_price + adp.disk_price AS total_price) tp
+         
+        
+        """
+    )
+    op.execute(
+        """
+        INSERT INTO error_codes(code, description) VALUES 
+            (5, 'Insufficient balances')
         """
     )
 
