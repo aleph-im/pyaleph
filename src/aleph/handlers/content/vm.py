@@ -51,6 +51,7 @@ from aleph.db.models import (
     FilePinDb,
 )
 from aleph.handlers.content.content_handler import ContentHandler
+from aleph.services.cost import compute_cost
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag
@@ -306,36 +307,7 @@ def check_parent_volumes_size_requirements(
             )
 
 
-def get_volume_size(content: InstanceContent, session: DbSession) -> Decimal:
-    total_volume_size: Decimal = Decimal(0)
-    for volume in content.volumes:
-        if hasattr(volume, "ref") and volume.ref:
-            pin_file = get_message_file_pin(session=session, item_hash=volume.ref)
-            if pin_file and pin_file.file:
-                total_volume_size += Decimal(pin_file.file.size)
-        else:
-            if hasattr(volume, "size_mib"):
-                total_volume_size += Decimal(volume.size_mib * (1024 * 1024))
-    if hasattr(content.rootfs, "size_mib"):
-        total_volume_size += Decimal(content.rootfs.size_mib * (1024 * 1024))
-    return total_volume_size
 
-
-def get_additional_storage_price(content, session: DbSession) -> Decimal:
-    size_plus = get_volume_size(content, session) / (1024 * 1024)
-    additional_storage = (size_plus * 1024 * 1024) - (
-        20_000_000_000 * content.resources.vcpus
-    )
-    price = (additional_storage * 20) / 1_000_000
-    return Decimal(price)
-
-
-def compute_cost(session: DbSession, message: MessageDb) -> Decimal:
-    content = _get_vm_content(message)
-    compute_unit_cost: Decimal = Decimal("2000.0")
-    return (compute_unit_cost * content.resources.vcpus) + Decimal(
-        get_additional_storage_price(content, session)
-    )
 
 
 class VmMessageHandler(ContentHandler):
@@ -354,7 +326,7 @@ class VmMessageHandler(ContentHandler):
         if isinstance(content, ProgramContent):
             return
 
-        required_tokens = compute_cost(session=session, message=message)
+        required_tokens = compute_cost(session=session, content=content)
         current_balance = (
             get_total_balance(address=content.address, session=session) or 0
         )
@@ -428,3 +400,4 @@ class VmMessageHandler(ContentHandler):
         refresh_vm_version(session=session, vm_hash=message.item_hash)
 
         return update_hashes
+

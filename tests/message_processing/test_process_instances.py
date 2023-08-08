@@ -33,6 +33,7 @@ from aleph.db.models import (
     StoredFileDb, AlephBalanceDb,
 )
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
+from aleph.services.cost import compute_cost, get_additional_storage_price, get_volume_size
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSessionFactory, DbSession
 from aleph.types.files import FileTag, FileType
@@ -146,6 +147,7 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessag
 
     return pending_message
 
+
 @pytest.fixture
 def fixture_instance_message_no_balance(session_factory: DbSessionFactory) -> PendingMessageDb:
     content = {
@@ -244,6 +246,7 @@ def fixture_instance_message_no_balance(session_factory: DbSessionFactory) -> Pe
 
     return pending_message
 
+
 @pytest.fixture
 def fixture_forget_instance_message(
         fixture_instance_message: PendingMessageDb,
@@ -324,14 +327,13 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
             ref=None,
             created=created,
         )
-        if volume.use_latest:
-            upsert_file_tag(
-                session=session,
-                tag=FileTag(volume.ref),
-                owner=content.address,
-                file_hash=volume.ref[::-1],
-                last_updated=created,
-            )
+        upsert_file_tag(
+            session=session,
+            tag=FileTag(volume.ref),
+            owner=content.address,
+            file_hash=volume.ref[::-1],
+            last_updated=created,
+        )
 
 
 @pytest.mark.asyncio
@@ -510,5 +512,54 @@ async def test_process_instance_balance(
     content_dict = json.loads(fixture_instance_message_no_balance.item_content)
 
     with session_factory() as session:
-        rejected_message = get_rejected_message(session=session, item_hash=fixture_instance_message_no_balance.item_hash)
+        rejected_message = get_rejected_message(session=session,
+                                                item_hash=fixture_instance_message_no_balance.item_hash)
         assert rejected_message is not None
+
+
+@pytest.mark.asyncio
+async def test_get_volume_size(
+        session_factory: DbSessionFactory,
+        message_processor: PendingMessageProcessor,
+        fixture_instance_message: PendingMessageDb,
+):
+    with session_factory() as session:
+        insert_volume_refs(session, fixture_instance_message)
+        session.commit()
+
+    content = InstanceContent.parse_raw(fixture_instance_message.item_content)
+    with session_factory() as session:
+        volume_size: Decimal = get_volume_size(content=content, session=session)
+        assert volume_size == Decimal("21009268736")
+
+
+@pytest.mark.asyncio
+async def test_get_additional_storage_price(
+        session_factory: DbSessionFactory,
+        message_processor: PendingMessageProcessor,
+        fixture_instance_message: PendingMessageDb,
+):
+    with session_factory() as session:
+        insert_volume_refs(session, fixture_instance_message)
+        session.commit()
+
+    content = InstanceContent.parse_raw(fixture_instance_message.item_content)
+    with session_factory() as session:
+        additional_price: Decimal = get_additional_storage_price(content=content, session=session)
+        assert additional_price == Decimal("20185.37472")
+
+
+@pytest.mark.asyncio
+async def test_get_compute_cost(
+        session_factory: DbSessionFactory,
+        message_processor: PendingMessageProcessor,
+        fixture_instance_message: PendingMessageDb,
+):
+    with session_factory() as session:
+        insert_volume_refs(session, fixture_instance_message)
+        session.commit()
+
+    content = InstanceContent.parse_raw(fixture_instance_message.item_content)
+    with session_factory() as session:
+        price: Decimal = compute_cost(content=content, session=session)
+        assert price == Decimal("22185.37472")
