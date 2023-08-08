@@ -91,8 +91,8 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessag
             },
             {
                 "comment": "Working data persisted on the Aleph network. "
-                "New VMs will try to use the latest version of this volume, "
-                "with no guarantee against conflicts",
+                           "New VMs will try to use the latest version of this volume, "
+                           "with no guarantee against conflicts",
                 "mount": "/var/lib/statistics",
                 "name": "statistics",
                 "persistence": "store",
@@ -140,7 +140,7 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessag
 
 @pytest.fixture
 def fixture_forget_instance_message(
-    fixture_instance_message: PendingMessageDb,
+        fixture_instance_message: PendingMessageDb,
 ) -> PendingMessageDb:
     content = ForgetContent(
         address=fixture_instance_message.sender,
@@ -160,7 +160,7 @@ def fixture_forget_instance_message(
         time=fixture_instance_message.time + dt.timedelta(seconds=1),
         channel=None,
         reception_time=fixture_instance_message.reception_time
-        + dt.timedelta(seconds=1),
+                       + dt.timedelta(seconds=1),
         fetched=True,
         check_message=False,
         retries=0,
@@ -230,9 +230,9 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
 
 @pytest.mark.asyncio
 async def test_process_instance(
-    session_factory: DbSessionFactory,
-    message_processor: PendingMessageProcessor,
-    fixture_instance_message: PendingMessageDb,
+        session_factory: DbSessionFactory,
+        message_processor: PendingMessageProcessor,
+        fixture_instance_message: PendingMessageDb,
 ):
     with session_factory() as session:
         session.add(
@@ -272,15 +272,15 @@ async def test_process_instance(
 
         assert instance.environment_internet == content_dict["environment"]["internet"]
         assert (
-            instance.environment_aleph_api == content_dict["environment"]["aleph_api"]
+                instance.environment_aleph_api == content_dict["environment"]["aleph_api"]
         )
         assert (
-            instance.environment_reproducible
-            == content_dict["environment"]["reproducible"]
+                instance.environment_reproducible
+                == content_dict["environment"]["reproducible"]
         )
         assert (
-            instance.environment_shared_cache
-            == content_dict["environment"]["shared_cache"]
+                instance.environment_shared_cache
+                == content_dict["environment"]["shared_cache"]
         )
 
         assert instance.variables
@@ -289,10 +289,10 @@ async def test_process_instance(
         rootfs = instance.rootfs
         assert rootfs.parent_ref == content_dict["rootfs"]["parent"]["ref"]
         assert (
-            rootfs.parent_use_latest == content_dict["rootfs"]["parent"]["use_latest"]
+                rootfs.parent_use_latest == content_dict["rootfs"]["parent"]["use_latest"]
         )
         assert (
-            rootfs.parent_use_latest == content_dict["rootfs"]["parent"]["use_latest"]
+                rootfs.parent_use_latest == content_dict["rootfs"]["parent"]["use_latest"]
         )
         assert rootfs.size_mib == content_dict["rootfs"]["size_mib"]
         assert rootfs.persistence == content_dict["rootfs"]["persistence"]
@@ -325,9 +325,9 @@ async def test_process_instance(
 
 @pytest.mark.asyncio
 async def test_process_instance_missing_volumes(
-    session_factory: DbSessionFactory,
-    message_processor: PendingMessageProcessor,
-    fixture_instance_message,
+        session_factory: DbSessionFactory,
+        message_processor: PendingMessageProcessor,
+        fixture_instance_message,
 ):
     """
     Check that an instance message with volumes not references in file_tags/file_pins
@@ -338,6 +338,17 @@ async def test_process_instance_missing_volumes(
     pipeline = message_processor.make_pipeline()
     # Exhaust the iterator
     _ = [message async for message in pipeline]
+
+    with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
+                chain=Chain.ETH,
+                balance=Decimal(22_192),
+                eth_height=0,
+            )
+        )
+        session.commit()
 
     with session_factory() as session:
         instance = get_instance(session=session, item_hash=vm_hash)
@@ -360,10 +371,10 @@ async def test_process_instance_missing_volumes(
 
 @pytest.mark.asyncio
 async def test_forget_instance_message(
-    session_factory: DbSessionFactory,
-    message_processor: PendingMessageProcessor,
-    fixture_instance_message: PendingMessageDb,
-    fixture_forget_instance_message: PendingMessageDb,
+        session_factory: DbSessionFactory,
+        message_processor: PendingMessageProcessor,
+        fixture_instance_message: PendingMessageDb,
+        fixture_forget_instance_message: PendingMessageDb,
 ):
     vm_hash = fixture_instance_message.item_hash
 
@@ -396,11 +407,12 @@ async def test_forget_instance_message(
         instance_version = get_vm_version(session=session, vm_hash=vm_hash)
         assert instance_version is None
 
+
 @pytest.mark.asyncio
 async def test_process_instance_balance(
-    session_factory: DbSessionFactory,
-    message_processor: PendingMessageProcessor,
-    fixture_instance_message: PendingMessageDb,
+        session_factory: DbSessionFactory,
+        message_processor: PendingMessageProcessor,
+        fixture_instance_message: PendingMessageDb,
 ):
     with session_factory() as session:
         insert_volume_refs(session, fixture_instance_message)
@@ -414,7 +426,6 @@ async def test_process_instance_balance(
     content_dict = json.loads(fixture_instance_message.item_content)
 
     with session_factory() as session:
-        status = get_message_status(
-            session=session, item_hash=fixture_instance_message.item_hash
-        )
-        assert status.status == MessageStatus.REJECTED
+        rejected_message = get_rejected_message(session=session, item_hash=fixture_instance_message.item_hash)
+        assert rejected_message is not None
+        assert rejected_message.error_code == ErrorCode.BALANCE_INSUFFICIENT
