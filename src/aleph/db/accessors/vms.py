@@ -57,11 +57,11 @@ def get_vm_version(session: DbSession, vm_hash: str) -> Optional[VmVersionDb]:
 
 
 def upsert_vm_version(
-        session: DbSession,
-        vm_hash: str,
-        owner: str,
-        current_version: VmVersion,
-        last_updated: dt.datetime,
+    session: DbSession,
+    vm_hash: str,
+    owner: str,
+    current_version: VmVersion,
+    last_updated: dt.datetime,
 ) -> None:
     insert_stmt = insert(VmVersionDb).values(
         vm_hash=vm_hash,

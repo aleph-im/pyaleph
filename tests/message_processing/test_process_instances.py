@@ -30,10 +30,15 @@ from aleph.db.models import (
     ImmutableVolumeDb,
     EphemeralVolumeDb,
     PersistentVolumeDb,
-    StoredFileDb, AlephBalanceDb,
+    StoredFileDb,
+    AlephBalanceDb,
 )
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
-from aleph.services.cost import compute_cost, get_additional_storage_price, get_volume_size
+from aleph.services.cost import (
+    compute_cost,
+    get_additional_storage_price,
+    get_volume_size,
+)
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSessionFactory, DbSession
 from aleph.types.files import FileTag, FileType
@@ -92,8 +97,8 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessag
             },
             {
                 "comment": "Working data persisted on the Aleph network. "
-                           "New VMs will try to use the latest version of this volume, "
-                           "with no guarantee against conflicts",
+                "New VMs will try to use the latest version of this volume, "
+                "with no guarantee against conflicts",
                 "mount": "/var/lib/statistics",
                 "name": "statistics",
                 "persistence": "store",
@@ -149,7 +154,9 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessag
 
 
 @pytest.fixture
-def fixture_instance_message_no_balance(session_factory: DbSessionFactory) -> PendingMessageDb:
+def fixture_instance_message_no_balance(
+    session_factory: DbSessionFactory,
+) -> PendingMessageDb:
     content = {
         "address": "0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
         "allow_amend": False,
@@ -200,8 +207,8 @@ def fixture_instance_message_no_balance(session_factory: DbSessionFactory) -> Pe
             },
             {
                 "comment": "Working data persisted on the Aleph network. "
-                           "New VMs will try to use the latest version of this volume, "
-                           "with no guarantee against conflicts",
+                "New VMs will try to use the latest version of this volume, "
+                "with no guarantee against conflicts",
                 "mount": "/var/lib/statistics",
                 "name": "statistics",
                 "persistence": "store",
@@ -249,7 +256,7 @@ def fixture_instance_message_no_balance(session_factory: DbSessionFactory) -> Pe
 
 @pytest.fixture
 def fixture_forget_instance_message(
-        fixture_instance_message: PendingMessageDb,
+    fixture_instance_message: PendingMessageDb,
 ) -> PendingMessageDb:
     content = ForgetContent(
         address=fixture_instance_message.sender,
@@ -269,7 +276,7 @@ def fixture_forget_instance_message(
         time=fixture_instance_message.time + dt.timedelta(seconds=1),
         channel=None,
         reception_time=fixture_instance_message.reception_time
-                       + dt.timedelta(seconds=1),
+        + dt.timedelta(seconds=1),
         fetched=True,
         check_message=False,
         retries=0,
@@ -338,9 +345,9 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
 
 @pytest.mark.asyncio
 async def test_process_instance(
-        session_factory: DbSessionFactory,
-        message_processor: PendingMessageProcessor,
-        fixture_instance_message: PendingMessageDb,
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    fixture_instance_message: PendingMessageDb,
 ):
     with session_factory() as session:
         insert_volume_refs(session, fixture_instance_message)
@@ -369,15 +376,15 @@ async def test_process_instance(
 
         assert instance.environment_internet == content_dict["environment"]["internet"]
         assert (
-                instance.environment_aleph_api == content_dict["environment"]["aleph_api"]
+            instance.environment_aleph_api == content_dict["environment"]["aleph_api"]
         )
         assert (
-                instance.environment_reproducible
-                == content_dict["environment"]["reproducible"]
+            instance.environment_reproducible
+            == content_dict["environment"]["reproducible"]
         )
         assert (
-                instance.environment_shared_cache
-                == content_dict["environment"]["shared_cache"]
+            instance.environment_shared_cache
+            == content_dict["environment"]["shared_cache"]
         )
 
         assert instance.variables
@@ -386,10 +393,10 @@ async def test_process_instance(
         rootfs = instance.rootfs
         assert rootfs.parent_ref == content_dict["rootfs"]["parent"]["ref"]
         assert (
-                rootfs.parent_use_latest == content_dict["rootfs"]["parent"]["use_latest"]
+            rootfs.parent_use_latest == content_dict["rootfs"]["parent"]["use_latest"]
         )
         assert (
-                rootfs.parent_use_latest == content_dict["rootfs"]["parent"]["use_latest"]
+            rootfs.parent_use_latest == content_dict["rootfs"]["parent"]["use_latest"]
         )
         assert rootfs.size_mib == content_dict["rootfs"]["size_mib"]
         assert rootfs.persistence == content_dict["rootfs"]["persistence"]
@@ -422,9 +429,9 @@ async def test_process_instance(
 
 @pytest.mark.asyncio
 async def test_process_instance_missing_volumes(
-        session_factory: DbSessionFactory,
-        message_processor: PendingMessageProcessor,
-        fixture_instance_message,
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    fixture_instance_message,
 ):
     """
     Check that an instance message with volumes not references in file_tags/file_pins
@@ -457,10 +464,10 @@ async def test_process_instance_missing_volumes(
 
 @pytest.mark.asyncio
 async def test_forget_instance_message(
-        session_factory: DbSessionFactory,
-        message_processor: PendingMessageProcessor,
-        fixture_instance_message: PendingMessageDb,
-        fixture_forget_instance_message: PendingMessageDb,
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    fixture_instance_message: PendingMessageDb,
+    fixture_forget_instance_message: PendingMessageDb,
 ):
     vm_hash = fixture_instance_message.item_hash
 
@@ -496,9 +503,9 @@ async def test_forget_instance_message(
 
 @pytest.mark.asyncio
 async def test_process_instance_balance(
-        session_factory: DbSessionFactory,
-        message_processor: PendingMessageProcessor,
-        fixture_instance_message_no_balance: PendingMessageDb,
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    fixture_instance_message_no_balance: PendingMessageDb,
 ):
     with session_factory() as session:
         insert_volume_refs(session, fixture_instance_message_no_balance)
@@ -512,16 +519,17 @@ async def test_process_instance_balance(
     content_dict = json.loads(fixture_instance_message_no_balance.item_content)
 
     with session_factory() as session:
-        rejected_message = get_rejected_message(session=session,
-                                                item_hash=fixture_instance_message_no_balance.item_hash)
+        rejected_message = get_rejected_message(
+            session=session, item_hash=fixture_instance_message_no_balance.item_hash
+        )
         assert rejected_message is not None
 
 
 @pytest.mark.asyncio
 async def test_get_volume_size(
-        session_factory: DbSessionFactory,
-        message_processor: PendingMessageProcessor,
-        fixture_instance_message: PendingMessageDb,
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    fixture_instance_message: PendingMessageDb,
 ):
     with session_factory() as session:
         insert_volume_refs(session, fixture_instance_message)
@@ -535,9 +543,9 @@ async def test_get_volume_size(
 
 @pytest.mark.asyncio
 async def test_get_additional_storage_price(
-        session_factory: DbSessionFactory,
-        message_processor: PendingMessageProcessor,
-        fixture_instance_message: PendingMessageDb,
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    fixture_instance_message: PendingMessageDb,
 ):
     with session_factory() as session:
         insert_volume_refs(session, fixture_instance_message)
@@ -545,15 +553,17 @@ async def test_get_additional_storage_price(
 
     content = InstanceContent.parse_raw(fixture_instance_message.item_content)
     with session_factory() as session:
-        additional_price: Decimal = get_additional_storage_price(content=content, session=session)
+        additional_price: Decimal = get_additional_storage_price(
+            content=content, session=session
+        )
         assert additional_price == Decimal("20185.37472")
 
 
 @pytest.mark.asyncio
 async def test_get_compute_cost(
-        session_factory: DbSessionFactory,
-        message_processor: PendingMessageProcessor,
-        fixture_instance_message: PendingMessageDb,
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    fixture_instance_message: PendingMessageDb,
 ):
     with session_factory() as session:
         insert_volume_refs(session, fixture_instance_message)
