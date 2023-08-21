@@ -138,8 +138,8 @@ def upgrade() -> None:
                                             (vms.resources_memory / 2000)::double precision)) AS compute_units_required) cu,
              LATERAL ( SELECT CASE
                                   WHEN COALESCE(vms.persistent, true)
-                                      THEN '20000000000'::bigint::double precision * cu.compute_units_required
-                                  ELSE 2000000000::double precision * cu.compute_units_required
+                                      THEN '21474836480'::bigint::double precision * cu.compute_units_required
+                                  ELSE 2147483648::double precision * cu.compute_units_required
                                   END AS included_disk_space) free_disk,
              LATERAL ( SELECT GREATEST((file_volumes_size.file_volumes_size + rootfs_size.rootfs_size::numeric +
                                         other_volumes_size.other_volumes_size::numeric)::double precision -
