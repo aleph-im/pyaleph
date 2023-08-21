@@ -163,7 +163,7 @@ def upgrade() -> None:
     op.execute(
         """
         INSERT INTO error_codes(code, description) VALUES 
-            (5, 'Insufficient balances')
+            (5, 'Insufficient balance')
         """
     )
 

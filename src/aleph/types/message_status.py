@@ -311,8 +311,9 @@ class InsufficientBalanceException(InvalidMessageException):
     ):
         self.balance = balance
         self.required_balance = required_balance
-        super().__init__(
-            f"Insufficient balances : {self.balance} required : {self.required_balance}"
-        )
+
+    def details(self) -> Optional[Dict[str, Any]]:
+        # Note: cast to string to keep the precision
+        return {"errors": [{"required_balance": str(self.required_balance), "account_balance": str(self.balance)}]}
 
     error_code = ErrorCode.BALANCE_INSUFFICIENT
