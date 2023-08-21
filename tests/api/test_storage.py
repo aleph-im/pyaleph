@@ -1,16 +1,31 @@
 import base64
+import datetime
+import json
+from hashlib import sha256
 from typing import Any
 
 import aiohttp
 import orjson
 import pytest
-from aleph_message.models import ItemHash
+from aleph_message.models import ItemHash, MessageType, Chain, ItemType
+from configmanager import Config
+
+from aleph.handlers.message_handler import MessageHandler
+from aleph.schemas.pending_messages import (
+    parse_message,
+)
+from decimal import Decimal
 
 from aleph.db.accessors.files import get_file
+from aleph.db.models import PendingMessageDb, AlephBalanceDb
+from aleph.schemas.pending_messages import BasePendingMessage, PendingStoreMessage
 from aleph.storage import StorageService
+from aleph.toolkit.timestamp import timestamp_to_datetime
+from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.files import FileType
 from in_memory_storage_engine import InMemoryStorageEngine
+import datetime as dt
 
 IPFS_ADD_FILE_URI = "/api/v0/ipfs/add_file"
 IPFS_ADD_JSON_URI = "/api/v0/ipfs/add_json"
@@ -63,11 +78,11 @@ def api_client(ccn_api_client, mocker):
 
 
 async def add_file(
-    api_client,
-    session_factory: DbSessionFactory,
-    uri: str,
-    file_content: bytes,
-    expected_file_hash: str,
+        api_client,
+        session_factory: DbSessionFactory,
+        uri: str,
+        file_content: bytes,
+        expected_file_hash: str,
 ):
     form_data = aiohttp.FormData()
     form_data.add_field("file", file_content)
@@ -95,14 +110,96 @@ async def add_file(
     assert response_data == file_content
 
 
+
+async def add_file_with_message(
+        api_client,
+        session_factory: DbSessionFactory,
+        uri: str,
+        file_content: bytes,
+        expected_file_hash: str,
+):
+
+    data = {
+        "item_hash": "bb6e53f2738e5934b9a2125a9dc3d76211720e5152bdbcd4b236363d18d4f8a3",
+        "type": "STORE",
+        "chain": "ETH",
+        "sender": "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
+        "item_content":'{"address": "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106", "time": 1665478676.6585264, "item_type": "storage", "item_hash": "2086c8b69830df060f49bdf03a89e508688db7f5e5387bb875a6a0ed2d7a1d63", "mime_type": "text/plain"}',
+        "signature": "0xb9d164e6e43a8fcd341abc01eda47bed0333eaf480e888f2ed2ae0017048939d18850a33352e7281645e95e8673bad733499b6a8ce4069b9da9b9a79ddc1a0b31b",
+        "item_type": ItemType.storage,
+        "time": str(1616021679.055),
+        "channel": "TEST",
+        "trusted": "True",
+    }
+    test = {
+        "chain": "ETH",
+        "sender": "0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+        "type": "STORE",
+        "channel": "null",
+        "signature": "0x2b90dcfa8f93506150df275a4fe670e826be0b4b751badd6ec323648a6a738962f47274f71a9939653fb6d49c25055821f547447fb3b33984a579008d93eca431b",
+        "time": "1692193373.7144432",
+        "item_type": "inline",
+        "item_content": "{\"address\":\"0x6dA130FD646f826C1b8080C07448923DF9a79aaA\",\"time\":1692193373.714271,\"item_type\":\"storage\",\"item_hash\":\"0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f\",\"mime_type\":\"text/plain\"}",
+        "item_hash": "8227acbc2f7c43899efd9f63ea9d8119a4cb142f3ba2db5fe499ccfab86dfaed",
+        "content": {
+            "address": "0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+            "time": "1692193373.714271",
+            "item_type": "storage",
+            "item_hash": "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
+            "mime_type": "text/plain"
+        },
+    }
+    data["time"] = str(data["time"])
+
+    json_data = json.dumps(test)
+    form_data = aiohttp.FormData()
+    actual_item_hash = sha256(file_content).hexdigest()
+    form_data.add_field("file", file_content)
+    form_data.add_field("message", json_data, content_type='application/json')
+    form_data.add_field("size", str(len(file_content)))
+    post_response = await api_client.post(uri, data=form_data)
+    assert post_response.status == 200, await post_response.text()
+    #post_response_json = await post_response.json()
+    # data["time"] = 1644409598.782
+    # pending_message = PendingMessageDb.from_message_dict(
+    #    data, fetched=True, reception_time=dt.datetime(2022, 1, 1)
+
+def test_storage_add_file_with_message_only_parse():
+    message_dict = {
+        "chain": "ETH",
+        "item_hash": "30cc40533aa3ccf16a7c7c8a40da5633f64a83e4b89dcc7815f3a0af2149e1ac",
+        "sender": "0x7332eA1229c11C627C10eB24c1A6F77BceD1D5c1",
+        "type": "STORE",
+        "channel": "EVIDENZ",
+        "item_content": None,
+        "item_type": "storage",
+        "signature": "23d1d099dd111ae3251efea537f57767cf43b2ae3611bf9051760e0a9bc2bd4429563a130e3e391668086d101f8a197f55377f50b15d4c0303ff957d90a258a31b",
+        "time": 1616021679.055,
+    }
+
+    message = parse_message(message_dict)
+
+
 @pytest.mark.asyncio
 async def test_storage_add_file(api_client, session_factory: DbSessionFactory):
+
     await add_file(
         api_client,
         session_factory,
         uri=STORAGE_ADD_FILE_URI,
         file_content=FILE_CONTENT,
         expected_file_hash=EXPECTED_FILE_SHA256,
+    )
+
+
+@pytest.mark.asyncio
+async def test_storage_add_file_with_message(api_client, session_factory: DbSessionFactory):
+    await add_file_with_message(
+        api_client,
+        session_factory,
+        uri=STORAGE_ADD_FILE_URI,
+        file_content=b"Hello Aleph.im\n",
+        expected_file_hash="c25b0525bc308797d3e35763faf5c560f2974dab802cb4a734ae4e9d1040319e",
     )
 
 
@@ -118,11 +215,11 @@ async def test_ipfs_add_file(api_client, session_factory: DbSessionFactory):
 
 
 async def add_json(
-    api_client,
-    session_factory: DbSessionFactory,
-    uri: str,
-    json: Any,
-    expected_file_hash: ItemHash,
+        api_client,
+        session_factory: DbSessionFactory,
+        uri: str,
+        json: Any,
+        expected_file_hash: ItemHash,
 ):
     serialized_json = orjson.dumps(json)
 

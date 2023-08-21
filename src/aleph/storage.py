@@ -22,7 +22,9 @@ from aleph.services.storage.engine import StorageEngine
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileType
 from aleph.utils import get_sha256
-
+from aleph.schemas.pending_messages import (
+    parse_message,
+)
 LOGGER = logging.getLogger(__name__)
 
 
@@ -271,7 +273,6 @@ class StorageService:
         elif engine == ItemType.storage:
             file_content = fileobject.read()
             file_hash = sha256(file_content).hexdigest()
-
         else:
             raise ValueError(f"Unsupported item type: {engine}")
 
