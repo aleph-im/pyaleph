@@ -54,7 +54,7 @@ def get_volume_size(session: DbSession, content: ExecutableContent) -> Decimal:
         total_volume_size += Decimal(file.size)
 
     for volume in sized_volumes:
-        total_volume_size += Decimal(volume.size_mib * 1024 * 1024)
+        total_volume_size += Decimal(volume.size_mib * MiB)
 
     return total_volume_size
 
