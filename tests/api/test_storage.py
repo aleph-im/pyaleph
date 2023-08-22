@@ -110,7 +110,7 @@ async def add_file(
     form_data = aiohttp.FormData()
     form_data.add_field("file", file_content)
 
-    post_response = await api_client.post(uri, data=form_data, sync=True)
+    post_response = await api_client.post(uri, data=form_data)
     assert post_response.status == 200, await post_response.text()
     post_response_json = await post_response.json()
     assert post_response_json["status"] == "success"
