@@ -215,6 +215,7 @@ async def storage_add_file(request: web.Request):
         file_hash = await storage_service.add_file(
             session=session, fileobject=file_io, engine=ItemType.storage
         )
+        session.commit()
     output = {"status": "success", "hash": file_hash}
     return web.json_response(output)
 
