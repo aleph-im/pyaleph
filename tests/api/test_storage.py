@@ -46,6 +46,25 @@ EXPECTED_JSON_FILE_SHA256 = (
     "b7c7b2db0bcec890b8c859b2b76e7c998de15e31ccc945bc7425c4bdc091a0b2"
 )
 
+MESSAGE_DICT = {
+    "chain": "ETH",
+    "sender": "0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+    "type": "STORE",
+    "channel": "null",
+    "signature": "0x2b90dcfa8f93506150df275a4fe670e826be0b4b751badd6ec323648a6a738962f47274f71a9939653fb6d49c25055821f547447fb3b33984a579008d93eca431b",
+    "time": "1692193373.7144432",
+    "item_type": "inline",
+    "item_content": '{"address":"0x6dA130FD646f826C1b8080C07448923DF9a79aaA","time":1692193373.714271,"item_type":"storage","item_hash":"0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f","mime_type":"text/plain"}',
+    "item_hash": "8227acbc2f7c43899efd9f63ea9d8119a4cb142f3ba2db5fe499ccfab86dfaed",
+    "content": {
+        "address": "0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+        "time": "1692193373.714271",
+        "item_type": "storage",
+        "item_hash": "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
+        "mime_type": "text/plain",
+    },
+}
+
 
 @pytest.fixture
 def api_client(ccn_api_client, mocker):
@@ -74,20 +93,21 @@ def api_client(ccn_api_client, mocker):
         ipfs_service=ipfs_service,
         node_cache=mocker.AsyncMock(),
     )
+
     return ccn_api_client
 
 
 async def add_file(
-        api_client,
-        session_factory: DbSessionFactory,
-        uri: str,
-        file_content: bytes,
-        expected_file_hash: str,
+    api_client,
+    session_factory: DbSessionFactory,
+    uri: str,
+    file_content: bytes,
+    expected_file_hash: str,
 ):
     form_data = aiohttp.FormData()
     form_data.add_field("file", file_content)
 
-    post_response = await api_client.post(uri, data=form_data)
+    post_response = await api_client.post(uri, data=form_data, sync=True)
     assert post_response.status == 200, await post_response.text()
     post_response_json = await post_response.json()
     assert post_response_json["status"] == "success"
@@ -110,47 +130,38 @@ async def add_file(
     assert response_data == file_content
 
 
-
 async def add_file_with_message(
-        api_client,
-        session_factory: DbSessionFactory,
-        uri: str,
-        file_content: bytes,
-        expected_file_hash: str,
+    api_client,
+    session_factory: DbSessionFactory,
+    uri: str,
+    file_content: bytes,
+    size: str,
+    error_code: int,
+    balance: int,
 ):
-    data = {
-        "chain": "ETH",
-        "sender": "0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
-        "type": "STORE",
-        "channel": "null",
-        "signature": "0x2b90dcfa8f93506150df275a4fe670e826be0b4b751badd6ec323648a6a738962f47274f71a9939653fb6d49c25055821f547447fb3b33984a579008d93eca431b",
-        "time": "1692193373.7144432",
-        "item_type": "inline",
-        "item_content": "{\"address\":\"0x6dA130FD646f826C1b8080C07448923DF9a79aaA\",\"time\":1692193373.714271,\"item_type\":\"storage\",\"item_hash\":\"0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f\",\"mime_type\":\"text/plain\"}",
-        "item_hash": "8227acbc2f7c43899efd9f63ea9d8119a4cb142f3ba2db5fe499ccfab86dfaed",
-        "content": {
-            "address": "0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
-            "time": "1692193373.714271",
-            "item_type": "storage",
-            "item_hash": "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
-            "mime_type": "text/plain"
-        },
-    }
+    with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                chain=Chain.ETH,
+                balance=Decimal(balance),
+                eth_height=0,
+            )
+        )
+        session.commit()
 
-    json_data = json.dumps(data)
+    json_data = json.dumps(MESSAGE_DICT)
     form_data = aiohttp.FormData()
 
     form_data.add_field("file", file_content)
-    form_data.add_field("message", json_data, content_type='application/json')
-    form_data.add_field("size", str(len(file_content)))
-    post_response = await api_client.post(uri, data=form_data)
-    assert post_response.status == 200, await post_response.text()
-    #post_response_json = await post_response.json()
+    form_data.add_field("message", json_data, content_type="application/json")
+    form_data.add_field("size", size)
+    response = await api_client.post(uri, data=form_data)
+    assert response.status == error_code, await response.text()
 
 
 @pytest.mark.asyncio
 async def test_storage_add_file(api_client, session_factory: DbSessionFactory):
-
     await add_file(
         api_client,
         session_factory,
@@ -160,14 +171,50 @@ async def test_storage_add_file(api_client, session_factory: DbSessionFactory):
     )
 
 
+@pytest.mark.parametrize(
+    "file_content, expected_hash, size, error_code, balance",
+    [
+        (
+            b"Hello Aleph.im\n",
+            "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
+            "15",
+            "402",
+            "0",
+        ),
+        (
+            b"Hello Aleph.im\n",
+            "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
+            "10",
+            "422",
+            "1000",
+        ),
+        (
+            b"Hello Aleph.im\n",
+            "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
+            "15",
+            "200",
+            "1000",
+        ),
+    ],
+)
 @pytest.mark.asyncio
-async def test_storage_add_file_with_message(api_client, session_factory: DbSessionFactory):
+async def test_storage_add_file_with_message(
+    api_client,
+    session_factory: DbSessionFactory,
+    file_content,
+    expected_hash,
+    size,
+    error_code,
+    balance,
+):
     await add_file_with_message(
         api_client,
         session_factory,
         uri=STORAGE_ADD_FILE_URI,
-        file_content=b"Hello Aleph.im\n",
-        expected_file_hash="c25b0525bc308797d3e35763faf5c560f2974dab802cb4a734ae4e9d1040319e",
+        file_content=file_content,
+        size=size,
+        error_code=int(error_code),
+        balance=int(balance),
     )
 
 
@@ -183,11 +230,11 @@ async def test_ipfs_add_file(api_client, session_factory: DbSessionFactory):
 
 
 async def add_json(
-        api_client,
-        session_factory: DbSessionFactory,
-        uri: str,
-        json: Any,
-        expected_file_hash: ItemHash,
+    api_client,
+    session_factory: DbSessionFactory,
+    uri: str,
+    json: Any,
+    expected_file_hash: ItemHash,
 ):
     serialized_json = orjson.dumps(json)
 
