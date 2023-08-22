@@ -123,15 +123,6 @@ async def get_message_content(
     return message_dict, int(str(value))
 
 
-async def init_mq_con(config):
-    return await aio_pika.connect_robust(
-        host=config.p2p.mq_host.value,
-        port=config.rabbitmq.port.value,
-        login=config.rabbitmq.username.value,
-        password=config.rabbitmq.password.value,
-    )
-
-
 async def verify_and_handle_request(
     pending_message_db, file_io, message, size, session_factory
 ):
