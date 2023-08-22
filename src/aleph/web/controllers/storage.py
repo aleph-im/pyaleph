@@ -21,13 +21,22 @@ from aleph.db.models import PendingMessageDb
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.toolkit import json
 from aleph.types.db_session import DbSession
+from aleph.types.message_status import MessageProcessingStatus
 from aleph.utils import run_in_executor, item_type_from_hash
 from aleph.web.controllers.app_state_getters import (
     get_session_factory_from_request,
     get_storage_service_from_request,
     get_config_from_request,
+    get_mq_channel_from_request,
 )
-from aleph.web.controllers.utils import multidict_proxy_to_io
+from aleph.web.controllers.p2p import (
+    _mq_read_one_message,
+    _processing_status_to_http_status,
+)
+from aleph.web.controllers.utils import (
+    multidict_proxy_to_io,
+    mq_make_aleph_message_topic_queue,
+)
 from aleph.schemas.pending_messages import BasePendingMessage
 
 logger = logging.getLogger(__name__)
@@ -156,7 +165,6 @@ async def storage_add_file_with_message(request: web.Request):
     storage_service = get_storage_service_from_request(request)
     session_factory = get_session_factory_from_request(request)
     config = get_config_from_request(request)
-    mq_con = init_mq_con(config)
 
     post = await request.post()
     file_io = multidict_proxy_to_io(post)
@@ -164,6 +172,13 @@ async def storage_add_file_with_message(request: web.Request):
     pending_message_db = PendingMessageDb.from_message_dict(
         message_dict=message, reception_time=dt.datetime.now(), fetched=True
     )
+    mq_channel = await get_mq_channel_from_request(request, logger=logger)
+    mq_queue = await mq_make_aleph_message_topic_queue(
+        channel=mq_channel,
+        config=config,
+        routing_key=f"*.{pending_message_db.item_hash}",
+    )
+
     is_valid_message = await verify_and_handle_request(
         pending_message_db, file_io, message, size, session_factory
     )
@@ -176,8 +191,16 @@ async def storage_add_file_with_message(request: web.Request):
         )
         session.add(pending_message_db)
         session.commit()
-    output = {"status": "success", "hash": file_hash}
-    return web.json_response(output)
+    mq_message = await _mq_read_one_message(mq_queue, 30)
+
+    if mq_message is None:
+        output = {"status": "accepted"}
+        return web.json_response(output, status=202)
+    if mq_message.routing_key is not None:
+        status_str, _item_hash = mq_message.routing_key.split(".")
+        processing_status = MessageProcessingStatus(status_str)
+        status_code = _processing_status_to_http_status(processing_status)
+        return web.json_response(status=status_code, text=file_hash)
 
 
 async def storage_add_file(request: web.Request):

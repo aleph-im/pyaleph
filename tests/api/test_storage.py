@@ -27,6 +27,9 @@ from aleph.types.files import FileType
 from in_memory_storage_engine import InMemoryStorageEngine
 import datetime as dt
 
+
+from aleph.web.controllers.app_state_getters import get_mq_channel_from_request
+
 IPFS_ADD_FILE_URI = "/api/v0/ipfs/add_file"
 IPFS_ADD_JSON_URI = "/api/v0/ipfs/add_json"
 STORAGE_ADD_FILE_URI = "/api/v0/storage/add_file"
@@ -138,7 +141,64 @@ async def add_file_with_message(
     size: str,
     error_code: int,
     balance: int,
+    mocker,
 ):
+    mocker.patch("aleph.web.controllers.storage.get_mq_channel_from_request")
+    mocked_queue = mocker.patch(
+        "aleph.web.controllers.storage.mq_make_aleph_message_topic_queue"
+    )
+
+    # Create a mock MQ response object
+    mock_mq_message = mocker.Mock()
+    mock_mq_message.routing_key = f"processed.{MESSAGE_DICT['item_hash']}"
+    mocker.patch(
+        "aleph.web.controllers.storage._mq_read_one_message",
+        return_value=mock_mq_message,
+    )
+
+    with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                chain=Chain.ETH,
+                balance=Decimal(balance),
+                eth_height=0,
+            )
+        )
+        session.commit()
+
+    json_data = json.dumps(MESSAGE_DICT)
+    form_data = aiohttp.FormData()
+
+    form_data.add_field("file", file_content)
+    form_data.add_field("message", json_data, content_type="application/json")
+    form_data.add_field("size", size)
+    response = await api_client.post(uri, data=form_data)
+    assert response.status == error_code, await response.text()
+
+
+async def add_file_with_message_202(
+    api_client,
+    session_factory: DbSessionFactory,
+    uri: str,
+    file_content: bytes,
+    size: str,
+    error_code: int,
+    balance: int,
+    mocker,
+):
+    mocker.patch("aleph.web.controllers.storage.get_mq_channel_from_request")
+    mocked_queue = mocker.patch(
+        "aleph.web.controllers.storage.mq_make_aleph_message_topic_queue"
+    )
+
+    # Create a mock MQ response object
+    mock_mq_message = mocker.Mock()
+    mock_mq_message.routing_key = f"processed.{MESSAGE_DICT['item_hash']}"
+    mocker.patch(
+        "aleph.web.controllers.storage._mq_read_one_message", return_value=None
+    )
+
     with session_factory() as session:
         session.add(
             AlephBalanceDb(
@@ -206,6 +266,7 @@ async def test_storage_add_file_with_message(
     size,
     error_code,
     balance,
+    mocker,
 ):
     await add_file_with_message(
         api_client,
@@ -215,6 +276,42 @@ async def test_storage_add_file_with_message(
         size=size,
         error_code=int(error_code),
         balance=int(balance),
+        mocker=mocker,
+    )
+
+
+@pytest.mark.parametrize(
+    "file_content, expected_hash, size, error_code, balance",
+    [
+        (
+            b"Hello Aleph.im\n",
+            "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
+            "15",
+            "202",
+            "1000",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_storage_add_file_with_message_202(
+    api_client,
+    session_factory: DbSessionFactory,
+    file_content,
+    expected_hash,
+    size,
+    error_code,
+    balance,
+    mocker,
+):
+    await add_file_with_message_202(
+        api_client,
+        session_factory,
+        uri=STORAGE_ADD_FILE_URI,
+        file_content=file_content,
+        size=size,
+        error_code=int(error_code),
+        balance=int(balance),
+        mocker=mocker,
     )
 
 
