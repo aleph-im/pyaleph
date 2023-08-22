@@ -1,7 +1,13 @@
 import logging
+import math
 from typing import List, Set, overload, Protocol, Optional
 
-from aleph_message.models import ProgramContent, ExecutableContent, InstanceContent
+from aleph_message.models import (
+    ProgramContent,
+    ExecutableContent,
+    InstanceContent,
+    MessageType,
+)
 from aleph_message.models.execution.volume import (
     AbstractVolume,
     ImmutableVolume,
@@ -9,7 +15,9 @@ from aleph_message.models.execution.volume import (
     PersistentVolume,
     ParentVolume,
 )
+from decimal import Decimal
 
+from aleph.db.accessors.balances import get_total_balance
 from aleph.db.accessors.files import (
     find_file_tags,
     find_file_pins,
@@ -23,6 +31,7 @@ from aleph.db.accessors.vms import (
     delete_vm_updates,
     refresh_vm_version,
     is_vm_amend_allowed,
+    get_total_cost_for_address,
 )
 from aleph.db.models import (
     MessageDb,
@@ -39,8 +48,10 @@ from aleph.db.models import (
     RootfsVolumeDb,
     VmBaseDb,
     StoredFileDb,
+    FilePinDb,
 )
 from aleph.handlers.content.content_handler import ContentHandler
+from aleph.services.cost import compute_cost
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag
@@ -52,6 +63,7 @@ from aleph.types.message_status import (
     VmUpdateNotAllowed,
     VmCannotUpdateUpdate,
     VmVolumeTooSmall,
+    InsufficientBalanceException,
 )
 from aleph.types.vms import VmVersion
 
@@ -65,6 +77,12 @@ def _get_vm_content(message: MessageDb) -> ExecutableContent:
             f"Unexpected content type for program message: {message.item_hash}"
         )
     return content
+
+
+from aleph_message.models.execution.program import (
+    MachineType,
+    ProgramContent,
+)
 
 
 @overload
@@ -289,6 +307,9 @@ def check_parent_volumes_size_requirements(
             )
 
 
+
+
+
 class VmMessageHandler(ContentHandler):
     """
     Handles both PROGRAM and INSTANCE messages.
@@ -297,6 +318,27 @@ class VmMessageHandler(ContentHandler):
     in the same handler.
 
     """
+
+    async def check_balance(self, session: DbSession, message: MessageDb) -> None:
+        if message.type != MessageType.instance:
+            return
+        content = _get_vm_content(message)
+        if isinstance(content, ProgramContent):
+            return
+
+        required_tokens = compute_cost(session=session, content=content)
+        current_balance = (
+            get_total_balance(address=content.address, session=session) or 0
+        )
+        current_instance_costs = get_total_cost_for_address(
+            session=session, address=content.address
+        )
+
+        if current_balance < current_instance_costs + required_tokens:
+            raise InsufficientBalanceException(
+                balance=Decimal(current_balance),
+                required_balance=current_instance_costs + required_tokens,
+            )
 
     async def check_dependencies(self, session: DbSession, message: MessageDb) -> None:
         content = _get_vm_content(message)
@@ -358,3 +400,4 @@ class VmMessageHandler(ContentHandler):
         refresh_vm_version(session=session, vm_hash=message.item_hash)
 
         return update_hashes
+

@@ -175,7 +175,6 @@ class MessageHandler:
         tx_hash: Optional[str] = None,
         check_message: bool = True,
     ) -> Optional[PendingMessageDb]:
-
         # TODO: this implementation is just messy, improve it.
         with self.session_factory() as session:
             try:
@@ -318,6 +317,7 @@ class MessageHandler:
         content_handler = self.get_content_handler(message.type)
         await content_handler.check_dependencies(session=session, message=message)
         await self.check_permissions(session=session, message=message)
+        await content_handler.check_balance(session=session, message=message)
         await self.insert_message(
             session=session, pending_message=pending_message, message=message
         )

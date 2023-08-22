@@ -1,7 +1,7 @@
 import datetime as dt
 from typing import Optional, Iterable
-
-from sqlalchemy import delete, func, select
+from decimal import Decimal
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.dialects.postgresql import insert
 
 from aleph.db.models.vms import (
@@ -113,3 +113,14 @@ def refresh_vm_version(session: DbSession, vm_hash: str) -> None:
     )
     session.execute(delete(VmVersionDb).where(VmVersionDb.vm_hash == vm_hash))
     session.execute(upsert_stmt)
+
+
+def get_total_cost_for_address(session: DbSession, address: str) -> Decimal:
+    select_stmt = (
+        select(func.sum(text("total_cost")))
+        .select_from(text("public.costs_view"))
+        .where(text("address = :address"))
+    ).params(address=address)
+
+    total_cost = session.execute(select_stmt).scalar()
+    return Decimal(total_cost) if total_cost is not None else Decimal(0)

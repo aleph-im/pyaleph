@@ -2,6 +2,7 @@ import datetime as dt
 import itertools
 import json
 from typing import List, Protocol
+from decimal import Decimal
 
 import pytest
 import pytz
@@ -16,6 +17,7 @@ from aleph_message.models import (
 from aleph_message.models.execution.program import ProgramContent
 from aleph_message.models.execution.volume import ImmutableVolume
 from more_itertools import one
+from sqlalchemy import text
 
 from aleph.db.accessors.files import (
     insert_message_file_pin,
@@ -30,8 +32,14 @@ from aleph.db.models import (
     EphemeralVolumeDb,
     PersistentVolumeDb,
     StoredFileDb,
+    AlephBalanceDb,
 )
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
+from aleph.services.cost import (
+    compute_cost,
+    get_additional_storage_price,
+    get_volume_size,
+)
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSessionFactory, DbSession
 from aleph.types.files import FileTag, FileType
@@ -62,7 +70,7 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessag
             },
             "persistence": "host",
             "name": "test-rootfs",
-            "size_mib": 20000,
+            "size_mib": 20 * 1024,
         },
         "authorized_keys": [
             "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGULT6A41Msmw2KEu0R9MvUjhuWNAsbdeZ0DOwYbt4Qt user@example",
@@ -124,6 +132,7 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessag
         next_attempt=dt.datetime(2023, 1, 1),
     )
     with session_factory() as session:
+
         session.add(pending_message)
         session.add(
             MessageStatusDb(
@@ -138,8 +147,24 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessag
 
 
 @pytest.fixture
+def user_balance(session_factory: DbSessionFactory) -> AlephBalanceDb:
+    balance = AlephBalanceDb(
+        address="0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
+        chain=Chain.ETH,
+        balance=Decimal(22_192),
+        eth_height=0,
+    )
+
+    with session_factory() as session:
+        session.add(balance)
+        session.commit()
+    return balance
+
+
+@pytest.fixture
 def fixture_forget_instance_message(
     fixture_instance_message: PendingMessageDb,
+    user_balance: AlephBalanceDb,
 ) -> PendingMessageDb:
     content = ForgetContent(
         address=fixture_instance_message.sender,
@@ -217,14 +242,13 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
             ref=None,
             created=created,
         )
-        if volume.use_latest:
-            upsert_file_tag(
-                session=session,
-                tag=FileTag(volume.ref),
-                owner=content.address,
-                file_hash=volume.ref[::-1],
-                last_updated=created,
-            )
+        upsert_file_tag(
+            session=session,
+            tag=FileTag(volume.ref),
+            owner=content.address,
+            file_hash=volume.ref[::-1],
+            last_updated=created,
+        )
 
 
 @pytest.mark.asyncio
@@ -232,6 +256,7 @@ async def test_process_instance(
     session_factory: DbSessionFactory,
     message_processor: PendingMessageProcessor,
     fixture_instance_message: PendingMessageDb,
+    user_balance: AlephBalanceDb,
 ):
     with session_factory() as session:
         insert_volume_refs(session, fixture_instance_message)
@@ -315,7 +340,8 @@ async def test_process_instance(
 async def test_process_instance_missing_volumes(
     session_factory: DbSessionFactory,
     message_processor: PendingMessageProcessor,
-    fixture_instance_message,
+    fixture_instance_message: PendingMessageDb,
+    user_balance: AlephBalanceDb,
 ):
     """
     Check that an instance message with volumes not references in file_tags/file_pins
@@ -351,6 +377,7 @@ async def test_forget_instance_message(
     session_factory: DbSessionFactory,
     message_processor: PendingMessageProcessor,
     fixture_instance_message: PendingMessageDb,
+    user_balance: AlephBalanceDb,
     fixture_forget_instance_message: PendingMessageDb,
 ):
     vm_hash = fixture_instance_message.item_hash
@@ -383,3 +410,97 @@ async def test_forget_instance_message(
 
         instance_version = get_vm_version(session=session, vm_hash=vm_hash)
         assert instance_version is None
+
+
+@pytest.mark.asyncio
+async def test_process_instance_balance(
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    fixture_instance_message: PendingMessageDb,
+):
+    with session_factory() as session:
+        insert_volume_refs(session, fixture_instance_message)
+        session.commit()
+
+    pipeline = message_processor.make_pipeline()
+    # Exhaust the iterator
+    _ = [message async for message in pipeline]
+
+    with session_factory() as session:
+        rejected_message = get_rejected_message(
+            session=session, item_hash=fixture_instance_message.item_hash
+        )
+        assert rejected_message is not None
+
+
+@pytest.mark.asyncio
+async def test_get_volume_size(
+    session_factory: DbSessionFactory,
+    fixture_instance_message: PendingMessageDb,
+):
+    with session_factory() as session:
+        insert_volume_refs(session, fixture_instance_message)
+        session.commit()
+
+    content = InstanceContent.parse_raw(fixture_instance_message.item_content)
+    with session_factory() as session:
+        volume_size: Decimal = get_volume_size(session=session, content=content)
+        assert volume_size == Decimal("21512585216")
+
+
+@pytest.mark.asyncio
+async def test_get_additional_storage_price(
+    session_factory: DbSessionFactory,
+    fixture_instance_message: PendingMessageDb,
+):
+    with session_factory() as session:
+        insert_volume_refs(session, fixture_instance_message)
+        session.commit()
+
+    content = InstanceContent.parse_raw(fixture_instance_message.item_content)
+    with session_factory() as session:
+        additional_price: Decimal = get_additional_storage_price(
+            content=content, session=session
+        )
+        assert additional_price == Decimal("720")
+
+
+@pytest.mark.asyncio
+async def test_get_compute_cost(
+    session_factory: DbSessionFactory,
+    fixture_instance_message: PendingMessageDb,
+):
+    with session_factory() as session:
+        insert_volume_refs(session, fixture_instance_message)
+        session.commit()
+
+    content = InstanceContent.parse_raw(fixture_instance_message.item_content)
+    with session_factory() as session:
+        price: Decimal = compute_cost(content=content, session=session)
+        assert price == Decimal("2720")
+
+
+@pytest.mark.asyncio
+async def test_compare_cost_view_with_cost_function(
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    fixture_instance_message: PendingMessageDb,
+    user_balance: AlephBalanceDb,
+):
+    with session_factory() as session:
+        insert_volume_refs(session, fixture_instance_message)
+        session.commit()
+
+    pipeline = message_processor.make_pipeline()
+    # Exhaust the iterator
+    _ = [message async for message in pipeline]
+
+    content = InstanceContent.parse_raw(fixture_instance_message.item_content)
+    with session_factory() as session:
+        cost_from_function = compute_cost(session=session, content=content)
+        cost_from_view = session.execute(
+            text("SELECT total_price from vm_costs_view WHERE vm_hash = :vm_hash"),
+            {"vm_hash": fixture_instance_message.item_hash},
+        ).scalar_one()
+
+    assert cost_from_view == cost_from_function
