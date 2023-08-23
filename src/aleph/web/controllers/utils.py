@@ -1,3 +1,4 @@
+import asyncio
 import json
 from io import BytesIO, StringIO
 from math import ceil
@@ -9,6 +10,8 @@ from aiohttp import web
 from aiohttp.web_request import FileField
 from configmanager import Config
 from multidict import MultiDictProxy
+
+from aleph.types.message_status import MessageProcessingStatus
 
 DEFAULT_MESSAGES_PER_PAGE = 20
 DEFAULT_PAGE = 1
@@ -160,3 +163,35 @@ async def mq_make_aleph_message_topic_queue(
     )
     await mq_queue.bind(mq_message_exchange, routing_key=routing_key)
     return mq_queue
+
+
+def processing_status_to_http_status(status: MessageProcessingStatus) -> int:
+    mapping = {
+        MessageProcessingStatus.PROCESSED_NEW_MESSAGE: 200,
+        MessageProcessingStatus.PROCESSED_CONFIRMATION: 200,
+        MessageProcessingStatus.FAILED_WILL_RETRY: 202,
+        MessageProcessingStatus.FAILED_REJECTED: 422,
+    }
+    return mapping[status]
+
+
+async def mq_read_one_message(
+    mq_queue: aio_pika.abc.AbstractQueue, timeout: float
+) -> Optional[aio_pika.abc.AbstractIncomingMessage]:
+    """
+    Consume one element from a message queue and then return.
+    """
+
+    queue: asyncio.Queue = asyncio.Queue()
+
+    async def _process_message(message: aio_pika.abc.AbstractMessage):
+        await queue.put(message)
+
+    consumer_tag = await mq_queue.consume(_process_message, no_ack=True)
+
+    try:
+        return await asyncio.wait_for(queue.get(), timeout)
+    except asyncio.TimeoutError:
+        return None
+    finally:
+        await mq_queue.cancel(consumer_tag)

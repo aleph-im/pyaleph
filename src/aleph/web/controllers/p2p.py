@@ -26,7 +26,8 @@ from aleph.web.controllers.app_state_getters import (
     get_p2p_client_from_request,
     get_mq_channel_from_request,
 )
-from aleph.web.controllers.utils import mq_make_aleph_message_topic_queue
+from aleph.web.controllers.utils import mq_make_aleph_message_topic_queue, processing_status_to_http_status, \
+    mq_read_one_message
 
 LOGGER = logging.getLogger(__name__)
 
@@ -142,38 +143,6 @@ async def pub_json(request: web.Request):
     )
 
 
-async def _mq_read_one_message(
-    mq_queue: aio_pika.abc.AbstractQueue, timeout: float
-) -> Optional[aio_pika.abc.AbstractIncomingMessage]:
-    """
-    Consume one element from a message queue and then return.
-    """
-
-    queue: asyncio.Queue = asyncio.Queue()
-
-    async def _process_message(message: aio_pika.abc.AbstractMessage):
-        await queue.put(message)
-
-    consumer_tag = await mq_queue.consume(_process_message, no_ack=True)
-
-    try:
-        return await asyncio.wait_for(queue.get(), timeout)
-    except asyncio.TimeoutError:
-        return None
-    finally:
-        await mq_queue.cancel(consumer_tag)
-
-
-def _processing_status_to_http_status(status: MessageProcessingStatus) -> int:
-    mapping = {
-        MessageProcessingStatus.PROCESSED_NEW_MESSAGE: 200,
-        MessageProcessingStatus.PROCESSED_CONFIRMATION: 200,
-        MessageProcessingStatus.FAILED_WILL_RETRY: 202,
-        MessageProcessingStatus.FAILED_REJECTED: 422,
-    }
-    return mapping[status]
-
-
 class PubMessageRequest(BaseModel):
     sync: bool = False
     message_dict: Dict[str, Any] = Field(alias="message")
@@ -249,7 +218,7 @@ async def pub_message(request: web.Request):
 
     # Ignore type checking here, we know that mq_queue is set at this point
     assert mq_queue is not None
-    response = await _mq_read_one_message(mq_queue, timeout=30)
+    response = await mq_read_one_message(mq_queue, timeout=30)
 
     # Delete the queue immediately
     await mq_queue.delete(if_empty=False)
@@ -262,7 +231,7 @@ async def pub_message(request: web.Request):
     assert routing_key is not None  # again, for type checking
     status_str, _item_hash = routing_key.split(".")
     processing_status = MessageProcessingStatus(status_str)
-    status_code = _processing_status_to_http_status(processing_status)
+    status_code = processing_status_to_http_status(processing_status)
 
     status.message_status = processing_status.to_message_status()
 

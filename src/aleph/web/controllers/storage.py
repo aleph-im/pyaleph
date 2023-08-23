@@ -29,13 +29,10 @@ from aleph.web.controllers.app_state_getters import (
     get_config_from_request,
     get_mq_channel_from_request,
 )
-from aleph.web.controllers.p2p import (
-    _mq_read_one_message,
-    _processing_status_to_http_status,
-)
+
 from aleph.web.controllers.utils import (
     multidict_proxy_to_io,
-    mq_make_aleph_message_topic_queue,
+    mq_make_aleph_message_topic_queue, processing_status_to_http_status, mq_read_one_message,
 )
 from aleph.schemas.pending_messages import BasePendingMessage
 
@@ -182,7 +179,7 @@ async def storage_add_file_with_message(request: web.Request):
         )
         session.add(pending_message_db)
         session.commit()
-    mq_message = await _mq_read_one_message(mq_queue, 30)
+    mq_message = await mq_read_one_message(mq_queue, 30)
 
     if mq_message is None:
         output = {"status": "accepted"}
@@ -190,7 +187,7 @@ async def storage_add_file_with_message(request: web.Request):
     if mq_message.routing_key is not None:
         status_str, _item_hash = mq_message.routing_key.split(".")
         processing_status = MessageProcessingStatus(status_str)
-        status_code = _processing_status_to_http_status(processing_status)
+        status_code = processing_status_to_http_status(processing_status)
         return web.json_response(status=status_code, text=file_hash)
 
 

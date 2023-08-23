@@ -152,7 +152,7 @@ async def add_file_with_message(
     mock_mq_message = mocker.Mock()
     mock_mq_message.routing_key = f"processed.{MESSAGE_DICT['item_hash']}"
     mocker.patch(
-        "aleph.web.controllers.storage._mq_read_one_message",
+        "aleph.web.controllers.storage.mq_read_one_message",
         return_value=mock_mq_message,
     )
 
@@ -196,7 +196,7 @@ async def add_file_with_message_202(
     mock_mq_message = mocker.Mock()
     mock_mq_message.routing_key = f"processed.{MESSAGE_DICT['item_hash']}"
     mocker.patch(
-        "aleph.web.controllers.storage._mq_read_one_message", return_value=None
+        "aleph.web.controllers.storage.mq_read_one_message", return_value=None
     )
 
     with session_factory() as session:
