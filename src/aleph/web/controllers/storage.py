@@ -9,6 +9,7 @@ import aio_pika
 from eth_account import Account
 from eth_account.messages import encode_defunct
 
+from aleph.chains.chain_service import ChainService
 from aleph.chains.common import get_verification_buffer
 
 from aiohttp import web
@@ -21,18 +22,21 @@ from aleph.db.models import PendingMessageDb
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.toolkit import json
 from aleph.types.db_session import DbSession
-from aleph.types.message_status import MessageProcessingStatus
+from aleph.types.message_status import MessageProcessingStatus, InvalidSignature
 from aleph.utils import run_in_executor, item_type_from_hash
 from aleph.web.controllers.app_state_getters import (
     get_session_factory_from_request,
     get_storage_service_from_request,
     get_config_from_request,
     get_mq_channel_from_request,
+    get_chain_service_from_request,
 )
 
 from aleph.web.controllers.utils import (
     multidict_proxy_to_io,
-    mq_make_aleph_message_topic_queue, processing_status_to_http_status, mq_read_one_message,
+    mq_make_aleph_message_topic_queue,
+    processing_status_to_http_status,
+    mq_read_one_message,
 )
 from aleph.schemas.pending_messages import BasePendingMessage
 
@@ -77,33 +81,6 @@ async def add_storage_json_controller(request: web.Request):
     return web.json_response(output)
 
 
-async def verify_signature(message: BasePendingMessage) -> bool:
-    """Verifies a signature of a message, return True if verified, false if not"""
-    verification = get_verification_buffer(message)
-
-    message_hash = await run_in_executor(
-        None, functools.partial(encode_defunct, text=verification.decode("utf-8"))
-    )
-
-    verified = False
-    try:
-        # we assume the signature is a valid string
-        address = await run_in_executor(
-            None,
-            functools.partial(
-                Account.recover_message, message_hash, signature=message.signature
-            ),
-        )
-        if address == message.sender:
-            verified = True
-        else:
-            return False
-
-    except Exception as e:
-        verified = False
-    return verified
-
-
 async def get_message_content(
     post_data: MultiDictProxy[Union[str, bytes, FileField]]
 ) -> Tuple[dict, int]:
@@ -121,14 +98,24 @@ async def get_message_content(
 
 
 async def verify_and_handle_request(
-    pending_message_db, file_io, message, size, session_factory
+    pending_message_db,
+    file_io,
+    message,
+    size,
+    session_factory,
+    chain_service: ChainService,
 ):
     content = file_io.read(size)
     item_content = json.loads(message["item_content"])
     actual_item_hash = sha256(content).hexdigest()
     c_item_hash = item_content["item_hash"]
 
-    is_signature = await verify_signature(message=pending_message_db)
+    try:
+        await chain_service.verify_signature(pending_message_db)
+    except InvalidSignature:
+        output = {"status": "Forbidden"}
+        return web.json_response(output, status=403)
+
     with session_factory() as session:
         current_balance = get_total_balance(
             session=session, address=pending_message_db.sender
@@ -136,9 +123,6 @@ async def verify_and_handle_request(
     if current_balance < len(content):
         output = {"status": "Payment Required"}
         return web.json_response(output, status=402)
-    if not is_signature:
-        output = {"status": "Forbidden"}
-        return web.json_response(output, status=403)
     elif actual_item_hash != c_item_hash:
         output = {"status": "Unprocessable Content"}
         return web.json_response(output, status=422)
@@ -152,6 +136,10 @@ async def verify_and_handle_request(
 async def storage_add_file_with_message(request: web.Request):
     storage_service = get_storage_service_from_request(request)
     session_factory = get_session_factory_from_request(request)
+    # TODO : Add chainservice to ccn_api_client to be able to call get_chainservice_from_request
+    chain_service: ChainService = ChainService(
+        session_factory=session_factory, storage_service=storage_service
+    )
     config = get_config_from_request(request)
 
     post = await request.post()
@@ -168,7 +156,12 @@ async def storage_add_file_with_message(request: web.Request):
     )
 
     is_valid_message = await verify_and_handle_request(
-        pending_message_db, file_io, message, size, session_factory
+        pending_message_db,
+        file_io,
+        message,
+        size,
+        session_factory,
+        chain_service,
     )
     if is_valid_message is not None:
         return is_valid_message
