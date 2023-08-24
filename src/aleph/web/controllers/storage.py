@@ -86,7 +86,7 @@ async def get_message_content(
     post_data: MultiDictProxy[Union[str, bytes, FileField]]
 ) -> Tuple[dict, int]:
     message_bytearray = post_data.get("message", b"")
-    value = post_data.get("size") or 0
+    file_size = post_data.get("file_size") or 0
 
     if isinstance(message_bytearray, bytearray):
         message_string = message_bytearray.decode("utf-8")
@@ -95,7 +95,7 @@ async def get_message_content(
     else:
         message_dict = {}
 
-    return message_dict, int(str(value))
+    return message_dict, int(str(file_size))
 
 
 async def verify_and_handle_request(
@@ -124,9 +124,13 @@ async def verify_and_handle_request(
     if current_balance < len(content):
         output = {"status": "Payment Required"}
         return web.json_response(output, status=402)
+    elif len(content) > (1000 * MiB):
+        output = {"status": "Payload too large"}
+        return web.json_response(output, status=413)
     elif actual_item_hash != c_item_hash:
         output = {"status": "Unprocessable Content"}
         return web.json_response(output, status=422)
+
     elif len(content) > 25 * MiB and not message:
         output = {"status": "Unauthorized"}
         return web.json_response(output, status=401)
@@ -187,7 +191,7 @@ async def storage_add_file_with_message(request: web.Request):
 
 async def storage_add_file(request: web.Request):
     post = await request.post()
-    if post.get("message", b"") is not None and post.get("size") is not None:
+    if post.get("message", b"") is not None and post.get("file_size") is not None:
         return await storage_add_file_with_message(request)
 
     storage_service = get_storage_service_from_request(request)
