@@ -18,6 +18,7 @@ from aleph_message.models.execution.volume import (
 from decimal import Decimal
 
 from aleph.db.accessors.balances import get_total_balance
+from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import (
     find_file_tags,
     find_file_pins,
@@ -31,7 +32,6 @@ from aleph.db.accessors.vms import (
     delete_vm_updates,
     refresh_vm_version,
     is_vm_amend_allowed,
-    get_total_cost_for_address,
 )
 from aleph.db.models import (
     MessageDb,
