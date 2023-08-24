@@ -8,6 +8,7 @@ from typing import Union, Tuple
 import aio_pika
 from eth_account import Account
 from eth_account.messages import encode_defunct
+from mypy.dmypy_server import MiB
 
 from aleph.chains.chain_service import ChainService
 from aleph.chains.common import get_verification_buffer
@@ -126,7 +127,7 @@ async def verify_and_handle_request(
     elif actual_item_hash != c_item_hash:
         output = {"status": "Unprocessable Content"}
         return web.json_response(output, status=422)
-    elif len(content) > 25_000 and not message:
+    elif len(content) > 25 * MiB and not message:
         output = {"status": "Unauthorized"}
         return web.json_response(output, status=401)
     else:
