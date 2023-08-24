@@ -10,6 +10,7 @@ import pytest
 from aleph_message.models import ItemHash, MessageType, Chain, ItemType
 from configmanager import Config
 
+from aleph.chains.chain_service import ChainService
 from aleph.handlers.message_handler import MessageHandler
 from aleph.schemas.pending_messages import (
     parse_message,
@@ -147,6 +148,7 @@ async def add_file_with_message(
     mocked_queue = mocker.patch(
         "aleph.web.controllers.storage.mq_make_aleph_message_topic_queue"
     )
+    mocker.patch("aleph.web.controllers.storage.get_chain_service_from_request")
 
     # Create a mock MQ response object
     mock_mq_message = mocker.Mock()
@@ -191,13 +193,12 @@ async def add_file_with_message_202(
     mocked_queue = mocker.patch(
         "aleph.web.controllers.storage.mq_make_aleph_message_topic_queue"
     )
+    mocker.patch("aleph.web.controllers.storage.get_chain_service_from_request")
 
     # Create a mock MQ response object
     mock_mq_message = mocker.Mock()
     mock_mq_message.routing_key = f"processed.{MESSAGE_DICT['item_hash']}"
-    mocker.patch(
-        "aleph.web.controllers.storage.mq_read_one_message", return_value=None
-    )
+    mocker.patch("aleph.web.controllers.storage.mq_read_one_message", return_value=None)
 
     with session_factory() as session:
         session.add(
