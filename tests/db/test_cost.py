@@ -22,7 +22,7 @@ from aleph.db.models import (
     StoredFileDb,
     MessageStatusDb,
 )
-from aleph.toolkit import json
+import json
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSessionFactory, DbSession
 import datetime as dt
