@@ -118,7 +118,9 @@ async def _verify_user_balance(
 async def _verify_user_file(message: PendingStoreMessage, size: int, file_io) -> None:
     file_io.seek(0)
     content = file_io.read(size)
-    item_content = json.loads(message.item_content)
+    item_content = {}
+    if message.item_content:
+        item_content = json.loads(message.item_content)
     actual_item_hash = sha256(content).hexdigest()
     client_item_hash = item_content["item_hash"]
     if len(content) > (1000 * MiB):
@@ -194,7 +196,11 @@ async def storage_add_file(request: web.Request):
     metadata = post.get("metadata", b"")
     storage_metadata = None
     try:
-        storage_metadata = StorageMetadata.parse_raw(metadata)
+        if isinstance(metadata, FileField):
+            metadata_content = metadata.file.read()
+            storage_metadata = StorageMetadata.parse_raw(metadata_content)
+        else:
+            storage_metadata = StorageMetadata.parse_raw(metadata)
     except Exception as e:
         if metadata:
             raise web.HTTPUnprocessableEntity()
