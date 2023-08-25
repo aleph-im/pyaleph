@@ -187,8 +187,9 @@ async def storage_add_file(request: web.Request):
     post = await request.post()
     sync = False
 
-    if post.get("message", b"") is None:
+    if post.get("message", b"") is None and len(file_io.read()) > (25 * MiB):
         raise web.HTTPUnauthorized()
+    file_io.seek(0)
 
     sync_value = post.get("sync")
     if sync_value is not None:
