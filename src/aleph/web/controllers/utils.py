@@ -2,7 +2,7 @@ import asyncio
 import json
 from io import BytesIO, StringIO
 from math import ceil
-from typing import Optional, Union, IO
+from typing import Optional, Union, IO, Mapping, Any
 
 import aio_pika
 import aiohttp_jinja2
@@ -11,7 +11,8 @@ from aiohttp.web_request import FileField
 from configmanager import Config
 from multidict import MultiDictProxy
 
-from aleph.types.message_status import MessageProcessingStatus
+from aleph.schemas.pending_messages import BasePendingMessage, parse_message
+from aleph.types.message_status import MessageProcessingStatus, InvalidMessageException
 
 DEFAULT_MESSAGES_PER_PAGE = 20
 DEFAULT_PAGE = 1
@@ -195,3 +196,10 @@ async def mq_read_one_message(
         return None
     finally:
         await mq_queue.cancel(consumer_tag)
+
+
+def validate_message_dict(message_dict: Mapping[str, Any]) -> BasePendingMessage:
+    try:
+        return parse_message(message_dict)
+    except InvalidMessageException as e:
+        raise web.HTTPUnprocessableEntity(body=str(e))

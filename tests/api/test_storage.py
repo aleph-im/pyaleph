@@ -174,7 +174,8 @@ async def add_file_with_message(
 
     form_data.add_field("file", file_content)
     form_data.add_field("message", json_data, content_type="application/json")
-    form_data.add_field("size", size)
+    form_data.add_field("file_size", size)
+
     response = await api_client.post(uri, data=form_data)
     assert response.status == error_code, await response.text()
 
@@ -216,7 +217,8 @@ async def add_file_with_message_202(
 
     form_data.add_field("file", file_content)
     form_data.add_field("message", json_data, content_type="application/json")
-    form_data.add_field("size", size)
+    form_data.add_field("file_size", size)
+    form_data.add_field("sync", "True")
     response = await api_client.post(uri, data=form_data)
     assert response.status == error_code, await response.text()
 

@@ -27,7 +27,7 @@ from aleph.web.controllers.app_state_getters import (
     get_mq_channel_from_request,
 )
 from aleph.web.controllers.utils import mq_make_aleph_message_topic_queue, processing_status_to_http_status, \
-    mq_read_one_message
+    mq_read_one_message, validate_message_dict
 
 LOGGER = logging.getLogger(__name__)
 
@@ -44,13 +44,6 @@ class PublicationStatus(BaseModel):
             2: "error",
         }[len(failed_publications)]
         return cls(status=status, failed=failed_publications)
-
-
-def _validate_message_dict(message_dict: Mapping[str, Any]) -> BasePendingMessage:
-    try:
-        return parse_message(message_dict)
-    except InvalidMessageException as e:
-        raise web.HTTPUnprocessableEntity(body=str(e))
 
 
 def _validate_request_data(config: Config, request_data: Dict) -> None:
@@ -84,7 +77,7 @@ def _validate_request_data(config: Config, request_data: Dict) -> None:
             reason="'data': must be deserializable as JSON."
         )
 
-    _validate_message_dict(message_dict)
+    validate_message_dict(message_dict)
 
 
 async def _pub_on_p2p_topics(
@@ -163,7 +156,7 @@ async def pub_message(request: web.Request):
         # Body must be valid JSON
         raise web.HTTPUnprocessableEntity()
 
-    pending_message = _validate_message_dict(request_data.message_dict)
+    pending_message = validate_message_dict(request_data.message_dict)
 
     # In sync mode, wait for a message processing event. We need to create the queue
     # before publishing the message on P2P topics in order to guarantee that the event
