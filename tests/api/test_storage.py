@@ -56,13 +56,13 @@ MESSAGE_DICT = {
     "type": "STORE",
     "channel": "null",
     "signature": "0x2b90dcfa8f93506150df275a4fe670e826be0b4b751badd6ec323648a6a738962f47274f71a9939653fb6d49c25055821f547447fb3b33984a579008d93eca431b",
-    "time": "1692193373.7144432",
+    "time": 1692193373.7144432,
     "item_type": "inline",
     "item_content": '{"address":"0x6dA130FD646f826C1b8080C07448923DF9a79aaA","time":1692193373.714271,"item_type":"storage","item_hash":"0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f","mime_type":"text/plain"}',
     "item_hash": "8227acbc2f7c43899efd9f63ea9d8119a4cb142f3ba2db5fe499ccfab86dfaed",
     "content": {
         "address": "0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
-        "time": "1692193373.714271",
+        "time": 1692193373.714271,
         "item_type": "storage",
         "item_hash": "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
         "mime_type": "text/plain",
@@ -169,12 +169,15 @@ async def add_file_with_message(
         )
         session.commit()
 
-    json_data = json.dumps(MESSAGE_DICT)
     form_data = aiohttp.FormData()
 
     form_data.add_field("file", file_content)
-    form_data.add_field("message", json_data, content_type="application/json")
-    form_data.add_field("file_size", size)
+    data = {
+        "message": MESSAGE_DICT,
+        "file_size": int(size),
+        "sync": True,
+    }
+    form_data.add_field("metadata", json.dumps(data), content_type="application/json")
 
     response = await api_client.post(uri, data=form_data)
     assert response.status == error_code, await response.text()
@@ -212,13 +215,16 @@ async def add_file_with_message_202(
         )
         session.commit()
 
-    json_data = json.dumps(MESSAGE_DICT)
     form_data = aiohttp.FormData()
 
     form_data.add_field("file", file_content)
-    form_data.add_field("message", json_data, content_type="application/json")
-    form_data.add_field("file_size", size)
-    form_data.add_field("sync", "True")
+
+    data = {
+        "message": MESSAGE_DICT,
+        "file_size": int(size),
+        "sync": False,
+    }
+    form_data.add_field("metadata", json.dumps(data), content_type="application/json")
     response = await api_client.post(uri, data=form_data)
     assert response.status == error_code, await response.text()
 

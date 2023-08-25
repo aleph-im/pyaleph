@@ -7,6 +7,7 @@ from hashlib import sha256
 from typing import Union, Tuple
 from decimal import Decimal
 import aio_pika
+import pydantic
 from aiohttp.web_response import Response
 from eth_account import Account
 from eth_account.messages import encode_defunct
@@ -26,7 +27,11 @@ from aleph.db.models import PendingMessageDb
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.toolkit import json
 from aleph.types.db_session import DbSession, DbSessionFactory
-from aleph.types.message_status import MessageProcessingStatus, InvalidSignature, InvalidMessageException
+from aleph.types.message_status import (
+    MessageProcessingStatus,
+    InvalidSignature,
+    InvalidMessageException,
+)
 from aleph.utils import run_in_executor, item_type_from_hash
 from aleph.web.controllers.app_state_getters import (
     get_session_factory_from_request,
@@ -40,7 +45,8 @@ from aleph.web.controllers.utils import (
     multidict_proxy_to_io,
     mq_make_aleph_message_topic_queue,
     processing_status_to_http_status,
-    mq_read_one_message, validate_message_dict,
+    mq_read_one_message,
+    validate_message_dict,
 )
 from aleph.schemas.pending_messages import BasePendingMessage, PendingStoreMessage
 
@@ -85,30 +91,18 @@ async def add_storage_json_controller(request: web.Request):
     return web.json_response(output)
 
 
-async def get_message_content(
-        post_data: MultiDictProxy[Union[str, bytes, FileField]]
-) -> Tuple[dict, int]:
-    message_bytearray = post_data.get("message", b"")
-    file_size = post_data.get("file_size") or 0
-
-    if isinstance(message_bytearray, bytearray):
-        message_string = message_bytearray.decode("utf-8")
-        message_dict = json.loads(message_string)
-        message_dict["time"] = float(message_dict["time"])
-    else:
-        message_dict = {}
-
-    return message_dict, int(str(file_size))
-
-
-async def _verify_message_signature(pending_message: BasePendingMessage, chain_service: ChainService) -> None:
+async def _verify_message_signature(
+    pending_message: BasePendingMessage, chain_service: ChainService
+) -> None:
     try:
         await chain_service.verify_signature(pending_message)
     except InvalidSignature:
         raise web.HTTPForbidden()
 
 
-async def _verify_user_balance(pending_message_db: PendingMessageDb, session: DbSession, size: int) -> None:
+async def _verify_user_balance(
+    pending_message_db: PendingMessageDb, session: DbSession, size: int
+) -> None:
     current_balance = get_total_balance(
         session=session, address=pending_message_db.sender
     ) or Decimal(0)
@@ -120,40 +114,52 @@ async def _verify_user_balance(pending_message_db: PendingMessageDb, session: Db
     if current_balance < Decimal(required_balance):
         raise web.HTTPPaymentRequired
 
-async def _verify_user_file(message : dict, size : int, file_io) -> None:
+
+async def _verify_user_file(message: PendingStoreMessage, size: int, file_io) -> None:
     file_io.seek(0)
     content = file_io.read(size)
-    item_content = json.loads(message["item_content"])
+    item_content = json.loads(message.item_content)
     actual_item_hash = sha256(content).hexdigest()
     client_item_hash = item_content["item_hash"]
     if len(content) > (1000 * MiB):
-        raise web.HTTPRequestEntityTooLarge(actual_size=len(content), max_size=(1000 * MiB))
+        raise web.HTTPRequestEntityTooLarge(
+            actual_size=len(content), max_size=(1000 * MiB)
+        )
     elif actual_item_hash != client_item_hash:
         raise web.HTTPUnprocessableEntity()
 
 
-async def storage_add_file_with_message(request: web.Request, session: DbSession, chain_service, post, file_io, sync):
+class StorageMetadata(pydantic.BaseModel):
+    message: PendingStoreMessage
+    file_size: int
+    sync: bool
+
+
+async def storage_add_file_with_message(
+    request: web.Request, session: DbSession, chain_service, storage_metadata, file_io
+):
     config = get_config_from_request(request)
-    message, size = await get_message_content(post)
     mq_queue = None
 
-    try:
-        valid_message: BasePendingMessage = validate_message_dict(message)
-    except InvalidMessageException:
-        output = {"status": "rejected"}
-        return web.json_response(output, status=422)
-
-    pending_store_message = PendingStoreMessage.parse_obj(valid_message)
+    pending_store_message = PendingStoreMessage.parse_obj(storage_metadata.message)
     pending_message_db = PendingMessageDb.from_obj(
         obj=pending_store_message, reception_time=dt.datetime.now(), fetched=True
     )
     await _verify_message_signature(
-        pending_message=valid_message, chain_service=chain_service
+        pending_message=storage_metadata.message, chain_service=chain_service
     )
-    await _verify_user_balance(session=session, pending_message_db=pending_message_db, size=size)
-    await _verify_user_file(message=message, size=size, file_io=file_io)
+    await _verify_user_balance(
+        session=session,
+        pending_message_db=pending_message_db,
+        size=storage_metadata.file_size,
+    )
+    await _verify_user_file(
+        message=storage_metadata.message,
+        size=storage_metadata.file_size,
+        file_io=file_io,
+    )
 
-    if sync:
+    if storage_metadata.sync:
         mq_channel = await get_mq_channel_from_request(request, logger=logger)
         mq_queue = await mq_make_aleph_message_topic_queue(
             channel=mq_channel,
@@ -163,7 +169,7 @@ async def storage_add_file_with_message(request: web.Request, session: DbSession
 
     session.add(pending_message_db)
     session.commit()
-    if sync and mq_queue:
+    if storage_metadata.sync and mq_queue:
         mq_message = await mq_read_one_message(mq_queue, 30)
 
         if mq_message is None:
@@ -185,21 +191,27 @@ async def storage_add_file(request: web.Request):
     post = await request.post()
     file_io = multidict_proxy_to_io(post)
     post = await request.post()
-    sync = False
+    metadata = post.get("metadata", b"")
+    storage_metadata = None
+    try:
+        storage_metadata = StorageMetadata.parse_raw(metadata)
+    except Exception as e:
+        if metadata:
+            raise web.HTTPUnprocessableEntity()
 
-    if post.get("message", b"") is None and len(file_io.read()) > (25 * MiB):
-        raise web.HTTPUnauthorized()
+    if metadata is None:
+        if len(file_io.read()) > (25 * MiB):
+            raise web.HTTPUnauthorized()
     file_io.seek(0)
 
-    sync_value = post.get("sync")
-    if sync_value is not None:
-        sync = True if sync_value == "True" else False
     with session_factory() as session:
         file_hash = await storage_service.add_file(
             session=session, fileobject=file_io, engine=ItemType.storage
         )
-        if post.get("message", b"") is not None and post.get("file_size") is not None:
-            await storage_add_file_with_message(request, session, chain_service, post, file_io, sync)
+        if storage_metadata:
+            await storage_add_file_with_message(
+                request, session, chain_service, storage_metadata, file_io
+            )
         session.commit()
     output = {"status": "success", "hash": file_hash}
     return web.json_response(output)
