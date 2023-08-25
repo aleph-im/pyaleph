@@ -5,7 +5,7 @@ import functools
 import logging
 from hashlib import sha256
 from typing import Union, Tuple
-
+from decimal import Decimal
 import aio_pika
 from aiohttp.web_response import Response
 from eth_account import Account
@@ -101,9 +101,9 @@ async def get_message_content(
     return message_dict, int(str(file_size))
 
 
-async def _verify_message_signature(pending_message_db: PendingMessageDb, chain_service: ChainService) -> None:
+async def _verify_message_signature(pending_message: BasePendingMessage, chain_service: ChainService) -> None:
     try:
-        await chain_service.verify_signature(pending_message_db)
+        await chain_service.verify_signature(pending_message)
     except InvalidSignature:
         raise web.HTTPForbidden()
 
@@ -111,13 +111,13 @@ async def _verify_message_signature(pending_message_db: PendingMessageDb, chain_
 async def _verify_user_balance(pending_message_db: PendingMessageDb, session: DbSession, size: int) -> None:
     current_balance = get_total_balance(
         session=session, address=pending_message_db.sender
-    )
+    ) or Decimal(0)
     required_balance = (size / MiB) / 3
     # Need to merge to get this functions
     # current_cost_for_user = get_total_cost_for_address(
     #    session=session, address=pending_message_db.sender
     # )
-    if current_balance < required_balance:
+    if current_balance < Decimal(required_balance):
         raise web.HTTPPaymentRequired
 
 async def _verify_user_file(message : dict, size : int, file_io) -> None:
@@ -132,7 +132,7 @@ async def _verify_user_file(message : dict, size : int, file_io) -> None:
         raise web.HTTPUnprocessableEntity()
 
 
-async def storage_add_file_with_message(request: web.Request, session: DbSession, chain_service, post, file_io, sync = False):
+async def storage_add_file_with_message(request: web.Request, session: DbSession, chain_service, post, file_io, sync):
     config = get_config_from_request(request)
     message, size = await get_message_content(post)
     mq_queue = None
@@ -148,7 +148,7 @@ async def storage_add_file_with_message(request: web.Request, session: DbSession
         obj=pending_store_message, reception_time=dt.datetime.now(), fetched=True
     )
     await _verify_message_signature(
-        pending_message_db=pending_message_db, chain_service=chain_service
+        pending_message=valid_message, chain_service=chain_service
     )
     await _verify_user_balance(session=session, pending_message_db=pending_message_db, size=size)
     await _verify_user_file(message=message, size=size, file_io=file_io)
@@ -163,7 +163,7 @@ async def storage_add_file_with_message(request: web.Request, session: DbSession
 
     session.add(pending_message_db)
     session.commit()
-    if sync:
+    if sync and mq_queue:
         mq_message = await mq_read_one_message(mq_queue, 30)
 
         if mq_message is None:
@@ -193,8 +193,7 @@ async def storage_add_file(request: web.Request):
 
     sync_value = post.get("sync")
     if sync_value is not None:
-        sync = ast.literal_eval(sync_value)
-
+        sync = True if sync_value == "True" else False
     with session_factory() as session:
         file_hash = await storage_service.add_file(
             session=session, fileobject=file_io, engine=ItemType.storage
