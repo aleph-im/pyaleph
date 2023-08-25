@@ -22,6 +22,7 @@ from aiohttp.web_request import FileField
 from aleph_message.models import ItemType
 from multidict import MultiDictProxy
 from aleph.db.accessors.balances import get_total_balance
+from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import count_file_pins, get_file
 from aleph.db.models import PendingMessageDb
 from aleph.exceptions import AlephStorageException, UnknownHashError
@@ -107,11 +108,10 @@ async def _verify_user_balance(
         session=session, address=pending_message_db.sender
     ) or Decimal(0)
     required_balance = (size / MiB) / 3
-    # Need to merge to get this functions
-    # current_cost_for_user = get_total_cost_for_address(
-    #    session=session, address=pending_message_db.sender
-    # )
-    if current_balance < Decimal(required_balance):
+    current_cost_for_user = get_total_cost_for_address(
+        session=session, address=pending_message_db.sender
+    )
+    if current_balance < (Decimal(required_balance) + current_cost_for_user):
         raise web.HTTPPaymentRequired
 
 
