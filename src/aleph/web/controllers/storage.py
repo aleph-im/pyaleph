@@ -170,7 +170,7 @@ async def storage_add_file_with_message(
 
     session.add(pending_message_db)
     session.commit()
-    if storage_metadata.sync and mq_queue:
+    if mq_queue:
         mq_message = await mq_read_one_message(mq_queue, 30)
 
         if mq_message is None:
