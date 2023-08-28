@@ -273,6 +273,7 @@ class StorageService:
         elif engine == ItemType.storage:
             file_content = fileobject.read()
             file_hash = sha256(file_content).hexdigest()
+            fileobject.seek(0)
         else:
             raise ValueError(f"Unsupported item type: {engine}")
 

@@ -116,7 +116,6 @@ async def _verify_user_balance(
 
 
 async def _verify_user_file(message: PendingStoreMessage, size: int, file_io) -> None:
-    file_io.seek(0)
     content = file_io.read(size)
     item_content = {}
     if message.item_content:
@@ -204,7 +203,6 @@ async def storage_add_file(request: web.Request):
     except Exception as e:
         if metadata:
             raise web.HTTPUnprocessableEntity()
-
     if metadata is None:
         if len(file_io.read()) > (25 * MiB):
             raise web.HTTPUnauthorized()
