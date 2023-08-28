@@ -112,7 +112,7 @@ async def _verify_user_balance(
         session=session, address=pending_message_db.sender
     )
     if current_balance < (Decimal(required_balance) + current_cost_for_user):
-        raise web.HTTPPaymentRequired
+        raise web.HTTPPaymentRequired()
 
 
 async def _verify_user_file(message: PendingStoreMessage, size: int, file_io) -> None:
