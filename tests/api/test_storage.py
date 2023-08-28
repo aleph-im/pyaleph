@@ -249,7 +249,7 @@ async def test_storage_add_file(api_client, session_factory: DbSessionFactory):
             b"Hello Aleph.im\n",
             "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
             "15",
-            "402",
+            "200",
             "0",
         ),
         (
