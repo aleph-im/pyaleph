@@ -74,7 +74,7 @@ async def configure_aiohttp_app(
         app[APP_STATE_NODE_CACHE] = node_cache
         app[APP_STATE_STORAGE_SERVICE] = storage_service
         app[APP_STATE_SESSION_FACTORY] = session_factory
-        # app[APP_STATE_CHAIN_SERVICE] = chain_service
+        app[APP_STATE_CHAIN_SERVICE] = chain_service
 
     return app
 

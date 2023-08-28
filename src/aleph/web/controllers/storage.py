@@ -173,22 +173,19 @@ async def storage_add_file_with_message(
     if mq_queue:
         mq_message = await mq_read_one_message(mq_queue, 30)
 
-        if mq_message is None:
+        if mq_message is None or mq_message.routing_key is None:
             raise web.HTTPAccepted()
-        if mq_message.routing_key is not None:
-            status_str, _item_hash = mq_message.routing_key.split(".")
-            processing_status = MessageProcessingStatus(status_str)
-            status_code = processing_status_to_http_status(processing_status)
-            return web.json_response(status=status_code, text=_item_hash)
+
+        status_str, _item_hash = mq_message.routing_key.split(".")
+        processing_status = MessageProcessingStatus(status_str)
+        status_code = processing_status_to_http_status(processing_status)
+        return web.json_response(status=status_code, text=_item_hash)
 
 
 async def storage_add_file(request: web.Request):
     storage_service = get_storage_service_from_request(request)
     session_factory = get_session_factory_from_request(request)
-    # TODO : Add chainservice to ccn_api_client to be able to call get_chainservice_from_request
-    chain_service: ChainService = ChainService(
-        session_factory=session_factory, storage_service=storage_service
-    )
+    chain_service: ChainService = get_chain_service_from_request(request)
     post = await request.post()
     file_io = multidict_proxy_to_io(post)
     post = await request.post()

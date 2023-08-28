@@ -98,6 +98,11 @@ def api_client(ccn_api_client, mocker):
         node_cache=mocker.AsyncMock(),
     )
 
+    ccn_api_client.app["chain_service"] = ChainService(
+        session_factory=ccn_api_client.app["session_factory"],
+        storage_service=ccn_api_client.app["storage_service"],
+    )
+
     return ccn_api_client
 
 
@@ -148,7 +153,6 @@ async def add_file_with_message(
     mocked_queue = mocker.patch(
         "aleph.web.controllers.storage.mq_make_aleph_message_topic_queue"
     )
-    mocker.patch("aleph.web.controllers.storage.get_chain_service_from_request")
 
     # Create a mock MQ response object
     mock_mq_message = mocker.Mock()
@@ -197,8 +201,6 @@ async def add_file_with_message_202(
     mocked_queue = mocker.patch(
         "aleph.web.controllers.storage.mq_make_aleph_message_topic_queue"
     )
-    mocker.patch("aleph.web.controllers.storage.get_chain_service_from_request")
-
     # Create a mock MQ response object
     mock_mq_message = mocker.Mock()
     mock_mq_message.routing_key = f"processed.{MESSAGE_DICT['item_hash']}"
@@ -222,7 +224,7 @@ async def add_file_with_message_202(
     data = {
         "message": MESSAGE_DICT,
         "file_size": int(size),
-        "sync": False,
+        "sync": True,
     }
     form_data.add_field("metadata", json.dumps(data), content_type="application/json")
     response = await api_client.post(uri, data=form_data)

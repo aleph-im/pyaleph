@@ -26,8 +26,12 @@ from aleph.web.controllers.app_state_getters import (
     get_p2p_client_from_request,
     get_mq_channel_from_request,
 )
-from aleph.web.controllers.utils import mq_make_aleph_message_topic_queue, processing_status_to_http_status, \
-    mq_read_one_message, validate_message_dict
+from aleph.web.controllers.utils import (
+    mq_make_aleph_message_topic_queue,
+    processing_status_to_http_status,
+    mq_read_one_message,
+    validate_message_dict,
+)
 
 LOGGER = logging.getLogger(__name__)
 
