@@ -46,12 +46,13 @@ def get_volume_size(session: DbSession, content: ExecutableContent) -> Decimal:
     total_volume_size: Decimal = Decimal(0)
 
     for volume in ref_volumes:
-        file = _get_file_from_ref(
-            session=session, ref=volume.ref, use_latest=volume.use_latest
-        )
-        if file is None:
-            raise RuntimeError(f"Could not find entry in file tags for {volume.ref}.")
-        total_volume_size += Decimal(file.size)
+        if isinstance(volume, ImmutableVolume):
+            file = _get_file_from_ref(
+                session=session, ref=volume.ref, use_latest=volume.use_latest
+            )
+            if file is None:
+                raise RuntimeError(f"Could not find entry in file tags for {volume.ref}.")
+            total_volume_size += Decimal(file.size)
 
     for volume in sized_volumes:
         total_volume_size += Decimal(volume.size_mib * MiB)
