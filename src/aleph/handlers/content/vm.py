@@ -307,9 +307,6 @@ def check_parent_volumes_size_requirements(
             )
 
 
-
-
-
 class VmMessageHandler(ContentHandler):
     """
     Handles both PROGRAM and INSTANCE messages.
@@ -320,11 +317,15 @@ class VmMessageHandler(ContentHandler):
     """
 
     async def check_balance(self, session: DbSession, message: MessageDb) -> None:
-        if message.type != MessageType.instance:
+        if not (message.type == MessageType.program) and not (
+            message.type == MessageType.instance
+        ):
             return
+
         content = _get_vm_content(message)
-        if isinstance(content, ProgramContent):
-            return
+        if message.type == MessageType.program:
+            if not content.on.persistent:
+                return
 
         required_tokens = compute_cost(session=session, content=content)
         current_balance = (
@@ -400,4 +401,3 @@ class VmMessageHandler(ContentHandler):
         refresh_vm_version(session=session, vm_hash=message.item_hash)
 
         return update_hashes
-
