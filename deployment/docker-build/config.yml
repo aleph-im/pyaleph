@@ -22,7 +22,7 @@ binancechain:
     packing_node: False
 
 mongodb:
-    uri: "mongodb://localhost:27017"
+    uri: "mongodb://127.0.0.1:27017"
     database: aleph
 
 storage:
@@ -31,7 +31,7 @@ storage:
 
 ipfs:
     enabled: True
-    host: localhost
+    host: 127.0.0.1
     port: 5001
     gateway_port: 8080
 

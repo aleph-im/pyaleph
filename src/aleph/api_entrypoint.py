@@ -88,4 +88,4 @@ async def create_app() -> web.Application:
 
 if __name__ == "__main__":
     import asyncio
-    web.run_app(create_app(), host="localhost", port=8000)
+    web.run_app(create_app(), host="127.0.0.1", port=8000)

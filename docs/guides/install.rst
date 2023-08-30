@@ -186,7 +186,7 @@ You should see the following three containers with a State of "Up":
 Check the metrics
 ------------------
 
-Check that messages are being processed by the node by looking on the metric endpoint, by default http://localhost:4024/metrics .
+Check that messages are being processed by the node by looking on the metric endpoint, by default http://127.0.0.1:4024/metrics .
 
 The number of messages should change when you refresh the page, starting with the variable pyaleph_status_sync_pending_messages_total
 
@@ -202,7 +202,7 @@ You can use `docker-compose logs` and `docker logs` for this purpose.
 Check IPFS
 ----------
 
-IPFS Web UI: http://localhost:5001/webui
+IPFS Web UI: http://127.0.0.1:5001/webui
 
 .. warning::
     This web interface is only accessible on localhost in the default Docker Compose configuration.
