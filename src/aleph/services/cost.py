@@ -1,3 +1,4 @@
+import math
 from decimal import Decimal
 from typing import Optional, Union
 
@@ -12,9 +13,8 @@ from aleph.types.files import FileTag
 
 
 def _get_file_from_ref(
-    session: DbSession, ref: str, use_latest: bool
+        session: DbSession, ref: str, use_latest: bool
 ) -> Optional[StoredFileDb]:
-
     tag_or_pin: Optional[Union[MessageFilePinDb, FileTagDb]]
 
     if use_latest:
@@ -46,12 +46,13 @@ def get_volume_size(session: DbSession, content: ExecutableContent) -> Decimal:
     total_volume_size: Decimal = Decimal(0)
 
     for volume in ref_volumes:
-        file = _get_file_from_ref(
-            session=session, ref=volume.ref, use_latest=volume.use_latest
-        )
-        if file is None:
-            raise RuntimeError(f"Could not find entry in file tags for {volume.ref}.")
-        total_volume_size += Decimal(file.size)
+        if hasattr(volume, "ref"):
+            file = _get_file_from_ref(
+                session=session, ref=volume.ref, use_latest=volume.use_latest
+            )
+            if file is None:
+                raise RuntimeError(f"Could not find entry in file tags for {volume.ref}.")
+            total_volume_size += Decimal(file.size)
 
     for volume in sized_volumes:
         total_volume_size += Decimal(volume.size_mib * MiB)
@@ -60,7 +61,7 @@ def get_volume_size(session: DbSession, content: ExecutableContent) -> Decimal:
 
 
 def get_additional_storage_price(
-    content: ExecutableContent, session: DbSession
+        content: ExecutableContent, session: DbSession
 ) -> Decimal:
     is_microvm = isinstance(content, ProgramContent) and not content.on.persistent
     nb_compute_units = content.resources.vcpus
@@ -77,7 +78,18 @@ def get_additional_storage_price(
 def compute_cost(session: DbSession, content: ExecutableContent) -> Decimal:
     is_microvm = isinstance(content, ProgramContent) and not content.on.persistent
     compute_unit_cost: Decimal = Decimal("200.0") if is_microvm else Decimal("2000.0")
+    cpu: Decimal = Decimal(content.resources.vcpus)
+    memory: Decimal = Decimal(math.ceil(content.resources.memory / 2000))
+    compute_unit_multiplier = cpu if cpu >= memory else memory
+    environment_internet: Decimal = Decimal(0)
 
-    return (compute_unit_cost * content.resources.vcpus) + get_additional_storage_price(
+    if isinstance(content, ProgramContent) and content.environment.internet:
+        environment_internet = Decimal(2)
+
+    compute_units_required = compute_unit_multiplier
+    compute_unit_multiplier = environment_internet or 1
+    compute_unit_price = compute_units_required * compute_unit_multiplier * compute_unit_cost
+
+    return compute_unit_price + get_additional_storage_price(
         content, session
     )

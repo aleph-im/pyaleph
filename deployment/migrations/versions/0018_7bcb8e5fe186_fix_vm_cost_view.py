@@ -124,7 +124,7 @@ def upgrade() -> None:
                                 LEFT JOIN files ON volume.volume_to_use::text = files.hash::text
                        GROUP BY volume.vm_hash) file_volumes_size
                       ON vm_versions.current_version::text = file_volumes_size.vm_hash::text
-                 JOIN (SELECT instance_rootfs.instance_hash,
+                 LEFT JOIN (SELECT instance_rootfs.instance_hash,
                               instance_rootfs.size_mib::bigint * 1024 * 1024 AS rootfs_size
                        FROM instance_rootfs) rootfs_size ON vm_versions.vm_hash::text = rootfs_size.instance_hash::text
                  JOIN (SELECT vm_machine_volumes.vm_hash,
@@ -151,8 +151,7 @@ def upgrade() -> None:
                                   END AS base_compute_unit_price) bcp,
              LATERAL ( SELECT 1 + vms.environment_internet::integer AS compute_unit_price_multiplier) m,
              LATERAL ( SELECT cu.compute_units_required * m.compute_unit_price_multiplier::double precision *
-                          bcp.base_compute_unit_price::double precision *
-                          m.compute_unit_price_multiplier::double precision AS compute_unit_price) cpm,
+                          bcp.base_compute_unit_price::double precision AS compute_unit_price) cpm,
          LATERAL ( SELECT additional_disk.additional_disk_space * 20::double precision /
                           (1024 * 1024)::double precision AS disk_price) adp,
          LATERAL ( SELECT cpm.compute_unit_price + adp.disk_price AS total_price) tp

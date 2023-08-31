@@ -320,15 +320,19 @@ class VmMessageHandler(ContentHandler):
     """
 
     async def check_balance(self, session: DbSession, message: MessageDb) -> None:
-        if message.type != MessageType.instance:
-            return
-        content = _get_vm_content(message)
-        if isinstance(content, ProgramContent):
+        if not (message.type == MessageType.instance) and not (message.type == MessageType.program):
             return
 
+        content = _get_vm_content(message)
+
+        if message.type == MessageType.program:
+            if not content.on.persistent:
+                return
+
         required_tokens = compute_cost(session=session, content=content)
+
         current_balance = (
-            get_total_balance(address=content.address, session=session) or 0
+                get_total_balance(address=content.address, session=session) or 0
         )
         current_instance_costs = get_total_cost_for_address(
             session=session, address=content.address
