@@ -7,6 +7,7 @@ from aleph_message.models import MessageType
 from pydantic import ValidationError, parse_obj_as
 
 from aleph.db.accessors.balances import get_total_balance
+from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import (
     get_address_files_for_api,
     get_address_files_stats,
@@ -68,13 +69,17 @@ async def get_account_balance(request: web.Request):
         balance = get_total_balance(
             session=session, address=address, include_dapps=False
         )
+        total_cost = get_total_cost_for_address(
+            session=session, address=address
+        )
 
     if balance is None:
         raise web.HTTPNotFound()
 
     return web.json_response(
-        text=GetAccountBalanceResponse(address=address, balance=balance).json()
+        text=GetAccountBalanceResponse(address=address, balance=balance, locked_amount=total_cost).json()
     )
+
 
 
 async def get_account_files(request: web.Request) -> web.Response:
