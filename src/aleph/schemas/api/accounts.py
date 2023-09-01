@@ -26,7 +26,7 @@ class GetAccountFilesQueryParams(BaseModel):
     sort_order: SortOrder = Field(
         default=SortOrder.DESCENDING,
         description="Order in which files should be listed: "
-                    "-1 means most recent messages first, 1 means older messages first.",
+        "-1 means most recent messages first, 1 means older messages first.",
     )
 
 

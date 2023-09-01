@@ -16,7 +16,8 @@ from aleph.db.accessors.messages import get_message_stats_by_address
 from aleph.schemas.api.accounts import (
     GetAccountBalanceResponse,
     GetAccountFilesResponse,
-    GetAccountFilesQueryParams, GetAccountFilesResponseItem,
+    GetAccountFilesQueryParams,
+    GetAccountFilesResponseItem,
 )
 from aleph.types.db_session import DbSessionFactory
 from aleph.web.controllers.app_state_getters import get_session_factory_from_request
@@ -69,17 +70,16 @@ async def get_account_balance(request: web.Request):
         balance = get_total_balance(
             session=session, address=address, include_dapps=False
         )
-        total_cost = get_total_cost_for_address(
-            session=session, address=address
-        )
+        total_cost = get_total_cost_for_address(session=session, address=address)
 
     if balance is None:
         raise web.HTTPNotFound()
 
     return web.json_response(
-        text=GetAccountBalanceResponse(address=address, balance=balance, locked_amount=total_cost).json()
+        text=GetAccountBalanceResponse(
+            address=address, balance=balance, locked_amount=total_cost
+        ).json()
     )
-
 
 
 async def get_account_files(request: web.Request) -> web.Response:
