@@ -100,8 +100,8 @@ def get_defaults():
             "pool_size": 50,
         },
         "mail": {
-            "email_sender": "aleph@localhost.localdomain",
-            "smtp_url": "smtp://localhost",
+            "email_sender": "aleph@127.0.0.1.localdomain",
+            "smtp_url": "smtp://127.0.0.1",
         },
         "ipfs": {
             "enabled": True,
