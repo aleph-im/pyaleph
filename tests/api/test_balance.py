@@ -9,5 +9,5 @@ async def test_get_balance(ccn_api_client, user_balance: AlephBalanceDb):
     response = await ccn_api_client.get(MESSAGES_URI)
     assert response.status == 200, await response.text()
     data = await response.json()
-    assert data["balance"] == 22192
+    assert data["balance"] == user_balance.balance
     assert data["locked_amount"] == 6
