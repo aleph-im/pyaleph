@@ -13,7 +13,7 @@ from aleph.types.files import FileTag
 
 
 def _get_file_from_ref(
-    session: DbSession, ref: str, use_latest: bool
+        session: DbSession, ref: str, use_latest: bool
 ) -> Optional[StoredFileDb]:
     tag_or_pin: Optional[Union[MessageFilePinDb, FileTagDb]]
 
@@ -28,7 +28,7 @@ def _get_file_from_ref(
     return None
 
 
-def get_volume_size(session: DbSession, content: ExecutableContent) -> Decimal:
+def get_volume_size(session: DbSession, content: ExecutableContent) -> int:
     ref_volumes = []
     sized_volumes = []
 
@@ -45,7 +45,7 @@ def get_volume_size(session: DbSession, content: ExecutableContent) -> Decimal:
         else:
             sized_volumes.append(volume)
 
-    total_volume_size: Decimal = Decimal(0)
+    total_volume_size: int = 0
 
     for volume in ref_volumes:
         file = _get_file_from_ref(
@@ -53,17 +53,17 @@ def get_volume_size(session: DbSession, content: ExecutableContent) -> Decimal:
         )
         if file is None:
             raise RuntimeError(f"Could not find entry in file tags for {volume.ref}.")
-        total_volume_size += Decimal(file.size)
+        total_volume_size += file.size
 
     for volume in sized_volumes:
-        total_volume_size += Decimal(volume.size_mib * MiB)
+        total_volume_size += volume.size_mib * MiB
 
     return total_volume_size
 
 
 def get_additional_storage_price(
-    content: ExecutableContent, session: DbSession
-) -> Decimal:
+        content: ExecutableContent, session: DbSession
+) -> float:
     is_microvm = isinstance(content, ProgramContent) and not content.on.persistent
     nb_compute_units = content.resources.vcpus
     free_storage_per_compute_unit = 2 * GiB if is_microvm else 20 * GiB
@@ -73,24 +73,31 @@ def get_additional_storage_price(
         total_volume_size - (free_storage_per_compute_unit * nb_compute_units), 0
     )
     price = (additional_storage * 20) / MiB
-    return Decimal(price)
+    return price
+
+
+def _get_compute_unit(content: ExecutableContent) -> float:
+    cpu: int = content.resources.vcpus
+    memory: float = math.ceil(content.resources.memory / 2000)
+    compute_unit_multiplier = cpu if cpu >= memory else memory
+    return compute_unit_multiplier
+
+
+def _get_compute_unit_multiplier(content: ExecutableContent) -> int:
+    compute_unit_multiplier: int = 1
+    if content.environment.internet:
+        compute_unit_multiplier += 1
+    return compute_unit_multiplier
 
 
 def compute_cost(session: DbSession, content: ExecutableContent) -> Decimal:
     is_microvm = isinstance(content, ProgramContent) and not content.on.persistent
-    compute_unit_cost: Decimal = Decimal("200.0") if is_microvm else Decimal("2000.0")
-    cpu: Decimal = Decimal(content.resources.vcpus)
-    memory: Decimal = Decimal(math.ceil(content.resources.memory / 2000))
-    compute_unit_multiplier = cpu if cpu >= memory else memory
-    environment_internet: Decimal = Decimal(0)
 
-    if isinstance(content, ProgramContent) and content.environment.internet:
-        environment_internet = Decimal(2)
+    compute_unit_cost: float = 200.0 if is_microvm else 2000.0
 
-    compute_units_required = compute_unit_multiplier
-    compute_unit_multiplier = environment_internet or 1
-    compute_unit_price = (
-        compute_units_required * compute_unit_multiplier * compute_unit_cost
-    )
+    compute_units_required = _get_compute_unit(content)
+    compute_unit_multiplier = _get_compute_unit_multiplier(content)
 
-    return compute_unit_price + get_additional_storage_price(content, session)
+    compute_unit_price = compute_units_required * compute_unit_multiplier * compute_unit_cost
+    price = compute_unit_price + get_additional_storage_price(content, session)
+    return Decimal(price)
