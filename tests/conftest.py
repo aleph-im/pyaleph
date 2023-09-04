@@ -251,6 +251,15 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessag
     return pending_message
 
 
+@pytest.fixture
+def instance_message_with_volumes_in_db(
+    session_factory: DbSessionFactory, fixture_instance_message: PendingMessageDb
+) -> None:
+    with session_factory() as session:
+        insert_volume_refs(session, fixture_instance_message)
+        session.commit()
+
+
 class Volume(Protocol):
     ref: str
     use_latest: bool
@@ -310,9 +319,7 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
 
 
 @pytest.fixture
-def user_balance(
-    session_factory: DbSessionFactory, fixture_instance_message
-) -> AlephBalanceDb:
+def user_balance(session_factory: DbSessionFactory) -> AlephBalanceDb:
     balance = AlephBalanceDb(
         address="0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
         chain=Chain.ETH,
@@ -322,7 +329,5 @@ def user_balance(
 
     with session_factory() as session:
         session.add(balance)
-        session.commit()
-        insert_volume_refs(session, fixture_instance_message)
         session.commit()
     return balance
