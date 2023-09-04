@@ -13,7 +13,7 @@ from aleph.types.files import FileTag
 
 
 def _get_file_from_ref(
-        session: DbSession, ref: str, use_latest: bool
+    session: DbSession, ref: str, use_latest: bool
 ) -> Optional[StoredFileDb]:
     tag_or_pin: Optional[Union[MessageFilePinDb, FileTagDb]]
 
@@ -35,7 +35,9 @@ def get_volume_size(session: DbSession, content: ExecutableContent) -> Decimal:
     if isinstance(content, InstanceContent):
         sized_volumes.append(content.rootfs)
     elif isinstance(content, ProgramContent):
-        ref_volumes += [content.code, content.data, content.runtime]
+        ref_volumes += [content.code, content.runtime]
+        if content.data:
+            ref_volumes.append(content.data)
 
     for volume in content.volumes:
         if isinstance(volume, ImmutableVolume):
@@ -46,13 +48,12 @@ def get_volume_size(session: DbSession, content: ExecutableContent) -> Decimal:
     total_volume_size: Decimal = Decimal(0)
 
     for volume in ref_volumes:
-        if hasattr(volume, "ref"):
-            file = _get_file_from_ref(
-                session=session, ref=volume.ref, use_latest=volume.use_latest
-            )
-            if file is None:
-                raise RuntimeError(f"Could not find entry in file tags for {volume.ref}.")
-            total_volume_size += Decimal(file.size)
+        file = _get_file_from_ref(
+            session=session, ref=volume.ref, use_latest=volume.use_latest
+        )
+        if file is None:
+            raise RuntimeError(f"Could not find entry in file tags for {volume.ref}.")
+        total_volume_size += Decimal(file.size)
 
     for volume in sized_volumes:
         total_volume_size += Decimal(volume.size_mib * MiB)
@@ -61,7 +62,7 @@ def get_volume_size(session: DbSession, content: ExecutableContent) -> Decimal:
 
 
 def get_additional_storage_price(
-        content: ExecutableContent, session: DbSession
+    content: ExecutableContent, session: DbSession
 ) -> Decimal:
     is_microvm = isinstance(content, ProgramContent) and not content.on.persistent
     nb_compute_units = content.resources.vcpus
@@ -88,8 +89,8 @@ def compute_cost(session: DbSession, content: ExecutableContent) -> Decimal:
 
     compute_units_required = compute_unit_multiplier
     compute_unit_multiplier = environment_internet or 1
-    compute_unit_price = compute_units_required * compute_unit_multiplier * compute_unit_cost
-
-    return compute_unit_price + get_additional_storage_price(
-        content, session
+    compute_unit_price = (
+        compute_units_required * compute_unit_multiplier * compute_unit_cost
     )
+
+    return compute_unit_price + get_additional_storage_price(content, session)
