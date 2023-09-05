@@ -1,5 +1,6 @@
 import datetime as dt
 import itertools
+from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Union, Tuple
 
 import aiohttp
@@ -219,6 +220,24 @@ async def test_get_messages_filter_by_tags(
     messages = (await response.json())["messages"]
     assert len(messages) == 1
     assert messages[0]["item_hash"] == amend_message_db.item_hash
+
+
+@pytest.mark.parametrize("type_field", ("msgType", "msgTypes"))
+@pytest.mark.asyncio
+async def test_get_by_message_type(fixture_messages, ccn_api_client, type_field: str):
+    messages_by_type = defaultdict(list)
+    for message in fixture_messages:
+        messages_by_type[message["type"]].append(message)
+
+    for message_type, expected_messages in messages_by_type.items():
+        response = await ccn_api_client.get(
+            MESSAGES_URI, params={type_field: message_type}
+        )
+        assert response.status == 200, await response.text()
+        messages = (await response.json())["messages"]
+        assert set(msg["item_hash"] for msg in messages) == set(
+            msg["item_hash"] for msg in expected_messages
+        )
 
 
 @pytest.mark.asyncio

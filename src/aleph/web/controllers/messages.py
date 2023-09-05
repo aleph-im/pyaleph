@@ -123,6 +123,7 @@ class BaseMessageQueryParams(BaseModel):
         "content_types",
         "chains",
         "channels",
+        "message_types",
         "tags",
         pre=True,
     )
