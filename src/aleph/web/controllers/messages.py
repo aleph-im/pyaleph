@@ -359,7 +359,6 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(body=e.json(indent=4))
 
-    message_filters = query_params.dict(exclude_none=True)
     history = query_params.history
 
     if history:
