@@ -67,7 +67,10 @@ class BaseMessageQueryParams(BaseModel):
         "-1 means most recent messages first, 1 means older messages first.",
     )
     message_type: Optional[MessageType] = Field(
-        default=None, alias="msgType", description="Message type."
+        default=None, alias="msgType", description="Message type. Deprecated: use msgTypes instead"
+    )
+    message_types: Optional[List[MessageType]] = Field(
+        default=None, alias="msgTypes", description="Accepted message types."
     )
     addresses: Optional[List[str]] = Field(
         default=None, description="Accepted values for the 'sender' field."
@@ -120,6 +123,7 @@ class BaseMessageQueryParams(BaseModel):
         "content_types",
         "chains",
         "channels",
+        "message_types",
         "tags",
         pre=True,
     )
@@ -356,7 +360,6 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(body=e.json(indent=4))
 
-    message_filters = query_params.dict(exclude_none=True)
     history = query_params.history
 
     if history:

@@ -52,6 +52,7 @@ def make_matching_messages_query(
     refs: Optional[Sequence[str]] = None,
     chains: Optional[Sequence[Chain]] = None,
     message_type: Optional[MessageType] = None,
+    message_types: Optional[Sequence[MessageType]] = None,
     start_date: Optional[Union[float, dt.datetime]] = None,
     end_date: Optional[Union[float, dt.datetime]] = None,
     content_hashes: Optional[Sequence[ItemHash]] = None,
@@ -87,6 +88,8 @@ def make_matching_messages_query(
         select_stmt = select_stmt.where(MessageDb.sender.in_(addresses))
     if chains:
         select_stmt = select_stmt.where(MessageDb.chain.in_(chains))
+    if message_types:
+        select_stmt = select_stmt.where(MessageDb.type.in_(message_types))
     if message_type:
         select_stmt = select_stmt.where(MessageDb.type == message_type)
     if start_datetime:
