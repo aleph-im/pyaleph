@@ -157,10 +157,11 @@ async def mq_make_aleph_message_topic_queue(
         auto_delete=False,
     )
     mq_queue = await channel.declare_queue(
-        auto_delete=True, exclusive=True,
+        auto_delete=True,
+        exclusive=True,
         # Auto-delete the queue after 30 seconds. This guarantees that queues are deleted even
         # if a bug makes the consumer crash before cleanup.
-        arguments={"x-expires": 30000}
+        arguments={"x-expires": 30000},
     )
     await mq_queue.bind(mq_message_exchange, routing_key=routing_key)
     return mq_queue
@@ -203,3 +204,4 @@ def validate_message_dict(message_dict: Mapping[str, Any]) -> BasePendingMessage
         return parse_message(message_dict)
     except InvalidMessageException as e:
         raise web.HTTPUnprocessableEntity(body=str(e))
+

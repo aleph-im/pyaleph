@@ -181,6 +181,7 @@ async def add_file_with_message(
         "file_size": int(size),
         "sync": True,
     }
+    print(data)
     form_data.add_field("metadata", json.dumps(data), content_type="application/json")
 
     response = await api_client.post(uri, data=form_data)

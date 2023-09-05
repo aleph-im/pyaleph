@@ -4,7 +4,7 @@ import datetime as dt
 import functools
 import logging
 from hashlib import sha256
-from typing import Union, Tuple
+from typing import Union, Tuple, BinaryIO
 from decimal import Decimal
 import aio_pika
 import pydantic
@@ -116,18 +116,14 @@ async def _verify_user_balance(
             raise web.HTTPPaymentRequired()
 
 
-async def _verify_user_file(message: PendingStoreMessage, size: int, file_io) -> None:
-    content = file_io.read(size)
+async def _verify_user_file(
+    message: PendingStoreMessage, size: int, file_io, file_hash
+) -> None:
     item_content = {}
     if message.item_content:
         item_content = json.loads(message.item_content)
-    actual_item_hash = sha256(content).hexdigest()
     client_item_hash = item_content["item_hash"]
-    if len(content) > (1000 * MiB):
-        raise web.HTTPRequestEntityTooLarge(
-            actual_size=len(content), max_size=(1000 * MiB)
-        )
-    elif actual_item_hash != client_item_hash:
+    if file_hash != client_item_hash:
         raise web.HTTPUnprocessableEntity()
 
 
@@ -138,15 +134,20 @@ class StorageMetadata(pydantic.BaseModel):
 
 
 async def storage_add_file_with_message(
-    request: web.Request, session: DbSession, chain_service, storage_metadata, file_io
+    request: web.Request,
+    session: DbSession,
+    chain_service: ChainService,
+    storage_metadata: StorageMetadata,
+    file_io: BinaryIO,
+    file_hash: str,
 ):
     config = get_config_from_request(request)
     mq_queue = None
 
-    pending_store_message = PendingStoreMessage.parse_obj(storage_metadata.message)
     pending_message_db = PendingMessageDb.from_obj(
-        obj=pending_store_message, reception_time=dt.datetime.now(), fetched=True
+        obj=storage_metadata.message, reception_time=dt.datetime.now(), fetched=True
     )
+
     await _verify_message_signature(
         pending_message=storage_metadata.message, chain_service=chain_service
     )
@@ -159,6 +160,7 @@ async def storage_add_file_with_message(
         message=storage_metadata.message,
         size=storage_metadata.file_size,
         file_io=file_io,
+        file_hash=file_hash,
     )
 
     if storage_metadata.sync:
@@ -198,7 +200,7 @@ async def storage_add_file(request: web.Request):
             storage_metadata = StorageMetadata.parse_raw(metadata_content)
         else:
             storage_metadata = StorageMetadata.parse_raw(metadata)
-    except Exception as e:
+    except (ValueError, TypeError, UnicodeDecodeError) as e:
         if metadata:
             raise web.HTTPUnprocessableEntity()
     if metadata is None:
@@ -206,13 +208,21 @@ async def storage_add_file(request: web.Request):
             raise web.HTTPUnauthorized()
     file_io.seek(0)
 
+    if storage_metadata.file_size > (1000 * MiB):
+        raise web.HTTPRequestEntityTooLarge(
+            actual_size=storage_metadata.file_size, max_size=(1000 * MiB)
+        )
+
     with session_factory() as session:
         file_hash = await storage_service.add_file(
-            session=session, fileobject=file_io, engine=ItemType.storage
+            session=session,
+            fileobject=file_io,
+            engine=ItemType.storage,
+            size=storage_metadata.file_size if storage_metadata else -1,
         )
         if storage_metadata:
             await storage_add_file_with_message(
-                request, session, chain_service, storage_metadata, file_io
+                request, session, chain_service, storage_metadata, file_io, file_hash
             )
         session.commit()
     output = {"status": "success", "hash": file_hash}

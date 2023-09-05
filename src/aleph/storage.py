@@ -5,6 +5,7 @@ import asyncio
 import logging
 from hashlib import sha256
 from typing import Any, IO, Optional, cast, Final
+from aiohttp import web
 
 from aleph_message.models import ItemType
 
@@ -19,12 +20,14 @@ from aleph.services.ipfs import IpfsService
 from aleph.services.ipfs.common import get_cid_version
 from aleph.services.p2p.http import request_hash as p2p_http_request_hash
 from aleph.services.storage.engine import StorageEngine
+from aleph.toolkit.constants import MiB
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileType
 from aleph.utils import get_sha256
 from aleph.schemas.pending_messages import (
     parse_message,
 )
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -241,7 +244,9 @@ class StorageService:
     async def pin_hash(self, chash: str, timeout: int = 30, tries: int = 1):
         await self.ipfs_service.pin_add(cid=chash, timeout=timeout, tries=tries)
 
-    async def add_json(self, session: DbSession, value: Any, engine: ItemType = ItemType.ipfs) -> str:
+    async def add_json(
+        self, session: DbSession, value: Any, engine: ItemType = ItemType.ipfs
+    ) -> str:
         content = aleph_json.dumps(value)
 
         if engine == ItemType.ipfs:
@@ -262,7 +267,11 @@ class StorageService:
         return chash
 
     async def add_file(
-        self, session: DbSession, fileobject: IO, engine: ItemType = ItemType.ipfs
+        self,
+        session: DbSession,
+        fileobject: IO,
+        engine: ItemType = ItemType.ipfs,
+        size: int = -1,
     ) -> str:
         if engine == ItemType.ipfs:
             output = await self.ipfs_service.add_file(fileobject)
@@ -271,9 +280,12 @@ class StorageService:
             file_content = fileobject.read()
 
         elif engine == ItemType.storage:
-            file_content = fileobject.read()
+            file_content = fileobject.read(size)
+            if len(file_content) > (1000 * MiB):
+                raise web.HTTPRequestEntityTooLarge(
+                    actual_size=len(file_content), max_size=(1000 * MiB)
+                )
             file_hash = sha256(file_content).hexdigest()
-            fileobject.seek(0)
         else:
             raise ValueError(f"Unsupported item type: {engine}")
 
