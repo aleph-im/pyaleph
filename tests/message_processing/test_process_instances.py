@@ -444,8 +444,8 @@ async def test_get_volume_size(
 
     content = InstanceContent.parse_raw(fixture_instance_message.item_content)
     with session_factory() as session:
-        volume_size: Decimal = get_volume_size(session=session, content=content)
-        assert volume_size == Decimal("21512585216")
+        volume_size = get_volume_size(session=session, content=content)
+        assert volume_size == 21512585216
 
 
 @pytest.mark.asyncio
@@ -459,7 +459,7 @@ async def test_get_additional_storage_price(
 
     content = InstanceContent.parse_raw(fixture_instance_message.item_content)
     with session_factory() as session:
-        additional_price: Decimal = get_additional_storage_price(
+        additional_price = get_additional_storage_price(
             content=content, session=session
         )
         assert additional_price == Decimal("720")

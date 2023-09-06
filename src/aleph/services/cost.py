@@ -63,7 +63,7 @@ def get_volume_size(session: DbSession, content: ExecutableContent) -> int:
 
 def get_additional_storage_price(
         content: ExecutableContent, session: DbSession
-) -> float:
+) -> Decimal:
     is_microvm = isinstance(content, ProgramContent) and not content.on.persistent
     nb_compute_units = content.resources.vcpus
     free_storage_per_compute_unit = 2 * GiB if is_microvm else 20 * GiB
@@ -72,7 +72,7 @@ def get_additional_storage_price(
     additional_storage = max(
         total_volume_size - (free_storage_per_compute_unit * nb_compute_units), 0
     )
-    price = (additional_storage * 20) / MiB
+    price = Decimal(additional_storage) * 20 / MiB
     return price
 
 
@@ -93,11 +93,11 @@ def _get_compute_unit_multiplier(content: ExecutableContent) -> int:
 def compute_cost(session: DbSession, content: ExecutableContent) -> Decimal:
     is_microvm = isinstance(content, ProgramContent) and not content.on.persistent
 
-    compute_unit_cost: float = 200.0 if is_microvm else 2000.0
+    compute_unit_cost = 200 if is_microvm else 2000
 
     compute_units_required = _get_compute_unit(content)
     compute_unit_multiplier = _get_compute_unit_multiplier(content)
 
-    compute_unit_price = compute_units_required * compute_unit_multiplier * compute_unit_cost
+    compute_unit_price = Decimal(compute_units_required) * compute_unit_multiplier * compute_unit_cost
     price = compute_unit_price + get_additional_storage_price(content, session)
     return Decimal(price)
