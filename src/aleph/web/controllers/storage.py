@@ -194,7 +194,16 @@ async def storage_add_file(request: web.Request):
 
     status_code = 200
 
-    if metadata is None:
+    if metadata:
+        metadata_bytes = (
+            metadata.file.read() if isinstance(metadata, FileField) else metadata
+        )
+        storage_metadata = StorageMetadata.parse_raw(metadata_bytes)
+        message = storage_metadata.message
+        file_size = storage_metadata.file_size
+        sync = storage_metadata.sync
+
+    else:
         # User did not provide a message
         try:
             content_length_str = post["file"].headers["Content-Length"]
@@ -204,12 +213,6 @@ async def storage_add_file(request: web.Request):
 
         message = None
         sync = False
-
-    else:
-        storage_metadata = StorageMetadata.parse_raw(metadata)
-        message = storage_metadata.message
-        file_size = storage_metadata.file_size
-        sync = storage_metadata.sync
 
     if file_size > MAX_UPLOAD_FILE_SIZE:
         raise web.HTTPRequestEntityTooLarge(
