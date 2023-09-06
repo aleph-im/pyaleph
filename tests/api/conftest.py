@@ -5,8 +5,10 @@ from typing import Any, Dict, Sequence, cast, Tuple
 import pytest
 import pytest_asyncio
 from aleph_message.models import AggregateContent, PostContent
+from configmanager import Config
 from sqlalchemy import insert
 
+from aleph.chains.chain_service import ChainService
 from aleph.db.accessors.aggregates import refresh_aggregate
 from aleph.db.models import (
     MessageDb,
@@ -15,9 +17,15 @@ from aleph.db.models import (
     message_confirmations,
 )
 from aleph.db.models.posts import PostDb
+from aleph.handlers.message_handler import MessageHandler
+from aleph.jobs.process_pending_messages import PendingMessageProcessor
+from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSessionFactory
 import datetime as dt
+
+from in_memory_storage_engine import InMemoryStorageEngine
+
 
 # TODO: remove the raw parameter, it's just to avoid larger refactorings
 async def _load_fixtures(
@@ -33,7 +41,6 @@ async def _load_fixtures(
     tx_hashes = set()
 
     with session_factory() as session:
-
         for message_dict in messages_json:
             message_db = MessageDb.from_message_dict(message_dict)
             messages.append(message_db)
@@ -90,7 +97,7 @@ async def fixture_aggregate_messages(
             aggregate_keys.add((aggregate_element.owner, aggregate_element.key))
         session.commit()
 
-        for (owner, key) in aggregate_keys:
+        for owner, key in aggregate_keys:
             refresh_aggregate(session=session, owner=owner, key=key)
 
         session.commit()
@@ -188,3 +195,30 @@ def amended_post_with_refs_and_tags(post_with_refs_and_tags: Tuple[MessageDb, Po
     )
 
     return amend_message, amend_post
+
+
+@pytest.fixture
+def message_processor(mocker, mock_config: Config, session_factory: DbSessionFactory):
+    storage_engine = InMemoryStorageEngine(files={})
+    storage_service = StorageService(
+        storage_engine=storage_engine,
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
+    )
+    chain_service = ChainService(
+        session_factory=session_factory, storage_service=storage_service
+    )
+    message_handler = MessageHandler(
+        session_factory=session_factory,
+        chain_service=chain_service,
+        storage_service=storage_service,
+        config=mock_config,
+    )
+    message_processor = PendingMessageProcessor(
+        session_factory=session_factory,
+        message_handler=message_handler,
+        max_retries=0,
+        mq_message_exchange=mocker.AsyncMock(),
+        mq_conn=mocker.AsyncMock(),
+    )
+    return message_processor

@@ -11,6 +11,7 @@ from aleph.web.controllers.utils import DEFAULT_PAGE
 class GetAccountBalanceResponse(BaseModel):
     address: str
     balance: Decimal
+    locked_amount: Decimal
 
 
 class GetAccountFilesQueryParams(BaseModel):
