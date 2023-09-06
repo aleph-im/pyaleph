@@ -13,7 +13,7 @@ from aleph.types.files import FileTag
 
 
 def _get_file_from_ref(
-        session: DbSession, ref: str, use_latest: bool
+    session: DbSession, ref: str, use_latest: bool
 ) -> Optional[StoredFileDb]:
     tag_or_pin: Optional[Union[MessageFilePinDb, FileTagDb]]
 
@@ -62,7 +62,7 @@ def get_volume_size(session: DbSession, content: ExecutableContent) -> int:
 
 
 def get_additional_storage_price(
-        content: ExecutableContent, session: DbSession
+    content: ExecutableContent, session: DbSession
 ) -> Decimal:
     is_microvm = isinstance(content, ProgramContent) and not content.on.persistent
     nb_compute_units = content.resources.vcpus
@@ -98,6 +98,8 @@ def compute_cost(session: DbSession, content: ExecutableContent) -> Decimal:
     compute_units_required = _get_compute_unit(content)
     compute_unit_multiplier = _get_compute_unit_multiplier(content)
 
-    compute_unit_price = Decimal(compute_units_required) * compute_unit_multiplier * compute_unit_cost
+    compute_unit_price = (
+        Decimal(compute_units_required) * compute_unit_multiplier * compute_unit_cost
+    )
     price = compute_unit_price + get_additional_storage_price(content, session)
     return Decimal(price)
