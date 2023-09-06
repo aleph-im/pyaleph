@@ -2,7 +2,7 @@ import asyncio
 import json
 from io import BytesIO, StringIO
 from math import ceil
-from typing import Optional, Union, IO, Mapping, Any
+from typing import Optional, Union, IO, Mapping, Any, overload
 
 import aio_pika
 import aiohttp_jinja2
@@ -19,9 +19,22 @@ DEFAULT_PAGE = 1
 LIST_FIELD_SEPARATOR = ","
 
 
-def multidict_proxy_to_io(
-    multi_dict: MultiDictProxy[Union[str, bytes, FileField]]
-) -> IO:
+@overload
+def multidict_proxy_to_io(multi_dict: MultiDictProxy[bytes]) -> BytesIO:
+    ...
+
+
+@overload
+def multidict_proxy_to_io(multi_dict: MultiDictProxy[str]) -> StringIO:
+    ...
+
+
+@overload
+def multidict_proxy_to_io(multi_dict: MultiDictProxy[FileField]) -> IO:
+    ...
+
+
+def multidict_proxy_to_io(multi_dict):
     file_field = multi_dict["file"]
     if isinstance(file_field, bytes):
         return BytesIO(file_field)
@@ -204,4 +217,3 @@ def validate_message_dict(message_dict: Mapping[str, Any]) -> BasePendingMessage
         return parse_message(message_dict)
     except InvalidMessageException as e:
         raise web.HTTPUnprocessableEntity(body=str(e))
-

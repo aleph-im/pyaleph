@@ -1,35 +1,20 @@
 import base64
-import datetime
 import json
-from hashlib import sha256
+from decimal import Decimal
 from typing import Any
 
 import aiohttp
 import orjson
 import pytest
-from aleph_message.models import ItemHash, MessageType, Chain, ItemType
-from configmanager import Config
+from aleph_message.models import ItemHash, Chain
 
 from aleph.chains.chain_service import ChainService
-from aleph.handlers.message_handler import MessageHandler
-from aleph.schemas.pending_messages import (
-    parse_message,
-)
-from decimal import Decimal
-
 from aleph.db.accessors.files import get_file
-from aleph.db.models import PendingMessageDb, AlephBalanceDb
-from aleph.schemas.pending_messages import BasePendingMessage, PendingStoreMessage
+from aleph.db.models import AlephBalanceDb
 from aleph.storage import StorageService
-from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.files import FileType
 from in_memory_storage_engine import InMemoryStorageEngine
-import datetime as dt
-
-
-from aleph.web.controllers.app_state_getters import get_mq_channel_from_request
 
 IPFS_ADD_FILE_URI = "/api/v0/ipfs/add_file"
 IPFS_ADD_JSON_URI = "/api/v0/ipfs/add_json"
@@ -117,7 +102,8 @@ async def add_file(
     form_data.add_field("file", file_content)
 
     post_response = await api_client.post(uri, data=form_data)
-    assert post_response.status == 200, await post_response.text()
+    response_text = await post_response.text()
+    assert post_response.status == 200, await response_text
     post_response_json = await post_response.json()
     assert post_response_json["status"] == "success"
     file_hash = post_response_json["hash"]
@@ -125,7 +111,7 @@ async def add_file(
 
     # Assert that the file is downloadable
     get_file_response = await api_client.get(f"{GET_STORAGE_RAW_URI}/{file_hash}")
-    assert get_file_response.status == 200
+    assert get_file_response.status == 200, await get_file_response.text()
     response_data = await get_file_response.read()
 
     # Check that the file appears in the DB
@@ -185,7 +171,8 @@ async def add_file_with_message(
     form_data.add_field("metadata", json.dumps(data), content_type="application/json")
 
     response = await api_client.post(uri, data=form_data)
-    assert response.status == error_code, await response.text()
+    response_text = await response.text()
+    assert response.status == error_code, response_text
 
 
 async def add_file_with_message_202(

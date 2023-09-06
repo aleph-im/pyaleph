@@ -266,12 +266,19 @@ class StorageService:
 
         return chash
 
+    async def add_file_content_to_local_storage(
+        self, session: DbSession, file_content: bytes, file_hash: str
+    ) -> None:
+        await self.storage_engine.write(filename=file_hash, content=file_content)
+        upsert_file(
+            session=session,
+            file_hash=file_hash,
+            size=len(file_content),
+            file_type=FileType.FILE,
+        )
+
     async def add_file(
-        self,
-        session: DbSession,
-        fileobject: IO,
-        engine: ItemType = ItemType.ipfs,
-        size: int = -1,
+        self, session: DbSession, fileobject: IO, engine: ItemType = ItemType.ipfs
     ) -> str:
         if engine == ItemType.ipfs:
             output = await self.ipfs_service.add_file(fileobject)
@@ -280,21 +287,14 @@ class StorageService:
             file_content = fileobject.read()
 
         elif engine == ItemType.storage:
-            file_content = fileobject.read(size)
-            if len(file_content) > (1000 * MiB):
-                raise web.HTTPRequestEntityTooLarge(
-                    actual_size=len(file_content), max_size=(1000 * MiB)
-                )
+            file_content = fileobject.read()
             file_hash = sha256(file_content).hexdigest()
+
         else:
             raise ValueError(f"Unsupported item type: {engine}")
 
-        await self.storage_engine.write(filename=file_hash, content=file_content)
-        upsert_file(
-            session=session,
-            file_hash=file_hash,
-            size=len(file_content),
-            file_type=FileType.FILE,
+        await self.add_file_content_to_local_storage(
+            session=session, file_content=file_content, file_hash=file_hash
         )
 
         return file_hash
