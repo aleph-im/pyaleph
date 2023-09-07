@@ -167,6 +167,25 @@ def upgrade() -> None:
         """
     )
 
+    op.execute(
+        """
+        create or replace view costs_view as
+        SELECT coalesce(program_prices.owner, storage.owner) address,
+               total_program_cost,
+               total_storage_cost,
+               total_cost
+        FROM (SELECT owner, sum(total_price) total_program_cost FROM program_costs_view GROUP BY owner) program_prices
+                 FULL OUTER JOIN (SELECT owner, sum(f.size) storage_size
+                                  FROM file_pins
+                                           JOIN files f on file_pins.file_hash = f.hash
+                                  WHERE owner is not null
+                                  GROUP BY owner) storage ON program_prices.owner = storage.owner,
+             LATERAL (SELECT storage_size / (3 * 1024 * 1024) total_storage_cost) sc,
+             LATERAL (SELECT coalesce(program_prices.total_program_cost, 0) +
+                             coalesce(total_storage_cost, 0) AS total_cost ) tc;
+        """
+    )
+
 
 def downgrade() -> None:
     op.execute("drop view costs_view")
