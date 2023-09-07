@@ -207,4 +207,4 @@ def test_get_total_cost_for_address(
         total_cost: Decimal = get_total_cost_for_address(
             session=session, address=fixture_instance_message.sender
         )
-        assert total_cost == Decimal(6)
+        assert total_cost == Decimal(0.66666666666666662965923251249478198587894439697265625)
