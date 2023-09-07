@@ -174,7 +174,7 @@ def upgrade() -> None:
                total_program_cost,
                total_storage_cost,
                total_cost
-        FROM (SELECT owner, sum(total_price) total_program_cost FROM program_costs_view GROUP BY owner) program_prices
+        FROM (SELECT owner, sum(total_price) total_program_cost FROM vm_costs_view GROUP BY owner) program_prices
                  FULL OUTER JOIN (SELECT owner, sum(f.size) storage_size
                                   FROM file_pins
                                            JOIN files f on file_pins.file_hash = f.hash
