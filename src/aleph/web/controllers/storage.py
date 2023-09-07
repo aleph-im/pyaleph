@@ -206,8 +206,9 @@ async def storage_add_file(request: web.Request):
     else:
         # User did not provide a message
         try:
-            content_length_str = post["file"].headers["Content-Length"]
-            file_size = int(content_length_str)
+            if isinstance(post["file"], FileField):
+                content_length_str = post["file"].headers["Content-Length"]
+                file_size = int(content_length_str)
         except (KeyError, ValueError) as e:
             raise web.HTTPBadRequest(reason="Missing Content-Length header") from e
 
