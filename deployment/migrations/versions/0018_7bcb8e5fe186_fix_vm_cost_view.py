@@ -93,7 +93,7 @@ def upgrade() -> None:
                                          JOIN files f ON file_pins.file_hash::text = f.hash::text
                                 WHERE file_pins.owner IS NOT NULL
                                 GROUP BY file_pins.owner) storage ON vm_prices.owner::text = storage.owner::text,
-                 LATERAL ( SELECT 3::numeric * storage.storage_size / 1048576::numeric AS total_storage_cost) sc,
+                 LATERAL ( SELECT storage.storage_size / (3 * 1024 * 1024) AS total_storage_cost) sc,
                  LATERAL ( SELECT COALESCE(vm_prices.total_vm_cost, 0::double precision) +
                                   COALESCE(sc.total_storage_cost, 0::numeric)::double precision AS total_cost) tc
         """
