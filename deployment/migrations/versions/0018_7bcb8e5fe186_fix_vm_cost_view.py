@@ -93,7 +93,7 @@ def upgrade() -> None:
                                          JOIN files f ON file_pins.file_hash::text = f.hash::text
                                 WHERE file_pins.owner IS NOT NULL
                                 GROUP BY file_pins.owner) storage ON vm_prices.owner::text = storage.owner::text,
-                 LATERAL ( SELECT 3::numeric * storage.storage_size / 1048576::numeric AS total_storage_cost) sc,
+                 LATERAL ( SELECT storage.storage_size / (3 * 1024 * 1024) AS total_storage_cost) sc,
                  LATERAL ( SELECT COALESCE(vm_prices.total_vm_cost, 0::double precision) +
                                   COALESCE(sc.total_storage_cost, 0::numeric)::double precision AS total_cost) tc
         """
@@ -164,25 +164,6 @@ def upgrade() -> None:
         """
         INSERT INTO error_codes(code, description) VALUES 
             (5, 'Insufficient balance')
-        """
-    )
-
-    op.execute(
-        """
-        create or replace view costs_view as
-        SELECT coalesce(program_prices.owner, storage.owner) address,
-               total_program_cost,
-               total_storage_cost,
-               total_cost
-        FROM (SELECT owner, sum(total_price) total_vm_cost FROM vm_costs_view GROUP BY owner) program_prices
-                 FULL OUTER JOIN (SELECT owner, sum(f.size) storage_size
-                                  FROM file_pins
-                                           JOIN files f on file_pins.file_hash = f.hash
-                                  WHERE owner is not null
-                                  GROUP BY owner) storage ON program_prices.owner = storage.owner,
-             LATERAL (SELECT storage_size / (3 * 1024 * 1024) total_storage_cost) sc,
-             LATERAL (SELECT coalesce(program_prices.total_program_cost, 0) +
-                             coalesce(total_storage_cost, 0) AS total_cost ) tc;
         """
     )
 
