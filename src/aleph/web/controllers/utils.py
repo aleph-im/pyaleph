@@ -1,18 +1,37 @@
 import asyncio
 import json
+import logging
 from io import BytesIO, StringIO
 from math import ceil
-from typing import Optional, Union, IO, Mapping, Any, overload
+from typing import Optional, Any, Mapping, List, Union, Dict
+from typing import overload
 
 import aio_pika
+import aio_pika.abc
 import aiohttp_jinja2
 from aiohttp import web
 from aiohttp.web_request import FileField
+from aleph_p2p_client import AlephP2PServiceClient
 from configmanager import Config
-from multidict import MultiDictProxy
+from pydantic import BaseModel
 
-from aleph.schemas.pending_messages import BasePendingMessage, parse_message
-from aleph.types.message_status import MessageProcessingStatus, InvalidMessageException
+import aleph.toolkit.json as aleph_json
+from aleph.schemas.pending_messages import parse_message, BasePendingMessage
+from aleph.services.ipfs import IpfsService
+from aleph.services.p2p.pubsub import publish as pub_p2p
+from aleph.toolkit.shield import shielded
+from aleph.types.message_status import (
+    InvalidMessageException,
+    MessageStatus,
+    MessageProcessingStatus,
+)
+from aleph.types.protocol import Protocol
+from aleph.web.controllers.app_state_getters import (
+    get_config_from_request,
+    get_ipfs_service_from_request,
+    get_p2p_client_from_request,
+    get_mq_channel_from_request,
+)
 
 DEFAULT_MESSAGES_PER_PAGE = 20
 DEFAULT_PAGE = 1
@@ -189,6 +208,15 @@ def processing_status_to_http_status(status: MessageProcessingStatus) -> int:
     return mapping[status]
 
 
+def message_status_to_http_status(status: MessageStatus) -> int:
+    mapping = {
+        MessageStatus.PENDING: 202,
+        MessageStatus.PROCESSED: 200,
+        MessageStatus.REJECTED: 422,
+    }
+    return mapping[status]
+
+
 async def mq_read_one_message(
     mq_queue: aio_pika.abc.AbstractQueue, timeout: float
 ) -> Optional[aio_pika.abc.AbstractIncomingMessage]:
@@ -216,3 +244,143 @@ def validate_message_dict(message_dict: Mapping[str, Any]) -> BasePendingMessage
         return parse_message(message_dict)
     except InvalidMessageException as e:
         raise web.HTTPUnprocessableEntity(body=str(e))
+
+
+class PublicationStatus(BaseModel):
+    status: str
+    failed: List[Protocol]
+
+    @classmethod
+    def from_failures(cls, failed_publications: List[Protocol]):
+        status = {
+            0: "success",
+            1: "warning",
+            2: "error",
+        }[len(failed_publications)]
+        return cls(status=status, failed=failed_publications)
+
+
+async def pub_on_p2p_topics(
+    p2p_client: AlephP2PServiceClient,
+    ipfs_service: Optional[IpfsService],
+    topic: str,
+    payload: Union[str, bytes],
+    logger: logging.Logger,
+) -> List[Protocol]:
+
+    failed_publications = []
+
+    if ipfs_service:
+        try:
+            await asyncio.wait_for(ipfs_service.pub(topic, payload), 10)
+        except Exception:
+            logger.exception("Can't publish on ipfs")
+            failed_publications.append(Protocol.IPFS)
+
+    try:
+        await asyncio.wait_for(
+            pub_p2p(
+                p2p_client,
+                topic,
+                payload,
+                loopback=True,
+            ),
+            10,
+        )
+    except Exception:
+        logger.exception("Can't publish on p2p")
+        failed_publications.append(Protocol.P2P)
+
+    return failed_publications
+
+
+class BroadcastStatus(BaseModel):
+    publication_status: PublicationStatus
+    message_status: Optional[MessageStatus]
+
+
+def broadcast_status_to_http_status(broadcast_status: BroadcastStatus) -> int:
+    if broadcast_status.publication_status == "error":
+        return 500
+
+    message_status = broadcast_status.message_status
+    # Message status should always be set if the publication succeeded
+    # TODO: improve typing to make this check useless
+    assert message_status is not None
+    return message_status_to_http_status(message_status)
+
+
+@shielded
+async def broadcast_and_process_message(
+    pending_message: BasePendingMessage,
+    sync: bool,
+    request: web.Request,
+    logger: logging.Logger,
+    message_dict: Optional[Dict[str, Any]],
+) -> BroadcastStatus:
+    # In sync mode, wait for a message processing event. We need to create the queue
+    # before publishing the message on P2P topics in order to guarantee that the event
+    # will be picked up.
+    config = get_config_from_request(request)
+
+    if sync:
+        mq_channel = await get_mq_channel_from_request(request=request, logger=logger)
+        mq_queue = await mq_make_aleph_message_topic_queue(
+            channel=mq_channel,
+            config=config,
+            routing_key=f"*.{pending_message.item_hash}",
+        )
+    else:
+        mq_queue = None
+
+    # We publish the message on P2P topics early, for 3 reasons:
+    # 1. Just because this node is unable to process the message does not
+    #    necessarily mean the message is incorrect (ex: bug in a new version).
+    # 2. If the publication fails after the processing, we end up in a situation where
+    #    a message exists without being propagated to the other nodes, ultimately
+    #    causing sync issues on the network.
+    # 3. The message is currently fed to this node using the P2P service client
+    #    loopback mechanism.
+    ipfs_service = get_ipfs_service_from_request(request)
+    p2p_client = get_p2p_client_from_request(request)
+
+    message_topic = config.aleph.queue_topic.value
+    message_dict = message_dict or pending_message.dict(exclude_none=True)
+
+    failed_publications = await pub_on_p2p_topics(
+        p2p_client=p2p_client,
+        ipfs_service=ipfs_service,
+        topic=message_topic,
+        payload=aleph_json.dumps(message_dict),
+        logger=logger,
+    )
+    pub_status = PublicationStatus.from_failures(failed_publications)
+    if pub_status.status == "error":
+        return BroadcastStatus(publication_status=pub_status, message_status=None)
+
+    status = BroadcastStatus(
+        publication_status=pub_status, message_status=MessageStatus.PENDING
+    )
+
+    # When publishing in async mode, just respond with 202 (Accepted).
+    if not sync:
+        return status
+
+    # Ignore type checking here, we know that mq_queue is set at this point
+    assert mq_queue is not None
+    response = await mq_read_one_message(mq_queue, timeout=30)
+
+    # Delete the queue immediately
+    await mq_queue.delete(if_empty=False)
+
+    # If the message was not processed before the timeout, return a 202.
+    if response is None:
+        return status
+
+    routing_key = response.routing_key
+    assert routing_key is not None  # again, for type checking
+    status_str, _item_hash = routing_key.split(".")
+    processing_status = MessageProcessingStatus(status_str)
+
+    status.message_status = processing_status.to_message_status()
+    return status

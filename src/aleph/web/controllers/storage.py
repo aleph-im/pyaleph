@@ -1,5 +1,4 @@
 import base64
-import base64
 import logging
 from decimal import Decimal
 from typing import Union, Optional, Protocol
@@ -16,11 +15,13 @@ from aleph.chains.chain_service import ChainService
 from aleph.db.accessors.balances import get_total_balance
 from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import count_file_pins, get_file
-from aleph.db.models import PendingMessageDb
 from aleph.exceptions import AlephStorageException, UnknownHashError
-from aleph.schemas.pending_messages import BasePendingMessage, PendingStoreMessage, PendingInlineStoreMessage
+from aleph.schemas.pending_messages import (
+    BasePendingMessage,
+    PendingStoreMessage,
+    PendingInlineStoreMessage,
+)
 from aleph.storage import StorageService
-from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import (
     InvalidSignature,
@@ -34,9 +35,9 @@ from aleph.web.controllers.app_state_getters import (
     get_chain_service_from_request,
 )
 from aleph.web.controllers.utils import (
-    file_field_to_io,
     mq_make_aleph_message_topic_queue,
-    mq_read_one_message,
+    broadcast_and_process_message,
+    broadcast_status_to_http_status,
 )
 
 logger = logging.getLogger(__name__)
@@ -107,8 +108,13 @@ class StorageMetadata(pydantic.BaseModel):
 
 
 class UploadedFile(Protocol):
-    size: int
-    content: Union[str, bytes]
+    @property
+    def size(self) -> int:
+        ...
+
+    @property
+    def content(self) -> Union[str, bytes]:
+        ...
 
 
 class MultipartUploadedFile(UploadedFile):
@@ -261,22 +267,10 @@ async def storage_add_file(request: web.Request):
         session.commit()
 
     if message:
-        with session_factory() as session:
-            pending_message_db = PendingMessageDb.from_obj(
-                obj=message, reception_time=utc_now()
-            )
-            session.add(pending_message_db)
-            mq_queue = await _make_mq_queue(
-                request=request,
-                routing_key=f"*.{message.item_hash}",
-                sync=sync,
-            )
-            session.commit()
-
-        if mq_queue:
-            mq_message = await mq_read_one_message(mq_queue, 30)
-            if not mq_message:
-                status_code = 202
+        broadcast_status = await broadcast_and_process_message(
+            pending_message=message, sync=sync, request=request, logger=logger
+        )
+        status_code = broadcast_status_to_http_status(broadcast_status)
 
     output = {"status": "success", "hash": file_hash}
     return web.json_response(data=output, status=status_code)

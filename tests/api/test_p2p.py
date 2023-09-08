@@ -69,16 +69,16 @@ async def test_pubsub_pub_errors(ccn_api_client, mock_config: Config):
 @pytest.mark.asyncio
 async def test_post_message_sync(ccn_api_client, mocker):
     # Mock the functions used to create the RabbitMQ queue
-    mocker.patch("aleph.web.controllers.p2p.get_mq_channel_from_request")
+    mocker.patch("aleph.web.controllers.utils.get_mq_channel_from_request")
     mocked_queue = mocker.patch(
-        "aleph.web.controllers.p2p.mq_make_aleph_message_topic_queue"
+        "aleph.web.controllers.utils.mq_make_aleph_message_topic_queue"
     )
 
     # Create a mock MQ response object
     mock_mq_message = mocker.Mock()
     mock_mq_message.routing_key = f"processed.{MESSAGE_DICT['item_hash']}"
     mocker.patch(
-        "aleph.web.controllers.p2p._mq_read_one_message", return_value=mock_mq_message
+        "aleph.web.controllers.utils.mq_read_one_message", return_value=mock_mq_message
     )
 
     response = await ccn_api_client.post(

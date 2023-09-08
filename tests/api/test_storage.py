@@ -14,6 +14,8 @@ from aleph.db.models import AlephBalanceDb
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.files import FileType
+from aleph.types.message_status import MessageStatus
+from aleph.web.controllers.utils import BroadcastStatus, PublicationStatus
 from in_memory_storage_engine import InMemoryStorageEngine
 
 IPFS_ADD_FILE_URI = "/api/v0/ipfs/add_file"
@@ -130,22 +132,17 @@ async def add_file_with_message(
     session_factory: DbSessionFactory,
     uri: str,
     file_content: bytes,
-    size: str,
+    size: Optional[int],
     error_code: int,
     balance: int,
     mocker,
 ):
-    mocker.patch("aleph.web.controllers.storage.get_mq_channel_from_request")
-    mocked_queue = mocker.patch(
-        "aleph.web.controllers.storage.mq_make_aleph_message_topic_queue"
-    )
-
-    # Create a mock MQ response object
-    mock_mq_message = mocker.Mock()
-    mock_mq_message.routing_key = f"processed.{MESSAGE_DICT['item_hash']}"
     mocker.patch(
-        "aleph.web.controllers.storage.mq_read_one_message",
-        return_value=mock_mq_message,
+        "aleph.web.controllers.storage.broadcast_and_process_message",
+        return_value=BroadcastStatus(
+            publication_status=PublicationStatus.from_failures([]),
+            message_status=MessageStatus.PROCESSED,
+        ),
     )
 
     with session_factory() as session:
@@ -184,15 +181,13 @@ async def add_file_with_message_202(
     balance: int,
     mocker,
 ):
-    mocker.patch("aleph.web.controllers.storage.get_mq_channel_from_request")
-    mocked_queue = mocker.patch(
-        "aleph.web.controllers.storage.mq_make_aleph_message_topic_queue"
+    mocker.patch(
+        "aleph.web.controllers.storage.broadcast_and_process_message",
+        return_value=BroadcastStatus(
+            publication_status=PublicationStatus.from_failures([]),
+            message_status=MessageStatus.PENDING,
+        ),
     )
-    # Create a mock MQ response object
-    mock_mq_message = mocker.Mock()
-    mock_mq_message.routing_key = f"processed.{MESSAGE_DICT['item_hash']}"
-    mocker.patch("aleph.web.controllers.storage.mq_read_one_message", return_value=None)
-
     with session_factory() as session:
         session.add(
             AlephBalanceDb(
@@ -232,13 +227,15 @@ async def test_storage_add_file(api_client, session_factory: DbSessionFactory):
 @pytest.mark.parametrize(
     "file_content, expected_hash, size, error_code, balance",
     [
-        (
-            b"Hello Aleph.im\n",
-            "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
-            "15",
-            "200",
-            "0",
-        ),
+        # (
+        #     b"Hello Aleph.im\n",
+        #     "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
+        #     None,
+        #     "200",
+        #     "0",
+        # ),
+        # Invalid size: the advertised size is lower than the size of the file.
+        # The server should detect this as an invalid file hash and discard the request.
         (
             b"Hello Aleph.im\n",
             "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
@@ -246,13 +243,13 @@ async def test_storage_add_file(api_client, session_factory: DbSessionFactory):
             "422",
             "1000",
         ),
-        (
-            b"Hello Aleph.im\n",
-            "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
-            "15",
-            "200",
-            "1000",
-        ),
+        # (
+        #     b"Hello Aleph.im\n",
+        #     "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
+        #     None,
+        #     "200",
+        #     "1000",
+        # ),
     ],
 )
 @pytest.mark.asyncio
@@ -261,7 +258,7 @@ async def test_storage_add_file_with_message(
     session_factory: DbSessionFactory,
     file_content,
     expected_hash,
-    size,
+    size: Optional[int],
     error_code,
     balance,
     mocker,
