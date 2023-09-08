@@ -20,22 +20,21 @@ LIST_FIELD_SEPARATOR = ","
 
 
 @overload
-def multidict_proxy_to_io(multi_dict: MultiDictProxy[bytes]) -> BytesIO:
+def file_field_to_io(multi_dict: bytes) -> BytesIO:
     ...
 
 
 @overload
-def multidict_proxy_to_io(multi_dict: MultiDictProxy[str]) -> StringIO:
+def file_field_to_io(multi_dict: str) -> StringIO:
     ...
 
 
 @overload
-def multidict_proxy_to_io(multi_dict: MultiDictProxy[FileField]) -> IO:
+def file_field_to_io(multi_dict: FileField) -> BytesIO:
     ...
 
 
-def multidict_proxy_to_io(multi_dict):
-    file_field = multi_dict["file"]
+def file_field_to_io(file_field):
     if isinstance(file_field, bytes):
         return BytesIO(file_field)
     elif isinstance(file_field, str):

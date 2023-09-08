@@ -1,7 +1,7 @@
 import base64
 import json
 from decimal import Decimal
-from typing import Any
+from typing import Any, Optional
 
 import aiohttp
 import orjson
@@ -167,7 +167,6 @@ async def add_file_with_message(
         "file_size": int(size),
         "sync": True,
     }
-    print(data)
     form_data.add_field("metadata", json.dumps(data), content_type="application/json")
 
     response = await api_client.post(uri, data=form_data)

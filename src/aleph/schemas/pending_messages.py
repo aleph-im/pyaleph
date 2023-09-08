@@ -124,6 +124,11 @@ class PendingStoreMessage(BasePendingMessage[Literal[MessageType.store], StoreCo
     pass
 
 
+class PendingInlineStoreMessage(PendingStoreMessage):
+    item_content: str
+    item_type: Literal[ItemType.inline]
+
+
 MESSAGE_TYPE_TO_CLASS = {
     MessageType.aggregate: PendingAggregateMessage,
     MessageType.forget: PendingForgetMessage,

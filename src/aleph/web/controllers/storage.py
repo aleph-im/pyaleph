@@ -1,40 +1,29 @@
-import ast
 import base64
-import datetime as dt
-import functools
+import base64
 import logging
-from hashlib import sha256
-from typing import Union, Tuple, BinaryIO, Optional
 from decimal import Decimal
+from typing import Union, Optional, Protocol
+
 import aio_pika
 import pydantic
-from aiohttp.web_response import Response
-from configmanager import Config
-from eth_account import Account
-from eth_account.messages import encode_defunct
-from mypy.dmypy_server import MiB
-from sqlalchemy.orm import Session
-
-from aleph.chains.chain_service import ChainService
-from aleph.chains.common import get_verification_buffer
-
 from aiohttp import web
 from aiohttp.web_request import FileField
 from aleph_message.models import ItemType, StoreContent
-from multidict import MultiDictProxy
+from mypy.dmypy_server import MiB
+from pydantic import ValidationError
+
+from aleph.chains.chain_service import ChainService
 from aleph.db.accessors.balances import get_total_balance
 from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import count_file_pins, get_file
 from aleph.db.models import PendingMessageDb
 from aleph.exceptions import AlephStorageException, UnknownHashError
+from aleph.schemas.pending_messages import BasePendingMessage, PendingStoreMessage, PendingInlineStoreMessage
 from aleph.storage import StorageService
-from aleph.toolkit import json
 from aleph.toolkit.timestamp import utc_now
-from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.db_session import DbSession
 from aleph.types.message_status import (
-    MessageProcessingStatus,
     InvalidSignature,
-    InvalidMessageException,
 )
 from aleph.utils import run_in_executor, item_type_from_hash, get_sha256
 from aleph.web.controllers.app_state_getters import (
@@ -44,19 +33,17 @@ from aleph.web.controllers.app_state_getters import (
     get_mq_channel_from_request,
     get_chain_service_from_request,
 )
-
 from aleph.web.controllers.utils import (
-    multidict_proxy_to_io,
+    file_field_to_io,
     mq_make_aleph_message_topic_queue,
-    processing_status_to_http_status,
     mq_read_one_message,
-    validate_message_dict,
 )
-from aleph.schemas.pending_messages import BasePendingMessage, PendingStoreMessage
 
 logger = logging.getLogger(__name__)
 
-MAX_FILE_SIZE = 100 * 1024 * 1024
+MAX_FILE_SIZE = 100 * MiB
+MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE = 25 * MiB
+MAX_UPLOAD_FILE_SIZE = 1000 * MiB
 
 
 async def add_ipfs_json_controller(request: web.Request):
@@ -114,13 +101,45 @@ async def _verify_user_balance(session: DbSession, address: str, size: int) -> N
 
 
 class StorageMetadata(pydantic.BaseModel):
-    message: PendingStoreMessage
+    message: PendingInlineStoreMessage
     file_size: int
     sync: bool
 
 
-MAX_UNAUTHORIZED_UPLOAD_FILE_SIZE = 25 * MiB
-MAX_UPLOAD_FILE_SIZE = 1000 * MiB
+class UploadedFile(Protocol):
+    size: int
+    content: Union[str, bytes]
+
+
+class MultipartUploadedFile(UploadedFile):
+    def __init__(self, file_field: FileField):
+        self.file_field = file_field
+
+        try:
+            content_length_str = file_field.headers["Content-Length"]
+            self.size = int(content_length_str)
+        except (KeyError, ValueError):
+            raise web.HTTPUnprocessableEntity(
+                reason="Invalid/missing Content-Length header."
+            )
+        self._content = None
+
+    @property
+    def content(self) -> bytes:
+        # Only read the stream once
+        if self._content is None:
+            self._content = self.file_field.file.read(self.size)
+
+        return self._content
+
+
+class RawUploadedFile(UploadedFile):
+    def __init__(self, content: Union[bytes, str]):
+        self.content = content
+
+    @property
+    def size(self) -> int:
+        return len(self.content)
 
 
 async def _check_and_add_file(
@@ -128,29 +147,31 @@ async def _check_and_add_file(
     chain_service: ChainService,
     storage_service: StorageService,
     message: Optional[PendingStoreMessage],
-    file_size: int,
-    file_io: BinaryIO,
+    file: UploadedFile,
 ) -> str:
     # Perform authentication and balance checks
     if message:
         await _verify_message_signature(
             pending_message=message, chain_service=chain_service
         )
-        message_content = StoreContent.parse_raw(message.item_content)
+        try:
+            message_content = StoreContent.parse_raw(message.item_content)
+        except ValidationError as e:
+            raise web.HTTPUnprocessableEntity(
+                reason=f"Invalid store message content: {e.json()}"
+            )
 
         await _verify_user_balance(
             session=session,
             address=message_content.address,
-            size=file_size,
+            size=file.size,
         )
 
     else:
-        if file_size > MAX_UNAUTHORIZED_UPLOAD_FILE_SIZE:
-            raise web.HTTPUnauthorized()
         message_content = None
 
     # TODO: this can still reach 1 GiB in memory. We should look into streaming.
-    file_content = file_io.read(file_size)
+    file_content = file.content
     file_hash = get_sha256(file_content)
 
     if message_content:
@@ -189,7 +210,16 @@ async def storage_add_file(request: web.Request):
     chain_service: ChainService = get_chain_service_from_request(request)
 
     post = await request.post()
-    file_io = multidict_proxy_to_io(post)
+    try:
+        file_field = post["file"]
+    except KeyError:
+        raise web.HTTPUnprocessableEntity(reason="Missing 'file' in multipart form.")
+
+    if isinstance(file_field, FileField):
+        uploaded_file = MultipartUploadedFile(file_field)
+    else:
+        uploaded_file = RawUploadedFile(file_field)
+
     metadata = post.get("metadata")
 
     status_code = 200
@@ -198,26 +228,26 @@ async def storage_add_file(request: web.Request):
         metadata_bytes = (
             metadata.file.read() if isinstance(metadata, FileField) else metadata
         )
-        storage_metadata = StorageMetadata.parse_raw(metadata_bytes)
+        try:
+            storage_metadata = StorageMetadata.parse_raw(metadata_bytes)
+        except ValidationError as e:
+            raise web.HTTPUnprocessableEntity(
+                reason=f"Could not decode metadata: {e.json()}"
+            )
+
         message = storage_metadata.message
-        file_size = storage_metadata.file_size
         sync = storage_metadata.sync
+        max_upload_size = MAX_UPLOAD_FILE_SIZE
 
     else:
-        # User did not provide a message
-        try:
-            if isinstance(post["file"], FileField):
-                content_length_str = post["file"].headers["Content-Length"]
-                file_size = int(content_length_str)
-        except (KeyError, ValueError) as e:
-            raise web.HTTPBadRequest(reason="Missing Content-Length header") from e
-
+        # User did not provide a message in the `metadata` field
         message = None
         sync = False
+        max_upload_size = MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE
 
-    if file_size > MAX_UPLOAD_FILE_SIZE:
+    if uploaded_file.size > max_upload_size:
         raise web.HTTPRequestEntityTooLarge(
-            actual_size=file_size, max_size=MAX_UPLOAD_FILE_SIZE
+            actual_size=uploaded_file.size, max_size=MAX_UPLOAD_FILE_SIZE
         )
 
     with session_factory() as session:
@@ -226,8 +256,7 @@ async def storage_add_file(request: web.Request):
             chain_service=chain_service,
             storage_service=storage_service,
             message=message,
-            file_size=file_size,
-            file_io=file_io,
+            file=uploaded_file,
         )
         session.commit()
 
