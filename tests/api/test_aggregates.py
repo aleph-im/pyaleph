@@ -72,6 +72,7 @@ async def test_get_aggregates(
     assert aggregates["data"]["test_key"] == {"a": 1, "b": 2}
     assert aggregates["data"]["test_target"] == {"a": 1, "b": 2}
     assert aggregates["data"]["test_reference"] == {"a": 1, "b": 2, "c": 3, "d": 4}
+    assert aggregates["info"]["test_reference"] is not None
 
 
 @pytest.mark.asyncio

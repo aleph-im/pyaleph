@@ -42,19 +42,15 @@ def get_aggregates_info_by_owner(
 ) -> Iterable[Tuple[str, Dict[str, Any]]]:
     query = (
         select(
-            [
-                AggregateDb.key.label("aggregate_key"),
-                AggregateDb.creation_datetime.label("created"),
-                AggregateDb.last_revision_hash.label("last_update_item_hash"),
-                AggregateElementDb.item_hash.label("original_item_hash"),
-            ]
+            AggregateDb.key,
+            AggregateDb.creation_datetime.label("created"),
+            AggregateElementDb.creation_datetime.label("last_updated"),
+            AggregateDb.last_revision_hash.label("last_update_item_hash"),
+            AggregateElementDb.item_hash.label("original_item_hash"),
         )
-        .select_from(
-            join(
-                AggregateDb,
-                AggregateElementDb,
-                AggregateDb.last_revision_hash == AggregateElementDb.item_hash,
-            )
+        .join(
+            AggregateElementDb,
+            AggregateDb.last_revision_hash == AggregateElementDb.item_hash,
         )
         .where(AggregateDb.owner == owner)
     )
