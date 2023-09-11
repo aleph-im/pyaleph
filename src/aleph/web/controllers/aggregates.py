@@ -1,4 +1,5 @@
 import logging
+import datetime as dt
 from typing import List, Optional, Any, Dict, Tuple
 
 from aiohttp import web
@@ -72,11 +73,9 @@ async def address_aggregate(request: web.Request) -> web.Response:
             return web.HTTPNotFound(text="No aggregate found for this address")
 
         if with_info:
-            aggregates_info = list(
-                get_aggregates_info_by_owner(
-                    session=session, owner=address, keys=query_params.keys
-                )
-            )
+            aggregates_info: List[
+                Tuple[str, dt.datetime, dt.datetime, str, str]
+            ] = list(get_aggregates_info_by_owner(session=session, owner=address))
     output = {
         "address": address,
         "data": {result[0]: result[1] for result in aggregates},
@@ -84,10 +83,17 @@ async def address_aggregate(request: web.Request) -> web.Response:
     info = {}
     if with_info:
         for result in aggregates_info:
-            aggregate_key, created, last_update_item_hash, original_item_hash = result
+            (
+                aggregate_key,
+                created,
+                last_updated,
+                original_item_hash,
+                last_update_item_hash,
+            ) = result
+
             info[aggregate_key] = {
                 "created": created.isoformat(),  # Convert datetime to ISO format
-                "last_updated": created.isoformat(),  # Use 'created' for 'last_updated' for now
+                "last_updated": last_updated.isoformat(),  # Use actual 'last_updated' value
                 "original_item_hash": original_item_hash,
                 "last_update_item_hash": last_update_item_hash,
             }

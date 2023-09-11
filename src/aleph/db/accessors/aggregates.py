@@ -38,8 +38,8 @@ def get_aggregates_by_owner(
 
 
 def get_aggregates_info_by_owner(
-    session: DbSession, owner: str, keys: Optional[Sequence[str]] = None
-) -> Iterable[Tuple[str, Dict[str, Any]]]:
+    session: DbSession, owner: str
+) -> Iterable[Tuple[str, dt.datetime, dt.datetime, str, str]]:
     query = (
         select(
             AggregateDb.key,
