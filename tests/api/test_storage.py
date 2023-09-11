@@ -6,6 +6,7 @@ from typing import Any, Optional
 import aiohttp
 import orjson
 import pytest
+import requests
 from aleph_message.models import ItemHash, Chain
 
 from aleph.chains.chain_service import ChainService
@@ -132,7 +133,6 @@ async def add_file_with_message(
     session_factory: DbSessionFactory,
     uri: str,
     file_content: bytes,
-    size: Optional[int],
     error_code: int,
     balance: int,
     mocker,
@@ -161,7 +161,6 @@ async def add_file_with_message(
     form_data.add_field("file", file_content)
     data = {
         "message": MESSAGE_DICT,
-        "file_size": int(size),
         "sync": True,
     }
     form_data.add_field("metadata", json.dumps(data), content_type="application/json")
@@ -227,29 +226,20 @@ async def test_storage_add_file(api_client, session_factory: DbSessionFactory):
 @pytest.mark.parametrize(
     "file_content, expected_hash, size, error_code, balance",
     [
-        # (
-        #     b"Hello Aleph.im\n",
-        #     "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
-        #     None,
-        #     "200",
-        #     "0",
-        # ),
-        # Invalid size: the advertised size is lower than the size of the file.
-        # The server should detect this as an invalid file hash and discard the request.
         (
             b"Hello Aleph.im\n",
             "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
-            "10",
-            "422",
+            None,
+            "200",
+            "0",
+        ),
+        (
+            b"Hello Aleph.im\n",
+            "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
+            None,
+            "200",
             "1000",
         ),
-        # (
-        #     b"Hello Aleph.im\n",
-        #     "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
-        #     None,
-        #     "200",
-        #     "1000",
-        # ),
     ],
 )
 @pytest.mark.asyncio
@@ -268,7 +258,6 @@ async def test_storage_add_file_with_message(
         session_factory,
         uri=STORAGE_ADD_FILE_URI,
         file_content=file_content,
-        size=size,
         error_code=int(error_code),
         balance=int(balance),
         mocker=mocker,

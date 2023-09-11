@@ -103,7 +103,6 @@ async def _verify_user_balance(session: DbSession, address: str, size: int) -> N
 
 class StorageMetadata(pydantic.BaseModel):
     message: PendingInlineStoreMessage
-    file_size: int
     sync: bool
 
 
@@ -117,7 +116,9 @@ class UploadedFile(Protocol):
         ...
 
 
-class MultipartUploadedFile(UploadedFile):
+class MultipartUploadedFile:
+    _content: Optional[bytes]
+
     def __init__(self, file_field: FileField):
         self.file_field = file_field
 
@@ -139,7 +140,7 @@ class MultipartUploadedFile(UploadedFile):
         return self._content
 
 
-class RawUploadedFile(UploadedFile):
+class RawUploadedFile:
     def __init__(self, content: Union[bytes, str]):
         self.content = content
 
@@ -178,6 +179,9 @@ async def _check_and_add_file(
 
     # TODO: this can still reach 1 GiB in memory. We should look into streaming.
     file_content = file.content
+    file_bytes = (
+        file_content.encode("utf-8") if isinstance(file_content, str) else file_content
+    )
     file_hash = get_sha256(file_content)
 
     if message_content:
@@ -188,7 +192,7 @@ async def _check_and_add_file(
 
     await storage_service.add_file_content_to_local_storage(
         session=session,
-        file_content=file_content,
+        file_content=file_bytes,
         file_hash=file_hash,
     )
 
@@ -222,7 +226,7 @@ async def storage_add_file(request: web.Request):
         raise web.HTTPUnprocessableEntity(reason="Missing 'file' in multipart form.")
 
     if isinstance(file_field, FileField):
-        uploaded_file = MultipartUploadedFile(file_field)
+        uploaded_file: UploadedFile = MultipartUploadedFile(file_field)
     else:
         uploaded_file = RawUploadedFile(file_field)
 

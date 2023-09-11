@@ -126,7 +126,7 @@ class PendingStoreMessage(BasePendingMessage[Literal[MessageType.store], StoreCo
 
 class PendingInlineStoreMessage(PendingStoreMessage):
     item_content: str
-    item_type: Literal[ItemType.inline]
+    item_type: Literal[ItemType.inline]     # type: ignore[valid-type]
 
 
 MESSAGE_TYPE_TO_CLASS = {
