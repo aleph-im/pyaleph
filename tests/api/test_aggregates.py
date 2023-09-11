@@ -26,12 +26,15 @@ def make_uri(address: str) -> str:
     return AGGREGATES_URI.format(address=address)
 
 
-async def get_aggregates(api_client, address: str, **params) -> aiohttp.ClientResponse:
+async def get_aggregates(
+    api_client, address: str, with_info=False, **params
+) -> aiohttp.ClientResponse:
+    params["with_info"] = str(with_info)
     return await api_client.get(make_uri(address), params=params)
 
 
 async def get_aggregates_expect_success(api_client, address: str, **params):
-    response = await get_aggregates(api_client, address, **params)
+    response = await get_aggregates(api_client, address, True, **params)
     assert response.status == 200, await response.text()
     return await response.json()
 

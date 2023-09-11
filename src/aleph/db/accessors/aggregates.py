@@ -1,7 +1,7 @@
 import datetime as dt
 from typing import Optional, Iterable, Any, Dict, Tuple, Sequence
-
 from sqlalchemy import (
+    join,
     select,
     delete,
     update,
@@ -25,7 +25,6 @@ def aggregate_exists(session: DbSession, key: str, owner: str) -> bool:
 def get_aggregates_by_owner(
     session: DbSession, owner: str, keys: Optional[Sequence[str]] = None
 ) -> Iterable[Tuple[str, Dict[str, Any]]]:
-
     where_clause = AggregateDb.owner == owner
     if keys:
         where_clause = where_clause & AggregateDb.key.in_(keys)
@@ -38,13 +37,36 @@ def get_aggregates_by_owner(
     return session.execute(select_stmt).all()  # type: ignore
 
 
+def get_aggregates_info_by_owner(
+    session: DbSession, owner: str, keys: Optional[Sequence[str]] = None
+) -> Iterable[Tuple[str, Dict[str, Any]]]:
+    query = (
+        select(
+            [
+                AggregateDb.key.label("aggregate_key"),
+                AggregateDb.creation_datetime.label("created"),
+                AggregateDb.last_revision_hash.label("last_update_item_hash"),
+                AggregateElementDb.item_hash.label("original_item_hash"),
+            ]
+        )
+        .select_from(
+            join(
+                AggregateDb,
+                AggregateElementDb,
+                AggregateDb.last_revision_hash == AggregateElementDb.item_hash,
+            )
+        )
+        .where(AggregateDb.owner == owner)
+    )
+    return session.execute(query).all()  # type: ignore
+
+
 def get_aggregate_by_key(
     session: DbSession,
     owner: str,
     key: str,
     with_content: bool = True,
 ) -> Optional[AggregateDb]:
-
     options = []
 
     if not with_content:
@@ -170,7 +192,6 @@ def mark_aggregate_as_dirty(session: DbSession, owner: str, key: str) -> None:
 
 
 def refresh_aggregate(session: DbSession, owner: str, key: str) -> None:
-
     # Step 1: use a group by to retrieve the aggregate content. This uses a custom
     # aggregate function (see 78dd67881db4_jsonb_merge_aggregate.py).
     select_merged_aggregate_subquery = (
