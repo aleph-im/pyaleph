@@ -66,16 +66,19 @@ async def address_aggregate(request: web.Request) -> web.Response:
             )
         )
 
-        if not aggregates:
-            return web.HTTPNotFound(text="No aggregate found for this address")
+    if not aggregates:
+        return web.HTTPNotFound(text="No aggregate found for this address")
 
     output = {
         "address": address,
-        "data": {result[0]: result[1] for result in aggregates},
+        "data": {},
     }
-    info = {}
-    if query_params.with_info:
-        for result in aggregates:
+    info: Dict = {}
+    data: Dict = {}
+
+    for result in aggregates:
+        data[result[0]] = result[1]
+        if query_params.with_info:
             (
                 aggregate_key,
                 content,
@@ -89,13 +92,14 @@ async def address_aggregate(request: web.Request) -> web.Response:
                 created = created.isoformat()
             if isinstance(last_updated, dt.datetime):
                 last_updated = last_updated.isoformat()
-
             info[aggregate_key] = {
-                "created": created,
-                "last_updated": last_updated,
-                "original_item_hash": original_item_hash,
-                "last_update_item_hash": last_update_item_hash,
+                "created": str(created),
+                "last_updated": str(last_updated),
+                "original_item_hash": str(original_item_hash),
+                "last_update_item_hash": str(last_update_item_hash),
             }
-        output["info"] = info
+
+    output["data"] = data
+    output["info"] = info
 
     return web.json_response(output)

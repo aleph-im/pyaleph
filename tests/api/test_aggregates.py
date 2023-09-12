@@ -27,14 +27,14 @@ def make_uri(address: str) -> str:
 
 
 async def get_aggregates(
-    api_client, address: str, with_info: str, **params
+    api_client, address: str, with_info: bool, **params
 ) -> aiohttp.ClientResponse:
-    params["with_info"] = with_info
+    params["with_info"] = str(with_info)
     return await api_client.get(make_uri(address), params=params)
 
 
 async def get_aggregates_expect_success(
-    api_client, address: str, with_info: str, **params
+    api_client, address: str, with_info: bool, **params
 ):
     response = await get_aggregates(api_client, address, with_info, **params)
     assert response.status == 200, await response.text()
@@ -52,7 +52,7 @@ async def test_get_aggregates_no_update(
     assert fixture_aggregate_messages  # To avoid unused parameter warnings
 
     address = ADDRESS_2
-    aggregates = await get_aggregates_expect_success(ccn_api_client, address, "False")
+    aggregates = await get_aggregates_expect_success(ccn_api_client, address, False)
 
     assert aggregates["address"] == address
     assert aggregates["data"] == EXPECTED_AGGREGATES[address]
@@ -68,14 +68,17 @@ async def test_get_aggregates(
     assert fixture_aggregate_messages  # To avoid unused parameter warnings
 
     address = ADDRESS_1
-    aggregates = await get_aggregates_expect_success(ccn_api_client, address, "True")
+    aggregates = await get_aggregates_expect_success(ccn_api_client, address, True)
 
     assert address == aggregates["address"]
     assert aggregates["data"]["test_key"] == {"a": 1, "b": 2}
     assert aggregates["data"]["test_target"] == {"a": 1, "b": 2}
     assert aggregates["data"]["test_reference"] == {"a": 1, "b": 2, "c": 3, "d": 4}
-    assert aggregates["info"]["test_reference"] is not None
-    print(aggregates)
+    assert aggregates["info"]["test_reference"]
+    assert (
+        aggregates["info"]["test_reference"]["original_item_hash"]
+        == fixture_aggregate_messages[1].item_hash
+    )
 
 
 @pytest.mark.asyncio
@@ -90,7 +93,7 @@ async def test_get_aggregates_filter_by_key(
 
     address, key = ADDRESS_1, "test_target"
     aggregates = await get_aggregates_expect_success(
-        ccn_api_client, address=address, keys=key, with_info="False"
+        ccn_api_client, address=address, keys=key, with_info=False
     )
     assert aggregates["address"] == address
     assert aggregates["data"][key] == EXPECTED_AGGREGATES[address][key]
@@ -98,7 +101,7 @@ async def test_get_aggregates_filter_by_key(
     # Multiple keys
     address, keys = ADDRESS_1, ["test_target", "test_reference"]
     aggregates = await get_aggregates_expect_success(
-        ccn_api_client, address=address, keys=",".join(keys), with_info="False"
+        ccn_api_client, address=address, keys=",".join(keys), with_info=False
     )
     assert aggregates["address"] == address
     for key in keys:
@@ -121,7 +124,7 @@ async def test_get_aggregates_limit(
 
     address, key = ADDRESS_1, "test_reference"
     aggregates = await get_aggregates_expect_success(
-        ccn_api_client, address=address, keys=key, limit=1, with_info="False"
+        ccn_api_client, address=address, keys=key, limit=1, with_info=False
     )
     assert aggregates["address"] == address
     assert aggregates["data"][key] == {"c": 3, "d": 4}
@@ -138,7 +141,7 @@ async def test_get_aggregates_invalid_address(
 
     invalid_address = "unknown"
 
-    response = await get_aggregates(ccn_api_client, invalid_address, "False")
+    response = await get_aggregates(ccn_api_client, invalid_address, False)
     assert response.status == 404
 
 
@@ -152,7 +155,9 @@ async def test_get_aggregates_invalid_params(
     assert fixture_aggregate_messages  # To avoid unused parameter warnings
 
     # A string as limit
-    response = await get_aggregates(ccn_api_client, ADDRESS_1, limit="abc", with_info="False")
+    response = await get_aggregates(
+        ccn_api_client, ADDRESS_1, limit="abc", with_info=False
+    )
     assert response.status == 422
     assert response.content_type == "application/json"
 
