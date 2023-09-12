@@ -27,14 +27,16 @@ def make_uri(address: str) -> str:
 
 
 async def get_aggregates(
-    api_client, address: str, with_info=False, **params
+    api_client, address: str, with_info: str, **params
 ) -> aiohttp.ClientResponse:
-    params["with_info"] = str(with_info)
+    params["with_info"] = with_info
     return await api_client.get(make_uri(address), params=params)
 
 
-async def get_aggregates_expect_success(api_client, address: str, **params):
-    response = await get_aggregates(api_client, address, True, **params)
+async def get_aggregates_expect_success(
+    api_client, address: str, with_info: str, **params
+):
+    response = await get_aggregates(api_client, address, with_info, **params)
     assert response.status == 200, await response.text()
     return await response.json()
 
@@ -66,13 +68,14 @@ async def test_get_aggregates(
     assert fixture_aggregate_messages  # To avoid unused parameter warnings
 
     address = ADDRESS_1
-    aggregates = await get_aggregates_expect_success(ccn_api_client, address)
+    aggregates = await get_aggregates_expect_success(ccn_api_client, address, "True")
 
     assert address == aggregates["address"]
     assert aggregates["data"]["test_key"] == {"a": 1, "b": 2}
     assert aggregates["data"]["test_target"] == {"a": 1, "b": 2}
     assert aggregates["data"]["test_reference"] == {"a": 1, "b": 2, "c": 3, "d": 4}
     assert aggregates["info"]["test_reference"] is not None
+    print(aggregates)
 
 
 @pytest.mark.asyncio

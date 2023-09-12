@@ -1,7 +1,16 @@
 import datetime as dt
-from typing import Optional, Iterable, Any, Dict, Tuple, Sequence
+from typing import (
+    Optional,
+    Iterable,
+    Any,
+    Dict,
+    Tuple,
+    Sequence,
+    overload,
+    Literal,
+    Union,
+)
 from sqlalchemy import (
-    join,
     select,
     delete,
     update,
@@ -22,39 +31,64 @@ def aggregate_exists(session: DbSession, key: str, owner: str) -> bool:
     )
 
 
+AggregateContent = Iterable[Tuple[str, Dict[str, Any]]]
+AggregateContentWithInfo = Iterable[Tuple[str, dt.datetime, dt.datetime, str, str]]
+
+
+@overload
 def get_aggregates_by_owner(
-    session: DbSession, owner: str, keys: Optional[Sequence[str]] = None
-) -> Iterable[Tuple[str, Dict[str, Any]]]:
+    session: Any,
+    owner: str,
+    with_info: Literal[False],
+    keys: Optional[Sequence[str]] = None,
+) -> AggregateContent:
+    ...
+
+
+@overload
+def get_aggregates_by_owner(
+    session: Any,
+    owner: str,
+    with_info: Literal[True],
+    keys: Optional[Sequence[str]] = None,
+) -> AggregateContentWithInfo:
+    ...
+
+
+@overload
+def get_aggregates_by_owner(
+    session, owner: str, with_info: bool, keys: Optional[Sequence[str]] = None
+) -> Union[AggregateContent, AggregateContentWithInfo]:
+    ...
+
+
+def get_aggregates_by_owner(session, owner, with_info, keys=None):
     where_clause = AggregateDb.owner == owner
     if keys:
         where_clause = where_clause & AggregateDb.key.in_(keys)
-
-    select_stmt = (
-        select(AggregateDb.key, AggregateDb.content)
-        .where(where_clause)
-        .order_by(AggregateDb.key)
-    )
-    return session.execute(select_stmt).all()  # type: ignore
-
-
-def get_aggregates_info_by_owner(
-    session: DbSession, owner: str
-) -> Iterable[Tuple[str, dt.datetime, dt.datetime, str, str]]:
-    query = (
-        select(
-            AggregateDb.key,
-            AggregateDb.creation_datetime.label("created"),
-            AggregateElementDb.creation_datetime.label("last_updated"),
-            AggregateDb.last_revision_hash.label("last_update_item_hash"),
-            AggregateElementDb.item_hash.label("original_item_hash"),
+    if with_info:
+        query = (
+            session.query(
+                AggregateDb.key,
+                AggregateDb.content,
+                AggregateDb.creation_datetime.label("created"),
+                AggregateElementDb.creation_datetime.label("last_updated"),
+                AggregateDb.last_revision_hash.label("last_update_item_hash"),
+                AggregateElementDb.item_hash.label("original_item_hash"),
+            )
+            .join(
+                AggregateElementDb,
+                AggregateDb.last_revision_hash == AggregateElementDb.item_hash,
+            )
+            .filter(AggregateDb.owner == owner)
         )
-        .join(
-            AggregateElementDb,
-            AggregateDb.last_revision_hash == AggregateElementDb.item_hash,
+    else:
+        query = (
+            session.query(AggregateDb.key, AggregateDb.content)
+            .filter(where_clause)
+            .order_by(AggregateDb.key)
         )
-        .where(AggregateDb.owner == owner)
-    )
-    return session.execute(query).all()  # type: ignore
+    return query.all()
 
 
 def get_aggregate_by_key(
