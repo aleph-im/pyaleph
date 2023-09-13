@@ -190,6 +190,9 @@ async def pub_message(request: web.Request):
         request_data = PubMessageRequest.parse_obj(await request.json())
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(body=e.json(indent=4))
+    except ValueError:
+        # Body must be valid JSON
+        raise web.HTTPUnprocessableEntity()
 
     pending_message = _validate_message_dict(request_data.message_dict)
 
