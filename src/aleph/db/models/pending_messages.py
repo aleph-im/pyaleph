@@ -14,7 +14,7 @@ from sqlalchemy import (
     CheckConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, Mapped
 from sqlalchemy_utils.types.choice import ChoiceType
 
 from aleph.schemas.pending_messages import BasePendingMessage
@@ -46,24 +46,24 @@ class PendingMessageDb(Base):
 
     __tablename__ = "pending_messages"
 
-    id: int = Column(BigInteger, primary_key=True)
-    item_hash: str = Column(String, nullable=False)
-    type: MessageType = Column(ChoiceType(MessageType), nullable=False)
-    chain: Chain = Column(ChoiceType(Chain), nullable=False)
-    sender: str = Column(String, nullable=False)
-    signature: Optional[str] = Column(String, nullable=True)
-    item_type: ItemType = Column(ChoiceType(ItemType), nullable=False)
+    id: Mapped[int] = Column(BigInteger, primary_key=True)
+    item_hash: Mapped[str] = Column(String, nullable=False)
+    type: Mapped[MessageType] = Column(ChoiceType(MessageType), nullable=False)
+    chain: Mapped[Chain] = Column(ChoiceType(Chain), nullable=False)
+    sender: Mapped[str] = Column(String, nullable=False)
+    signature: Mapped[Optional[str]] = Column(String, nullable=True)
+    item_type: Mapped[ItemType] = Column(ChoiceType(ItemType), nullable=False)
     item_content = Column(String, nullable=True)
-    content: Optional[Dict[str, Any]] = Column(JSONB, nullable=True)
-    time: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
-    channel: Optional[Channel] = Column(String, nullable=True)
+    content: Mapped[Optional[Dict[str, Any]]] = Column(JSONB, nullable=True)
+    time: Mapped[dt.datetime] = Column(TIMESTAMP(timezone=True), nullable=False)
+    channel: Mapped[Optional[Channel]] = Column(String, nullable=True)
 
-    reception_time: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
-    check_message: bool = Column(Boolean, nullable=False)
-    next_attempt: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
-    retries: int = Column(Integer, nullable=False)
-    tx_hash: Optional[str] = Column(ForeignKey("chain_txs.hash"), nullable=True)
-    fetched: bool = Column(Boolean, nullable=False)
+    reception_time: Mapped[dt.datetime] = Column(TIMESTAMP(timezone=True), nullable=False)
+    check_message: Mapped[bool] = Column(Boolean, nullable=False)
+    next_attempt: Mapped[dt.datetime] = Column(TIMESTAMP(timezone=True), nullable=False)
+    retries: Mapped[int] = Column(Integer, nullable=False)
+    tx_hash: Mapped[Optional[str]] = Column(ForeignKey("chain_txs.hash"), nullable=True)
+    fetched: Mapped[bool] = Column(Boolean, nullable=False)
 
     __table_args__ = (
         CheckConstraint(
@@ -72,7 +72,7 @@ class PendingMessageDb(Base):
         ),
     )
 
-    tx: Optional[ChainTxDb] = relationship("ChainTxDb")
+    tx: Mapped[Optional[ChainTxDb]] = relationship("ChainTxDb")
 
     @classmethod
     def from_obj(

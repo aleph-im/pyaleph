@@ -10,6 +10,7 @@ from typing import Dict, Any, Union, Mapping
 from aleph_message.models import Chain
 from sqlalchemy import Column, Integer, String, TIMESTAMP, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped
 from sqlalchemy_utils.types.choice import ChoiceType
 
 from aleph.toolkit.timestamp import timestamp_to_datetime
@@ -26,10 +27,10 @@ class ChainSyncStatusDb(Base):
 
     __tablename__ = "chains_sync_status"
 
-    chain: Chain = Column(ChoiceType(Chain), primary_key=True)
-    type: ChainEventType = Column(ChoiceType(ChainEventType), primary_key=True)
-    height: int = Column(Integer, nullable=False)
-    last_update: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
+    chain: Mapped[Chain] = Column(ChoiceType(Chain), primary_key=True)
+    type: Mapped[ChainEventType] = Column(ChoiceType(ChainEventType), primary_key=True)
+    height: Mapped[int] = Column(Integer, nullable=False)
+    last_update: Mapped[dt.datetime] = Column(TIMESTAMP(timezone=True), nullable=False)
 
 
 class IndexerSyncStatusDb(Base):
@@ -45,15 +46,15 @@ class IndexerSyncStatusDb(Base):
 
     __tablename__ = "indexer_sync_status"
 
-    chain: Chain = Column(ChoiceType(Chain), primary_key=True)
-    event_type: ChainEventType = Column(ChoiceType(ChainEventType), primary_key=True)
-    start_block_datetime: dt.datetime = Column(
+    chain: Mapped[Chain] = Column(ChoiceType(Chain), primary_key=True)
+    event_type: Mapped[ChainEventType] = Column(ChoiceType(ChainEventType), primary_key=True)
+    start_block_datetime: Mapped[dt.datetime] = Column(
         TIMESTAMP(timezone=True), primary_key=True
     )
-    end_block_datetime: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
-    start_included: bool = Column(Boolean, nullable=False)
-    end_included: bool = Column(Boolean, nullable=False)
-    last_updated: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
+    end_block_datetime: Mapped[dt.datetime] = Column(TIMESTAMP(timezone=True), nullable=False)
+    start_included: Mapped[bool] = Column(Boolean, nullable=False)
+    end_included: Mapped[bool] = Column(Boolean, nullable=False)
+    last_updated: Mapped[dt.datetime] = Column(TIMESTAMP(timezone=True), nullable=False)
 
     def to_range(self) -> Range[dt.datetime]:
         return Range(
@@ -67,14 +68,14 @@ class IndexerSyncStatusDb(Base):
 class ChainTxDb(Base):
     __tablename__ = "chain_txs"
 
-    hash: str = Column(String, primary_key=True)
-    chain: Chain = Column(ChoiceType(Chain), nullable=False)
-    height: int = Column(Integer, nullable=False)
-    datetime: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
-    publisher: str = Column(String, nullable=False)
-    protocol: ChainSyncProtocol = Column(ChoiceType(ChainSyncProtocol), nullable=False)
+    hash: Mapped[str] = Column(String, primary_key=True)
+    chain: Mapped[Chain] = Column(ChoiceType(Chain), nullable=False)
+    height: Mapped[int] = Column(Integer, nullable=False)
+    datetime: Mapped[dt.datetime] = Column(TIMESTAMP(timezone=True), nullable=False)
+    publisher: Mapped[str] = Column(String, nullable=False)
+    protocol: Mapped[ChainSyncProtocol] = Column(ChoiceType(ChainSyncProtocol), nullable=False)
     protocol_version = Column(Integer, nullable=False)
-    content: Any = Column(JSONB, nullable=False)
+    content: Mapped[Any] = Column(JSONB, nullable=False)
 
     # TODO: this method is only used in tests, make it a helper
     @classmethod

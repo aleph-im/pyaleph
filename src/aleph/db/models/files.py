@@ -2,7 +2,7 @@ from enum import Enum
 from typing import Optional, List, Any, Dict
 
 from sqlalchemy import BigInteger, Column, String, ForeignKey, TIMESTAMP, Index, UniqueConstraint
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, Mapped
 from sqlalchemy_utils import ChoiceType
 
 from aleph.types.files import FileType
@@ -37,38 +37,38 @@ class StoredFileDb(Base):
 
     # size: int = Column(BigInteger, nullable=False)
     # TODO: compute the size from local storage
-    size: int = Column(BigInteger, nullable=False)
-    type: FileType = Column(ChoiceType(FileType), nullable=False)
+    size: Mapped[int] = Column(BigInteger, nullable=False)
+    type: Mapped[FileType] = Column(ChoiceType(FileType), nullable=False)
 
-    pins: List["FilePinDb"] = relationship("FilePinDb", back_populates="file")
-    tags: List["FileTagDb"] = relationship("FileTagDb", back_populates="file")
+    pins: Mapped[List["FilePinDb"]] = relationship("FilePinDb", back_populates="file")
+    tags: Mapped[List["FileTagDb"]] = relationship("FileTagDb", back_populates="file")
 
 
 class FileTagDb(Base):
     __tablename__ = "file_tags"
 
-    tag: FileTag = Column(String, primary_key=True)
-    owner: str = Column(String, nullable=False)
-    file_hash: str = Column(ForeignKey(StoredFileDb.hash), nullable=False, index=True)
-    last_updated: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
+    tag: Mapped[FileTag] = Column(String, primary_key=True)
+    owner: Mapped[str] = Column(String, nullable=False)
+    file_hash: Mapped[str] = Column(ForeignKey(StoredFileDb.hash), nullable=False, index=True)
+    last_updated: Mapped[dt.datetime] = Column(TIMESTAMP(timezone=True), nullable=False)
 
-    file: StoredFileDb = relationship(StoredFileDb, back_populates="tags")
+    file: Mapped[StoredFileDb] = relationship(StoredFileDb, back_populates="tags")
 
 
 class FilePinDb(Base):
     __tablename__ = "file_pins"
 
-    id: int = Column(BigInteger, primary_key=True)
+    id: Mapped[int] = Column(BigInteger, primary_key=True)
 
-    file_hash: str = Column(ForeignKey(StoredFileDb.hash), nullable=False)
-    created: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
-    type: str = Column(String, nullable=False)
+    file_hash: Mapped[str] = Column(ForeignKey(StoredFileDb.hash), nullable=False)
+    created: Mapped[dt.datetime] = Column(TIMESTAMP(timezone=True), nullable=False)
+    type: Mapped[str] = Column(String, nullable=False)
     # TODO: these columns should be defined on Message/ContentFilePinDb instead with `use_existing`.
     #       This field is only available since SQLA 2.0.
     owner = Column(String, nullable=True, index=True)
     item_hash = Column(String, nullable=True)
 
-    file: StoredFileDb = relationship(StoredFileDb, back_populates="pins")
+    file: Mapped[StoredFileDb] = relationship(StoredFileDb, back_populates="pins")
 
     __mapper_args__: Dict[str, Any] = {
         "polymorphic_on": type,
