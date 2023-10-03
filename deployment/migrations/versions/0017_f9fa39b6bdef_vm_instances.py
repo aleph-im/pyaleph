@@ -29,7 +29,7 @@ def reprocess_failed_instance_messages():
             rm.message ->> 'signature',
             rm.message ->> 'item_type',
             rm.message ->> 'item_content',
-            to_timestamp(rm.message ->> 'time'),
+            to_timestamp((rm.message ->> 'time')::numeric),
             rm.message ->> 'channel',
             ms.reception_time,
             true,
