@@ -236,6 +236,6 @@ To retrieve it, run the following command (assuming that NODE_IP_ADDR is the IP 
 
 .. code-block:: bash
 
-    curl -s https://api1.aleph.im/api/v0/info/public.json | jq -r .node_multi_addresses[0]
+    curl -s http://NODE_IP_ADDRESS:4024/api/v0/info/public.json | jq -r .node_multi_addresses[0]
 
 Simply copy-paste this address on the account page when registering your node.
