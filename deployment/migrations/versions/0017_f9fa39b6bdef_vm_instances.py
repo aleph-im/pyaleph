@@ -17,6 +17,43 @@ branch_labels = None
 depends_on = None
 
 
+def reprocess_failed_instance_messages():
+    op.execute(
+        """
+    INSERT INTO pending_messages(item_hash, type, chain, sender, signature, item_type, item_content, time, channel,
+                             reception_time, check_message, retries, tx_hash, fetched, next_attempt)
+    (SELECT rm.item_hash,
+            'INSTANCE',
+            rm.message ->> 'chain',
+            rm.message ->> 'sender',
+            rm.message ->> 'signature',
+            rm.message ->> 'item_type',
+            rm.message ->> 'item_content',
+            to_timestamp((rm.message ->> 'time')::numeric),
+            rm.message ->> 'channel',
+            ms.reception_time,
+            true,
+            0,
+            null,
+            false,
+            now()
+     FROM rejected_messages rm
+              JOIN message_status ms on rm.item_hash = ms.item_hash
+     WHERE message ->> 'type' = 'INSTANCE')
+    """
+    )
+    op.execute(
+        """
+        UPDATE message_status
+          SET status = 'pending'
+          FROM aleph.public.rejected_messages rm
+          WHERE message_status.item_hash = rm.item_hash
+            AND rm.message ->> 'type' = 'INSTANCE'
+        """
+    )
+    op.execute("DELETE FROM rejected_messages WHERE message->>'type' = 'INSTANCE'")
+
+
 def recreate_cost_views():
     op.execute("DROP VIEW costs_view")
     op.execute("DROP VIEW program_costs_view")
@@ -235,6 +272,7 @@ def upgrade() -> None:
         "INSERT INTO error_codes(code, description) VALUES (304, 'VM volume parent is larger than the child volume')"
     )
 
+    reprocess_failed_instance_messages()
     # ### end Alembic commands ###
 
 
@@ -397,7 +435,7 @@ def downgrade() -> None:
     op.execute("ALTER INDEX ix_vms_owner RENAME TO ix_programs_owner")
 
     op.drop_column("programs", "program_type")
-    op.drop_column('programs', 'authorized_keys')
+    op.drop_column("programs", "authorized_keys")
 
     # Drop the parent column for persistent VMs
     op.drop_column("program_machine_volumes", "parent")

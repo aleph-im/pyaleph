@@ -61,6 +61,10 @@ class MessageProcessingException(Exception):
             errors = [errors]
         super().__init__(errors)
 
+    def __str__(self):
+        # TODO: reimplement for each exception subtype
+        return self.__class__.__name__
+
     def details(self) -> Optional[Dict[str, Any]]:
         errors = self.args[0]
         return {"errors": errors} if errors else None
@@ -301,8 +305,10 @@ class CannotForgetForgetMessage(InvalidMessageException):
 
 class InsufficientBalanceException(InvalidMessageException):
     """
-    You don't have enough in balance
+    The user does not have enough Aleph tokens to process the message.
     """
+
+    error_code = ErrorCode.BALANCE_INSUFFICIENT
 
     def __init__(
         self,
@@ -314,6 +320,11 @@ class InsufficientBalanceException(InvalidMessageException):
 
     def details(self) -> Optional[Dict[str, Any]]:
         # Note: cast to string to keep the precision
-        return {"errors": [{"required_balance": str(self.required_balance), "account_balance": str(self.balance)}]}
-
-    error_code = ErrorCode.BALANCE_INSUFFICIENT
+        return {
+            "errors": [
+                {
+                    "required_balance": str(self.required_balance),
+                    "account_balance": str(self.balance),
+                }
+            ]
+        }
