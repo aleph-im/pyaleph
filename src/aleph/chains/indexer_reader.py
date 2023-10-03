@@ -51,7 +51,7 @@ def make_account_state_query(
     return """
 {
   state: accountState(
-    blockchain: %s
+    blockchain: "%s"
     account: %s
     type: %s
   ) {
@@ -95,7 +95,7 @@ def make_events_query(
 
     fields = "\n".join(model.__fields__.keys())
     params: Dict[str, Any] = {
-        "blockchain": blockchain.value,
+        "blockchain": f'"{blockchain.value}"',
         "limit": limit,
         "reverse": "false",
     }
