@@ -195,36 +195,36 @@ class EthereumConnector(Verifier, ChainWriter):
             publisher = event_data.args.addr
             timestamp = event_data.args.timestamp
 
-            if publisher not in config.ethereum.authorized_emitters.value:
+            if publisher in config.ethereum.authorized_emitters.value:
+                message = event_data.args.message
+                try:
+                    jdata = json.loads(message)
+                    context = TxContext(
+                        chain=CHAIN_NAME,
+                        hash=event_data.transactionHash.hex(),
+                        time=timestamp,
+                        height=event_data.blockNumber,
+                        publisher=publisher,
+                    )
+                    yield jdata, context
+
+                except json.JSONDecodeError:
+                    # if it's not valid json, just ignore it...
+                    LOGGER.info("Incoming logic data is not JSON, ignoring. %r" % message)
+
+                except Exception:
+                    LOGGER.exception("Can't decode incoming logic data %r" % message)
+
+            else:
                 LOGGER.info(
-                    "TX with unauthorized emitter %s in block %s"
-                    % (publisher, event_data.blockNumber)
+                    "TX with unauthorized emitter %s in block %s",
+                    publisher,
+                    event_data.blockNumber,
                 )
-                continue
-
-            last_height = event_data.blockNumber
-
-            message = event_data.args.message
-            try:
-                jdata = json.loads(message)
-                context = TxContext(
-                    chain=CHAIN_NAME,
-                    hash=event_data.transactionHash.hex(),
-                    time=timestamp,
-                    height=event_data.blockNumber,
-                    publisher=publisher,
-                )
-                yield jdata, context
-
-            except json.JSONDecodeError:
-                # if it's not valid json, just ignore it...
-                LOGGER.info("Incoming logic data is not JSON, ignoring. %r" % message)
-
-            except Exception:
-                LOGGER.exception("Can't decode incoming logic data %r" % message)
 
             # Since we got no critical exception, save last received object
             # block height to do next requests from there.
+            last_height = event_data.blockNumber
             if last_height:
                 with self.session_factory() as session:
                     upsert_chain_sync_status(
