@@ -76,15 +76,15 @@ def get_additional_storage_price(
     return price
 
 
-def _get_compute_unit(content: ExecutableContent) -> float:
-    cpu: int = content.resources.vcpus
-    memory: float = math.ceil(content.resources.memory / 2000)
-    compute_unit_multiplier = cpu if cpu >= memory else memory
-    return compute_unit_multiplier
+def _get_nb_compute_units(content: ExecutableContent) -> int:
+    cpu = content.resources.vcpus
+    memory = math.ceil(content.resources.memory / 2000)
+    nb_compute_units = cpu if cpu >= memory else memory
+    return nb_compute_units
 
 
 def _get_compute_unit_multiplier(content: ExecutableContent) -> int:
-    compute_unit_multiplier: int = 1
+    compute_unit_multiplier = 1
     if content.environment.internet:
         compute_unit_multiplier += 1
     return compute_unit_multiplier
@@ -95,7 +95,7 @@ def compute_cost(session: DbSession, content: ExecutableContent) -> Decimal:
 
     compute_unit_cost = 200 if is_microvm else 2000
 
-    compute_units_required = _get_compute_unit(content)
+    compute_units_required = _get_nb_compute_units(content)
     compute_unit_multiplier = _get_compute_unit_multiplier(content)
 
     compute_unit_price = (
