@@ -183,7 +183,10 @@ class MessageHandler:
             except InvalidMessageException as e:
                 LOGGER.warning(e)
                 reject_new_pending_message(
-                    session=session, pending_message=message_dict, exception=e
+                    session=session,
+                    pending_message=message_dict,
+                    exception=e,
+                    tx_hash=tx_hash,
                 )
                 session.commit()
                 return None
@@ -202,7 +205,10 @@ class MessageHandler:
             except InvalidMessageException as e:
                 LOGGER.warning("Invalid message: %s - %s", message.item_hash, str(e))
                 reject_new_pending_message(
-                    session=session, pending_message=message_dict, exception=e
+                    session=session,
+                    pending_message=message_dict,
+                    exception=e,
+                    tx_hash=tx_hash,
                 )
                 session.commit()
                 return None
@@ -234,6 +240,7 @@ class MessageHandler:
                     session=session,
                     pending_message=message_dict,
                     exception=e,
+                    tx_hash=tx_hash,
                 )
                 session.commit()
                 return None

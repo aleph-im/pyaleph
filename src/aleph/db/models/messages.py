@@ -208,3 +208,4 @@ class RejectedMessageDb(Base):
     )
     details: Optional[Dict[str, Any]] = Column(JSONB, nullable=True)
     traceback: Optional[str] = Column(String, nullable=True)
+    tx_hash: Optional[str] = Column(ForeignKey("chain_txs.hash"), nullable=True)
