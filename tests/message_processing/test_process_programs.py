@@ -27,14 +27,14 @@ from aleph.db.models import (
     ImmutableVolumeDb,
     EphemeralVolumeDb,
     PersistentVolumeDb,
-    StoredFileDb,
+    StoredFileDb, AlephBalanceDb,
 )
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSessionFactory, DbSession
 from aleph.types.files import FileTag, FileType
 from aleph.types.message_status import MessageStatus, ErrorCode
-
+from decimal import Decimal
 
 @pytest.fixture
 def fixture_program_message(session_factory: DbSessionFactory) -> PendingMessageDb:
@@ -45,7 +45,7 @@ def fixture_program_message(session_factory: DbSessionFactory) -> PendingMessage
         sender="0x7083b90eBA420832A03C6ac7e6328d37c72e0260",
         signature="0x5c5c757f35403e9b6d6b1c5dc0be349284d76ded4cfa9edc6ad8522212f4235448bc80432ea7f8c5f4da315d6ce6902072d4eb7bbbebd969841f08a3df61c2971c",
         item_type=ItemType.inline,
-        item_content='{"address":"0x7083b90eBA420832A03C6ac7e6328d37c72e0260","time":1655123939.12433,"type":"vm-function","allow_amend":false,"code":{"encoding":"squashfs","entrypoint":"python run.py","ref":"53ee77caeb7d6e0e982abf010b3d6ea2dbc1225e157e09283e3a9d7da757e193","use_latest":true},"variables":{"LD_LIBRARY_PATH":"/opt/extra_lib","DB_FOLDER":"/data","RPC_ENDPOINT":"https://rpc.tzkt.io/ithacanet","TRUSTED_RPC_ENDPOINT":"https://rpc.tzkt.io/ithacanet","WELL_CONTRACT":"KT1ReVgfaUqHzWWiNRfPXQxf7TaBLVbxrztw","PORT":"8080","CONCURRENT_JOB":"5","BATCH_SIZE":"10","UNTIL_BLOCK":"201396","PUBSUB":"{\\"namespace\\": \\"tznms\\",\\"uuid\\": \\"tz_uid_1\\",\\"hook_url\\": \\"_domain_or_ip_addess\\",\\"pubsub_server\\": \\"domain_or_ip_address\\",\\"secret_shared_key\\": \\"112secret_key\\",\\"channel\\": \\"storage\\",\\"running_mode\\": \\"readonly\\"}"},"on":{"http":true},"environment":{"reproducible":false,"internet":true,"aleph_api":true,"shared_cache":false},"resources":{"vcpus":4,"memory":4000,"seconds":300},"runtime":{"ref":"bd79839bf96e595a06da5ac0b6ba51dea6f7e2591bb913deccded04d831d29f4","use_latest":true,"comment":"Aleph Alpine Linux with Python 3.8"},"volumes":[{"comment":"Extra lib","mount":"/opt/extra_lib","ref":"d7cecdeccc916280f8bcbf0c0e82c3638332da69ece2cbc806f9103a0f8befea","use_latest":true},{"comment":"Python Virtual Environment","mount":"/opt/packages","ref":"1000ebe0b61e41d5e23c10f6eb140e837188158598049829f2820f830139fc7d","use_latest":true},{"comment":"Data storage","mount":"/data","persistence":"host","name":"data","size_mib":128}]}',
+        item_content='{"address":"0x7083b90eBA420832A03C6ac7e6328d37c72e0260","time":1655123939.12433,"type":"vm-function","allow_amend":false,"code":{"encoding":"squashfs","entrypoint":"python run.py","ref":"53ee77caeb7d6e0e982abf010b3d6ea2dbc1225e157e09283e3a9d7da757e193","use_latest":true},"variables":{"LD_LIBRARY_PATH":"/opt/extra_lib","DB_FOLDER":"/data","RPC_ENDPOINT":"https://rpc.tzkt.io/ithacanet","TRUSTED_RPC_ENDPOINT":"https://rpc.tzkt.io/ithacanet","WELL_CONTRACT":"KT1ReVgfaUqHzWWiNRfPXQxf7TaBLVbxrztw","PORT":"8080","CONCURRENT_JOB":"5","BATCH_SIZE":"10","UNTIL_BLOCK":"201396","PUBSUB":"{\\"namespace\\": \\"tznms\\",\\"uuid\\": \\"tz_uid_1\\",\\"hook_url\\": \\"_domain_or_ip_addess\\",\\"pubsub_server\\": \\"domain_or_ip_address\\",\\"secret_shared_key\\": \\"112secret_key\\",\\"channel\\": \\"storage\\",\\"running_mode\\": \\"readonly\\"}"},"on":{"http":false, "persistent": true},"environment":{"reproducible":false,"internet":true,"aleph_api":true,"shared_cache":false},"resources":{"vcpus":4,"memory":4095,"seconds":300},"runtime":{"ref":"bd79839bf96e595a06da5ac0b6ba51dea6f7e2591bb913deccded04d831d29f4","use_latest":true,"comment":"Aleph Alpine Linux with Python 3.8"},"volumes":[{"comment":"Extra lib","mount":"/opt/extra_lib","ref":"5f31b0706f59404fad3d0bff97ef89ddf24da4761608ea0646329362c662ba51","use_latest":true},{"comment":"Python Virtual Environment","mount":"/opt/packages","ref":"1000ebe0b61e41d5e23c10f6eb140e837188158598049829f2820f830139fc7d","use_latest":true},{"comment":"Data storage","mount":"/data","persistence":"host","name":"data","size_mib":128}]}',
         time=timestamp_to_datetime(1671637391),
         channel=None,
         reception_time=timestamp_to_datetime(1671637391),
@@ -148,9 +148,23 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
                 last_updated=created,
             )
 
+@pytest.fixture
+def user_balance(session_factory: DbSessionFactory) -> AlephBalanceDb:
+    balance = AlephBalanceDb(
+        address="0x7083b90eBA420832A03C6ac7e6328d37c72e0260",
+        chain=Chain.ETH,
+        balance=Decimal(22_192),
+        eth_height=0,
+    )
+
+    with session_factory() as session:
+        session.add(balance)
+        session.commit()
+    return balance
 
 @pytest.mark.asyncio
 async def test_process_program(
+    user_balance: AlephBalanceDb,
     session_factory: DbSessionFactory,
     message_processor: PendingMessageProcessor,
     fixture_program_message: PendingMessageDb,
@@ -176,7 +190,7 @@ async def test_process_program(
         assert program.program_type == MachineType.vm_function
         assert not program.allow_amend
         assert program.replaces is None
-        assert program.http_trigger
+        assert program.persistent
 
         assert program.resources_vcpus == content_dict["resources"]["vcpus"]
         assert program.resources_memory == content_dict["resources"]["memory"]
