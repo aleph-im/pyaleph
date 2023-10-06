@@ -1,6 +1,15 @@
 import datetime as dt
-from typing import Optional, Iterable, Any, Dict, Tuple, Sequence
-
+from typing import (
+    Optional,
+    Iterable,
+    Any,
+    Dict,
+    Tuple,
+    Sequence,
+    overload,
+    Literal,
+    Union,
+)
 from sqlalchemy import (
     select,
     delete,
@@ -22,20 +31,64 @@ def aggregate_exists(session: DbSession, key: str, owner: str) -> bool:
     )
 
 
-def get_aggregates_by_owner(
-    session: DbSession, owner: str, keys: Optional[Sequence[str]] = None
-) -> Iterable[Tuple[str, Dict[str, Any]]]:
+AggregateContent = Iterable[Tuple[str, Dict[str, Any]]]
+AggregateContentWithInfo = Iterable[Tuple[str, dt.datetime, dt.datetime, str, str]]
 
+
+@overload
+def get_aggregates_by_owner(
+    session: Any,
+    owner: str,
+    with_info: Literal[False],
+    keys: Optional[Sequence[str]] = None,
+) -> AggregateContent:
+    ...
+
+
+@overload
+def get_aggregates_by_owner(
+    session: Any,
+    owner: str,
+    with_info: Literal[True],
+    keys: Optional[Sequence[str]] = None,
+) -> AggregateContentWithInfo:
+    ...
+
+
+@overload
+def get_aggregates_by_owner(
+    session, owner: str, with_info: bool, keys: Optional[Sequence[str]] = None
+) -> Union[AggregateContent, AggregateContentWithInfo]:
+    ...
+
+
+def get_aggregates_by_owner(session, owner, with_info, keys=None):
     where_clause = AggregateDb.owner == owner
     if keys:
         where_clause = where_clause & AggregateDb.key.in_(keys)
-
-    select_stmt = (
-        select(AggregateDb.key, AggregateDb.content)
-        .where(where_clause)
-        .order_by(AggregateDb.key)
-    )
-    return session.execute(select_stmt).all()  # type: ignore
+    if with_info:
+        query = (
+            session.query(
+                AggregateDb.key,
+                AggregateDb.content,
+                AggregateDb.creation_datetime.label("created"),
+                AggregateElementDb.creation_datetime.label("last_updated"),
+                AggregateDb.last_revision_hash.label("last_update_item_hash"),
+                AggregateElementDb.item_hash.label("original_item_hash"),
+            )
+            .join(
+                AggregateElementDb,
+                AggregateDb.last_revision_hash == AggregateElementDb.item_hash,
+            )
+            .filter(AggregateDb.owner == owner)
+        )
+    else:
+        query = (
+            session.query(AggregateDb.key, AggregateDb.content)
+            .filter(where_clause)
+            .order_by(AggregateDb.key)
+        )
+    return query.all()
 
 
 def get_aggregate_by_key(
@@ -44,7 +97,6 @@ def get_aggregate_by_key(
     key: str,
     with_content: bool = True,
 ) -> Optional[AggregateDb]:
-
     options = []
 
     if not with_content:
@@ -170,7 +222,6 @@ def mark_aggregate_as_dirty(session: DbSession, owner: str, key: str) -> None:
 
 
 def refresh_aggregate(session: DbSession, owner: str, key: str) -> None:
-
     # Step 1: use a group by to retrieve the aggregate content. This uses a custom
     # aggregate function (see 78dd67881db4_jsonb_merge_aggregate.py).
     select_merged_aggregate_subquery = (

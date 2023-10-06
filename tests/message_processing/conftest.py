@@ -97,3 +97,4 @@ def message_processor(mocker, mock_config: Config, session_factory: DbSessionFac
         mq_conn=mocker.AsyncMock(),
     )
     return message_processor
+
