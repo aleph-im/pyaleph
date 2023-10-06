@@ -5,6 +5,7 @@ import asyncio
 import logging
 from hashlib import sha256
 from typing import Any, IO, Optional, cast, Final
+from aiohttp import web
 
 from aleph_message.models import ItemType
 
@@ -19,9 +20,13 @@ from aleph.services.ipfs import IpfsService
 from aleph.services.ipfs.common import get_cid_version
 from aleph.services.p2p.http import request_hash as p2p_http_request_hash
 from aleph.services.storage.engine import StorageEngine
+from aleph.toolkit.constants import MiB
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileType
 from aleph.utils import get_sha256
+from aleph.schemas.pending_messages import (
+    parse_message,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -239,7 +244,9 @@ class StorageService:
     async def pin_hash(self, chash: str, timeout: int = 30, tries: int = 1):
         await self.ipfs_service.pin_add(cid=chash, timeout=timeout, tries=tries)
 
-    async def add_json(self, session: DbSession, value: Any, engine: ItemType = ItemType.ipfs) -> str:
+    async def add_json(
+        self, session: DbSession, value: Any, engine: ItemType = ItemType.ipfs
+    ) -> str:
         content = aleph_json.dumps(value)
 
         if engine == ItemType.ipfs:
@@ -259,6 +266,17 @@ class StorageService:
 
         return chash
 
+    async def add_file_content_to_local_storage(
+        self, session: DbSession, file_content: bytes, file_hash: str
+    ) -> None:
+        await self.storage_engine.write(filename=file_hash, content=file_content)
+        upsert_file(
+            session=session,
+            file_hash=file_hash,
+            size=len(file_content),
+            file_type=FileType.FILE,
+        )
+
     async def add_file(
         self, session: DbSession, fileobject: IO, engine: ItemType = ItemType.ipfs
     ) -> str:
@@ -275,12 +293,8 @@ class StorageService:
         else:
             raise ValueError(f"Unsupported item type: {engine}")
 
-        await self.storage_engine.write(filename=file_hash, content=file_content)
-        upsert_file(
-            session=session,
-            file_hash=file_hash,
-            size=len(file_content),
-            file_type=FileType.FILE,
+        await self.add_file_content_to_local_storage(
+            session=session, file_content=file_content, file_hash=file_hash
         )
 
         return file_hash

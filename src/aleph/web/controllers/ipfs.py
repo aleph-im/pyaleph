@@ -8,7 +8,7 @@ from aleph.web.controllers.app_state_getters import (
     get_ipfs_service_from_request,
     get_session_factory_from_request,
 )
-from aleph.web.controllers.utils import multidict_proxy_to_io
+from aleph.web.controllers.utils import file_field_to_io
 
 
 async def ipfs_add_file(request: web.Request):
@@ -20,7 +20,12 @@ async def ipfs_add_file(request: web.Request):
 
     # No need to pin it here anymore.
     post = await request.post()
-    ipfs_add_response = await ipfs_service.add_file(multidict_proxy_to_io(post))
+    try:
+        file_field = post["file"]
+    except KeyError:
+        raise web.HTTPUnprocessableEntity(reason="Missing 'file' in multipart form.")
+
+    ipfs_add_response = await ipfs_service.add_file(file_field_to_io(file_field))
 
     cid = ipfs_add_response["Hash"]
     name = ipfs_add_response["Name"]

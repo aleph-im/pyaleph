@@ -1,15 +1,22 @@
 import base64
-from typing import Any
+import json
+from decimal import Decimal
+from typing import Any, Optional
 
 import aiohttp
 import orjson
 import pytest
-from aleph_message.models import ItemHash
+import requests
+from aleph_message.models import ItemHash, Chain
 
+from aleph.chains.chain_service import ChainService
 from aleph.db.accessors.files import get_file
+from aleph.db.models import AlephBalanceDb
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.files import FileType
+from aleph.types.message_status import MessageStatus
+from aleph.web.controllers.utils import BroadcastStatus, PublicationStatus
 from in_memory_storage_engine import InMemoryStorageEngine
 
 IPFS_ADD_FILE_URI = "/api/v0/ipfs/add_file"
@@ -30,6 +37,25 @@ JSON_CONTENT = {"first name": "Jay", "last_name": "Son"}
 EXPECTED_JSON_FILE_SHA256 = (
     "b7c7b2db0bcec890b8c859b2b76e7c998de15e31ccc945bc7425c4bdc091a0b2"
 )
+
+MESSAGE_DICT = {
+    "chain": "ETH",
+    "sender": "0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+    "type": "STORE",
+    "channel": "null",
+    "signature": "0x2b90dcfa8f93506150df275a4fe670e826be0b4b751badd6ec323648a6a738962f47274f71a9939653fb6d49c25055821f547447fb3b33984a579008d93eca431b",
+    "time": 1692193373.7144432,
+    "item_type": "inline",
+    "item_content": '{"address":"0x6dA130FD646f826C1b8080C07448923DF9a79aaA","time":1692193373.714271,"item_type":"storage","item_hash":"0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f","mime_type":"text/plain"}',
+    "item_hash": "8227acbc2f7c43899efd9f63ea9d8119a4cb142f3ba2db5fe499ccfab86dfaed",
+    "content": {
+        "address": "0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+        "time": 1692193373.714271,
+        "item_type": "storage",
+        "item_hash": "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
+        "mime_type": "text/plain",
+    },
+}
 
 
 @pytest.fixture
@@ -59,6 +85,12 @@ def api_client(ccn_api_client, mocker):
         ipfs_service=ipfs_service,
         node_cache=mocker.AsyncMock(),
     )
+
+    ccn_api_client.app["chain_service"] = ChainService(
+        session_factory=ccn_api_client.app["session_factory"],
+        storage_service=ccn_api_client.app["storage_service"],
+    )
+
     return ccn_api_client
 
 
@@ -73,7 +105,8 @@ async def add_file(
     form_data.add_field("file", file_content)
 
     post_response = await api_client.post(uri, data=form_data)
-    assert post_response.status == 200, await post_response.text()
+    response_text = await post_response.text()
+    assert post_response.status == 200, await response_text
     post_response_json = await post_response.json()
     assert post_response_json["status"] == "success"
     file_hash = post_response_json["hash"]
@@ -81,7 +114,7 @@ async def add_file(
 
     # Assert that the file is downloadable
     get_file_response = await api_client.get(f"{GET_STORAGE_RAW_URI}/{file_hash}")
-    assert get_file_response.status == 200
+    assert get_file_response.status == 200, await get_file_response.text()
     response_data = await get_file_response.read()
 
     # Check that the file appears in the DB
@@ -95,6 +128,90 @@ async def add_file(
     assert response_data == file_content
 
 
+async def add_file_with_message(
+    api_client,
+    session_factory: DbSessionFactory,
+    uri: str,
+    file_content: bytes,
+    error_code: int,
+    balance: int,
+    mocker,
+):
+    mocker.patch(
+        "aleph.web.controllers.storage.broadcast_and_process_message",
+        return_value=BroadcastStatus(
+            publication_status=PublicationStatus.from_failures([]),
+            message_status=MessageStatus.PROCESSED,
+        ),
+    )
+
+    with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                chain=Chain.ETH,
+                balance=Decimal(balance),
+                eth_height=0,
+            )
+        )
+        session.commit()
+
+    form_data = aiohttp.FormData()
+
+    form_data.add_field("file", file_content)
+    data = {
+        "message": MESSAGE_DICT,
+        "sync": True,
+    }
+    form_data.add_field("metadata", json.dumps(data), content_type="application/json")
+
+    response = await api_client.post(uri, data=form_data)
+    response_text = await response.text()
+    assert response.status == error_code, response_text
+
+
+async def add_file_with_message_202(
+    api_client,
+    session_factory: DbSessionFactory,
+    uri: str,
+    file_content: bytes,
+    size: str,
+    error_code: int,
+    balance: int,
+    mocker,
+):
+    mocker.patch(
+        "aleph.web.controllers.storage.broadcast_and_process_message",
+        return_value=BroadcastStatus(
+            publication_status=PublicationStatus.from_failures([]),
+            message_status=MessageStatus.PENDING,
+        ),
+    )
+    with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                chain=Chain.ETH,
+                balance=Decimal(balance),
+                eth_height=0,
+            )
+        )
+        session.commit()
+
+    form_data = aiohttp.FormData()
+
+    form_data.add_field("file", file_content)
+
+    data = {
+        "message": MESSAGE_DICT,
+        "file_size": int(size),
+        "sync": True,
+    }
+    form_data.add_field("metadata", json.dumps(data), content_type="application/json")
+    response = await api_client.post(uri, data=form_data)
+    assert response.status == error_code, await response.text()
+
+
 @pytest.mark.asyncio
 async def test_storage_add_file(api_client, session_factory: DbSessionFactory):
     await add_file(
@@ -103,6 +220,82 @@ async def test_storage_add_file(api_client, session_factory: DbSessionFactory):
         uri=STORAGE_ADD_FILE_URI,
         file_content=FILE_CONTENT,
         expected_file_hash=EXPECTED_FILE_SHA256,
+    )
+
+
+@pytest.mark.parametrize(
+    "file_content, expected_hash, size, error_code, balance",
+    [
+        (
+            b"Hello Aleph.im\n",
+            "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
+            None,
+            "200",
+            "0",
+        ),
+        (
+            b"Hello Aleph.im\n",
+            "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
+            None,
+            "200",
+            "1000",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_storage_add_file_with_message(
+    api_client,
+    session_factory: DbSessionFactory,
+    file_content,
+    expected_hash,
+    size: Optional[int],
+    error_code,
+    balance,
+    mocker,
+):
+    await add_file_with_message(
+        api_client,
+        session_factory,
+        uri=STORAGE_ADD_FILE_URI,
+        file_content=file_content,
+        error_code=int(error_code),
+        balance=int(balance),
+        mocker=mocker,
+    )
+
+
+@pytest.mark.parametrize(
+    "file_content, expected_hash, size, error_code, balance",
+    [
+        (
+            b"Hello Aleph.im\n",
+            "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
+            "15",
+            "202",
+            "1000",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_storage_add_file_with_message_202(
+    api_client,
+    session_factory: DbSessionFactory,
+    file_content,
+    expected_hash,
+    size,
+    error_code,
+    balance,
+    mocker,
+):
+    await add_file_with_message_202(
+        api_client,
+        session_factory,
+        uri=STORAGE_ADD_FILE_URI,
+        file_content=file_content,
+        size=size,
+        error_code=int(error_code),
+        balance=int(balance),
+        mocker=mocker,
     )
 
 
