@@ -310,6 +310,12 @@ def broadcast_status_to_http_status(broadcast_status: BroadcastStatus) -> int:
     return message_status_to_http_status(message_status)
 
 
+def format_pending_message_dict(pending_message: BasePendingMessage) -> Dict[str, Any]:
+    pending_message_dict = pending_message.dict(exclude_none=True)
+    pending_message_dict["time"] = pending_message_dict["time"].timestamp()
+    return pending_message_dict
+
+
 @shielded
 async def broadcast_and_process_message(
     pending_message: BasePendingMessage,
@@ -328,7 +334,7 @@ async def broadcast_and_process_message(
     :param request: The web request object, used to extract global state.
     :param logger: Logger.
     :param message_dict: The message as a dictionary, if already available. Used for optimization purposes;
-                         if not provided, the function will call pending_message.dict().
+                         if not provided, the function will call format_pending_message_dict().
     """
 
     # In sync mode, wait for a message processing event. We need to create the queue
@@ -358,7 +364,7 @@ async def broadcast_and_process_message(
     p2p_client = get_p2p_client_from_request(request)
 
     message_topic = config.aleph.queue_topic.value
-    message_dict = message_dict or pending_message.dict(exclude_none=True)
+    message_dict = message_dict or format_pending_message_dict(pending_message)
 
     failed_publications = await pub_on_p2p_topics(
         p2p_client=p2p_client,
