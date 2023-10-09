@@ -316,8 +316,21 @@ async def broadcast_and_process_message(
     sync: bool,
     request: web.Request,
     logger: logging.Logger,
-    message_dict: Optional[Dict[str, Any]],
+    message_dict: Optional[Dict[str, Any]] = None,
 ) -> BroadcastStatus:
+    """
+    Broadcast a message to the network and process the message on the local node.
+    This utility function enables endpoints to publish messages on the network and wait until they
+    are processed locally.
+
+    :param pending_message: Message to broadcast + process.
+    :param sync: Whether the function should wait until the message is processed before returning.
+    :param request: The web request object, used to extract global state.
+    :param logger: Logger.
+    :param message_dict: The message as a dictionary, if already available. Used for optimization purposes;
+                         if not provided, the function will call pending_message.dict().
+    """
+
     # In sync mode, wait for a message processing event. We need to create the queue
     # before publishing the message on P2P topics in order to guarantee that the event
     # will be picked up.
