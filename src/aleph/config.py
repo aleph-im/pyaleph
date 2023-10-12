@@ -125,6 +125,8 @@ def get_defaults():
             "pub_exchange": "p2p-publish",
             "sub_exchange": "p2p-subscribe",
             "message_exchange": "aleph-messages",
+            "pending_message_exchange": "aleph-pending-messages",
+            "pending_tx_exchange": "aleph-pending-txs",
         },
         "redis": {
             "host": "redis",

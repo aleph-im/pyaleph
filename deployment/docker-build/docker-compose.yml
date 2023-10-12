@@ -6,6 +6,7 @@ version: '2.2'
 volumes:
   pyaleph-ipfs:
   pyaleph-postgres:
+  pyaleph-rabbitmq:
 
 services:
 
@@ -14,6 +15,8 @@ services:
     image: rabbitmq:3.11.15-management
     networks:
       - pyaleph
+    volumes:
+      - pyaleph-rabbitmq:/var/lib/rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: aleph-p2p
       RABBITMQ_DEFAULT_PASS: change-me!
