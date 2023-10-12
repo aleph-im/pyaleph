@@ -135,7 +135,7 @@ def upgrade() -> None:
              LATERAL ( SELECT file_volumes_size.file_volumes_size +
                               other_volumes_size.other_volumes_size::numeric AS required_disk_space) used_disk,
              LATERAL ( SELECT ceil(GREATEST(ceil((vms.resources_vcpus / 1)::double precision),
-                                            (vms.resources_memory / 2000)::double precision)) AS compute_units_required) cu,
+                                            (vms.resources_memory / 2048)::double precision)) AS compute_units_required) cu,
              LATERAL ( SELECT CASE
                                   WHEN COALESCE(vms.persistent, true)
                                       THEN '21474836480'::bigint::double precision * cu.compute_units_required

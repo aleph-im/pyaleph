@@ -78,7 +78,7 @@ def get_additional_storage_price(
 
 def _get_nb_compute_units(content: ExecutableContent) -> int:
     cpu = content.resources.vcpus
-    memory = math.ceil(content.resources.memory / 2000)
+    memory = math.ceil(content.resources.memory / 2048)
     nb_compute_units = cpu if cpu >= memory else memory
     return nb_compute_units
 
