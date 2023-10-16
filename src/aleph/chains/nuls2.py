@@ -26,15 +26,15 @@ from aleph.db.accessors.chains import get_last_height, upsert_chain_sync_status
 from aleph.db.accessors.messages import get_unconfirmed_messages
 from aleph.db.accessors.pending_messages import count_pending_messages
 from aleph.db.accessors.pending_txs import count_pending_txs
+from aleph.schemas.chains.tx_context import TxContext
 from aleph.schemas.pending_messages import BasePendingMessage
+from aleph.schemas.txs import PendingTx
 from aleph.toolkit.timestamp import utc_now
+from aleph.types.chain_sync import ChainEventType
 from aleph.types.db_session import DbSessionFactory
 from aleph.utils import run_in_executor
 from .chaindata import ChainDataService
 from .connector import Verifier, ChainWriter
-from aleph.schemas.chains.tx_context import TxContext
-from ..db.models import ChainTxDb
-from ..types.chain_sync import ChainEventType
 
 LOGGER = logging.getLogger("chains.nuls2")
 CHAIN_NAME = "NULS2"
@@ -144,12 +144,12 @@ class Nuls2Connector(Verifier, ChainWriter):
                 async for jdata, context in self._request_transactions(
                     config, http_session, last_stored_height + 1
                 ):
-                    tx = ChainTxDb.from_sync_tx_context(
+                    pending_tx = PendingTx.from_sync_tx_context(
                         tx_context=context, tx_data=jdata
                     )
                     with self.session_factory() as db_session:
                         await self.chain_data_service.incoming_chaindata(
-                            session=db_session, tx=tx
+                            pending_tx=pending_tx
                         )
                         db_session.commit()
 

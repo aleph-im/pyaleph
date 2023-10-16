@@ -24,14 +24,14 @@ from aleph.db.accessors.pending_messages import count_pending_messages
 from aleph.db.accessors.pending_txs import count_pending_txs
 from aleph.schemas.chains.tx_context import TxContext
 from aleph.schemas.pending_messages import BasePendingMessage
+from aleph.schemas.txs import PendingTx
 from aleph.toolkit.timestamp import utc_now
+from aleph.types.chain_sync import ChainEventType
 from aleph.types.db_session import DbSessionFactory
 from aleph.utils import run_in_executor
 from .chaindata import ChainDataService
 from .connector import ChainWriter, Verifier
 from .indexer_reader import AlephIndexerReader
-from ..db.models import ChainTxDb
-from ..types.chain_sync import ChainEventType
 
 LOGGER = logging.getLogger("chains.ethereum")
 CHAIN_NAME = "ETH"
@@ -252,10 +252,10 @@ class EthereumConnector(Verifier, ChainWriter):
             async for jdata, context in self._request_transactions(
                 config, web3, contract, abi, last_stored_height
             ):
-                tx = ChainTxDb.from_sync_tx_context(tx_context=context, tx_data=jdata)
+                pending_tx = PendingTx.from_sync_tx_context(tx_context=context, tx_data=jdata)
                 with self.session_factory() as session:
                     await self.chain_data_service.incoming_chaindata(
-                        session=session, tx=tx
+                        pending_tx=pending_tx
                     )
                     session.commit()
 

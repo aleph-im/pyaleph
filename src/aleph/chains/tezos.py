@@ -15,13 +15,14 @@ from aleph.chains.chaindata import ChainDataService
 from aleph.chains.common import get_verification_buffer
 from aleph.chains.connector import Verifier, ChainReader
 from aleph.db.accessors.chains import get_last_height, upsert_chain_sync_status
-from aleph.db.models import PendingMessageDb, ChainTxDb
+from aleph.db.models import PendingMessageDb
 from aleph.schemas.chains.tezos_indexer_response import (
     IndexerResponse,
     IndexerMessageEvent,
     SyncStatus,
 )
 from aleph.schemas.pending_messages import BasePendingMessage
+from aleph.schemas.txs import PendingTx
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainSyncProtocol, ChainEventType
 from aleph.types.db_session import DbSessionFactory, DbSession
@@ -151,7 +152,6 @@ async def fetch_messages(
     limit: int,
     skip: int,
 ) -> IndexerResponse[IndexerMessageEvent]:
-
     query = make_graphql_query(
         limit=limit,
         skip=skip,
@@ -168,9 +168,8 @@ async def fetch_messages(
 
 def indexer_event_to_chain_tx(
     indexer_event: IndexerMessageEvent,
-) -> ChainTxDb:
-
-    chain_tx = ChainTxDb(
+) -> PendingTx:
+    return PendingTx(
         hash=indexer_event.operation_hash,
         chain=Chain.TEZOS,
         height=indexer_event.block_level,
@@ -181,13 +180,10 @@ def indexer_event_to_chain_tx(
         content=indexer_event.payload.dict(),
     )
 
-    return chain_tx
-
 
 async def extract_aleph_messages_from_indexer_response(
     indexer_response: IndexerResponse[IndexerMessageEvent],
-) -> List[ChainTxDb]:
-
+) -> List[PendingTx]:
     events = indexer_response.data.events
     return [indexer_event_to_chain_tx(event) for event in events]
 
@@ -308,9 +304,7 @@ class TezosConnector(Verifier, ChainReader):
                     )
                     LOGGER.info("%d new txs", len(txs))
                     for tx in txs:
-                        await self.chain_data_service.incoming_chaindata(
-                            session=session, tx=tx
-                        )
+                        await self.chain_data_service.incoming_chaindata(pending_tx=tx)
 
                     last_stored_height += limit
                     if (

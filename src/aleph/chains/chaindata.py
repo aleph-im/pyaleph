@@ -2,6 +2,7 @@ import asyncio
 import json
 from typing import Dict, Optional, List, Any, Mapping, Set, cast, Type, Union
 
+import aio_pika.abc
 from aleph_message.models import StoreContent, ItemType, Chain, MessageType
 from pydantic import ValidationError
 
@@ -20,6 +21,7 @@ from aleph.schemas.chains.indexer_response import MessageEvent, GenericMessageEv
 from aleph.schemas.chains.tezos_indexer_response import (
     MessageEventPayload as TezosMessageEventPayload,
 )
+from aleph.schemas.txs import PendingTx
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainSyncProtocol
@@ -42,10 +44,14 @@ INCOMING_MESSAGE_AUTHORIZED_FIELDS = [
 
 class ChainDataService:
     def __init__(
-        self, session_factory: DbSessionFactory, storage_service: StorageService
+        self,
+        session_factory: DbSessionFactory,
+        storage_service: StorageService,
+        pending_tx_exchange: aio_pika.abc.AbstractExchange,
     ):
         self.session_factory = session_factory
         self.storage_service = storage_service
+        self.pending_tx_exchange = pending_tx_exchange
 
     # TODO: split this function in severa
     async def get_chaindata(
@@ -234,11 +240,14 @@ class ChainDataService:
                 LOGGER.info("%s", error_msg)
                 raise InvalidContent(error_msg)
 
-    @staticmethod
-    async def incoming_chaindata(session: DbSession, tx: ChainTxDb):
+    async def incoming_chaindata(self, pending_tx: PendingTx):
         """Incoming data from a chain.
         Content can be inline of "offchain" through an ipfs hash.
         For now, we only add it to the database, it will be processed later.
         """
-        upsert_chain_tx(session=session, tx=tx)
-        upsert_pending_tx(session=session, tx_hash=tx.hash)
+
+        message = aio_pika.message.Message(body=pending_tx.json().encode("utf-8"))
+        await self.pending_tx_exchange.publish(
+            message,
+            routing_key=f"{pending_tx.chain.value}.{pending_tx.publisher}.{pending_tx.hash}",
+        )

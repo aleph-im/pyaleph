@@ -29,11 +29,14 @@ from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.db_session import DbSessionFactory
 from .job_utils import prepare_loop
+from ..db.accessors.chains import upsert_chain_tx
+from ..schemas.txs import PendingTx
 
 LOGGER = logging.getLogger(__name__)
 
 
 T = TypeVar("T", bound=Base)
+
 
 class PendingTxProcessor:
     def __init__(
@@ -41,7 +44,7 @@ class PendingTxProcessor:
         session_factory: DbSessionFactory,
         storage_service: StorageService,
         message_handler: MessageHandler,
-        pending_tx_queue: PendingQueueConsumer[ChainTxDb],
+        pending_tx_queue: aio_pika.abc.AbstractQueue,
     ):
         self.session_factory = session_factory
         self.storage_service = storage_service
@@ -52,17 +55,22 @@ class PendingTxProcessor:
         self.pending_tx_queue = pending_tx_queue
 
     async def handle_pending_tx(
-        self, tx: ChainTxDb, seen_ids: Optional[Set[str]] = None
+        self, tx: PendingTx, seen_ids: Optional[Set[str]] = None
     ) -> None:
         LOGGER.info("%s Handling TX in block %s", tx.chain, tx.height)
+
+        tx_db = ChainTxDb.from_pending_tx(tx)
 
         # If the chain data file is unavailable, we leave it to the pending tx
         # processor to log the content unavailable exception and retry later.
         messages = await self.chain_data_service.get_tx_messages(
-            tx=tx, seen_ids=seen_ids
+            tx=tx_db, seen_ids=seen_ids
         )
 
         if messages:
+            with self.session_factory() as session:
+                upsert_chain_tx(session=session, tx=tx_db)
+
             for i, message_dict in enumerate(messages):
                 await self.message_handler.add_pending_message(
                     message_dict=message_dict,
@@ -82,42 +90,31 @@ class PendingTxProcessor:
                 )
                 session.commit()
 
-    async def process_pending_txs(self, max_concurrent_tasks: int):
+    async def process_pending_txs(self):
         """
         Process chain transactions in the Pending TX queue.
         """
 
-        tasks: Set[asyncio.Task] = set()
-
         seen_offchain_hashes = set()
         seen_ids: Set[str] = set()
         LOGGER.info("handling TXs")
-        async for pending_tx in self.pending_tx_queue:
-            # TODO: remove this feature? It doesn't seem necessary.
-            if pending_tx.protocol == ChainSyncProtocol.OFF_CHAIN_SYNC:
-                if pending_tx.content in seen_offchain_hashes:
-                    continue
+        async with self.pending_tx_queue.iterator() as queue_iter:
+            async for pending_tx_message in queue_iter:
+                async with pending_tx_message.process():
+                    pending_tx = PendingTx.parse_raw(pending_tx_message.body)
+                    # TODO: remove this feature? It doesn't seem necessary.
+                    # Check if the digest file has already been processed.
+                    if pending_tx.protocol == ChainSyncProtocol.OFF_CHAIN_SYNC:
+                        if pending_tx.content in seen_offchain_hashes:
+                            continue
 
-            if len(tasks) == max_concurrent_tasks:
-                done, tasks = await asyncio.wait(
-                    tasks, return_when=asyncio.FIRST_COMPLETED
-                )
+                    await self.handle_pending_tx(tx=pending_tx, seen_ids=seen_ids)
 
-            if pending_tx.protocol == ChainSyncProtocol.OFF_CHAIN_SYNC:
-                seen_offchain_hashes.add(pending_tx.content)
-
-            tx_task = asyncio.create_task(
-                self.handle_pending_tx(tx=pending_tx, seen_ids=seen_ids)
-            )
-            tasks.add(tx_task)
-
-        # Wait for the last tasks
-        if tasks:
-            done, _ = await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)
+                    if pending_tx.protocol == ChainSyncProtocol.OFF_CHAIN_SYNC:
+                        seen_offchain_hashes.add(pending_tx.content)
 
 
 async def handle_txs_task(config: Config):
-    max_concurrent_tasks = config.aleph.jobs.pending_txs.max_concurrency.value
     await asyncio.sleep(4)
 
     engine = make_engine(config=config, application_name="aleph-txs")
@@ -156,28 +153,21 @@ async def handle_txs_task(config: Config):
         auto_delete=False,
     )
     mq_pending_tx_queue = await mq_channel.declare_queue(
-        auto_delete=True, exclusive=True
+        auto_delete=True, exclusive=True, durable=True
     )
     await mq_pending_tx_queue.bind(mq_pending_tx_exchange)
 
     with session_factory() as session:
-        pending_tx_queue = PendingQueueConsumer(
-            mq_queue=mq_pending_tx_queue,
-            session=session,
-            db_model=ChainTxDb,
-            id_key="hash",
-        )
-
         pending_tx_processor = PendingTxProcessor(
             session_factory=session_factory,
             storage_service=storage_service,
             message_handler=message_handler,
-            pending_tx_queue=pending_tx_queue,
+            pending_tx_queue=mq_pending_tx_queue,
         )
 
         while True:
             try:
-                await pending_tx_processor.process_pending_txs(max_concurrent_tasks)
+                await pending_tx_processor.process_pending_txs()
                 await asyncio.sleep(5)
             except Exception:
                 LOGGER.exception("Error in pending txs job")
