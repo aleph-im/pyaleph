@@ -9,6 +9,15 @@ from aleph.db.models import PendingTxDb, ChainTxDb
 from aleph.types.db_session import DbSession
 
 
+def get_pending_tx(session: DbSession, tx_hash: str) -> Optional[PendingTxDb]:
+    select_stmt = (
+        select(PendingTxDb)
+        .where(PendingTxDb.tx_hash == tx_hash)
+        .options(selectinload(PendingTxDb.tx))
+    )
+    return (session.execute(select_stmt)).scalar_one_or_none()
+
+
 def get_pending_txs(session: DbSession, limit: int = 200) -> Iterable[PendingTxDb]:
     select_stmt = (
         select(PendingTxDb)

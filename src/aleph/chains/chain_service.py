@@ -2,6 +2,7 @@ import asyncio
 import logging
 from typing import Dict
 
+import aio_pika.abc
 from aleph_message.models import Chain
 from configmanager import Config
 
@@ -22,9 +23,10 @@ class ChainService:
     writers: Dict[Chain, ChainWriter]
 
     def __init__(
-        self, session_factory: DbSessionFactory, storage_service: StorageService
+        self,
+        session_factory: DbSessionFactory,
+        chain_data_service: ChainDataService,
     ):
-
         self._session_factory = session_factory
 
         self.connectors = {}
@@ -32,9 +34,7 @@ class ChainService:
         self.readers = {}
         self.writers = {}
 
-        self._chain_data_service = ChainDataService(
-            session_factory=session_factory, storage_service=storage_service
-        )
+        self._chain_data_service = chain_data_service
 
         self._register_chains()
 

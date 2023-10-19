@@ -240,14 +240,19 @@ class ChainDataService:
                 LOGGER.info("%s", error_msg)
                 raise InvalidContent(error_msg)
 
-    async def incoming_chaindata(self, pending_tx: PendingTx):
+    async def incoming_chaindata(self, session: DbSession, tx: ChainTxDb):
         """Incoming data from a chain.
         Content can be inline of "offchain" through an ipfs hash.
         For now, we only add it to the database, it will be processed later.
         """
+        upsert_chain_tx(session=session, tx=tx)
+        upsert_pending_tx(session=session, tx_hash=tx.hash)
 
-        message = aio_pika.message.Message(body=pending_tx.json().encode("utf-8"))
+        # We must commit the session here otherwise the transaction will not be visible
+        # from
+        session.commit()
+
+        message = aio_pika.Message(body=tx.hash.encode("utf-8"))
         await self.pending_tx_exchange.publish(
-            message,
-            routing_key=f"{pending_tx.chain.value}.{pending_tx.publisher}.{pending_tx.hash}",
+            message, routing_key=f"{tx.chain.value}.{tx.publisher}.{tx.hash}"
         )

@@ -7,6 +7,7 @@ from configmanager import Config
 
 import aleph.config
 from aleph.chains.chain_service import ChainService
+from aleph.chains.chaindata import ChainDataService
 from aleph.db.connection import make_engine, make_session_factory
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
@@ -53,8 +54,14 @@ async def configure_aiohttp_app(
             ipfs_service=ipfs_service,
             node_cache=node_cache,
         )
+        chain_data_service = ChainDataService(
+            session_factory=session_factory,
+            storage_service=storage_service,
+            pending_tx_exchange=pending_tx_exchange,
+        )
         chain_service = ChainService(
-            storage_service=storage_service, session_factory=session_factory
+            session_factory=session_factory,
+            chain_data_service=chain_data_service,
         )
 
         app = create_aiohttp_app()
@@ -96,4 +103,5 @@ async def create_app() -> web.Application:
 
 if __name__ == "__main__":
     import asyncio
+
     web.run_app(create_app(), host="127.0.0.1", port=8000)

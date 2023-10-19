@@ -30,6 +30,7 @@ from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.db_session import DbSessionFactory
 from .job_utils import prepare_loop
 from ..db.accessors.chains import upsert_chain_tx
+from ..db.accessors.pending_txs import get_pending_tx
 from ..schemas.txs import PendingTx
 
 LOGGER = logging.getLogger(__name__)
@@ -43,48 +44,54 @@ class PendingTxProcessor:
         self,
         session_factory: DbSessionFactory,
         storage_service: StorageService,
+        chain_data_service: ChainDataService,
         message_handler: MessageHandler,
         pending_tx_queue: aio_pika.abc.AbstractQueue,
     ):
         self.session_factory = session_factory
         self.storage_service = storage_service
         self.message_handler = message_handler
-        self.chain_data_service = ChainDataService(
-            session_factory=session_factory, storage_service=storage_service
-        )
+        self.chain_data_service = chain_data_service
         self.pending_tx_queue = pending_tx_queue
 
     async def handle_pending_tx(
-        self, tx: PendingTx, seen_ids: Optional[Set[str]] = None
+        self, pending_tx_hash: str, seen_ids: Optional[Set[str]] = None
     ) -> None:
-        LOGGER.info("%s Handling TX in block %s", tx.chain, tx.height)
+        with self.session_factory() as session:
+            pending_tx = get_pending_tx(session=session, tx_hash=pending_tx_hash)
 
-        tx_db = ChainTxDb.from_pending_tx(tx)
-
-        # If the chain data file is unavailable, we leave it to the pending tx
-        # processor to log the content unavailable exception and retry later.
-        messages = await self.chain_data_service.get_tx_messages(
-            tx=tx_db, seen_ids=seen_ids
-        )
-
-        if messages:
-            with self.session_factory() as session:
-                upsert_chain_tx(session=session, tx=tx_db)
-
-            for i, message_dict in enumerate(messages):
-                await self.message_handler.add_pending_message(
-                    message_dict=message_dict,
-                    reception_time=utc_now(),
-                    tx_hash=tx.hash,
-                    check_message=tx.protocol != ChainSyncProtocol.SMART_CONTRACT,
+            if pending_tx is None:
+                LOGGER.warning(
+                    "Pending TX %s has already been processed", pending_tx_hash
                 )
+                return
 
-        else:
-            LOGGER.debug("TX contains no message")
+            LOGGER.info(
+                "%s Handling TX in block %s", pending_tx.tx.chain, pending_tx.tx.height
+            )
 
-        if messages is not None:
-            # bogus or handled, we remove it.
-            with self.session_factory() as session:
+            tx = pending_tx.tx
+
+            # If the chain data file is unavailable, we leave it to the pending tx
+            # processor to log the content unavailable exception and retry later.
+            messages = await self.chain_data_service.get_tx_messages(
+                tx=pending_tx.tx, seen_ids=seen_ids
+            )
+
+            if messages:
+                for i, message_dict in enumerate(messages):
+                    await self.message_handler.add_pending_message(
+                        message_dict=message_dict,
+                        reception_time=utc_now(),
+                        tx_hash=tx.hash,
+                        check_message=tx.protocol != ChainSyncProtocol.SMART_CONTRACT,
+                    )
+
+            else:
+                LOGGER.debug("TX contains no message")
+
+            if messages is not None:
+                # bogus or handled, we remove it.
                 session.execute(
                     delete(PendingTxDb).where(PendingTxDb.tx_hash == tx.hash),
                 )
@@ -95,23 +102,15 @@ class PendingTxProcessor:
         Process chain transactions in the Pending TX queue.
         """
 
-        seen_offchain_hashes = set()
         seen_ids: Set[str] = set()
         LOGGER.info("handling TXs")
         async with self.pending_tx_queue.iterator() as queue_iter:
             async for pending_tx_message in queue_iter:
                 async with pending_tx_message.process():
-                    pending_tx = PendingTx.parse_raw(pending_tx_message.body)
-                    # TODO: remove this feature? It doesn't seem necessary.
-                    # Check if the digest file has already been processed.
-                    if pending_tx.protocol == ChainSyncProtocol.OFF_CHAIN_SYNC:
-                        if pending_tx.content in seen_offchain_hashes:
-                            continue
-
-                    await self.handle_pending_tx(tx=pending_tx, seen_ids=seen_ids)
-
-                    if pending_tx.protocol == ChainSyncProtocol.OFF_CHAIN_SYNC:
-                        seen_offchain_hashes.add(pending_tx.content)
+                    pending_tx_hash = pending_tx_message.body.decode("utf-8")
+                    await self.handle_pending_tx(
+                        pending_tx_hash=pending_tx_hash, seen_ids=seen_ids
+                    )
 
 
 async def handle_txs_task(config: Config):
@@ -157,22 +156,28 @@ async def handle_txs_task(config: Config):
     )
     await mq_pending_tx_queue.bind(mq_pending_tx_exchange)
 
-    with session_factory() as session:
-        pending_tx_processor = PendingTxProcessor(
-            session_factory=session_factory,
-            storage_service=storage_service,
-            message_handler=message_handler,
-            pending_tx_queue=mq_pending_tx_queue,
-        )
+    chain_data_service = ChainDataService(
+        session_factory=session_factory,
+        storage_service=storage_service,
+        pending_tx_exchange=mq_pending_tx_exchange,
+    )
 
-        while True:
-            try:
-                await pending_tx_processor.process_pending_txs()
-                await asyncio.sleep(5)
-            except Exception:
-                LOGGER.exception("Error in pending txs job")
+    pending_tx_processor = PendingTxProcessor(
+        session_factory=session_factory,
+        storage_service=storage_service,
+        message_handler=message_handler,
+        chain_data_service=chain_data_service,
+        pending_tx_queue=mq_pending_tx_queue,
+    )
 
-            await asyncio.sleep(0.01)
+    while True:
+        try:
+            await pending_tx_processor.process_pending_txs()
+            await asyncio.sleep(5)
+        except Exception:
+            LOGGER.exception("Error in pending txs job")
+
+        await asyncio.sleep(0.01)
 
 
 def pending_txs_subprocess(config_values: Dict):

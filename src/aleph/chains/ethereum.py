@@ -32,6 +32,7 @@ from aleph.utils import run_in_executor
 from .chaindata import ChainDataService
 from .connector import ChainWriter, Verifier
 from .indexer_reader import AlephIndexerReader
+from ..db.models import ChainTxDb
 
 LOGGER = logging.getLogger("chains.ethereum")
 CHAIN_NAME = "ETH"
@@ -210,7 +211,9 @@ class EthereumConnector(Verifier, ChainWriter):
 
                 except json.JSONDecodeError:
                     # if it's not valid json, just ignore it...
-                    LOGGER.info("Incoming logic data is not JSON, ignoring. %r" % message)
+                    LOGGER.info(
+                        "Incoming logic data is not JSON, ignoring. %r" % message
+                    )
 
                 except Exception:
                     LOGGER.exception("Can't decode incoming logic data %r" % message)
@@ -252,10 +255,10 @@ class EthereumConnector(Verifier, ChainWriter):
             async for jdata, context in self._request_transactions(
                 config, web3, contract, abi, last_stored_height
             ):
-                pending_tx = PendingTx.from_sync_tx_context(tx_context=context, tx_data=jdata)
+                tx = ChainTxDb.from_sync_tx_context(tx_context=context, tx_data=jdata)
                 with self.session_factory() as session:
                     await self.chain_data_service.incoming_chaindata(
-                        pending_tx=pending_tx
+                        session=session, tx=tx
                     )
                     session.commit()
 
@@ -313,7 +316,6 @@ class EthereumConnector(Verifier, ChainWriter):
         gas_price = web3.eth.generate_gas_price()
         while True:
             with self.session_factory() as session:
-
                 # Wait for sync operations to complete
                 if (count_pending_txs(session=session, chain=Chain.ETH)) or (
                     count_pending_messages(session=session, chain=Chain.ETH)
