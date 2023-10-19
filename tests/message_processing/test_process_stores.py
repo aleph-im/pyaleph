@@ -6,6 +6,7 @@ import pytest
 from aleph_message.models import Chain, MessageType, ItemType
 from configmanager import Config
 
+from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.files import get_message_file_pin
 from aleph.db.accessors.messages import get_message_by_item_hash
 from aleph.db.models import PendingMessageDb, MessageStatusDb
@@ -74,10 +75,11 @@ async def test_process_store(
         ipfs_service=mocker.AsyncMock(),
         node_cache=mocker.AsyncMock(),
     )
-    chain_service = mocker.AsyncMock()
+    # Disable signature verification
+    signature_verifier = mocker.AsyncMock()
     message_handler = MessageHandler(
         session_factory=session_factory,
-        chain_service=chain_service,
+        signature_verifier=signature_verifier,
         storage_service=storage_service,
         config=mock_config,
     )
