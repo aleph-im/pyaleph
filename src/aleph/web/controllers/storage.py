@@ -11,7 +11,7 @@ from aleph_message.models import ItemType, StoreContent
 from mypy.dmypy_server import MiB
 from pydantic import ValidationError
 
-from aleph.chains.chain_service import ChainService
+from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.balances import get_total_balance
 from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import count_file_pins, get_file
@@ -32,7 +32,7 @@ from aleph.web.controllers.app_state_getters import (
     get_storage_service_from_request,
     get_config_from_request,
     get_mq_channel_from_request,
-    get_chain_service_from_request,
+    get_signature_verifier_from_request,
 )
 from aleph.web.controllers.utils import (
     mq_make_aleph_message_topic_queue,
@@ -84,10 +84,10 @@ async def add_storage_json_controller(request: web.Request):
 
 
 async def _verify_message_signature(
-    pending_message: BasePendingMessage, chain_service: ChainService
+    pending_message: BasePendingMessage, signature_verifier: SignatureVerifier
 ) -> None:
     try:
-        await chain_service.verify_signature(pending_message)
+        await signature_verifier.verify_signature(pending_message)
     except InvalidSignature:
         raise web.HTTPForbidden()
 
@@ -151,7 +151,7 @@ class RawUploadedFile:
 
 async def _check_and_add_file(
     session: DbSession,
-    chain_service: ChainService,
+    signature_verifier: SignatureVerifier,
     storage_service: StorageService,
     message: Optional[PendingStoreMessage],
     file: UploadedFile,
@@ -159,7 +159,7 @@ async def _check_and_add_file(
     # Perform authentication and balance checks
     if message:
         await _verify_message_signature(
-            pending_message=message, chain_service=chain_service
+            pending_message=message, signature_verifier=signature_verifier
         )
         try:
             message_content = StoreContent.parse_raw(message.item_content)
@@ -217,7 +217,7 @@ async def _make_mq_queue(
 async def storage_add_file(request: web.Request):
     storage_service = get_storage_service_from_request(request)
     session_factory = get_session_factory_from_request(request)
-    chain_service: ChainService = get_chain_service_from_request(request)
+    signature_verifier = get_signature_verifier_from_request(request)
 
     post = await request.post()
     try:
@@ -263,7 +263,7 @@ async def storage_add_file(request: web.Request):
     with session_factory() as session:
         file_hash = await _check_and_add_file(
             session=session,
-            chain_service=chain_service,
+            signature_verifier=signature_verifier,
             storage_service=storage_service,
             message=message,
             file=uploaded_file,

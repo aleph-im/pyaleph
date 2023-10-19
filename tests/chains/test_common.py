@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 from aleph_message.models import MessageType, ItemType
 
-from aleph.chains.chain_service import ChainService
+from aleph.chains.connector import ChainConnector
 from aleph.chains.common import get_verification_buffer
 from aleph.db.models import PendingMessageDb
 from aleph.schemas.pending_messages import BasePendingMessage, parse_message
@@ -41,7 +41,7 @@ async def test_incoming_inline(mocker):
 
     MagicMock.__await__ = lambda x: async_magic().__await__()
 
-    message_processor =MessageHandler(chain_service=ChainService())
+    message_processor =MessageHandler(chain_service=ChainConnector())
 
     mocker.patch("aleph.model.db")
 

@@ -2,7 +2,7 @@ from aleph_message.models import Chain
 from configmanager import Config
 
 from aleph.chains.chaindata import ChainDataService
-from aleph.chains.connector import ChainReader
+from aleph.chains.abc import ChainReader
 from aleph.chains.indexer_reader import AlephIndexerReader
 from aleph.types.chain_sync import ChainEventType
 from aleph.types.db_session import DbSessionFactory

@@ -6,7 +6,7 @@ from aiohttp import web
 from configmanager import Config
 
 import aleph.config
-from aleph.chains.chain_service import ChainService
+from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.connection import make_engine, make_session_factory
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
@@ -25,7 +25,7 @@ from aleph.web.controllers.app_state_getters import (
     APP_STATE_STORAGE_SERVICE,
     APP_STATE_MQ_CHANNEL,
     APP_STATE_MQ_WS_CHANNEL,
-    APP_STATE_CHAIN_SERVICE,
+    APP_STATE_SIGNATURE_VERIFIER,
 )
 
 
@@ -53,9 +53,7 @@ async def configure_aiohttp_app(
             ipfs_service=ipfs_service,
             node_cache=node_cache,
         )
-        chain_service = ChainService(
-            storage_service=storage_service, session_factory=session_factory
-        )
+        signature_verifier = SignatureVerifier()
 
         app = create_aiohttp_app()
 
@@ -74,7 +72,7 @@ async def configure_aiohttp_app(
         app[APP_STATE_NODE_CACHE] = node_cache
         app[APP_STATE_STORAGE_SERVICE] = storage_service
         app[APP_STATE_SESSION_FACTORY] = session_factory
-        app[APP_STATE_CHAIN_SERVICE] = chain_service
+        app[APP_STATE_SIGNATURE_VERIFIER] = signature_verifier
 
     return app
 
@@ -95,5 +93,4 @@ async def create_app() -> web.Application:
 
 
 if __name__ == "__main__":
-    import asyncio
     web.run_app(create_app(), host="127.0.0.1", port=8000)

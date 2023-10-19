@@ -14,7 +14,7 @@ from configmanager import Config
 from setproctitle import setproctitle
 
 import aleph.toolkit.json as aleph_json
-from aleph.chains.chain_service import ChainService
+from ..chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.pending_messages import get_next_pending_message
 from aleph.db.connection import make_engine, make_session_factory
 from aleph.handlers.message_handler import MessageHandler
@@ -152,12 +152,10 @@ async def fetch_and_process_messages_task(config: Config):
         ipfs_service=ipfs_service,
         node_cache=node_cache,
     )
-    chain_service = ChainService(
-        session_factory=session_factory, storage_service=storage_service
-    )
+    signature_verifier = SignatureVerifier()
     message_handler = MessageHandler(
         session_factory=session_factory,
-        chain_service=chain_service,
+        signature_verifier=signature_verifier,
         storage_service=storage_service,
         config=config,
     )

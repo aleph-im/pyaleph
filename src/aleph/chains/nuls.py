@@ -11,7 +11,7 @@ from .nuls_aleph_sdk import (
 from aleph.chains.common import get_verification_buffer
 from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.utils import run_in_executor
-from .connector import Verifier
+from .abc import Verifier
 
 LOGGER = logging.getLogger("chains.nuls")
 CHAIN_NAME = "NULS"

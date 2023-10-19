@@ -5,7 +5,7 @@ from urllib.parse import unquote
 from aleph_p2p_client import AlephP2PServiceClient
 
 import aleph.toolkit.json as aleph_json
-from aleph.chains.chain_service import ChainService
+from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.handlers.message_handler import MessageHandler
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
@@ -52,12 +52,10 @@ def listener_tasks(
         ipfs_service=ipfs_service,
         node_cache=node_cache,
     )
-    chain_service = ChainService(
-        session_factory=session_factory, storage_service=storage_service
-    )
+    signature_verifier = SignatureVerifier()
     message_handler = MessageHandler(
         session_factory=session_factory,
-        chain_service=chain_service,
+        signature_verifier=signature_verifier,
         storage_service=storage_service,
         config=config,
     )
