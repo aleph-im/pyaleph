@@ -23,7 +23,7 @@ import sentry_sdk
 from configmanager import Config
 
 import aleph.config
-from aleph.chains.chain_service import ChainService
+from aleph.chains.connector import ChainConnector
 from aleph.cli.args import parse_args
 from aleph.db.connection import make_engine, make_session_factory, make_db_url
 from aleph.exceptions import InvalidConfigException, KeyNotFoundException
@@ -136,7 +136,7 @@ async def main(args: List[str]) -> None:
         ipfs_service=ipfs_service,
         node_cache=node_cache,
     )
-    chain_service = ChainService(
+    chain_connector = ChainConnector(
         session_factory=session_factory, storage_service=storage_service
     )
 
@@ -171,7 +171,7 @@ async def main(args: List[str]) -> None:
         node_cache=node_cache,
         p2p_client=p2p_client,
     )
-    tasks.append(chain_service.chain_event_loop(config))
+    tasks.append(chain_connector.chain_event_loop(config))
     LOGGER.debug("Initialized listeners")
 
     LOGGER.debug("Initializing cache tasks")

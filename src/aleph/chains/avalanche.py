@@ -8,7 +8,7 @@ from coincurve.keys import PublicKey
 
 from aleph.chains.common import get_verification_buffer
 from aleph.schemas.pending_messages import BasePendingMessage
-from .connector import Verifier
+from .abc import Verifier
 
 LOGGER = logging.getLogger("chains.avalanche")
 CHAIN_NAME = "AVAX"

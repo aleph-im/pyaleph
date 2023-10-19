@@ -9,7 +9,8 @@ from configmanager import Config
 from pydantic import ValidationError
 from sqlalchemy import insert
 
-from aleph.chains.chain_service import ChainService
+from aleph.chains.connector import ChainConnector
+from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.files import insert_content_file_pin, upsert_file
 from aleph.db.accessors.messages import (
     get_message_by_item_hash,
@@ -58,12 +59,12 @@ class MessageHandler:
     def __init__(
         self,
         session_factory: DbSessionFactory,
-        chain_service: ChainService,
+        signature_verifier: SignatureVerifier,
         storage_service: StorageService,
         config: Config,
     ):
         self.session_factory = session_factory
-        self.chain_service = chain_service
+        self._signature_verifier = signature_verifier
         self.storage_service = storage_service
 
         vm_handler = VmMessageHandler()
@@ -90,7 +91,7 @@ class MessageHandler:
     async def verify_signature(self, pending_message: PendingMessageDb):
         if pending_message.check_message:
             # TODO: remove type: ignore by deciding the pending message type
-            await self.chain_service.verify_signature(pending_message)  # type: ignore
+            await self._signature_verifier.verify_signature(pending_message)  # type: ignore
 
     async def fetch_pending_message(
         self, pending_message: PendingMessageDb

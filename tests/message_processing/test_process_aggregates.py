@@ -10,6 +10,7 @@ from more_itertools import one
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.aggregates import get_aggregate_by_key, get_aggregate_elements
 from aleph.db.models import PendingMessageDb, MessageDb, AggregateElementDb, AggregateDb
 from aleph.handlers.content.aggregate import AggregateMessageHandler
@@ -35,10 +36,10 @@ async def test_process_aggregate_first_element(
         ipfs_service=mocker.AsyncMock(),
         node_cache=mocker.AsyncMock(),
     )
-    chain_service = mocker.AsyncMock()
+    signature_verifier = SignatureVerifier()
     message_handler = MessageHandler(
         session_factory=session_factory,
-        chain_service=chain_service,
+        signature_verifier=signature_verifier,
         storage_service=storage_service,
         config=mock_config,
     )
