@@ -1,4 +1,4 @@
-from aleph.chains.nuls2 import Nuls2Connector
+from aleph.chains.nuls2 import Nuls2Connector, Nuls2Verifier
 from aleph.schemas.pending_messages import parse_message
 import pytest
 
@@ -24,9 +24,6 @@ async def test_verify_signature_nuls2(mocker):
         "item_content": '{"type":"amend","address":"NULSd6HgeZVDvQ2pKQLakAsStYvGAT6WVFu9K","content":{"body":"test","title":"Mutsi Test","private":false},"time":1574266270.022,"ref":"43eef54be4a92c65ca24d3f2419414224129b7944ecaefed088897787aed70b4"}',
     }
 
-    connector = Nuls2Connector(
-        chain_data_service=mocker.AsyncMock(), session_factory=mocker.Mock()
-    )
-
+    verifier = Nuls2Verifier()
     message = parse_message(message_dict)
-    assert await connector.verify_signature(message)
+    assert await verifier.verify_signature(message)

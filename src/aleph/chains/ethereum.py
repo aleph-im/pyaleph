@@ -28,7 +28,7 @@ from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSessionFactory
 from aleph.utils import run_in_executor
 from .chaindata import ChainDataService
-from .connector import ChainWriter, Verifier
+from .abc import ChainWriter, Verifier, ChainReader
 from .indexer_reader import AlephIndexerReader
 from ..db.models import ChainTxDb
 from ..types.chain_sync import ChainEventType
@@ -67,21 +67,7 @@ def get_logs_query(web3: Web3, contract, start_height, end_height):
     )
 
 
-class EthereumConnector(Verifier, ChainWriter):
-    def __init__(
-        self,
-        session_factory: DbSessionFactory,
-        chain_data_service: ChainDataService,
-    ):
-        self.session_factory = session_factory
-        self.chain_data_service = chain_data_service
-
-        self.indexer_reader = AlephIndexerReader(
-            chain=Chain.ETH,
-            session_factory=session_factory,
-            chain_data_service=chain_data_service,
-        )
-
+class EthereumVerifier(Verifier):
     async def verify_signature(self, message: BasePendingMessage) -> bool:
         """Verifies a signature of a message, return True if verified, false if not"""
 
@@ -113,6 +99,22 @@ class EthereumConnector(Verifier, ChainWriter):
             verified = False
 
         return verified
+
+
+class EthereumConnector(ChainWriter):
+    def __init__(
+        self,
+        session_factory: DbSessionFactory,
+        chain_data_service: ChainDataService,
+    ):
+        self.session_factory = session_factory
+        self.chain_data_service = chain_data_service
+
+        self.indexer_reader = AlephIndexerReader(
+            chain=Chain.ETH,
+            session_factory=session_factory,
+            chain_data_service=chain_data_service,
+        )
 
     async def get_last_height(self, sync_type: ChainEventType) -> int:
         """Returns the last height for which we already have the ethereum data."""

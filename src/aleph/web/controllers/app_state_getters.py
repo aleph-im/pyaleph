@@ -11,7 +11,8 @@ from aiohttp import web
 from aleph_p2p_client import AlephP2PServiceClient
 from configmanager import Config
 
-from aleph.chains.chain_service import ChainService
+from aleph.chains.connector import ChainConnector
+from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.storage import StorageService
@@ -28,7 +29,7 @@ APP_STATE_NODE_CACHE = "node_cache"
 APP_STATE_P2P_CLIENT = "p2p_client"
 APP_STATE_SESSION_FACTORY = "session_factory"
 APP_STATE_STORAGE_SERVICE = "storage_service"
-APP_STATE_CHAIN_SERVICE = "chain_service"
+APP_STATE_SIGNATURE_VERIFIER = "signature_verifier"
 
 T = TypeVar("T")
 
@@ -106,5 +107,5 @@ def get_storage_service_from_request(request: web.Request) -> StorageService:
     return cast(StorageService, request.app[APP_STATE_STORAGE_SERVICE])
 
 
-def get_chain_service_from_request(request: web.Request) -> ChainService:
-    return cast(ChainService, request.app[APP_STATE_CHAIN_SERVICE])
+def get_signature_verifier_from_request(request: web.Request) -> SignatureVerifier:
+    return cast(SignatureVerifier, request.app[APP_STATE_SIGNATURE_VERIFIER])

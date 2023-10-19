@@ -7,7 +7,8 @@ import pytest
 import pytest_asyncio
 from configmanager import Config
 
-from aleph.chains.chain_service import ChainService
+from aleph.chains.connector import ChainConnector
+from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.models import ChainTxDb, PendingMessageDb
 from aleph.handlers.message_handler import MessageHandler
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
@@ -80,12 +81,10 @@ def message_processor(mocker, mock_config: Config, session_factory: DbSessionFac
         ipfs_service=mocker.AsyncMock(),
         node_cache=mocker.AsyncMock(),
     )
-    chain_service = ChainService(
-        session_factory=session_factory, storage_service=storage_service
-    )
+    signature_verifier = SignatureVerifier()
     message_handler = MessageHandler(
         session_factory=session_factory,
-        chain_service=chain_service,
+        signature_verifier=signature_verifier,
         storage_service=storage_service,
         config=mock_config,
     )
@@ -97,4 +96,3 @@ def message_processor(mocker, mock_config: Config, session_factory: DbSessionFac
         mq_conn=mocker.AsyncMock(),
     )
     return message_processor
-

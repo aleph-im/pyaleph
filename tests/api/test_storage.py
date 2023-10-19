@@ -9,13 +9,15 @@ import pytest
 import requests
 from aleph_message.models import ItemHash, Chain
 
-from aleph.chains.chain_service import ChainService
+from aleph.chains.connector import ChainConnector
+from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.files import get_file
 from aleph.db.models import AlephBalanceDb
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.files import FileType
 from aleph.types.message_status import MessageStatus
+from aleph.web.controllers.app_state_getters import APP_STATE_SIGNATURE_VERIFIER, APP_STATE_STORAGE_SERVICE
 from aleph.web.controllers.utils import BroadcastStatus, PublicationStatus
 from in_memory_storage_engine import InMemoryStorageEngine
 
@@ -80,16 +82,13 @@ def api_client(ccn_api_client, mocker):
         }
     )
 
-    ccn_api_client.app["storage_service"] = StorageService(
+    ccn_api_client.app[APP_STATE_STORAGE_SERVICE] = StorageService(
         storage_engine=InMemoryStorageEngine(files={}),
         ipfs_service=ipfs_service,
         node_cache=mocker.AsyncMock(),
     )
 
-    ccn_api_client.app["chain_service"] = ChainService(
-        session_factory=ccn_api_client.app["session_factory"],
-        storage_service=ccn_api_client.app["storage_service"],
-    )
+    ccn_api_client.app[APP_STATE_SIGNATURE_VERIFIER] = SignatureVerifier()
 
     return ccn_api_client
 

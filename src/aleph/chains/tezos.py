@@ -13,7 +13,7 @@ from nacl.exceptions import BadSignatureError
 import aleph.toolkit.json as aleph_json
 from aleph.chains.chaindata import ChainDataService
 from aleph.chains.common import get_verification_buffer
-from aleph.chains.connector import Verifier, ChainReader
+from aleph.chains.abc import Verifier, ChainReader
 from aleph.db.accessors.chains import get_last_height, upsert_chain_sync_status
 from aleph.db.models import PendingMessageDb, ChainTxDb
 from aleph.schemas.chains.tezos_indexer_response import (
@@ -151,7 +151,6 @@ async def fetch_messages(
     limit: int,
     skip: int,
 ) -> IndexerResponse[IndexerMessageEvent]:
-
     query = make_graphql_query(
         limit=limit,
         skip=skip,
@@ -169,7 +168,6 @@ async def fetch_messages(
 def indexer_event_to_chain_tx(
     indexer_event: IndexerMessageEvent,
 ) -> ChainTxDb:
-
     chain_tx = ChainTxDb(
         hash=indexer_event.operation_hash,
         chain=Chain.TEZOS,
@@ -187,18 +185,11 @@ def indexer_event_to_chain_tx(
 async def extract_aleph_messages_from_indexer_response(
     indexer_response: IndexerResponse[IndexerMessageEvent],
 ) -> List[ChainTxDb]:
-
     events = indexer_response.data.events
     return [indexer_event_to_chain_tx(event) for event in events]
 
 
-class TezosConnector(Verifier, ChainReader):
-    def __init__(
-        self, session_factory: DbSessionFactory, chain_data_service: ChainDataService
-    ):
-        self.session_factory = session_factory
-        self.chain_data_service = chain_data_service
-
+class TezosVerifier(Verifier):
     async def verify_signature(self, message: BasePendingMessage) -> bool:
         """
         Verifies the cryptographic signature of a message signed with a Tezos key.
@@ -253,6 +244,14 @@ class TezosConnector(Verifier, ChainReader):
             return False
 
         return True
+
+
+class TezosConnector(ChainReader):
+    def __init__(
+        self, session_factory: DbSessionFactory, chain_data_service: ChainDataService
+    ):
+        self.session_factory = session_factory
+        self.chain_data_service = chain_data_service
 
     async def get_last_height(self, sync_type: ChainEventType) -> int:
         """Returns the last height for which we already have the ethereum data."""

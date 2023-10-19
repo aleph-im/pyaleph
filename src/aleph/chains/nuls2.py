@@ -31,7 +31,7 @@ from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSessionFactory
 from aleph.utils import run_in_executor
 from .chaindata import ChainDataService
-from .connector import Verifier, ChainWriter
+from .abc import Verifier, ChainWriter
 from aleph.schemas.chains.tx_context import TxContext
 from ..db.models import ChainTxDb
 from ..types.chain_sync import ChainEventType
@@ -40,13 +40,7 @@ LOGGER = logging.getLogger("chains.nuls2")
 CHAIN_NAME = "NULS2"
 
 
-class Nuls2Connector(Verifier, ChainWriter):
-    def __init__(
-        self, session_factory: DbSessionFactory, chain_data_service: ChainDataService
-    ):
-        self.session_factory = session_factory
-        self.chain_data_service = chain_data_service
-
+class Nuls2Verifier(Verifier):
     async def verify_signature(self, message: BasePendingMessage) -> bool:
         """Verifies a signature of a message, return True if verified, false if not"""
 
@@ -81,10 +75,20 @@ class Nuls2Connector(Verifier, ChainWriter):
         else:
             return True
 
+
+class Nuls2Connector(ChainWriter):
+    def __init__(
+        self, session_factory: DbSessionFactory, chain_data_service: ChainDataService
+    ):
+        self.session_factory = session_factory
+        self.chain_data_service = chain_data_service
+
     async def get_last_height(self, sync_type: ChainEventType) -> int:
         """Returns the last height for which we already have the nuls data."""
         with self.session_factory() as session:
-            last_height = get_last_height(session=session, chain=Chain.NULS2, sync_type=sync_type)
+            last_height = get_last_height(
+                session=session, chain=Chain.NULS2, sync_type=sync_type
+            )
 
         if last_height is None:
             last_height = -1
@@ -140,7 +144,9 @@ class Nuls2Connector(Verifier, ChainWriter):
         LOGGER.info("Last block is #%d" % last_stored_height)
         async with aiohttp.ClientSession() as http_session:
             while True:
-                last_stored_height = await self.get_last_height(sync_type=ChainEventType.SYNC)
+                last_stored_height = await self.get_last_height(
+                    sync_type=ChainEventType.SYNC
+                )
                 async for jdata, context in self._request_transactions(
                     config, http_session, last_stored_height + 1
                 ):
@@ -191,7 +197,9 @@ class Nuls2Connector(Verifier, ChainWriter):
 
             if len(messages):
                 # This function prepares a chain data file and makes it downloadable from the node.
-                content = await self.chain_data_service.get_chaindata(session=session, messages=messages)
+                content = await self.chain_data_service.get_chaindata(
+                    session=session, messages=messages
+                )
                 # Required to apply update to the files table in get_chaindata
                 session.commit()
 

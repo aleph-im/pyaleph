@@ -7,7 +7,7 @@ import pytz
 from aleph_message.models import Chain
 from configmanager import Config
 
-from aleph.chains.chain_service import ChainService
+from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.messages import get_message_by_item_hash
 from aleph.db.models import ChainTxDb, PendingMessageDb
 from aleph.handlers.message_handler import MessageHandler
@@ -71,11 +71,10 @@ async def test_confirm_message(
     item_hash = MESSAGE_DICT["item_hash"]
     content = json.loads(MESSAGE_DICT["item_content"])
 
+    signature_verifier = SignatureVerifier()
     message_handler = MessageHandler(
         session_factory=session_factory,
-        chain_service=ChainService(
-            session_factory=session_factory, storage_service=test_storage_service
-        ),
+        signature_verifier=signature_verifier,
         storage_service=test_storage_service,
         config=mock_config,
     )
@@ -135,11 +134,10 @@ async def test_process_confirmed_message(
 
     item_hash = MESSAGE_DICT["item_hash"]
 
+    signature_verifier = SignatureVerifier()
     message_handler = MessageHandler(
         session_factory=session_factory,
-        chain_service=ChainService(
-            session_factory=session_factory, storage_service=test_storage_service
-        ),
+        signature_verifier=signature_verifier,
         storage_service=test_storage_service,
         config=mock_config,
     )

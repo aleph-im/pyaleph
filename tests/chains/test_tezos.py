@@ -12,6 +12,7 @@ from aleph.chains.tezos import (
     TezosConnector,
     datetime_to_iso_8601,
     indexer_event_to_chain_tx,
+    TezosVerifier,
 )
 from aleph.db.models import PendingMessageDb
 from aleph.schemas.chains.tezos_indexer_response import (
@@ -40,12 +41,9 @@ async def test_tezos_verify_signature_raw(mocker):
             "type": "test",
         },
     }
-    connector = TezosConnector(
-        session_factory=mocker.MagicMock(), chain_data_service=mocker.AsyncMock()
-    )
-
+    verifier = TezosVerifier()
     message = parse_message(message_dict)
-    assert await connector.verify_signature(message)
+    assert await verifier.verify_signature(message)
 
 
 @pytest.mark.asyncio
@@ -62,12 +60,10 @@ async def test_tezos_verify_signature_raw_ed25519(mocker):
         "item_hash": "41de1a7766c7e5fad54772470eefde63b6bef8683c4159d9179d74955009deb4",
     }
 
-    connector = TezosConnector(
-        session_factory=mocker.MagicMock(), chain_data_service=mocker.AsyncMock()
-    )
+    verifier = TezosVerifier()
 
     message = parse_message(message_dict)
-    assert await connector.verify_signature(message)
+    assert await verifier.verify_signature(message)
 
 
 @pytest.mark.asyncio
@@ -82,16 +78,14 @@ async def test_tezos_verify_signature_micheline(mocker):
         "item_type": "storage",
         "item_hash": "72b2722b95582419cfa71f631ff6c6afc56344dc6a4609e772877621813040b7",
     }
-    connector = TezosConnector(
-        session_factory=mocker.MagicMock(), chain_data_service=mocker.AsyncMock()
-    )
+    verifier = TezosVerifier()
 
     message = PendingMessageDb.from_message_dict(
         message_dict,
         reception_time=dt.datetime(2022, 1, 1),
         fetched=True,
     )
-    assert await connector.verify_signature(message)
+    assert await verifier.verify_signature(message)
 
 
 def test_datetime_to_iso_8601():

@@ -10,7 +10,7 @@ from configmanager import Config
 from setproctitle import setproctitle
 from sqlalchemy import delete
 
-from aleph.chains.chain_service import ChainService
+from ..chains.signature_verifier import SignatureVerifier
 from aleph.chains.chaindata import ChainDataService
 from aleph.db.accessors.pending_txs import get_pending_txs
 from aleph.db.connection import make_engine, make_session_factory
@@ -134,13 +134,10 @@ async def handle_txs_task(config: Config):
         ipfs_service=ipfs_service,
         node_cache=node_cache,
     )
-    chain_service = ChainService(
-        session_factory=session_factory, storage_service=storage_service
-    )
-
+    signature_verifier = SignatureVerifier()
     message_handler = MessageHandler(
         session_factory=session_factory,
-        chain_service=chain_service,
+        signature_verifier=signature_verifier,
         storage_service=storage_service,
         config=config,
     )
