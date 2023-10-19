@@ -30,7 +30,7 @@ from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSessionFactory
 from aleph.utils import run_in_executor
-from .chaindata import ChainDataService
+from .chain_data_service import ChainDataService
 from .abc import Verifier, ChainWriter
 from aleph.schemas.chains.tx_context import TxContext
 from ..db.models import ChainTxDb
@@ -197,12 +197,13 @@ class Nuls2Connector(ChainWriter):
 
             if len(messages):
                 # This function prepares a chain data file and makes it downloadable from the node.
-                content = await self.chain_data_service.get_chaindata(
+                sync_event_payload = await self.chain_data_service.prepare_sync_event_payload(
                     session=session, messages=messages
                 )
                 # Required to apply update to the files table in get_chaindata
                 session.commit()
 
+                content = sync_event_payload.json()
                 tx = await prepare_transfer_tx(
                     address,
                     [(target_addr, CHEAP_UNIT_FEE)],

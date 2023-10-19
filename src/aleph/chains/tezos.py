@@ -11,7 +11,7 @@ from configmanager import Config
 from nacl.exceptions import BadSignatureError
 
 import aleph.toolkit.json as aleph_json
-from aleph.chains.chaindata import ChainDataService
+from aleph.chains.chain_data_service import ChainDataService
 from aleph.chains.common import get_verification_buffer
 from aleph.chains.abc import Verifier, ChainReader
 from aleph.db.accessors.chains import get_last_height, upsert_chain_sync_status
