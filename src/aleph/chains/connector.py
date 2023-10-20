@@ -8,7 +8,7 @@ from configmanager import Config
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSessionFactory
 from .bsc import BscConnector
-from .chaindata import ChainDataService
+from .chain_data_service import ChainDataService
 from .abc import ChainReader, ChainWriter
 from .ethereum import EthereumConnector
 from .nuls2 import Nuls2Connector

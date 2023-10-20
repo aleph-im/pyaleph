@@ -8,7 +8,7 @@ from configmanager import Config
 from sqlalchemy import select
 
 from aleph.chains.signature_verifier import SignatureVerifier
-from aleph.chains.chaindata import ChainDataService
+from aleph.chains.chain_data_service import ChainDataService
 from aleph.db.models import PendingMessageDb, MessageStatusDb
 from aleph.db.models.chains import ChainTxDb
 from aleph.db.models.pending_txs import PendingTxDb

@@ -11,7 +11,7 @@ from setproctitle import setproctitle
 from sqlalchemy import delete
 
 from ..chains.signature_verifier import SignatureVerifier
-from aleph.chains.chaindata import ChainDataService
+from aleph.chains.chain_data_service import ChainDataService
 from aleph.db.accessors.pending_txs import get_pending_txs
 from aleph.db.connection import make_engine, make_session_factory
 from aleph.db.models.pending_txs import PendingTxDb

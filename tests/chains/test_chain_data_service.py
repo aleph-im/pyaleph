@@ -1,13 +1,71 @@
-import pytest
-from aleph_message.models import Chain, StoreContent, MessageType, ItemType, PostContent
+from typing import IO
 
-from aleph.chains.chaindata import ChainDataService
-from aleph.db.models import ChainTxDb
+import pytest
+from aleph_message.models import (
+    Chain,
+    StoreContent,
+    MessageType,
+    ItemType,
+    PostContent,
+    ItemHash,
+)
+
+from aleph.chains.chain_data_service import ChainDataService
+from aleph.db.models import ChainTxDb, MessageDb
+from aleph.schemas.chains.sync_events import OnChainSyncEventPayload
 from aleph.schemas.chains.tezos_indexer_response import MessageEventPayload
 from aleph.schemas.pending_messages import parse_message
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.chain_sync import ChainSyncProtocol
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import DbSessionFactory, DbSession
+import datetime as dt
+
+
+@pytest.mark.asyncio
+async def test_prepare_sync_event_payload(mocker):
+    archive_cid = "Qmsomething"
+
+    messages = [
+        MessageDb(
+            item_hash=ItemHash(
+                "abe22332402a5c45f20491b719b091fd0d7eab65ca1bcf4746840b787dee874b"
+            ),
+            type=MessageType.store,
+            chain=Chain.ETH,
+            sender="0x0dAd142fDD76A817CD52a700EaCA2D9D3491086B",
+            signature="0x813f0be4ddd852e7f0c723ac95333be762d80690fe0fc0705ec0e1b7df7fa92d5cdbfba8ab0321aee8769c93f7bc5dc9d1268cb66e8cb453a6b8299ba3faac771b",
+            item_type=ItemType.inline,
+            item_content='{"address":"0x0dAd142fDD76A817CD52a700EaCA2D9D3491086B","time":1697718147.2695966,"item_type":"storage","item_hash":"ecbfcb9f92291b9385772c9b5cd094788f928ccb696ad1ecbf179a4e308e4350","mime_type":"application/octet-stream"}',
+            time=dt.datetime(2023, 10, 19, 12, 22, 27, 269707, tzinfo=dt.timezone.utc),
+            channel="TEST",
+        )
+    ]
+
+    async def mock_add_file(
+        session: DbSession, fileobject: IO, engine: ItemType = ItemType.ipfs
+    ) -> str:
+        content = fileobject.read()
+        archive = OnChainSyncEventPayload.parse_raw(content)
+
+        assert archive.version == 1
+        assert len(archive.content.messages) == len(messages)
+        # Check that the time field was converted
+        assert archive.content.messages[0].time == messages[0].time.timestamp()
+
+        return archive_cid
+
+    storage_service = mocker.AsyncMock()
+    storage_service.add_file = mock_add_file
+    chain_data_service = ChainDataService(
+        session_factory=mocker.MagicMock(), storage_service=storage_service
+    )
+
+    sync_event_payload = await chain_data_service.prepare_sync_event_payload(
+        session=mocker.MagicMock(), messages=messages
+    )
+    assert sync_event_payload.protocol == ChainSyncProtocol.OFF_CHAIN_SYNC
+    assert sync_event_payload.version == 1
+    assert sync_event_payload.content == archive_cid
 
 
 @pytest.mark.asyncio
