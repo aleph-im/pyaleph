@@ -27,7 +27,7 @@ from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSessionFactory
 from aleph.utils import run_in_executor
-from .chaindata import ChainDataService
+from .chain_data_service import ChainDataService
 from .abc import ChainWriter, Verifier, ChainReader
 from .indexer_reader import AlephIndexerReader
 from ..db.models import ChainTxDb
@@ -346,8 +346,8 @@ class EthereumConnector(ChainWriter):
                 LOGGER.info("Chain sync: %d unconfirmed messages")
 
                 # This function prepares a chain data file and makes it downloadable from the node.
-                content = await self.chain_data_service.get_chaindata(
-                    session=session, messages=messages, bulk_threshold=200
+                sync_event_payload = await self.chain_data_service.prepare_sync_event_payload(
+                    session=session, messages=messages
                 )
                 # Required to apply update to the files table in get_chaindata
                 session.commit()
@@ -360,7 +360,7 @@ class EthereumConnector(ChainWriter):
                     account,
                     int(gas_price * 1.1),
                     nonce,
-                    content,
+                    sync_event_payload.json(),
                 )
                 LOGGER.info("Broadcast %r on %s" % (response, CHAIN_NAME))
 
