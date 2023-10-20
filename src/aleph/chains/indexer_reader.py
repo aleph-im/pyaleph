@@ -21,7 +21,7 @@ from aleph_message.models import Chain
 from pydantic import BaseModel
 
 import aleph.toolkit.json as aleph_json
-from aleph.chains.chaindata import ChainDataService
+from aleph.chains.chain_data_service import ChainDataService
 from aleph.db.accessors.chains import (
     get_missing_indexer_datetime_multirange,
     add_indexer_range,

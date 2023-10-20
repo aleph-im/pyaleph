@@ -1,5 +1,5 @@
 import asyncio
-import json
+from io import StringIO
 from typing import Dict, Optional, List, Any, Mapping, Set, cast, Type, Union
 
 from aleph_message.models import StoreContent, ItemType, Chain, MessageType
@@ -17,6 +17,12 @@ from aleph.exceptions import (
     ContentCurrentlyUnavailable,
 )
 from aleph.schemas.chains.indexer_response import MessageEvent, GenericMessageEvent
+from aleph.schemas.chains.sync_events import (
+    OffChainSyncEventPayload,
+    OnChainSyncEventPayload,
+    OnChainContent,
+    OnChainMessage,
+)
 from aleph.schemas.chains.tezos_indexer_response import (
     MessageEventPayload as TezosMessageEventPayload,
 )
@@ -27,18 +33,6 @@ from aleph.types.db_session import DbSessionFactory, DbSession
 from aleph.types.files import FileType
 from aleph.utils import get_sha256
 
-INCOMING_MESSAGE_AUTHORIZED_FIELDS = [
-    "item_hash",
-    "item_content",
-    "item_type",
-    "chain",
-    "channel",
-    "sender",
-    "type",
-    "time",
-    "signature",
-]
-
 
 class ChainDataService:
     def __init__(
@@ -47,52 +41,39 @@ class ChainDataService:
         self.session_factory = session_factory
         self.storage_service = storage_service
 
-    # TODO: split this function in severa
-    async def get_chaindata(
-        self, session: DbSession, messages: List[MessageDb], bulk_threshold: int = 2000
-    ):
-        """Returns content ready to be broadcast on-chain (aka chaindata).
-
-        If message length is over bulk_threshold (default 2000 chars), store list
-        in IPFS and store the object hash instead of raw list.
+    async def prepare_sync_event_payload(
+        self, session: DbSession, messages: List[MessageDb]
+    ) -> OffChainSyncEventPayload:
         """
+        Returns the payload of a sync event to be published on chain.
 
-        # TODO: this function is used to guarantee that the chain sync protocol is not broken
-        #       while shifting to Postgres.
-        #       * exclude the useless fields in the DB query directly and get rid of
-        #         INCOMING_MESSAGE_AUTHORIZED_FIELDS
-        #       * use a Pydantic model to enforce the output format
-        def message_to_dict(_message: MessageDb) -> Mapping[str, Any]:
-            message_dict = {
-                k: v
-                for k, v in _message.to_dict().items()
-                if k in INCOMING_MESSAGE_AUTHORIZED_FIELDS
-            }
-            # Convert the time field to epoch
-            message_dict["time"] = message_dict["time"].timestamp()
-            return message_dict
+        We publish message archives on-chain at regular intervals. This function prepares the data
+        before the node emits a transaction on-chain:
+        1. Pack all messages as a JSON file
+        2. Add this file to IPFS and get its CID
+        3. Return the CID + some metadata.
 
-        message_dicts = [message_to_dict(message) for message in messages]
+        Note that the archive file is pinned on IPFS but not inserted in the `file_pins` table
+        here. This is left upon the caller once the event is successfully emitted on chain to avoid
+        persisting unused archives.
+        """
+        # In previous versions, it was envisioned to store messages on-chain. This proved to be
+        # too expensive. The archive uses the same format as these "on-chain" data.
+        archive = OnChainSyncEventPayload(
+            protocol=ChainSyncProtocol.ON_CHAIN_SYNC,
+            version=1,
+            content=OnChainContent(
+                messages=[OnChainMessage.from_orm(message) for message in messages]
+            ),
+        )
+        archive_content = archive.json()
 
-        chaindata = {
-            "protocol": ChainSyncProtocol.ON_CHAIN_SYNC,
-            "version": 1,
-            "content": {"messages": message_dicts},
-        }
-        content = json.dumps(chaindata)
-        if len(content) > bulk_threshold:
-            ipfs_id = await self.storage_service.add_json(
-                session=session, value=chaindata
-            )
-            return json.dumps(
-                {
-                    "protocol": ChainSyncProtocol.OFF_CHAIN_SYNC,
-                    "version": 1,
-                    "content": ipfs_id,
-                }
-            )
-        else:
-            return content
+        ipfs_cid = await self.storage_service.add_file(
+            session=session, fileobject=StringIO(archive_content), engine=ItemType.ipfs
+        )
+        return OffChainSyncEventPayload(
+            protocol=ChainSyncProtocol.OFF_CHAIN_SYNC, version=1, content=ipfs_cid
+        )
 
     @staticmethod
     def _get_sync_messages(tx_content: Mapping[str, Any]):

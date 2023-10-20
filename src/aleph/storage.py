@@ -5,7 +5,6 @@ import asyncio
 import logging
 from hashlib import sha256
 from typing import Any, IO, Optional, cast, Final
-from aiohttp import web
 
 from aleph_message.models import ItemType
 
@@ -20,13 +19,9 @@ from aleph.services.ipfs import IpfsService
 from aleph.services.ipfs.common import get_cid_version
 from aleph.services.p2p.http import request_hash as p2p_http_request_hash
 from aleph.services.storage.engine import StorageEngine
-from aleph.toolkit.constants import MiB
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileType
 from aleph.utils import get_sha256
-from aleph.schemas.pending_messages import (
-    parse_message,
-)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -144,7 +139,9 @@ class StorageService:
     ) -> None:
         """
         Checks that the hash of a content we fetched from the network matches the expected hash.
-        :return: True if the hashes match, False otherwise.
+        Raises an exception if the content does not match the expected hash.
+        :raises InvalidContent: The computed hash does not match.
+        :raises ContentCurrentlyUnavailable: The hash cannot be computed at this time.
         """
         config = get_config()
         ipfs_enabled = config.ipfs.enabled.value
