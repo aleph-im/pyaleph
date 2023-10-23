@@ -23,6 +23,7 @@ import sentry_sdk
 from configmanager import Config
 
 import aleph.config
+from aleph.chains.chain_data_service import ChainDataService
 from aleph.chains.connector import ChainConnector
 from aleph.cli.args import parse_args
 from aleph.db.connection import make_engine, make_session_factory, make_db_url
@@ -143,8 +144,11 @@ async def main(args: List[str]) -> None:
         ipfs_service=ipfs_service,
         node_cache=node_cache,
     )
-    chain_connector = ChainConnector(
+    chain_data_service = ChainDataService(
         session_factory=session_factory, storage_service=storage_service
+    )
+    chain_connector = ChainConnector(
+        session_factory=session_factory, chain_data_service=chain_data_service
     )
 
     set_start_method("spawn")
