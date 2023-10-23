@@ -120,8 +120,6 @@ async def main(args: List[str]) -> None:
         setup_sentry(config)
         LOGGER.info("Sentry enabled")
 
-    config_values = config.dump_values()
-
     LOGGER.info("Initializing database...")
     with sentry_sdk.start_transaction(name="run-migrations"):
         run_db_migrations(config)
