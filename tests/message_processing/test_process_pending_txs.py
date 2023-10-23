@@ -43,13 +43,14 @@ async def test_process_pending_tx_on_chain_protocol(
     signature_verifier = SignatureVerifier()
     pending_tx_processor = PendingTxProcessor(
         session_factory=session_factory,
-        storage_service=test_storage_service,
         message_handler=MessageHandler(
             session_factory=session_factory,
             signature_verifier=signature_verifier,
             storage_service=test_storage_service,
             config=mock_config,
         ),
+        chain_data_service=chain_data_service,
+        pending_tx_queue=mocker.AsyncMock(),
     )
     pending_tx_processor.chain_data_service = chain_data_service
 
@@ -72,7 +73,7 @@ async def test_process_pending_tx_on_chain_protocol(
 
     seen_ids: Set[str] = set()
     await pending_tx_processor.handle_pending_tx(
-        pending_tx=pending_tx, seen_ids=seen_ids
+        pending_tx_hash=pending_tx.tx_hash, seen_ids=seen_ids
     )
 
     fixture_messages = load_fixture_messages(f"{pending_tx.tx.content}.json")
@@ -118,13 +119,14 @@ async def _process_smart_contract_tx(
     signature_verifier = SignatureVerifier()
     pending_tx_processor = PendingTxProcessor(
         session_factory=session_factory,
-        storage_service=test_storage_service,
         message_handler=MessageHandler(
             session_factory=session_factory,
             signature_verifier=signature_verifier,
             storage_service=test_storage_service,
             config=mock_config,
         ),
+        chain_data_service=chain_data_service,
+        pending_tx_queue=mocker.AsyncMock(),
     )
     pending_tx_processor.chain_data_service = chain_data_service
 
@@ -145,7 +147,7 @@ async def _process_smart_contract_tx(
         session.add(pending_tx)
         session.commit()
 
-    await pending_tx_processor.handle_pending_tx(pending_tx=pending_tx)
+    await pending_tx_processor.handle_pending_tx(pending_tx_hash=pending_tx.tx_hash)
 
     with session_factory() as session:
         pending_txs = session.execute(select(PendingTxDb)).scalars().all()

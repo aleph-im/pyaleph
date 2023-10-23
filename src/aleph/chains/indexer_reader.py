@@ -21,7 +21,7 @@ from aleph_message.models import Chain
 from pydantic import BaseModel
 
 import aleph.toolkit.json as aleph_json
-from aleph.chains.chain_data_service import ChainDataService
+from aleph.chains.chain_data_service import PendingTxPublisher
 from aleph.db.accessors.chains import (
     get_missing_indexer_datetime_multirange,
     add_indexer_range,
@@ -154,7 +154,6 @@ class AlephIndexerClient:
         blockchain: IndexerBlockchain,
         accounts: List[str],
     ) -> IndexerAccountStateResponse:
-
         query = make_account_state_query(
             blockchain=blockchain, accounts=accounts, type_=EntityType.LOG
         )
@@ -194,7 +193,6 @@ def indexer_event_to_chain_tx(
     chain: Chain,
     indexer_event: Union[MessageEvent, SyncEvent],
 ) -> ChainTxDb:
-
     if isinstance(indexer_event, MessageEvent):
         protocol = ChainSyncProtocol.SMART_CONTRACT
         protocol_version = 1
@@ -225,7 +223,6 @@ async def extract_aleph_messages_from_indexer_response(
     chain: Chain,
     indexer_response: IndexerEventResponse,
 ) -> List[ChainTxDb]:
-
     message_events = indexer_response.data.message_events
     sync_events = indexer_response.data.sync_events
 
@@ -240,7 +237,6 @@ async def extract_aleph_messages_from_indexer_response(
 
 
 class AlephIndexerReader:
-
     BLOCKCHAIN_MAP: Mapping[Chain, IndexerBlockchain] = {
         Chain.BSC: IndexerBlockchain.BSC,
         Chain.ETH: IndexerBlockchain.ETHEREUM,
@@ -251,11 +247,11 @@ class AlephIndexerReader:
         self,
         chain: Chain,
         session_factory: DbSessionFactory,
-        chain_data_service: ChainDataService,
+        pending_tx_publisher: PendingTxPublisher,
     ):
         self.chain = chain
         self.session_factory = session_factory
-        self.chain_data_service = chain_data_service
+        self.pending_tx_publisher = pending_tx_publisher
 
         self.blockchain = self.BLOCKCHAIN_MAP[chain]
 
@@ -299,9 +295,7 @@ class AlephIndexerReader:
                 LOGGER.info("%d new txs", len(txs))
                 # Events are listed in reverse order in the indexer response
                 for tx in txs:
-                    await self.chain_data_service.incoming_chaindata(
-                        session=session, tx=tx
-                    )
+                    self.pending_tx_publisher.add_pending_tx(session=session, tx=tx)
 
                 if nb_events_fetched >= limit:
                     last_event_datetime = txs[-1].datetime
@@ -317,6 +311,7 @@ class AlephIndexerReader:
                 )
             else:
                 synced_range = Range(start_datetime, end_datetime, upper_inc=True)
+                txs = []
 
             LOGGER.info(
                 "%s %s indexer: fetched %s",
@@ -335,6 +330,10 @@ class AlephIndexerReader:
             # Committing periodically reduces the size of DB transactions for large numbers
             # of events.
             session.commit()
+
+            # Now that the txs are committed to the DB, add them to the pending tx message queue
+            for tx in txs:
+                await self.pending_tx_publisher.publish_pending_tx(tx)
 
             if nb_events_fetched < limit:
                 LOGGER.info(
