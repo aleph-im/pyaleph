@@ -174,6 +174,8 @@ def get_defaults():
             "sub_exchange": "p2p-subscribe",
             # Name of the exchange used to publish processed messages (output of the message processor).
             "message_exchange": "aleph-messages",
+            "pending_message_exchange": "aleph-pending-messages",
+            "pending_tx_exchange": "aleph-pending-txs",
         },
         "redis": {
             # Hostname of the Redis service.

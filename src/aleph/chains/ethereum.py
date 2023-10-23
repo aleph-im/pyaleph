@@ -22,16 +22,16 @@ from aleph.db.accessors.chains import get_last_height, upsert_chain_sync_status
 from aleph.db.accessors.messages import get_unconfirmed_messages
 from aleph.db.accessors.pending_messages import count_pending_messages
 from aleph.db.accessors.pending_txs import count_pending_txs
+from aleph.db.models.chains import ChainTxDb
 from aleph.schemas.chains.tx_context import TxContext
 from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.toolkit.timestamp import utc_now
+from aleph.types.chain_sync import ChainEventType
 from aleph.types.db_session import DbSessionFactory
 from aleph.utils import run_in_executor
-from .chain_data_service import ChainDataService
-from .abc import ChainWriter, Verifier, ChainReader
+from .abc import ChainWriter, Verifier
+from .chain_data_service import ChainDataService, PendingTxPublisher
 from .indexer_reader import AlephIndexerReader
-from ..db.models import ChainTxDb
-from ..types.chain_sync import ChainEventType
 
 LOGGER = logging.getLogger("chains.ethereum")
 CHAIN_NAME = "ETH"
@@ -105,15 +105,17 @@ class EthereumConnector(ChainWriter):
     def __init__(
         self,
         session_factory: DbSessionFactory,
+        pending_tx_publisher: PendingTxPublisher,
         chain_data_service: ChainDataService,
     ):
         self.session_factory = session_factory
+        self.pending_tx_publisher = pending_tx_publisher
         self.chain_data_service = chain_data_service
 
         self.indexer_reader = AlephIndexerReader(
             chain=Chain.ETH,
             session_factory=session_factory,
-            chain_data_service=chain_data_service,
+            pending_tx_publisher=pending_tx_publisher,
         )
 
     async def get_last_height(self, sync_type: ChainEventType) -> int:
@@ -212,7 +214,9 @@ class EthereumConnector(ChainWriter):
 
                 except json.JSONDecodeError:
                     # if it's not valid json, just ignore it...
-                    LOGGER.info("Incoming logic data is not JSON, ignoring. %r" % message)
+                    LOGGER.info(
+                        "Incoming logic data is not JSON, ignoring. %r" % message
+                    )
 
                 except Exception:
                     LOGGER.exception("Can't decode incoming logic data %r" % message)
@@ -256,7 +260,7 @@ class EthereumConnector(ChainWriter):
             ):
                 tx = ChainTxDb.from_sync_tx_context(tx_context=context, tx_data=jdata)
                 with self.session_factory() as session:
-                    await self.chain_data_service.incoming_chaindata(
+                    await self.pending_tx_publisher.add_and_publish_pending_tx(
                         session=session, tx=tx
                     )
                     session.commit()
@@ -313,7 +317,6 @@ class EthereumConnector(ChainWriter):
         gas_price = web3.eth.generate_gas_price()
         while True:
             with self.session_factory() as session:
-
                 # Wait for sync operations to complete
                 if (count_pending_txs(session=session, chain=Chain.ETH)) or (
                     count_pending_messages(session=session, chain=Chain.ETH)
@@ -344,8 +347,10 @@ class EthereumConnector(ChainWriter):
                 LOGGER.info("Chain sync: %d unconfirmed messages")
 
                 # This function prepares a chain data file and makes it downloadable from the node.
-                sync_event_payload = await self.chain_data_service.prepare_sync_event_payload(
-                    session=session, messages=messages
+                sync_event_payload = (
+                    await self.chain_data_service.prepare_sync_event_payload(
+                        session=session, messages=messages
+                    )
                 )
                 # Required to apply update to the files table in get_chaindata
                 session.commit()
