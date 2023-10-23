@@ -18,20 +18,23 @@ LOGGER = logging.getLogger(__name__)
 
 
 class ChainConnector:
+    """
+    Service in charge of managing read/write links to blockchains.
+    This consists mostly of starting fetcher and publisher tasks for each chain and let the chain-specific
+    code do the heavy lifting.
+    """
+
     readers: Dict[Chain, ChainReader]
     writers: Dict[Chain, ChainWriter]
 
     def __init__(
-        self, session_factory: DbSessionFactory, storage_service: StorageService
+        self, session_factory: DbSessionFactory, chain_data_service: ChainDataService
     ):
         self._session_factory = session_factory
+        self._chain_data_service = chain_data_service
 
         self.readers = {}
         self.writers = {}
-
-        self._chain_data_service = ChainDataService(
-            session_factory=session_factory, storage_service=storage_service
-        )
 
         self._register_chains()
 
@@ -40,7 +43,7 @@ class ChainConnector:
 
         while True:
             try:
-                LOGGER.info("Fetching on-chain data...")
+                LOGGER.info("Fetching on-chain data for %s...", chain)
                 await connector.fetcher(config)
             except Exception:
                 LOGGER.exception(
@@ -62,6 +65,10 @@ class ChainConnector:
                 await asyncio.sleep(10)
 
     async def chain_event_loop(self, config: Config):
+        """
+        Starts the listener and publisher tasks for all supported chains.
+        """
+
         listener_tasks = []
         publisher_tasks = []
 
