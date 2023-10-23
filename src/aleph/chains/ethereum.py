@@ -264,9 +264,7 @@ class EthereumConnector(ChainWriter):
     async def fetch_sync_events_task(self, config: Config):
         while True:
             try:
-                with self.session_factory() as session:
-                    await self.fetch_ethereum_sync_events(config)
-                    session.commit()
+                await self.fetch_ethereum_sync_events(config)
             except Exception:
                 LOGGER.exception(
                     "An unexpected exception occurred, "
