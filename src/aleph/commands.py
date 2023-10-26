@@ -109,11 +109,6 @@ async def main(args: List[str]) -> None:
         LOGGER.critical(msg)
         raise KeyNotFoundException(msg)
 
-    if args.port:
-        config.aleph.port.value = args.port
-    if args.host:
-        config.aleph.host.value = args.host
-
     if args.sentry_disabled:
         LOGGER.info("Sentry disabled by CLI arguments")
     else:

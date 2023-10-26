@@ -91,6 +91,11 @@ class ChainService:
             if config.ethereum.packing_node.value:
                 publisher_tasks.append(self.chain_writer_task(Chain.ETH, config))
 
+        if config.nuls2.enabled.value:
+            listener_tasks.append(self.chain_reader_task(Chain.NULS2, config))
+            if config.nuls2.packing_node.value:
+                publisher_tasks.append(self.chain_writer_task(Chain.NULS2, config))
+
         if config.tezos.enabled.value:
             listener_tasks.append(self.chain_reader_task(Chain.TEZOS, config))
 
