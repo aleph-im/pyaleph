@@ -222,7 +222,7 @@ class ChainDataService:
 
 async def make_pending_tx_exchange(config: Config) -> aio_pika.abc.AbstractExchange:
     mq_conn = await aio_pika.connect_robust(
-        host=config.rabbitmq.host.value,
+        host=config.p2p.mq_host.value,
         port=config.rabbitmq.port.value,
         login=config.rabbitmq.username.value,
         password=config.rabbitmq.password.value,

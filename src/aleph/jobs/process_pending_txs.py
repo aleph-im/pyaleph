@@ -99,7 +99,7 @@ class PendingTxProcessor:
 
 async def make_pending_tx_queue(config: Config) -> aio_pika.abc.AbstractQueue:
     mq_conn = await aio_pika.connect_robust(
-        host=config.rabbitmq.host.value,
+        host=config.p2p.mq_host.value,
         port=config.rabbitmq.port.value,
         login=config.rabbitmq.username.value,
         password=config.rabbitmq.password.value,
@@ -113,14 +113,11 @@ async def make_pending_tx_queue(config: Config) -> aio_pika.abc.AbstractQueue:
     pending_tx_queue = await channel.declare_queue(
         name="pending-tx-queue", durable=True, auto_delete=False
     )
-    await pending_tx_queue.bind(pending_tx_exchange, routing_key="*")
+    await pending_tx_queue.bind(pending_tx_exchange, routing_key="#")
     return pending_tx_queue
 
 
 async def handle_txs_task(config: Config):
-    max_concurrent_tasks = config.aleph.jobs.pending_txs.max_concurrency.value
-    await asyncio.sleep(4)
-
     engine = make_engine(config=config, application_name="aleph-txs")
     session_factory = make_session_factory(engine)
 

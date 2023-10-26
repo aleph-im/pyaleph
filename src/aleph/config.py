@@ -174,7 +174,9 @@ def get_defaults():
             "sub_exchange": "p2p-subscribe",
             # Name of the exchange used to publish processed messages (output of the message processor).
             "message_exchange": "aleph-messages",
+            # Name of the RabbitMQ exchange used for pending messages (input of the message processor).
             "pending_message_exchange": "aleph-pending-messages",
+            # Name of the RabbitMQ exchange used for sync/message events (input of the TX processor).
             "pending_tx_exchange": "aleph-pending-txs",
         },
         "redis": {
