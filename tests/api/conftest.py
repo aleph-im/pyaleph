@@ -216,5 +216,6 @@ def message_processor(mocker, mock_config: Config, session_factory: DbSessionFac
         max_retries=0,
         mq_message_exchange=mocker.AsyncMock(),
         mq_conn=mocker.AsyncMock(),
+        pending_message_queue=mocker.AsyncMock(),
     )
     return message_processor

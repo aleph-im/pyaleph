@@ -45,6 +45,8 @@ __author__ = "Moshe Malawach"
 __copyright__ = "Moshe Malawach"
 __license__ = "mit"
 
+from aleph.toolkit.rabbitmq import make_mq_conn
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -129,6 +131,9 @@ async def main(args: List[str]) -> None:
 
     setup_logging(args.loglevel)
 
+    mq_conn = await make_mq_conn(config)
+    mq_channel = await mq_conn.channel()
+
     node_cache = await init_node_cache(config)
     ipfs_service = IpfsService(ipfs_client=make_ipfs_client(config))
     storage_service = StorageService(
@@ -172,11 +177,12 @@ async def main(args: List[str]) -> None:
     LOGGER.debug("Initialized p2p")
 
     LOGGER.debug("Initializing listeners")
-    tasks += listener_tasks(
+    tasks += await listener_tasks(
         config=config,
         session_factory=session_factory,
         node_cache=node_cache,
         p2p_client=p2p_client,
+        mq_channel=mq_channel,
     )
     tasks.append(chain_connector.chain_event_loop(config))
     LOGGER.debug("Initialized listeners")

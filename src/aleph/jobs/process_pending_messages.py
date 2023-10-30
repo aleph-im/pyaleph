@@ -14,10 +14,11 @@ from configmanager import Config
 from setproctitle import setproctitle
 
 import aleph.toolkit.json as aleph_json
-from ..chains.signature_verifier import SignatureVerifier
+from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.pending_messages import get_next_pending_message
 from aleph.db.connection import make_engine, make_session_factory
 from aleph.handlers.message_handler import MessageHandler
+from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.ipfs.common import make_ipfs_client
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
@@ -26,12 +27,11 @@ from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSessionFactory
+from aleph.types.message_processing_result import MessageProcessingResult
 from .job_utils import (
     prepare_loop,
     MessageJob,
 )
-from ..services.cache.node_cache import NodeCache
-from ..types.message_processing_result import MessageProcessingResult
 
 LOGGER = getLogger(__name__)
 
@@ -44,11 +44,13 @@ class PendingMessageProcessor(MessageJob):
         max_retries: int,
         mq_conn: aio_pika.abc.AbstractConnection,
         mq_message_exchange: aio_pika.abc.AbstractExchange,
+        pending_message_queue: aio_pika.abc.AbstractQueue,
     ):
         super().__init__(
             session_factory=session_factory,
             message_handler=message_handler,
             max_retries=max_retries,
+            pending_message_queue=pending_message_queue,
         )
 
         self.mq_conn = mq_conn
@@ -65,6 +67,7 @@ class PendingMessageProcessor(MessageJob):
         mq_username: str,
         mq_password: str,
         message_exchange_name: str,
+        pending_message_exchange_name: str,
     ):
         mq_conn = await aio_pika.connect_robust(
             host=mq_host, port=mq_port, login=mq_username, password=mq_password
@@ -75,12 +78,25 @@ class PendingMessageProcessor(MessageJob):
             type=aio_pika.ExchangeType.TOPIC,
             auto_delete=False,
         )
+        pending_message_exchange = await channel.declare_exchange(
+            name=pending_message_exchange_name,
+            type=aio_pika.ExchangeType.TOPIC,
+            auto_delete=False,
+        )
+        pending_message_queue = await channel.declare_queue(
+            name="pending_message_queue"
+        )
+        await pending_message_queue.bind(
+            pending_message_exchange, routing_key="process.*"
+        )
+
         return cls(
             session_factory=session_factory,
             message_handler=message_handler,
             max_retries=max_retries,
             mq_conn=mq_conn,
             mq_message_exchange=mq_message_exchange,
+            pending_message_queue=pending_message_queue,
         )
 
     async def close(self):
@@ -119,7 +135,6 @@ class PendingMessageProcessor(MessageJob):
     async def publish_to_mq(
         self, message_iterator: AsyncIterator[Sequence[MessageProcessingResult]]
     ) -> AsyncIterator[Sequence[MessageProcessingResult]]:
-
         async for processing_results in message_iterator:
             for result in processing_results:
                 mq_message = aio_pika.Message(body=aleph_json.dumps(result.to_dict()))
@@ -136,9 +151,6 @@ class PendingMessageProcessor(MessageJob):
 
 
 async def fetch_and_process_messages_task(config: Config):
-    # TODO: this sleep can probably be removed
-    await asyncio.sleep(4)
-
     engine = make_engine(config=config, application_name="aleph-process")
     session_factory = make_session_factory(engine)
 
@@ -167,22 +179,29 @@ async def fetch_and_process_messages_task(config: Config):
         mq_username=config.rabbitmq.username.value,
         mq_password=config.rabbitmq.password.value,
         message_exchange_name=config.rabbitmq.message_exchange.value,
+        pending_message_exchange_name=config.rabbitmq.pending_message_exchange.value,
     )
 
-    while True:
-        with session_factory() as session:
+    async with pending_message_processor:
+        while True:
+            with session_factory() as session:
+                try:
+                    message_processing_pipeline = pending_message_processor.make_pipeline()
+                    async for processing_results in message_processing_pipeline:
+                        for result in processing_results:
+                            LOGGER.info("Successfully processed %s", result.item_hash)
+
+                except Exception:
+                    LOGGER.exception("Error in pending messages job")
+                    session.rollback()
+
+            LOGGER.info("Waiting for new pending messages...")
+            # We still loop periodically for retried messages as we do not bother sending a message
+            # on the MQ for these.
             try:
-                message_processing_pipeline = pending_message_processor.make_pipeline()
-                async for processing_results in message_processing_pipeline:
-                    for result in processing_results:
-                        LOGGER.info("Successfully processed %s", result.item_hash)
-
-            except Exception:
-                LOGGER.exception("Error in pending messages job")
-                session.rollback()
-
-        LOGGER.info("Waiting 1 second(s) for new pending messages...")
-        await asyncio.sleep(1)
+                await asyncio.wait_for(pending_message_processor.ready(), 1)
+            except TimeoutError:
+                pass
 
 
 def pending_messages_subprocess(config_values: Dict):

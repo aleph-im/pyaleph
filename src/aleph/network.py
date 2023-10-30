@@ -2,11 +2,11 @@ import logging
 from typing import Coroutine, List, Any, Dict
 from urllib.parse import unquote
 
+import aio_pika.abc
 from aleph_p2p_client import AlephP2PServiceClient
 
 import aleph.toolkit.json as aleph_json
-from aleph.chains.signature_verifier import SignatureVerifier
-from aleph.handlers.message_handler import MessageHandler, MessagePublisher
+from aleph.handlers.message_handler import MessagePublisher
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.ipfs.common import make_ipfs_client
@@ -36,11 +36,12 @@ async def decode_pubsub_message(message_data: bytes) -> Dict[str, Any]:
     return message_dict
 
 
-def listener_tasks(
+async def listener_tasks(
     config,
     session_factory: DbSessionFactory,
     node_cache: NodeCache,
     p2p_client: AlephP2PServiceClient,
+    mq_channel: aio_pika.abc.AbstractChannel,
 ) -> List[Coroutine]:
     from aleph.services.p2p.protocol import incoming_channel as incoming_p2p_channel
 
@@ -52,10 +53,16 @@ def listener_tasks(
         ipfs_service=ipfs_service,
         node_cache=node_cache,
     )
+    pending_message_exchange = await mq_channel.declare_exchange(
+        name=config.rabbitmq.pending_message_exchange.value,
+        type = aio_pika.ExchangeType.TOPIC,
+        auto_delete=False,
+    )
     message_publisher = MessagePublisher(
         session_factory=session_factory,
         storage_service=storage_service,
         config=config,
+        pending_message_exchange=pending_message_exchange,
     )
 
     # for now (1st milestone), we only listen on a single global topic...
