@@ -9,7 +9,6 @@ from configmanager import Config
 from pydantic import ValidationError
 from sqlalchemy import insert
 
-from aleph.chains.connector import ChainConnector
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.files import insert_content_file_pin, upsert_file
 from aleph.db.accessors.messages import (
@@ -34,8 +33,8 @@ from aleph.handlers.content.aggregate import AggregateMessageHandler
 from aleph.handlers.content.content_handler import ContentHandler
 from aleph.handlers.content.forget import ForgetMessageHandler
 from aleph.handlers.content.post import PostMessageHandler
-from aleph.handlers.content.vm import VmMessageHandler
 from aleph.handlers.content.store import StoreMessageHandler
+from aleph.handlers.content.vm import VmMessageHandler
 from aleph.schemas.pending_messages import parse_message
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
@@ -335,9 +334,3 @@ class MessageHandler:
     async def check_permissions(self, session: DbSession, message: MessageDb):
         content_handler = self.get_content_handler(message.type)
         await content_handler.check_permissions(session=session, message=message)
-
-    # TODO: this method is only used in tests. Consider removing it.
-    async def fetch_and_process_one_message_db(self, pending_message: PendingMessageDb):
-        with self.session_factory() as session:
-            _ = await self.process(session=session, pending_message=pending_message)
-            session.commit()

@@ -84,7 +84,11 @@ async def test_process_store(
         config=mock_config,
     )
 
-    await message_handler.fetch_and_process_one_message_db(fixture_store_message)
+    with session_factory() as session:
+        await message_handler.process(
+            session=session, pending_message=fixture_store_message
+        )
+        session.commit()
 
 
 @pytest.mark.asyncio
