@@ -6,7 +6,7 @@ from aleph_p2p_client import AlephP2PServiceClient
 
 import aleph.toolkit.json as aleph_json
 from aleph.chains.signature_verifier import SignatureVerifier
-from aleph.handlers.message_handler import MessageHandler
+from aleph.handlers.message_handler import MessageHandler, MessagePublisher
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.ipfs.common import make_ipfs_client
@@ -52,10 +52,8 @@ def listener_tasks(
         ipfs_service=ipfs_service,
         node_cache=node_cache,
     )
-    signature_verifier = SignatureVerifier()
-    message_handler = MessageHandler(
+    message_publisher = MessagePublisher(
         session_factory=session_factory,
-        signature_verifier=signature_verifier,
         storage_service=storage_service,
         config=config,
     )
@@ -65,7 +63,7 @@ def listener_tasks(
         incoming_p2p_channel(
             p2p_client=p2p_client,
             topic=config.aleph.queue_topic.value,
-            message_handler=message_handler,
+            message_publisher=message_publisher,
         )
     ]
     if config.ipfs.enabled.value:
@@ -73,7 +71,7 @@ def listener_tasks(
             incoming_ipfs_channel(
                 ipfs_service=ipfs_service,
                 topic=config.aleph.queue_topic.value,
-                message_handler=message_handler,
+                message_publisher=message_publisher,
             )
         )
     return tasks

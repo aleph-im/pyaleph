@@ -38,7 +38,6 @@ async def test_process_aggregate_first_element(
     )
     signature_verifier = SignatureVerifier()
     message_handler = MessageHandler(
-        session_factory=session_factory,
         signature_verifier=signature_verifier,
         storage_service=storage_service,
         config=mock_config,

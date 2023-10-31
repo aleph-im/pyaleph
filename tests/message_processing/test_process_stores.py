@@ -78,7 +78,6 @@ async def test_process_store(
     # Disable signature verification
     signature_verifier = mocker.AsyncMock()
     message_handler = MessageHandler(
-        session_factory=session_factory,
         signature_verifier=signature_verifier,
         storage_service=storage_service,
         config=mock_config,

@@ -83,7 +83,6 @@ def message_processor(mocker, mock_config: Config, session_factory: DbSessionFac
     )
     signature_verifier = SignatureVerifier()
     message_handler = MessageHandler(
-        session_factory=session_factory,
         signature_verifier=signature_verifier,
         storage_service=storage_service,
         config=mock_config,

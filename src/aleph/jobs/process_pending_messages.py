@@ -154,7 +154,6 @@ async def fetch_and_process_messages_task(config: Config):
     )
     signature_verifier = SignatureVerifier()
     message_handler = MessageHandler(
-        session_factory=session_factory,
         signature_verifier=signature_verifier,
         storage_service=storage_service,
         config=config,

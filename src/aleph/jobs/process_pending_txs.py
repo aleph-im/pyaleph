@@ -10,12 +10,12 @@ from configmanager import Config
 from setproctitle import setproctitle
 from sqlalchemy import delete
 
-from ..chains.signature_verifier import SignatureVerifier
 from aleph.chains.chain_data_service import ChainDataService
 from aleph.db.accessors.pending_txs import get_pending_txs
 from aleph.db.connection import make_engine, make_session_factory
 from aleph.db.models.pending_txs import PendingTxDb
-from aleph.handlers.message_handler import MessageHandler
+from aleph.handlers.message_handler import MessagePublisher
+from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs.common import make_ipfs_client
 from aleph.services.ipfs.service import IpfsService
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
@@ -26,7 +26,6 @@ from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.db_session import DbSessionFactory
 from .job_utils import prepare_loop
-from ..services.cache.node_cache import NodeCache
 
 LOGGER = logging.getLogger(__name__)
 
@@ -36,11 +35,11 @@ class PendingTxProcessor:
         self,
         session_factory: DbSessionFactory,
         storage_service: StorageService,
-        message_handler: MessageHandler,
+        message_publisher: MessagePublisher,
     ):
         self.session_factory = session_factory
         self.storage_service = storage_service
-        self.message_handler = message_handler
+        self.message_publisher = message_publisher
         self.chain_data_service = ChainDataService(
             session_factory=session_factory, storage_service=storage_service
         )
@@ -62,7 +61,7 @@ class PendingTxProcessor:
 
         if messages:
             for i, message_dict in enumerate(messages):
-                await self.message_handler.add_pending_message(
+                await self.message_publisher.add_pending_message(
                     message_dict=message_dict,
                     reception_time=utc_now(),
                     tx_hash=tx.hash,
@@ -134,17 +133,15 @@ async def handle_txs_task(config: Config):
         ipfs_service=ipfs_service,
         node_cache=node_cache,
     )
-    signature_verifier = SignatureVerifier()
-    message_handler = MessageHandler(
+    message_publisher = MessagePublisher(
         session_factory=session_factory,
-        signature_verifier=signature_verifier,
         storage_service=storage_service,
         config=config,
     )
     pending_tx_processor = PendingTxProcessor(
         session_factory=session_factory,
         storage_service=storage_service,
-        message_handler=message_handler,
+        message_publisher=message_publisher,
     )
 
     while True:
