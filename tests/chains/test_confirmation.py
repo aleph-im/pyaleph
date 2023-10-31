@@ -73,7 +73,6 @@ async def test_confirm_message(
 
     signature_verifier = SignatureVerifier()
     message_handler = MessageHandler(
-        session_factory=session_factory,
         signature_verifier=signature_verifier,
         storage_service=test_storage_service,
         config=mock_config,
@@ -138,7 +137,6 @@ async def test_process_confirmed_message(
 
     signature_verifier = SignatureVerifier()
     message_handler = MessageHandler(
-        session_factory=session_factory,
         signature_verifier=signature_verifier,
         storage_service=test_storage_service,
         config=mock_config,

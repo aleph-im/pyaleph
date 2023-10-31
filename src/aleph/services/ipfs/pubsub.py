@@ -10,7 +10,7 @@ LOGGER = logging.getLogger(__name__)
 
 # TODO: add type hint for message_processor, it currently causes a cyclical import
 async def incoming_channel(
-    ipfs_service: IpfsService, topic: str, message_handler
+    ipfs_service: IpfsService, topic: str, message_publisher
 ) -> None:
     from aleph.network import decode_pubsub_message
 
@@ -19,7 +19,7 @@ async def incoming_channel(
             async for mvalue in ipfs_service.sub(topic):
                 try:
                     message_dict = await decode_pubsub_message(mvalue["data"])
-                    await message_handler.add_pending_message(
+                    await message_publisher.add_pending_message(
                         message_dict=message_dict, reception_time=utc_now()
                     )
                 except InvalidMessageException:

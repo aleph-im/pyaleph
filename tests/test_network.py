@@ -109,7 +109,6 @@ async def test_incoming_inline_content(
 
     signature_verifier = SignatureVerifier()
     message_handler = MessageHandler(
-        session_factory=session_factory,
         signature_verifier=signature_verifier,
         storage_service=test_storage_service,
         config=mock_config,

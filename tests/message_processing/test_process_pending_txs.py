@@ -7,12 +7,11 @@ from aleph_message.models import Chain, MessageType, PostContent
 from configmanager import Config
 from sqlalchemy import select
 
-from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.chains.chain_data_service import ChainDataService
 from aleph.db.models import PendingMessageDb, MessageStatusDb
 from aleph.db.models.chains import ChainTxDb
 from aleph.db.models.pending_txs import PendingTxDb
-from aleph.handlers.message_handler import MessageHandler
+from aleph.handlers.message_handler import MessagePublisher
 from aleph.jobs.process_pending_txs import PendingTxProcessor
 from aleph.schemas.chains.tezos_indexer_response import MessageEventPayload
 from aleph.storage import StorageService
@@ -40,13 +39,11 @@ async def test_process_pending_tx_on_chain_protocol(
 ):
     chain_data_service = mocker.AsyncMock()
     chain_data_service.get_tx_messages = get_fixture_chaindata_messages
-    signature_verifier = SignatureVerifier()
     pending_tx_processor = PendingTxProcessor(
         session_factory=session_factory,
         storage_service=test_storage_service,
-        message_handler=MessageHandler(
+        message_publisher=MessagePublisher(
             session_factory=session_factory,
-            signature_verifier=signature_verifier,
             storage_service=test_storage_service,
             config=mock_config,
         ),
@@ -115,13 +112,11 @@ async def _process_smart_contract_tx(
     chain_data_service = ChainDataService(
         session_factory=session_factory, storage_service=mocker.AsyncMock()
     )
-    signature_verifier = SignatureVerifier()
     pending_tx_processor = PendingTxProcessor(
         session_factory=session_factory,
         storage_service=test_storage_service,
-        message_handler=MessageHandler(
+        message_publisher=MessagePublisher(
             session_factory=session_factory,
-            signature_verifier=signature_verifier,
             storage_service=test_storage_service,
             config=mock_config,
         ),
