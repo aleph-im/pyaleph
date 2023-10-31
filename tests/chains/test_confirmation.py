@@ -82,7 +82,9 @@ async def test_confirm_message(
     pending_message = PendingMessageDb.from_message_dict(
         MESSAGE_DICT, reception_time=dt.datetime(2022, 1, 1), fetched=True,
     )
-    await message_handler.fetch_and_process_one_message_db(pending_message)
+    with session_factory() as session:
+        await message_handler.process(session=session, pending_message=pending_message)
+        session.commit()
 
     with session_factory() as session:
         message_in_db = get_message_by_item_hash(
@@ -98,14 +100,14 @@ async def test_confirm_message(
     # Insert a transaction in the DB to validate the foreign key constraint
     with session_factory() as session:
         session.add(chain_tx)
+
+        pending_message.tx = chain_tx
+        pending_message.tx_hash = chain_tx.hash
+
+        await message_handler.process(
+            session=session, pending_message=pending_message
+        )
         session.commit()
-
-    pending_message.tx = chain_tx
-    pending_message.tx_hash = chain_tx.hash
-
-    await message_handler.fetch_and_process_one_message_db(
-        pending_message=pending_message
-    )
 
     with session_factory() as session:
         message_in_db = get_message_by_item_hash(
@@ -145,16 +147,16 @@ async def test_process_confirmed_message(
     # Insert a transaction in the DB to validate the foreign key constraint
     with session_factory() as session:
         session.add(chain_tx)
-        session.commit()
 
-    pending_message = PendingMessageDb.from_message_dict(
-        MESSAGE_DICT, reception_time=dt.datetime(2022, 1, 1), fetched=True,
-    )
-    pending_message.tx_hash = chain_tx.hash
-    pending_message.tx = chain_tx
-    await message_handler.fetch_and_process_one_message_db(
-        pending_message=pending_message
-    )
+        pending_message = PendingMessageDb.from_message_dict(
+            MESSAGE_DICT, reception_time=dt.datetime(2022, 1, 1), fetched=True,
+        )
+        pending_message.tx_hash = chain_tx.hash
+        pending_message.tx = chain_tx
+        await message_handler.process(
+            session=session, pending_message=pending_message
+        )
+        session.commit()
 
     with session_factory() as session:
         message_in_db = get_message_by_item_hash(
