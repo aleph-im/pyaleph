@@ -3,7 +3,7 @@ import logging
 
 from aleph_p2p_client import AlephP2PServiceClient
 
-from aleph.handlers.message_handler import MessageHandler
+from aleph.handlers.message_handler import MessageHandler, MessagePublisher
 from aleph.network import decode_pubsub_message
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.message_status import InvalidMessageException
@@ -12,7 +12,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 async def incoming_channel(
-    p2p_client: AlephP2PServiceClient, topic: str, message_handler: MessageHandler
+    p2p_client: AlephP2PServiceClient, topic: str, message_publisher: MessagePublisher
 ) -> None:
     LOGGER.debug("incoming channel started...")
 
@@ -42,7 +42,7 @@ async def incoming_channel(
                         )
                         continue
 
-                    await message_handler.add_pending_message(
+                    await message_publisher.add_pending_message(
                         message_dict=message_dict, reception_time=utc_now()
                     )
                 except Exception:

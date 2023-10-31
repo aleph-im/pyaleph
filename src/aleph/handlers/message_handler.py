@@ -52,18 +52,14 @@ from aleph.types.message_status import (
 LOGGER = logging.getLogger(__name__)
 
 
-class MessageHandler:
+class BaseMessageHandler:
     content_handlers: Dict[MessageType, ContentHandler]
 
     def __init__(
         self,
-        session_factory: DbSessionFactory,
-        signature_verifier: SignatureVerifier,
         storage_service: StorageService,
         config: Config,
     ):
-        self.session_factory = session_factory
-        self._signature_verifier = signature_verifier
         self.storage_service = storage_service
 
         vm_handler = VmMessageHandler()
@@ -168,6 +164,24 @@ class MessageHandler:
         pending_message.content = message.content
         return pending_message
 
+
+class MessagePublisher(BaseMessageHandler):
+    """
+    Class in charge of adding pending messages to the node.
+    """
+
+    def __init__(
+        self,
+        session_factory: DbSessionFactory,
+        storage_service: StorageService,
+        config: Config,
+    ):
+        super().__init__(
+            storage_service=storage_service,
+            config=config,
+        )
+        self.session_factory = session_factory
+
     async def add_pending_message(
         self,
         message_dict: Mapping[str, Any],
@@ -244,6 +258,47 @@ class MessageHandler:
                 )
                 session.commit()
                 return None
+
+
+class MessageHandler(BaseMessageHandler):
+    """
+    Class in charge of processing pending messages, i.e. validate their correctness, fetch related
+    content and insert data in the proper DB tables.
+    """
+
+    content_handlers: Dict[MessageType, ContentHandler]
+
+    def __init__(
+        self,
+        signature_verifier: SignatureVerifier,
+        storage_service: StorageService,
+        config: Config,
+    ):
+        super().__init__(storage_service=storage_service, config=config)
+        self._signature_verifier = signature_verifier
+
+    async def verify_signature(self, pending_message: PendingMessageDb):
+        if pending_message.check_message:
+            # TODO: remove type: ignore by deciding the pending message type
+            await self._signature_verifier.verify_signature(pending_message)  # type: ignore
+
+    @staticmethod
+    async def confirm_existing_message(
+        session: DbSession,
+        existing_message: MessageDb,
+        pending_message: PendingMessageDb,
+    ):
+        if pending_message.signature != existing_message.signature:
+            raise InvalidSignature(f"Invalid signature for {pending_message.item_hash}")
+
+        delete_pending_message(session=session, pending_message=pending_message)
+        if tx_hash := pending_message.tx_hash:
+            session.execute(
+                make_confirmation_upsert_query(
+                    item_hash=pending_message.item_hash, tx_hash=tx_hash
+                )
+            )
+
 
     async def insert_message(
         self, session: DbSession, pending_message: PendingMessageDb, message: MessageDb
