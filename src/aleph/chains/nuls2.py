@@ -30,7 +30,7 @@ from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSessionFactory
 from aleph.utils import run_in_executor
-from .chain_data_service import ChainDataService
+from .chain_data_service import ChainDataService, PendingTxPublisher
 from .abc import Verifier, ChainWriter
 from aleph.schemas.chains.tx_context import TxContext
 from ..db.models import ChainTxDb
@@ -78,9 +78,13 @@ class Nuls2Verifier(Verifier):
 
 class Nuls2Connector(ChainWriter):
     def __init__(
-        self, session_factory: DbSessionFactory, chain_data_service: ChainDataService
+        self,
+        session_factory: DbSessionFactory,
+        pending_tx_publisher: PendingTxPublisher,
+        chain_data_service: ChainDataService,
     ):
         self.session_factory = session_factory
+        self.pending_tx_publisher = pending_tx_publisher
         self.chain_data_service = chain_data_service
 
     async def get_last_height(self, sync_type: ChainEventType) -> int:
@@ -154,7 +158,7 @@ class Nuls2Connector(ChainWriter):
                         tx_context=context, tx_data=jdata
                     )
                     with self.session_factory() as db_session:
-                        await self.chain_data_service.incoming_chaindata(
+                        await self.pending_tx_publisher.add_and_publish_pending_tx(
                             session=db_session, tx=tx
                         )
                         db_session.commit()
@@ -197,8 +201,10 @@ class Nuls2Connector(ChainWriter):
 
             if len(messages):
                 # This function prepares a chain data file and makes it downloadable from the node.
-                sync_event_payload = await self.chain_data_service.prepare_sync_event_payload(
-                    session=session, messages=messages
+                sync_event_payload = (
+                    await self.chain_data_service.prepare_sync_event_payload(
+                        session=session, messages=messages
+                    )
                 )
                 # Required to apply update to the files table in get_chaindata
                 session.commit()

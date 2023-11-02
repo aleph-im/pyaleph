@@ -11,9 +11,9 @@ from configmanager import Config
 from nacl.exceptions import BadSignatureError
 
 import aleph.toolkit.json as aleph_json
-from aleph.chains.chain_data_service import ChainDataService
-from aleph.chains.common import get_verification_buffer
 from aleph.chains.abc import Verifier, ChainReader
+from aleph.chains.chain_data_service import PendingTxPublisher
+from aleph.chains.common import get_verification_buffer
 from aleph.db.accessors.chains import get_last_height, upsert_chain_sync_status
 from aleph.db.models import PendingMessageDb, ChainTxDb
 from aleph.schemas.chains.tezos_indexer_response import (
@@ -248,10 +248,12 @@ class TezosVerifier(Verifier):
 
 class TezosConnector(ChainReader):
     def __init__(
-        self, session_factory: DbSessionFactory, chain_data_service: ChainDataService
+        self,
+        session_factory: DbSessionFactory,
+        pending_tx_publisher: PendingTxPublisher,
     ):
         self.session_factory = session_factory
-        self.chain_data_service = chain_data_service
+        self.pending_tx_publisher = pending_tx_publisher
 
     async def get_last_height(self, sync_type: ChainEventType) -> int:
         """Returns the last height for which we already have the ethereum data."""
@@ -307,7 +309,7 @@ class TezosConnector(ChainReader):
                     )
                     LOGGER.info("%d new txs", len(txs))
                     for tx in txs:
-                        await self.chain_data_service.incoming_chaindata(
+                        await self.pending_tx_publisher.add_and_publish_pending_tx(
                             session=session, tx=tx
                         )
 
