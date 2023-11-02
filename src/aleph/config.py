@@ -70,6 +70,10 @@ def get_defaults():
             "folder": "/var/lib/pyaleph",
             # Whether to store files on the node.
             "store_files": True,
+            # Interval between garbage collector runs, expressed in hours.
+            "garbage_collector_period": 24,
+            # Grapce period for files, expressed in hours.
+            "grace_period": 24,
         },
         "nuls2": {
             # NULS2 chain ID.

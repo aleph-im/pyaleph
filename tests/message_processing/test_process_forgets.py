@@ -6,7 +6,7 @@ from configmanager import Config
 from more_itertools import one
 from sqlalchemy import select
 
-from aleph.db.accessors.files import count_file_pins
+from aleph.db.accessors.files import count_file_pins, get_file
 from aleph.db.accessors.messages import get_message_status, get_forgotten_message
 from aleph.db.accessors.posts import get_post
 from aleph.db.models import (
@@ -16,6 +16,7 @@ from aleph.db.models import (
     MessageStatusDb,
     FilePinDb,
     MessageFilePinDb,
+    GracePeriodFilePinDb,
 )
 from aleph.handlers.content.aggregate import AggregateMessageHandler
 from aleph.handlers.content.forget import ForgetMessageHandler
@@ -45,7 +46,9 @@ def forget_handler(mocker) -> ForgetMessageHandler:
             balances_post_type="no-balances-in-tests",
         ),
         MessageType.program: vm_handler,
-        MessageType.store: StoreMessageHandler(storage_service=mocker.AsyncMock()),
+        MessageType.store: StoreMessageHandler(
+            storage_service=mocker.AsyncMock(), grace_period=24
+        ),
     }
     return ForgetMessageHandler(content_handlers=content_handlers)
 
@@ -218,18 +221,13 @@ async def test_forget_store_message(
         )
         assert isinstance(forget_message_result, ProcessedMessage)
 
-        # Check that the file was deleted from storage
-        content = await storage_engine.read(filename=file_hash)
-        assert content is None
+        # Check that the file is pinned with a grace period
+        file = get_file(session=session, file_hash=file_hash)
+        assert file
+        assert file.pins
 
-        nb_references = count_file_pins(session=session, file_hash=file_hash)
-        assert nb_references == 0
-
-        # Check that the file does not appear in the files table anymore
-        file = session.execute(
-            select(StoredFileDb).where(StoredFileDb.hash == file_hash)
-        ).scalar()
-        assert file is None
+        assert len(file.pins) == 1
+        assert isinstance(file.pins[0], GracePeriodFilePinDb)
 
 
 @pytest.mark.asyncio

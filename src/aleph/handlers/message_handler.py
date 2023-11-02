@@ -73,7 +73,10 @@ class BaseMessageHandler:
                 balances_post_type=config.aleph.balances.post_type.value,
             ),
             MessageType.program: vm_handler,
-            MessageType.store: StoreMessageHandler(storage_service=storage_service),
+            MessageType.store: StoreMessageHandler(
+                storage_service=storage_service,
+                grace_period=config.storage.grace_period.value,
+            ),
         }
 
         self.content_handlers[MessageType.forget] = ForgetMessageHandler(

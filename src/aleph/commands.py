@@ -37,6 +37,10 @@ from aleph.services.ipfs import IpfsService
 from aleph.services.ipfs.common import make_ipfs_client
 from aleph.services.keys import generate_keypair, save_keys
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
+from aleph.services.storage.garbage_collector import (
+    garbage_collector_task,
+    GarbageCollector,
+)
 from aleph.storage import StorageService
 from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
@@ -142,6 +146,9 @@ async def main(args: List[str]) -> None:
             ipfs_service=ipfs_service,
             node_cache=node_cache,
         )
+        garbage_collector = GarbageCollector(
+            session_factory=session_factory, storage_service=storage_service
+        )
         chain_data_service = ChainDataService(
             session_factory=session_factory,
             storage_service=storage_service,
@@ -191,6 +198,12 @@ async def main(args: List[str]) -> None:
         LOGGER.debug("Initializing cache tasks")
         tasks.append(refresh_cache_materialized_views(session_factory))
         LOGGER.debug("Initialized cache tasks")
+
+        LOGGER.debug("Initializing garbage collector task")
+        tasks.append(
+            garbage_collector_task(config=config, garbage_collector=garbage_collector)
+        )
+        LOGGER.debug("Initialized garbage collector task")
 
         LOGGER.debug("Running event loop")
         await asyncio.gather(*tasks)

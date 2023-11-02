@@ -85,7 +85,9 @@ async def test_handle_new_storage_file(
         node_cache=mocker.AsyncMock(),
     )
     storage_service.get_hash_content = get_hash_content_mock = mocker.AsyncMock(return_value=raw_content)  # type: ignore
-    store_message_handler = StoreMessageHandler(storage_service=storage_service)
+    store_message_handler = StoreMessageHandler(
+        storage_service=storage_service, grace_period=24
+    )
     with session_factory() as session:
         await store_message_handler.fetch_related_content(
             session=session, message=message
@@ -130,7 +132,9 @@ async def test_handle_new_storage_directory(
         ipfs_service=IpfsService(ipfs_client=mock_ipfs_client),
         node_cache=mocker.AsyncMock(),
     )
-    store_message_handler = StoreMessageHandler(storage_service=storage_service)
+    store_message_handler = StoreMessageHandler(
+        storage_service=storage_service, grace_period=24
+    )
 
     with session_factory() as session:
         await store_message_handler.fetch_related_content(
