@@ -6,14 +6,14 @@ import asyncio
 import logging
 from typing import Dict, Optional, Set
 
+import aio_pika.abc
 from configmanager import Config
 from setproctitle import setproctitle
-from sqlalchemy import delete
 
 from aleph.chains.chain_data_service import ChainDataService
-from aleph.db.accessors.pending_txs import get_pending_txs
+from aleph.db.accessors.pending_txs import get_pending_txs, delete_pending_tx
 from aleph.db.connection import make_engine, make_session_factory
-from aleph.db.models.pending_txs import PendingTxDb
+from aleph.db.models import PendingTxDb
 from aleph.handlers.message_handler import MessagePublisher
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs.common import make_ipfs_client
@@ -25,24 +25,45 @@ from aleph.toolkit.monitoring import setup_sentry
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.db_session import DbSessionFactory
-from .job_utils import prepare_loop
+from .job_utils import prepare_loop, MqWatcher
 
 LOGGER = logging.getLogger(__name__)
 
 
-class PendingTxProcessor:
+async def make_pending_tx_queue(config: Config) -> aio_pika.abc.AbstractQueue:
+    mq_conn = await aio_pika.connect_robust(
+        host=config.p2p.mq_host.value,
+        port=config.rabbitmq.port.value,
+        login=config.rabbitmq.username.value,
+        password=config.rabbitmq.password.value,
+    )
+    channel = await mq_conn.channel()
+    pending_tx_exchange = await channel.declare_exchange(
+        name=config.rabbitmq.pending_tx_exchange.value,
+        type=aio_pika.ExchangeType.TOPIC,
+        auto_delete=False,
+    )
+    pending_tx_queue = await channel.declare_queue(
+        name="pending-tx-queue", durable=True, auto_delete=False
+    )
+    await pending_tx_queue.bind(pending_tx_exchange, routing_key="#")
+    return pending_tx_queue
+
+
+class PendingTxProcessor(MqWatcher):
     def __init__(
         self,
         session_factory: DbSessionFactory,
-        storage_service: StorageService,
         message_publisher: MessagePublisher,
+        chain_data_service: ChainDataService,
+        pending_tx_queue: aio_pika.abc.AbstractQueue,
     ):
+        super().__init__(mq_queue=pending_tx_queue)
+
         self.session_factory = session_factory
-        self.storage_service = storage_service
         self.message_publisher = message_publisher
-        self.chain_data_service = ChainDataService(
-            session_factory=session_factory, storage_service=storage_service
-        )
+        self.chain_data_service = chain_data_service
+        self.pending_tx_queue = pending_tx_queue
 
     async def handle_pending_tx(
         self, pending_tx: PendingTxDb, seen_ids: Optional[Set[str]] = None
@@ -68,18 +89,13 @@ class PendingTxProcessor:
                     check_message=tx.protocol != ChainSyncProtocol.SMART_CONTRACT,
                 )
 
-        else:
-            LOGGER.debug("TX contains no message")
-
-        if messages is not None:
             # bogus or handled, we remove it.
             with self.session_factory() as session:
-                session.execute(
-                    delete(PendingTxDb).where(
-                        PendingTxDb.tx_hash == pending_tx.tx_hash
-                    ),
-                )
+                delete_pending_tx(session=session, tx_hash=tx.hash)
                 session.commit()
+
+        else:
+            LOGGER.debug("TX contains no message")
 
     async def process_pending_txs(self, max_concurrent_tasks: int):
         """
@@ -118,10 +134,11 @@ class PendingTxProcessor:
 
 async def handle_txs_task(config: Config):
     max_concurrent_tasks = config.aleph.jobs.pending_txs.max_concurrency.value
-    await asyncio.sleep(4)
 
     engine = make_engine(config=config, application_name="aleph-txs")
     session_factory = make_session_factory(engine)
+
+    pending_tx_queue = await make_pending_tx_queue(config=config)
 
     node_cache = NodeCache(
         redis_host=config.redis.host.value, redis_port=config.redis.port.value
@@ -138,20 +155,29 @@ async def handle_txs_task(config: Config):
         storage_service=storage_service,
         config=config,
     )
+    chain_data_service = ChainDataService(
+        session_factory=session_factory, storage_service=storage_service
+    )
     pending_tx_processor = PendingTxProcessor(
         session_factory=session_factory,
-        storage_service=storage_service,
         message_publisher=message_publisher,
+        chain_data_service=chain_data_service,
+        pending_tx_queue=pending_tx_queue,
     )
 
-    while True:
-        try:
-            await pending_tx_processor.process_pending_txs(max_concurrent_tasks)
-            await asyncio.sleep(5)
-        except Exception:
-            LOGGER.exception("Error in pending txs job")
+    async with pending_tx_processor:
+        while True:
+            try:
+                await pending_tx_processor.process_pending_txs(
+                    max_concurrent_tasks=max_concurrent_tasks
+                )
+            except Exception:
+                LOGGER.exception("Error in pending txs job")
 
-        await asyncio.sleep(0.01)
+            try:
+                await asyncio.wait_for(pending_tx_processor.ready(), 5)
+            except TimeoutError:
+                pass
 
 
 def pending_txs_subprocess(config_values: Dict):

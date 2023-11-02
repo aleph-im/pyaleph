@@ -1,8 +1,10 @@
 import asyncio
 from io import StringIO
-from typing import Dict, Optional, List, Any, Mapping, Set, cast, Type, Union
+from typing import Dict, Optional, List, Any, Mapping, Set, cast, Type, Union, Self
 
+import aio_pika.abc
 from aleph_message.models import StoreContent, ItemType, Chain, MessageType
+from configmanager import Config
 from pydantic import ValidationError
 
 from aleph.chains.common import LOGGER
@@ -36,7 +38,9 @@ from aleph.utils import get_sha256
 
 class ChainDataService:
     def __init__(
-        self, session_factory: DbSessionFactory, storage_service: StorageService
+        self,
+        session_factory: DbSessionFactory,
+        storage_service: StorageService,
     ):
         self.session_factory = session_factory
         self.storage_service = storage_service
@@ -215,11 +219,54 @@ class ChainDataService:
                 LOGGER.info("%s", error_msg)
                 raise InvalidContent(error_msg)
 
+
+async def make_pending_tx_exchange(config: Config) -> aio_pika.abc.AbstractExchange:
+    mq_conn = await aio_pika.connect_robust(
+        host=config.p2p.mq_host.value,
+        port=config.rabbitmq.port.value,
+        login=config.rabbitmq.username.value,
+        password=config.rabbitmq.password.value,
+    )
+    channel = await mq_conn.channel()
+    pending_tx_exchange = await channel.declare_exchange(
+        name=config.rabbitmq.pending_tx_exchange.value,
+        type=aio_pika.ExchangeType.TOPIC,
+        auto_delete=False,
+    )
+    return pending_tx_exchange
+
+
+class PendingTxPublisher:
+    def __init__(self, pending_tx_exchange: aio_pika.abc.AbstractExchange):
+        self.pending_tx_exchange = pending_tx_exchange
+
     @staticmethod
-    async def incoming_chaindata(session: DbSession, tx: ChainTxDb):
-        """Incoming data from a chain.
-        Content can be inline of "offchain" through an ipfs hash.
-        For now, we only add it to the database, it will be processed later.
-        """
+    def add_pending_tx(session: DbSession, tx: ChainTxDb):
         upsert_chain_tx(session=session, tx=tx)
         upsert_pending_tx(session=session, tx_hash=tx.hash)
+
+    async def publish_pending_tx(self, tx: ChainTxDb):
+        message = aio_pika.Message(body=tx.hash.encode("utf-8"))
+        await self.pending_tx_exchange.publish(
+            message=message, routing_key=f"{tx.chain.value}.{tx.publisher}.{tx.hash}"
+        )
+
+    async def add_and_publish_pending_tx(self, session: DbSession, tx: ChainTxDb):
+        """
+        Add an event published on one of the supported chains.
+        Adds the tx to the database, creates a pending tx entry in the pending tx table
+        and publishes a message on the pending tx exchange.
+
+        Note that this function commits changes to the database for consistency
+        between the DB and the message queue.
+        """
+        self.add_pending_tx(session=session, tx=tx)
+        session.commit()
+        await self.publish_pending_tx(tx)
+
+    @classmethod
+    async def new(cls, config: Config) -> Self:
+        pending_tx_exchange = await make_pending_tx_exchange(config=config)
+        return cls(
+            pending_tx_exchange=pending_tx_exchange,
+        )
