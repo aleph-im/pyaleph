@@ -1,12 +1,21 @@
 from typing import Optional, Iterable
 
 from aleph_message.models import Chain
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import selectinload
 
 from aleph.db.models import PendingTxDb, ChainTxDb
 from aleph.types.db_session import DbSession
+
+
+def get_pending_tx(session: DbSession, tx_hash: str) -> Optional[PendingTxDb]:
+    select_stmt = (
+        select(PendingTxDb)
+        .where(PendingTxDb.tx_hash == tx_hash)
+        .options(selectinload(PendingTxDb.tx))
+    )
+    return (session.execute(select_stmt)).scalar_one_or_none()
 
 
 def get_pending_txs(session: DbSession, limit: int = 200) -> Iterable[PendingTxDb]:
@@ -33,3 +42,8 @@ def count_pending_txs(session: DbSession, chain: Optional[Chain] = None) -> int:
 def upsert_pending_tx(session: DbSession, tx_hash: str) -> None:
     upsert_stmt = insert(PendingTxDb).values(tx_hash=tx_hash).on_conflict_do_nothing()
     session.execute(upsert_stmt)
+
+
+def delete_pending_tx(session: DbSession, tx_hash: str) -> None:
+    delete_stmt = delete(PendingTxDb).where(PendingTxDb.tx_hash == tx_hash)
+    session.execute(delete_stmt)

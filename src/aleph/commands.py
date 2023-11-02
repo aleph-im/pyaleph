@@ -23,7 +23,7 @@ import sentry_sdk
 from configmanager import Config
 
 import aleph.config
-from aleph.chains.chain_data_service import ChainDataService
+from aleph.chains.chain_data_service import ChainDataService, PendingTxPublisher
 from aleph.chains.connector import ChainConnector
 from aleph.cli.args import parse_args
 from aleph.db.connection import make_engine, make_session_factory, make_db_url
@@ -44,7 +44,6 @@ from aleph.toolkit.monitoring import setup_sentry
 __author__ = "Moshe Malawach"
 __copyright__ = "Moshe Malawach"
 __license__ = "mit"
-
 
 LOGGER = logging.getLogger(__name__)
 
@@ -138,10 +137,14 @@ async def main(args: List[str]) -> None:
         node_cache=node_cache,
     )
     chain_data_service = ChainDataService(
-        session_factory=session_factory, storage_service=storage_service
+        session_factory=session_factory,
+        storage_service=storage_service,
     )
+    pending_tx_publisher = await PendingTxPublisher.new(config=config)
     chain_connector = ChainConnector(
-        session_factory=session_factory, chain_data_service=chain_data_service
+        session_factory=session_factory,
+        pending_tx_publisher=pending_tx_publisher,
+        chain_data_service=chain_data_service,
     )
 
     set_start_method("spawn")

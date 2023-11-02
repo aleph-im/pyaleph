@@ -5,11 +5,10 @@ from typing import Dict, Union
 from aleph_message.models import Chain
 from configmanager import Config
 
-from aleph.storage import StorageService
 from aleph.types.db_session import DbSessionFactory
-from .bsc import BscConnector
-from .chain_data_service import ChainDataService
 from .abc import ChainReader, ChainWriter
+from .bsc import BscConnector
+from .chain_data_service import ChainDataService, PendingTxPublisher
 from .ethereum import EthereumConnector
 from .nuls2 import Nuls2Connector
 from .tezos import TezosConnector
@@ -28,9 +27,13 @@ class ChainConnector:
     writers: Dict[Chain, ChainWriter]
 
     def __init__(
-        self, session_factory: DbSessionFactory, chain_data_service: ChainDataService
+        self,
+        session_factory: DbSessionFactory,
+        pending_tx_publisher: PendingTxPublisher,
+        chain_data_service: ChainDataService,
     ):
         self._session_factory = session_factory
+        self.pending_tx_publisher = pending_tx_publisher
         self._chain_data_service = chain_data_service
 
         self.readers = {}
@@ -101,13 +104,14 @@ class ChainConnector:
             Chain.BSC,
             BscConnector(
                 session_factory=self._session_factory,
-                chain_data_service=self._chain_data_service,
+                pending_tx_publisher=self.pending_tx_publisher,
             ),
         )
         self._add_chain(
             Chain.NULS2,
             Nuls2Connector(
                 session_factory=self._session_factory,
+                pending_tx_publisher=self.pending_tx_publisher,
                 chain_data_service=self._chain_data_service,
             ),
         )
@@ -115,6 +119,7 @@ class ChainConnector:
             Chain.ETH,
             EthereumConnector(
                 session_factory=self._session_factory,
+                pending_tx_publisher=self.pending_tx_publisher,
                 chain_data_service=self._chain_data_service,
             ),
         )
@@ -122,6 +127,6 @@ class ChainConnector:
             Chain.TEZOS,
             TezosConnector(
                 session_factory=self._session_factory,
-                chain_data_service=self._chain_data_service,
+                pending_tx_publisher=self.pending_tx_publisher,
             ),
         )

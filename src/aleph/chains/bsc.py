@@ -1,8 +1,8 @@
 from aleph_message.models import Chain
 from configmanager import Config
 
-from aleph.chains.chain_data_service import ChainDataService
 from aleph.chains.abc import ChainReader
+from aleph.chains.chain_data_service import PendingTxPublisher
 from aleph.chains.indexer_reader import AlephIndexerReader
 from aleph.types.chain_sync import ChainEventType
 from aleph.types.db_session import DbSessionFactory
@@ -10,12 +10,14 @@ from aleph.types.db_session import DbSessionFactory
 
 class BscConnector(ChainReader):
     def __init__(
-        self, session_factory: DbSessionFactory, chain_data_service: ChainDataService
+        self,
+        session_factory: DbSessionFactory,
+        pending_tx_publisher: PendingTxPublisher,
     ):
         self.indexer_reader = AlephIndexerReader(
             chain=Chain.BSC,
             session_factory=session_factory,
-            chain_data_service=chain_data_service,
+            pending_tx_publisher=pending_tx_publisher,
         )
 
     async def fetcher(self, config: Config):

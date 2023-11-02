@@ -41,12 +41,13 @@ async def test_process_pending_tx_on_chain_protocol(
     chain_data_service.get_tx_messages = get_fixture_chaindata_messages
     pending_tx_processor = PendingTxProcessor(
         session_factory=session_factory,
-        storage_service=test_storage_service,
         message_publisher=MessagePublisher(
             session_factory=session_factory,
             storage_service=test_storage_service,
             config=mock_config,
         ),
+        chain_data_service=chain_data_service,
+        pending_tx_queue=mocker.AsyncMock(),
     )
     pending_tx_processor.chain_data_service = chain_data_service
 
@@ -114,12 +115,13 @@ async def _process_smart_contract_tx(
     )
     pending_tx_processor = PendingTxProcessor(
         session_factory=session_factory,
-        storage_service=test_storage_service,
         message_publisher=MessagePublisher(
             session_factory=session_factory,
             storage_service=test_storage_service,
             config=mock_config,
         ),
+        chain_data_service=chain_data_service,
+        pending_tx_queue=mocker.AsyncMock(),
     )
     pending_tx_processor.chain_data_service = chain_data_service
 

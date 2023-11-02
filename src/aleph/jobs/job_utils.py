@@ -4,6 +4,7 @@ import logging
 from typing import Dict, Union
 from typing import Tuple
 
+import aio_pika.abc
 from configmanager import Config
 from sqlalchemy import update
 
@@ -39,7 +40,7 @@ def compute_next_retry_interval(attempts: int) -> dt.timedelta:
     :return: The time interval between the previous processing attempt and the next one.
     """
 
-    seconds = 2 ** attempts
+    seconds = 2**attempts
     return dt.timedelta(seconds=min(seconds, MAX_RETRY_INTERVAL))
 
 
@@ -84,6 +85,44 @@ def prepare_loop(config_values: Dict) -> Tuple[asyncio.AbstractEventLoop, Config
     config.load_values(config_values)
 
     return loop, config
+
+
+class MqWatcher:
+    """
+    Watches a RabbitMQ message queue for new messages and maintains an asyncio Event object
+    that tracks whether there is still work to do.
+
+    This class is used by the tx/message processors to detect new pending objects in the database.
+    We use RabbitMQ messages for signaling new pending objects but the actual objects are stored
+    in the DB.
+
+    This class is an async context manager that spawns a watcher task. Callers can use the `ready()`
+    method to determine if there is work to be done.
+    """
+
+    def __init__(self, mq_queue: aio_pika.abc.AbstractQueue):
+        self.mq_queue = mq_queue
+
+        self._watcher_task = None
+        self._event = asyncio.Event()
+
+    async def _check_for_message(self):
+        async with self.mq_queue.iterator(no_ack=True) as queue_iter:
+            async for _ in queue_iter:
+                self._event.set()
+
+    async def __aenter__(self):
+        self._watcher_task = asyncio.create_task(self._check_for_message())
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self._watcher_task is not None:
+            self._watcher_task.cancel()
+            await self._watcher_task
+
+    async def ready(self):
+        await self._event.wait()
+        self._event.clear()
 
 
 class MessageJob:
