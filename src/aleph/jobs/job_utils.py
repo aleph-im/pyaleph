@@ -88,6 +88,18 @@ def prepare_loop(config_values: Dict) -> Tuple[asyncio.AbstractEventLoop, Config
 
 
 class MqWatcher:
+    """
+    Watches a RabbitMQ message queue for new messages and maintains an asyncio Event object
+    that tracks whether there is still work to do.
+
+    This class is used by the tx/message processors to detect new pending objects in the database.
+    We use RabbitMQ messages for signaling new pending objects but the actual objects are stored
+    in the DB.
+
+    This class is an async context manager that spawns a watcher task. Callers can use the `ready()`
+    method to determine if there is work to be done.
+    """
+
     def __init__(self, mq_queue: aio_pika.abc.AbstractQueue):
         self.mq_queue = mq_queue
 
