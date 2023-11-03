@@ -2,6 +2,7 @@ import datetime as dt
 import logging
 from typing import Optional, Dict, Any, Mapping
 
+import aio_pika.abc
 import psycopg2
 import sqlalchemy.exc
 from aleph_message.models import MessageType, ItemType
@@ -175,12 +176,21 @@ class MessagePublisher(BaseMessageHandler):
         session_factory: DbSessionFactory,
         storage_service: StorageService,
         config: Config,
+        pending_message_exchange: aio_pika.abc.AbstractExchange,
     ):
         super().__init__(
             storage_service=storage_service,
             config=config,
         )
         self.session_factory = session_factory
+        self.pending_message_exchange = pending_message_exchange
+
+    async def _publish_pending_message(self, pending_message: PendingMessageDb) -> None:
+        mq_message = aio_pika.Message(body=f"{pending_message.id}".encode("utf-8"))
+        process_or_fetch = "process" if pending_message.fetched else "fetch"
+        await self.pending_message_exchange.publish(
+            mq_message, routing_key=f"{process_or_fetch}.{pending_message.item_hash}"
+        )
 
     async def add_pending_message(
         self,
@@ -241,7 +251,6 @@ class MessagePublisher(BaseMessageHandler):
                 session.execute(upsert_message_status_stmt)
                 session.execute(insert_pending_message_stmt)
                 session.commit()
-                return pending_message
 
             except (psycopg2.Error, sqlalchemy.exc.SQLAlchemyError) as e:
                 LOGGER.warning(
@@ -258,6 +267,9 @@ class MessagePublisher(BaseMessageHandler):
                 )
                 session.commit()
                 return None
+
+            await self._publish_pending_message(pending_message)
+            return pending_message
 
 
 class MessageHandler(BaseMessageHandler):
@@ -298,7 +310,6 @@ class MessageHandler(BaseMessageHandler):
                     item_hash=pending_message.item_hash, tx_hash=tx_hash
                 )
             )
-
 
     async def insert_message(
         self, session: DbSession, pending_message: PendingMessageDb, message: MessageDb
