@@ -31,8 +31,8 @@ def init_cors(app: web.Application):
             cors.add(route)
 
 
-def create_aiohttp_app(debug: bool = False) -> web.Application:
-    app = web.Application(client_max_size=1024**2 * 64, debug=debug)
+def create_aiohttp_app() -> web.Application:
+    app = web.Application(client_max_size=1024**2 * 64)
 
     tpl_path = pkg_resources.resource_filename("aleph.web", "templates")
     jinja_loader = jinja2.ChoiceLoader(
