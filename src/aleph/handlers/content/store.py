@@ -1,25 +1,20 @@
-""" This is the storage message handlers file.
-
-For now it's very simple, we check if we want to store files or not.
+"""
+Content handler for STORE messages.
 
 TODO:
-- check balances and storage allowance
 - handle incentives from 3rd party
-- handle garbage collection of unused hashes
 """
 
 import asyncio
+import datetime as dt
 import logging
 from typing import List, Optional, Set
 
 import aioipfs
-from aioipfs import NotPinnedError
-from aioipfs.api import RepoAPI
 from aleph_message.models import ItemType, StoreContent, ItemHash
 
 from aleph.config import get_config
 from aleph.db.accessors.files import (
-    delete_file as delete_file_db,
     insert_message_file_pin,
     get_file_tag,
     upsert_file_tag,
@@ -28,12 +23,13 @@ from aleph.db.accessors.files import (
     is_pinned_file,
     get_message_file_pin,
     upsert_file,
+    insert_grace_period_file_pin,
 )
 from aleph.db.models import MessageDb
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.handlers.content.content_handler import ContentHandler
 from aleph.storage import StorageService
-from aleph.toolkit.timestamp import timestamp_to_datetime
+from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag, FileType
 from aleph.types.message_status import (
@@ -88,8 +84,9 @@ def make_file_tag(owner: str, ref: Optional[str], item_hash: str) -> FileTag:
 
 
 class StoreMessageHandler(ContentHandler):
-    def __init__(self, storage_service: StorageService):
+    def __init__(self, storage_service: StorageService, grace_period: int):
         self.storage_service = storage_service
+        self.grace_period = grace_period
 
     async def is_related_content_fetched(
         self, session: DbSession, message: MessageDb
@@ -103,7 +100,6 @@ class StoreMessageHandler(ContentHandler):
     async def fetch_related_content(
         self, session: DbSession, message: MessageDb
     ) -> None:
-
         # TODO: simplify this function, it's overly complicated for no good reason.
 
         # TODO: this check is useless, remove it
@@ -153,7 +149,7 @@ class StoreMessageHandler(ContentHandler):
                 if stats["Type"] == "file":
                     is_folder = False
                     size = stats["Size"]
-                    do_standard_lookup = size < 1024 ** 2 and len(item_hash) == 46
+                    do_standard_lookup = size < 1024**2 and len(item_hash) == 46
                 else:
                     is_folder = True
                     # Size is 0 for folders, use cumulative size instead
@@ -280,13 +276,17 @@ class StoreMessageHandler(ContentHandler):
         for message in messages:
             await self._pin_and_tag_file(session=session, message=message)
 
-    # TODO: should be probably be in the storage service
-    async def _garbage_collect(
+    async def _check_remaining_pins(
         self, session: DbSession, storage_hash: str, storage_type: ItemType
     ):
-        """If a file does not have any reference left, delete or unpin it.
+        """
+        If a file is not pinned anymore, mark it as pickable by the garbage collector.
 
-        This is typically called after 'forgetting' a message.
+        We do not delete files directly from the message processor for two reasons:
+        1. Performance (deleting large files is slow)
+        2. Give the users some time to react if a file gets unpinned.
+
+        If a file is not pinned by a TX or message, we give it a grace period pin.
         """
         LOGGER.debug(f"Garbage collecting {storage_hash}")
 
@@ -303,30 +303,16 @@ class StoreMessageHandler(ContentHandler):
                 f"for hash '{storage_hash}'"
             )
 
-        delete_file_db(session=session, file_hash=storage_hash)
+        LOGGER.info("Inserting grace period pin for %s", storage_hash)
 
-        if storage_type == ItemType.ipfs:
-            LOGGER.debug(f"Removing from IPFS: {storage_hash}")
-            ipfs_client = self.storage_service.ipfs_service.ipfs_client
-            try:
-                result = await ipfs_client.pin.rm(storage_hash)
-                print(result)
-
-                # Launch the IPFS garbage collector (`ipfs repo gc`)
-                async for _ in RepoAPI(driver=ipfs_client).gc():
-                    pass
-
-            except NotPinnedError:
-                LOGGER.debug("File not pinned")
-
-            LOGGER.debug(f"Removed from IPFS: {storage_hash}")
-        elif storage_type == ItemType.storage:
-            LOGGER.debug(f"Removing from local storage: {storage_hash}")
-            await self.storage_service.storage_engine.delete(storage_hash)
-            LOGGER.debug(f"Removed from local storage: {storage_hash}")
-        else:
-            raise ValueError(f"Invalid storage type {storage_type}")
-        LOGGER.debug(f"Removed from {storage_type}: {storage_hash}")
+        current_datetime = utc_now()
+        delete_by = current_datetime + dt.timedelta(hours=self.grace_period)
+        insert_grace_period_file_pin(
+            session=session,
+            file_hash=storage_hash,
+            created=utc_now(),
+            delete_by=delete_by,
+        )
 
     async def forget_message(self, session: DbSession, message: MessageDb) -> Set[str]:
         content = _get_store_content(message)
@@ -340,7 +326,7 @@ class StoreMessageHandler(ContentHandler):
                 item_hash=message.item_hash,
             ),
         )
-        await self._garbage_collect(
+        await self._check_remaining_pins(
             session=session,
             storage_hash=content.item_hash,
             storage_type=content.item_type,

@@ -14,7 +14,10 @@ from pydantic import ValidationError
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.balances import get_total_balance
 from aleph.db.accessors.cost import get_total_cost_for_address
-from aleph.db.accessors.files import count_file_pins, get_file
+from aleph.db.accessors.files import (
+    count_file_pins,
+    get_file,
+)
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.schemas.pending_messages import (
     BasePendingMessage,
@@ -38,6 +41,7 @@ from aleph.web.controllers.utils import (
     mq_make_aleph_message_topic_queue,
     broadcast_and_process_message,
     broadcast_status_to_http_status,
+    add_grace_period_for_file,
 )
 
 logger = logging.getLogger(__name__)
@@ -51,6 +55,8 @@ async def add_ipfs_json_controller(request: web.Request):
     """Forward the json content to IPFS server and return an hash"""
     storage_service = get_storage_service_from_request(request)
     session_factory = get_session_factory_from_request(request)
+    config = get_config_from_request(request)
+    grace_period = config.storage.grace_period.value
 
     data = await request.json()
     with session_factory() as session:
@@ -60,6 +66,9 @@ async def add_ipfs_json_controller(request: web.Request):
                 session=session, value=data, engine=ItemType.ipfs
             ),
         }
+        add_grace_period_for_file(
+            session=session, file_hash=output["hash"], hours=grace_period
+        )
         session.commit()
 
     return web.json_response(output)
@@ -69,6 +78,8 @@ async def add_storage_json_controller(request: web.Request):
     """Forward the json content to IPFS server and return an hash"""
     storage_service = get_storage_service_from_request(request)
     session_factory = get_session_factory_from_request(request)
+    config = get_config_from_request(request)
+    grace_period = config.storage.grace_period.value
 
     data = await request.json()
     with session_factory() as session:
@@ -78,6 +89,9 @@ async def add_storage_json_controller(request: web.Request):
                 session=session, value=data, engine=ItemType.storage
             ),
         }
+        add_grace_period_for_file(
+            session=session, file_hash=output["hash"], hours=grace_period
+        )
         session.commit()
 
     return web.json_response(output)
@@ -155,6 +169,7 @@ async def _check_and_add_file(
     storage_service: StorageService,
     message: Optional[PendingStoreMessage],
     file: UploadedFile,
+    grace_period: int,
 ) -> str:
     # Perform authentication and balance checks
     if message:
@@ -196,6 +211,12 @@ async def _check_and_add_file(
         file_hash=file_hash,
     )
 
+    # For files uploaded without authenticated upload, add a grace period of 1 day.
+    if not message_content:
+        add_grace_period_for_file(
+            session=session, file_hash=file_hash, hours=grace_period
+        )
+
     return file_hash
 
 
@@ -218,6 +239,8 @@ async def storage_add_file(request: web.Request):
     storage_service = get_storage_service_from_request(request)
     session_factory = get_session_factory_from_request(request)
     signature_verifier = get_signature_verifier_from_request(request)
+    config = get_config_from_request(request)
+    grace_period = config.storage.grace_period.value
 
     post = await request.post()
     try:
@@ -267,6 +290,7 @@ async def storage_add_file(request: web.Request):
             storage_service=storage_service,
             message=message,
             file=uploaded_file,
+            grace_period=grace_period,
         )
         session.commit()
 

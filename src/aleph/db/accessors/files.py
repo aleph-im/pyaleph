@@ -16,11 +16,21 @@ from ..models.files import (
     MessageFilePinDb,
     FilePinType,
     ContentFilePinDb,
+    GracePeriodFilePinDb,
 )
 
 
 def is_pinned_file(session: DbSession, file_hash: str) -> bool:
     return FilePinDb.exists(session=session, where=FilePinDb.file_hash == file_hash)
+
+
+def get_unpinned_files(session: DbSession) -> Iterable[StoredFileDb]:
+    """
+    Returns the list of files that are not pinned by a message or an on-chain transaction.
+    """
+    select_pins = select(FilePinDb).where(FilePinDb.file_hash == StoredFileDb.hash)
+    select_stmt = select(StoredFileDb).where(~select_pins.exists())
+    return session.execute(select_stmt).scalars()
 
 
 def upsert_tx_file_pin(
@@ -89,6 +99,28 @@ def find_file_pins(session: DbSession, item_hashes: Collection[str]) -> Iterable
 def delete_file_pin(session: DbSession, item_hash: str) -> None:
     delete_stmt = delete(MessageFilePinDb).where(
         MessageFilePinDb.item_hash == item_hash
+    )
+    session.execute(delete_stmt)
+
+
+def insert_grace_period_file_pin(
+    session: DbSession,
+    file_hash: str,
+    created: dt.datetime,
+    delete_by: dt.datetime,
+) -> None:
+    insert_stmt = insert(GracePeriodFilePinDb).values(
+        file_hash=file_hash,
+        created=created,
+        type=FilePinType.GRACE_PERIOD,
+        delete_by=delete_by,
+    )
+    session.execute(insert_stmt)
+
+
+def delete_grace_period_file_pins(session: DbSession, datetime: dt.datetime) -> None:
+    delete_stmt = delete(GracePeriodFilePinDb).where(
+        GracePeriodFilePinDb.delete_by < datetime
     )
     session.execute(delete_stmt)
 
