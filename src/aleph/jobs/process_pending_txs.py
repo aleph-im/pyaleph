@@ -129,45 +129,45 @@ async def handle_txs_task(config: Config):
     )
     pending_tx_queue = await make_pending_tx_queue(config=config, channel=mq_channel)
 
-    node_cache = NodeCache(
+    async with NodeCache(
         redis_host=config.redis.host.value, redis_port=config.redis.port.value
-    )
-    ipfs_client = make_ipfs_client(config)
-    ipfs_service = IpfsService(ipfs_client=ipfs_client)
-    storage_service = StorageService(
-        storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
-        ipfs_service=ipfs_service,
-        node_cache=node_cache,
-    )
-    message_publisher = MessagePublisher(
-        session_factory=session_factory,
-        storage_service=storage_service,
-        config=config,
-        pending_message_exchange=pending_message_exchange,
-    )
-    chain_data_service = ChainDataService(
-        session_factory=session_factory, storage_service=storage_service
-    )
-    pending_tx_processor = PendingTxProcessor(
-        session_factory=session_factory,
-        message_publisher=message_publisher,
-        chain_data_service=chain_data_service,
-        pending_tx_queue=pending_tx_queue,
-    )
+    ) as node_cache:
+        ipfs_client = make_ipfs_client(config)
+        ipfs_service = IpfsService(ipfs_client=ipfs_client)
+        storage_service = StorageService(
+            storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
+            ipfs_service=ipfs_service,
+            node_cache=node_cache,
+        )
+        message_publisher = MessagePublisher(
+            session_factory=session_factory,
+            storage_service=storage_service,
+            config=config,
+            pending_message_exchange=pending_message_exchange,
+        )
+        chain_data_service = ChainDataService(
+            session_factory=session_factory, storage_service=storage_service
+        )
+        pending_tx_processor = PendingTxProcessor(
+            session_factory=session_factory,
+            message_publisher=message_publisher,
+            chain_data_service=chain_data_service,
+            pending_tx_queue=pending_tx_queue,
+        )
 
-    async with pending_tx_processor:
-        while True:
-            try:
-                await pending_tx_processor.process_pending_txs(
-                    max_concurrent_tasks=max_concurrent_tasks
-                )
-            except Exception:
-                LOGGER.exception("Error in pending txs job")
+        async with pending_tx_processor:
+            while True:
+                try:
+                    await pending_tx_processor.process_pending_txs(
+                        max_concurrent_tasks=max_concurrent_tasks
+                    )
+                except Exception:
+                    LOGGER.exception("Error in pending txs job")
 
-            try:
-                await asyncio.wait_for(pending_tx_processor.ready(), 5)
-            except TimeoutError:
-                pass
+                try:
+                    await asyncio.wait_for(pending_tx_processor.ready(), 5)
+                except TimeoutError:
+                    pass
 
 
 def pending_txs_subprocess(config_values: Dict):

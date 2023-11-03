@@ -175,46 +175,46 @@ async def fetch_messages_task(config: Config):
         config=config, routing_key="fetch.*", channel=mq_channel
     )
 
-    node_cache = NodeCache(
+    async with NodeCache(
         redis_host=config.redis.host.value, redis_port=config.redis.port.value
-    )
-    ipfs_client = make_ipfs_client(config)
-    ipfs_service = IpfsService(ipfs_client=ipfs_client)
-    storage_service = StorageService(
-        storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
-        ipfs_service=ipfs_service,
-        node_cache=node_cache,
-    )
-    signature_verifier = SignatureVerifier()
-    message_handler = MessageHandler(
-        signature_verifier=signature_verifier,
-        storage_service=storage_service,
-        config=config,
-    )
-    fetcher = PendingMessageFetcher(
-        session_factory=session_factory,
-        message_handler=message_handler,
-        max_retries=config.aleph.jobs.pending_messages.max_retries.value,
-        pending_message_queue=pending_message_queue,
-    )
+    ) as node_cache:
+        ipfs_client = make_ipfs_client(config)
+        ipfs_service = IpfsService(ipfs_client=ipfs_client)
+        storage_service = StorageService(
+            storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
+            ipfs_service=ipfs_service,
+            node_cache=node_cache,
+        )
+        signature_verifier = SignatureVerifier()
+        message_handler = MessageHandler(
+            signature_verifier=signature_verifier,
+            storage_service=storage_service,
+            config=config,
+        )
+        fetcher = PendingMessageFetcher(
+            session_factory=session_factory,
+            message_handler=message_handler,
+            max_retries=config.aleph.jobs.pending_messages.max_retries.value,
+            pending_message_queue=pending_message_queue,
+        )
 
-    async with fetcher:
-        while True:
-            try:
-                fetch_pipeline = fetcher.make_pipeline(
-                    config=config, node_cache=node_cache
-                )
-                async for fetched_messages in fetch_pipeline:
-                    for fetched_message in fetched_messages:
-                        LOGGER.info(
-                            "Successfully fetched %s", fetched_message.item_hash
-                        )
+        async with fetcher:
+            while True:
+                try:
+                    fetch_pipeline = fetcher.make_pipeline(
+                        config=config, node_cache=node_cache
+                    )
+                    async for fetched_messages in fetch_pipeline:
+                        for fetched_message in fetched_messages:
+                            LOGGER.info(
+                                "Successfully fetched %s", fetched_message.item_hash
+                            )
 
-            except Exception:
-                LOGGER.exception("Unexpected error in pending messages fetch job")
+                except Exception:
+                    LOGGER.exception("Unexpected error in pending messages fetch job")
 
-            LOGGER.debug("Waiting 1 second(s) for new pending messages...")
-            await asyncio.sleep(1)
+                LOGGER.debug("Waiting 1 second(s) for new pending messages...")
+                await asyncio.sleep(1)
 
 
 def fetch_pending_messages_subprocess(config_values: Dict):

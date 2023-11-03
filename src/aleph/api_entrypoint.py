@@ -45,6 +45,9 @@ async def configure_aiohttp_app(
         node_cache = NodeCache(
             redis_host=config.redis.host.value, redis_port=config.redis.port.value
         )
+        # TODO: find a way to close the node cache when exiting the API process, not closing it causes
+        #       a warning.
+        await node_cache.open()
 
         ipfs_client = make_ipfs_client(config)
         ipfs_service = IpfsService(ipfs_client=ipfs_client)

@@ -9,13 +9,41 @@ CacheValue = bytes
 class NodeCache:
     API_SERVERS_KEY = "api_servers"
     PUBLIC_ADDRESSES_KEY = "public_addresses"
-    redis_client: redis_asyncio.Redis
 
     def __init__(self, redis_host: str, redis_port: int):
         self.redis_host = redis_host
         self.redis_port = redis_port
 
-        self.redis_client = redis_asyncio.Redis(host=redis_host, port=redis_port)
+        self._redis_client: Optional[redis_asyncio.Redis] = None
+
+
+    @property
+    def redis_client(self) -> redis_asyncio.Redis:
+        if (redis_client := self._redis_client) is None:
+            raise ValueError(
+                "Redis client must be initialized. "
+                f"Call open() first or use `async with {self.__class__.__name__}()`."
+            )
+
+        return redis_client
+
+
+    async def open(self):
+        self._redis_client = redis_asyncio.Redis(
+            host=self.redis_host, port=self.redis_port
+        )
+
+    async def __aenter__(self):
+        await self.open()
+        return self
+
+    async def close(self):
+        if self.redis_client:
+            await self.redis_client.close()
+            self._redis_client = None
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
 
     async def reset(self):
         """

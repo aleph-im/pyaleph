@@ -154,54 +154,58 @@ async def fetch_and_process_messages_task(config: Config):
     engine = make_engine(config=config, application_name="aleph-process")
     session_factory = make_session_factory(engine)
 
-    node_cache = NodeCache(
+    async with NodeCache(
         redis_host=config.redis.host.value, redis_port=config.redis.port.value
-    )
-    ipfs_client = make_ipfs_client(config)
-    ipfs_service = IpfsService(ipfs_client=ipfs_client)
-    storage_service = StorageService(
-        storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
-        ipfs_service=ipfs_service,
-        node_cache=node_cache,
-    )
-    signature_verifier = SignatureVerifier()
-    message_handler = MessageHandler(
-        signature_verifier=signature_verifier,
-        storage_service=storage_service,
-        config=config,
-    )
-    pending_message_processor = await PendingMessageProcessor.new(
-        session_factory=session_factory,
-        message_handler=message_handler,
-        max_retries=config.aleph.jobs.pending_messages.max_retries.value,
-        mq_host=config.p2p.mq_host.value,
-        mq_port=config.rabbitmq.port.value,
-        mq_username=config.rabbitmq.username.value,
-        mq_password=config.rabbitmq.password.value,
-        message_exchange_name=config.rabbitmq.message_exchange.value,
-        pending_message_exchange_name=config.rabbitmq.pending_message_exchange.value,
-    )
+    ) as node_cache:
+        ipfs_client = make_ipfs_client(config)
+        ipfs_service = IpfsService(ipfs_client=ipfs_client)
+        storage_service = StorageService(
+            storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
+            ipfs_service=ipfs_service,
+            node_cache=node_cache,
+        )
+        signature_verifier = SignatureVerifier()
+        message_handler = MessageHandler(
+            signature_verifier=signature_verifier,
+            storage_service=storage_service,
+            config=config,
+        )
+        pending_message_processor = await PendingMessageProcessor.new(
+            session_factory=session_factory,
+            message_handler=message_handler,
+            max_retries=config.aleph.jobs.pending_messages.max_retries.value,
+            mq_host=config.p2p.mq_host.value,
+            mq_port=config.rabbitmq.port.value,
+            mq_username=config.rabbitmq.username.value,
+            mq_password=config.rabbitmq.password.value,
+            message_exchange_name=config.rabbitmq.message_exchange.value,
+            pending_message_exchange_name=config.rabbitmq.pending_message_exchange.value,
+        )
 
-    async with pending_message_processor:
-        while True:
-            with session_factory() as session:
+        async with pending_message_processor:
+            while True:
+                with session_factory() as session:
+                    try:
+                        message_processing_pipeline = (
+                            pending_message_processor.make_pipeline()
+                        )
+                        async for processing_results in message_processing_pipeline:
+                            for result in processing_results:
+                                LOGGER.info(
+                                    "Successfully processed %s", result.item_hash
+                                )
+
+                    except Exception:
+                        LOGGER.exception("Error in pending messages job")
+                        session.rollback()
+
+                LOGGER.info("Waiting for new pending messages...")
+                # We still loop periodically for retried messages as we do not bother sending a message
+                # on the MQ for these.
                 try:
-                    message_processing_pipeline = pending_message_processor.make_pipeline()
-                    async for processing_results in message_processing_pipeline:
-                        for result in processing_results:
-                            LOGGER.info("Successfully processed %s", result.item_hash)
-
-                except Exception:
-                    LOGGER.exception("Error in pending messages job")
-                    session.rollback()
-
-            LOGGER.info("Waiting for new pending messages...")
-            # We still loop periodically for retried messages as we do not bother sending a message
-            # on the MQ for these.
-            try:
-                await asyncio.wait_for(pending_message_processor.ready(), 1)
-            except TimeoutError:
-                pass
+                    await asyncio.wait_for(pending_message_processor.ready(), 1)
+                except TimeoutError:
+                    pass
 
 
 def pending_messages_subprocess(config_values: Dict):
