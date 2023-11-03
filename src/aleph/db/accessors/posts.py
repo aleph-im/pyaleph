@@ -315,10 +315,10 @@ def count_matching_posts(
             pagination=0,
             start_date=start_date,
             end_date=end_date,
-        )
+        ).subquery()
     else:
         # Without filters, counting the number of original posts is faster.
-        select_stmt = select(PostDb).where(PostDb.amends.is_(None))
+        select_stmt = select(PostDb).where(PostDb.amends.is_(None)).subquery()
 
     select_count_stmt = select(func.count()).select_from(select_stmt)
     return session.execute(select_count_stmt).scalar_one()

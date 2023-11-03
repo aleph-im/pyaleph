@@ -67,8 +67,7 @@ async def test_get_messages(fixture_messages: Sequence[Dict[str, Any]], ccn_api_
 async def test_get_messages_filter_by_channel(fixture_messages, ccn_api_client):
     async def fetch_messages_by_channel(channel: str) -> Dict:
         response = await ccn_api_client.get(MESSAGES_URI, params={"channels": channel})
-        text = await response.text()
-        assert response.status == 200, text
+        assert response.status == 200, await response.text()
         return await response.json()
 
     data = await fetch_messages_by_channel("unit-tests")
