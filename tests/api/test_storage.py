@@ -6,10 +6,10 @@ from typing import Any, Optional
 import aiohttp
 import orjson
 import pytest
-import requests
+import pytest_asyncio
 from aleph_message.models import ItemHash, Chain
+from in_memory_storage_engine import InMemoryStorageEngine
 
-from aleph.chains.connector import ChainConnector
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.files import get_file
 from aleph.db.models import AlephBalanceDb
@@ -19,7 +19,6 @@ from aleph.types.files import FileType
 from aleph.types.message_status import MessageStatus
 from aleph.web.controllers.app_state_getters import APP_STATE_SIGNATURE_VERIFIER, APP_STATE_STORAGE_SERVICE
 from aleph.web.controllers.utils import BroadcastStatus, PublicationStatus
-from in_memory_storage_engine import InMemoryStorageEngine
 
 IPFS_ADD_FILE_URI = "/api/v0/ipfs/add_file"
 IPFS_ADD_JSON_URI = "/api/v0/ipfs/add_json"
@@ -60,8 +59,8 @@ MESSAGE_DICT = {
 }
 
 
-@pytest.fixture
-def api_client(ccn_api_client, mocker):
+@pytest_asyncio.fixture
+async def api_client(ccn_test_aiohttp_app, mocker, aiohttp_client):
     ipfs_service = mocker.AsyncMock()
     ipfs_service.add_bytes = mocker.AsyncMock(return_value=EXPECTED_FILE_CID)
     ipfs_service.add_file = mocker.AsyncMock(
@@ -82,15 +81,15 @@ def api_client(ccn_api_client, mocker):
         }
     )
 
-    ccn_api_client.app[APP_STATE_STORAGE_SERVICE] = StorageService(
+    ccn_test_aiohttp_app[APP_STATE_STORAGE_SERVICE] = StorageService(
         storage_engine=InMemoryStorageEngine(files={}),
         ipfs_service=ipfs_service,
         node_cache=mocker.AsyncMock(),
     )
+    ccn_test_aiohttp_app[APP_STATE_SIGNATURE_VERIFIER] = SignatureVerifier()
 
-    ccn_api_client.app[APP_STATE_SIGNATURE_VERIFIER] = SignatureVerifier()
-
-    return ccn_api_client
+    client = await aiohttp_client(ccn_test_aiohttp_app)
+    return client
 
 
 async def add_file(

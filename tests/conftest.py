@@ -1,10 +1,12 @@
 import asyncio
 import contextlib
+import datetime as dt
 import json
 import logging
 import os
 import shutil
 import sys
+from decimal import Decimal
 from pathlib import Path
 from typing import Protocol, List
 
@@ -43,8 +45,12 @@ from aleph.types.db_session import DbSessionFactory, DbSession
 from aleph.types.files import FileType, FileTag
 from aleph.types.message_status import MessageStatus
 from aleph.web import create_aiohttp_app
-from decimal import Decimal
-import datetime as dt
+from aleph.web.controllers.app_state_getters import (
+    APP_STATE_CONFIG,
+    APP_STATE_P2P_CLIENT,
+    APP_STATE_STORAGE_SERVICE,
+    APP_STATE_SESSION_FACTORY,
+)
 
 # Add the helpers to the PYTHONPATH.
 # Note: mark the "helpers" directory as a source directory to tell PyCharm
@@ -136,21 +142,26 @@ async def test_storage_service(mock_config: Config, mocker) -> StorageService:
     return storage_service
 
 
-@pytest_asyncio.fixture
-async def ccn_api_client(
-    mocker, aiohttp_client, mock_config, session_factory: DbSessionFactory
-):
+@pytest.fixture
+def ccn_test_aiohttp_app(mocker, mock_config, session_factory):
     # Make aiohttp return the stack trace on 500 errors
     event_loop = asyncio.get_event_loop()
     event_loop.set_debug(True)
 
-    app = create_aiohttp_app(debug=True)
-    app["config"] = mock_config
-    app["p2p_client"] = mocker.AsyncMock()
-    app["storage_service"] = mocker.AsyncMock()
-    app["session_factory"] = session_factory
-    client = await aiohttp_client(app)
+    app = create_aiohttp_app()
+    app[APP_STATE_CONFIG] = mock_config
+    app[APP_STATE_P2P_CLIENT] = mocker.AsyncMock()
+    app[APP_STATE_STORAGE_SERVICE] = mocker.AsyncMock()
+    app[APP_STATE_SESSION_FACTORY] = session_factory
 
+    return app
+
+
+@pytest_asyncio.fixture
+async def ccn_api_client(
+    aiohttp_client, ccn_test_aiohttp_app,
+):
+    client = await aiohttp_client(ccn_test_aiohttp_app)
     return client
 
 
