@@ -48,9 +48,9 @@ async def configure_aiohttp_app(
         # TODO: find a way to close the node cache when exiting the API process, not closing it causes
         #       a warning.
         await node_cache.open()
+        # TODO: same, find a way to call await ipfs_service.close() on shutdown
+        ipfs_service = IpfsService.new(config)
 
-        ipfs_client = make_ipfs_client(config)
-        ipfs_service = IpfsService(ipfs_client=ipfs_client)
         storage_service = StorageService(
             storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
             ipfs_service=ipfs_service,
