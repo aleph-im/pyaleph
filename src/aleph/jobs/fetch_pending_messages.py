@@ -13,17 +13,19 @@ from typing import (
     NewType,
 )
 
+import aio_pika.abc
 from configmanager import Config
 from setproctitle import setproctitle
 
-from ..chains.signature_verifier import SignatureVerifier
+from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.pending_messages import (
     make_pending_message_fetched_statement,
     get_next_pending_messages,
 )
 from aleph.db.connection import make_engine, make_session_factory
-from aleph.db.models import PendingMessageDb, MessageDb
+from aleph.db.models import MessageDb, PendingMessageDb
 from aleph.handlers.message_handler import MessageHandler
+from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.ipfs.common import make_ipfs_client
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
@@ -32,8 +34,8 @@ from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSessionFactory
-from .job_utils import prepare_loop, MessageJob
-from ..services.cache.node_cache import NodeCache
+from .job_utils import prepare_loop, MessageJob, make_pending_message_queue
+from ..toolkit.rabbitmq import make_mq_conn
 
 LOGGER = getLogger(__name__)
 
@@ -47,12 +49,15 @@ class PendingMessageFetcher(MessageJob):
         session_factory: DbSessionFactory,
         message_handler: MessageHandler,
         max_retries: int,
+        pending_message_queue: aio_pika.abc.AbstractQueue,
     ):
         super().__init__(
             session_factory=session_factory,
             message_handler=message_handler,
             max_retries=max_retries,
+            pending_message_queue=pending_message_queue,
         )
+        self.pending_message_queue = pending_message_queue
 
     async def fetch_pending_message(self, pending_message: PendingMessageDb):
         with self.session_factory() as session:
@@ -76,6 +81,7 @@ class PendingMessageFetcher(MessageJob):
                     exception=e,
                 )
                 session.commit()
+                return None
 
     async def fetch_pending_messages(
         self, config: Config, node_cache: NodeCache, loop: bool = True
@@ -140,8 +146,11 @@ class PendingMessageFetcher(MessageJob):
                         break
                     # If we are done, wait a few seconds until retrying
                     if not fetch_tasks:
-                        LOGGER.info("waiting 1 second(s) for new pending messages...")
-                        await asyncio.sleep(1)
+                        LOGGER.info("waiting for new pending messages...")
+                        try:
+                            await asyncio.wait_for(self.ready(), 1)
+                        except TimeoutError:
+                            pass
 
     def make_pipeline(
         self,
@@ -156,11 +165,15 @@ class PendingMessageFetcher(MessageJob):
 
 
 async def fetch_messages_task(config: Config):
-    # TODO: this sleep can probably be removed
-    await asyncio.sleep(4)
-
     engine = make_engine(config=config, application_name="aleph-fetch")
     session_factory = make_session_factory(engine)
+
+    mq_conn = await make_mq_conn(config=config)
+    mq_channel = await mq_conn.channel()
+
+    pending_message_queue = await make_pending_message_queue(
+        config=config, routing_key="fetch.*", channel=mq_channel
+    )
 
     node_cache = NodeCache(
         redis_host=config.redis.host.value, redis_port=config.redis.port.value
@@ -182,10 +195,11 @@ async def fetch_messages_task(config: Config):
         session_factory=session_factory,
         message_handler=message_handler,
         max_retries=config.aleph.jobs.pending_messages.max_retries.value,
+        pending_message_queue=pending_message_queue,
     )
 
-    while True:
-        with session_factory() as session:
+    async with fetcher:
+        while True:
             try:
                 fetch_pipeline = fetcher.make_pipeline(
                     config=config, node_cache=node_cache
@@ -197,11 +211,10 @@ async def fetch_messages_task(config: Config):
                         )
 
             except Exception:
-                LOGGER.exception("Error in pending messages job")
-                session.rollback()
+                LOGGER.exception("Unexpected error in pending messages fetch job")
 
-        LOGGER.debug("Waiting 1 second(s) for new pending messages...")
-        await asyncio.sleep(1)
+            LOGGER.debug("Waiting 1 second(s) for new pending messages...")
+            await asyncio.sleep(1)
 
 
 def fetch_pending_messages_subprocess(config_values: Dict):

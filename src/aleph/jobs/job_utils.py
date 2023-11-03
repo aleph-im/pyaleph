@@ -1,10 +1,10 @@
 import asyncio
 import datetime as dt
 import logging
-from typing import Dict, Union
+from typing import Dict, Union, Optional
 from typing import Tuple
 
-import aio_pika.abc
+import aio_pika
 from configmanager import Config
 from sqlalchemy import update
 
@@ -27,6 +27,58 @@ LOGGER = logging.getLogger(__name__)
 
 
 MAX_RETRY_INTERVAL: int = 300
+
+
+async def _make_pending_queue(
+    config: Config,
+    exchange_name: str,
+    queue_name: str,
+    routing_key: str,
+    channel: Optional[aio_pika.abc.AbstractChannel] = None,
+) -> aio_pika.abc.AbstractQueue:
+    if not channel:
+        mq_conn = await aio_pika.connect_robust(
+            host=config.p2p.mq_host.value,
+            port=config.rabbitmq.port.value,
+            login=config.rabbitmq.username.value,
+            password=config.rabbitmq.password.value,
+        )
+        channel = await mq_conn.channel()
+
+    exchange = await channel.declare_exchange(
+        name=exchange_name,
+        type=aio_pika.ExchangeType.TOPIC,
+        auto_delete=False,
+    )
+    queue = await channel.declare_queue(name=queue_name, auto_delete=False)
+    await queue.bind(exchange, routing_key=routing_key)
+    return queue
+
+
+async def make_pending_tx_queue(
+    config: Config, channel: aio_pika.abc.AbstractChannel
+) -> aio_pika.abc.AbstractQueue:
+    return await _make_pending_queue(
+        config=config,
+        exchange_name=config.rabbitmq.pending_tx_exchange.value,
+        queue_name="pending-tx-queue",
+        routing_key="#",
+        channel=channel,
+    )
+
+
+async def make_pending_message_queue(
+    config: Config,
+    routing_key: str,
+    channel: Optional[aio_pika.abc.AbstractChannel] = None,
+) -> aio_pika.abc.AbstractQueue:
+    return await _make_pending_queue(
+        config=config,
+        exchange_name=config.rabbitmq.pending_message_exchange.value,
+        queue_name="pending_message_queue",
+        routing_key=routing_key,
+        channel=channel,
+    )
 
 
 def compute_next_retry_interval(attempts: int) -> dt.timedelta:
@@ -67,6 +119,8 @@ def schedule_next_attempt(
     set_next_retry(
         session=session, pending_message=pending_message, next_attempt=next_attempt
     )
+    pending_message.next_attempt = next_attempt
+    pending_message.retries += 1
 
 
 def prepare_loop(config_values: Dict) -> Tuple[asyncio.AbstractEventLoop, Config]:
@@ -125,19 +179,22 @@ class MqWatcher:
         self._event.clear()
 
 
-class MessageJob:
+class MessageJob(MqWatcher):
     def __init__(
         self,
         session_factory: DbSessionFactory,
         message_handler: MessageHandler,
         max_retries: int,
+        pending_message_queue: aio_pika.abc.AbstractQueue,
     ):
+        super().__init__(mq_queue=pending_message_queue)
+
         self.session_factory = session_factory
         self.message_handler = message_handler
         self.max_retries = max_retries
 
+    @staticmethod
     def _handle_rejection(
-        self,
         session: DbSession,
         pending_message: PendingMessageDb,
         exception: BaseException,
@@ -158,7 +215,7 @@ class MessageJob:
 
         return RejectedMessage(pending_message=pending_message, error_code=error_code)
 
-    def _handle_retry(
+    async def _handle_retry(
         self,
         session: DbSession,
         pending_message: PendingMessageDb,
@@ -222,6 +279,6 @@ class MessageJob:
                 session=session, pending_message=pending_message, exception=exception
             )
         else:
-            return self._handle_retry(
+            return await self._handle_retry(
                 session=session, pending_message=pending_message, exception=exception
             )

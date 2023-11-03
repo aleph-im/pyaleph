@@ -22,32 +22,13 @@ from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
 from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
+from aleph.toolkit.rabbitmq import make_mq_conn
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.db_session import DbSessionFactory
-from .job_utils import prepare_loop, MqWatcher
+from .job_utils import MqWatcher, prepare_loop, make_pending_tx_queue
 
 LOGGER = logging.getLogger(__name__)
-
-
-async def make_pending_tx_queue(config: Config) -> aio_pika.abc.AbstractQueue:
-    mq_conn = await aio_pika.connect_robust(
-        host=config.p2p.mq_host.value,
-        port=config.rabbitmq.port.value,
-        login=config.rabbitmq.username.value,
-        password=config.rabbitmq.password.value,
-    )
-    channel = await mq_conn.channel()
-    pending_tx_exchange = await channel.declare_exchange(
-        name=config.rabbitmq.pending_tx_exchange.value,
-        type=aio_pika.ExchangeType.TOPIC,
-        auto_delete=False,
-    )
-    pending_tx_queue = await channel.declare_queue(
-        name="pending-tx-queue", durable=True, auto_delete=False
-    )
-    await pending_tx_queue.bind(pending_tx_exchange, routing_key="#")
-    return pending_tx_queue
 
 
 class PendingTxProcessor(MqWatcher):
@@ -138,7 +119,15 @@ async def handle_txs_task(config: Config):
     engine = make_engine(config=config, application_name="aleph-txs")
     session_factory = make_session_factory(engine)
 
-    pending_tx_queue = await make_pending_tx_queue(config=config)
+    mq_conn = await make_mq_conn(config=config)
+    mq_channel = await mq_conn.channel()
+
+    pending_message_exchange = await mq_channel.declare_exchange(
+        name=config.rabbitmq.pending_message_exchange.value,
+        type=aio_pika.ExchangeType.TOPIC,
+        auto_delete=False,
+    )
+    pending_tx_queue = await make_pending_tx_queue(config=config, channel=mq_channel)
 
     node_cache = NodeCache(
         redis_host=config.redis.host.value, redis_port=config.redis.port.value
@@ -154,6 +143,7 @@ async def handle_txs_task(config: Config):
         session_factory=session_factory,
         storage_service=storage_service,
         config=config,
+        pending_message_exchange=pending_message_exchange,
     )
     chain_data_service = ChainDataService(
         session_factory=session_factory, storage_service=storage_service

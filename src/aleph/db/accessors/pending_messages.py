@@ -76,6 +76,13 @@ def get_pending_messages(
     return session.execute(select_stmt).scalars()
 
 
+def get_pending_message(session: DbSession, pending_message_id: int) -> Optional[PendingMessageDb]:
+    select_stmt = select(PendingMessageDb).where(
+        PendingMessageDb.id == pending_message_id
+    )
+    return session.execute(select_stmt).scalar_one_or_none()
+
+
 def count_pending_messages(session: DbSession, chain: Optional[Chain] = None) -> int:
     """
     Counts pending messages.
