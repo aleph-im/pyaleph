@@ -109,9 +109,11 @@ def mock_config(mocker):
 
 @pytest_asyncio.fixture
 async def node_cache(mock_config: Config):
-    return NodeCache(
+    async with NodeCache(
         redis_host=mock_config.redis.host.value, redis_port=mock_config.redis.port.value
-    )
+    ) as node_cache:
+        yield node_cache
+
 
 
 @pytest_asyncio.fixture

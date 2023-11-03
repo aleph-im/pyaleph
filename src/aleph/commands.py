@@ -62,9 +62,6 @@ async def init_node_cache(config: Config) -> NodeCache:
     node_cache = NodeCache(
         redis_host=config.redis.host.value, redis_port=config.redis.port.value
     )
-
-    # Reset the cache
-    await node_cache.reset()
     return node_cache
 
 
@@ -135,64 +132,68 @@ async def main(args: List[str]) -> None:
     mq_channel = await mq_conn.channel()
 
     node_cache = await init_node_cache(config)
-    ipfs_service = IpfsService(ipfs_client=make_ipfs_client(config))
-    storage_service = StorageService(
-        storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
-        ipfs_service=ipfs_service,
-        node_cache=node_cache,
-    )
-    chain_data_service = ChainDataService(
-        session_factory=session_factory,
-        storage_service=storage_service,
-    )
-    pending_tx_publisher = await PendingTxPublisher.new(config=config)
-    chain_connector = ChainConnector(
-        session_factory=session_factory,
-        pending_tx_publisher=pending_tx_publisher,
-        chain_data_service=chain_data_service,
-    )
+    async with node_cache:
+        # Reset the cache
+        await node_cache.reset()
 
-    set_start_method("spawn")
-
-    tasks: List[Coroutine] = []
-
-    if not args.no_jobs:
-        LOGGER.debug("Creating jobs")
-        tasks += start_jobs(
-            config=config,
-            session_factory=session_factory,
+        ipfs_service = IpfsService(ipfs_client=make_ipfs_client(config))
+        storage_service = StorageService(
+            storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
             ipfs_service=ipfs_service,
-            use_processes=True,
+            node_cache=node_cache,
+        )
+        chain_data_service = ChainDataService(
+            session_factory=session_factory,
+            storage_service=storage_service,
+        )
+        pending_tx_publisher = await PendingTxPublisher.new(config=config)
+        chain_connector = ChainConnector(
+            session_factory=session_factory,
+            pending_tx_publisher=pending_tx_publisher,
+            chain_data_service=chain_data_service,
         )
 
-    LOGGER.debug("Initializing p2p")
-    p2p_client, p2p_tasks = await p2p.init_p2p(
-        config=config,
-        session_factory=session_factory,
-        service_name="network-monitor",
-        ipfs_service=ipfs_service,
-        node_cache=node_cache,
-    )
-    tasks += p2p_tasks
-    LOGGER.debug("Initialized p2p")
+        set_start_method("spawn")
 
-    LOGGER.debug("Initializing listeners")
-    tasks += await listener_tasks(
-        config=config,
-        session_factory=session_factory,
-        node_cache=node_cache,
-        p2p_client=p2p_client,
-        mq_channel=mq_channel,
-    )
-    tasks.append(chain_connector.chain_event_loop(config))
-    LOGGER.debug("Initialized listeners")
+        tasks: List[Coroutine] = []
 
-    LOGGER.debug("Initializing cache tasks")
-    tasks.append(refresh_cache_materialized_views(session_factory))
-    LOGGER.debug("Initialized cache tasks")
+        if not args.no_jobs:
+            LOGGER.debug("Creating jobs")
+            tasks += start_jobs(
+                config=config,
+                session_factory=session_factory,
+                ipfs_service=ipfs_service,
+                use_processes=True,
+            )
 
-    LOGGER.debug("Running event loop")
-    await asyncio.gather(*tasks)
+        LOGGER.debug("Initializing p2p")
+        p2p_client, p2p_tasks = await p2p.init_p2p(
+            config=config,
+            session_factory=session_factory,
+            service_name="network-monitor",
+            ipfs_service=ipfs_service,
+            node_cache=node_cache,
+        )
+        tasks += p2p_tasks
+        LOGGER.debug("Initialized p2p")
+
+        LOGGER.debug("Initializing listeners")
+        tasks += await listener_tasks(
+            config=config,
+            session_factory=session_factory,
+            node_cache=node_cache,
+            p2p_client=p2p_client,
+            mq_channel=mq_channel,
+        )
+        tasks.append(chain_connector.chain_event_loop(config))
+        LOGGER.debug("Initialized listeners")
+
+        LOGGER.debug("Initializing cache tasks")
+        tasks.append(refresh_cache_materialized_views(session_factory))
+        LOGGER.debug("Initialized cache tasks")
+
+        LOGGER.debug("Running event loop")
+        await asyncio.gather(*tasks)
 
 
 def run():
