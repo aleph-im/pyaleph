@@ -213,7 +213,7 @@ async def view_messages_list(request: web.Request) -> web.Response:
     try:
         query_params = MessageQueryParams.parse_obj(request.query)
     except ValidationError as e:
-        raise web.HTTPUnprocessableEntity(body=e.json(indent=4))
+        raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 
     # If called from the messages/page/{page}.json endpoint, override the page
     # parameters with the URL one
@@ -358,7 +358,7 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
     try:
         query_params = WsMessageQueryParams.parse_obj(request.query)
     except ValidationError as e:
-        raise web.HTTPUnprocessableEntity(body=e.json(indent=4))
+        raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 
     history = query_params.history
 
@@ -482,7 +482,7 @@ async def view_message(request: web.Request):
     try:
         item_hash = ItemHash(item_hash_str)
     except ValueError:
-        raise web.HTTPUnprocessableEntity(body=f"Invalid message hash: {item_hash_str}")
+        raise web.HTTPUnprocessableEntity(text=f"Invalid message hash: {item_hash_str}")
 
     session_factory: DbSessionFactory = request.app["session_factory"]
     with session_factory() as session:

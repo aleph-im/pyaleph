@@ -170,7 +170,7 @@ def get_query_params(request: web.Request) -> PostQueryParams:
     try:
         query_params = PostQueryParams.parse_obj(request.query)
     except ValidationError as e:
-        raise web.HTTPUnprocessableEntity(body=e.json(indent=4))
+        raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 
     path_page = get_path_page(request)
     if path_page:
@@ -228,7 +228,7 @@ async def view_posts_list_v1(request) -> web.Response:
     try:
         query_params = PostQueryParams.parse_obj(request.query)
     except ValidationError as e:
-        raise web.HTTPUnprocessableEntity(body=e.json(indent=4))
+        raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 
     path_page = get_path_page(request)
     if path_page:

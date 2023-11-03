@@ -247,7 +247,7 @@ def validate_message_dict(message_dict: Mapping[str, Any]) -> BasePendingMessage
     try:
         return parse_message(message_dict)
     except InvalidMessageException as e:
-        raise web.HTTPUnprocessableEntity(body=str(e))
+        raise web.HTTPUnprocessableEntity(text=str(e))
 
 
 class PublicationStatus(BaseModel):
