@@ -84,7 +84,7 @@ def insert_message_file_pin(
 
 def count_file_pins(session: DbSession, file_hash: str) -> int:
     select_count_stmt = select(func.count()).select_from(
-        select(FilePinDb).where(FilePinDb.file_hash == file_hash)
+        select(FilePinDb).where(FilePinDb.file_hash == file_hash).subquery()
     )
     return session.execute(select_count_stmt).scalar_one()
 
