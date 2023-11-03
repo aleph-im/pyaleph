@@ -20,7 +20,6 @@ from aleph.db.connection import make_engine, make_session_factory
 from aleph.handlers.message_handler import MessageHandler
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
-from aleph.services.ipfs.common import make_ipfs_client
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
 from aleph.toolkit.logging import setup_logging
@@ -156,9 +155,7 @@ async def fetch_and_process_messages_task(config: Config):
 
     async with NodeCache(
         redis_host=config.redis.host.value, redis_port=config.redis.port.value
-    ) as node_cache:
-        ipfs_client = make_ipfs_client(config)
-        ipfs_service = IpfsService(ipfs_client=ipfs_client)
+    ) as node_cache, IpfsService.new(config) as ipfs_service:
         storage_service = StorageService(
             storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
             ipfs_service=ipfs_service,

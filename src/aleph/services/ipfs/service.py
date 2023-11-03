@@ -2,11 +2,13 @@ import asyncio
 import concurrent
 import json
 import logging
-from typing import IO, Optional, Union, Dict
+from typing import IO, Optional, Union, Dict, Self
 
 import aiohttp
 import aioipfs
+from configmanager import Config
 
+from aleph.services.ipfs.common import make_ipfs_client
 from aleph.services.utils import get_IP
 from aleph.types.message_status import FileUnavailable
 from aleph.utils import run_in_executor
@@ -19,6 +21,20 @@ MAX_LEN = 1024 * 1024 * 100
 class IpfsService:
     def __init__(self, ipfs_client: aioipfs.AsyncIPFS):
         self.ipfs_client = ipfs_client
+
+    @classmethod
+    def new(cls, config: Config) -> Self:
+        ipfs_client = make_ipfs_client(config)
+        return cls(ipfs_client=ipfs_client)
+
+    async def __aenter__(self):
+        return self
+
+    async def close(self):
+        await self.ipfs_client.close()
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
 
     async def connect(self, peer: str) -> Dict:
         return await self.ipfs_client.swarm.connect(peer)

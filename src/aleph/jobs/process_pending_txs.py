@@ -131,9 +131,7 @@ async def handle_txs_task(config: Config):
 
     async with NodeCache(
         redis_host=config.redis.host.value, redis_port=config.redis.port.value
-    ) as node_cache:
-        ipfs_client = make_ipfs_client(config)
-        ipfs_service = IpfsService(ipfs_client=ipfs_client)
+    ) as node_cache, IpfsService.new(config) as ipfs_service:
         storage_service = StorageService(
             storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
             ipfs_service=ipfs_service,
