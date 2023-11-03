@@ -39,7 +39,7 @@ class NodeCache:
 
     async def close(self):
         if self.redis_client:
-            await self.redis_client.close()
+            await self.redis_client.aclose()
             self._redis_client = None
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
