@@ -136,11 +136,10 @@ async def main(args: List[str]) -> None:
     mq_channel = await mq_conn.channel()
 
     node_cache = await init_node_cache(config)
-    async with node_cache:
+    async with node_cache, IpfsService.new(config) as ipfs_service:
         # Reset the cache
         await node_cache.reset()
 
-        ipfs_service = IpfsService(ipfs_client=make_ipfs_client(config))
         storage_service = StorageService(
             storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
             ipfs_service=ipfs_service,

@@ -121,7 +121,6 @@ async def node_cache(mock_config: Config):
         yield node_cache
 
 
-
 @pytest_asyncio.fixture
 async def test_storage_service(mock_config: Config, mocker) -> StorageService:
     data_folder = Path("./data")
@@ -132,14 +131,14 @@ async def test_storage_service(mock_config: Config, mocker) -> StorageService:
     data_folder.mkdir(parents=True)
 
     storage_engine = FileSystemStorageEngine(folder=data_folder)
-    ipfs_client = make_ipfs_client(mock_config)
-    ipfs_service = IpfsService(ipfs_client=ipfs_client)
-    storage_service = StorageService(
-        storage_engine=storage_engine,
-        ipfs_service=ipfs_service,
-        node_cache=mocker.AsyncMock(),
-    )
-    return storage_service
+    async with IpfsService.new(mock_config) as ipfs_service:
+        storage_service = StorageService(
+            storage_engine=storage_engine,
+            ipfs_service=ipfs_service,
+            node_cache=mocker.AsyncMock(),
+        )
+
+        yield storage_service
 
 
 @pytest.fixture
@@ -159,7 +158,8 @@ def ccn_test_aiohttp_app(mocker, mock_config, session_factory):
 
 @pytest_asyncio.fixture
 async def ccn_api_client(
-    aiohttp_client, ccn_test_aiohttp_app,
+    aiohttp_client,
+    ccn_test_aiohttp_app,
 ):
     client = await aiohttp_client(ccn_test_aiohttp_app)
     return client
