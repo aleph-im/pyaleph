@@ -7,11 +7,15 @@ from aleph.types.files import FileType
 from aleph.web.controllers.app_state_getters import (
     get_ipfs_service_from_request,
     get_session_factory_from_request,
+    get_config_from_request,
 )
-from aleph.web.controllers.utils import file_field_to_io
+from aleph.web.controllers.utils import file_field_to_io, add_grace_period_for_file
 
 
 async def ipfs_add_file(request: web.Request):
+    config = get_config_from_request(request)
+    grace_period = config.storage.grace_period.value
+
     ipfs_service = get_ipfs_service_from_request(request)
     if ipfs_service is None:
         raise web.HTTPForbidden(reason="IPFS is disabled on this node")
@@ -42,6 +46,7 @@ async def ipfs_add_file(request: web.Request):
             size=size,
             file_type=FileType.FILE,
         )
+        add_grace_period_for_file(session=session, file_hash=cid, hours=grace_period)
         session.commit()
 
     output = {

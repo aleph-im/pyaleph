@@ -1,4 +1,5 @@
 import asyncio
+import datetime as dt
 import json
 import logging
 from io import BytesIO, StringIO
@@ -16,10 +17,13 @@ from configmanager import Config
 from pydantic import BaseModel
 
 import aleph.toolkit.json as aleph_json
+from aleph.db.accessors.files import insert_grace_period_file_pin
 from aleph.schemas.pending_messages import parse_message, BasePendingMessage
 from aleph.services.ipfs import IpfsService
 from aleph.services.p2p.pubsub import publish as pub_p2p
 from aleph.toolkit.shield import shielded
+from aleph.toolkit.timestamp import utc_now
+from aleph.types.db_session import DbSession
 from aleph.types.message_status import (
     InvalidMessageException,
     MessageStatus,
@@ -403,3 +407,14 @@ async def broadcast_and_process_message(
 
     status.message_status = processing_status.to_message_status()
     return status
+
+
+def add_grace_period_for_file(session: DbSession, file_hash: str, hours: int):
+    current_datetime = utc_now()
+    delete_by = current_datetime + dt.timedelta(hours=hours)
+    insert_grace_period_file_pin(
+        session=session,
+        file_hash=file_hash,
+        created=utc_now(),
+        delete_by=delete_by,
+    )

@@ -19,6 +19,8 @@ class FilePinType(str, Enum):
     MESSAGE = "message"
     # A file containing sync messages.
     TX = "tx"
+    # A file with a grace period (=no one paying for the file, but we keep it around for a while).
+    GRACE_PERIOD = "grace_period"
 
 
 class StoredFileDb(Base):
@@ -101,8 +103,24 @@ class ContentFilePinDb(FilePinDb):
     }
 
 
+class GracePeriodFilePinDb(FilePinDb):
+    delete_by: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=True)
+
+    __mapper_args__ = {
+        "polymorphic_identity": FilePinType.GRACE_PERIOD.value,
+    }
+
+
+
 Index(
     "ix_file_pins_owner",
     MessageFilePinDb.owner,
     postgresql_where=MessageFilePinDb.owner.isnot(None),
+)
+
+
+Index(
+    "ix_file_pins_delete_by",
+    GracePeriodFilePinDb.delete_by,
+    postgresql_where=GracePeriodFilePinDb.delete_by.isnot(None),
 )

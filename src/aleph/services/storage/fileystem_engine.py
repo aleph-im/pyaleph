@@ -6,13 +6,10 @@ from .engine import StorageEngine
 
 class FileSystemStorageEngine(StorageEngine):
     def __init__(self, folder: Union[Path, str]):
-
         self.folder = folder if isinstance(folder, Path) else Path(folder)
 
         if self.folder.exists() and not self.folder.is_dir():
-            raise ValueError(
-                f"'{self.folder}' exists and is not a directory."
-            )
+            raise ValueError(f"'{self.folder}' exists and is not a directory.")
 
         self.folder.mkdir(parents=True, exist_ok=True)
 
