@@ -119,6 +119,7 @@ async def test_get_messages_filter_by_chain(fixture_messages, ccn_api_client):
 @pytest.mark.asyncio
 async def test_get_messages_filter_invalid_chain(fixture_messages, ccn_api_client):
     response = await fetch_messages_by_chain(api_client=ccn_api_client, chain="2CHAINZ")
+    text = await response.text()
     assert response.status == 422, await response.text()
 
 

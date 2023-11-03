@@ -58,7 +58,7 @@ async def addresses_stats_view(request: web.Request):
 def _get_address_from_request(request: web.Request) -> str:
     address = request.match_info.get("address")
     if address is None:
-        raise web.HTTPUnprocessableEntity(body="Address must be specified.")
+        raise web.HTTPUnprocessableEntity(text="Address must be specified.")
     return address
 
 
@@ -88,7 +88,7 @@ async def get_account_files(request: web.Request) -> web.Response:
     try:
         query_params = GetAccountFilesQueryParams.parse_obj(request.query)
     except ValidationError as e:
-        raise web.HTTPUnprocessableEntity(body=e.json(indent=4))
+        raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
 
