@@ -181,7 +181,7 @@ def count_matching_messages(
             include_confirmations=False,
             page=1,
             pagination=0,
-        )
+        ).subquery()
         select_count_stmt = select(func.count()).select_from(select_stmt)
         return session.execute(select_count_stmt).scalar_one()
 
