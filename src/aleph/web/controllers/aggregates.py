@@ -1,6 +1,6 @@
-import logging
 import datetime as dt
-from typing import List, Optional, Any, Dict, Tuple, Literal, Sequence
+import logging
+from typing import List, Optional, Dict
 
 from aiohttp import web
 from pydantic import BaseModel, validator, ValidationError
@@ -67,7 +67,7 @@ async def address_aggregate(request: web.Request) -> web.Response:
         )
 
     if not aggregates:
-        return web.HTTPNotFound(text="No aggregate found for this address")
+        raise web.HTTPNotFound(text="No aggregate found for this address")
 
     output = {
         "address": address,
