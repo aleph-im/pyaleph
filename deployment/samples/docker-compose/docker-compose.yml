@@ -102,7 +102,7 @@ services:
 
   ipfs:
     restart: always
-    image: ipfs/kubo:v0.23.0
+    image: ipfs/kubo:v0.15.0
     ports:
       - "4001:4001"
       - "4001:4001/udp"
