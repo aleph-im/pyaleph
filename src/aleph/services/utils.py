@@ -19,7 +19,7 @@ async def get_ip4_from_service() -> str:
     async with aiohttp.ClientSession() as session:
         async with session.get(IP4_SERVICE_URL) as resp:
             resp.raise_for_status()
-            ip = await resp.text()
+            ip = await resp.text(encoding="utf-8")
 
             if is_valid_ip4(ip):
                 return ip
