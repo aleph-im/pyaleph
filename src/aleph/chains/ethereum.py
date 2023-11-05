@@ -1,10 +1,10 @@
 import asyncio
 import functools
+import importlib.resources
 import json
 import logging
 from typing import AsyncIterator, Dict, Tuple
 
-import pkg_resources
 from aleph_message.models import Chain
 from configmanager import Config
 from eth_account import Account
@@ -48,16 +48,16 @@ def get_web3(config) -> Web3:
 
 
 async def get_contract_abi():
-    return json.loads(
-        pkg_resources.resource_string(
-            "aleph.chains", "assets/ethereum_sc_abi.json"
-        ).decode("utf-8")
+    contract_abi_resource = (
+        importlib.resources.files("aleph.chains.assets") / "ethereum_sc_abi.json"
     )
+    with contract_abi_resource.open("r", encoding="utf-8") as f:
+        return json.load(f)
 
 
 async def get_contract(config, web3: Web3):
     return web3.eth.contract(
-        config.ethereum.sync_contract.value, abi=await get_contract_abi()
+        address=config.ethereum.sync_contract.value, abi=await get_contract_abi()
     )
 
 
