@@ -85,7 +85,7 @@ def _get_nb_compute_units(content: ExecutableContent) -> int:
 
 def _get_compute_unit_multiplier(content: ExecutableContent) -> int:
     compute_unit_multiplier = 1
-    if content.environment.internet:
+    if content.environment.internet and isinstance(content, ProgramContent):
         compute_unit_multiplier += 1
     return compute_unit_multiplier
 
