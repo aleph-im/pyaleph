@@ -12,13 +12,6 @@ from unittest.mock import Mock
 
 
 class StoredFileDb:
-    # hash: str = Column(String, nullable=False, primary_key=True)
-    #
-    # size: int = Column(BigInteger, nullable=False)
-    # type: FileType = Column(ChoiceType(FileType), nullable=False)
-    #
-    # pins: List["FilePinDb"] = relationship("FilePinDb", back_populates="file")
-    # tags: List["FileTagDb"] = relationship("FileTagDb", back_populates="file")
     pass
 
 
