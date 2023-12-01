@@ -3,7 +3,7 @@ from typing import Any, Dict, Sequence
 import pytest
 import pytest_asyncio
 
-from src.aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import DbSessionFactory
 
 from .conftest import _load_fixtures
 
