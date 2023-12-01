@@ -5,7 +5,7 @@ from typing import Dict, Optional
 
 import aiohttp_jinja2
 from aiohttp import web
-from pydantic import BaseModel, validator
+from pydantic import BaseModel
 
 from aleph.db.accessors.metrics import query_metric_ccn, query_metric_crn
 from aleph.types.db_session import DbSessionFactory

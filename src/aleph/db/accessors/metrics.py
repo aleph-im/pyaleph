@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Optional
 
 from sqlalchemy import select, text
 from sqlalchemy.orm.session import Session
