@@ -72,7 +72,7 @@ def get_additional_storage_price(
     additional_storage = max(
         total_volume_size - (free_storage_per_compute_unit * nb_compute_units), 0
     )
-    price = Decimal(additional_storage) * 20 / MiB
+    price = Decimal(additional_storage) / 20 / MiB
     return price
 
 
