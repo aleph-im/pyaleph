@@ -73,7 +73,7 @@ def upgrade() -> None:
                                   END AS compute_unit_price_multiplier) m,
              LATERAL ( SELECT cu.compute_units_required * m.compute_unit_price_multiplier::double precision *
                           bcp.base_compute_unit_price::double precision AS compute_unit_price) cpm,
-         LATERAL ( SELECT additional_disk.additional_disk_space * 20::double precision /
+         LATERAL ( SELECT additional_disk.additional_disk_space / 20::double precision /
                           (1024 * 1024)::double precision AS disk_price) adp,
          LATERAL ( SELECT cpm.compute_unit_price + adp.disk_price AS total_price) tp
 
@@ -137,7 +137,7 @@ def downgrade() -> None:
              LATERAL ( SELECT 1 + vms.environment_internet::integer AS compute_unit_price_multiplier) m,
              LATERAL ( SELECT cu.compute_units_required * m.compute_unit_price_multiplier::double precision *
                           bcp.base_compute_unit_price::double precision AS compute_unit_price) cpm,
-         LATERAL ( SELECT additional_disk.additional_disk_space / 20::double precision /
+         LATERAL ( SELECT additional_disk.additional_disk_space * 20::double precision /
                           (1024 * 1024)::double precision AS disk_price) adp,
          LATERAL ( SELECT cpm.compute_unit_price + adp.disk_price AS total_price) tp
 
