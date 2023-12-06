@@ -497,10 +497,10 @@ async def test_compare_cost_view_with_cost_function(
 
     content = InstanceContent.parse_raw(fixture_instance_message.item_content)
     with session_factory() as session:
-        cost_from_function = compute_cost(session=session, content=content)
+        cost_from_function: Decimal = compute_cost(session=session, content=content)
         cost_from_view = session.execute(
             text("SELECT total_price from vm_costs_view WHERE vm_hash = :vm_hash"),
             {"vm_hash": fixture_instance_message.item_hash},
         ).scalar_one()
 
-    assert cost_from_view == cost_from_function
+    assert Decimal(str(cost_from_view)) == cost_from_function
