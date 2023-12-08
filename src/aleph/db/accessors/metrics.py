@@ -7,38 +7,37 @@ from aleph.types.db_session import DbSession
 
 
 def _parse_ccn_result(result):
-    result_dict = {
-        "item_hash": [],
-        "measured_at": [],
-        "base_latency": [],
-        "base_latency_ipv4": [],
-        "metrics_latency": [],
-        "aggregate_latency": [],
-        "file_download_latency": [],
-        "pending_messages": [],
-        "eth_height_remaining": [],
-    }
+    keys = [
+        "item_hash",
+        "measured_at",
+        "base_latency",
+        "base_latency_ipv4",
+        "metrics_latency",
+        "aggregate_latency",
+        "file_download_latency",
+        "pending_messages",
+        "eth_height_remaining",
+    ]
 
-    for row in result:
-        item_hash = row[0]
-        timestamp = row[1]
-        base_latency = row[2]
-        base_latency_ipv4 = row[3]
-        metrics_latency = row[4]
-        aggregate_latency = row[5]
-        file_download_latency = row[6]
-        pending_messages = row[7]
-        eth_height_remaining = row[8]
+    # Transpose the result and create a dictionary
+    result_dict = {key: list(values) for key, values in zip(keys, zip(*result))}
 
-        result_dict["item_hash"].append(item_hash)
-        result_dict["measured_at"].append(timestamp)
-        result_dict["base_latency"].append(base_latency)
-        result_dict["base_latency_ipv4"].append(base_latency_ipv4)
-        result_dict["metrics_latency"].append(metrics_latency)
-        result_dict["aggregate_latency"].append(aggregate_latency)
-        result_dict["file_download_latency"].append(file_download_latency)
-        result_dict["pending_messages"].append(pending_messages)
-        result_dict["eth_height_remaining"].append(eth_height_remaining)
+    return result_dict
+
+
+def _parse_crn_result(result):
+    keys = [
+        "item_hash",
+        "measured_at",
+        "base_latency",
+        "base_latency_ipv4",
+        "full_check_latency",
+        "diagnostic_vm_latency",
+    ]
+
+    # Transpose the result and create a dictionary
+    result_dict = {key: list(values) for key, values in zip(keys, zip(*result))}
+
     return result_dict
 
 
@@ -92,33 +91,6 @@ def query_metric_ccn(
     result = session.execute(select_stmt).fetchall()
 
     return _parse_ccn_result(result=result)
-
-
-def _parse_crn_result(result):
-    result_dict = {
-        "item_hash": [],
-        "measured_at": [],
-        "base_latency": [],
-        "base_latency_ipv4": [],
-        "full_check_latency": [],
-        "diagnostic_vm_latency": [],
-    }
-    for row in result:
-        item_hash = row[0]
-        timestamp = row[1]
-        base_latency = row[2]
-        base_latency_ipv4 = row[3]
-        full_check_latency = row[4]
-        diagnostic_vm_latency = row[5]
-
-        result_dict["item_hash"].append(item_hash)
-        result_dict["measured_at"].append(timestamp)
-        result_dict["base_latency"].append(base_latency)
-        result_dict["base_latency_ipv4"].append(base_latency_ipv4)
-        result_dict["full_check_latency"].append(full_check_latency)
-        result_dict["diagnostic_vm_latency"].append(diagnostic_vm_latency)
-
-    return result_dict
 
 
 def query_metric_crn(

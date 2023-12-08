@@ -10,9 +10,10 @@ from pydantic import BaseModel
 from aleph.db.accessors.metrics import query_metric_ccn, query_metric_crn
 from aleph.types.db_session import DbSessionFactory
 from aleph.web.controllers.app_state_getters import (
-    get_node_cache_from_request, get_session_factory_from_request)
-from aleph.web.controllers.metrics import (format_dataclass_for_prometheus,
-                                           get_metrics)
+    get_node_cache_from_request,
+    get_session_factory_from_request,
+)
+from aleph.web.controllers.metrics import format_dataclass_for_prometheus, get_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -102,17 +103,20 @@ async def ccn_metric(request: web.Request) -> web.Response:
     node_id = _get_node_id_from_request(request)
 
     with session_factory() as session:
-        cnn = query_metric_ccn(
+        ccn = query_metric_ccn(
             session,
             node_id=node_id,
             start_date=query_params.start_date,
             end_date=query_params.end_date,
             sort_order=query_params.sort,
         )
-        if not cnn["item_hash"]:
+        if not ccn:
             raise web.HTTPNotFound()
 
-        result = {"metrics": cnn}
+        if not ccn["item_hash"]:
+            raise web.HTTPNotFound()
+
+        result = {"metrics": ccn}
         return web.json_response(result)
 
 
@@ -132,6 +136,10 @@ async def crn_metric(request: web.Request) -> web.Response:
             end_date=query_params.end_date,
             sort_order=query_params.sort,
         )
+
+        if not crn:
+            raise web.HTTPNotFound()
+
         if not crn["item_hash"]:
             raise web.HTTPNotFound()
 
