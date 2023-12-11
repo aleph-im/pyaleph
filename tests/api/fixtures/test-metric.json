@@ -1,0 +1,178 @@
+[
+    {
+        "item_hash": "56c82c6d3b28b76456594b4b57154b6826a6d5fb97d355d0428e5ca7d08193b9",
+        "type": "POST",
+        "chain": "ETH",
+        "sender": "0x4D52380D3191274a04846c89c069E6C3F2Ed94e4",
+        "signature": "0x40e307f1645718dc245a8ed754e1f652ce60be914cae780eb73fbe164a5372de3c2e631dbc4cfa7c548d85d1d0f935defa332f116f9226b6fc4ecc53f2edd2901b",
+        "item_type": "storage",
+        "item_content": null,
+        "content": {
+            "time": 1701261226.1406364,
+            "type": "aleph-network-metrics",
+            "address": "0x4D52380D3191274a04846c89c069E6C3F2Ed94e4",
+            "content": {
+                "tags": ["mainnet"],
+                "metrics": {
+                    "ccn": [
+                        {
+                            "asn": 16276,
+                            "url": "http://142.4.199.242:4024/",
+                            "as_name": "OVH, FR",
+                            "node_id": "b8b9104da69c54e58531212234fa31f49ef4c668a39a0bf6793322407857b821",
+                            "version": "v0.5.1",
+                            "txs_total": 9,
+                            "measured_at": 1701261022.881753,
+                            "base_latency": 0.2345137596130371,
+                            "metrics_latency": 0.39575982093811035,
+                            "pending_messages": 0,
+                            "aggregate_latency": 0.12717533111572266,
+                            "base_latency_ipv4": 0.2345137596130371,
+                            "eth_height_remaining": 224,
+                            "file_download_latency": 0.22372746467590332
+                        },
+                        {
+                            "asn": 24940,
+                            "url": "http://65.109.36.183:4024/",
+                            "as_name": "HETZNER-AS, DE",
+                            "node_id": "2e7cd67ff8f556b0b3fb8a2ef8ab0e8e1466cfa279dd7b9bfbc8aba92e0c5672",
+                            "version": "v0.5.1",
+                            "txs_total": 0,
+                            "measured_at": 1701261021.777543,
+                            "base_latency": 0.10312747955322266,
+                            "metrics_latency": 0.3111591339111328,
+                            "pending_messages": 0,
+                            "aggregate_latency": 0.06761360168457031,
+                            "base_latency_ipv4": 0.10312747955322266,
+                            "eth_height_remaining": 248,
+                            "file_download_latency": 0.10559391975402832
+                        }
+                    ],
+                    "crn": [
+                        {
+                            "asn": 21409,
+                            "url": "https://rnode01.canucks.icu/",
+                            "as_name": "IKOULA, FR",
+                            "node_id": "5adbe916593ff10ace96d4d9841a8532f81c07bf8905c78178e64639a61685f5",
+                            "version": "0.3.0",
+                            "measured_at": 1701261121.356539,
+                            "base_latency": 0.14533090591430664,
+                            "base_latency_ipv4": 0.13749980926513672,
+                            "full_check_latency": 0.4012613296508789,
+                            "diagnostic_vm_latency": 0.07122135162353516
+                        },
+                        {
+                            "asn": 24940,
+                            "url": "https://kimchibitfwd4rcn11.bitfwd.xyz/",
+                            "as_name": "HETZNER-AS, DE",
+                            "node_id": "d491f38ec66fe23a9c9ad398a04fd4dcb44a115b948ef612db844caea85cd59a",
+                            "version": "0.3.0",
+                            "measured_at": 1701261122.643961,
+                            "base_latency": 0.03546738624572754,
+                            "base_latency_ipv4": 0.05208730697631836,
+                            "full_check_latency": 0.6230778694152832,
+                            "diagnostic_vm_latency": 0.05135464668273926
+                        }
+                    ],
+                    "server": "151.115.63.76",
+                    "server_asn": 12876,
+                    "server_as_name": "Online SAS, FR"
+                },
+                "version": "1.0"
+            }
+        },
+        "time": 1701261226.148742,
+        "channel": "aleph-scoring",
+        "size": 126038,
+        "confirmations": [],
+        "confirmed": false
+    },
+    {
+        "item_hash": "172bab8f624fff1be70a19fecd45ff51fa4f833a34074451c7d79ece19bf37f0",
+        "type": "POST",
+        "chain": "ETH",
+        "sender": "0x4D52380D3191274a04846c89c069E6C3F2Ed94e4",
+        "signature": "0xb6ef922442f25c71a9ce60e3fbd92115648d2d312e8e93e02f3af254b69ef4bc6f6f02f027500e2248d5174d8d6a9cfedca2c59c2d188a2213e5b13cf74b7ea01c",
+        "item_type": "storage",
+        "item_content": null,
+        "content": {
+            "time": 1701264226.1443472,
+            "type": "aleph-network-metrics",
+            "address": "0x4D52380D3191274a04846c89c069E6C3F2Ed94e4",
+            "content": {
+                "tags": ["mainnet"],
+                "metrics": {
+                    "ccn": [
+                        {
+                            "asn": 201814,
+                            "url": "http://193.34.212.124:4024/",
+                            "as_name": "MEVSPACE, PL",
+                            "node_id": "b8b9104da69c54e58531212234fa31f49ef4c668a39a0bf6793322407857b821",
+                            "version": "v0.5.1",
+                            "txs_total": 0,
+                            "measured_at": 1701264026.243765,
+                            "base_latency": 0.009937286376953125,
+                            "metrics_latency": 0.43869686126708984,
+                            "pending_messages": 0,
+                            "aggregate_latency": 0.014438152313232422,
+                            "base_latency_ipv4": 0.009937286376953125,
+                            "eth_height_remaining": 4672,
+                            "file_download_latency": 0.007421016693115234
+                        },
+                        {
+                            "asn": 28753,
+                            "url": "http://212.95.53.162:4024/",
+                            "as_name": "LEASEWEB-DE-FRA-10, DE",
+                            "node_id": "2e7cd67ff8f556b0b3fb8a2ef8ab0e8e1466cfa279dd7b9bfbc8aba92e0c5672",
+                            "version": "v0.5.1",
+                            "txs_total": 0,
+                            "measured_at": 1701264002.795776,
+                            "base_latency": 0.04943251609802246,
+                            "metrics_latency": 1.2472684383392334,
+                            "pending_messages": 0,
+                            "aggregate_latency": 0.06596589088439941,
+                            "base_latency_ipv4": 0.04943251609802246,
+                            "eth_height_remaining": 156,
+                            "file_download_latency": 0.055548906326293945
+                        }
+                    ],
+                    "crn": [
+                        {
+                            "asn": 24940,
+                            "url": "https://aleph8.serverrg.eu/",
+                            "as_name": "HETZNER-AS, DE",
+                            "node_id": "5adbe916593ff10ace96d4d9841a8532f81c07bf8905c78178e64639a61685f5",
+                            "version": "0.3.0",
+                            "measured_at": 1701264120.645951,
+                            "base_latency": 0.1416456699371338,
+                            "base_latency_ipv4": 0.15400004386901855,
+                            "full_check_latency": 0.5233616828918457,
+                            "diagnostic_vm_latency": 0.06812047958374023
+                        },
+                        {
+                            "asn": 63023,
+                            "url": "https://crabble.xyz/",
+                            "as_name": "AS-GLOBALTELEHOST, US",
+                            "node_id": "d491f38ec66fe23a9c9ad398a04fd4dcb44a115b948ef612db844caea85cd59a",
+                            "version": "0.3.0",
+                            "measured_at": 1701264107.823557,
+                            "base_latency": 0.11734175682067871,
+                            "base_latency_ipv4": 0.37552332878112793,
+                            "full_check_latency": 1.1796252727508545,
+                            "diagnostic_vm_latency": 0.14794635772705078
+                        }
+                    ],
+                    "server": "151.115.63.76",
+                    "server_asn": 12876,
+                    "server_as_name": "Online SAS, FR"
+                },
+                "version": "1.0"
+            }
+        },
+        "time": 1701264226.153022,
+        "channel": "aleph-scoring",
+        "size": 126050,
+        "confirmations": [],
+        "confirmed": false
+    }
+]
