@@ -61,7 +61,7 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessag
             "aleph_api": False,
             "shared_cache": False,
         },
-        "resources": {"vcpus": 1, "memory": 128, "seconds": 30},
+        "resources": {"vcpus": 1, "memory": 2048, "seconds": 30},
         "requirements": {"cpu": {"architecture": "x86_64"}},
         "rootfs": {
             "parent": {
@@ -70,7 +70,7 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessag
             },
             "persistence": "host",
             "name": "test-rootfs",
-            "size_mib": 20 * 1024,
+            "size_mib": 20480,
         },
         "authorized_keys": [
             "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGULT6A41Msmw2KEu0R9MvUjhuWNAsbdeZ0DOwYbt4Qt user@example",
@@ -462,7 +462,7 @@ async def test_get_additional_storage_price(
         additional_price = get_additional_storage_price(
             content=content, session=session
         )
-        assert additional_price == Decimal("720")
+        assert additional_price == Decimal("1.8")
 
 
 @pytest.mark.asyncio
@@ -477,7 +477,7 @@ async def test_get_compute_cost(
     content = InstanceContent.parse_raw(fixture_instance_message.item_content)
     with session_factory() as session:
         price: Decimal = compute_cost(content=content, session=session)
-        assert price == Decimal("2720")
+        assert price == Decimal("2001.8")
 
 
 @pytest.mark.asyncio
@@ -497,10 +497,10 @@ async def test_compare_cost_view_with_cost_function(
 
     content = InstanceContent.parse_raw(fixture_instance_message.item_content)
     with session_factory() as session:
-        cost_from_function = compute_cost(session=session, content=content)
+        cost_from_function: Decimal = compute_cost(session=session, content=content)
         cost_from_view = session.execute(
             text("SELECT total_price from vm_costs_view WHERE vm_hash = :vm_hash"),
             {"vm_hash": fixture_instance_message.item_hash},
         ).scalar_one()
 
-    assert cost_from_view == cost_from_function
+    assert Decimal(str(cost_from_view)) == cost_from_function
