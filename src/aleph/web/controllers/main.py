@@ -95,7 +95,7 @@ def _get_node_id_from_request(request: web.Request) -> str:
 
 
 async def ccn_metric(request: web.Request) -> web.Response:
-    """Fetch metrics for CNN node id"""
+    """Fetch metrics for CCN node id"""
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
     query_params = Metrics.parse_obj(request.query)
