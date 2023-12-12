@@ -55,6 +55,8 @@ def make_matching_messages_query(
     message_types: Optional[Sequence[MessageType]] = None,
     start_date: Optional[Union[float, dt.datetime]] = None,
     end_date: Optional[Union[float, dt.datetime]] = None,
+    start_block: Optional[int] = None,
+    end_block: Optional[int] = None,
     content_hashes: Optional[Sequence[ItemHash]] = None,
     content_types: Optional[Sequence[str]] = None,
     tags: Optional[Sequence[str]] = None,
@@ -115,7 +117,7 @@ def make_matching_messages_query(
 
     order_by_columns: Tuple  # For mypy to leave us alone until SQLA2
 
-    if sort_by == SortBy.TX_TIME:
+    if sort_by == SortBy.TX_TIME or start_block or end_block:
         select_earliest_confirmation = (
             select(
                 message_confirmations.c.item_hash,
@@ -129,17 +131,26 @@ def make_matching_messages_query(
             MessageDb.item_hash == select_earliest_confirmation.c.item_hash,
             isouter=True,
         )
-        order_by_columns = (
-            (
-                nullsfirst(select_earliest_confirmation.c.earliest_confirmation.desc()),
-                MessageDb.time.desc(),
+        if start_block:
+            select_stmt = select_stmt.where(
+                select_earliest_confirmation.c.height.is_(None) | select_earliest_confirmation.c.height >= start_block
             )
-            if sort_order == SortOrder.DESCENDING
-            else (
-                nullslast(select_earliest_confirmation.c.earliest_confirmation.asc()),
-                MessageDb.time.asc(),
+        if end_block:
+            select_stmt = select_stmt.where(
+                select_earliest_confirmation.c.height < end_block
             )
-        )
+        if sort_by == SortBy.TX_TIME:
+            order_by_columns = (
+                (
+                    nullsfirst(select_earliest_confirmation.c.earliest_confirmation.desc()),
+                    MessageDb.time.desc(),
+                )
+                if sort_order == SortOrder.DESCENDING
+                else (
+                    nullslast(select_earliest_confirmation.c.earliest_confirmation.asc()),
+                    MessageDb.time.asc(),
+                )
+            )
     else:
         order_by_columns = (
             (

@@ -112,6 +112,10 @@ class BaseMessageQueryParams(BaseModel):
         end_date = values.get("end_date")
         if start_date and end_date and (end_date < start_date):
             raise ValueError("end date cannot be lower than start date.")
+        start_block = values.get("start_block")
+        end_block = values.get("end_block")
+        if start_block and end_block and (end_block < start_block):
+            raise ValueError("end block cannot be lower than start block.")
         return values
 
     @validator(
@@ -156,6 +160,21 @@ class MessageQueryParams(BaseMessageQueryParams):
         alias="endDate",
         description="End date timestamp. If specified, only messages with "
         "a time field lower than this value will be returned.",
+    )
+
+    start_block: int = Field(
+        default=0,
+        ge=0,
+        alias="startBlock",
+        description="Start block number. If specified, only messages with "
+        "a block number greater or equal to this value will be returned.",
+    )
+    end_block: int = Field(
+        default=0,
+        ge=0,
+        alias="endBlock",
+        description="End block number. If specified, only messages with "
+        "a block number lower than this value will be returned.",
     )
 
 
