@@ -8,7 +8,7 @@ volumes:
 services:
   pyaleph:
     restart: always
-    image: alephim/pyaleph-node:v0.5.2-rc2
+    image: alephim/pyaleph-node:v0.5.2-rc3
     command: --config /opt/pyaleph/config.yml --key-dir /opt/pyaleph/keys -v
     volumes:
       - ./config.yml:/opt/pyaleph/config.yml
@@ -27,7 +27,7 @@ services:
 
   pyaleph-api:
     restart: always
-    image: alephim/pyaleph-node:v0.5.2-rc2
+    image: alephim/pyaleph-node:v0.5.2-rc3
     command: --config /opt/pyaleph/config.yml --key-dir /opt/pyaleph/keys -v
     entrypoint: ["bash", "deployment/scripts/run_aleph_ccn_api.sh"]
     ports:
