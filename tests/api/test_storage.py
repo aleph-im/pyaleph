@@ -218,8 +218,8 @@ async def test_storage_add_file(api_client, session_factory: DbSessionFactory):
         api_client,
         session_factory,
         uri=STORAGE_ADD_FILE_URI,
-        file_content=FILE_CONTENT,
-        expected_file_hash=EXPECTED_FILE_SHA256,
+        file_content=b"Hello Aleph.im\n",
+        expected_file_hash="0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
     )
 
 
