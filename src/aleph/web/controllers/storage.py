@@ -1,44 +1,34 @@
 import base64
 import logging
 from decimal import Decimal
-from typing import Union, Optional, Protocol
+from typing import Optional, Protocol, Union
 
 import aio_pika
 import pydantic
 from aiohttp import web
 from aiohttp.web_request import FileField
-from aleph_message.models import ItemType, StoreContent
-from mypy.dmypy_server import MiB
-from pydantic import ValidationError
-
 from aleph.chains.chain_service import ChainService
 from aleph.db.accessors.balances import get_total_balance
 from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import count_file_pins, get_file
 from aleph.exceptions import AlephStorageException, UnknownHashError
-from aleph.schemas.pending_messages import (
-    BasePendingMessage,
-    PendingStoreMessage,
-    PendingInlineStoreMessage,
-)
+from aleph.schemas.pending_messages import (BasePendingMessage,
+                                            PendingInlineStoreMessage,
+                                            PendingStoreMessage)
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSession
-from aleph.types.message_status import (
-    InvalidSignature,
-)
-from aleph.utils import run_in_executor, item_type_from_hash, get_sha256
+from aleph.types.message_status import InvalidSignature
+from aleph.utils import get_sha256, item_type_from_hash, run_in_executor
 from aleph.web.controllers.app_state_getters import (
-    get_session_factory_from_request,
-    get_storage_service_from_request,
-    get_config_from_request,
-    get_mq_channel_from_request,
-    get_chain_service_from_request,
-)
-from aleph.web.controllers.utils import (
-    mq_make_aleph_message_topic_queue,
-    broadcast_and_process_message,
-    broadcast_status_to_http_status,
-)
+    get_chain_service_from_request, get_config_from_request,
+    get_mq_channel_from_request, get_session_factory_from_request,
+    get_storage_service_from_request)
+from aleph.web.controllers.utils import (broadcast_and_process_message,
+                                         broadcast_status_to_http_status,
+                                         mq_make_aleph_message_topic_queue)
+from aleph_message.models import ItemType, StoreContent
+from mypy.dmypy_server import MiB
+from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -118,18 +108,53 @@ class UploadedFile(Protocol):
 
 class MultipartUploadedFile:
     _content: Optional[bytes]
+    metadata: bool
+    size = 0
 
-    def __init__(self, file_field: FileField):
+    def __init__(self, file_field: FileField, metadata: bool):
+        self.metadata = metadata
         self.file_field = file_field
+        self.MAX_SIZE = (
+            MAX_UPLOAD_FILE_SIZE
+            if self.metadata
+            else MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE
+        )
 
         try:
-            content_length_str = file_field.headers["Content-Length"]
-            self.size = int(content_length_str)
+            if self.metadata:
+                content_length_str = file_field.headers["Content-Length"]
+                self.size = int(content_length_str)
+                self._content = self.file_field.file.read()
+            else:
+                self._content = self.read_file_with_max_size(
+                    MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE
+                )
+                if self._content:
+                    self.size = len(self._content)
         except (KeyError, ValueError):
             raise web.HTTPUnprocessableEntity(
                 reason="Invalid/missing Content-Length header."
             )
-        self._content = None
+
+    def read_file_with_max_size(self, max_size: int) -> Union[bytes, None]:
+        buffer_size = 64 * 1024  # 64 KB buffer size
+
+        content = b""
+        total_read = 0
+
+        while True:
+            chunk = self.file_field.file.read(buffer_size)
+
+            if not chunk:
+                break
+
+            total_read += len(chunk)
+            if total_read > max_size:
+                raise web.HTTPForbidden()
+
+            content += chunk
+
+        return content if content else None
 
     @property
     def content(self) -> bytes:
@@ -173,7 +198,6 @@ async def _check_and_add_file(
             address=message_content.address,
             size=file.size,
         )
-
     else:
         message_content = None
 
@@ -225,12 +249,13 @@ async def storage_add_file(request: web.Request):
     except KeyError:
         raise web.HTTPUnprocessableEntity(reason="Missing 'file' in multipart form.")
 
+    metadata = post.get("metadata")
+
     if isinstance(file_field, FileField):
-        uploaded_file: UploadedFile = MultipartUploadedFile(file_field)
+        has_metadata = True if metadata else False
+        uploaded_file: UploadedFile = MultipartUploadedFile(file_field, has_metadata)
     else:
         uploaded_file = RawUploadedFile(file_field)
-
-    metadata = post.get("metadata")
 
     status_code = 200
 
