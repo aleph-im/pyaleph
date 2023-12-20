@@ -114,6 +114,7 @@ class MultipartUploadedFile:
     def __init__(self, file_field: FileField, metadata: bool):
         self.metadata = metadata
         self.file_field = file_field
+
         self.MAX_SIZE = (
             MAX_UPLOAD_FILE_SIZE
             if self.metadata
@@ -124,10 +125,10 @@ class MultipartUploadedFile:
             if self.metadata:
                 content_length_str = file_field.headers["Content-Length"]
                 self.size = int(content_length_str)
-                self._content = self.file_field.file.read()
+                self._content = self.read_file_with_max_size(self.MAX_SIZE)
             else:
                 self._content = self.read_file_with_max_size(
-                    MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE
+                    self.MAX_SIZE
                 )
                 if self._content:
                     self.size = len(self._content)
@@ -138,7 +139,6 @@ class MultipartUploadedFile:
 
     def read_file_with_max_size(self, max_size: int) -> Union[bytes, None]:
         buffer_size = 64 * 1024  # 64 KB buffer size
-
         content = b""
         total_read = 0
 
@@ -150,7 +150,7 @@ class MultipartUploadedFile:
 
             total_read += len(chunk)
             if total_read > max_size:
-                raise web.HTTPForbidden()
+                raise web.HTTPRequestEntityTooLarge()
 
             content += chunk
 
