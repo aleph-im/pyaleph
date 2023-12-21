@@ -118,17 +118,20 @@ class UploadedFile(Protocol):
 
 class MultipartUploadedFile:
     _content: Optional[bytes]
+    size: int
 
-    def __init__(self, file_field: FileField):
+    def __init__(self, file_field: FileField, size: Optional[int] = None):
         self.file_field = file_field
-
-        try:
-            content_length_str = file_field.headers["Content-Length"]
-            self.size = int(content_length_str)
-        except (KeyError, ValueError):
-            raise web.HTTPUnprocessableEntity(
-                reason="Invalid/missing Content-Length header."
-            )
+        if size is not None:
+            self.size = size
+        else:
+            try:
+                content_length_str = file_field.headers["Content-Length"]
+                self.size = int(content_length_str)
+            except (KeyError, ValueError):
+                raise web.HTTPUnprocessableEntity(
+                    reason="Invalid/missing Content-Length header."
+                )
         self._content = None
 
     @property
@@ -220,13 +223,14 @@ async def storage_add_file(request: web.Request):
     chain_service: ChainService = get_chain_service_from_request(request)
 
     post = await request.post()
+    headers = request.headers
     try:
         file_field = post["file"]
     except KeyError:
         raise web.HTTPUnprocessableEntity(reason="Missing 'file' in multipart form.")
 
     if isinstance(file_field, FileField):
-        uploaded_file: UploadedFile = MultipartUploadedFile(file_field)
+        uploaded_file: UploadedFile = MultipartUploadedFile(file_field, headers.get("Content-Length"))
     else:
         uploaded_file = RawUploadedFile(file_field)
 
