@@ -230,7 +230,8 @@ async def storage_add_file(request: web.Request):
         raise web.HTTPUnprocessableEntity(reason="Missing 'file' in multipart form.")
 
     if isinstance(file_field, FileField):
-        uploaded_file: UploadedFile = MultipartUploadedFile(file_field, headers.get("Content-Length"))
+        content_length = int(headers.get("Content-Length")) if headers.get("Content-Length") else None
+        uploaded_file: UploadedFile = MultipartUploadedFile(file_field, content_length)
     else:
         uploaded_file = RawUploadedFile(file_field)
 
