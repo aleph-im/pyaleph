@@ -323,6 +323,9 @@ class VmMessageHandler(ContentHandler):
             if not content.on.persistent:
                 return
 
+        if content.payment.is_stream:
+            return
+
         required_tokens = compute_cost(session=session, content=content)
 
         current_balance = (
