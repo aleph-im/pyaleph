@@ -323,7 +323,7 @@ class VmMessageHandler(ContentHandler):
             if not content.on.persistent:
                 return
 
-        if content.payment.is_stream:
+        if content.payment and content.payment.is_stream:
             return
 
         required_tokens = compute_cost(session=session, content=content)
