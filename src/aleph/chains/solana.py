@@ -5,15 +5,30 @@ import base58
 from nacl.exceptions import BadSignatureError
 from nacl.signing import VerifyKey
 
+from aleph_message.models import Chain
+from aleph.types.db_session import DbSessionFactory
+from aleph.types.chain_sync import ChainEventType, ChainEventType
 from aleph.chains.common import get_verification_buffer
 from aleph.schemas.pending_messages import BasePendingMessage
+
+from configmanager import Config
 from .connector import Verifier
+from .chaindata import ChainDataService
+from .indexer_reader import AlephIndexerReader
 
 LOGGER = logging.getLogger("chains.solana")
 CHAIN_NAME = "SOL"
 
-
 class SolanaConnector(Verifier):
+    def __init__(
+        self, session_factory: DbSessionFactory, chain_data_service: ChainDataService
+    ):
+        self.indexer_reader = AlephIndexerReader(
+            chain=Chain.SOL,
+            session_factory=session_factory,
+            chain_data_service=chain_data_service,
+        )
+        
     async def verify_signature(self, message: BasePendingMessage) -> bool:
         """Verifies a signature of a message, return True if verified, false if not"""
 
@@ -51,3 +66,10 @@ class SolanaConnector(Verifier):
             result = False
 
         return result
+            
+    async def fetcher(self, config: Config):
+        await self.indexer_reader.fetcher(
+            indexer_url=config.aleph.indexer_url.value,
+            smart_contract_address=config.solana.sync_contract.value,
+            event_type=ChainEventType.MESSAGE,
+        )

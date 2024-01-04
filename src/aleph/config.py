@@ -97,6 +97,12 @@ def get_defaults():
             # Address of the aleph.im smart contract on the BSC chain.
             "sync_contract": "0xdF270752C8C71D08acbae4372687DA65AECe2D5D",
         },
+        "solana": {
+            # Whether to fetch transactions from the Solana chain.
+            "enabled": True,            
+            # Address of the aleph.im smart contract on the Solana chain.
+            "sync_contract": "ALepH1n9jxScbz45aZhBYVa35zxBNbKSvL6rWQpb4snc",
+        },
         "ethereum": {
             # Whether to fetch transactions from Ethereum.
             "enabled": False,
