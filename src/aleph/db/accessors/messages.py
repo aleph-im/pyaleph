@@ -30,7 +30,7 @@ from ..models.messages import (
 from ..models.pending_messages import PendingMessageDb
 
 
-def get_message_by_item_hash(session: DbSession, item_hash: str) -> Optional[MessageDb]:
+def get_message_by_item_hash(session: DbSession, item_hash: ItemHash) -> Optional[MessageDb]:
     select_stmt = (
         select(MessageDb)
         .where(MessageDb.item_hash == item_hash)
@@ -289,10 +289,10 @@ def make_confirmation_upsert_query(item_hash: str, tx_hash: str) -> Insert:
     )
 
 
-def get_message_status(session: DbSession, item_hash: str) -> Optional[MessageStatusDb]:
+def get_message_status(session: DbSession, item_hash: ItemHash) -> Optional[MessageStatusDb]:
     return (
         session.execute(
-            select(MessageStatusDb).where(MessageStatusDb.item_hash == item_hash)
+            select(MessageStatusDb).where(MessageStatusDb.item_hash == str(item_hash))
         )
     ).scalar()
 
