@@ -12,6 +12,10 @@ from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag
 
 
+HOUR = 60 * 60
+MINUTE = 60
+
+
 def _get_file_from_ref(
     session: DbSession, ref: str, use_latest: bool
 ) -> Optional[StoredFileDb]:
@@ -103,3 +107,37 @@ def compute_cost(session: DbSession, content: ExecutableContent) -> Decimal:
     )
     price = compute_unit_price + get_additional_storage_price(content, session)
     return Decimal(price)
+
+
+def compute_flow_cost(session: DbSession, content: ExecutableContent) -> Decimal:
+    # TODO: Use PAYMENT_PRICING_AGGREGATE when possible
+    compute_unit_cost_hour = 0.11 if content.on.persistent else 0.011
+    compute_unit_cost_second = compute_unit_cost_hour / HOUR
+
+    compute_units_required = _get_nb_compute_units(content)
+    compute_unit_multiplier = _get_compute_unit_multiplier(content)
+
+    compute_unit_price = (
+            Decimal(compute_units_required) * Decimal(compute_unit_multiplier) * Decimal(compute_unit_cost_second)
+    )
+
+    additional_storage_flow_price = get_additional_storage_flow_price(content, session)
+    price = compute_unit_price + additional_storage_flow_price
+    return Decimal(price)
+
+
+def get_additional_storage_flow_price(
+        content: ExecutableContent, session: DbSession
+) -> Decimal:
+    # TODO: Use PAYMENT_PRICING_AGGREGATE when possible
+    additional_storage_hour_price = 0.000000977
+    additional_storage_second_price = Decimal(additional_storage_hour_price) / Decimal(HOUR)
+    nb_compute_units = _get_nb_compute_units(content)
+    free_storage_per_compute_unit = 2 * GiB if not content.on.persistent else 20 * GiB
+
+    total_volume_size = get_volume_size(session, content)
+    additional_storage = max(
+        Decimal(total_volume_size) - (Decimal(free_storage_per_compute_unit) * Decimal(nb_compute_units)), Decimal(0)
+    )
+    price = additional_storage / additional_storage_second_price / Decimal(MiB)
+    return price
