@@ -11,6 +11,7 @@ from aleph.web.controllers import (
     messages,
     p2p,
     posts,
+    prices,
     storage,
     version,
 )
@@ -56,6 +57,8 @@ def register_routes(app: web.Application):
     app.router.add_get("/api/v0/posts/page/{page}.json", posts.view_posts_list_v0)
     app.router.add_get("/api/v1/posts.json", posts.view_posts_list_v1)
     app.router.add_get("/api/v1/posts/page/{page}.json", posts.view_posts_list_v1)
+
+    app.router.add_get("/api/v0/price/{item_hash}", prices.message_price)
 
     app.router.add_get("/api/v0/addresses/stats.json", accounts.addresses_stats_view)
     app.router.add_get(
