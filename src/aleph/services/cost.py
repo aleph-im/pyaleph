@@ -12,8 +12,8 @@ from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag
 
 
-HOUR = 60 * 60
 MINUTE = 60
+HOUR = 60 * MINUTE
 
 
 def _get_file_from_ref(
