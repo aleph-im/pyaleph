@@ -56,12 +56,12 @@ async def get_executable_message(session: DbSession, item_hash_str: str) -> Mess
         raise web.HTTPNotFound()
     # Loop through the status_exceptions to find a match and raise the corresponding exception
     if message_status_db.status in MESSAGE_STATUS_EXCEPTIONS:
-        exception, message = MESSAGE_STATUS_EXCEPTIONS[message_status_db.status]
-        raise exception(body=f"{message}: {item_hash_str}")
+        exception, error_message = MESSAGE_STATUS_EXCEPTIONS[message_status_db.status]
+        raise exception(body=f"{error_message}: {item_hash_str}")
     assert message_status_db.status == MessageStatusDb.status.PROCESSED
 
     # Get the message from the database
-    message = get_message_by_item_hash(session, item_hash)
+    message: Optional[MessageDb] = get_message_by_item_hash(session, item_hash)
     if not message:
         raise web.HTTPNotFound(body="Message not found, despite appearing as processed")
     if message.type not in (MessageType.instance, MessageType.program):
