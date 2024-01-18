@@ -12,6 +12,7 @@ from aleph.db.accessors.messages import get_message_by_item_hash, get_message_st
 from aleph.db.models import MessageDb, MessageStatusDb
 from aleph.services.cost import compute_cost, compute_flow_cost
 from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.message_status import MessageStatus
 
 LOGGER = logging.getLogger(__name__)
 
@@ -23,9 +24,9 @@ class HTTPProcessing(HTTPException):
 
 # Mapping between message statuses to their corresponding exceptions and messages
 MESSAGE_STATUS_EXCEPTIONS = {
-    MessageStatusDb.status.PENDING: (HTTPProcessing, "Message still pending"),
-    MessageStatusDb.status.REJECTED: (web.HTTPNotFound, "This message was rejected"),
-    MessageStatusDb.status.FORGOTTEN: (
+    MessageStatus.PENDING: (HTTPProcessing, "Message still pending"),
+    MessageStatus.REJECTED: (web.HTTPNotFound, "This message was rejected"),
+    MessageStatus.FORGOTTEN: (
         web.HTTPGone,
         "This message has been forgotten",
     ),
