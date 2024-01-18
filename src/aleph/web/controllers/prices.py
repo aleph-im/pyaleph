@@ -23,9 +23,9 @@ class HTTPProcessing(HTTPException):
 
 # Mapping between message statuses to their corresponding exceptions and messages
 MESSAGE_STATUS_EXCEPTIONS = {
-    MessageStatusDb.statuses.PENDING: (HTTPProcessing, "Message still pending"),
-    MessageStatusDb.statuses.REJECTED: (web.HTTPNotFound, "This message was rejected"),
-    MessageStatusDb.statuses.FORGOTTEN: (
+    MessageStatusDb.status.PENDING: (HTTPProcessing, "Message still pending"),
+    MessageStatusDb.status.REJECTED: (web.HTTPNotFound, "This message was rejected"),
+    MessageStatusDb.status.FORGOTTEN: (
         web.HTTPGone,
         "This message has been forgotten",
     ),
@@ -58,7 +58,7 @@ async def get_executable_message(session: DbSession, item_hash_str: str) -> Mess
     if message_status_db.status in MESSAGE_STATUS_EXCEPTIONS:
         exception, message = MESSAGE_STATUS_EXCEPTIONS[message_status_db.status]
         raise exception(body=f"{message}: {item_hash_str}")
-    assert message_status_db.status == MessageStatusDb.statuses.PROCESSED
+    assert message_status_db.status == MessageStatusDb.status.PROCESSED
 
     # Get the message from the database
     message = get_message_by_item_hash(session, item_hash)

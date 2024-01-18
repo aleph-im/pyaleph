@@ -30,7 +30,7 @@ from ..models.messages import (
 from ..models.pending_messages import PendingMessageDb
 
 
-def get_message_by_item_hash(session: DbSession, item_hash: str) -> Optional[MessageDb]:
+def get_message_by_item_hash(session: DbSession, item_hash: ItemHash) -> Optional[MessageDb]:
     select_stmt = (
         select(MessageDb)
         .where(MessageDb.item_hash == item_hash)
