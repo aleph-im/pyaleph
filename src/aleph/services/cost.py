@@ -130,8 +130,8 @@ def get_additional_storage_flow_price(
         content: ExecutableContent, session: DbSession
 ) -> Decimal:
     # TODO: Use PAYMENT_PRICING_AGGREGATE when possible
-    additional_storage_hour_price = 0.000000977
-    additional_storage_second_price = Decimal(additional_storage_hour_price) / Decimal(HOUR)
+    additional_storage_hour_price = Decimal(0.000000977)
+    additional_storage_second_price = additional_storage_hour_price / Decimal(HOUR)
     nb_compute_units = _get_nb_compute_units(content)
     free_storage_per_compute_unit = 2 * GiB if not content.on.persistent else 20 * GiB
 
