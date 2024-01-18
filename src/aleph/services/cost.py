@@ -79,11 +79,12 @@ def get_volume_size(session: DbSession, content: ExecutableContent) -> int:
 def get_additional_storage_price(
     content: ExecutableContent, session: DbSession
 ) -> Decimal:
-    is_microvm = isinstance(content, ProgramContent) and not content.on.persistent
     nb_compute_units = content.resources.vcpus
+
+    is_on_demand = isinstance(content, ProgramContent) and not content.on.persistent
     included_storage_per_compute_unit = (
         STORAGE_INCLUDED_PER_COMPUTE_UNIT_ON_DEMAND
-        if not content.on.persistent
+        if is_on_demand
         else STORAGE_INCLUDED_PER_COMPUTE_UNIT_PERSISTENT
     )
 
@@ -113,11 +114,10 @@ def _get_compute_unit_multiplier(content: ExecutableContent) -> int:
 
 
 def compute_cost(session: DbSession, content: ExecutableContent) -> Decimal:
-    is_microvm = isinstance(content, ProgramContent) and not content.on.persistent
-
+    is_on_demand = isinstance(content, ProgramContent) and not content.on.persistent
     compute_unit_cost = (
         COMPUTE_UNIT_TOKEN_TO_HOLD_ON_DEMAND
-        if is_microvm
+        if is_on_demand
         else COMPUTE_UNIT_TOKEN_TO_HOLD_PERSISTENT
     )
 
@@ -133,11 +133,13 @@ def compute_cost(session: DbSession, content: ExecutableContent) -> Decimal:
 
 def compute_flow_cost(session: DbSession, content: ExecutableContent) -> Decimal:
     # TODO: Use PAYMENT_PRICING_AGGREGATE when possible
+    is_on_demand = isinstance(content, ProgramContent) and not content.on.persistent
     compute_unit_cost_hour = (
         COMPUTE_UNIT_PRICE_PER_HOUR_PERSISTENT
-        if content.on.persistent
+        if is_on_demand
         else COMPUTE_UNIT_PRICE_PER_HOUR_ON_DEMAND
     )
+
     compute_unit_cost_second = compute_unit_cost_hour / HOUR
 
     compute_units_required = _get_nb_compute_units(content)
@@ -159,9 +161,11 @@ def get_additional_storage_flow_price(
 ) -> Decimal:
     # TODO: Use PAYMENT_PRICING_AGGREGATE when possible
     nb_compute_units = _get_nb_compute_units(content)
+
+    is_on_demand = isinstance(content, ProgramContent) and not content.on.persistent
     included_storage_per_compute_unit = (
         STORAGE_INCLUDED_PER_COMPUTE_UNIT_ON_DEMAND
-        if not content.on.persistent
+        if is_on_demand
         else STORAGE_INCLUDED_PER_COMPUTE_UNIT_PERSISTENT
     )
 
