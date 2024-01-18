@@ -15,6 +15,16 @@ from aleph.types.files import FileTag
 MINUTE = 60
 HOUR = 60 * MINUTE
 
+COMPUTE_UNIT_TOKEN_TO_HOLD_ON_DEMAND = Decimal("200")
+COMPUTE_UNIT_TOKEN_TO_HOLD_PERSISTENT = Decimal("2000")
+COMPUTE_UNIT_PRICE_PER_HOUR_ON_DEMAND = Decimal("0.011")
+COMPUTE_UNIT_PRICE_PER_HOUR_PERSISTENT = Decimal("0.11")
+STORAGE_INCLUDED_PER_COMPUTE_UNIT_ON_DEMAND = Decimal("2") * GiB
+STORAGE_INCLUDED_PER_COMPUTE_UNIT_PERSISTENT = Decimal("20") * GiB
+
+EXTRA_STORAGE_PRICE_PER_HOUR = Decimal("0.000000977")
+EXTRA_STORAGE_PRICE_PER_SECOND = EXTRA_STORAGE_PRICE_PER_HOUR / Decimal(HOUR)
+
 
 def _get_file_from_ref(
     session: DbSession, ref: str, use_latest: bool
@@ -70,11 +80,15 @@ def get_additional_storage_price(
 ) -> Decimal:
     is_microvm = isinstance(content, ProgramContent) and not content.on.persistent
     nb_compute_units = content.resources.vcpus
-    free_storage_per_compute_unit = 2 * GiB if is_microvm else 20 * GiB
+    included_storage_per_compute_unit = (
+        STORAGE_INCLUDED_PER_COMPUTE_UNIT_ON_DEMAND
+        if not content.on.persistent
+        else STORAGE_INCLUDED_PER_COMPUTE_UNIT_PERSISTENT
+    )
 
     total_volume_size = get_volume_size(session, content)
     additional_storage = max(
-        total_volume_size - (free_storage_per_compute_unit * nb_compute_units), 0
+        total_volume_size - (included_storage_per_compute_unit * nb_compute_units), 0
     )
     price = Decimal(additional_storage) / 20 / MiB
     return price
@@ -89,7 +103,11 @@ def _get_nb_compute_units(content: ExecutableContent) -> int:
 
 def _get_compute_unit_multiplier(content: ExecutableContent) -> int:
     compute_unit_multiplier = 1
-    if isinstance(content, ProgramContent) and not content.on.persistent and content.environment.internet:
+    if (
+        isinstance(content, ProgramContent)
+        and not content.on.persistent
+        and content.environment.internet
+    ):
         compute_unit_multiplier += 1
     return compute_unit_multiplier
 
@@ -97,7 +115,11 @@ def _get_compute_unit_multiplier(content: ExecutableContent) -> int:
 def compute_cost(session: DbSession, content: ExecutableContent) -> Decimal:
     is_microvm = isinstance(content, ProgramContent) and not content.on.persistent
 
-    compute_unit_cost = 200 if is_microvm else 2000
+    compute_unit_cost = (
+        COMPUTE_UNIT_TOKEN_TO_HOLD_ON_DEMAND
+        if is_microvm
+        else COMPUTE_UNIT_TOKEN_TO_HOLD_PERSISTENT
+    )
 
     compute_units_required = _get_nb_compute_units(content)
     compute_unit_multiplier = _get_compute_unit_multiplier(content)
@@ -111,14 +133,20 @@ def compute_cost(session: DbSession, content: ExecutableContent) -> Decimal:
 
 def compute_flow_cost(session: DbSession, content: ExecutableContent) -> Decimal:
     # TODO: Use PAYMENT_PRICING_AGGREGATE when possible
-    compute_unit_cost_hour = 0.11 if content.on.persistent else 0.011
+    compute_unit_cost_hour = (
+        COMPUTE_UNIT_PRICE_PER_HOUR_PERSISTENT
+        if content.on.persistent
+        else COMPUTE_UNIT_PRICE_PER_HOUR_ON_DEMAND
+    )
     compute_unit_cost_second = compute_unit_cost_hour / HOUR
 
     compute_units_required = _get_nb_compute_units(content)
     compute_unit_multiplier = _get_compute_unit_multiplier(content)
 
     compute_unit_price = (
-            Decimal(compute_units_required) * Decimal(compute_unit_multiplier) * Decimal(compute_unit_cost_second)
+        Decimal(compute_units_required)
+        * Decimal(compute_unit_multiplier)
+        * Decimal(compute_unit_cost_second)
     )
 
     additional_storage_flow_price = get_additional_storage_flow_price(content, session)
@@ -127,17 +155,21 @@ def compute_flow_cost(session: DbSession, content: ExecutableContent) -> Decimal
 
 
 def get_additional_storage_flow_price(
-        content: ExecutableContent, session: DbSession
+    content: ExecutableContent, session: DbSession
 ) -> Decimal:
     # TODO: Use PAYMENT_PRICING_AGGREGATE when possible
-    additional_storage_hour_price = Decimal(0.000000977)
-    additional_storage_second_price = additional_storage_hour_price / Decimal(HOUR)
     nb_compute_units = _get_nb_compute_units(content)
-    free_storage_per_compute_unit = 2 * GiB if not content.on.persistent else 20 * GiB
+    included_storage_per_compute_unit = (
+        STORAGE_INCLUDED_PER_COMPUTE_UNIT_ON_DEMAND
+        if not content.on.persistent
+        else STORAGE_INCLUDED_PER_COMPUTE_UNIT_PERSISTENT
+    )
 
     total_volume_size = get_volume_size(session, content)
     additional_storage = max(
-        Decimal(total_volume_size) - (Decimal(free_storage_per_compute_unit) * Decimal(nb_compute_units)), Decimal(0)
+        Decimal(total_volume_size)
+        - (Decimal(included_storage_per_compute_unit) * Decimal(nb_compute_units)),
+        Decimal(0),
     )
-    price = additional_storage / additional_storage_second_price / Decimal(MiB)
+    price = additional_storage / EXTRA_STORAGE_PRICE_PER_SECOND / Decimal(MiB)
     return price
