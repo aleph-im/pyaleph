@@ -22,6 +22,7 @@ COMPUTE_UNIT_PRICE_PER_HOUR_PERSISTENT = Decimal("0.11")
 STORAGE_INCLUDED_PER_COMPUTE_UNIT_ON_DEMAND = Decimal("2") * GiB
 STORAGE_INCLUDED_PER_COMPUTE_UNIT_PERSISTENT = Decimal("20") * GiB
 
+EXTRA_STORAGE_TOKEN_TO_HOLD = 1 / (Decimal('20') * MiB)  # Hold 1 token for 20 MiB
 EXTRA_STORAGE_PRICE_PER_HOUR = Decimal("0.000000977")
 EXTRA_STORAGE_PRICE_PER_SECOND = EXTRA_STORAGE_PRICE_PER_HOUR / Decimal(HOUR)
 
@@ -90,8 +91,7 @@ def get_additional_storage_price(
     additional_storage = max(
         total_volume_size - (included_storage_per_compute_unit * nb_compute_units), 0
     )
-    price = Decimal(additional_storage) / 20 / MiB
-    return price
+    return Decimal(additional_storage) * EXTRA_STORAGE_TOKEN_TO_HOLD
 
 
 def _get_nb_compute_units(content: ExecutableContent) -> int:
