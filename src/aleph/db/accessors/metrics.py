@@ -1,3 +1,4 @@
+import time
 from typing import Optional
 
 from sqlalchemy import select, text
@@ -62,10 +63,16 @@ def _build_metric_filter(select_stmt, node_id, start_date, end_date, sort_order)
 def query_metric_ccn(
     session: Session,
     node_id: Optional[str] = None,
-    start_date: Optional[float] = None,
-    end_date: Optional[float] = None,
+    start_timestamp: Optional[float] = None,
+    end_timestamp: Optional[float] = None,
     sort_order: Optional[str] = None,
 ):
+    # Default to the last 2 weeks from now, or 2 weeks before the `end_timestamp`.
+    if not start_timestamp and not end_timestamp:
+        start_timestamp = time.time() - 60 * 60 * 24 * 14
+    elif end_timestamp and not start_timestamp:
+        start_timestamp = end_timestamp - 60 * 60 * 24 * 14
+
     select_stmt = select(
         [
             text("item_hash"),
@@ -83,8 +90,8 @@ def query_metric_ccn(
     select_stmt = _build_metric_filter(
         select_stmt=select_stmt,
         node_id=node_id,
-        start_date=start_date,
-        end_date=end_date,
+        start_date=start_timestamp,
+        end_date=end_timestamp,
         sort_order=sort_order,
     )
 
@@ -96,10 +103,16 @@ def query_metric_ccn(
 def query_metric_crn(
     session: DbSession,
     node_id: str,
-    start_date: Optional[float] = None,
-    end_date: Optional[float] = None,
+    start_timestamp: Optional[float] = None,
+    end_timestamp: Optional[float] = None,
     sort_order: Optional[str] = None,
 ):
+    # Default to the last 2 weeks from now, or 2 weeks before the `end_timestamp`.
+    if not start_timestamp and not end_timestamp:
+        start_timestamp = time.time() - 60 * 60 * 24 * 14
+    elif end_timestamp and not start_timestamp:
+        start_timestamp = end_timestamp - 60 * 60 * 24 * 14
+
     select_stmt = select(
         [
             text("item_hash"),
@@ -114,8 +127,8 @@ def query_metric_crn(
     select_stmt = _build_metric_filter(
         select_stmt=select_stmt,
         node_id=node_id,
-        start_date=start_date,
-        end_date=end_date,
+        start_date=start_timestamp,
+        end_date=end_timestamp,
         sort_order=sort_order,
     )
 

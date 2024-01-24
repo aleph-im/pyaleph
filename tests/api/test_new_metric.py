@@ -58,11 +58,11 @@ async def test_node_core_metrics_sort(fixture_metrics_messages, ccn_api_client):
 
 
 @pytest.mark.asyncio
-async def test_node_core_metrics_end_date(fixture_metrics_messages, ccn_api_client):
+async def test_node_core_metrics_end_timestamp(fixture_metrics_messages, ccn_api_client):
     uri = _generate_uri(
         "core", "b8b9104da69c54e58531212234fa31f49ef4c668a39a0bf6793322407857b821"
     )
-    response = await ccn_api_client.get(uri, params={"end_date": 1701261023})
+    response = await ccn_api_client.get(uri, params={"end_timestamp": 1701261023})
     test_data = await response.json()
 
     assert response.status == 200
@@ -73,11 +73,11 @@ async def test_node_core_metrics_end_date(fixture_metrics_messages, ccn_api_clie
 
 
 @pytest.mark.asyncio
-async def test_node_core_metrics_start_date(fixture_metrics_messages, ccn_api_client):
+async def test_node_core_metrics_start_timestamp(fixture_metrics_messages, ccn_api_client):
     uri = _generate_uri(
         "core", "b8b9104da69c54e58531212234fa31f49ef4c668a39a0bf6793322407857b821"
     )
-    response = await ccn_api_client.get(uri, params={"start_date": 1701261023})
+    response = await ccn_api_client.get(uri, params={"start_timestamp": 1701261023})
     test_data = await response.json()
 
     assert response.status == 200
