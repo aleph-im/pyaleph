@@ -82,8 +82,8 @@ async def metrics_json(request: web.Request) -> web.Response:
 
 
 class Metrics(BaseModel):
-    start_date: Optional[float] = None
-    end_date: Optional[float] = None
+    start_timestamp: Optional[float] = None
+    end_timestamp: Optional[float] = None
     sort: Optional[str] = None
 
 
