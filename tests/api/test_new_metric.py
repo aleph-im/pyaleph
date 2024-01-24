@@ -25,9 +25,10 @@ async def test_node_core_metrics(fixture_metrics_messages, ccn_api_client):
         "core", "b8b9104da69c54e58531212234fa31f49ef4c668a39a0bf6793322407857b821"
     )
     response = await ccn_api_client.get(uri)
+    response.raise_for_status()
+
     test_data = await response.json()
 
-    assert response.status == 200
     assert (
         test_data["metrics"]["item_hash"][0]
         == "56c82c6d3b28b76456594b4b57154b6826a6d5fb97d355d0428e5ca7d08193b9"
@@ -44,9 +45,10 @@ async def test_node_core_metrics_sort(fixture_metrics_messages, ccn_api_client):
         "core", "2e7cd67ff8f556b0b3fb8a2ef8ab0e8e1466cfa279dd7b9bfbc8aba92e0c5672"
     )
     response = await ccn_api_client.get(uri, params={"sort": "DESC"})
+    response.raise_for_status()
+
     test_data = await response.json()
 
-    assert response.status == 200
     assert (
         test_data["metrics"]["item_hash"][1]
         == "56c82c6d3b28b76456594b4b57154b6826a6d5fb97d355d0428e5ca7d08193b9"
@@ -63,9 +65,10 @@ async def test_node_core_metrics_end_timestamp(fixture_metrics_messages, ccn_api
         "core", "b8b9104da69c54e58531212234fa31f49ef4c668a39a0bf6793322407857b821"
     )
     response = await ccn_api_client.get(uri, params={"end_timestamp": 1701261023})
+    response.raise_for_status()
+
     test_data = await response.json()
 
-    assert response.status == 200
     assert (
         test_data["metrics"]["item_hash"][0]
         == "56c82c6d3b28b76456594b4b57154b6826a6d5fb97d355d0428e5ca7d08193b9"
@@ -78,9 +81,10 @@ async def test_node_core_metrics_start_timestamp(fixture_metrics_messages, ccn_a
         "core", "b8b9104da69c54e58531212234fa31f49ef4c668a39a0bf6793322407857b821"
     )
     response = await ccn_api_client.get(uri, params={"start_timestamp": 1701261023})
+    response.raise_for_status()
+
     test_data = await response.json()
 
-    assert response.status == 200
     assert (
         test_data["metrics"]["item_hash"][0]
         == "172bab8f624fff1be70a19fecd45ff51fa4f833a34074451c7d79ece19bf37f0"
@@ -101,9 +105,10 @@ async def test_node_compute_metric(fixture_metrics_messages, ccn_api_client):
         "compute", "d491f38ec66fe23a9c9ad398a04fd4dcb44a115b948ef612db844caea85cd59a"
     )
     response = await ccn_api_client.get(uri)
+    response.raise_for_status()
+
     test_data = await response.json()
 
-    assert response.status == 200
     assert (
         test_data["metrics"]["item_hash"][0]
         == "56c82c6d3b28b76456594b4b57154b6826a6d5fb97d355d0428e5ca7d08193b9"
