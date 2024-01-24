@@ -106,8 +106,8 @@ async def ccn_metric(request: web.Request) -> web.Response:
         ccn = query_metric_ccn(
             session,
             node_id=node_id,
-            start_timestamp=query_params.start_date,
-            end_timestamp=query_params.end_date,
+            start_timestamp=query_params.start_timestamp,
+            end_timestamp=query_params.end_timestamp,
             sort_order=query_params.sort,
         )
         if not ccn:
@@ -132,8 +132,8 @@ async def crn_metric(request: web.Request) -> web.Response:
         crn = query_metric_crn(
             session,
             node_id=node_id,
-            start_timestamp=query_params.start_date,
-            end_timestamp=query_params.end_date,
+            start_timestamp=query_params.start_timestamp,
+            end_timestamp=query_params.end_timestamp,
             sort_order=query_params.sort,
         )
 
