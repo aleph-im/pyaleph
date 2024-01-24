@@ -1,3 +1,4 @@
+import time
 from typing import Optional
 
 from sqlalchemy import select, text
@@ -66,6 +67,12 @@ def query_metric_ccn(
     end_date: Optional[float] = None,
     sort_order: Optional[str] = None,
 ):
+    # Default to the last 2 weeks from now, or 2 weeks before the `end_date`.
+    if not start_date and not end_date:
+        start_date = time.time() - 60 * 60 * 24 * 14
+    elif end_date and not start_date:
+        start_date = end_date - 60 * 60 * 24 * 14
+
     select_stmt = select(
         [
             text("item_hash"),
@@ -100,6 +107,12 @@ def query_metric_crn(
     end_date: Optional[float] = None,
     sort_order: Optional[str] = None,
 ):
+    # Default to the last 2 weeks from now, or 2 weeks before the `end_date`.
+    if not start_date and not end_date:
+        start_date = time.time() - 60 * 60 * 24 * 14
+    elif end_date and not start_date:
+        start_date = end_date - 60 * 60 * 24 * 14
+
     select_stmt = select(
         [
             text("item_hash"),
