@@ -25,7 +25,7 @@ async def test_node_core_metrics(fixture_metrics_messages, ccn_api_client):
     uri = _generate_uri(
         "core", "b8b9104da69c54e58531212234fa31f49ef4c668a39a0bf6793322407857b821"
     )
-    with mock.patch("aleph.web.accessors.metrics.time", return_value=1701261227):
+    with mock.patch("aleph.db.accessors.metrics.time.time", return_value=1701261227):
         response = await ccn_api_client.get(uri)
 
     test_data = await response.json()
@@ -46,7 +46,7 @@ async def test_node_core_metrics_sort(fixture_metrics_messages, ccn_api_client):
     uri = _generate_uri(
         "core", "2e7cd67ff8f556b0b3fb8a2ef8ab0e8e1466cfa279dd7b9bfbc8aba92e0c5672"
     )
-    with mock.patch("aleph.web.accessors.metrics.time.time", return_value=1701261227):
+    with mock.patch("aleph.db.accessors.metrics.time.time", return_value=1701261227):
         response = await ccn_api_client.get(uri, params={"sort": "DESC"})
     test_data = await response.json()
 
@@ -66,7 +66,7 @@ async def test_node_core_metrics_end_date(fixture_metrics_messages, ccn_api_clie
     uri = _generate_uri(
         "core", "b8b9104da69c54e58531212234fa31f49ef4c668a39a0bf6793322407857b821"
     )
-    with mock.patch("aleph.web.accessors.metrics.time.time", return_value=1701261227):
+    with mock.patch("aleph.db.accessors.metrics.time.time", return_value=1701261227):
         response = await ccn_api_client.get(uri, params={"end_date": 1701261023})
     test_data = await response.json()
 
@@ -82,7 +82,7 @@ async def test_node_core_metrics_start_date(fixture_metrics_messages, ccn_api_cl
     uri = _generate_uri(
         "core", "b8b9104da69c54e58531212234fa31f49ef4c668a39a0bf6793322407857b821"
     )
-    with mock.patch("aleph.web.accessors.metrics.time.time", return_value=1701261227):
+    with mock.patch("aleph.db.accessors.metrics.time.time", return_value=1701261227):
         response = await ccn_api_client.get(uri, params={"start_date": 1701261023})
     test_data = await response.json()
 
@@ -96,7 +96,7 @@ async def test_node_core_metrics_start_date(fixture_metrics_messages, ccn_api_cl
 @pytest.mark.asyncio
 async def test_node_core_not_exist(fixture_metrics_messages, ccn_api_client):
     uri = _generate_uri("core", "This_is_a_node_id")
-    with mock.patch("aleph.web.accessors.metrics.time.time", return_value=1701261227):
+    with mock.patch("aleph.db.accessors.metrics.time.time", return_value=1701261227):
         response = await ccn_api_client.get(uri)
 
     assert response.status == 404
@@ -107,7 +107,7 @@ async def test_node_compute_metric(fixture_metrics_messages, ccn_api_client):
     uri = _generate_uri(
         "compute", "d491f38ec66fe23a9c9ad398a04fd4dcb44a115b948ef612db844caea85cd59a"
     )
-    with mock.patch("aleph.web.accessors.metrics.time.time", return_value=1701261227):
+    with mock.patch("aleph.db.accessors.metrics.time.time", return_value=1701261227):
         response = await ccn_api_client.get(uri)
     test_data = await response.json()
 
@@ -117,12 +117,13 @@ async def test_node_compute_metric(fixture_metrics_messages, ccn_api_client):
         == "56c82c6d3b28b76456594b4b57154b6826a6d5fb97d355d0428e5ca7d08193b9"
     )
 
+
 @pytest.mark.asyncio
 async def test_node_compute_metric_not_exist(fixture_metrics_messages, ccn_api_client):
     uri = _generate_uri(
         "compute", "This_is_a_node_id"
     )
-    with mock.patch("aleph.web.accessors.metrics.time.time", return_value=1701261227):
+    with mock.patch("aleph.db.accessors.metrics.time.time", return_value=1701261227):
         response = await ccn_api_client.get(uri)
 
     assert response.status == 404
