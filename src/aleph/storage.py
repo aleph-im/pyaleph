@@ -5,7 +5,7 @@ import asyncio
 import logging
 from hashlib import sha256
 from io import BytesIO
-from typing import Any, IO, Optional, cast, Final
+from typing import Any, IO, Optional, cast, Final, BinaryIO
 
 from aleph_message.models import ItemType
 
@@ -276,12 +276,13 @@ class StorageService:
         )
 
     async def add_file(
-        self, session: DbSession, fileobject: BytesIO, engine: ItemType = ItemType.ipfs
+        self, session: DbSession, fileobject: BinaryIO, engine: ItemType = ItemType.ipfs
     ) -> str:
         if engine == ItemType.ipfs:
             output = await self.ipfs_service.add_file(fileobject)
             file_hash = output["Hash"]
-            fileobject.seek(0)
+            if fileobject.seekable():
+                fileobject.seek(0)
             file_content = fileobject.read()
 
         elif engine == ItemType.storage:

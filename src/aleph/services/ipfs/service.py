@@ -2,7 +2,7 @@ import asyncio
 import concurrent
 import json
 import logging
-from typing import IO, Optional, Union, Dict, Self
+from typing import IO, Optional, Union, Dict, Self, BinaryIO
 
 import aiohttp
 import aioipfs
@@ -154,7 +154,7 @@ class IpfsService:
             else:
                 break
 
-    async def add_file(self, fileobject: IO):
+    async def add_file(self, fileobject: BinaryIO):
         url = f"{self.ipfs_client.api_url}add"
 
         async with aiohttp.ClientSession() as session:
