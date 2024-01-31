@@ -154,12 +154,12 @@ class IpfsService:
             else:
                 break
 
-    async def add_file(self, fileobject: IO):
+    async def add_file(self, file_content: bytes):
         url = f"{self.ipfs_client.api_url}add"
 
         async with aiohttp.ClientSession() as session:
             data = aiohttp.FormData()
-            data.add_field("path", fileobject)
+            data.add_field("path", file_content)
 
             resp = await session.post(url, data=data)
             resp.raise_for_status()

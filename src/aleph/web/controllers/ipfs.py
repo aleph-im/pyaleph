@@ -1,6 +1,7 @@
 import asyncio
 
 from aiohttp import web
+from aiohttp.web_request import FileField
 
 from aleph.db.accessors.files import upsert_file
 from aleph.types.files import FileType
@@ -29,7 +30,23 @@ async def ipfs_add_file(request: web.Request):
     except KeyError:
         raise web.HTTPUnprocessableEntity(reason="Missing 'file' in multipart form.")
 
-    ipfs_add_response = await ipfs_service.add_file(file_field_to_io(file_field))
+    file_content: bytes
+    if isinstance(file_field, bytes):
+        file_content = file_field
+    elif isinstance(file_field, str):
+        file_content = file_field.encode()
+    elif isinstance(file_field, FileField):
+        if file_field.content_type != "application/octet-stream":
+            raise web.HTTPUnprocessableEntity(
+                reason="Invalid content-type for 'file' field. Must be 'application/octet-stream'."
+            )
+        file_content = file_field.file.read()
+    else:
+        raise web.HTTPUnprocessableEntity(
+            reason="Invalid type for 'file' field. Must be bytes, str or FileField."
+        )
+
+    ipfs_add_response = await ipfs_service.add_file(file_content)
 
     cid = ipfs_add_response["Hash"]
     name = ipfs_add_response["Name"]

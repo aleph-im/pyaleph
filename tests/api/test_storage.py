@@ -104,7 +104,7 @@ async def add_file(
 
     post_response = await api_client.post(uri, data=form_data)
     response_text = await post_response.text()
-    assert post_response.status == 200, await response_text
+    assert post_response.status == 200, response_text
     post_response_json = await post_response.json()
     assert post_response_json["status"] == "success"
     file_hash = post_response_json["hash"]
