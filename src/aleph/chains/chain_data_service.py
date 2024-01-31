@@ -1,5 +1,6 @@
 import asyncio
 from io import BytesIO
+from tempfile import NamedTemporaryFile
 from typing import Dict, Optional, List, Any, Mapping, Set, cast, Type, Union, Self
 
 import aio_pika.abc
@@ -72,10 +73,17 @@ class ChainDataService:
         )
         archive_content: bytes = archive.json().encode("utf-8")
 
-        with BytesIO(archive_content) as archive_file:
-            ipfs_cid = await self.storage_service.add_file(
-                session=session, fileobject=archive_file, engine=ItemType.ipfs
-            )
+        # with BytesIO(archive_content) as archive_file:
+        with NamedTemporaryFile(mode='wb', delete_on_close=False) as archive_file:
+            archive_file.write(archive_content)
+            archive_file.seek(0)
+
+            try:
+                ipfs_cid = await self.storage_service.add_file(
+                    session=session, fileobject=archive_file, engine=ItemType.ipfs
+                )
+            finally:
+                archive_file.close()
 
         return OffChainSyncEventPayload(
             protocol=ChainSyncProtocol.OFF_CHAIN_SYNC, version=1, content=ipfs_cid
