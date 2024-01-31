@@ -4,6 +4,7 @@ Basically manages the IPFS storage.
 import asyncio
 import logging
 from hashlib import sha256
+from io import BytesIO
 from typing import Any, IO, Optional, cast, Final
 
 from aleph_message.models import ItemType
@@ -275,7 +276,7 @@ class StorageService:
         )
 
     async def add_file(
-        self, session: DbSession, fileobject: IO, engine: ItemType = ItemType.ipfs
+        self, session: DbSession, fileobject: BytesIO, engine: ItemType = ItemType.ipfs
     ) -> str:
         if engine == ItemType.ipfs:
             output = await self.ipfs_service.add_file(fileobject)

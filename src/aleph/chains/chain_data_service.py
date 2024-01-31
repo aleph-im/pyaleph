@@ -1,5 +1,5 @@
 import asyncio
-from io import StringIO
+from io import BytesIO
 from typing import Dict, Optional, List, Any, Mapping, Set, cast, Type, Union, Self
 
 import aio_pika.abc
@@ -70,10 +70,10 @@ class ChainDataService:
                 messages=[OnChainMessage.from_orm(message) for message in messages]
             ),
         )
-        archive_content = archive.json()
+        archive_content: bytes = archive.json().encode("utf-8")
 
         ipfs_cid = await self.storage_service.add_file(
-            session=session, fileobject=StringIO(archive_content), engine=ItemType.ipfs
+            session=session, fileobject=BytesIO(archive_content), engine=ItemType.ipfs
         )
         return OffChainSyncEventPayload(
             protocol=ChainSyncProtocol.OFF_CHAIN_SYNC, version=1, content=ipfs_cid
