@@ -72,9 +72,11 @@ class ChainDataService:
         )
         archive_content: bytes = archive.json().encode("utf-8")
 
-        ipfs_cid = await self.storage_service.add_file(
-            session=session, fileobject=BytesIO(archive_content), engine=ItemType.ipfs
-        )
+        with BytesIO(archive_content) as archive_file:
+            ipfs_cid = await self.storage_service.add_file(
+                session=session, fileobject=archive_file, engine=ItemType.ipfs
+            )
+
         return OffChainSyncEventPayload(
             protocol=ChainSyncProtocol.OFF_CHAIN_SYNC, version=1, content=ipfs_cid
         )
