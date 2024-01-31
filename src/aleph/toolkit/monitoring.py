@@ -1,6 +1,7 @@
-from configmanager import Config
 import sentry_sdk
+from configmanager import Config
 from sentry_sdk.integrations.aiohttp import AioHttpIntegration
+from sentry_sdk.integrations.asyncio import AsyncioIntegration
 
 
 def setup_sentry(config: Config, traces_sample_rate=None):
@@ -17,5 +18,8 @@ def setup_sentry(config: Config, traces_sample_rate=None):
             dsn=dsn,
             traces_sample_rate=traces_sample_rate,
             ignore_errors=[KeyboardInterrupt],
-            integrations=[AioHttpIntegration()],
+            integrations=[
+                AioHttpIntegration(),
+                AsyncioIntegration(),
+            ],
         )
