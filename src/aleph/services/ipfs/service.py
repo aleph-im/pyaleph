@@ -162,6 +162,7 @@ class IpfsService:
             data.add_field("path", fileobject)
 
             resp = await session.post(url, data=data)
+            resp.raise_for_status()
             return await resp.json()
 
     async def sub(self, topic: str):
