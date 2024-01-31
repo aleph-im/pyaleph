@@ -73,8 +73,8 @@ class ChainDataService:
         )
         archive_content: bytes = archive.json().encode("utf-8")
 
-        # with BytesIO(archive_content) as archive_file:
-        with NamedTemporaryFile(mode='wb', delete_on_close=False) as archive_file:
+        # Create a file object that is not deleted on .close()
+        with NamedTemporaryFile(mode='wb', delete=False) as archive_file:
             archive_file.write(archive_content)
             archive_file.seek(0)
 
