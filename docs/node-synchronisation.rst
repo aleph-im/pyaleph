@@ -7,7 +7,7 @@ After being deployed, a node needs to synchronise the messages from Aleph.
 A few metrics are exposed to monitor this synchronisation, on URL `/metrics`:
 
 1. Total number of messages synchronised: `pyaleph_status_sync_messages_total`
-2. Messages downloaded but not processed yet: `pyaleph_status_sync_messages_total`
+2. Messages downloaded but not processed yet: `pyaleph_status_sync_pending_messages_total`
 3. Transactions downloaded but not processed yet: `pyaleph_status_sync_pending_txs_total`
 
 The total number of messages [1] should reach the same value for every node in the Aleph
