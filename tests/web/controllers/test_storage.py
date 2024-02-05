@@ -81,10 +81,6 @@ async def storage_add_file(request: web.Request):
 """
 @pytest.mark.asyncio
 async def test_storage_add_file_unauthenticated(mock_config, ccn_api_client, mocker):
-    # Setup mock configuration
-    mock_config.storage.grace_period.value = 10  # Example grace period
-    mock_config.storage.max_unauthenticated_upload_file_size = MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE
-
     # Prepare the file and metadata for the POST request
     # Here, you simulate an oversized file for unauthenticated requests
     data = aiohttp.FormData()
