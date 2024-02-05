@@ -13,7 +13,50 @@ on:
       - "*"
 
 jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+
+      - name: Log in to registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Download Docker cache image (if available)
+        run: docker pull ghcr.io/$GITHUB_REPOSITORY/build-cache || true
+
+      - name: Build the Docker image
+        run: |
+          git fetch --prune --unshallow --tags
+          docker build . -t pyaleph-node:${GITHUB_REF##*/} -f deployment/docker-build/pyaleph.dockerfile --cache-from=ghcr.io/$GITHUB_REPOSITORY/build-cache
+
+      - name: Push the image to the cache
+        # It's not possible to push packages from fork PRs.
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          docker tag pyaleph-node:${GITHUB_REF##*/} ghcr.io/$GITHUB_REPOSITORY/build-cache
+          docker push ghcr.io/$GITHUB_REPOSITORY/build-cache
+  check-pr:
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      has_pr: ${{ steps.check.outputs.has_pr }}
+    steps:
+      - name: Check if branch has an open PR
+        id: check
+        run: |
+          pr_count=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls?head=${{ github.repository_owner }}:${{ github.ref_name }}" \
+            | jq '. | length')
+          echo "PR Count: $pr_count"
+          if [ "$pr_count" != "0" ]; then
+            echo "::set-output name=has_pr::true"
+          else
+            echo "::set-output name=has_pr::false"
+          fi
   tests:
+    if: github.ref == 'refs/heads/main' || needs.check-pr.outputs.has_pr == 'true'
+    needs: [build]
     runs-on: ubuntu-22.04
     services:
       postgres:
@@ -71,27 +114,3 @@ jobs:
         touch config.yml  # Fake config file for alembic
         # TODO: determine why ResourceWarning warnings occur in some tests.
         pytest -Werror -Wignore::ResourceWarning -v .
-  build:
-    runs-on: ubuntu-22.04
-    needs: tests
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
-
-      - name: Log in to registry
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-      - name: Download Docker cache image (if available)
-        run: docker pull ghcr.io/$GITHUB_REPOSITORY/build-cache || true
-
-      - name: Build the Docker image
-        run: |
-          git fetch --prune --unshallow --tags
-          docker build . -t pyaleph-node:${GITHUB_REF##*/} -f deployment/docker-build/pyaleph.dockerfile --cache-from=ghcr.io/$GITHUB_REPOSITORY/build-cache
-
-      - name: Push the image to the cache
-        # It's not possible to push packages from fork PRs.
-        if: github.event.pull_request.head.repo.full_name == github.repository
-        run: |
-          docker tag pyaleph-node:${GITHUB_REF##*/} ghcr.io/$GITHUB_REPOSITORY/build-cache
-          docker push ghcr.io/$GITHUB_REPOSITORY/build-cache
