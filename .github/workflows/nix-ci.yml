@@ -8,6 +8,7 @@
       strategy:
         matrix:
           os: [ macos-latest, ubuntu-latest ]
+          channel: [ nixos-23.11 nixpkgs-23.11-darwin ]
       runs-on: ${{ matrix.os }}
 
       steps:
@@ -16,10 +17,13 @@
               # Fetch the whole history for all tags and branches (required for aleph.__version__)
               fetch-depth: 0
 
+          - name: Setup empty config file
+            run: touch config.yml
+
           - name: Set up Nix
             uses: cachix/install-nix-action@v25
             with:
-              nix_path: nixpkgs=channel:nixos-23.11
+              nix_path: nixpkgs=channel:${{ matrix.channel }}
 
           - name: Run tests
             run: nix-shell --run "pytest"
