@@ -8,7 +8,6 @@
       strategy:
         matrix:
           os: [ macos-latest, ubuntu-latest ]
-          channel: [ nixos-23.11, nixpkgs-23.11-darwin ]
       runs-on: ${{ matrix.os }}
 
       steps:
@@ -23,7 +22,8 @@
           - name: Set up Nix
             uses: cachix/install-nix-action@v25
             with:
-              nix_path: nixpkgs=channel:${{ matrix.channel }}
+              # Use channel nixos-23.11 for Linux and nixpkgs-23.11-darwin for macOS
+              nix_path: nixpkgs=channel:${{ matrix.os == 'macos-latest' && 'nixpkgs-23.11-darwin' || 'nixos-23.11' }}
 
           - name: Run tests
             run: nix-shell --run "pytest"
