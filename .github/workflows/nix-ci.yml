@@ -1,0 +1,18 @@
+  on:
+    push:
+      branches:
+        - '*'
+
+  jobs:
+    nix-shell:
+        runs-on: ubuntu-22.04
+        steps:
+            - uses: actions/checkout@v2
+
+            - name: Set up Nix
+              uses: cachix/install-nix-action@v13
+              with:
+                nix_path: nixpkgs=channel:nixos-23.11
+
+            - name: Run tests
+              run: nix-shell --run "pytest"
