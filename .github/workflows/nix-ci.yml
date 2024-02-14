@@ -5,17 +5,21 @@
 
   jobs:
     nix-shell:
-        runs-on: ubuntu-22.04
-        steps:
-            - uses: actions/checkout@v2
-              with:
-                # Fetch the whole history for all tags and branches (required for aleph.__version__)
-                fetch-depth: 0
+      strategy:
+        matrix:
+          os: [ macos-latest, ubuntu-latest ]
+      runs-on: ${{ matrix.os }}
 
-            - name: Set up Nix
-              uses: cachix/install-nix-action@v13
-              with:
-                nix_path: nixpkgs=channel:nixos-23.11
+      steps:
+          - uses: actions/checkout@v2
+            with:
+              # Fetch the whole history for all tags and branches (required for aleph.__version__)
+              fetch-depth: 0
 
-            - name: Run tests
-              run: nix-shell --run "pytest"
+          - name: Set up Nix
+            uses: cachix/install-nix-action@v13
+            with:
+              nix_path: nixpkgs=channel:nixos-23.11
+
+          - name: Run tests
+            run: nix-shell --run "pytest"
