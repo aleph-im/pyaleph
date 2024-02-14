@@ -11,13 +11,13 @@
       runs-on: ${{ matrix.os }}
 
       steps:
-          - uses: actions/checkout@v2
+          - uses: actions/checkout@v4
             with:
               # Fetch the whole history for all tags and branches (required for aleph.__version__)
               fetch-depth: 0
 
           - name: Set up Nix
-            uses: cachix/install-nix-action@v13
+            uses: cachix/install-nix-action@v25
             with:
               nix_path: nixpkgs=channel:nixos-23.11
 
