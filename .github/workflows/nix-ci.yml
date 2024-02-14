@@ -8,6 +8,9 @@
         runs-on: ubuntu-22.04
         steps:
             - uses: actions/checkout@v2
+              with:
+                # Fetch the whole history for all tags and branches (required for aleph.__version__)
+                fetch-depth: 0
 
             - name: Set up Nix
               uses: cachix/install-nix-action@v13
