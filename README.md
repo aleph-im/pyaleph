@@ -38,6 +38,18 @@ pip install -e .[testing,docs]
 
 You're ready to go!
 
+### Developer setup using Nix
+
+We started to add Nix as an easy way to setup a development environment.
+This is still a work in progress and not all dependencies are covered yet.
+
+To use it, you need to have Nix installed on your system. Then you can run:
+
+```bash
+nix-shell
+```
+This will provide you with a shell with PostgreSQL, Redis, and IPFS running.
+
 ## Software used
 
 The Aleph CCN is written in Python and requires Python v3.8+. It will not work with older versions of Python.
