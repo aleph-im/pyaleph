@@ -13,6 +13,7 @@ pkgs.mkShell {
 
     pkgs.python311Packages.secp256k1
     pkgs.python311Packages.fastecdsa
+    pkgs.python311Packages.greenlet
   ];
 
   shellHook = ''
