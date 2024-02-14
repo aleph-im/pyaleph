@@ -1,29 +1,31 @@
-  on:
-    push:
-      branches:
-        - '*'
+name: Test nix-shell
 
-  jobs:
-    nix-shell:
-      strategy:
-        matrix:
-          os: [ macos-latest, ubuntu-latest ]
-      runs-on: ${{ matrix.os }}
+on:
+  push:
+    branches:
+      - '*'
 
-      steps:
-          - uses: actions/checkout@v4
-            with:
-              # Fetch the whole history for all tags and branches (required for aleph.__version__)
-              fetch-depth: 0
+jobs:
+  nix-shell:
+    strategy:
+      matrix:
+        os: [ macos-latest, ubuntu-latest ]
+    runs-on: ${{ matrix.os }}
 
-          - name: Setup empty config file
-            run: touch config.yml
+    steps:
+        - uses: actions/checkout@v4
+          with:
+            # Fetch the whole history for all tags and branches (required for aleph.__version__)
+            fetch-depth: 0
 
-          - name: Set up Nix
-            uses: cachix/install-nix-action@v25
-            with:
-              # Use channel nixos-23.11 for Linux and nixpkgs-23.11-darwin for macOS
-              nix_path: nixpkgs=channel:${{ matrix.os == 'macos-latest' && 'nixpkgs-23.11-darwin' || 'nixos-23.11' }}
+        - name: Setup empty config file
+          run: touch config.yml
 
-          - name: Run tests
-            run: nix-shell --run "pytest"
+        - name: Set up Nix
+          uses: cachix/install-nix-action@v25
+          with:
+            # Use channel nixos-23.11 for Linux and nixpkgs-23.11-darwin for macOS
+            nix_path: nixpkgs=channel:${{ matrix.os == 'macos-latest' && 'nixpkgs-23.11-darwin' || 'nixos-23.11' }}
+
+        - name: Run tests
+          run: nix-shell --run "pytest"
