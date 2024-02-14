@@ -8,7 +8,7 @@
       strategy:
         matrix:
           os: [ macos-latest, ubuntu-latest ]
-          channel: [ nixos-23.11 nixpkgs-23.11-darwin ]
+          channel: [ nixos-23.11, nixpkgs-23.11-darwin ]
       runs-on: ${{ matrix.os }}
 
       steps:
