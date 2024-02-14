@@ -1,7 +1,19 @@
 { pkgs ? import <nixpkgs> {} }:
 
 pkgs.mkShell {
-  buildInputs = [ pkgs.postgresql pkgs.redis ];
+  buildInputs = [
+    pkgs.postgresql
+    pkgs.redis
+    pkgs.kubo
+
+    pkgs.python311
+    pkgs.python311Packages.virtualenv
+    pkgs.python311Packages.pip
+    pkgs.python311Packages.setuptools
+
+    pkgs.python311Packages.secp256k1
+    pkgs.python311Packages.fastecdsa
+  ];
 
   shellHook = ''
     echo "Setting up PostgreSQL environment..."
@@ -25,8 +37,11 @@ pkgs.mkShell {
     redis-server --daemonize yes --dir $REDIS_DATA_DIR --bind 127.0.0.1 --port 6379
     echo "Redis server started. Data directory is $REDIS_DATA_DIR"
 
-    # Trap the EXIT signal to ensure PostgreSQL is stopped when exiting the shell
-    trap 'echo "Stopping PostgreSQL..."; pg_ctl -D "$PGDATA" stop; echo "Stopping Redis..."; redis-cli -p 6379 shutdown' EXIT
+    echo "Starting IPFS Kubo..."
+    export IPFS_PATH=$(mktemp -d)
+    ipfs init
+    ipfs daemon &
+    echo "IPFS Kubo started. Data directory is $IPFS_PATH"
 
     echo
     echo "PostgreSQL started. Data directory is $PGDATA, Socket directory is $PG_SOCKET_DIR"
@@ -35,5 +50,19 @@ pkgs.mkShell {
     echo "Use 'redis-cli -p 6379' to connect to the Redis server."
     echo "To stop PostgreSQL: 'pg_ctl -D $PGDATA stop'"
     echo "To manually stop Redis: 'redis-cli -p 6379 shutdown'"
+
+    # Trap the EXIT signal to stop services when exiting the shell
+    trap 'echo "Stopping PostgreSQL..."; pg_ctl -D "$PGDATA" stop; echo "Stopping Redis..."; redis-cli -p 6379 shutdown; echo "Stopping IPFS Kubo..."; ipfs shutdown; deactivate' EXIT
+
+    # Create a virtual environment in the current directory if it doesn't exist
+    if [ ! -d "venv" ]; then
+      python3 -m virtualenv venv
+    fi
+
+    # Install the required Python packages
+    ./venv/bin/pip install -e .\[testing\]
+
+    # Activate the virtual environment
+    source venv/bin/activate
   '';
 }
