@@ -2,7 +2,6 @@ from typing import Sequence
 
 import aiohttp
 import pytest
-
 from aleph.db.models import MessageDb
 
 AGGREGATES_URI = "/api/v0/aggregates/{address}.json"
@@ -100,10 +99,12 @@ async def test_get_aggregates_filter_by_key(
 
     # Multiple keys
     address, keys = ADDRESS_1, ["test_target", "test_reference"]
+    except_key = "test_key"
     aggregates = await get_aggregates_expect_success(
         ccn_api_client, address=address, keys=",".join(keys), with_info=False
     )
     assert aggregates["address"] == address
+    assert except_key not in aggregates["data"]
     for key in keys:
         assert (
             aggregates["data"][key] == EXPECTED_AGGREGATES[address][key]
