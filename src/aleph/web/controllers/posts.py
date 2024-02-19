@@ -70,12 +70,14 @@ class PostQueryParams(BaseModel):
     )
     sort_by: SortBy = Field(
         default=SortBy.TIME,
+        alias="sortBy",
         description="Key to use to sort the posts. "
         "'time' uses the post creation time field. "
         "'tx-time' uses the first on-chain confirmation time.",
     )
     sort_order: SortOrder = Field(
         default=SortOrder.DESCENDING,
+        alias="sortOrder",
         description="Order in which messages should be listed: "
         "-1 means most recent messages first, 1 means older messages first.",
     )
