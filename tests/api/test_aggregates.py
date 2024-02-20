@@ -165,3 +165,21 @@ async def test_get_aggregates_invalid_params(
     errors = await response.json()
     assert len(errors) == 1
     assert errors[0]["loc"] == ["limit"], errors
+
+@pytest.mark.asyncio
+async def test_get_aggregates_return_value_only(
+    ccn_api_client, fixture_aggregate_messages: Sequence[MessageDb]
+):
+    """
+    Should return the value without wrapping (aggregate info)
+    """
+
+    assert fixture_aggregate_messages  # To avoid unused parameter warnings
+
+    address, key = ADDRESS_1, "test_target"
+    aggregates = await get_aggregates_expect_success(
+        ccn_api_client, address=address, keys=key,
+        with_info=False, value_only="1"
+    )
+    assert address not in aggregates
+    assert aggregates == EXPECTED_AGGREGATES[address][key]

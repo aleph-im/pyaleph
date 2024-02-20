@@ -19,7 +19,7 @@ class AggregatesQueryParams(BaseModel):
     keys: Optional[List[str]] = None
     limit: int = DEFAULT_LIMIT
     with_info: bool = False
-    only_value: bool = False
+    value_only: bool = False
 
     @validator(
         "keys",
@@ -68,7 +68,7 @@ async def address_aggregate(request: web.Request) -> web.Response:
     if not aggregates:
         raise web.HTTPNotFound(text="No aggregate found for this address")
 
-    if query_params.only_value and query_params.keys and len(query_params.keys) == 1:
+    if query_params.value_only and query_params.keys and len(query_params.keys) == 1:
         output = {}
         target_key = query_params.keys[0]
         for result in aggregates:
