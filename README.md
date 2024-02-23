@@ -43,7 +43,7 @@ You're ready to go!
 We started to add Nix as an easy way to setup a development environment.
 This is still a work in progress and not all dependencies are covered yet.
 
-To use it, you need to have Nix installed on your system. Then you can run:
+To use it, you need to [have Nix installed on your system](https://nixos.org/download.html). Then you can run:
 
 ```bash
 nix-shell
