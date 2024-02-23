@@ -275,16 +275,13 @@ class StorageService:
         )
 
     async def add_file(
-        self, session: DbSession, fileobject: IO, engine: ItemType = ItemType.ipfs
+        self, session: DbSession, file_content: bytes, engine: ItemType = ItemType.ipfs
     ) -> str:
         if engine == ItemType.ipfs:
-            output = await self.ipfs_service.add_file(fileobject)
+            output = await self.ipfs_service.add_file(file_content)
             file_hash = output["Hash"]
-            fileobject.seek(0)
-            file_content = fileobject.read()
 
         elif engine == ItemType.storage:
-            file_content = fileobject.read()
             file_hash = sha256(file_content).hexdigest()
 
         else:

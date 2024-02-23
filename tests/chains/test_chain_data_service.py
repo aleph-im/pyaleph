@@ -42,9 +42,9 @@ async def test_prepare_sync_event_payload(mocker):
     ]
 
     async def mock_add_file(
-        session: DbSession, fileobject: IO, engine: ItemType = ItemType.ipfs
+        session: DbSession, file_content: bytes, engine: ItemType = ItemType.ipfs
     ) -> str:
-        content = fileobject.read()
+        content = file_content
         archive = OnChainSyncEventPayload.parse_raw(content)
 
         assert archive.version == 1
