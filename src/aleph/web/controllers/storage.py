@@ -137,6 +137,7 @@ class MultipartUploadedFile:
     def content(self) -> bytes:
         # Only read the stream once
         if self._content is None:
+            self.file_field.file.seek(0)
             self._content = self.file_field.file.read(self.size)
 
         return self._content
