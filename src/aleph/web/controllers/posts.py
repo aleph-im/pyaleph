@@ -1,20 +1,16 @@
-from typing import Optional, List, Any, Dict
+from typing import Any, Dict, List, Optional
 
 from aiohttp import web
-from aleph_message.models import ItemHash
-from pydantic import BaseModel, Field, root_validator, validator, ValidationError
-from sqlalchemy import select
-
 from aleph.db.accessors.posts import (
-    get_matching_posts,
     MergedPost,
-    count_matching_posts,
-    get_matching_posts_legacy,
     MergedPostV0,
+    count_matching_posts,
+    get_matching_posts,
+    get_matching_posts_legacy,
 )
-from aleph.db.models import message_confirmations, ChainTxDb
-from aleph.types.db_session import DbSessionFactory, DbSession
-from aleph.types.sort_order import SortOrder, SortBy
+from aleph.db.models import ChainTxDb, message_confirmations
+from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.sort_order import SortBy, SortOrder
 from aleph.web.controllers.utils import (
     DEFAULT_MESSAGES_PER_PAGE,
     DEFAULT_PAGE,
@@ -23,6 +19,9 @@ from aleph.web.controllers.utils import (
     cond_output,
     get_path_page,
 )
+from aleph_message.models import ItemHash
+from pydantic import BaseModel, Field, ValidationError, root_validator, validator
+from sqlalchemy import select
 
 
 class PostQueryParams(BaseModel):
@@ -103,6 +102,9 @@ class PostQueryParams(BaseModel):
         if isinstance(v, str):
             return v.split(LIST_FIELD_SEPARATOR)
         return v
+
+    class Config:
+        allow_population_by_field_name = True
 
 
 def merged_post_to_dict(merged_post: MergedPost) -> Dict[str, Any]:

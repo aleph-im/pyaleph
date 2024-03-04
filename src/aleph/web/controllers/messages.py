@@ -1,52 +1,49 @@
 import logging
-from typing import List, Optional, Any, Dict, Iterable
+from typing import Any, Dict, Iterable, List, Optional
 
 import aio_pika.abc
 import aiohttp.web_ws
-from aiohttp import web, WSMsgType
-from aleph_message.models import MessageType, ItemHash, Chain
-from pydantic import BaseModel, Field, validator, ValidationError, root_validator
-
 import aleph.toolkit.json as aleph_json
+from aiohttp import WSMsgType, web
 from aleph.db.accessors.messages import (
-    get_matching_messages,
     count_matching_messages,
-    get_message_status,
-    get_message_by_item_hash,
     get_forgotten_message,
+    get_matching_messages,
+    get_message_by_item_hash,
+    get_message_status,
     get_rejected_message,
 )
 from aleph.db.accessors.pending_messages import get_pending_messages
-from aleph.db.models import MessageStatusDb, MessageDb
+from aleph.db.models import MessageDb, MessageStatusDb
 from aleph.schemas.api.messages import (
-    format_message,
+    AlephMessage,
+    ForgottenMessage,
+    ForgottenMessageStatus,
     MessageWithStatus,
+    PendingMessage,
     PendingMessageStatus,
     ProcessedMessageStatus,
-    ForgottenMessageStatus,
-    ForgottenMessage,
     RejectedMessageStatus,
-    PendingMessage,
-    AlephMessage,
+    format_message,
     format_message_dict,
 )
 from aleph.toolkit.shield import shielded
-from aleph.types.db_session import DbSessionFactory, DbSession
+from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_status import MessageStatus
-from aleph.types.sort_order import SortOrder, SortBy
+from aleph.types.sort_order import SortBy, SortOrder
 from aleph.web.controllers.app_state_getters import (
-    get_session_factory_from_request,
     get_config_from_request,
     get_mq_ws_channel_from_request,
+    get_session_factory_from_request,
 )
 from aleph.web.controllers.utils import (
     DEFAULT_MESSAGES_PER_PAGE,
     DEFAULT_PAGE,
-)
-from aleph.web.controllers.utils import (
     LIST_FIELD_SEPARATOR,
     mq_make_aleph_message_topic_queue,
 )
+from aleph_message.models import Chain, ItemHash, MessageType
+from pydantic import BaseModel, Field, ValidationError, root_validator, validator
 
 LOGGER = logging.getLogger(__name__)
 
@@ -139,6 +136,9 @@ class BaseMessageQueryParams(BaseModel):
         if isinstance(v, str):
             return v.split(LIST_FIELD_SEPARATOR)
         return v
+
+    class Config:
+        allow_population_by_field_name = True
 
 
 class MessageQueryParams(BaseMessageQueryParams):
