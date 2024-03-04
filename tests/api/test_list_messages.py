@@ -1,22 +1,22 @@
 import datetime as dt
 import itertools
 from collections import defaultdict
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Union, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 import aiohttp
 import pytest
-from aleph_message.models import Chain, ItemType, MessageType, InstanceContent
-from aleph_message.models.execution.environment import (
-    MachineResources,
-    FunctionEnvironment,
-)
-from aleph_message.models.execution.instance import RootfsVolume
-from aleph_message.models.execution.volume import ImmutableVolume, ParentVolume
-
 from aleph.db.models import MessageDb, PostDb
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
+from aleph_message.models import Chain, InstanceContent, ItemType, MessageType
+from aleph_message.models.execution.environment import (
+    FunctionEnvironment,
+    MachineResources,
+)
+from aleph_message.models.execution.instance import RootfsVolume
+from aleph_message.models.execution.volume import ImmutableVolume, ParentVolume
+
 from .utils import get_messages_by_keys
 
 MESSAGES_URI = "/api/v0/messages.json"
@@ -272,8 +272,8 @@ async def fetch_messages_filter_time(
 ) -> aiohttp.ClientResponse:
 
     params: Dict[str, Union[float, int, str]] = {
-        "sortBy": sort_by,
-        "sortOrder": sort_order,
+        "sort_by": sort_by,
+        "sort_order": sort_order,
     }
     if start:
         params["startDate"] = start
@@ -373,7 +373,7 @@ async def fetch_messages_with_pagination(
 ):
     return await api_client.get(
         MESSAGES_URI,
-        params={"page": page, "pagination": pagination, "sortOrder": sort_order},
+        params={"page": page, "pagination": pagination, "sort_order": sort_order},
     )
 
 
