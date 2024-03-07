@@ -105,3 +105,15 @@ Here is a config file that summarizes the different requirements to create your 
 
 
 Refer to the install guide for explanations on how to set up your node(s).
+
+Initial messages synchronization
+-------------------
+
+There are some messages needed to run a private CRN, like the diagnostic VM, standard runtimes, etc.
+Running this python script, it will sync this initial messages to the private node.
+
+
+.. code-block:: bash
+
+    python3 ./deployment/scripts/sync_initial_messages.py
+
