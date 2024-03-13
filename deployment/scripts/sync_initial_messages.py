@@ -23,12 +23,12 @@ PUB_SUB_TOPIC = "ALEPH-TEST"
 item_hashes_to_sync = ",".join(initial_messages_list)
 
 logger.debug(f"Fetching messages from {FROM_CCN}...")
-m1 = requests.get(f"{FROM_CCN}/api/v0/messages.json?pagination=50000&refs={item_hashes_to_sync}")
+m1 = requests.get(f"{FROM_CCN}/api/v0/messages.json?pagination=50000&hashes={item_hashes_to_sync}")
 m1 = m1.json()['messages']
 logger.debug(f"Fetched {len(m1)} messages from {FROM_CCN}")
 
 logger.debug(f"Fetching messages from {TO_CCN}")
-m2 = requests.get(f"{TO_CCN}/api/v0/messages.json?pagination=50000&refs={item_hashes_to_sync}")
+m2 = requests.get(f"{TO_CCN}/api/v0/messages.json?pagination=50000&hashes={item_hashes_to_sync}")
 m2 = m2.json()['messages']
 logger.debug(f"Fetched {len(m2)} messages from {TO_CCN}")
 
