@@ -133,7 +133,7 @@ Download the Docker Compose file that defines how to run PyAleph, MongoDB and IP
 
 .. parsed-literal::
 
-    wget "https://raw.githubusercontent.com/aleph-im/pyaleph/|pyaleph_version|/deployment/samples/docker-compose/docker-compose.yml"
+    wget "https://raw.githubusercontent.com/aleph-im/pyaleph/main/deployment/samples/docker-compose/docker-compose.yml"
 
 At this stage, you will need your configuration file and your keys.
 Check the configuration section to see how you can generate them.
