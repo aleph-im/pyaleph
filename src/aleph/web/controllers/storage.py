@@ -116,29 +116,43 @@ class StorageMetadata(pydantic.BaseModel):
 
 class UploadedFile(Protocol):
     @property
-    def size(self) -> int:
-        ...
+    def size(self) -> int: ...
 
     @property
-    def content(self) -> Union[str, bytes]:
-        ...
+    def content(self) -> Union[str, bytes]: ...
 
 
 class MultipartUploadedFile:
     _content: Optional[bytes]
     size: int
 
-    def __init__(self, file_field: FileField, size: int):
+    def __init__(self, file_field: FileField, max_size: int):
         self.file_field = file_field
-        self.size = size
+        self.max_size = max_size
+        self.size = 0
         self._content = None
 
     @property
     def content(self) -> bytes:
-        # Only read the stream once
+        """Lazily loads the content, ensuring it is only read once and within the max size limit."""
         if self._content is None:
-            self.file_field.file.seek(0)
-            self._content = self.file_field.file.read(self.size)
+            self._content = b""
+            total_read = 0
+            chunk_size = 8192
+
+            while total_read < self.max_size:
+                chunk = self.file_field.file.read(chunk_size)
+                if not chunk:
+                    break
+                self.size += len(chunk)
+                total_read += len(chunk)
+                if total_read > self.max_size:
+                    raise web.HTTPRequestEntityTooLarge(
+                        reason="File size exceeds the maximum limit.",
+                        max_size=self.max_size,
+                        actual_size=total_read,
+                    )
+                self._content += chunk
 
         return self._content
 
@@ -237,13 +251,18 @@ async def storage_add_file(request: web.Request):
     except KeyError:
         raise web.HTTPUnprocessableEntity(reason="Missing 'file' in multipart form.")
 
+    metadata = post.get("metadata")
+    max_upload_size = (
+        MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE if not metadata else MAX_FILE_SIZE
+    )
+
     if isinstance(file_field, FileField):
-        uploaded_file: UploadedFile = MultipartUploadedFile(file_field, len(file_field.file.read()))
+        uploaded_file: UploadedFile = MultipartUploadedFile(
+            file_field,
+            max_size=max_upload_size,
+        )
     else:
         uploaded_file = RawUploadedFile(file_field)
-
-    metadata = post.get("metadata")
-
     status_code = 200
 
     if metadata:
@@ -259,17 +278,13 @@ async def storage_add_file(request: web.Request):
 
         message = storage_metadata.message
         sync = storage_metadata.sync
-        max_upload_size = MAX_UPLOAD_FILE_SIZE
-
     else:
-        # User did not provide a message in the `metadata` field
         message = None
         sync = False
-        max_upload_size = MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE
 
     if uploaded_file.size > max_upload_size:
         raise web.HTTPRequestEntityTooLarge(
-            actual_size=uploaded_file.size, max_size=MAX_UPLOAD_FILE_SIZE
+            actual_size=uploaded_file.size, max_size=max_upload_size
         )
 
     with session_factory() as session:
