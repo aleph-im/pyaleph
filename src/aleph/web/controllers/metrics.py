@@ -110,9 +110,12 @@ async def fetch_reference_total_messages() -> Optional[int]:
     config = get_config()
     url = config.aleph.reference_node_url.value
     if url is None:
+        LOGGER.debug("No reference node URL configured")
         return None
 
-    async with aiohttp.ClientSession() as session:
+    # Fetching the reference number of messages should not take more than 5 seconds.
+    timeout = aiohttp.ClientTimeout(total=5)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
         try:
             async with session.get(
                 urljoin(url, "metrics.json"), raise_for_status=True
@@ -131,16 +134,18 @@ async def fetch_eth_height() -> Optional[int]:
     LOGGER.debug("Fetching ETH height")
     config = get_config()
 
+    if not config.ethereum.enabled.value:
+        return None
+
+    w3 = Web3(Web3.HTTPProvider(config.ethereum.api_url.value))
     try:
-        if config.ethereum.enabled.value:
-            w3 = Web3(Web3.HTTPProvider(config.ethereum.api_url.value))
-            return await asyncio.get_event_loop().run_in_executor(
-                None, getattr, w3.eth, "block_number"
-            )
-        else:
-            return None
-    except HTTPError:
-        return -1  # We got a boggus value!
+        # Fetching the block number is a blocking operation.
+        # We run it in a separate thread to avoid blocking the event loop.
+        task = asyncio.to_thread(w3.eth.getBlock, 'latest')
+        # Fetching the block number should not take more than 5 seconds.
+        return await asyncio.wait_for(task, timeout=5)
+    except (asyncio.TimeoutError, HTTPError) as e:
+        LOGGER.warning(f"ETH height could not be obtained due to {type(e).__name__}")
 
 
 async def get_metrics(session: DbSession, node_cache: NodeCache) -> Metrics:
