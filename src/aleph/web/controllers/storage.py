@@ -296,6 +296,8 @@ async def storage_add_file(request: web.Request):
             max_size=max_upload_size,
         )
     else:
+        if not isinstance(file_field, (bytes, str)):
+            raise web.HTTPUnprocessableEntity(reason="Invalid file content type.")
         uploaded_file = RawUploadedFile(file_field)
 
     status_code = 200
