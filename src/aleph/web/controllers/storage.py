@@ -94,7 +94,7 @@ async def add_storage_json_controller(request: web.Request):
 
 
 async def _verify_message_signature(
-        pending_message: BasePendingMessage, signature_verifier: SignatureVerifier
+    pending_message: BasePendingMessage, signature_verifier: SignatureVerifier
 ) -> None:
     try:
         await signature_verifier.verify_signature(pending_message)
@@ -171,10 +171,10 @@ class MultipartUploadedFile(UploadedFile):
 
 class RawUploadedFile(UploadedFile):
     def __init__(self, content: Union[bytes, str]):
-        self._temp_file = tempfile.NamedTemporaryFile(delete=False, mode='w+b')
+        self._temp_file = tempfile.NamedTemporaryFile(delete=False, mode="w+b")
         # Encode only if the content is a string
         if isinstance(content, str):
-            content = content.encode('utf-8')  # Explicitly encode str to bytes
+            content = content.encode("utf-8")  # Explicitly encode str to bytes
         self._temp_file.write(content)
         self._temp_file.seek(0)
 
@@ -248,9 +248,9 @@ async def _check_and_add_file(
 
 
 async def _make_mq_queue(
-        request: web.Request,
-        sync: bool,
-        routing_key: Optional[str] = None,
+    request: web.Request,
+    sync: bool,
+    routing_key: Optional[str] = None,
 ) -> Optional[aio_pika.abc.AbstractQueue]:
     if not sync:
         return None
@@ -269,24 +269,35 @@ async def storage_add_file(request: web.Request):
     config = get_config_from_request(request)
     grace_period = config.storage.grace_period.value
 
-    post = await request.post()
-    try:
-        file_field = post["file"]
-    except KeyError:
-        raise web.HTTPUnprocessableEntity(reason="Missing 'file' in multipart form.")
+    if request.content_type == "multipart/form-data":
+        post = await request.post()
+        try:
+            file_field = post["file"]
+        except KeyError:
+            raise web.HTTPUnprocessableEntity(
+                reason="Missing 'file' in multipart form."
+            )
 
-    metadata = post.get("metadata")
+        metadata = post.get("metadata")
+    else:
+        file_content = await request.read()
+        file_field = file_content
+        metadata = None
+
     max_upload_size = (
         MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE if not metadata else MAX_FILE_SIZE
     )
 
-    if isinstance(file_field, FileField):
+    if request.content_type == "multipart/form-data" and isinstance(
+        file_field, FileField
+    ):
         uploaded_file: UploadedFile = MultipartUploadedFile(
             file_field,
             max_size=max_upload_size,
         )
     else:
         uploaded_file = RawUploadedFile(file_field)
+
     status_code = 200
 
     if metadata:
