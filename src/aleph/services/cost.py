@@ -135,9 +135,9 @@ def compute_flow_cost(session: DbSession, content: ExecutableContent) -> Decimal
     # TODO: Use PAYMENT_PRICING_AGGREGATE when possible
     is_on_demand = isinstance(content, ProgramContent) and not content.on.persistent
     compute_unit_cost_hour = (
-        COMPUTE_UNIT_PRICE_PER_HOUR_PERSISTENT
+        COMPUTE_UNIT_PRICE_PER_HOUR_ON_DEMAND
         if is_on_demand
-        else COMPUTE_UNIT_PRICE_PER_HOUR_ON_DEMAND
+        else COMPUTE_UNIT_PRICE_PER_HOUR_PERSISTENT
     )
 
     compute_unit_cost_second = compute_unit_cost_hour / HOUR
@@ -175,5 +175,5 @@ def get_additional_storage_flow_price(
         - (Decimal(included_storage_per_compute_unit) * Decimal(nb_compute_units)),
         Decimal(0),
     )
-    price = additional_storage / EXTRA_STORAGE_PRICE_PER_SECOND / Decimal(MiB)
+    price = (additional_storage / MiB) * EXTRA_STORAGE_PRICE_PER_SECOND
     return price
