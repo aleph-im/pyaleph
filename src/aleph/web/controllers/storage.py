@@ -1,13 +1,14 @@
 import base64
+import hashlib
 import logging
 import os
 import tempfile
 from decimal import Decimal
-from typing import Optional, Protocol, Union
+from typing import Optional
 
 import aio_pika
 import pydantic
-from aiohttp import web
+from aiohttp import BodyPartReader, web
 from aiohttp.web_request import FileField
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.balances import get_total_balance
@@ -118,12 +119,15 @@ class StorageMetadata(pydantic.BaseModel):
 
 class UploadedFile:
     def __enter__(self):
-        return self
+        raise NotImplementedError
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.cleanup()
 
     def cleanup(self):
+        pass
+
+    async def read_and_validate(self):
         pass
 
     @property
@@ -134,23 +138,45 @@ class UploadedFile:
     def content(self) -> bytes:
         raise NotImplementedError
 
-
-class MultipartUploadedFile(UploadedFile):
-    def __init__(self, file_field: FileField, max_size: int):
-        self.file_field = file_field
-        self.max_size = max_size
-        self._temp_file = tempfile.NamedTemporaryFile(delete=False)
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        super().__exit__(exc_type, exc_value, traceback)
-        os.unlink(self._temp_file.name)
+    @property
+    def file(self):
+        raise NotImplementedError
 
     @property
-    def content(self) -> bytes:
+    def get_hash(self) -> str:
+        raise NotImplementedError
+
+
+class MultipartUploadedFile(UploadedFile):
+    def __init__(self, file_field: BodyPartReader, max_size: int, file_hash: str = None):
+        self.file_field = file_field
+        self.max_size = max_size
+        self.file_hash = file_hash
+        try:
+            self._temp_file = tempfile.NamedTemporaryFile(delete=False)
+            self._file_content = bytearray()
+        except Exception as e:
+            web.HTTPInternalServerError(reason="Cannot create tempfile")
+
+    def __enter__(self):
+        self._temp_file.seek(0)
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            self._temp_file.close()
+            if os.path.exists(self._temp_file.name):
+                os.unlink(self._temp_file.name)
+        except Exception as e:
+            web.HTTPInternalServerError(reason="Cannot create tempfile")
+
+    async def read_and_validate(self):
         total_read = 0
         chunk_size = 8192
+        hash_sha256 = hashlib.sha256()
+
         while total_read < self.max_size:
-            chunk = self.file_field.file.read(chunk_size)
+            chunk = await self.file_field.read_chunk(chunk_size)
             if not chunk:
                 break
             total_read += len(chunk)
@@ -161,26 +187,62 @@ class MultipartUploadedFile(UploadedFile):
                     actual_size=total_read,
                 )
             self._temp_file.write(chunk)
+            self._file_content.extend(chunk)
+            hash_sha256.update(chunk)
+        self.file_hash = hash_sha256.hexdigest()
         self._temp_file.seek(0)
-        return self._temp_file.read()
 
     @property
     def size(self) -> int:
         return os.path.getsize(self._temp_file.name)
 
+    @property
+    def content(self) -> bytes:
+        return bytes(self._file_content)
+
+    @property
+    def file(self) -> str:
+        return self._temp_file.name
+
+    @property
+    def get_hash(self) -> str:
+        return self.file_hash
+
 
 class RawUploadedFile(UploadedFile):
-    def __init__(self, content: Union[bytes, str]):
-        self._temp_file = tempfile.NamedTemporaryFile(delete=False, mode="w+b")
-        # Encode only if the content is a string
-        if isinstance(content, str):
-            content = content.encode("utf-8")  # Explicitly encode str to bytes
-        self._temp_file.write(content)
+    def __init__(self, request: web.Request, max_size: int):
+        self.request = request
+        self.max_size = max_size
+        self._temp_file = tempfile.NamedTemporaryFile(delete=False)
+        self._hasher = hashlib.sha256()
+        self._size = 0
+        self._hash = None
+
+    async def read_and_validate(self):
+        async for chunk in self.request.content.iter_chunked(8192):
+            self._temp_file.write(chunk)
+            self._hasher.update(chunk)
+            self._size += len(chunk)
+            if self._size > self.max_size:
+                raise web.HTTPRequestEntityTooLarge(
+                    reason="File size exceeds the maximum limit.",
+                    max_size=self.max_size,
+                    actual_size=self._size,
+                )
         self._temp_file.seek(0)
+        self._hash = self._hasher.hexdigest()
+
+    def __enter__(self):
+        self._temp_file.seek(0)
+        return self._temp_file
 
     def __exit__(self, exc_type, exc_value, traceback):
-        super().__exit__(exc_type, exc_value, traceback)
+        self._temp_file.close()
         os.unlink(self._temp_file.name)
+
+    @property
+    def size(self) -> int:
+        return self._size
 
     @property
     def content(self) -> bytes:
@@ -188,19 +250,25 @@ class RawUploadedFile(UploadedFile):
         return self._temp_file.read()
 
     @property
-    def size(self) -> int:
-        self._temp_file.seek(0, os.SEEK_END)
-        return self._temp_file.tell()
+    def file(self):
+        return self._temp_file.name
+
+    @property
+    def get_hash(self) -> str:
+        if self._hash is None:
+            raise ValueError("Hash has not been computed yet")
+        return self._hash
 
 
 async def _check_and_add_file(
-    session: DbSession,
-    signature_verifier: SignatureVerifier,
-    storage_service: StorageService,
-    message: Optional[PendingStoreMessage],
-    file: UploadedFile,
-    grace_period: int,
+        session: DbSession,
+        signature_verifier: SignatureVerifier,
+        storage_service: StorageService,
+        message: Optional[PendingStoreMessage],
+        file: UploadedFile,
+        grace_period: int,
 ) -> str:
+    file_hash = file.get_hash
     # Perform authentication and balance checks
     if message:
         await _verify_message_signature(
@@ -208,6 +276,10 @@ async def _check_and_add_file(
         )
         try:
             message_content = StoreContent.parse_raw(message.item_content)
+            if message_content.item_hash != file_hash:
+                raise web.HTTPUnprocessableEntity(
+                    reason=f"File hash does not match ({file_hash} != {message_content.item_hash})"
+                )
         except ValidationError as e:
             raise web.HTTPUnprocessableEntity(
                 reason=f"Invalid store message content: {e.json()}"
@@ -218,23 +290,17 @@ async def _check_and_add_file(
             address=message_content.address,
             size=file.size,
         )
-
     else:
         message_content = None
 
-    # TODO: this can still reach 1 GiB in memory. We should look into streaming.
     file_content = file.content
-    file_hash = get_sha256(file_content)
-
-    if message_content:
-        if message_content.item_hash != file_hash:
-            raise web.HTTPUnprocessableEntity(
-                reason=f"File hash does not match ({file_hash} != {message_content.item_hash})"
-            )
+    file_bytes = (
+        file_content.encode("utf-8") if isinstance(file_content, str) else file_content
+    )
 
     await storage_service.add_file_content_to_local_storage(
         session=session,
-        file_content=file_content,
+        file_content=file_bytes,
         file_hash=file_hash,
     )
 
@@ -268,37 +334,24 @@ async def storage_add_file(request: web.Request):
     signature_verifier = get_signature_verifier_from_request(request)
     config = get_config_from_request(request)
     grace_period = config.storage.grace_period.value
+    metadata = None
+    uploaded_file: Optional[UploadedFile] = None
 
     if request.content_type == "multipart/form-data":
-        post = await request.post()
-        try:
-            file_field = post["file"]
-        except KeyError:
-            raise web.HTTPUnprocessableEntity(
-                reason="Missing 'file' in multipart form."
-            )
-
-        metadata = post.get("metadata")
+        reader = await request.multipart()
+        async for part in reader:
+            if part.name == 'file':
+                uploaded_file = MultipartUploadedFile(part, MAX_FILE_SIZE)
+                await uploaded_file.read_and_validate()
+            elif part.name == 'metadata':
+                metadata = await part.read(decode=True)
     else:
-        file_content = await request.read()
-        file_field = file_content
-        metadata = None
+        uploaded_file = RawUploadedFile(request=request, max_size=MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE)
+        await uploaded_file.read_and_validate()
 
     max_upload_size = (
         MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE if not metadata else MAX_FILE_SIZE
     )
-
-    if request.content_type == "multipart/form-data" and isinstance(
-        file_field, FileField
-    ):
-        uploaded_file: UploadedFile = MultipartUploadedFile(
-            file_field,
-            max_size=max_upload_size,
-        )
-    else:
-        if not isinstance(file_field, (bytes, str)):
-            raise web.HTTPUnprocessableEntity(reason="Invalid file content type.")
-        uploaded_file = RawUploadedFile(file_field)
 
     status_code = 200
 
@@ -319,23 +372,21 @@ async def storage_add_file(request: web.Request):
         message = None
         sync = False
 
-    with uploaded_file:
-        if uploaded_file.size > max_upload_size:
-            raise web.HTTPRequestEntityTooLarge(
-                actual_size=uploaded_file.size, max_size=max_upload_size
-            )
+    if uploaded_file.size > max_upload_size:
+        raise web.HTTPRequestEntityTooLarge(
+            actual_size=uploaded_file.size, max_size=max_upload_size
+        )
 
-        with session_factory() as session:
-            file_hash = await _check_and_add_file(
-                session=session,
-                signature_verifier=signature_verifier,
-                storage_service=storage_service,
-                message=message,
-                file=uploaded_file,
-                grace_period=grace_period,
-            )
-            session.commit()
-
+    with session_factory() as session:
+        file_hash = await _check_and_add_file(
+            session=session,
+            signature_verifier=signature_verifier,
+            storage_service=storage_service,
+            message=message,
+            file=uploaded_file,
+            grace_period=grace_period,
+        )
+        session.commit()
     if message:
         broadcast_status = await broadcast_and_process_message(
             pending_message=message, sync=sync, request=request, logger=logger
