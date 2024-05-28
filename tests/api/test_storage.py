@@ -92,6 +92,41 @@ async def api_client(ccn_test_aiohttp_app, mocker, aiohttp_client):
     return client
 
 
+async def add_file_raw_upload(
+    api_client,
+    session_factory: DbSessionFactory,
+    uri: str,
+    file_content: bytes,
+    expected_file_hash: str,
+):
+    # Send the file content as raw bytes in the request body
+    headers = {
+        'Content-Type': 'application/octet-stream'
+    }
+    post_response = await api_client.post(uri, data=file_content, headers=headers)
+    response_text = await post_response.text()
+    assert post_response.status == 200, response_text
+    post_response_json = await post_response.json()
+    assert post_response_json["status"] == "success"
+    file_hash = post_response_json["hash"]
+    assert file_hash == expected_file_hash
+
+    # Assert that the file is downloadable
+    get_file_response = await api_client.get(f"{GET_STORAGE_RAW_URI}/{file_hash}")
+    assert get_file_response.status == 200, await get_file_response.text()
+    response_data = await get_file_response.read()
+
+    # Check that the file appears in the DB
+    with session_factory() as session:
+        file = get_file(session=session, file_hash=file_hash)
+        assert file is not None
+        assert file.hash == file_hash
+        assert file.type == FileType.FILE
+        assert file.size == len(file_content)
+
+    assert response_data == file_content
+
+
 async def add_file(
     api_client,
     session_factory: DbSessionFactory,
@@ -101,6 +136,7 @@ async def add_file(
 ):
     form_data = aiohttp.FormData()
     form_data.add_field("file", file_content)
+    print(file_content)
 
     post_response = await api_client.post(uri, data=form_data)
     response_text = await post_response.text()
@@ -213,6 +249,16 @@ async def add_file_with_message_202(
 @pytest.mark.asyncio
 async def test_storage_add_file(api_client, session_factory: DbSessionFactory):
     await add_file(
+        api_client,
+        session_factory,
+        uri=STORAGE_ADD_FILE_URI,
+        file_content=FILE_CONTENT,
+        expected_file_hash=EXPECTED_FILE_SHA256,
+    )
+
+@pytest.mark.asyncio
+async def test_storage_add_file_raw_upload(api_client, session_factory: DbSessionFactory):
+    await add_file_raw_upload(
         api_client,
         session_factory,
         uri=STORAGE_ADD_FILE_URI,
@@ -371,3 +417,4 @@ async def test_ipfs_add_json(api_client, session_factory: DbSessionFactory):
         # creating a second fixture.
         expected_file_hash=ItemHash(EXPECTED_FILE_CID),
     )
+
