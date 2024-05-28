@@ -142,7 +142,6 @@ class UploadedFile:
     def file(self):
         raise NotImplementedError
 
-    @property
     def get_hash(self) -> str:
         raise NotImplementedError
 
@@ -204,8 +203,9 @@ class MultipartUploadedFile(UploadedFile):
     def file(self) -> str:
         return self._temp_file.name
 
-    @property
     def get_hash(self) -> str:
+        if self._hash is None:
+            raise ValueError("Hash has not been computed yet")
         return self._hash
 
 
@@ -253,7 +253,6 @@ class RawUploadedFile(UploadedFile):
     def file(self):
         return self._temp_file.name
 
-    @property
     def get_hash(self) -> str:
         if self._hash is None:
             raise ValueError("Hash has not been computed yet")
@@ -268,7 +267,7 @@ async def _check_and_add_file(
         file: UploadedFile,
         grace_period: int,
 ) -> str:
-    file_hash = file.get_hash
+    file_hash = file.get_hash()
     # Perform authentication and balance checks
     if message:
         await _verify_message_signature(
@@ -294,9 +293,13 @@ async def _check_and_add_file(
         message_content = None
 
     file_content = file.content
-    file_bytes = (
-        file_content.encode("utf-8") if isinstance(file_content, str) else file_content
-    )
+
+    if isinstance(file_content, bytes):
+        file_bytes = file_content
+    elif isinstance(file_content, str):
+        file_bytes = file_content.encode("utf-8")
+    else:
+        raise web.HTTPUnprocessableEntity(reason="Invalid file content type")
 
     await storage_service.add_file_content_to_local_storage(
         session=session,
@@ -348,6 +351,9 @@ async def storage_add_file(request: web.Request):
     else:
         uploaded_file = RawUploadedFile(request=request, max_size=MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE)
         await uploaded_file.read_and_validate()
+
+    if uploaded_file is None:
+        raise web.HTTPBadRequest(reason="No file uploaded")
 
     max_upload_size = (
         MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE if not metadata else MAX_FILE_SIZE
