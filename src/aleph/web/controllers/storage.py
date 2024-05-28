@@ -148,10 +148,10 @@ class UploadedFile:
 
 
 class MultipartUploadedFile(UploadedFile):
-    def __init__(self, file_field: BodyPartReader, max_size: int, file_hash: str = None):
+    def __init__(self, file_field: BodyPartReader, max_size: int):
         self.file_field = file_field
         self.max_size = max_size
-        self.file_hash = file_hash
+        self._hash = None
         try:
             self._temp_file = tempfile.NamedTemporaryFile(delete=False)
             self._file_content = bytearray()
@@ -189,7 +189,7 @@ class MultipartUploadedFile(UploadedFile):
             self._temp_file.write(chunk)
             self._file_content.extend(chunk)
             hash_sha256.update(chunk)
-        self.file_hash = hash_sha256.hexdigest()
+        self._hash = hash_sha256.hexdigest()
         self._temp_file.seek(0)
 
     @property
@@ -206,7 +206,7 @@ class MultipartUploadedFile(UploadedFile):
 
     @property
     def get_hash(self) -> str:
-        return self.file_hash
+        return self._hash
 
 
 class RawUploadedFile(UploadedFile):
