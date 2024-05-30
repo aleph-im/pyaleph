@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import Optional
 
 import aio_pika
+import aiofiles
 import pydantic
 from aiohttp import BodyPartReader, web
 from aiohttp.web_request import FileField
@@ -118,145 +119,85 @@ class StorageMetadata(pydantic.BaseModel):
 
 
 class UploadedFile:
-    def __enter__(self):
-        raise NotImplementedError
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.cleanup()
-
-    def cleanup(self):
-        pass
-
-    async def read_and_validate(self):
-        pass
-
-    @property
-    def size(self) -> int:
-        raise NotImplementedError
-
-    @property
-    def content(self) -> bytes:
-        raise NotImplementedError
-
-    @property
-    def file(self):
-        raise NotImplementedError
-
-    def get_hash(self) -> str:
-        raise NotImplementedError
-
-
-class MultipartUploadedFile(UploadedFile):
-    def __init__(self, file_field: BodyPartReader, max_size: int):
-        self.file_field = file_field
+    def __init__(self, max_size: int):
         self.max_size = max_size
-        self._hash = None
-        try:
-            self._temp_file = tempfile.NamedTemporaryFile(delete=False)
-            self._file_content = bytearray()
-        except Exception as e:
-            web.HTTPInternalServerError(reason="Cannot create tempfile")
+        self._hasher = hashlib.sha256()
+        self._hash = ""
+        self._size = 0
+        self._temp_file_path = None
+        self._temp_file = None
 
-    def __enter__(self):
-        self._temp_file.seek(0)
-        return self
+    async def __aenter__(self):
+        if not self._temp_file_path:
+            raise ValueError("File content has not been validated and read yet.")
+        self._temp_file = await aiofiles.open(self._temp_file_path, 'rb')
+        return self._temp_file
 
-    def __exit__(self, exc_type, exc_value, traceback):
-        try:
-            self._temp_file.close()
-            if os.path.exists(self._temp_file.name):
-                os.unlink(self._temp_file.name)
-        except Exception as e:
-            web.HTTPInternalServerError(reason="Cannot create tempfile")
+    async def __aexit__(self, exc_type, exc_value, traceback):
+        await self.cleanup()
+
+    async def cleanup(self):
+        if self._temp_file:
+            await self._temp_file.close()
+        if self._temp_file_path:
+            os.remove(self._temp_file_path)
+            self._temp_file_path = None
 
     async def read_and_validate(self):
         total_read = 0
         chunk_size = 8192
-        hash_sha256 = hashlib.sha256()
 
-        while total_read < self.max_size:
+        with tempfile.NamedTemporaryFile('w+b', delete=False) as temp_file:
+            self._temp_file_path = temp_file.name
+
+        async with aiofiles.open(self._temp_file_path, 'w+b') as f:
+            async for chunk in self._read_chunks(chunk_size):
+                total_read += len(chunk)
+                if total_read > self.max_size:
+                    raise web.HTTPRequestEntityTooLarge(
+                        reason="File size exceeds the maximum limit.",
+                        max_size=self.max_size,
+                        actual_size=total_read,
+                    )
+                self._hasher.update(chunk)
+                await f.write(chunk)
+
+            self._hash = self._hasher.hexdigest()
+            self._size = total_read
+            await f.seek(0)
+
+    async def _read_chunks(self, chunk_size):
+        raise NotImplementedError("Subclasses must implement this method")
+
+    @property
+    async def size(self) -> int:
+        return self._size
+
+    def get_hash(self) -> str:
+        return self._hash
+
+
+class MultipartUploadedFile(UploadedFile):
+    def __init__(self, file_field: BodyPartReader, max_size: int):
+        super().__init__(max_size)
+        self.file_field = file_field
+
+    async def _read_chunks(self, chunk_size):
+        while True:
             chunk = await self.file_field.read_chunk(chunk_size)
             if not chunk:
                 break
-            total_read += len(chunk)
-            if total_read > self.max_size:
-                raise web.HTTPRequestEntityTooLarge(
-                    reason="File size exceeds the maximum limit.",
-                    max_size=self.max_size,
-                    actual_size=total_read,
-                )
-            self._temp_file.write(chunk)
-            self._file_content.extend(chunk)
-            hash_sha256.update(chunk)
-        self._hash = hash_sha256.hexdigest()
-        self._temp_file.seek(0)
-
-    @property
-    def size(self) -> int:
-        return os.path.getsize(self._temp_file.name)
-
-    @property
-    def content(self) -> bytes:
-        return bytes(self._file_content)
-
-    @property
-    def file(self) -> str:
-        return self._temp_file.name
-
-    def get_hash(self) -> str:
-        if self._hash is None:
-            raise ValueError("Hash has not been computed yet")
-        return self._hash
+            yield chunk
 
 
 class RawUploadedFile(UploadedFile):
     def __init__(self, request: web.Request, max_size: int):
+        super().__init__(max_size)
         self.request = request
-        self.max_size = max_size
-        self._temp_file = tempfile.NamedTemporaryFile(delete=False)
-        self._hasher = hashlib.sha256()
-        self._size = 0
-        self._hash = None
 
-    async def read_and_validate(self):
-        async for chunk in self.request.content.iter_chunked(8192):
-            self._temp_file.write(chunk)
-            self._hasher.update(chunk)
-            self._size += len(chunk)
-            if self._size > self.max_size:
-                raise web.HTTPRequestEntityTooLarge(
-                    reason="File size exceeds the maximum limit.",
-                    max_size=self.max_size,
-                    actual_size=self._size,
-                )
-        self._temp_file.seek(0)
-        self._hash = self._hasher.hexdigest()
-
-    def __enter__(self):
-        self._temp_file.seek(0)
-        return self._temp_file
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        self._temp_file.close()
-        os.unlink(self._temp_file.name)
-
-    @property
-    def size(self) -> int:
-        return self._size
-
-    @property
-    def content(self) -> bytes:
-        self._temp_file.seek(0)
-        return self._temp_file.read()
-
-    @property
-    def file(self):
-        return self._temp_file.name
-
-    def get_hash(self) -> str:
-        if self._hash is None:
-            raise ValueError("Hash has not been computed yet")
-        return self._hash
+    async def _read_chunks(self, chunk_size):
+        async for chunk in self.request.content.iter_chunked(chunk_size):
+            yield chunk
 
 
 async def _check_and_add_file(
@@ -287,39 +228,37 @@ async def _check_and_add_file(
         await _verify_user_balance(
             session=session,
             address=message_content.address,
-            size=file.size,
+            size=await file.size,
         )
     else:
         message_content = None
 
-    file_content = file.content
+    async with file as uploaded_file:
+        file_content = await uploaded_file.read()
+        if isinstance(file_content, bytes):
+            file_bytes = file_content
+        elif isinstance(file_content, str):
+            file_bytes = file_content.encode("utf-8")
+        else:
+            raise web.HTTPUnprocessableEntity(reason="Invalid file content type")
 
-    if isinstance(file_content, bytes):
-        file_bytes = file_content
-    elif isinstance(file_content, str):
-        file_bytes = file_content.encode("utf-8")
-    else:
-        raise web.HTTPUnprocessableEntity(reason="Invalid file content type")
-
-    await storage_service.add_file_content_to_local_storage(
-        session=session,
-        file_content=file_bytes,
-        file_hash=file_hash,
-    )
-
+        await storage_service.add_file_content_to_local_storage(
+            session=session,
+            file_content=file_bytes,
+            file_hash=file_hash
+        )
     # For files uploaded without authenticated upload, add a grace period of 1 day.
     if not message_content:
         add_grace_period_for_file(
             session=session, file_hash=file_hash, hours=grace_period
         )
-
     return file_hash
 
 
 async def _make_mq_queue(
-    request: web.Request,
-    sync: bool,
-    routing_key: Optional[str] = None,
+        request: web.Request,
+        sync: bool,
+        routing_key: Optional[str] = None,
 ) -> Optional[aio_pika.abc.AbstractQueue]:
     if not sync:
         return None
@@ -358,6 +297,13 @@ async def storage_add_file(request: web.Request):
     max_upload_size = (
         MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE if not metadata else MAX_FILE_SIZE
     )
+    file_size : int = await uploaded_file.size
+    if file_size > max_upload_size:
+        raise web.HTTPRequestEntityTooLarge(
+            actual_size=file_size, max_size=max_upload_size
+        )
+
+    uploaded_file.max_size = max_upload_size
 
     status_code = 200
 
@@ -377,11 +323,6 @@ async def storage_add_file(request: web.Request):
     else:
         message = None
         sync = False
-
-    if uploaded_file.size > max_upload_size:
-        raise web.HTTPRequestEntityTooLarge(
-            actual_size=uploaded_file.size, max_size=max_upload_size
-        )
 
     with session_factory() as session:
         file_hash = await _check_and_add_file(
