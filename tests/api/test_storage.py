@@ -136,7 +136,6 @@ async def add_file(
 ):
     form_data = aiohttp.FormData()
     form_data.add_field("file", file_content)
-    print(file_content)
 
     post_response = await api_client.post(uri, data=form_data)
     response_text = await post_response.text()

@@ -96,7 +96,7 @@ async def add_storage_json_controller(request: web.Request):
 
 
 async def _verify_message_signature(
-    pending_message: BasePendingMessage, signature_verifier: SignatureVerifier
+        pending_message: BasePendingMessage, signature_verifier: SignatureVerifier
 ) -> None:
     try:
         await signature_verifier.verify_signature(pending_message)
@@ -127,18 +127,19 @@ class UploadedFile:
         self._temp_file_path = None
         self._temp_file = None
 
-    async def __aenter__(self):
+    async def open_temp_file(self):
         if not self._temp_file_path:
             raise ValueError("File content has not been validated and read yet.")
         self._temp_file = await aiofiles.open(self._temp_file_path, 'rb')
         return self._temp_file
 
-    async def __aexit__(self, exc_type, exc_value, traceback):
-        await self.cleanup()
-
-    async def cleanup(self):
+    async def close_temp_file(self):
         if self._temp_file:
             await self._temp_file.close()
+            self._temp_file = None
+
+    async def cleanup(self):
+        await self.close_temp_file()
         if self._temp_file_path:
             os.remove(self._temp_file_path)
             self._temp_file_path = None
@@ -147,8 +148,9 @@ class UploadedFile:
         total_read = 0
         chunk_size = 8192
 
-        with tempfile.NamedTemporaryFile('w+b', delete=False) as temp_file:
-            self._temp_file_path = temp_file.name
+        temp_file = tempfile.NamedTemporaryFile('w+b', delete=False)
+        self._temp_file_path = temp_file.name
+        temp_file.close()
 
         async with aiofiles.open(self._temp_file_path, 'w+b') as f:
             async for chunk in self._read_chunks(chunk_size):
@@ -159,7 +161,7 @@ class UploadedFile:
                         max_size=self.max_size,
                         actual_size=total_read,
                     )
-                self._hasher.update(chunk)
+                self._hasher.update(chunk)  # Update file hash while reading the file
                 await f.write(chunk)
 
             self._hash = self._hasher.hexdigest()
@@ -170,7 +172,7 @@ class UploadedFile:
         raise NotImplementedError("Subclasses must implement this method")
 
     @property
-    async def size(self) -> int:
+    def size(self) -> int:
         return self._size
 
     def get_hash(self) -> str:
@@ -183,10 +185,7 @@ class MultipartUploadedFile(UploadedFile):
         self.file_field = file_field
 
     async def _read_chunks(self, chunk_size):
-        while True:
-            chunk = await self.file_field.read_chunk(chunk_size)
-            if not chunk:
-                break
+        async for chunk in self.file_field.__aiter__():
             yield chunk
 
 
@@ -228,25 +227,27 @@ async def _check_and_add_file(
         await _verify_user_balance(
             session=session,
             address=message_content.address,
-            size=await file.size,
+            size=file.size,
         )
     else:
         message_content = None
 
-    async with file as uploaded_file:
-        file_content = await uploaded_file.read()
-        if isinstance(file_content, bytes):
-            file_bytes = file_content
-        elif isinstance(file_content, str):
-            file_bytes = file_content.encode("utf-8")
-        else:
-            raise web.HTTPUnprocessableEntity(reason="Invalid file content type")
+    temp_file = await file.open_temp_file()
+    file_content = await temp_file.read()
 
-        await storage_service.add_file_content_to_local_storage(
-            session=session,
-            file_content=file_bytes,
-            file_hash=file_hash
-        )
+    if isinstance(file_content, bytes):
+        file_bytes = file_content
+    elif isinstance(file_content, str):
+        file_bytes = file_content.encode("utf-8")
+    else:
+        raise web.HTTPUnprocessableEntity(reason="Invalid file content type")
+    await storage_service.add_file_content_to_local_storage(
+        session=session,
+        file_content=file_bytes,
+        file_hash=file_hash
+    )
+    await file.cleanup()
+
     # For files uploaded without authenticated upload, add a grace period of 1 day.
     if not message_content:
         add_grace_period_for_file(
@@ -292,12 +293,12 @@ async def storage_add_file(request: web.Request):
         await uploaded_file.read_and_validate()
 
     if uploaded_file is None:
-        raise web.HTTPBadRequest(reason="No file uploaded")
+        raise web.HTTPBadRequest(reason="File should be sent as FormData or Raw Upload")
 
     max_upload_size = (
         MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE if not metadata else MAX_FILE_SIZE
     )
-    file_size : int = await uploaded_file.size
+    file_size: int = uploaded_file.size
     if file_size > max_upload_size:
         raise web.HTTPRequestEntityTooLarge(
             actual_size=file_size, max_size=max_upload_size
