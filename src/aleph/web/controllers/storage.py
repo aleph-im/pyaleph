@@ -246,7 +246,8 @@ async def _check_and_add_file(
     elif isinstance(file_content, str):
         file_bytes = file_content.encode("utf-8")
     else:
-        raise web.HTTPUnprocessableEntity(reason="Invalid file content type")
+        raise web.HTTPUnprocessableEntity(reason=f"Invalid file content type, got {type(file_content)}")
+
     await storage_service.add_file_content_to_local_storage(
         session=session,
         file_content=file_bytes,
