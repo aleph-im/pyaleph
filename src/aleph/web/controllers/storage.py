@@ -287,69 +287,73 @@ async def storage_add_file(request: web.Request):
     metadata = None
     uploaded_file: Optional[UploadedFile] = None
 
-    if request.content_type == "multipart/form-data":
-        reader = await request.multipart()
-        async for part in reader:
-            if part.name == 'file':
-                uploaded_file = MultipartUploadedFile(part, MAX_FILE_SIZE)
-                await uploaded_file.read_and_validate()
-            elif part.name == 'metadata':
-                metadata = await part.read(decode=True)
-    else:
-        uploaded_file = RawUploadedFile(request=request, max_size=MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE)
-        await uploaded_file.read_and_validate()
+    try:
+        if request.content_type == "multipart/form-data":
+            reader = await request.multipart()
+            async for part in reader:
+                if part.name == 'file':
+                    uploaded_file = MultipartUploadedFile(part, MAX_FILE_SIZE)
+                    await uploaded_file.read_and_validate()
+                elif part.name == 'metadata':
+                    metadata = await part.read(decode=True)
+        else:
+            uploaded_file = RawUploadedFile(request=request, max_size=MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE)
+            await uploaded_file.read_and_validate()
 
-    if uploaded_file is None:
-        raise web.HTTPBadRequest(reason="File should be sent as FormData or Raw Upload")
+        if uploaded_file is None:
+            raise web.HTTPBadRequest(reason="File should be sent as FormData or Raw Upload")
 
-    max_upload_size = (
-        MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE if not metadata else MAX_FILE_SIZE
-    )
-    file_size: int = uploaded_file.size
-    if file_size > max_upload_size:
-        raise web.HTTPRequestEntityTooLarge(
-            actual_size=file_size, max_size=max_upload_size
+        max_upload_size = (
+            MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE if not metadata else MAX_FILE_SIZE
         )
-
-    uploaded_file.max_size = max_upload_size
-
-    status_code = 200
-
-    if metadata:
-        metadata_bytes = (
-            metadata.file.read() if isinstance(metadata, FileField) else metadata
-        )
-        try:
-            storage_metadata = StorageMetadata.parse_raw(metadata_bytes)
-        except ValidationError as e:
-            raise web.HTTPUnprocessableEntity(
-                reason=f"Could not decode metadata: {e.json()}"
+        if uploaded_file.size > max_upload_size:
+            raise web.HTTPRequestEntityTooLarge(
+                actual_size=uploaded_file.size, max_size=max_upload_size
             )
 
-        message = storage_metadata.message
-        sync = storage_metadata.sync
-    else:
-        message = None
-        sync = False
+        uploaded_file.max_size = max_upload_size
 
-    with session_factory() as session:
-        file_hash = await _check_and_add_file(
-            session=session,
-            signature_verifier=signature_verifier,
-            storage_service=storage_service,
-            message=message,
-            file=uploaded_file,
-            grace_period=grace_period,
-        )
-        session.commit()
-    if message:
-        broadcast_status = await broadcast_and_process_message(
-            pending_message=message, sync=sync, request=request, logger=logger
-        )
-        status_code = broadcast_status_to_http_status(broadcast_status)
+        status_code = 200
 
-    output = {"status": "success", "hash": file_hash}
-    return web.json_response(data=output, status=status_code)
+        if metadata:
+            metadata_bytes = (
+                metadata.file.read() if isinstance(metadata, FileField) else metadata
+            )
+            try:
+                storage_metadata = StorageMetadata.parse_raw(metadata_bytes)
+            except ValidationError as e:
+                raise web.HTTPUnprocessableEntity(
+                    reason=f"Could not decode metadata: {e.json()}"
+                )
+
+            message = storage_metadata.message
+            sync = storage_metadata.sync
+        else:
+            message = None
+            sync = False
+
+        with session_factory() as session:
+            file_hash = await _check_and_add_file(
+                session=session,
+                signature_verifier=signature_verifier,
+                storage_service=storage_service,
+                message=message,
+                file=uploaded_file,
+                grace_period=grace_period,
+            )
+            session.commit()
+        if message:
+            broadcast_status = await broadcast_and_process_message(
+                pending_message=message, sync=sync, request=request, logger=logger
+            )
+            status_code = broadcast_status_to_http_status(broadcast_status)
+
+        output = {"status": "success", "hash": file_hash}
+        return web.json_response(data=output, status=status_code)
+
+    finally:
+        if uploaded_file is not None:
+            await uploaded_file.cleanup()
 
 
 def assert_file_is_downloadable(session: DbSession, file_hash: str) -> None:
