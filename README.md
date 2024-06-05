@@ -54,7 +54,7 @@ This will provide you with a shell with PostgreSQL, Redis, and IPFS running.
 
 The Aleph CCN is written in Python and requires Python v3.8+. It will not work with older versions of Python.
 
-It also relies on [MongoDB](https://www.mongodb.com/) and [IPFS](https://ipfs.io/).
+It also relies on [IPFS](https://ipfs.io/).
 
 ## License
 
