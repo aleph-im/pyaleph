@@ -338,7 +338,7 @@ async def storage_add_file(request: web.Request):
                 signature_verifier=signature_verifier,
                 storage_service=storage_service,
                 message=message,
-                file=uploaded_file,
+                uploaded_file=uploaded_file,
                 grace_period=grace_period,
             )
             session.commit()
