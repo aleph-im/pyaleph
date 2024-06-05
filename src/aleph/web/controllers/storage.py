@@ -121,9 +121,9 @@ class StorageMetadata(pydantic.BaseModel):
 class UploadedFile:
     def __init__(self, max_size: int):
         self.max_size = max_size
+        self.hash = ""
+        self.size = 0
         self._hasher = hashlib.sha256()
-        self._hash = ""
-        self._size = 0
         self._temp_file_path = None
         self._temp_file = None
 
@@ -164,19 +164,15 @@ class UploadedFile:
                 self._hasher.update(chunk)  # Update file hash while reading the file
                 await f.write(chunk)
 
-            self._hash = self._hasher.hexdigest()
-            self._size = total_read
+            self.hash = self._hasher.hexdigest()
+            self.size = total_read
             await f.seek(0)
 
     async def _read_chunks(self, chunk_size):
         raise NotImplementedError("Subclasses must implement this method")
 
-    @property
-    def size(self) -> int:
-        return self._size
-
     def get_hash(self) -> str:
-        return self._hash
+        return self._hasher.hexdigest()
 
 
 class MultipartUploadedFile(UploadedFile):
