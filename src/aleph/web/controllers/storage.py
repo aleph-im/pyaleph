@@ -210,10 +210,10 @@ async def _check_and_add_file(
         signature_verifier: SignatureVerifier,
         storage_service: StorageService,
         message: Optional[PendingStoreMessage],
-        file: UploadedFile,
+        uploaded_file: UploadedFile,
         grace_period: int,
 ) -> str:
-    file_hash = file.get_hash()
+    file_hash = uploaded_file.get_hash()
     # Perform authentication and balance checks
     if message:
         await _verify_message_signature(
@@ -233,12 +233,12 @@ async def _check_and_add_file(
         await _verify_user_balance(
             session=session,
             address=message_content.address,
-            size=file.size,
+            size=uploaded_file.size,
         )
     else:
         message_content = None
 
-    temp_file = await file.open_temp_file()
+    temp_file = await uploaded_file.open_temp_file()
     file_content = await temp_file.read()
 
     if isinstance(file_content, bytes):
@@ -252,7 +252,7 @@ async def _check_and_add_file(
         file_content=file_bytes,
         file_hash=file_hash
     )
-    await file.cleanup()
+    await uploaded_file.cleanup()
 
     # For files uploaded without authenticated upload, add a grace period of 1 day.
     if not message_content:
