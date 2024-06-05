@@ -148,6 +148,16 @@ class UploadedFile:
         total_read = 0
         chunk_size = 8192
 
+        # From aiofiles changelog:
+        # On Python 3.12, aiofiles.tempfile.NamedTemporaryFile now accepts a
+        # delete_on_close argument, just like the stdlib version.
+        # On Python 3.12, aiofiles.tempfile.NamedTemporaryFile no longer
+        # exposes a delete attribute, just like the stdlib version.
+        #
+        # so we might need to modify this code for python 3.12 at some point
+
+        # it would be ideal to uses aiofiles.tempfile.NamedTemporaryFile but it
+        # doesn't seems to be able to support our current workflow
         temp_file = tempfile.NamedTemporaryFile('w+b', delete=False)
         self._temp_file_path = temp_file.name
         temp_file.close()
