@@ -134,13 +134,13 @@ class UploadedFile:
         return self._temp_file
 
     async def close_temp_file(self):
-        if self._temp_file:
+        if self._temp_file is not None:
             await self._temp_file.close()
             self._temp_file = None
 
     async def cleanup(self):
         await self.close_temp_file()
-        if self._temp_file_path:
+        if self._temp_file_path and os.path.exists(self._temp_file_path):
             os.remove(self._temp_file_path)
             self._temp_file_path = None
 
