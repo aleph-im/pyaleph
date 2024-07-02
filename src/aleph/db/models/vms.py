@@ -131,7 +131,6 @@ class VmBaseDb(Base):
     environment_internet: bool = Column(Boolean, nullable=False)
     environment_aleph_api: bool = Column(Boolean, nullable=False)
     environment_shared_cache: bool = Column(Boolean, nullable=False)
-    environment_shared_cache: bool = Column(Boolean, nullable=False)
 
     environment_trusted_execution_policy: Optional[int] = Column(Integer, nullable=True)
     environment_trusted_execution_firmware: Optional[str] = Column(
