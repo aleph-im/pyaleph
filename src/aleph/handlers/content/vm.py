@@ -86,8 +86,9 @@ from aleph_message.models.execution.program import (
 
 
 @overload
-def _map_content_to_db_model(item_hash: str, content: InstanceContent) -> VmInstanceDb:
-    ...
+def _map_content_to_db_model(
+    item_hash: str, content: InstanceContent
+) -> VmInstanceDb: ...
 
 
 # For some reason, mypy is not happy with the overload resolution here.
@@ -117,6 +118,13 @@ def _map_content_to_db_model(item_hash, content):
             node_owner = node.owner
             node_address_regex = node.address_regex
 
+    trusted_execution_policy = None
+    trusted_execution_firmware = None
+    if not isinstance(content, ProgramContent):
+        if content.environment.trusted_execution is not None:
+            trusted_execution_policy = content.environment.trusted_execution.policy
+            trusted_execution_firmware = content.environment.trusted_execution.firmware
+
     return db_cls(
         owner=content.address,
         item_hash=item_hash,
@@ -127,6 +135,8 @@ def _map_content_to_db_model(item_hash, content):
         environment_internet=content.environment.internet,
         environment_aleph_api=content.environment.aleph_api,
         environment_shared_cache=content.environment.shared_cache,
+        environment_trusted_execution_policy=trusted_execution_policy,
+        environment_trusted_execution_firmware=trusted_execution_firmware,
         resources_vcpus=content.resources.vcpus,
         resources_memory=content.resources.memory,
         resources_seconds=content.resources.seconds,
