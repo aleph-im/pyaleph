@@ -132,6 +132,11 @@ class VmBaseDb(Base):
     environment_aleph_api: bool = Column(Boolean, nullable=False)
     environment_shared_cache: bool = Column(Boolean, nullable=False)
 
+    environment_trusted_execution_policy: Optional[int] = Column(Integer, nullable=True)
+    environment_trusted_execution_firmware: Optional[str] = Column(
+        String, nullable=True
+    )
+
     resources_vcpus: int = Column(Integer, nullable=False)
     resources_memory: int = Column(Integer, nullable=False)
     resources_seconds: int = Column(Integer, nullable=False)
