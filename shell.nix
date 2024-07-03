@@ -19,6 +19,7 @@ pkgs.mkShell {
   ];
 
   shellHook = ''
+    set -eu
     echo "Setting up PostgreSQL environment..."
     export PGDATA=$(mktemp -d)
     PG_SOCKET_DIR=$(mktemp -d)
@@ -73,5 +74,6 @@ pkgs.mkShell {
     echo "To manually stop Redis: 'redis-cli -p 6379 shutdown'"
     echo "PostgreSQL started. Data directory is $PGDATA, Socket directory is $PG_SOCKET_DIR" | sed 's/./=/g'
     echo -e "\033[0m"
+    set +eu
   '';
 }
