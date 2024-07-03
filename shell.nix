@@ -2,6 +2,8 @@
 
 pkgs.mkShell {
   buildInputs = [
+    pkgs.glibcLocales
+
     pkgs.postgresql
     pkgs.redis
     pkgs.kubo
