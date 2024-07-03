@@ -50,6 +50,22 @@ nix-shell
 ```
 This will provide you with a shell with PostgreSQL, Redis, and IPFS running.
 
+## Test
+
+To run test you can run:
+
+```bash
+nix-shell --run "pytest"
+```
+
+Or you can run the command in the nix shell:
+```bash
+nix-shell
+
+# inside of nix shell
+pytest
+```
+
 ## Software used
 
 The Aleph CCN is written in Python and requires Python v3.8+. It will not work with older versions of Python.
