@@ -46,14 +46,6 @@ pkgs.mkShell {
     ipfs daemon &
     echo "IPFS Kubo started. Data directory is $IPFS_PATH"
 
-    echo
-    echo "PostgreSQL started. Data directory is $PGDATA, Socket directory is $PG_SOCKET_DIR"
-    echo "Redis started. Data directory is $REDIS_DATA_DIR"
-    echo "Use 'psql -h $PG_SOCKET_DIR' to connect to the database."
-    echo "Use 'redis-cli -p 6379' to connect to the Redis server."
-    echo "To stop PostgreSQL: 'pg_ctl -D $PGDATA stop'"
-    echo "To manually stop Redis: 'redis-cli -p 6379 shutdown'"
-
     # Trap the EXIT signal to stop services when exiting the shell
     trap 'echo "Stopping PostgreSQL..."; pg_ctl -D "$PGDATA" stop; echo "Stopping Redis..."; redis-cli -p 6379 shutdown; echo "Stopping IPFS Kubo..."; ipfs shutdown; deactivate' EXIT
 
@@ -69,5 +61,16 @@ pkgs.mkShell {
     source venv/bin/activate
 
     [ -e config.yml ] || touch config.yml
+
+    echo
+    echo "PostgreSQL started. Data directory is $PGDATA, Socket directory is $PG_SOCKET_DIR" | sed 's/./=/g'
+    echo "PostgreSQL started. Data directory is $PGDATA, Socket directory is $PG_SOCKET_DIR"
+    echo "Redis started. Data directory is $REDIS_DATA_DIR"
+    echo "Use 'psql -h $PG_SOCKET_DIR' to connect to the database."
+    echo "Use 'redis-cli -p 6379' to connect to the Redis server."
+    echo "To stop PostgreSQL: 'pg_ctl -D $PGDATA stop'"
+    echo "To manually stop Redis: 'redis-cli -p 6379 shutdown'"
+    echo "PostgreSQL started. Data directory is $PGDATA, Socket directory is $PG_SOCKET_DIR" | sed 's/./=/g'
+    echo
   '';
 }
