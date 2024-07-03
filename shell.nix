@@ -58,7 +58,8 @@ pkgs.mkShell {
     # Activate the virtual environment
     source venv/bin/activate
 
-    echo
+    # bold
+    echo -e "\e[1m"
     echo "PostgreSQL started. Data directory is $PGDATA, Socket directory is $PG_SOCKET_DIR" | sed 's/./=/g'
     echo "PostgreSQL started. Data directory is $PGDATA, Socket directory is $PG_SOCKET_DIR"
     echo "Redis started. Data directory is $REDIS_DATA_DIR"
@@ -67,6 +68,6 @@ pkgs.mkShell {
     echo "To stop PostgreSQL: 'pg_ctl -D $PGDATA stop'"
     echo "To manually stop Redis: 'redis-cli -p 6379 shutdown'"
     echo "PostgreSQL started. Data directory is $PGDATA, Socket directory is $PG_SOCKET_DIR" | sed 's/./=/g'
-    echo
+    echo -e "\033[0m"
   '';
 }
