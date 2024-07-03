@@ -65,5 +65,7 @@ pkgs.mkShell {
 
     # Activate the virtual environment
     source venv/bin/activate
+
+    [ -e config.yml ] || touch config.yml
   '';
 }
