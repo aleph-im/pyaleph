@@ -101,8 +101,7 @@ def mock_config(mocker):
     config_file = Path.cwd() / "config.yml"
 
     if config_file.exists():
-        with config_file.open() as f:
-            user_config = f.read()
+        user_config = config_file.read_text()
 
         # Little trick to allow empty config files
         if user_config:
