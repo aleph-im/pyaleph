@@ -95,17 +95,17 @@ def session_factory(mock_config):
 
 
 @pytest.fixture
-def mock_config(mocker):
-    config = Config(aleph.config.get_defaults())
+def mock_config(mocker) -> Config:
+    config: Config = Config(aleph.config.get_defaults())
 
-    config_file = Path.cwd() / "config.yml"
+    config_file_path: Path = Path.cwd() / "config.yml"
 
-    if config_file.exists():
-        user_config = config_file.read_text()
+    if config_file_path.exists():
+        user_config_raw: str = config_file_path.read_text()
 
         # Little trick to allow empty config files
-        if user_config:
-            config.yaml.loads(user_config)
+        if user_config_raw:
+            config.yaml.loads(user_config_raw)
 
     # The postgres/redis hosts use Docker network names in the default config.
     # We always use localhost for tests.
