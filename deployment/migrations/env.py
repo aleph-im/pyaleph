@@ -27,7 +27,7 @@ target_metadata = Base.metadata
 # ... etc.
 
 
-def get_db_url():
+def get_db_url() -> str:
     cli_args = context.get_x_argument(as_dictionary=True)
     db_url = cli_args.get("db_url")
 
@@ -35,14 +35,22 @@ def get_db_url():
         return db_url
 
     config = get_config()
-    default_config_file = Path.cwd() / "config.yml"
-    config_file = cli_args.get("config_file") or default_config_file
-    if config_file.exists():
-        user_config = config_file.read_text()
+
+    config_file_path: Path
+
+    # intermediat variable to please mypy
+    cli_args_config_file = cli_args.get("config_file")
+    if cli_args_config_file:
+        config_file_path = Path(cli_args_config_file)
+    else:
+        config_file_path = Path.cwd() / "config.yml"
+
+    if config_file_path.exists():
+        user_config_raw: str = config_file_path.read_text()
 
         # Little trick to allow empty config files
-        if user_config:
-            config.yaml.loads(user_config)
+        if user_config_raw:
+            config.yaml.loads(user_config_raw)
 
     return make_db_url(driver="psycopg2", config=config)
 
