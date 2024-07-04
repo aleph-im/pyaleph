@@ -34,7 +34,6 @@ from aleph.services import p2p
 from aleph.services.cache.materialized_views import refresh_cache_materialized_views
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
-from aleph.services.ipfs.common import make_ipfs_client
 from aleph.services.keys import generate_keypair, save_keys
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.services.storage.garbage_collector import (
