@@ -98,6 +98,16 @@ def session_factory(mock_config):
 def mock_config(mocker):
     config = Config(aleph.config.get_defaults())
 
+    config_file = Path.cwd() / "config.yml"
+
+    if config_file.exists():
+        with config_file.open() as f:
+            user_config = f.read()
+
+        # Little trick to allow empty config files
+        if user_config:
+            config.yaml.loads(user_config)
+
     # The postgres/redis hosts use Docker network names in the default config.
     # We always use localhost for tests.
     config.postgres.host.value = "127.0.0.1"
