@@ -18,9 +18,6 @@ jobs:
             # Fetch the whole history for all tags and branches (required for aleph.__version__)
             fetch-depth: 0
 
-        - name: Setup empty config file
-          run: touch config.yml
-
         - name: Set up Nix
           uses: cachix/install-nix-action@v25
           with:

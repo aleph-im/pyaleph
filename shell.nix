@@ -23,18 +23,20 @@ pkgs.mkShell {
     echo "Setting up PostgreSQL environment..."
     export PGDATA=$(mktemp -d)
     PG_SOCKET_DIR=$(mktemp -d)
+    # avoid coliding with possible existing PostgreSQL instance
+    PG_PORT=5434
     echo "Initializing database..."
     initdb $PGDATA
 
     echo "Starting PostgreSQL with custom socket directory..."
-    pg_ctl -D $PGDATA -o "-k $PG_SOCKET_DIR" -l logfile start
+    pg_ctl -D $PGDATA -o "-k $PG_SOCKET_DIR -p $PG_PORT" -l logfile start
 
     # Wait a bit for the server to start
     sleep 1
 
     # Create the 'aleph' role and a database
-    createuser -h $PG_SOCKET_DIR aleph
-    createdb -h $PG_SOCKET_DIR aleph -O aleph
+    createuser -h $PG_SOCKET_DIR -p $PG_PORT aleph
+    createdb -h $PG_SOCKET_DIR -p $PG_PORT aleph -O aleph
 
     # Create a temporary directory for Redis
     export REDIS_DATA_DIR=$(mktemp -d)
@@ -61,16 +63,17 @@ pkgs.mkShell {
     # Activate the virtual environment
     source venv/bin/activate
 
-    [ -e config.yml ] || touch config.yml
+    # If config.yml does not exist, create it with the port specified in this shell. 
+    [ -e config.yml ] || echo -e "postgres:\n  port: $PG_PORT" > config.yml
 
     # bold
     echo -e "\e[1m"
     echo "PostgreSQL started. Data directory is $PGDATA, Socket directory is $PG_SOCKET_DIR" | sed 's/./=/g'
     echo "PostgreSQL started. Data directory is $PGDATA, Socket directory is $PG_SOCKET_DIR"
     echo "Redis started. Data directory is $REDIS_DATA_DIR"
-    echo "Use 'psql -h $PG_SOCKET_DIR' to connect to the database."
+    echo "Use 'psql -h $PG_SOCKET_DIR -p $PG_PORT' to connect to the database."
     echo "Use 'redis-cli -p 6379' to connect to the Redis server."
-    echo "To stop PostgreSQL: 'pg_ctl -D $PGDATA stop'"
+    echo "To stop PostgreSQL: 'pg_ctl -D $PGDATA -o "-p $PG_PORT" stop'"
     echo "To manually stop Redis: 'redis-cli -p 6379 shutdown'"
     echo "PostgreSQL started. Data directory is $PGDATA, Socket directory is $PG_SOCKET_DIR" | sed 's/./=/g'
     echo -e "\033[0m"
