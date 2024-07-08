@@ -63,8 +63,13 @@ def fixture_confidential_vm_message(
                 "firmware": "e258d248fda94c63753607f7c4494ee0fcbe92f1a76bfdac795c9d84101eb317",
             },
         },
+        "payment": {
+            "chain": "AVAX",
+            "type": "superfluid",
+            "receiver": "0x2319Ad3B7A8E0eE24f2E639c40D8eD124C5520Bb"
+        },
         "resources": {"vcpus": 1, "memory": 128, "seconds": 30},
-        "requirements": {"cpu": {"architecture": "x86_64"}},
+        "requirements": {"cpu": {"architecture": "x86_64"}, "node_hash": "149ec451d9b099cad112d4aaa2c00ac40fb6729a92ff252ff22eef0b5c3cb6PD"},
         "rootfs": {
             "parent": {
                 "ref": "549ec451d9b099cad112d4aaa2c00ac40fb6729a92ff252ff22eef0b5c3cb613",

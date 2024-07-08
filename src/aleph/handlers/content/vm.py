@@ -117,10 +117,13 @@ def _map_content_to_db_model(item_hash, content):
 
     trusted_execution_policy = None
     trusted_execution_firmware = None
+    node_hash = None
     if not isinstance(content, ProgramContent):
         if content.environment.trusted_execution is not None:
             trusted_execution_policy = content.environment.trusted_execution.policy
             trusted_execution_firmware = content.environment.trusted_execution.firmware
+        if hasattr(content.requirements, 'node_hash'):
+            node_hash = content.requirements.node_hash
 
     return db_cls(
         owner=content.address,
@@ -143,6 +146,7 @@ def _map_content_to_db_model(item_hash, content):
         node_address_regex=node_address_regex,
         volumes=volumes,
         created=timestamp_to_datetime(content.time),
+        node_hash=node_hash
     )
 
 

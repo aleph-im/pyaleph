@@ -147,6 +147,7 @@ class VmBaseDb(Base):
     cpu_vendor: Optional[str] = Column(String, nullable=True)
     node_owner: Optional[str] = Column(String, nullable=True)
     node_address_regex: Optional[str] = Column(String, nullable=True)
+    node_hash: Optional[str] = Column(String, nullable=True)
 
     replaces: Optional[str] = Column(ForeignKey(item_hash), nullable=True)
     created: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
