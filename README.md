@@ -55,7 +55,7 @@ This will provide you with a shell with PostgreSQL, Redis, and IPFS running.
 To run test you can run:
 
 ```bash
-nix-shell --run "pytest"
+nix-shell --run "hatch run testing:test"
 ```
 
 Or you can run the command in the nix shell:
@@ -63,7 +63,7 @@ Or you can run the command in the nix shell:
 nix-shell
 
 # inside of nix shell
-pytest
+hatch run testing:test
 ```
 
 ## Software used

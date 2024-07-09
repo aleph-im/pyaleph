@@ -3,10 +3,13 @@
 pkgs.mkShell {
   buildInputs = [
     pkgs.glibcLocales
+    pkgs.libiconv  # for macos
 
     pkgs.postgresql
     pkgs.redis
     pkgs.kubo
+    pkgs.hatch
+    pkgs.rustup
 
     pkgs.python311
     pkgs.python311Packages.virtualenv
@@ -52,16 +55,8 @@ pkgs.mkShell {
     # Trap the EXIT signal to stop services when exiting the shell
     trap 'echo "Stopping PostgreSQL..."; pg_ctl -D "$PGDATA" stop; echo "Stopping Redis..."; redis-cli -p 6379 shutdown; echo "Stopping IPFS Kubo..."; ipfs shutdown; deactivate' EXIT
 
-    # Create a virtual environment in the current directory if it doesn't exist
-    if [ ! -d "venv" ]; then
-      python3 -m virtualenv venv
-    fi
-
-    # Install the required Python packages
-    ./venv/bin/pip install -e .\[testing\]
-
-    # Activate the virtual environment
-    source venv/bin/activate
+    # PyO3 requires a nightly or dev version of Rust.
+    rustup default nightly
 
     # If config.yml does not exist, create it with the port specified in this shell. 
     [ -e config.yml ] || echo -e "postgres:\n  port: $PG_PORT" > config.yml

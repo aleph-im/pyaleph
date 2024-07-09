@@ -34,11 +34,13 @@ jobs:
       with:
         # Fetch the whole history for all tags and branches (required for aleph.__version__)
         fetch-depth: 0
+
     - name: Set up Python 3.11
       id: setup-python
       uses: actions/setup-python@v2
       with:
         python-version: 3.11
+
     - name: Install latest Rust nightly toolchain
       uses: actions-rs/toolchain@v1
       with:
@@ -49,33 +51,36 @@ jobs:
       id: pip-cache
       run: |
         echo "::set-output name=dir::$(pip cache dir)"
+
+    - name: "install hatch"
+      run: |
+        pip install hatch
+
     - uses: actions/cache@v2
       with:
         path: ${{ steps.pip-cache.outputs.dir }}
         key: ${{ runner.os }}-python-${{ steps.setup-python.outputs.python-version }}-pip-${{ hashFiles('setup.cfg') }}
+
     - name: Install Python dependencies
       run: |
         rustup default nightly  # Required to build some dependencies
         pip install wheel
         pip install --upgrade .[testing]
-    - name: Check types
-      run: |
-        mypy src/
-    - name: Check types in tests
-      run: |
-        mypy tests/
+
     - name: Run unit tests
       run: |
         sudo cp .github/openssl-ci.cnf /etc/ssl/openssl.cnf
         export OPENSSL_CONF=/etc/ssl/openssl.cnf
         touch config.yml  # Fake config file for alembic
         # TODO: determine why ResourceWarning warnings occur in some tests.
-        pytest -Werror -Wignore::ResourceWarning -v --cov .
+        hatch run testing:cov
+
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v4.0.1
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         slug: aleph-im/pyaleph
+
   build:
     runs-on: ubuntu-22.04
     needs: tests
