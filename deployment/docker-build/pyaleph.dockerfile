@@ -45,7 +45,8 @@ RUN /opt/venv/bin/python3.11 -m pip install --upgrade pip wheel
 ENV PATH="/opt/venv/bin:${PATH}"
 
 WORKDIR /opt/pyaleph
-COPY alembic.ini setup.cfg setup.py ./
+COPY alembic.ini pyproject.toml ./
+COPY LICENSE.txt README.md ./
 COPY deployment/migrations ./deployment/migrations
 COPY deployment/scripts ./deployment/scripts
 COPY .git ./.git
