@@ -11,14 +11,14 @@ pkgs.mkShell {
     pkgs.hatch
     pkgs.rustup
 
-    pkgs.python311
-    pkgs.python311Packages.virtualenv
-    pkgs.python311Packages.pip
-    pkgs.python311Packages.setuptools
+    pkgs.python312
+    pkgs.python312Packages.virtualenv
+    pkgs.python312Packages.pip
+    pkgs.python312Packages.setuptools
 
-    pkgs.python311Packages.secp256k1
-    pkgs.python311Packages.fastecdsa
-    pkgs.python311Packages.greenlet
+    pkgs.python312Packages.secp256k1
+    pkgs.python312Packages.fastecdsa
+    pkgs.python312Packages.greenlet
   ];
 
   shellHook = ''
