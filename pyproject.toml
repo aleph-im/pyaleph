@@ -1,0 +1,314 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pyaleph"
+dynamic = ["version"]
+description = "Reference implementation of Aleph.im next generation network of decentralized big data applications."
+requires-python = ">=3.11,<3.12"
+readme = "README.md"
+license = { file = "LICENSE.txt" }
+authors = [
+    { name = "Moshe Malawach", email = "moshe.malawach@protonmail.com" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python",
+]
+dependencies = [
+    "aio_pika==9.1.3",
+    "aiocache==0.12.2",
+    "aiofiles==23.2.1",
+    "aiohttp-cors==0.7.0",
+    "aiohttp-jinja2==1.5",
+    "aiohttp==3.8.4",
+    "aioipfs@git+https://github.com/aleph-im/aioipfs.git@d671c79b2871bb4d6c8877ba1e7f3ffbe7d20b71",
+    "alembic==1.12.1",
+    "aleph-message==0.4.9",
+    "aleph-p2p-client@git+https://github.com/aleph-im/p2p-service-client-python@2c04af39c566217f629fd89505ffc3270fba8676",
+    "aleph-pytezos@git+https://github.com/aleph-im/aleph-pytezos.git@32dd1749a4773da494275709060632cbeba9a51b",
+    "asyncpg==0.28.0",
+    "base58>=1.0.3",
+    "coincurve==18.0.0",
+    "configmanager==1.35.1",
+    "configparser==6.0.0",
+    "cosmospy==6.0.0",
+    "dataclasses_json==0.5.6",
+    "eth-typing~=4.0",
+    "eth_account==0.10.0",
+    "gunicorn==21.2.0",
+    "hexbytes==0.2.2",
+    "msgpack==1.0.3", # required by aiocache
+    "multiaddr==0.0.9", # for libp2p-stubs
+    "orjson>=3.7.7", # Minimum version for Python 3.11
+    "psycopg2-binary==2.9.5", # Note: psycopg3 is not yet supported by SQLAlchemy
+    "pycryptodome==3.17.0", # for libp2p-stubs
+    "pymultihash==0.8.2", # for libp2p-stubs
+    "pynacl==1.5.0",
+    "python-dateutil==2.8.2",
+    "pytz==2023.3",
+    "pyyaml==6.0",
+    "redis[hiredis]==5.0.1",
+    "requests==2.31.0",
+    "secp256k1==0.14.0",
+    "sentry-sdk==1.34.0",
+    "setproctitle==1.3.3",
+    "sqlalchemy[mypy]==1.4.52",
+    "sqlalchemy-utils==0.38.3",
+    "setuptools>=70.3.0",
+    "substrate-interface==1.7.4",
+    "types-aiofiles==23.2.0.20240403",
+    "ujson==5.1.0",  # required by aiocache
+    "urllib3==2.0.7",
+    "uvloop==0.19.0",
+    "web3==6.11.2",
+]
+dependency_links = [
+    "https://github.com/aleph-im/py-libp2p/tarball/0.1.4-1-use-set#egg=libp2p",
+    "https://github.com/aleph-im/aioipfs/tarball/hoh-more-exceptions#egg=aioipfs",
+]
+
+[project.scripts]
+pyaleph = "aleph.commands:run"
+
+[project.optional-dependencies]
+nuls2 = [
+    "aleph-nuls2==0.1.0",
+    "py-ed25519-bindings==1.0.2; python_version >=\"3.11\"",
+]
+polkadot = [
+    "substrate-interface>=0.9.27",
+]
+cosmos = [
+    "cosmospy",
+]
+docs = [
+    "sphinxcontrib-plantuml",
+]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[project.urls]
+Documentation = "https://aleph.im/"
+Homepage = "https://github.com/aleph-im/pyaleph"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "alembic.ini",
+    "src/aleph",
+    "pyproject.toml",
+    "AUTHORS.rst",
+    "CHANGELOG.rst",
+    "README.md",
+    "LICENSE.txt",
+    "code-of-conduct.md",
+]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "alembic.ini",
+    "src/aleph",
+    "pyproject.toml",
+    "AUTHORS.rst",
+    "CHANGELOG.rst",
+    "README.md",
+    "LICENSE.txt",
+    "code-of-conduct.md",
+]
+
+[tool.isort]
+profile = "black"
+
+[tool.hatch.envs.testing]
+features = [
+    "cosmos",
+    "nuls2",
+    "polkadot",
+]
+dependencies = [
+    "ipfshttpclient==0.8.0a2",  # eth/web3 test dependency, for some reason"
+    "more-itertools==8.14.0",
+    "pytest==8.0.1",
+    "pytest-cov==4.1.0",
+    "pytest-mock==3.12.0",
+    "pytest-asyncio==0.23.5",
+    "pytest-aiohttp==1.0.5",
+]
+
+# XXX see https://github.com/aleph-im/pyaleph/blob/main/.github/workflows/pyaleph-ci.yml
+[tool.hatch.envs.testing.scripts]
+test = "pytest -v {args:.}"
+test-cov = "pytest -v --cov {args:.}"
+cov-report = [
+  "- coverage combine",
+  "coverage report",
+]
+cov = [
+  "test-cov",
+  "cov-report",
+]
+
+[tool.hatch.envs.linting]
+detached = true
+dependencies = [
+    "black==24.2.0",
+    "mypy==1.2.0",
+    "mypy-extensions==1.0.0",
+    "ruff==0.4.8",
+    "isort==5.13.2",
+    "sqlalchemy[mypy]==1.4.41",
+    "types-aiofiles",
+    "types-protobuf",
+    "types-pytz",
+    "types-redis",
+    "types-requests",
+    "types-setuptools",
+]
+[tool.hatch.envs.linting.scripts]
+typing = "mypy --config-file=pyproject.toml {args:} ./src/ ./tests/"
+style = [
+    "ruff check {args:.} ./src/ ./tests/",
+    "black --check --diff {args:} ./src/ ./tests/",
+    "isort --check-only --profile black {args:} ./src/ ./tests/",
+]
+fmt = [
+    "black {args:} ./src/ ./tests/",
+    "ruff check --fix {args:.} ./src/ ./tests/",
+    "isort --profile black {args:} ./src/ ./tests/",
+    "style",
+]
+all = [
+    "style",
+    "typing",
+]
+
+[tool.mypy]
+python_version = 3.11
+mypy_path = "src"
+plugins = [
+    "sqlalchemy.ext.mypy.plugin",
+]
+exclude = [
+    "conftest.py"
+]
+show_column_numbers = true
+
+# Import discovery
+# Install types for third-party library stubs (e.g. from typeshed repository)
+install_types = true
+non_interactive = true
+
+# Import discovery
+# Suppresses error messages about imports that cannot be resolved
+ignore_missing_imports = true
+# Forces import to reference the original source file
+no_implicit_reexport = true
+# show error messages from unrelated files
+follow_imports = "silent"
+follow_imports_for_stubs = false
+
+# Suppressing errors
+# Shows errors related to strict None checking, if the global strict_optional
+# flag is enabled
+strict_optional = true
+no_implicit_optional = true
+
+# Disallow dynamic typing
+# Disallows usage of types that come from unfollowed imports
+disallow_any_unimported = false
+# Disallows all expressions in the module that have type Any
+disallow_any_expr = false
+# Disallows functions that have Any in their signature after decorator transformation.
+disallow_any_decorated = false
+# Disallows explicit Any in type positions such as type annotations and generic type parameters.
+disallow_any_explicit = false
+# Disallows usage of generic types that do not specify explicit type parameters.
+disallow_any_generics = false
+# Disallows subclassing a value of type Any.
+disallow_subclassing_any = false
+
+# Untyped definitions and calls
+# Disallows calling functions without type annotations from functions with type annotations.
+disallow_untyped_calls = false
+# Disallows defining functions without type annotations or with incomplete type annotations
+disallow_untyped_defs = false
+# Disallows defining functions with incomplete type annotations.
+check_untyped_defs = false
+# Type-checks the interior of functions without type annotations.
+disallow_incomplete_defs = false
+# Reports an error whenever a function with type annotations is decorated with a decorator without annotations.
+disallow_untyped_decorators = false
+
+# Prohibit comparisons of non-overlapping types (ex: 42 == "no")
+strict_equality = true
+
+# Configuring warnings
+# Warns about unneeded # type: ignore comments.
+warn_unused_ignores = true
+# Shows errors for missing return statements on some execution paths.
+warn_no_return = true
+# Shows a warning when returning a value with type Any from a function declared with a non- Any return type.
+warn_return_any = false
+
+# Miscellaneous strictness flags
+# Allows variables to be redefined with an arbitrary type, as long as the redefinition is in the same block and nesting level as the original definition.
+allow_redefinition = true
+
+# XXX does this thing really works?
+# Ignore the imported code from py-libp2p
+# [mypy-aleph.toolkit.libp2p_stubs.""]
+# ignore_errors = True
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+pythonpath = ["src"]
+addopts = "-vv -m \"not ledger_hardware\""
+norecursedirs = ["*.egg", "dist", "build", ".tox", ".venv", "*/site-packages/*"]
+testpaths = ["tests/unit"]
+markers = {ledger_hardware = "marks tests as requiring ledger hardware"}
+
+[tool.coverage.run]
+branch = true
+parallel = true
+source = [
+    "src/",
+]
+omit = [
+    "*/site-packages/*",
+]
+
+[tool.coverage.paths]
+source = [
+    "src/",
+]
+omit = [
+    "*/site-packages/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    # Have to re-enable the standard pragma
+    "pragma: no cover",
+
+    # Don't complain about missing debug-only code:
+    "def __repr__",
+    "if self\\.debug",
+
+    # Don't complain if tests don't hit defensive assertion code:
+    "raise AssertionError",
+    "raise NotImplementedError",
+
+    # Don't complain if non-runnable code isn't run:
+    "if 0:",
+    "if __name__ == .__main__.:",
+
+    # Don't complain about ineffective code:
+    "pass",
+]
