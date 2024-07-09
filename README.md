@@ -66,6 +66,42 @@ nix-shell
 hatch run testing:test
 ```
 
+### Run test locally
+
+We do not recommed that you run tests directly on your machine because of the
+complexity of doing so but if you want to do it you need to:
+
+- install [hatch](https://github.com/pypa/hatch), you can use pipx for that (`pipx install hatch`) or install it in a virtualenv
+- install postgresql, at least version 15.1, `apt install postgresql`
+- install redis, at least version 7, `apt install redis`
+- have de nightly version of rust install, you can use [rustup](https://rustup.rs/) for that and do a `rustup default nightly`
+
+Then configure PostgreSQL for your local application using a `config.yml` file in the root of the project.
+
+Here is an not extensible example configuration:
+
+```yaml
+postgres:
+  port: 5432
+  user: username
+  password: password
+  host:  # leave empty to use unix socket
+```
+
+All overloadable and default values can be found in `src/aleph/config.py` and
+you can also customize the redis connection this way.
+
+The you can run:
+
+```bash
+hatch run testing:test
+```
+
+Or any of the env you can see using `hatch env show`.
+
+In case of doubt you can refer to the file `.github/workflows/pyaleph-ci.yml`,
+this is how it runs on our CI.
+
 ## Software used
 
 The Aleph CCN is written in Python and requires Python v3.8+. It will not work with older versions of Python.
