@@ -100,17 +100,17 @@ def mock_config(mocker) -> Config:
 
     config_file_path: Path = Path.cwd() / "config.yml"
 
+    # The postgres/redis hosts use Docker network names in the default config.
+    # We always use localhost for tests.
+    config.postgres.host.value = "127.0.0.1"
+    config.redis.host.value = "127.0.0.1"
+
     if config_file_path.exists():
         user_config_raw: str = config_file_path.read_text()
 
         # Little trick to allow empty config files
         if user_config_raw:
             config.yaml.loads(user_config_raw)
-
-    # The postgres/redis hosts use Docker network names in the default config.
-    # We always use localhost for tests.
-    config.postgres.host.value = "127.0.0.1"
-    config.redis.host.value = "127.0.0.1"
 
     # To test handle_new_storage
     config.storage.store_files.value = True
