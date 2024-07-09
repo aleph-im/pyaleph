@@ -9,13 +9,13 @@ from aleph.db.models import MessageDb, PostDb
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
-from aleph_message.models import Chain, InstanceContent, ItemType, MessageType
+from aleph_message.models import Chain, InstanceContent, ItemType, MessageType, ItemHash
+from aleph_message.models.execution.instance import RootfsVolume
 from aleph_message.models.execution.environment import (
-    FunctionEnvironment,
+    InstanceEnvironment,
     MachineResources,
 )
-from aleph_message.models.execution.instance import RootfsVolume
-from aleph_message.models.execution.volume import ImmutableVolume, ParentVolume
+from aleph_message.models.execution.volume import ImmutableVolume, ParentVolume, VolumePersistence, PersistentVolumeSizeMib
 
 from .utils import get_messages_by_keys
 
@@ -498,22 +498,23 @@ def instance_message_fixture() -> MessageDb:
                 "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGULT6A41Msmw2KEu0R9MvUjhuWNAsbdeZ0DOwYbt4Qt user@example",
                 "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH0jqdc5dmt75QhTrWqeHDV9xN8vxbgFyOYs2fuQl7CI",
             ],
-            variables={"USE_ALEPH": True},
-            environment=FunctionEnvironment(
+            variables={"USE_ALEPH": "true"},
+            environment=InstanceEnvironment(
                 reproducible=False, internet=True, aleph_api=True, shared_cache=True
             ),
             resources=MachineResources(),
             requirements=None,
+            payment=None,
             rootfs=RootfsVolume(
                 parent=ParentVolume(
-                    ref="24695709b7ce4dc343ede66fc31a1133149b3a3ea6b460a1b3d19112ebb7ab64"
+                    ref=ItemHash("24695709b7ce4dc343ede66fc31a1133149b3a3ea6b460a1b3d19112ebb7ab64")
                 ),
-                persistence="host",
-                size_mib=1024,
+                persistence=VolumePersistence("host"),
+                size_mib=PersistentVolumeSizeMib(1024),
             ),
             volumes=[
                 ImmutableVolume(
-                    ref="7db5ed835b6770a770973c03a40f6af6404b375d59e990b959eb476208bd5fb7",
+                    ref=ItemHash("7db5ed835b6770a770973c03a40f6af6404b375d59e990b959eb476208bd5fb7"),
                     use_latest=True,
                 )
             ],

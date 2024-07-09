@@ -3,7 +3,7 @@ from copy import copy
 
 import pytest
 import pytz
-from aleph_message.models import Chain, MessageType, ItemType
+from aleph_message.models import Chain, MessageType, ItemType, ItemHash
 from sqlalchemy import select, insert, text
 
 from aleph.db.accessors.messages import (
@@ -79,7 +79,7 @@ async def test_get_message(
 
     with session_factory() as session:
         fetched_message = get_message_by_item_hash(
-            session=session, item_hash=fixture_message.item_hash
+            session=session, item_hash=ItemHash(fixture_message.item_hash)
         )
 
     assert fetched_message is not None
@@ -125,7 +125,7 @@ async def test_get_message_with_confirmations(
 
     with session_factory() as session:
         fetched_message = get_message_by_item_hash(
-            session=session, item_hash=fixture_message.item_hash
+            session=session, item_hash=ItemHash(fixture_message.item_hash)
         )
 
     assert fetched_message is not None
@@ -251,7 +251,7 @@ async def test_upsert_query_message(
         session.commit()
 
         message_db = get_message_by_item_hash(
-            session=session, item_hash=message.item_hash
+            session=session, item_hash=ItemHash(message.item_hash)
         )
 
     assert message_db
@@ -374,20 +374,20 @@ async def test_forget_message(
         session.commit()
 
         message_status = get_message_status(
-            session=session, item_hash=fixture_message.item_hash
+            session=session, item_hash=ItemHash(fixture_message.item_hash)
         )
         assert message_status
         assert message_status.status == MessageStatus.FORGOTTEN
 
         # Assert that the message is not present in messages anymore
         message = get_message_by_item_hash(
-            session=session, item_hash=fixture_message.item_hash
+            session=session, item_hash=ItemHash(fixture_message.item_hash)
         )
         assert message is None
 
         # Assert that the metadata was inserted properly in forgotten_messages
         forgotten_message = get_forgotten_message(
-            session=session, item_hash=fixture_message.item_hash
+            session=session, item_hash=ItemHash(fixture_message.item_hash)
         )
         assert forgotten_message
 

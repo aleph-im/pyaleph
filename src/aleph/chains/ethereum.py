@@ -204,7 +204,7 @@ class EthereumConnector(ChainWriter):
                 try:
                     jdata = json.loads(message)
                     context = TxContext(
-                        chain=CHAIN_NAME,
+                        chain=Chain(CHAIN_NAME),
                         hash=event_data.transactionHash.hex(),
                         time=timestamp,
                         height=event_data.blockNumber,

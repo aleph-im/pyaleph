@@ -459,7 +459,7 @@ def _get_message_with_status(
         )
 
     if status == MessageStatus.PROCESSED:
-        message_db = get_message_by_item_hash(session=session, item_hash=item_hash)
+        message_db = get_message_by_item_hash(session=session, item_hash=ItemHash(item_hash))
         if not message_db:
             raise web.HTTPNotFound()
 
@@ -502,10 +502,10 @@ def _get_message_with_status(
 
 async def view_message(request: web.Request):
     item_hash_str = request.match_info.get("item_hash")
-    try:
-        item_hash = ItemHash(item_hash_str)
-    except ValueError:
+    if not item_hash_str:
         raise web.HTTPUnprocessableEntity(text=f"Invalid message hash: {item_hash_str}")
+
+    item_hash = ItemHash(item_hash_str)
 
     session_factory: DbSessionFactory = request.app["session_factory"]
     with session_factory() as session:

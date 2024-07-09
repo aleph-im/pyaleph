@@ -219,6 +219,11 @@ async def _check_and_add_file(
         await _verify_message_signature(
             pending_message=message, signature_verifier=signature_verifier
         )
+        if not message.item_content:
+            raise web.HTTPUnprocessableEntity(
+                reason=f"Store message content needed"
+            )
+
         try:
             message_content = StoreContent.parse_raw(message.item_content)
             if message_content.item_hash != file_hash:

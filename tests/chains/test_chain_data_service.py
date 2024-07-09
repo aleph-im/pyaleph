@@ -112,6 +112,7 @@ async def test_smart_contract_protocol_ipfs_store(
     assert pending_message.item_type == ItemType.inline
     assert pending_message.channel is None
 
+    assert pending_message.item_content
     message_content = StoreContent.parse_raw(pending_message.item_content)
     assert message_content.item_hash == payload.message_content
     assert message_content.item_type == ItemType.ipfs
@@ -171,6 +172,7 @@ async def test_smart_contract_protocol_regular_message(
     assert pending_message.item_type == ItemType.inline
     assert pending_message.channel is None
 
+    assert pending_message.item_content
     message_content = PostContent.parse_raw(pending_message.item_content)
     assert message_content.address == content.address
     assert message_content.time == content.time

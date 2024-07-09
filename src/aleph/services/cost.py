@@ -1,9 +1,10 @@
 import math
 from decimal import Decimal
-from typing import Optional, Union
+from typing import Optional, Union, List
 
 from aleph_message.models import ExecutableContent, InstanceContent, ProgramContent
-from aleph_message.models.execution.volume import ImmutableVolume
+from aleph_message.models.execution.volume import ImmutableVolume, EphemeralVolume, PersistentVolume
+from aleph_message.models.execution.instance import RootfsVolume
 
 from aleph.db.accessors.files import get_file_tag, get_message_file_pin
 from aleph.db.models import StoredFileDb, FileTagDb, MessageFilePinDb
@@ -45,7 +46,7 @@ def _get_file_from_ref(
 
 def get_volume_size(session: DbSession, content: ExecutableContent) -> int:
     ref_volumes = []
-    sized_volumes = []
+    sized_volumes: List[Union[EphemeralVolume, PersistentVolume, RootfsVolume]] = []
 
     if isinstance(content, InstanceContent):
         sized_volumes.append(content.rootfs)
@@ -63,12 +64,15 @@ def get_volume_size(session: DbSession, content: ExecutableContent) -> int:
     total_volume_size: int = 0
 
     for volume in ref_volumes:
-        file = _get_file_from_ref(
-            session=session, ref=volume.ref, use_latest=volume.use_latest
-        )
-        if file is None:
-            raise RuntimeError(f"Could not find entry in file tags for {volume.ref}.")
-        total_volume_size += file.size
+        if hasattr(volume, "ref") and hasattr(volume, "use_latest"):
+            file = _get_file_from_ref(
+                session=session, ref=volume.ref, use_latest=volume.use_latest
+            )
+            if file is None:
+                raise RuntimeError(f"Could not find entry in file tags for {volume.ref}.")
+            total_volume_size += file.size
+        else:
+            raise RuntimeError(f"Could not find reference hash for {volume}.")
 
     for volume in sized_volumes:
         total_volume_size += volume.size_mib * MiB
@@ -79,7 +83,7 @@ def get_volume_size(session: DbSession, content: ExecutableContent) -> int:
 def get_additional_storage_price(
     content: ExecutableContent, session: DbSession
 ) -> Decimal:
-    nb_compute_units = content.resources.vcpus
+    nb_compute_units = Decimal(content.resources.vcpus)
 
     is_on_demand = isinstance(content, ProgramContent) and not content.on.persistent
     included_storage_per_compute_unit = (
@@ -90,7 +94,7 @@ def get_additional_storage_price(
 
     total_volume_size = get_volume_size(session, content)
     additional_storage = max(
-        total_volume_size - (included_storage_per_compute_unit * nb_compute_units), 0
+        Decimal(total_volume_size) - (included_storage_per_compute_unit * nb_compute_units), Decimal(0)
     )
     return Decimal(additional_storage) * EXTRA_STORAGE_TOKEN_TO_HOLD
 

@@ -132,6 +132,7 @@ class PostMessageHandler(ContentHandler):
         if (
             content.type == self.balances_post_type
             and content.address in self.balances_addresses
+            and content.content
         ):
             LOGGER.info("Updating balances...")
             update_balances(session=session, content=content.content)
@@ -150,7 +151,7 @@ class PostMessageHandler(ContentHandler):
         delete_post(session=session, item_hash=message.item_hash)
 
         if content.type == "amend":
-            original_post = get_original_post(session, content.ref)
+            original_post = get_original_post(session, str(content.ref))
             if original_post is None:
                 raise InternalError(
                     f"Could not find original post ({content.ref} for amend ({message.item_hash})."

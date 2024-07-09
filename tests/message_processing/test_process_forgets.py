@@ -1,7 +1,7 @@
 import datetime as dt
 
 import pytest
-from aleph_message.models import Chain, MessageType, ItemType
+from aleph_message.models import Chain, MessageType, ItemType, ItemHash
 from configmanager import Config
 from more_itertools import one
 from sqlalchemy import select
@@ -114,7 +114,7 @@ async def test_forget_post_message(
         target_message = target_message_result.message
 
         # Sanity check
-        post = get_post(session=session, item_hash=target_message.item_hash)
+        post = get_post(session=session, item_hash=ItemHash(target_message.item_hash))
         assert post
 
         # Now process, the forget message
@@ -129,24 +129,24 @@ async def test_forget_post_message(
         forget_message = forget_message_result.message
 
         target_message_status = get_message_status(
-            session=session, item_hash=target_message.item_hash
+            session=session, item_hash=ItemHash(target_message.item_hash)
         )
         assert target_message_status
         assert target_message_status.status == MessageStatus.FORGOTTEN
 
         forget_message_status = get_message_status(
-            session=session, item_hash=forget_message.item_hash
+            session=session, item_hash=ItemHash(forget_message.item_hash)
         )
         assert forget_message_status
         assert forget_message_status.status == MessageStatus.PROCESSED
 
         forgotten_message = get_forgotten_message(
-            session=session, item_hash=target_message.item_hash
+            session=session, item_hash=ItemHash(target_message.item_hash)
         )
         assert forgotten_message
 
         # Check that the post was deleted
-        post = get_post(session=session, item_hash=target_message.item_hash)
+        post = get_post(session=session, item_hash=ItemHash(target_message.item_hash))
         assert post is None
 
 
@@ -303,13 +303,13 @@ async def test_forget_forget_message(
             assert isinstance(result, RejectedMessage)
 
         target_message_status = get_message_status(
-            session=session, item_hash=target_message.item_hash
+            session=session, item_hash=ItemHash(target_message.item_hash)
         )
         assert target_message_status
         assert target_message_status.status == MessageStatus.PROCESSED
 
         forget_message_status = get_message_status(
-            session=session, item_hash=pending_forget_message.item_hash
+            session=session, item_hash=ItemHash(pending_forget_message.item_hash)
         )
         assert forget_message_status
         assert forget_message_status.status == MessageStatus.REJECTED
@@ -450,14 +450,14 @@ async def test_forget_store_multi_users(
         assert isinstance(forget_message_result, ProcessedMessage)
 
         message1_status = get_message_status(
-            session=session, item_hash=store_message_user1.item_hash
+            session=session, item_hash=ItemHash(store_message_user1.item_hash)
         )
         assert message1_status
         assert message1_status.status == MessageStatus.FORGOTTEN
 
         # Check that the second message and its linked objects are still there
         message2_status = get_message_status(
-            session=session, item_hash=store_message_user2.item_hash
+            session=session, item_hash=ItemHash(store_message_user2.item_hash)
         )
         assert message2_status
         assert message2_status.status == MessageStatus.PROCESSED

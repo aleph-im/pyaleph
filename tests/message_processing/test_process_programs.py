@@ -5,11 +5,9 @@ from typing import List
 
 import pytest
 import pytz
-from aleph_message.models import ItemType, Chain, MessageType
-from aleph_message.models.execution.program import (
-    MachineType,
-    ProgramContent,
-)
+from aleph_message.models import ItemType, Chain, MessageType, ItemHash
+from aleph_message.models.execution import MachineType
+from aleph_message.models.execution.program import ProgramContent
 from aleph_message.models.execution.volume import ImmutableVolume, VolumePersistence
 from more_itertools import one
 from sqlalchemy import select
@@ -119,6 +117,7 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
     Insert volume references in the DB to make the program processable.
     """
 
+    assert message.item_content
     content = ProgramContent.parse_raw(message.item_content)
     volumes = get_volumes_with_ref(content)
 
@@ -282,17 +281,18 @@ async def test_process_program_missing_volumes(
     _ = [message async for message in pipeline]
 
     with session_factory() as session:
-        program_db = get_program(session=session, item_hash=program_hash)
+        program_db = get_program(session=session, item_hash=ItemHash(program_hash))
         assert program_db is None
 
-        message_status = get_message_status(session=session, item_hash=program_hash)
+        message_status = get_message_status(session=session, item_hash=ItemHash(program_hash))
         assert message_status is not None
         assert message_status.status == MessageStatus.REJECTED
 
-        rejected_message = get_rejected_message(session=session, item_hash=program_hash)
+        rejected_message = get_rejected_message(session=session, item_hash=ItemHash(program_hash))
         assert rejected_message is not None
         assert rejected_message.error_code == ErrorCode.VM_VOLUME_NOT_FOUND
 
+        assert program_message.item_content
         content = ProgramContent.parse_raw(program_message.item_content)
         volume_refs = set(volume.ref for volume in get_volumes_with_ref(content))
         assert isinstance(rejected_message.details, dict)

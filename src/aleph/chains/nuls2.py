@@ -119,7 +119,7 @@ class Nuls2Connector(ChainWriter):
                 jdata = json.loads(ddata)
 
                 context = TxContext(
-                    chain=CHAIN_NAME,
+                    chain=Chain(CHAIN_NAME),
                     hash=tx["hash"],
                     height=tx["height"],
                     time=tx["createTime"],

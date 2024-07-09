@@ -17,7 +17,7 @@ TODO: this module should reasonably be part of aleph message, if only
       in aleph-client.
 """
 
-from typing import Any, Literal, Generic
+from typing import Any, Literal, Generic, Dict, Type
 
 from aleph_message.models import (
     AggregateContent,
@@ -93,43 +93,43 @@ class BasePendingMessage(AlephBaseMessage, Generic[MType, ContentType]):
 
 
 class PendingAggregateMessage(
-    BasePendingMessage[Literal[MessageType.aggregate], AggregateContent]  # type: ignore
+    BasePendingMessage[Literal[MessageType.aggregate], AggregateContent]
 ):
     pass
 
 
 class PendingForgetMessage(
-    BasePendingMessage[Literal[MessageType.forget], ForgetContent]  # type: ignore
+    BasePendingMessage[Literal[MessageType.forget], ForgetContent]
 ):
     pass
 
 
 class PendingInstanceMessage(
-    BasePendingMessage[Literal[MessageType.instance], InstanceContent]  # type: ignore
+    BasePendingMessage[Literal[MessageType.instance], InstanceContent]
 ):
     pass
 
 
-class PendingPostMessage(BasePendingMessage[Literal[MessageType.post], PostContent]):  # type: ignore
+class PendingPostMessage(BasePendingMessage[Literal[MessageType.post], PostContent]):
     pass
 
 
 class PendingProgramMessage(
-    BasePendingMessage[Literal[MessageType.program], ProgramContent]  # type: ignore
+    BasePendingMessage[Literal[MessageType.program], ProgramContent]
 ):
     pass
 
 
-class PendingStoreMessage(BasePendingMessage[Literal[MessageType.store], StoreContent]):  # type: ignore
+class PendingStoreMessage(BasePendingMessage[Literal[MessageType.store], StoreContent]):
     pass
 
 
 class PendingInlineStoreMessage(PendingStoreMessage):
     item_content: str
-    item_type: Literal[ItemType.inline]     # type: ignore[valid-type]
+    item_type: Literal[ItemType.inline]
 
 
-MESSAGE_TYPE_TO_CLASS = {
+MESSAGE_TYPE_TO_CLASS: Dict[Any, Type[PendingAggregateMessage | PendingForgetMessage | PendingInstanceMessage | PendingPostMessage | PendingProgramMessage | PendingStoreMessage]] = {
     MessageType.aggregate: PendingAggregateMessage,
     MessageType.forget: PendingForgetMessage,
     MessageType.instance: PendingInstanceMessage,

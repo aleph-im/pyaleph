@@ -164,7 +164,7 @@ class ForgetMessageHandler(ContentHandler):
     async def _forget_item_hash(
         self, session: DbSession, item_hash: str, forgotten_by: MessageDb
     ):
-        message_status = get_message_status(session=session, item_hash=item_hash)
+        message_status = get_message_status(session=session, item_hash=ItemHash(item_hash))
         if not message_status:
             raise ForgetTargetNotFound(target_hash=item_hash)
 
@@ -187,7 +187,7 @@ class ForgetMessageHandler(ContentHandler):
             )
             raise ForgetTargetNotFound(item_hash)
 
-        message = get_message_by_item_hash(session=session, item_hash=item_hash)
+        message = get_message_by_item_hash(session=session, item_hash=ItemHash(item_hash))
         if not message:
             raise ForgetTargetNotFound(item_hash)
 

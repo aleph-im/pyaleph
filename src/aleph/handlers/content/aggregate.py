@@ -46,7 +46,7 @@ class AggregateMessageHandler(ContentHandler):
         content = cast(AggregateContent, message.parsed_content)
         aggregate_element = AggregateElementDb(
             item_hash=message.item_hash,
-            key=content.key,
+            key=str(content.key),
             owner=content.address,
             content=content.content,
             creation_datetime=timestamp_to_datetime(message.parsed_content.time),
@@ -228,10 +228,10 @@ class AggregateMessageHandler(ContentHandler):
         key = content.key
 
         LOGGER.debug("Deleting aggregate element %s...", message.item_hash)
-        delete_aggregate(session=session, owner=owner, key=key)
+        delete_aggregate(session=session, owner=owner, key=str(key))
         delete_aggregate_element(session=session, item_hash=message.item_hash)
 
         LOGGER.debug("Refreshing aggregate %s/%s...", owner, key)
-        refresh_aggregate(session=session, owner=owner, key=key)
+        refresh_aggregate(session=session, owner=owner, key=str(key))
 
         return set()

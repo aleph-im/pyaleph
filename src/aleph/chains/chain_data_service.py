@@ -3,7 +3,7 @@ from io import StringIO
 from typing import Dict, Optional, List, Any, Mapping, Set, cast, Type, Union, Self
 
 import aio_pika.abc
-from aleph_message.models import StoreContent, ItemType, Chain, MessageType
+from aleph_message.models import StoreContent, ItemType, Chain, MessageType, ItemHash
 from configmanager import Config
 from pydantic import ValidationError
 
@@ -187,7 +187,8 @@ class ChainDataService:
                 address=payload.address,
                 time=payload.timestamp_seconds,
                 item_type=ItemType.ipfs,
-                item_hash=payload.content,
+                item_hash=ItemHash(payload.content),
+                metadata=None,
             )
             item_content = content.json(exclude_none=True)
         else:

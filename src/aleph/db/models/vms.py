@@ -1,7 +1,7 @@
 import datetime as dt
 from typing import Any, Optional, Dict, List
 
-from aleph_message.models.execution.program import MachineType, Encoding
+from aleph_message.models.execution import MachineType, Encoding
 from aleph_message.models.execution.volume import VolumePersistence
 from sqlalchemy import Column, String, ForeignKey, Boolean, Integer, TIMESTAMP
 from sqlalchemy.dialects.postgresql import JSONB
