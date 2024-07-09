@@ -25,4 +25,4 @@ jobs:
             nix_path: nixpkgs=channel:${{ matrix.os == 'macos-latest' && 'nixpkgs-23.11-darwin' || 'nixos-23.11' }}
 
         - name: Run tests
-          run: nix-shell --run "pytest"
+          run: nix-shell --run "hatch run testing:test"
