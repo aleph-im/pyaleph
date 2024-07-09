@@ -1,0 +1,30 @@
+name: Test code quality
+
+on:
+  push:
+  pull_request:
+    branches:
+      - "*"
+
+jobs:
+  code-quality:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pip and hatch
+        run: |
+          sudo apt-get install -y python3-pip
+          pip3 install hatch hatch-vcs
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-code-quality-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-code-quality-${{ hashFiles('pyproject.toml') }}
+
+      - name: Run Hatch lint
+        run: hatch run linting:all
