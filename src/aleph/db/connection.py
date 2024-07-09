@@ -28,9 +28,20 @@ def make_db_url(
     password = config.postgres.password.value
     database = config.postgres.database.value
 
-    connection_string = (
-        f"postgresql+{driver}://{user}:{password}@{host}:{port}/{database}"
+    connection_string = f"postgresql+{driver}://{user}:"
+
+    if password is not None:
+        connection_string += f"{password}"
+
+    connection_string += "@"
+
+    if host is not None:
+        connection_string += f"{host}:{port}"
+
+    connection_string += (
+        f"/{database}"
     )
+
     if application_name:
         connection_string += f"?application_name={application_name}"
 
