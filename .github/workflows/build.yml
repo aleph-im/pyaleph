@@ -1,0 +1,35 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+  pull_request:
+    branches:
+      - "*"
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+
+      - name: Log in to registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Download Docker cache image (if available)
+        run: docker pull ghcr.io/$GITHUB_REPOSITORY/build-cache || true
+
+      - name: Build the Docker image
+        run: |
+          git fetch --prune --unshallow --tags
+          docker build . -t pyaleph-node:${GITHUB_REF##*/} -f deployment/docker-build/pyaleph.dockerfile --cache-from=ghcr.io/$GITHUB_REPOSITORY/build-cache
+
+      - name: Push the image to the cache
+        # It's not possible to push packages from fork PRs.
+        if: github.ref == 'refs/heads/main' || github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          docker tag pyaleph-node:${GITHUB_REF##*/} ghcr.io/$GITHUB_REPOSITORY/build-cache
+          docker push ghcr.io/$GITHUB_REPOSITORY/build-cache
