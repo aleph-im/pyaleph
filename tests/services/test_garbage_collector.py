@@ -3,19 +3,18 @@ from typing import List
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import select
 
 from aleph.db.accessors.files import get_file
 from aleph.db.models import (
-    StoredFileDb,
-    MessageFilePinDb,
     GracePeriodFilePinDb,
+    MessageFilePinDb,
+    StoredFileDb,
     TxFilePinDb,
 )
 from aleph.services.storage.engine import StorageEngine
 from aleph.services.storage.garbage_collector import GarbageCollector
 from aleph.storage import StorageService
-from aleph.types.db_session import DbSessionFactory, DbSession
+from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.files import FileType
 
 

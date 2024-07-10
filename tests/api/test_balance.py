@@ -1,9 +1,6 @@
-import json
-
 import pytest
-from aleph.db.models import (
-    AlephBalanceDb,
-)
+
+from aleph.db.models import AlephBalanceDb
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 
 MESSAGES_URI = "/api/v0/addresses/0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba/balance"

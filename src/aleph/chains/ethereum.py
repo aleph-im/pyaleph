@@ -29,6 +29,7 @@ from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainEventType
 from aleph.types.db_session import DbSessionFactory
 from aleph.utils import run_in_executor
+
 from .abc import ChainWriter, Verifier
 from .chain_data_service import ChainDataService, PendingTxPublisher
 from .indexer_reader import AlephIndexerReader
@@ -94,7 +95,7 @@ class EthereumVerifier(Verifier):
                 )
                 return False
 
-        except Exception as e:
+        except Exception:
             LOGGER.exception("Error processing signature for %s" % message.sender)
             verified = False
 

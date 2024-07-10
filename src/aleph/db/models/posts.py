@@ -1,10 +1,11 @@
 import datetime as dt
 from typing import Any, Optional
 
-from sqlalchemy import Column, String, TIMESTAMP, ForeignKey
+from sqlalchemy import TIMESTAMP, Column, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB
 
 from aleph.types.channel import Channel
+
 from .base import Base
 
 

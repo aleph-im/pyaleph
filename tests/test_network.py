@@ -3,7 +3,6 @@ import datetime as dt
 import pytest
 from configmanager import Config
 
-from aleph.chains.connector import ChainConnector
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.models import PendingMessageDb
 from aleph.handlers.message_handler import MessageHandler

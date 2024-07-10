@@ -4,14 +4,11 @@ import logging
 
 from aioipfs import NotPinnedError
 from aioipfs.api import RepoAPI
-from aleph_message.models import ItemType, ItemHash
+from aleph_message.models import ItemHash, ItemType
 from configmanager import Config
 
-from aleph.db.accessors.files import (
-    get_unpinned_files,
-    delete_file as delete_file_db,
-    delete_grace_period_file_pins,
-)
+from aleph.db.accessors.files import delete_file as delete_file_db
+from aleph.db.accessors.files import delete_grace_period_file_pins, get_unpinned_files
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSessionFactory
@@ -43,7 +40,7 @@ class GarbageCollector:
         LOGGER.debug("Deleting %s from local storage")
         await self._delete_from_local_storage(file_hash)
 
-        LOGGER.debug(f"Removed from IPFS: %s", file_hash)
+        LOGGER.debug("Removed from IPFS: %s", file_hash)
 
     async def _delete_from_local_storage(self, file_hash: ItemHash):
         LOGGER.debug(f"Removing from local storage: {file_hash}")

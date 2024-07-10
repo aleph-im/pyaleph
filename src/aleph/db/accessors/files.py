@@ -1,5 +1,5 @@
 import datetime as dt
-from typing import Optional, Iterable, Collection, Tuple
+from typing import Collection, Iterable, Optional, Tuple
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -8,15 +8,16 @@ from sqlalchemy.engine import Row
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag, FileType
 from aleph.types.sort_order import SortOrder
+
 from ..models.files import (
+    ContentFilePinDb,
     FilePinDb,
+    FilePinType,
     FileTagDb,
+    GracePeriodFilePinDb,
+    MessageFilePinDb,
     StoredFileDb,
     TxFilePinDb,
-    MessageFilePinDb,
-    FilePinType,
-    ContentFilePinDb,
-    GracePeriodFilePinDb,
 )
 
 

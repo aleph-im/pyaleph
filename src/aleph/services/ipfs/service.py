@@ -2,7 +2,7 @@ import asyncio
 import concurrent
 import json
 import logging
-from typing import IO, Optional, Union, Dict, Self
+from typing import Dict, Optional, Self, Union
 
 import aiohttp
 import aioipfs
@@ -75,7 +75,7 @@ class IpfsService:
                 result = None
                 await asyncio.sleep(0.5)
                 continue
-            except (asyncio.TimeoutError):
+            except asyncio.TimeoutError:
                 result = None
                 await asyncio.sleep(0.5)
             except (
@@ -136,7 +136,9 @@ class IpfsService:
                         details = "file not found"
                     else:
                         details = "could not fetch some blocks"
-                    raise FileUnavailable(f"Could not pin IPFS content at this time ({details})")
+                    raise FileUnavailable(
+                        f"Could not pin IPFS content at this time ({details})"
+                    )
             else:
                 # Reset the timeout counter if there is some measure of progress
                 tick_timeout = timeout * 2

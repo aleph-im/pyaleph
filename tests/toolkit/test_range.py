@@ -1,7 +1,8 @@
 from typing import List
 
-from aleph.toolkit.range import Range, MultiRange, int_range
 import pytest
+
+from aleph.toolkit.range import MultiRange, Range, int_range
 
 
 @pytest.mark.parametrize(

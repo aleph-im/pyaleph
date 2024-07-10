@@ -1,7 +1,7 @@
 import datetime as dt
 from enum import Enum
 
-from sqlalchemy import Column, String, TIMESTAMP
+from sqlalchemy import TIMESTAMP, Column, String
 from sqlalchemy_utils.types.choice import ChoiceType
 
 from .base import Base

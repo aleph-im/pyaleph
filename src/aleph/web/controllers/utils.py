@@ -4,8 +4,7 @@ import json
 import logging
 from io import BytesIO, StringIO
 from math import ceil
-from typing import Optional, Any, Mapping, List, Union, Dict
-from typing import overload
+from typing import Any, Dict, List, Mapping, Optional, Union, overload
 
 import aio_pika
 import aio_pika.abc
@@ -18,7 +17,7 @@ from pydantic import BaseModel
 
 import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.files import insert_grace_period_file_pin
-from aleph.schemas.pending_messages import parse_message, BasePendingMessage
+from aleph.schemas.pending_messages import BasePendingMessage, parse_message
 from aleph.services.ipfs import IpfsService
 from aleph.services.p2p.pubsub import publish as pub_p2p
 from aleph.toolkit.shield import shielded
@@ -26,15 +25,15 @@ from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import (
     InvalidMessageException,
-    MessageStatus,
     MessageProcessingStatus,
+    MessageStatus,
 )
 from aleph.types.protocol import Protocol
 from aleph.web.controllers.app_state_getters import (
     get_config_from_request,
     get_ipfs_service_from_request,
-    get_p2p_client_from_request,
     get_mq_channel_from_request,
+    get_p2p_client_from_request,
 )
 
 DEFAULT_MESSAGES_PER_PAGE = 20
@@ -43,18 +42,15 @@ LIST_FIELD_SEPARATOR = ","
 
 
 @overload
-def file_field_to_io(multi_dict: bytes) -> BytesIO:
-    ...
+def file_field_to_io(multi_dict: bytes) -> BytesIO: ...
 
 
 @overload
-def file_field_to_io(multi_dict: str) -> StringIO:
-    ...
+def file_field_to_io(multi_dict: str) -> StringIO: ...  # type: ignore[misc]
 
 
 @overload
-def file_field_to_io(multi_dict: FileField) -> BytesIO:
-    ...
+def file_field_to_io(multi_dict: FileField) -> BytesIO: ...
 
 
 def file_field_to_io(file_field):
@@ -77,7 +73,7 @@ def get_path_page(request: web.Request) -> Optional[int]:
         raise web.HTTPBadRequest(text=f"Invalid page value in path: {page_str}")
 
     if page < 1:
-        raise web.HTTPUnprocessableEntity(text=f"Page number must be greater than 1.")
+        raise web.HTTPUnprocessableEntity(text="Page number must be greater than 1.")
 
     return page
 

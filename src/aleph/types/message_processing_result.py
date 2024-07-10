@@ -1,11 +1,8 @@
 from typing import Any, Dict, Protocol
 
-from aleph.db.models import PendingMessageDb, MessageDb
+from aleph.db.models import MessageDb, PendingMessageDb
 from aleph.schemas.api.messages import format_message
-from aleph.types.message_status import (
-    ErrorCode,
-    MessageProcessingStatus,
-)
+from aleph.types.message_status import ErrorCode, MessageProcessingStatus
 
 
 class MessageProcessingResult(Protocol):
@@ -33,7 +30,10 @@ class ProcessedMessage(MessageProcessingResult):
         return self.message.item_hash
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"status": self.status.value, "message": format_message(self.message).dict()}
+        return {
+            "status": self.status.value,
+            "message": format_message(self.message).dict(),
+        }
 
 
 class FailedMessage(MessageProcessingResult):

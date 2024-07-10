@@ -4,16 +4,16 @@ import itertools
 import logging
 from dataclasses import dataclass
 from typing import (
-    Mapping,
+    Any,
+    Dict,
+    Iterable,
     List,
+    Mapping,
     Optional,
     Tuple,
-    TypeVar,
     Type,
+    TypeVar,
     Union,
-    Dict,
-    Any,
-    Iterable,
 )
 
 import aiohttp
@@ -23,22 +23,22 @@ from pydantic import BaseModel
 import aleph.toolkit.json as aleph_json
 from aleph.chains.chain_data_service import PendingTxPublisher
 from aleph.db.accessors.chains import (
-    get_missing_indexer_datetime_multirange,
     add_indexer_range,
+    get_missing_indexer_datetime_multirange,
 )
 from aleph.db.models import ChainTxDb
 from aleph.schemas.chains.indexer_response import (
     EntityType,
-    IndexerBlockchain,
     IndexerAccountStateResponse,
+    IndexerBlockchain,
     IndexerEventResponse,
     MessageEvent,
     SyncEvent,
 )
-from aleph.toolkit.range import Range, MultiRange
+from aleph.toolkit.range import MultiRange, Range
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.chain_sync import ChainEventType, ChainSyncProtocol
-from aleph.types.db_session import DbSessionFactory, DbSession
+from aleph.types.db_session import DbSession, DbSessionFactory
 
 LOGGER = logging.getLogger(__name__)
 

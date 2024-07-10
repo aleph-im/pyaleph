@@ -3,15 +3,15 @@ Global objects used by API endpoints are stored in the aiohttp app object.
 This module provides an abstraction layer over the dictionary keys used to
 address these objects.
 """
+
 import logging
-from typing import Optional, cast, TypeVar
+from typing import Optional, TypeVar, cast
 
 import aio_pika.abc
 from aiohttp import web
 from aleph_p2p_client import AlephP2PServiceClient
 from configmanager import Config
 
-from aleph.chains.connector import ChainConnector
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
