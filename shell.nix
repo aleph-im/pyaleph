@@ -71,7 +71,7 @@ pkgs.mkShell {
     echo "PostgreSQL started. Data directory is $PGDATA, Socket directory is $PG_SOCKET_DIR" | sed 's/./=/g'
     echo "PostgreSQL started. Data directory is $PGDATA, Socket directory is $PG_SOCKET_DIR"
     echo "Redis started. Data directory is $REDIS_DATA_DIR"
-    echo "Use 'psql -h $PG_SOCKET_DIR -p $PG_PORT' to connect to the database."
+    echo "Use 'psql -h $PG_SOCKET_DIR -p $PG_PORT -U aleph aleph' to connect to the database."
     echo "Use 'redis-cli -p 6379' to connect to the Redis server."
     echo "To stop PostgreSQL: 'pg_ctl -D $PGDATA -o "-p $PG_PORT" stop'"
     echo "To manually stop Redis: 'redis-cli -p 6379 shutdown'"
