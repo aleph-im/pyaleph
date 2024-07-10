@@ -1,5 +1,6 @@
 from aleph_p2p_client import AlephP2PServiceClient
 from multiaddr import Multiaddr
+
 from aleph.toolkit.libp2p_stubs.peer.peerinfo import info_from_p2p_addr
 
 

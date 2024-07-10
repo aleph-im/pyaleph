@@ -11,6 +11,10 @@ import aiofiles
 import pydantic
 from aiohttp import BodyPartReader, web
 from aiohttp.web_request import FileField
+from aleph_message.models import ItemType, StoreContent
+from mypy.dmypy_server import MiB
+from pydantic import ValidationError
+
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.balances import get_total_balance
 from aleph.db.accessors.cost import get_total_cost_for_address
@@ -24,7 +28,7 @@ from aleph.schemas.pending_messages import (
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import InvalidSignature
-from aleph.utils import get_sha256, item_type_from_hash, run_in_executor
+from aleph.utils import item_type_from_hash, run_in_executor
 from aleph.web.controllers.app_state_getters import (
     get_config_from_request,
     get_mq_channel_from_request,
@@ -38,9 +42,6 @@ from aleph.web.controllers.utils import (
     broadcast_status_to_http_status,
     mq_make_aleph_message_topic_queue,
 )
-from aleph_message.models import ItemType, StoreContent
-from mypy.dmypy_server import MiB
-from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,7 @@ async def add_storage_json_controller(request: web.Request):
 
 
 async def _verify_message_signature(
-        pending_message: BasePendingMessage, signature_verifier: SignatureVerifier
+    pending_message: BasePendingMessage, signature_verifier: SignatureVerifier
 ) -> None:
     try:
         await signature_verifier.verify_signature(pending_message)
@@ -130,7 +131,7 @@ class UploadedFile:
     async def open_temp_file(self):
         if not self._temp_file_path:
             raise ValueError("File content has not been validated and read yet.")
-        self._temp_file = await aiofiles.open(self._temp_file_path, 'rb')
+        self._temp_file = await aiofiles.open(self._temp_file_path, "rb")
         return self._temp_file
 
     async def close_temp_file(self):
@@ -158,11 +159,11 @@ class UploadedFile:
 
         # it would be ideal to uses aiofiles.tempfile.NamedTemporaryFile but it
         # doesn't seems to be able to support our current workflow
-        temp_file = tempfile.NamedTemporaryFile('w+b', delete=False)
+        temp_file = tempfile.NamedTemporaryFile("w+b", delete=False)
         self._temp_file_path = temp_file.name
         temp_file.close()
 
-        async with aiofiles.open(self._temp_file_path, 'w+b') as f:
+        async with aiofiles.open(self._temp_file_path, "w+b") as f:
             async for chunk in self._read_chunks(chunk_size):
                 total_read += len(chunk)
                 if total_read > self.max_size:
@@ -206,12 +207,12 @@ class RawUploadedFile(UploadedFile):
 
 
 async def _check_and_add_file(
-        session: DbSession,
-        signature_verifier: SignatureVerifier,
-        storage_service: StorageService,
-        message: Optional[PendingStoreMessage],
-        uploaded_file: UploadedFile,
-        grace_period: int,
+    session: DbSession,
+    signature_verifier: SignatureVerifier,
+    storage_service: StorageService,
+    message: Optional[PendingStoreMessage],
+    uploaded_file: UploadedFile,
+    grace_period: int,
 ) -> str:
     file_hash = uploaded_file.get_hash()
     # Perform authentication and balance checks
@@ -220,9 +221,7 @@ async def _check_and_add_file(
             pending_message=message, signature_verifier=signature_verifier
         )
         if not message.item_content:
-            raise web.HTTPUnprocessableEntity(
-                reason=f"Store message content needed"
-            )
+            raise web.HTTPUnprocessableEntity(reason="Store message content needed")
 
         try:
             message_content = StoreContent.parse_raw(message.item_content)
@@ -251,12 +250,12 @@ async def _check_and_add_file(
     elif isinstance(file_content, str):
         file_bytes = file_content.encode("utf-8")
     else:
-        raise web.HTTPUnprocessableEntity(reason=f"Invalid file content type, got {type(file_content)}")
+        raise web.HTTPUnprocessableEntity(
+            reason=f"Invalid file content type, got {type(file_content)}"
+        )
 
     await storage_service.add_file_content_to_local_storage(
-        session=session,
-        file_content=file_bytes,
-        file_hash=file_hash
+        session=session, file_content=file_bytes, file_hash=file_hash
     )
     await uploaded_file.cleanup()
 
@@ -269,9 +268,9 @@ async def _check_and_add_file(
 
 
 async def _make_mq_queue(
-        request: web.Request,
-        sync: bool,
-        routing_key: Optional[str] = None,
+    request: web.Request,
+    sync: bool,
+    routing_key: Optional[str] = None,
 ) -> Optional[aio_pika.abc.AbstractQueue]:
     if not sync:
         return None
@@ -296,17 +295,21 @@ async def storage_add_file(request: web.Request):
         if request.content_type == "multipart/form-data":
             reader = await request.multipart()
             async for part in reader:
-                if part.name == 'file':
+                if part.name == "file":
                     uploaded_file = MultipartUploadedFile(part, MAX_FILE_SIZE)
                     await uploaded_file.read_and_validate()
-                elif part.name == 'metadata':
+                elif part.name == "metadata":
                     metadata = await part.read(decode=True)
         else:
-            uploaded_file = RawUploadedFile(request=request, max_size=MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE)
+            uploaded_file = RawUploadedFile(
+                request=request, max_size=MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE
+            )
             await uploaded_file.read_and_validate()
 
         if uploaded_file is None:
-            raise web.HTTPBadRequest(reason="File should be sent as FormData or Raw Upload")
+            raise web.HTTPBadRequest(
+                reason="File should be sent as FormData or Raw Upload"
+            )
 
         max_upload_size = (
             MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE if not metadata else MAX_FILE_SIZE

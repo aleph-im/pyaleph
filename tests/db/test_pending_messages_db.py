@@ -1,16 +1,16 @@
+import datetime as dt
 from typing import List
 
 import pytest
-from aleph_message.models import ItemType, Chain, MessageType
+from aleph_message.models import Chain, ItemType, MessageType
 
 from aleph.db.accessors.pending_messages import (
     count_pending_messages,
     get_next_pending_messages,
 )
-from aleph.db.models import PendingMessageDb, ChainTxDb
+from aleph.db.models import ChainTxDb, PendingMessageDb
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.db_session import DbSessionFactory
-import datetime as dt
 
 
 @pytest.fixture

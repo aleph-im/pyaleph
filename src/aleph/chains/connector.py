@@ -6,6 +6,7 @@ from aleph_message.models import Chain
 from configmanager import Config
 
 from aleph.types.db_session import DbSessionFactory
+
 from .abc import ChainReader, ChainWriter
 from .bsc import BscConnector
 from .chain_data_service import ChainDataService, PendingTxPublisher

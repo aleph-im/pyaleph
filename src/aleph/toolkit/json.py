@@ -3,9 +3,9 @@ An abstraction layer for JSON serialization/deserialization.
 Makes swapping between JSON implementations easier.
 """
 
+from typing import IO, Any, Union
 
 import orjson
-from typing import Any, IO, Union
 
 # The actual type of serialized JSON as returned by the JSON serializer.
 SerializedJson = bytes

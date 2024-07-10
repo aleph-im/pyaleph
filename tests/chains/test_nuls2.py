@@ -1,6 +1,7 @@
-from aleph.chains.nuls2 import Nuls2Connector, Nuls2Verifier
-from aleph.schemas.pending_messages import parse_message
 import pytest
+
+from aleph.chains.nuls2 import Nuls2Verifier
+from aleph.schemas.pending_messages import parse_message
 
 
 @pytest.mark.asyncio

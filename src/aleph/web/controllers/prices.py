@@ -9,7 +9,7 @@ from aleph_message.models import ExecutableContent, ItemHash, MessageType
 from dataclasses_json import DataClassJsonMixin
 
 from aleph.db.accessors.messages import get_message_by_item_hash, get_message_status
-from aleph.db.models import MessageDb, MessageStatusDb
+from aleph.db.models import MessageDb
 from aleph.services.cost import compute_cost, compute_flow_cost
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_status import MessageStatus
@@ -89,5 +89,9 @@ async def message_price(request: web.Request):
         except RuntimeError as e:
             raise web.HTTPNotFound(reason=str(e))
 
-    return web.json_response({"required_tokens": float(required_tokens),
-                              "payment_type": content.payment.type if content.payment else None})
+    return web.json_response(
+        {
+            "required_tokens": float(required_tokens),
+            "payment_type": content.payment.type if content.payment else None,
+        }
+    )

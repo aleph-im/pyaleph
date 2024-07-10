@@ -1,27 +1,27 @@
 import datetime as dt
 import json
-from typing import Dict, List, Sequence, Iterable
+from typing import Dict, Iterable, List, Sequence
 
 import pytest
 import pytz
-from aleph_message.models import ItemType, Chain, MessageType, AggregateContent
+from aleph_message.models import AggregateContent, Chain, ItemType, MessageType
 from configmanager import Config
+from message_test_helpers import process_pending_messages
 from more_itertools import one
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.aggregates import get_aggregate_by_key, get_aggregate_elements
-from aleph.db.models import PendingMessageDb, MessageDb, AggregateElementDb, AggregateDb
+from aleph.db.models import AggregateDb, AggregateElementDb, MessageDb, PendingMessageDb
 from aleph.handlers.content.aggregate import AggregateMessageHandler
 from aleph.handlers.message_handler import MessageHandler
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
-from aleph.types.db_session import DbSessionFactory, DbSession
+from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_processing_result import ProcessedMessage
-from message_test_helpers import process_pending_messages
 
 
 @pytest.mark.asyncio
@@ -96,7 +96,7 @@ async def test_process_aggregates(
     fixture_aggregate_messages: List[Dict],
 ):
     pipeline = message_processor.make_pipeline()
-    messages = [message async for message in pipeline]
+    [message async for message in pipeline]
 
     # TODO: improve this test
 
