@@ -1,20 +1,21 @@
 import datetime as dt
 import json
 from pathlib import Path
-from typing import Any, Dict, Sequence, cast, Tuple
+from typing import Any, Dict, Sequence, Tuple, cast
 
 import pytest
 import pytest_asyncio
 from aleph_message.models import AggregateContent, PostContent
 from configmanager import Config
+from in_memory_storage_engine import InMemoryStorageEngine
 from sqlalchemy import insert
 
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.aggregates import refresh_aggregate
 from aleph.db.models import (
-    MessageDb,
-    ChainTxDb,
     AggregateElementDb,
+    ChainTxDb,
+    MessageDb,
     message_confirmations,
 )
 from aleph.db.models.posts import PostDb
@@ -23,7 +24,6 @@ from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSessionFactory
-from in_memory_storage_engine import InMemoryStorageEngine
 
 
 # TODO: remove the raw parameter, it's just to avoid larger refactorings

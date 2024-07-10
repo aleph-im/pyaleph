@@ -5,26 +5,26 @@ from typing import Optional
 import pytest
 import pytz
 from aleph_message.models import ItemHash
-from aleph_message.models.execution import MachineType, Encoding
+from aleph_message.models.execution import Encoding, MachineType
 from aleph_message.models.execution.volume import VolumePersistence
 from sqlalchemy import select
 
 from aleph.db.accessors.vms import (
+    delete_vm,
     get_program,
     is_vm_amend_allowed,
     refresh_vm_version,
-    delete_vm,
 )
 from aleph.db.models import (
-    VmBaseDb,
     CodeVolumeDb,
-    RuntimeDb,
-    VmVersionDb,
     DataVolumeDb,
+    EphemeralVolumeDb,
     ExportVolumeDb,
     ImmutableVolumeDb,
-    EphemeralVolumeDb,
-    PersistentVolumeDb, ProgramDb,
+    PersistentVolumeDb,
+    ProgramDb,
+    RuntimeDb,
+    VmVersionDb,
 )
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.vms import VmVersion

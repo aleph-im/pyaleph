@@ -2,10 +2,10 @@ import json
 from typing import Dict, List
 
 import pytest
+from aleph_message.models import ItemHash
 from configmanager import Config
 from sqlalchemy import select
 
-from aleph_message.models import ItemHash
 from aleph.db.accessors.messages import get_message_by_item_hash
 from aleph.db.accessors.posts import get_post
 from aleph.db.models import PostDb

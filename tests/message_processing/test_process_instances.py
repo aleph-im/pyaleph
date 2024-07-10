@@ -1,39 +1,41 @@
 import datetime as dt
 import itertools
 import json
-from typing import List, Protocol, Union
 from decimal import Decimal
+from typing import List, Union
 
 import pytest
 import pytz
 from aleph_message.models import (
-    ItemType,
     Chain,
-    MessageType,
-    InstanceContent,
     ExecutableContent,
     ForgetContent,
+    InstanceContent,
     ItemHash,
+    ItemType,
+    MessageType,
 )
-from aleph_message.models.execution.program import ProgramContent, CodeContent, DataContent, FunctionRuntime
+from aleph_message.models.execution.program import (
+    CodeContent,
+    DataContent,
+    FunctionRuntime,
+    ProgramContent,
+)
 from aleph_message.models.execution.volume import ImmutableVolume, ParentVolume
 from more_itertools import one
 from sqlalchemy import text
 
-from aleph.db.accessors.files import (
-    insert_message_file_pin,
-    upsert_file_tag,
-)
+from aleph.db.accessors.files import insert_message_file_pin, upsert_file_tag
 from aleph.db.accessors.messages import get_message_status, get_rejected_message
 from aleph.db.accessors.vms import get_instance, get_vm_version
 from aleph.db.models import (
-    PendingMessageDb,
-    MessageStatusDb,
-    ImmutableVolumeDb,
+    AlephBalanceDb,
     EphemeralVolumeDb,
+    ImmutableVolumeDb,
+    MessageStatusDb,
+    PendingMessageDb,
     PersistentVolumeDb,
     StoredFileDb,
-    AlephBalanceDb,
 )
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.services.cost import (
@@ -42,9 +44,9 @@ from aleph.services.cost import (
     get_volume_size,
 )
 from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.db_session import DbSessionFactory, DbSession
+from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.files import FileTag, FileType
-from aleph.types.message_status import MessageStatus, ErrorCode
+from aleph.types.message_status import ErrorCode, MessageStatus
 
 
 @pytest.fixture
@@ -194,8 +196,14 @@ def fixture_forget_instance_message(
     return pending_message
 
 
-def get_volume_refs(content: ExecutableContent) -> List[Union[CodeContent, DataContent, FunctionRuntime, ImmutableVolume, ParentVolume]]:
-    volumes: List[Union[CodeContent, DataContent, FunctionRuntime, ImmutableVolume, ParentVolume]] = []
+def get_volume_refs(
+    content: ExecutableContent,
+) -> List[
+    Union[CodeContent, DataContent, FunctionRuntime, ImmutableVolume, ParentVolume]
+]:
+    volumes: List[
+        Union[CodeContent, DataContent, FunctionRuntime, ImmutableVolume, ParentVolume]
+    ] = []
 
     for volume in content.volumes:
         if isinstance(volume, ImmutableVolume):
@@ -320,7 +328,7 @@ async def test_process_instance(
         assert len(volumes_by_type[PersistentVolumeDb]) == 3
         assert len(volumes_by_type[ImmutableVolumeDb]) == 1
 
-        ephemeral_volume: EphemeralVolumeDb = one(volumes_by_type[EphemeralVolumeDb])  # type: ignore[assignment]
+        ephemeral_volume: EphemeralVolumeDb = one(volumes_by_type[EphemeralVolumeDb])
         assert ephemeral_volume.mount == "/var/cache"
         assert ephemeral_volume.size_mib == 5
 
@@ -354,11 +362,15 @@ async def test_process_instance_missing_volumes(
         instance = get_instance(session=session, item_hash=vm_hash)
         assert instance is None
 
-        message_status = get_message_status(session=session, item_hash=ItemHash(vm_hash))
+        message_status = get_message_status(
+            session=session, item_hash=ItemHash(vm_hash)
+        )
         assert message_status is not None
         assert message_status.status == MessageStatus.REJECTED
 
-        rejected_message = get_rejected_message(session=session, item_hash=ItemHash(vm_hash))
+        rejected_message = get_rejected_message(
+            session=session, item_hash=ItemHash(vm_hash)
+        )
         assert rejected_message is not None
         assert rejected_message.error_code == ErrorCode.VM_VOLUME_NOT_FOUND
 

@@ -1,13 +1,10 @@
 """
 Job in charge of (re-) processing Aleph messages waiting in the pending queue.
 """
+
 import asyncio
 from logging import getLogger
-from typing import (
-    Dict,
-    AsyncIterator,
-    Sequence,
-)
+from typing import AsyncIterator, Dict, Sequence
 
 import aio_pika.abc
 from configmanager import Config
@@ -27,10 +24,8 @@ from aleph.toolkit.monitoring import setup_sentry
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.message_processing_result import MessageProcessingResult
-from .job_utils import (
-    prepare_loop,
-    MessageJob,
-)
+
+from .job_utils import MessageJob, prepare_loop
 
 LOGGER = getLogger(__name__)
 
@@ -153,9 +148,12 @@ async def fetch_and_process_messages_task(config: Config):
     engine = make_engine(config=config, application_name="aleph-process")
     session_factory = make_session_factory(engine)
 
-    async with NodeCache(
-        redis_host=config.redis.host.value, redis_port=config.redis.port.value
-    ) as node_cache, IpfsService.new(config) as ipfs_service:
+    async with (
+        NodeCache(
+            redis_host=config.redis.host.value, redis_port=config.redis.port.value
+        ) as node_cache,
+        IpfsService.new(config) as ipfs_service,
+    ):
         storage_service = StorageService(
             storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
             ipfs_service=ipfs_service,

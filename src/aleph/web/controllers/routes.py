@@ -1,5 +1,5 @@
-from aiohttp import web
 import pkg_resources
+from aiohttp import web
 
 from aleph.web.controllers import (
     accounts,

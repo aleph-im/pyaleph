@@ -1,4 +1,5 @@
 import pytest
+
 from aleph.toolkit.batch import async_batch
 
 

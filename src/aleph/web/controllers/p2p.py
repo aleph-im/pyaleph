@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from typing import Dict, cast, Optional, Any, List, Union
+from typing import Any, Dict, List, Optional, Union, cast
 
 from aiohttp import web
 from aleph_p2p_client import AlephP2PServiceClient
@@ -18,10 +18,10 @@ from aleph.web.controllers.app_state_getters import (
     get_p2p_client_from_request,
 )
 from aleph.web.controllers.utils import (
-    validate_message_dict,
-    broadcast_and_process_message,
     PublicationStatus,
+    broadcast_and_process_message,
     broadcast_status_to_http_status,
+    validate_message_dict,
 )
 
 LOGGER = logging.getLogger(__name__)

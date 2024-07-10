@@ -1,6 +1,10 @@
 from typing import Any, Dict, List, Optional
 
 from aiohttp import web
+from aleph_message.models import ItemHash
+from pydantic import BaseModel, Field, ValidationError, root_validator, validator
+from sqlalchemy import select
+
 from aleph.db.accessors.posts import (
     MergedPost,
     MergedPostV0,
@@ -19,9 +23,6 @@ from aleph.web.controllers.utils import (
     cond_output,
     get_path_page,
 )
-from aleph_message.models import ItemHash
-from pydantic import BaseModel, Field, ValidationError, root_validator, validator
-from sqlalchemy import select
 
 
 class PostQueryParams(BaseModel):

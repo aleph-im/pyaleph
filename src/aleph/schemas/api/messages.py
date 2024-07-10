@@ -1,16 +1,16 @@
 import datetime as dt
 from typing import (
-    Optional,
-    Generic,
-    TypeVar,
-    Literal,
-    List,
-    Any,
-    Union,
-    Dict,
-    Mapping,
     Annotated,
+    Any,
+    Dict,
+    Generic,
+    List,
+    Literal,
+    Mapping,
+    Optional,
     Type,
+    TypeVar,
+    Union,
 )
 
 from aleph_message.models import (
@@ -18,18 +18,19 @@ from aleph_message.models import (
     BaseContent,
     Chain,
     ForgetContent,
+    InstanceContent,
+    ItemType,
+    MessageType,
     PostContent,
     ProgramContent,
     StoreContent,
-    InstanceContent,
 )
-from aleph_message.models import MessageType, ItemType
 from pydantic import BaseModel, Field
 from pydantic.generics import GenericModel
 
 import aleph.toolkit.json as aleph_json
 from aleph.db.models import MessageDb
-from aleph.types.message_status import MessageStatus, ErrorCode
+from aleph.types.message_status import ErrorCode, MessageStatus
 
 MType = TypeVar("MType", bound=MessageType)
 ContentType = TypeVar("ContentType", bound=BaseContent)
@@ -69,37 +70,35 @@ class BaseMessage(GenericModel, Generic[MType, ContentType]):
 
 class AggregateMessage(
     BaseMessage[Literal[MessageType.aggregate], AggregateContent]
-):
-    ...
+): ...
 
 
-class ForgetMessage(
-    BaseMessage[Literal[MessageType.forget], ForgetContent]
-):
-    ...
+class ForgetMessage(BaseMessage[Literal[MessageType.forget], ForgetContent]): ...
 
 
-class InstanceMessage(BaseMessage[Literal[MessageType.instance], InstanceContent]):
-    ...
+class InstanceMessage(BaseMessage[Literal[MessageType.instance], InstanceContent]): ...
 
 
-class PostMessage(BaseMessage[Literal[MessageType.post], PostContent]):
-    ...
+class PostMessage(BaseMessage[Literal[MessageType.post], PostContent]): ...
 
 
-class ProgramMessage(
-    BaseMessage[Literal[MessageType.program], ProgramContent]
-):
-    ...
+class ProgramMessage(BaseMessage[Literal[MessageType.program], ProgramContent]): ...
 
 
-class StoreMessage(
-    BaseMessage[Literal[MessageType.store], StoreContent]
-):
-    ...
+class StoreMessage(BaseMessage[Literal[MessageType.store], StoreContent]): ...
 
 
-MESSAGE_CLS_DICT: Dict[Any, Type[AggregateMessage | ForgetMessage | InstanceMessage | PostMessage | ProgramMessage | StoreMessage]] = {
+MESSAGE_CLS_DICT: Dict[
+    Any,
+    Type[
+        AggregateMessage
+        | ForgetMessage
+        | InstanceMessage
+        | PostMessage
+        | ProgramMessage
+        | StoreMessage
+    ],
+] = {
     MessageType.aggregate: AggregateMessage,
     MessageType.forget: ForgetMessage,
     MessageType.instance: InstanceMessage,

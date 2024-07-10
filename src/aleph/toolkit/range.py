@@ -1,5 +1,4 @@
-from typing import Generic, List, TypeVar, Any, Callable, Protocol
-import re
+from typing import Any, Callable, Generic, List, Protocol, TypeVar
 
 
 class Comparable(Protocol):

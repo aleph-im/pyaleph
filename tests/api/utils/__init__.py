@@ -1,4 +1,4 @@
-from typing import Dict, Iterable, List, Callable
+from typing import Dict, Iterable, List
 
 
 def get_messages_by_keys(messages: Iterable[Dict], **keys) -> List[Dict]:

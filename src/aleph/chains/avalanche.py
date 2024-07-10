@@ -8,6 +8,7 @@ from coincurve.keys import PublicKey
 
 from aleph.chains.common import get_verification_buffer
 from aleph.schemas.pending_messages import BasePendingMessage
+
 from .abc import Verifier
 
 LOGGER = logging.getLogger("chains.avalanche")
@@ -86,7 +87,7 @@ class AvalancheConnector(Verifier):
 
             result = address == message.sender
 
-        except Exception as e:
+        except Exception:
             LOGGER.exception("Error processing signature for %s" % message.sender)
             result = False
 

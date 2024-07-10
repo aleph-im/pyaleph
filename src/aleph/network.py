@@ -1,5 +1,5 @@
 import logging
-from typing import Coroutine, List, Any, Dict
+from typing import Any, Coroutine, Dict, List
 from urllib.parse import unquote
 
 import aio_pika.abc
@@ -55,7 +55,7 @@ async def listener_tasks(
     )
     pending_message_exchange = await mq_channel.declare_exchange(
         name=config.rabbitmq.pending_message_exchange.value,
-        type = aio_pika.ExchangeType.TOPIC,
+        type=aio_pika.ExchangeType.TOPIC,
         auto_delete=False,
     )
     message_publisher = MessagePublisher(

@@ -11,20 +11,20 @@ from configmanager import Config
 from nacl.exceptions import BadSignatureError
 
 import aleph.toolkit.json as aleph_json
-from aleph.chains.abc import Verifier, ChainReader
+from aleph.chains.abc import ChainReader, Verifier
 from aleph.chains.chain_data_service import PendingTxPublisher
 from aleph.chains.common import get_verification_buffer
 from aleph.db.accessors.chains import get_last_height, upsert_chain_sync_status
-from aleph.db.models import PendingMessageDb, ChainTxDb
+from aleph.db.models import ChainTxDb, PendingMessageDb
 from aleph.schemas.chains.tezos_indexer_response import (
-    IndexerResponse,
     IndexerMessageEvent,
+    IndexerResponse,
     SyncStatus,
 )
 from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.toolkit.timestamp import utc_now
-from aleph.types.chain_sync import ChainSyncProtocol, ChainEventType
-from aleph.types.db_session import DbSessionFactory, DbSession
+from aleph.types.chain_sync import ChainEventType, ChainSyncProtocol
+from aleph.types.db_session import DbSession, DbSessionFactory
 
 LOGGER = logging.getLogger(__name__)
 
@@ -231,7 +231,7 @@ class TezosVerifier(Verifier):
             )
 
         verification_buffer = get_tezos_verification_buffer(
-            message, signature_type, dapp_url  # type: ignore
+            message, signature_type, dapp_url
         )
 
         # Check the signature

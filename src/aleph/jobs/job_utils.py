@@ -1,8 +1,7 @@
 import asyncio
 import datetime as dt
 import logging
-from typing import Dict, Union, Optional
-from typing import Tuple
+from typing import Dict, Optional, Tuple, Union
 
 import aio_pika
 from configmanager import Config
@@ -18,9 +17,9 @@ from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_processing_result import RejectedMessage, WillRetryMessage
 from aleph.types.message_status import (
     ErrorCode,
-    RetryMessageException,
     FileNotFoundException,
     InvalidMessageException,
+    RetryMessageException,
 )
 
 LOGGER = logging.getLogger(__name__)

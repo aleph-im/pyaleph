@@ -1,13 +1,13 @@
-from typing import IO
+import datetime as dt
 
 import pytest
 from aleph_message.models import (
     Chain,
-    StoreContent,
-    MessageType,
-    ItemType,
-    PostContent,
     ItemHash,
+    ItemType,
+    MessageType,
+    PostContent,
+    StoreContent,
 )
 
 from aleph.chains.chain_data_service import ChainDataService
@@ -17,8 +17,7 @@ from aleph.schemas.chains.tezos_indexer_response import MessageEventPayload
 from aleph.schemas.pending_messages import parse_message
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.chain_sync import ChainSyncProtocol
-from aleph.types.db_session import DbSessionFactory, DbSession
-import datetime as dt
+from aleph.types.db_session import DbSession, DbSessionFactory
 
 
 @pytest.mark.asyncio

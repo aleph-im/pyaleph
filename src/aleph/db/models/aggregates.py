@@ -1,7 +1,7 @@
 import datetime as dt
 from typing import Any
 
-from sqlalchemy import Boolean, Column, ForeignKey, Index, String, TIMESTAMP
+from sqlalchemy import TIMESTAMP, Boolean, Column, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 

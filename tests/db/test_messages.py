@@ -3,27 +3,22 @@ from copy import copy
 
 import pytest
 import pytz
-from aleph_message.models import Chain, MessageType, ItemType, ItemHash
-from sqlalchemy import select, insert, text
+from aleph_message.models import Chain, ItemHash, ItemType, MessageType
+from sqlalchemy import insert, select, text
 
 from aleph.db.accessors.messages import (
-    get_message_by_item_hash,
-    get_unconfirmed_messages,
-    message_exists,
-    forget_message,
-    get_message_status,
     append_to_forgotten_by,
-    get_forgotten_message,
-    make_message_upsert_query,
-    make_confirmation_upsert_query,
+    forget_message,
     get_distinct_channels,
+    get_forgotten_message,
+    get_message_by_item_hash,
+    get_message_status,
+    get_unconfirmed_messages,
+    make_confirmation_upsert_query,
+    make_message_upsert_query,
+    message_exists,
 )
-from aleph.db.models import (
-    MessageDb,
-    ChainTxDb,
-    MessageStatusDb,
-    message_confirmations,
-)
+from aleph.db.models import ChainTxDb, MessageDb, MessageStatusDb, message_confirmations
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.channel import Channel
@@ -148,20 +143,18 @@ async def test_get_message_with_confirmations(
 @pytest.mark.asyncio
 async def test_message_exists(session_factory: DbSessionFactory, fixture_message):
     with session_factory() as session:
-        assert not message_exists(
-            session=session, item_hash=fixture_message.item_hash
-        )
+        assert not message_exists(session=session, item_hash=fixture_message.item_hash)
 
         session.add(fixture_message)
         session.commit()
 
-        assert message_exists(
-            session=session, item_hash=fixture_message.item_hash
-        )
+        assert message_exists(session=session, item_hash=fixture_message.item_hash)
 
 
 @pytest.mark.asyncio
-async def test_message_count(session_factory: DbSessionFactory, fixture_message: MessageDb):
+async def test_message_count(
+    session_factory: DbSessionFactory, fixture_message: MessageDb
+):
     with session_factory() as session:
         session.add(fixture_message)
         session.commit()
@@ -299,9 +292,7 @@ async def test_get_unconfirmed_messages(
         assert unconfirmed_messages == []
 
         # Check that it is also ignored when the chain parameter is specified
-        unconfirmed_messages = list(
-            get_unconfirmed_messages(session, chain=tx.chain)
-        )
+        unconfirmed_messages = list(get_unconfirmed_messages(session, chain=tx.chain))
         assert unconfirmed_messages == []
 
         # Check that it reappears if we specify a different chain
@@ -319,7 +310,9 @@ async def test_get_unconfirmed_messages(
 
 
 @pytest.mark.asyncio
-async def test_get_unconfirmed_messages_trusted_messages(session_factory:DbSessionFactory, fixture_message: MessageDb):
+async def test_get_unconfirmed_messages_trusted_messages(
+    session_factory: DbSessionFactory, fixture_message: MessageDb
+):
     fixture_message.signature = None
     with session_factory() as session:
         session.add(fixture_message)

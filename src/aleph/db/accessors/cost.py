@@ -1,6 +1,7 @@
 from decimal import Decimal
-from typing import Optional
-from sqlalchemy import select, func, text
+
+from sqlalchemy import func, select, text
+
 from aleph.types.db_session import DbSession
 
 

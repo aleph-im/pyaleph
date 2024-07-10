@@ -6,10 +6,13 @@ from sqlalchemy.dialects.postgresql import insert
 
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession
+
 from ..models.peers import PeerDb, PeerType
 
 
-def get_all_addresses_by_peer_type(session: DbSession, peer_type: PeerType) -> Sequence[str]:
+def get_all_addresses_by_peer_type(
+    session: DbSession, peer_type: PeerType
+) -> Sequence[str]:
     select_peers_stmt = select(PeerDb.address).where(PeerDb.peer_type == peer_type)
 
     addresses = session.execute(select_peers_stmt)

@@ -1,11 +1,11 @@
-from typing import Literal, Optional, List, Union, Annotated
+import datetime as dt
+from typing import Annotated, List, Literal, Optional, Union
 
-from aleph_message.models import ItemHash, ItemType, Chain, MessageType
+from aleph_message.models import Chain, ItemHash, ItemType, MessageType
 from pydantic import BaseModel, Field, validator
 
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.channel import Channel
-import datetime as dt
 
 
 class OnChainMessage(BaseModel):

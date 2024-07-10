@@ -1,5 +1,5 @@
 import hashlib
-from typing import Union
+from typing import Optional, Union
 
 import base58
 import multihash
@@ -35,8 +35,8 @@ if ENABLE_INLINING:
 
 class ID:
     _bytes: bytes
-    _xor_id: int = None
-    _b58_str: str = None
+    _xor_id: Optional[int] = None
+    _b58_str: Optional[str] = None
 
     def __init__(self, peer_id_bytes: bytes) -> None:
         self._bytes = peer_id_bytes
@@ -51,7 +51,7 @@ class ID:
         return self._bytes
 
     def to_base58(self) -> str:
-        if not self._b58_str:
+        if self._b58_str is None:
             self._b58_str = base58.b58encode(self._bytes).decode()
         return self._b58_str
 

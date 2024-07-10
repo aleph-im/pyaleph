@@ -120,9 +120,7 @@ async def test_node_compute_metric(fixture_metrics_messages, ccn_api_client):
 
 @pytest.mark.asyncio
 async def test_node_compute_metric_not_exist(fixture_metrics_messages, ccn_api_client):
-    uri = _generate_uri(
-        "compute", "This_is_a_node_id"
-    )
+    uri = _generate_uri("compute", "This_is_a_node_id")
     with mock.patch("aleph.db.accessors.metrics.time.time", return_value=1701261227):
         response = await ccn_api_client.get(uri)
 

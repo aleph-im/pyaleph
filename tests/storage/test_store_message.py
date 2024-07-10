@@ -1,8 +1,9 @@
 import json
-from typing import Mapping, Any
+from typing import Any, Mapping
 
 import pytest
 from configmanager import Config
+from message_test_helpers import make_validated_message_from_dict
 from sqlalchemy import select
 
 from aleph.db.models import MessageDb, StoredFileDb
@@ -12,7 +13,6 @@ from aleph.services.ipfs import IpfsService
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.files import FileType
-from message_test_helpers import make_validated_message_from_dict
 
 
 @pytest.fixture

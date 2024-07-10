@@ -1,15 +1,14 @@
 import datetime as dt
 import json
-from typing import Optional, Mapping
+from typing import Mapping, Optional
 
 import pytest
-from aleph_message.models import Chain, MessageType, ItemType, ItemHash
+from aleph_message.models import Chain, ItemHash, ItemType, MessageType
 from configmanager import Config
 
-from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.files import get_message_file_pin
 from aleph.db.accessors.messages import get_message_by_item_hash
-from aleph.db.models import PendingMessageDb, MessageStatusDb
+from aleph.db.models import MessageStatusDb, PendingMessageDb
 from aleph.handlers.content.store import StoreMessageHandler
 from aleph.handlers.message_handler import MessageHandler
 from aleph.jobs.process_pending_messages import PendingMessageProcessor

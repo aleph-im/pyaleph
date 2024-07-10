@@ -10,7 +10,6 @@ from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.connection import make_engine, make_session_factory
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
-from aleph.services.ipfs.common import make_ipfs_client
 from aleph.services.p2p import init_p2p_client
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
@@ -18,27 +17,27 @@ from aleph.toolkit.monitoring import setup_sentry
 from aleph.web import create_aiohttp_app
 from aleph.web.controllers.app_state_getters import (
     APP_STATE_CONFIG,
+    APP_STATE_MQ_CHANNEL,
     APP_STATE_MQ_CONN,
+    APP_STATE_MQ_WS_CHANNEL,
     APP_STATE_NODE_CACHE,
     APP_STATE_P2P_CLIENT,
     APP_STATE_SESSION_FACTORY,
-    APP_STATE_STORAGE_SERVICE,
-    APP_STATE_MQ_CHANNEL,
-    APP_STATE_MQ_WS_CHANNEL,
     APP_STATE_SIGNATURE_VERIFIER,
+    APP_STATE_STORAGE_SERVICE,
 )
 
 
 async def configure_aiohttp_app(
     config: Config,
 ) -> web.Application:
-    with sentry_sdk.start_transaction(name=f"init-api-server"):
-        p2p_client = await init_p2p_client(config, service_name=f"api-server-aiohttp")
+    with sentry_sdk.start_transaction(name="init-api-server"):
+        p2p_client = await init_p2p_client(config, service_name="api-server-aiohttp")
 
         engine = make_engine(
             config,
             echo=config.logging.level.value == logging.DEBUG,
-            application_name=f"aleph-api",
+            application_name="aleph-api",
         )
         session_factory = make_session_factory(engine)
 

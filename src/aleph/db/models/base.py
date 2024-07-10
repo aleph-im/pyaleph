@@ -1,6 +1,6 @@
-from typing import Dict, Any, Optional, Set, List, Iterable
+from typing import Any, Dict, Iterable, Optional, Set
 
-from sqlalchemy import Table, exists, text, Column, func, select
+from sqlalchemy import Column, Table, exists, func, select, text
 from sqlalchemy.orm import declarative_base
 
 from aleph.types.db_session import DbSession

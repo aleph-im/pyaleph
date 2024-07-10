@@ -1,29 +1,28 @@
 import asyncio
-from io import StringIO
-from typing import Dict, Optional, List, Any, Mapping, Set, cast, Type, Union, Self
+from typing import Any, Dict, List, Mapping, Optional, Self, Set, Type, Union, cast
 
 import aio_pika.abc
-from aleph_message.models import StoreContent, ItemType, Chain, MessageType, ItemHash
+from aleph_message.models import Chain, ItemHash, ItemType, MessageType, StoreContent
 from configmanager import Config
 from pydantic import ValidationError
 
 from aleph.chains.common import LOGGER
 from aleph.config import get_config
 from aleph.db.accessors.chains import upsert_chain_tx
-from aleph.db.accessors.files import upsert_tx_file_pin, upsert_file
+from aleph.db.accessors.files import upsert_file, upsert_tx_file_pin
 from aleph.db.accessors.pending_txs import upsert_pending_tx
 from aleph.db.models import ChainTxDb, MessageDb
 from aleph.exceptions import (
-    InvalidContent,
     AlephStorageException,
     ContentCurrentlyUnavailable,
+    InvalidContent,
 )
-from aleph.schemas.chains.indexer_response import MessageEvent, GenericMessageEvent
+from aleph.schemas.chains.indexer_response import GenericMessageEvent, MessageEvent
 from aleph.schemas.chains.sync_events import (
     OffChainSyncEventPayload,
-    OnChainSyncEventPayload,
     OnChainContent,
     OnChainMessage,
+    OnChainSyncEventPayload,
 )
 from aleph.schemas.chains.tezos_indexer_response import (
     MessageEventPayload as TezosMessageEventPayload,
@@ -31,7 +30,7 @@ from aleph.schemas.chains.tezos_indexer_response import (
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainSyncProtocol
-from aleph.types.db_session import DbSessionFactory, DbSession
+from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.files import FileType
 from aleph.utils import get_sha256
 

@@ -53,7 +53,9 @@ async def handle_incoming_host(
 
 
 async def monitor_hosts_p2p(
-    p2p_client: AlephP2PServiceClient, session_factory: DbSessionFactory, alive_topic: str
+    p2p_client: AlephP2PServiceClient,
+    session_factory: DbSessionFactory,
+    alive_topic: str,
 ) -> None:
     while True:
         try:
