@@ -1,4 +1,5 @@
-from typing import Optional, Mapping, Any
+from decimal import Decimal
+from typing import Any, Mapping, Optional
 
 import pytest
 from aleph_message.models import Chain
@@ -6,8 +7,8 @@ from aleph_message.models import Chain
 from aleph.db.accessors.balances import get_balance_by_chain, get_total_balance
 from aleph.db.models import AlephBalanceDb
 from aleph.handlers.content.post import update_balances
-from aleph.types.db_session import DbSessionFactory, DbSession
-from decimal import Decimal
+from aleph.types.db_session import DbSession, DbSessionFactory
+
 BALANCES_CONTENT_SOL: Mapping[str, Any] = {
     "tags": ["SOL", "SPL", "CsZ5LZkDS7h9TDKjrbL7VAwQZ9nsRu8vJLhRYfmGaN8K", "mainnet"],
     "chain": "SOL",

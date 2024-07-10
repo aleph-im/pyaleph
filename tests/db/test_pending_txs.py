@@ -1,13 +1,12 @@
+import datetime as dt
 from typing import Sequence
 
 import pytest
 from aleph_message.models import Chain
 
-from aleph.db.accessors.pending_txs import get_pending_txs, count_pending_txs
+from aleph.db.accessors.pending_txs import count_pending_txs, get_pending_txs
 from aleph.db.models import ChainTxDb, PendingTxDb
 from aleph.types.chain_sync import ChainSyncProtocol
-import datetime as dt
-
 from aleph.types.db_session import DbSessionFactory
 
 

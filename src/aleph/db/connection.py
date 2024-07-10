@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engin
 from sqlalchemy.orm import sessionmaker
 
 from aleph.config import get_config
-from aleph.types.db_session import DbSessionFactory, AsyncDbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory, DbSessionFactory
 
 
 def make_db_url(
@@ -38,9 +38,7 @@ def make_db_url(
     if host is not None:
         connection_string += f"{host}:{port}"
 
-    connection_string += (
-        f"/{database}"
-    )
+    connection_string += f"/{database}"
 
     if application_name:
         connection_string += f"?application_name={application_name}"

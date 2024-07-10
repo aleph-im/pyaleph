@@ -4,7 +4,7 @@ import pytest
 import pytz
 from sqlalchemy import select
 
-from aleph.db.accessors.peers import upsert_peer, get_all_addresses_by_peer_type
+from aleph.db.accessors.peers import get_all_addresses_by_peer_type, upsert_peer
 from aleph.db.models.peers import PeerDb, PeerType
 from aleph.types.db_session import DbSessionFactory
 

@@ -43,6 +43,6 @@ async def get_IP() -> str:
     """Get the public IPv4 of this system."""
     try:
         return await get_ip4_from_service()
-    except Exception as error:
+    except Exception:
         logging.exception("Error when fetching IPv4 from service")
         return get_ip4_from_socket()

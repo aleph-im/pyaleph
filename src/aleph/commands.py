@@ -26,7 +26,7 @@ import aleph.config
 from aleph.chains.chain_data_service import ChainDataService, PendingTxPublisher
 from aleph.chains.connector import ChainConnector
 from aleph.cli.args import parse_args
-from aleph.db.connection import make_engine, make_session_factory, make_db_url
+from aleph.db.connection import make_db_url, make_engine, make_session_factory
 from aleph.exceptions import InvalidConfigException, KeyNotFoundException
 from aleph.jobs import start_jobs
 from aleph.network import listener_tasks
@@ -37,8 +37,8 @@ from aleph.services.ipfs import IpfsService
 from aleph.services.keys import generate_keypair, save_keys
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.services.storage.garbage_collector import (
-    garbage_collector_task,
     GarbageCollector,
+    garbage_collector_task,
 )
 from aleph.storage import StorageService
 from aleph.toolkit.logging import setup_logging

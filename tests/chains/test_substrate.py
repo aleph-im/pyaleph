@@ -9,7 +9,6 @@ TEST_MESSAGE = '{"chain": "DOT", "channel": "TEST", "sender": "5CGNMKCscqN2QNcT7
 TEST_MESSAGE_SIGNED_BY_PROVIDER = '{"chain": "DOT", "channel": "TEST", "sender": "5D9eKrAsfitxW48YrqMUXejcrnB2N8tLxPeFmoEZ4G74JFyz", "type": "POST", "item_type": "inline", "time": 1670865119.443, "item_content": "{\\"type\\":\\"Toolshed\\",\\"address\\":\\"5D9eKrAsfitxW48YrqMUXejcrnB2N8tLxPeFmoEZ4G74JFyz\\",\\"content\\":\\"Did the quick brown fox jump over the lazy dog?!\\",\\"time\\":1670865119.443}", "item_hash": "2f6e60df7ce1cdb2fb3be8ec09ffd20b5b781338984ff5f6f33830943f4397ba", "signature": "{\\"curve\\": \\"sr25519\\", \\"data\\": \\"0x866806b04e4cd99cd3a0f80232b8255d13c2782056a5e755fba5f233ccf8bf03a5fc2d708f8f70258b62d8e327da3a3ae6a280f1cab27eb912f125e0a1ade98a\\"}", "content": {"address": "5D9eKrAsfitxW48YrqMUXejcrnB2N8tLxPeFmoEZ4G74JFyz", "time": 1670865119.443, "content": "Did the quick brown fox jump over the lazy dog?!", "type": "Toolshed"}}'
 
 
-
 @pytest.mark.asyncio
 async def test_verify_signature_real():
     message_dict = json.loads(TEST_MESSAGE)

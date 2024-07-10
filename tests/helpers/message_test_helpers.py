@@ -1,11 +1,11 @@
 import datetime as dt
 import itertools
 import json
-from typing import List, Optional, Union, Any, Mapping, Sequence, Iterable
+from typing import Any, Iterable, List, Mapping, Optional, Sequence, Union
 
 from aleph_message.models import ItemType, MessageConfirmation
 
-from aleph.db.models import MessageDb, PendingMessageDb, MessageStatusDb
+from aleph.db.models import MessageDb, MessageStatusDb, PendingMessageDb
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession

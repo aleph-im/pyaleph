@@ -1,14 +1,13 @@
 import json
-from typing import Optional, Dict
+from typing import Dict, Optional
 
 import pytest
-
-from aleph.services.ipfs import IpfsService
-from aleph.services.storage.engine import StorageEngine
 
 from aleph.exceptions import InvalidContent
 from aleph.schemas.message_content import ContentSource
 from aleph.schemas.pending_messages import parse_message
+from aleph.services.ipfs import IpfsService
+from aleph.services.storage.engine import StorageEngine
 from aleph.storage import StorageService
 
 

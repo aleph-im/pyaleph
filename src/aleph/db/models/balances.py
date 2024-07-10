@@ -2,7 +2,7 @@ from decimal import Decimal
 from typing import Optional
 
 from aleph_message.models import Chain
-from sqlalchemy import Column, DECIMAL, String, Integer, UniqueConstraint, BigInteger
+from sqlalchemy import DECIMAL, BigInteger, Column, Integer, String, UniqueConstraint
 from sqlalchemy_utils.types.choice import ChoiceType
 
 from .base import Base

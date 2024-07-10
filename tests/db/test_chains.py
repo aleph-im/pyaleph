@@ -5,19 +5,18 @@ import pytz
 from aleph_message.models import Chain
 from sqlalchemy import select
 
+from aleph.db.accessors.chains import (
+    IndexerMultiRange,
+    get_indexer_multirange,
+    get_last_height,
+    get_missing_indexer_datetime_multirange,
+    update_indexer_multirange,
+    upsert_chain_sync_status,
+)
+from aleph.db.models.chains import ChainSyncStatusDb, IndexerSyncStatusDb
 from aleph.toolkit.range import MultiRange, Range
 from aleph.types.chain_sync import ChainEventType
 from aleph.types.db_session import DbSessionFactory
-
-from aleph.db.accessors.chains import (
-    upsert_chain_sync_status,
-    get_last_height,
-    IndexerMultiRange,
-    update_indexer_multirange,
-    get_indexer_multirange,
-    get_missing_indexer_datetime_multirange,
-)
-from aleph.db.models.chains import ChainSyncStatusDb, IndexerSyncStatusDb
 
 
 @pytest.mark.asyncio

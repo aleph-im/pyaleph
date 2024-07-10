@@ -4,10 +4,9 @@ Base (abstract) class for messages.
 
 import datetime as dt
 from hashlib import sha256
-from typing import Optional, Generic, TypeVar, Any, Mapping, cast
+from typing import Any, Generic, Mapping, Optional, TypeVar, cast
 
-from aleph_message.models import BaseContent, Chain
-from aleph_message.models import MessageType, ItemType
+from aleph_message.models import BaseContent, Chain, ItemType, MessageType
 from pydantic import root_validator, validator
 from pydantic.generics import GenericModel
 

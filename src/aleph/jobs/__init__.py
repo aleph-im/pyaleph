@@ -1,13 +1,13 @@
 import logging
 from multiprocessing import Process
-from typing import Dict, List, Coroutine
+from typing import Coroutine, List
 
 from aleph.jobs.fetch_pending_messages import fetch_pending_messages_subprocess
 from aleph.jobs.process_pending_messages import (
-    pending_messages_subprocess,
     fetch_and_process_messages_task,
+    pending_messages_subprocess,
 )
-from aleph.jobs.process_pending_txs import pending_txs_subprocess, handle_txs_task
+from aleph.jobs.process_pending_txs import handle_txs_task, pending_txs_subprocess
 from aleph.jobs.reconnect_ipfs import reconnect_ipfs_job
 from aleph.services.ipfs import IpfsService
 from aleph.types.db_session import DbSessionFactory
@@ -42,9 +42,7 @@ def start_jobs(
         p2.start()
         p3.start()
     else:
-        tasks.append(
-            fetch_and_process_messages_task(config=config)
-        )
+        tasks.append(fetch_and_process_messages_task(config=config))
         tasks.append(handle_txs_task(config))
 
     if config.ipfs.enabled.value:

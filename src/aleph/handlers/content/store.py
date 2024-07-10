@@ -11,19 +11,19 @@ import logging
 from typing import List, Optional, Set
 
 import aioipfs
-from aleph_message.models import ItemType, StoreContent, ItemHash
+from aleph_message.models import ItemHash, ItemType, StoreContent
 
 from aleph.config import get_config
 from aleph.db.accessors.files import (
-    insert_message_file_pin,
-    get_file_tag,
-    upsert_file_tag,
     delete_file_pin,
-    refresh_file_tag,
-    is_pinned_file,
+    get_file_tag,
     get_message_file_pin,
-    upsert_file,
     insert_grace_period_file_pin,
+    insert_message_file_pin,
+    is_pinned_file,
+    refresh_file_tag,
+    upsert_file,
+    upsert_file_tag,
 )
 from aleph.db.models import MessageDb
 from aleph.exceptions import AlephStorageException, UnknownHashError
@@ -33,11 +33,11 @@ from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag, FileType
 from aleph.types.message_status import (
-    PermissionDenied,
     FileUnavailable,
     InvalidMessageFormat,
-    StoreRefNotFound,
+    PermissionDenied,
     StoreCannotUpdateStoreWithRef,
+    StoreRefNotFound,
 )
 from aleph.utils import item_type_from_hash
 

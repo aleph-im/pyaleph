@@ -1,57 +1,48 @@
 import logging
-import math
-from typing import List, Set, overload, Protocol, Optional, Union
+from decimal import Decimal
+from typing import List, Protocol, Set, Union, overload
 
-from aleph_message.models import (
-    ProgramContent,
-    ExecutableContent,
-    InstanceContent,
-    MessageType,
-)
-from aleph_message.models.execution import MachineType
+from aleph_message.models import ExecutableContent, InstanceContent, ProgramContent
 from aleph_message.models.execution.instance import RootfsVolume
-from aleph_message.models.execution.program import ProgramContent
 from aleph_message.models.execution.volume import (
     AbstractVolume,
-    ImmutableVolume,
     EphemeralVolume,
-    PersistentVolume,
+    ImmutableVolume,
     ParentVolume,
+    PersistentVolume,
 )
-from decimal import Decimal
 
 from aleph.db.accessors.balances import get_total_balance
 from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import (
-    find_file_tags,
     find_file_pins,
+    find_file_tags,
     get_file_tag,
     get_message_file_pin,
 )
 from aleph.db.accessors.vms import (
     delete_vm,
-    get_program,
-    upsert_vm_version,
     delete_vm_updates,
-    refresh_vm_version,
+    get_program,
     is_vm_amend_allowed,
+    refresh_vm_version,
+    upsert_vm_version,
 )
 from aleph.db.models import (
-    MessageDb,
     CodeVolumeDb,
     DataVolumeDb,
-    ExportVolumeDb,
-    MachineVolumeBaseDb,
-    ImmutableVolumeDb,
     EphemeralVolumeDb,
+    ExportVolumeDb,
+    ImmutableVolumeDb,
+    MachineVolumeBaseDb,
+    MessageDb,
     PersistentVolumeDb,
-    RuntimeDb,
-    VmInstanceDb,
     ProgramDb,
     RootfsVolumeDb,
-    VmBaseDb,
+    RuntimeDb,
     StoredFileDb,
-    FilePinDb,
+    VmBaseDb,
+    VmInstanceDb,
 )
 from aleph.handlers.content.content_handler import ContentHandler
 from aleph.services.cost import compute_cost
@@ -59,14 +50,14 @@ from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag
 from aleph.types.message_status import (
+    InsufficientBalanceException,
     InternalError,
     InvalidMessageFormat,
-    VmRefNotFound,
-    VmVolumeNotFound,
-    VmUpdateNotAllowed,
     VmCannotUpdateUpdate,
+    VmRefNotFound,
+    VmUpdateNotAllowed,
+    VmVolumeNotFound,
     VmVolumeTooSmall,
-    InsufficientBalanceException,
 )
 from aleph.types.vms import VmVersion
 from aleph.utils import safe_getattr
@@ -93,8 +84,7 @@ def _map_content_to_db_model(
 # This seems linked to multiple inheritance of Pydantic base models, a deeper investigation
 # is required.
 @overload
-def _map_content_to_db_model(item_hash: str, content: ProgramContent) -> ProgramDb:
-    ...
+def _map_content_to_db_model(item_hash: str, content: ProgramContent) -> ProgramDb: ...
 
 
 def _map_content_to_db_model(item_hash, content):
@@ -147,7 +137,7 @@ def _map_content_to_db_model(item_hash, content):
         node_address_regex=node_address_regex,
         volumes=volumes,
         created=timestamp_to_datetime(content.time),
-        node_hash=node_hash
+        node_hash=node_hash,
     )
 
 

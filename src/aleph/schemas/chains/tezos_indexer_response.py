@@ -1,11 +1,9 @@
 import datetime as dt
 from enum import Enum
-from typing import List, Generic, TypeVar
+from typing import Generic, List, TypeVar
 
 from pydantic import BaseModel, Field
 from pydantic.generics import GenericModel
-
-from aleph.schemas.chains.indexer_response import GenericMessageEvent
 
 PayloadType = TypeVar("PayloadType")
 

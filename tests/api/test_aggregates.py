@@ -2,6 +2,7 @@ from typing import Sequence
 
 import aiohttp
 import pytest
+
 from aleph.db.models import MessageDb
 
 AGGREGATES_URI = "/api/v0/aggregates/{address}.json"
@@ -166,6 +167,7 @@ async def test_get_aggregates_invalid_params(
     assert len(errors) == 1
     assert errors[0]["loc"] == ["limit"], errors
 
+
 @pytest.mark.asyncio
 async def test_get_aggregates_return_value_only(
     ccn_api_client, fixture_aggregate_messages: Sequence[MessageDb]
@@ -178,8 +180,7 @@ async def test_get_aggregates_return_value_only(
 
     address, key = ADDRESS_1, "test_target"
     aggregates = await get_aggregates_expect_success(
-        ccn_api_client, address=address, keys=key,
-        with_info=False, value_only="1"
+        ccn_api_client, address=address, keys=key, with_info=False, value_only="1"
     )
     assert address not in aggregates
     assert aggregates == EXPECTED_AGGREGATES[address][key]
