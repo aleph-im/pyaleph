@@ -5,18 +5,19 @@ Chain-related tables. CCNs sync with chains in one of two ways:
 """
 
 import datetime as dt
-from typing import Dict, Any, Union, Mapping
+from typing import Any, Dict, Mapping, Union
 
 from aleph_message.models import Chain
-from sqlalchemy import Column, Integer, String, TIMESTAMP, Boolean
+from sqlalchemy import TIMESTAMP, Boolean, Column, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy_utils.types.choice import ChoiceType
 
-from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.chain_sync import ChainSyncProtocol, ChainEventType
-from .base import Base
 from aleph.schemas.chains.tx_context import TxContext
+from aleph.toolkit.timestamp import timestamp_to_datetime
+from aleph.types.chain_sync import ChainEventType, ChainSyncProtocol
+
 from ...toolkit.range import Range
+from .base import Base
 
 
 class ChainSyncStatusDb(Base):

@@ -17,23 +17,23 @@ TODO: this module should reasonably be part of aleph message, if only
       in aleph-client.
 """
 
-from typing import Any, Literal, Generic
+from typing import Any, Generic, Literal
 
 from aleph_message.models import (
     AggregateContent,
     ForgetContent,
     InstanceContent,
+    ItemType,
+    MessageType,
     PostContent,
     ProgramContent,
     StoreContent,
 )
-from aleph_message.models import ItemType, MessageType
-from pydantic import ValidationError
-from pydantic import root_validator
+from pydantic import ValidationError, root_validator
 
 import aleph.toolkit.json as aleph_json
 from aleph.exceptions import UnknownHashError
-from aleph.schemas.base_messages import AlephBaseMessage, MType, ContentType
+from aleph.schemas.base_messages import AlephBaseMessage, ContentType, MType
 from aleph.types.message_status import InvalidMessageFormat
 from aleph.utils import item_type_from_hash
 
@@ -126,7 +126,7 @@ class PendingStoreMessage(BasePendingMessage[Literal[MessageType.store], StoreCo
 
 class PendingInlineStoreMessage(PendingStoreMessage):
     item_content: str
-    item_type: Literal[ItemType.inline]     # type: ignore[valid-type]
+    item_type: Literal[ItemType.inline]  # type: ignore[valid-type]
 
 
 MESSAGE_TYPE_TO_CLASS = {

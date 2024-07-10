@@ -1,35 +1,29 @@
 from __future__ import annotations
 
 import logging
-from typing import List, cast, Sequence, Dict, Set
+from typing import Dict, List, Sequence, Set, cast
 
-from aleph_message.models import (
-    MessageType,
-    ForgetContent,
-    ItemHash,
-)
+from aleph_message.models import ForgetContent, ItemHash, MessageType
 from sqlalchemy import select
 
-from aleph.db.accessors.aggregates import (
-    aggregate_exists,
-)
+from aleph.db.accessors.aggregates import aggregate_exists
 from aleph.db.accessors.messages import (
-    message_exists,
-    get_message_status,
     append_to_forgotten_by,
     forget_message,
     get_message_by_item_hash,
+    get_message_status,
+    message_exists,
 )
-from aleph.db.models import MessageDb, AggregateElementDb
+from aleph.db.models import AggregateElementDb, MessageDb
 from aleph.handlers.content.content_handler import ContentHandler
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import (
-    MessageStatus,
-    PermissionDenied,
     CannotForgetForgetMessage,
     ForgetTargetNotFound,
-    NoForgetTarget,
     InternalError,
+    MessageStatus,
+    NoForgetTarget,
+    PermissionDenied,
 )
 
 logger = logging.getLogger(__name__)
@@ -121,7 +115,7 @@ class ForgetMessageHandler(ContentHandler):
                 )
             if target_message.type == MessageType.forget:
                 logger.warning(
-                    f"FORGET message %s may not forget FORGET message %s",
+                    "FORGET message %s may not forget FORGET message %s",
                     message.item_hash,
                     target_hash,
                 )

@@ -1,11 +1,11 @@
 import datetime as dt
 import traceback
-from typing import Optional, Sequence, Union, Iterable, Any, Mapping, overload, Tuple
+from typing import Any, Iterable, Mapping, Optional, Sequence, Tuple, Union, overload
 
-from aleph_message.models import ItemHash, Chain, MessageType
-from sqlalchemy import func, select, update, text, delete, nullsfirst, nullslast
-from sqlalchemy.dialects.postgresql import insert, array
-from sqlalchemy.orm import selectinload, load_only
+from aleph_message.models import Chain, ItemHash, MessageType
+from sqlalchemy import delete, func, nullsfirst, nullslast, select, text, update
+from sqlalchemy.dialects.postgresql import array, insert
+from sqlalchemy.orm import load_only, selectinload
 from sqlalchemy.sql import Insert, Select
 from sqlalchemy.sql.elements import literal
 
@@ -13,24 +13,27 @@ from aleph.toolkit.timestamp import coerce_to_datetime, utc_now
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import (
-    MessageStatus,
-    MessageProcessingException,
     ErrorCode,
+    MessageProcessingException,
+    MessageStatus,
 )
-from aleph.types.sort_order import SortOrder, SortBy
-from .pending_messages import delete_pending_message
+from aleph.types.sort_order import SortBy, SortOrder
+
 from ..models.chains import ChainTxDb
 from ..models.messages import (
+    ForgottenMessageDb,
     MessageDb,
     MessageStatusDb,
-    ForgottenMessageDb,
     RejectedMessageDb,
     message_confirmations,
 )
 from ..models.pending_messages import PendingMessageDb
+from .pending_messages import delete_pending_message
 
 
-def get_message_by_item_hash(session: DbSession, item_hash: ItemHash) -> Optional[MessageDb]:
+def get_message_by_item_hash(
+    session: DbSession, item_hash: ItemHash
+) -> Optional[MessageDb]:
     select_stmt = (
         select(MessageDb)
         .where(MessageDb.item_hash == item_hash)
@@ -133,7 +136,9 @@ def make_matching_messages_query(
         )
         if start_block:
             select_stmt = select_stmt.where(
-                select_earliest_confirmation.c.height.is_(None) | select_earliest_confirmation.c.height >= start_block
+                select_earliest_confirmation.c.height.is_(None)
+                | select_earliest_confirmation.c.height
+                >= start_block
             )
         if end_block:
             select_stmt = select_stmt.where(
@@ -142,12 +147,16 @@ def make_matching_messages_query(
         if sort_by == SortBy.TX_TIME:
             order_by_columns = (
                 (
-                    nullsfirst(select_earliest_confirmation.c.earliest_confirmation.desc()),
+                    nullsfirst(
+                        select_earliest_confirmation.c.earliest_confirmation.desc()
+                    ),
                     MessageDb.time.desc(),
                 )
                 if sort_order == SortOrder.DESCENDING
                 else (
-                    nullslast(select_earliest_confirmation.c.earliest_confirmation.asc()),
+                    nullslast(
+                        select_earliest_confirmation.c.earliest_confirmation.asc()
+                    ),
                     MessageDb.time.asc(),
                 )
             )
@@ -289,7 +298,9 @@ def make_confirmation_upsert_query(item_hash: str, tx_hash: str) -> Insert:
     )
 
 
-def get_message_status(session: DbSession, item_hash: ItemHash) -> Optional[MessageStatusDb]:
+def get_message_status(
+    session: DbSession, item_hash: ItemHash
+) -> Optional[MessageStatusDb]:
     return (
         session.execute(
             select(MessageStatusDb).where(MessageStatusDb.item_hash == str(item_hash))
@@ -488,9 +499,8 @@ def reject_new_pending_message(
     session: DbSession,
     pending_message: Mapping[str, Any],
     exception: BaseException,
-        tx_hash: Optional[str],
-) -> None:
-    ...
+    tx_hash: Optional[str],
+) -> None: ...
 
 
 @overload
@@ -499,8 +509,7 @@ def reject_new_pending_message(
     pending_message: PendingMessageDb,
     exception: BaseException,
     tx_hash: Optional[str],
-) -> None:
-    ...
+) -> None: ...
 
 
 def reject_new_pending_message(

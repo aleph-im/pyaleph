@@ -6,11 +6,10 @@ from aleph_message.models import ExecutableContent, InstanceContent, ProgramCont
 from aleph_message.models.execution.volume import ImmutableVolume
 
 from aleph.db.accessors.files import get_file_tag, get_message_file_pin
-from aleph.db.models import StoredFileDb, FileTagDb, MessageFilePinDb
+from aleph.db.models import FileTagDb, MessageFilePinDb, StoredFileDb
 from aleph.toolkit.constants import GiB, MiB
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag
-
 
 MINUTE = 60
 HOUR = 60 * MINUTE
@@ -22,7 +21,7 @@ COMPUTE_UNIT_PRICE_PER_HOUR_PERSISTENT = Decimal("0.11")
 STORAGE_INCLUDED_PER_COMPUTE_UNIT_ON_DEMAND = Decimal("2") * GiB
 STORAGE_INCLUDED_PER_COMPUTE_UNIT_PERSISTENT = Decimal("20") * GiB
 
-EXTRA_STORAGE_TOKEN_TO_HOLD = 1 / (Decimal('20') * MiB)  # Hold 1 token for 20 MiB
+EXTRA_STORAGE_TOKEN_TO_HOLD = 1 / (Decimal("20") * MiB)  # Hold 1 token for 20 MiB
 EXTRA_STORAGE_PRICE_PER_HOUR = Decimal("0.000000977")
 EXTRA_STORAGE_PRICE_PER_SECOND = EXTRA_STORAGE_PRICE_PER_HOUR / Decimal(HOUR)
 

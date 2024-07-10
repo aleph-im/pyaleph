@@ -1,4 +1,4 @@
-from typing import Any, Set, Optional, List
+from typing import Any, List, Optional, Set
 
 import redis.asyncio as redis_asyncio
 
@@ -16,7 +16,6 @@ class NodeCache:
 
         self._redis_client: Optional[redis_asyncio.Redis] = None
 
-
     @property
     def redis_client(self) -> redis_asyncio.Redis:
         if (redis_client := self._redis_client) is None:
@@ -26,7 +25,6 @@ class NodeCache:
             )
 
         return redis_client
-
 
     async def open(self):
         self._redis_client = redis_asyncio.Redis(

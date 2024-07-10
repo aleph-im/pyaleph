@@ -5,10 +5,6 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 import aiohttp
 import pytest
-from aleph.db.models import MessageDb, PostDb
-from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.channel import Channel
-from aleph.types.db_session import DbSessionFactory
 from aleph_message.models import Chain, InstanceContent, ItemType, MessageType
 from aleph_message.models.execution.environment import (
     FunctionEnvironment,
@@ -16,6 +12,11 @@ from aleph_message.models.execution.environment import (
 )
 from aleph_message.models.execution.instance import RootfsVolume
 from aleph_message.models.execution.volume import ImmutableVolume, ParentVolume
+
+from aleph.db.models import MessageDb, PostDb
+from aleph.toolkit.timestamp import timestamp_to_datetime
+from aleph.types.channel import Channel
+from aleph.types.db_session import DbSessionFactory
 
 from .utils import get_messages_by_keys
 
@@ -120,7 +121,7 @@ async def test_get_messages_filter_by_chain(fixture_messages, ccn_api_client):
 async def test_get_messages_filter_invalid_chain(fixture_messages, ccn_api_client):
     response = await fetch_messages_by_chain(api_client=ccn_api_client, chain="2CHAINZ")
     text = await response.text()
-    assert response.status == 422, await response.text()
+    assert response.status == 422, text
 
 
 async def fetch_messages_by_content_hash(

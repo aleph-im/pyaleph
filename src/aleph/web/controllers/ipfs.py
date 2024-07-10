@@ -6,11 +6,11 @@ from aiohttp.web_request import FileField
 from aleph.db.accessors.files import upsert_file
 from aleph.types.files import FileType
 from aleph.web.controllers.app_state_getters import (
+    get_config_from_request,
     get_ipfs_service_from_request,
     get_session_factory_from_request,
-    get_config_from_request,
 )
-from aleph.web.controllers.utils import file_field_to_io, add_grace_period_for_file
+from aleph.web.controllers.utils import add_grace_period_for_file
 
 
 async def ipfs_add_file(request: web.Request):
@@ -53,7 +53,9 @@ async def ipfs_add_file(request: web.Request):
 
     # IPFS add returns the cumulative size and not the real file size.
     # We need the real file size here.
-    stats = await asyncio.wait_for(ipfs_service.ipfs_client.files.stat(f"/ipfs/{cid}"), 5)
+    stats = await asyncio.wait_for(
+        ipfs_service.ipfs_client.files.stat(f"/ipfs/{cid}"), 5
+    )
     size = stats["Size"]
 
     with session_factory() as session:

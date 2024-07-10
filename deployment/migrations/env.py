@@ -17,7 +17,7 @@ if config.attributes.get('configure_logger', True):
     fileConfig(config.config_file_name)
 
 # Auto-generate migrations
-from aleph.db.models import Base
+from aleph.db.models import Base  # noqa
 
 target_metadata = Base.metadata
 

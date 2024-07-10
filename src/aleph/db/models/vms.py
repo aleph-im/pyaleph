@@ -1,14 +1,15 @@
 import datetime as dt
-from typing import Any, Optional, Dict, List
+from typing import Any, Dict, List, Optional
 
-from aleph_message.models.execution.program import MachineType, Encoding
+from aleph_message.models.execution.program import Encoding, MachineType
 from aleph_message.models.execution.volume import VolumePersistence
-from sqlalchemy import Column, String, ForeignKey, Boolean, Integer, TIMESTAMP
+from sqlalchemy import TIMESTAMP, Boolean, Column, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import relationship, declared_attr, Mapped
+from sqlalchemy.orm import Mapped, declared_attr, relationship
 from sqlalchemy_utils import ChoiceType
 
-from aleph.types.vms import CpuArchitecture, VmVersion, VmType
+from aleph.types.vms import CpuArchitecture, VmType, VmVersion
+
 from .base import Base
 
 

@@ -1,15 +1,15 @@
 import datetime as dt
 from typing import (
-    Optional,
-    Generic,
-    TypeVar,
-    Literal,
-    List,
-    Any,
-    Union,
-    Dict,
-    Mapping,
     Annotated,
+    Any,
+    Dict,
+    Generic,
+    List,
+    Literal,
+    Mapping,
+    Optional,
+    TypeVar,
+    Union,
 )
 
 from aleph_message.models import (
@@ -17,18 +17,19 @@ from aleph_message.models import (
     BaseContent,
     Chain,
     ForgetContent,
+    InstanceContent,
+    ItemType,
+    MessageType,
     PostContent,
     ProgramContent,
     StoreContent,
-    InstanceContent,
 )
-from aleph_message.models import MessageType, ItemType
 from pydantic import BaseModel, Field
 from pydantic.generics import GenericModel
 
 import aleph.toolkit.json as aleph_json
 from aleph.db.models import MessageDb
-from aleph.types.message_status import MessageStatus, ErrorCode
+from aleph.types.message_status import ErrorCode, MessageStatus
 
 MType = TypeVar("MType", bound=MessageType)
 ContentType = TypeVar("ContentType", bound=BaseContent)
@@ -68,14 +69,12 @@ class BaseMessage(GenericModel, Generic[MType, ContentType]):
 
 class AggregateMessage(
     BaseMessage[Literal[MessageType.aggregate], AggregateContent]  # type: ignore
-):
-    ...
+): ...
 
 
 class ForgetMessage(
     BaseMessage[Literal[MessageType.forget], ForgetContent]  # type: ignore
-):
-    ...
+): ...
 
 
 class InstanceMessage(BaseMessage[Literal[MessageType.instance], InstanceContent]):  # type: ignore
@@ -88,14 +87,12 @@ class PostMessage(BaseMessage[Literal[MessageType.post], PostContent]):  # type:
 
 class ProgramMessage(
     BaseMessage[Literal[MessageType.program], ProgramContent]  # type: ignore
-):
-    ...
+): ...
 
 
 class StoreMessage(
     BaseMessage[Literal[MessageType.store], StoreContent]  # type: ignore
-):
-    ...
+): ...
 
 
 MESSAGE_CLS_DICT = {
@@ -125,13 +122,13 @@ def format_message(message: MessageDb) -> AlephMessage:
     message_type = message.type
 
     message_cls = MESSAGE_CLS_DICT[message_type]
-    return message_cls.from_orm(message)  # type: ignore[return-value]
+    return message_cls.from_orm(message)
 
 
 def format_message_dict(message: Dict[str, Any]) -> AlephMessage:
     message_type = message.get("type")
     message_cls = MESSAGE_CLS_DICT[message_type]
-    return message_cls.parse_obj(message)  # type: ignore[return-value]
+    return message_cls.parse_obj(message)
 
 
 class BaseMessageStatus(BaseModel):

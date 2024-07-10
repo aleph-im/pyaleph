@@ -209,7 +209,7 @@ async def test_get_posts_tags(
 
     # Search for several tags
     response = await ccn_api_client.get(
-        "/api/v0/posts.json", params={"tags": f"mainnet,not-a-ref"}
+        "/api/v0/posts.json", params={"tags": "mainnet,not-a-ref"}
     )
     assert response.status == 200
     response_json = await response.json()
@@ -225,7 +225,7 @@ async def test_get_posts_tags(
     # Check for several matching tags
     # Search for several tags
     response = await ccn_api_client.get(
-        "/api/v0/posts.json", params={"tags": f"original,mainnet"}
+        "/api/v0/posts.json", params={"tags": "original,mainnet"}
     )
     assert response.status == 200
     response_json = await response.json()

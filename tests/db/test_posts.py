@@ -1,28 +1,28 @@
 import datetime as dt
-from typing import Optional, Any, Dict
+import json
+from typing import Any, Dict, Optional
 
 import pytest
 import pytz
-from aleph_message.models import ItemHash, ItemType, MessageType, Chain
+from aleph_message.models import Chain, ItemHash, ItemType, MessageType
 from more_itertools import one
 
 from aleph.db.accessors.posts import (
-    get_post,
     MergedPost,
-    get_matching_posts,
-    count_matching_posts,
-    refresh_latest_amend,
-    get_original_post,
-    delete_post,
-    get_matching_posts_legacy,
     MergedPostV0,
+    count_matching_posts,
+    delete_post,
+    get_matching_posts,
+    get_matching_posts_legacy,
+    get_original_post,
+    get_post,
+    refresh_latest_amend,
 )
 from aleph.db.models import MessageDb
 from aleph.db.models.posts import PostDb
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.sort_order import SortOrder
-import json
 
 
 def message_fields_from_post(post: PostDb) -> Dict[str, Any]:
@@ -63,7 +63,7 @@ def original_message(original_post: PostDb) -> MessageDb:
     return MessageDb(
         **message_fields_from_post(original_post),
         chain=Chain.ETH,
-        signature="sig-original"
+        signature="sig-original",
     )
 
 
@@ -88,7 +88,7 @@ def first_amend_message(first_amend_post: PostDb) -> MessageDb:
     return MessageDb(
         **message_fields_from_post(first_amend_post),
         chain=Chain.ETH,
-        signature="sig-first-amend"
+        signature="sig-first-amend",
     )
 
 
@@ -113,7 +113,7 @@ def second_amend_message(second_amend_post: PostDb) -> MessageDb:
     return MessageDb(
         **message_fields_from_post(second_amend_post),
         chain=Chain.ETH,
-        signature="sig-second-amend"
+        signature="sig-second-amend",
     )
 
 
@@ -140,7 +140,7 @@ def message_from_second_user(post_from_second_user: PostDb) -> MessageDb:
     return MessageDb(
         **message_fields_from_post(post_from_second_user),
         chain=Chain.ETH,
-        signature="sig-post-from-second-user"
+        signature="sig-post-from-second-user",
     )
 
 

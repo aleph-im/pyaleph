@@ -1,18 +1,12 @@
 import datetime as dt
 
 import pytest
-from aleph_message.models import (
-    Chain,
-    MessageType,
-    AggregateContent,
-    PostContent,
-)
+from aleph_message.models import AggregateContent, Chain, MessageType, PostContent
 
 from aleph.chains.tezos import (
-    TezosConnector,
+    TezosVerifier,
     datetime_to_iso_8601,
     indexer_event_to_chain_tx,
-    TezosVerifier,
 )
 from aleph.db.models import PendingMessageDb
 from aleph.schemas.chains.tezos_indexer_response import (

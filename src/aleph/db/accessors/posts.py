@@ -1,43 +1,40 @@
 import datetime as dt
 from typing import (
+    Any,
+    Dict,
+    Iterable,
+    List,
     Optional,
     Protocol,
-    Dict,
-    Any,
     Sequence,
-    Union,
-    List,
-    cast,
-    Iterable,
     Tuple,
+    Union,
+    cast,
 )
 
-from aleph_message.models import ItemHash, Chain, ItemType
+from aleph_message.models import Chain, ItemHash, ItemType
+from sqlalchemy import TIMESTAMP, Float, String, case
+from sqlalchemy import cast as sqla_cast
 from sqlalchemy import (
-    func,
-    select,
-    literal_column,
-    TIMESTAMP,
-    String,
     delete,
-    update,
+    extract,
+    func,
+    literal_column,
     nullsfirst,
     nullslast,
-    extract,
-    cast as sqla_cast,
-    Float,
-    case,
+    select,
+    update,
 )
 from sqlalchemy.dialects.postgresql import JSONB, array
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql import Select
 
-from aleph.db.models import message_confirmations, ChainTxDb, MessageDb
+from aleph.db.models import ChainTxDb, MessageDb, message_confirmations
 from aleph.db.models.posts import PostDb
 from aleph.toolkit.timestamp import coerce_to_datetime
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSession
-from aleph.types.sort_order import SortOrder, SortBy
+from aleph.types.sort_order import SortBy, SortOrder
 
 
 class MergedPost(Protocol):

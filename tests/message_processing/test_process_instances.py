@@ -1,38 +1,35 @@
 import datetime as dt
 import itertools
 import json
-from typing import List, Protocol
 from decimal import Decimal
+from typing import List, Protocol
 
 import pytest
 import pytz
 from aleph_message.models import (
-    ItemType,
     Chain,
-    MessageType,
-    InstanceContent,
     ExecutableContent,
     ForgetContent,
+    InstanceContent,
+    ItemType,
+    MessageType,
 )
 from aleph_message.models.execution.program import ProgramContent
 from aleph_message.models.execution.volume import ImmutableVolume
 from more_itertools import one
 from sqlalchemy import text
 
-from aleph.db.accessors.files import (
-    insert_message_file_pin,
-    upsert_file_tag,
-)
+from aleph.db.accessors.files import insert_message_file_pin, upsert_file_tag
 from aleph.db.accessors.messages import get_message_status, get_rejected_message
 from aleph.db.accessors.vms import get_instance, get_vm_version
 from aleph.db.models import (
-    PendingMessageDb,
-    MessageStatusDb,
-    ImmutableVolumeDb,
+    AlephBalanceDb,
     EphemeralVolumeDb,
+    ImmutableVolumeDb,
+    MessageStatusDb,
+    PendingMessageDb,
     PersistentVolumeDb,
     StoredFileDb,
-    AlephBalanceDb,
 )
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.services.cost import (
@@ -41,9 +38,9 @@ from aleph.services.cost import (
     get_volume_size,
 )
 from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.db_session import DbSessionFactory, DbSession
+from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.files import FileTag, FileType
-from aleph.types.message_status import MessageStatus, ErrorCode
+from aleph.types.message_status import ErrorCode, MessageStatus
 
 
 @pytest.fixture
@@ -323,7 +320,7 @@ async def test_process_instance(
         assert len(volumes_by_type[PersistentVolumeDb]) == 3
         assert len(volumes_by_type[ImmutableVolumeDb]) == 1
 
-        ephemeral_volume: EphemeralVolumeDb = one(volumes_by_type[EphemeralVolumeDb])  # type: ignore[assignment]
+        ephemeral_volume: EphemeralVolumeDb = one(volumes_by_type[EphemeralVolumeDb])
         assert ephemeral_volume.mount == "/var/cache"
         assert ephemeral_volume.size_mib == 5
 

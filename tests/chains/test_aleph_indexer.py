@@ -5,7 +5,7 @@ import pytest
 from configmanager import Config
 
 from aleph.chains.indexer_reader import AlephIndexerClient
-from aleph.schemas.chains.indexer_response import IndexerBlockchain, EntityType
+from aleph.schemas.chains.indexer_response import EntityType, IndexerBlockchain
 from aleph.types.chain_sync import ChainEventType
 
 
