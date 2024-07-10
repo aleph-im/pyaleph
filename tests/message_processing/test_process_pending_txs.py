@@ -8,7 +8,7 @@ from configmanager import Config
 from sqlalchemy import select
 
 from aleph.chains.chain_data_service import ChainDataService
-from aleph.db.models import PendingMessageDb, MessageStatusDb
+from aleph.db.models import MessageStatusDb, PendingMessageDb
 from aleph.db.models.chains import ChainTxDb
 from aleph.db.models.pending_txs import PendingTxDb
 from aleph.handlers.message_handler import MessagePublisher
@@ -19,6 +19,7 @@ from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.message_status import MessageStatus
+
 from .load_fixtures import load_fixture_messages
 
 

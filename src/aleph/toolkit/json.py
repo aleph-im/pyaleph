@@ -2,10 +2,11 @@
 An abstraction layer for JSON serialization/deserialization.
 Makes swapping between JSON implementations easier.
 """
+
 import json
+from typing import IO, Any, Union
 
 import orjson
-from typing import Any, IO, Union
 
 # The actual type of serialized JSON as returned by the JSON serializer.
 SerializedJson = bytes
@@ -28,7 +29,7 @@ def load(fp: IO) -> Any:
 def loads(s: Union[bytes, str]) -> Any:
     try:
         return orjson.loads(s)
-    except TypeError as e:
+    except TypeError:
         return json.loads(s)
 
 
@@ -39,5 +40,5 @@ def dump(fp: IO, obj: Any) -> None:
 def dumps(obj: Any) -> bytes:
     try:
         return orjson.dumps(obj)
-    except TypeError as e:
+    except TypeError:
         return json.dumps(obj).encode()

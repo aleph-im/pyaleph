@@ -1,17 +1,17 @@
 import logging
 import struct
 
-from .nuls_aleph_sdk import (
-    NulsSignature,
-    hash_from_address,
-    public_key_to_hash,
-    address_from_hash,
-)
-
 from aleph.chains.common import get_verification_buffer
 from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.utils import run_in_executor
+
 from .abc import Verifier
+from .nuls_aleph_sdk import (
+    NulsSignature,
+    address_from_hash,
+    hash_from_address,
+    public_key_to_hash,
+)
 
 LOGGER = logging.getLogger("chains.nuls")
 CHAIN_NAME = "NULS"

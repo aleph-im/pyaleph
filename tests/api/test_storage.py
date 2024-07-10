@@ -7,7 +7,7 @@ import aiohttp
 import orjson
 import pytest
 import pytest_asyncio
-from aleph_message.models import ItemHash, Chain
+from aleph_message.models import Chain, ItemHash
 from in_memory_storage_engine import InMemoryStorageEngine
 
 from aleph.chains.signature_verifier import SignatureVerifier
@@ -17,7 +17,10 @@ from aleph.storage import StorageService
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.files import FileType
 from aleph.types.message_status import MessageStatus
-from aleph.web.controllers.app_state_getters import APP_STATE_SIGNATURE_VERIFIER, APP_STATE_STORAGE_SERVICE
+from aleph.web.controllers.app_state_getters import (
+    APP_STATE_SIGNATURE_VERIFIER,
+    APP_STATE_STORAGE_SERVICE,
+)
 from aleph.web.controllers.utils import BroadcastStatus, PublicationStatus
 
 IPFS_ADD_FILE_URI = "/api/v0/ipfs/add_file"
@@ -100,9 +103,7 @@ async def add_file_raw_upload(
     expected_file_hash: str,
 ):
     # Send the file content as raw bytes in the request body
-    headers = {
-        'Content-Type': 'application/octet-stream'
-    }
+    headers = {"Content-Type": "application/octet-stream"}
     post_response = await api_client.post(uri, data=file_content, headers=headers)
     response_text = await post_response.text()
     assert post_response.status == 200, response_text
@@ -255,8 +256,11 @@ async def test_storage_add_file(api_client, session_factory: DbSessionFactory):
         expected_file_hash=EXPECTED_FILE_SHA256,
     )
 
+
 @pytest.mark.asyncio
-async def test_storage_add_file_raw_upload(api_client, session_factory: DbSessionFactory):
+async def test_storage_add_file_raw_upload(
+    api_client, session_factory: DbSessionFactory
+):
     await add_file_raw_upload(
         api_client,
         session_factory,
@@ -416,4 +420,3 @@ async def test_ipfs_add_json(api_client, session_factory: DbSessionFactory):
         # creating a second fixture.
         expected_file_hash=ItemHash(EXPECTED_FILE_CID),
     )
-

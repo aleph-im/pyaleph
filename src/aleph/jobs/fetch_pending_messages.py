@@ -4,14 +4,7 @@ Job in charge of (re-) processing Aleph messages waiting in the pending queue.
 
 import asyncio
 from logging import getLogger
-from typing import (
-    Dict,
-    List,
-    Set,
-    AsyncIterator,
-    Sequence,
-    NewType,
-)
+from typing import AsyncIterator, Dict, List, NewType, Sequence, Set
 
 import aio_pika.abc
 from configmanager import Config
@@ -19,23 +12,23 @@ from setproctitle import setproctitle
 
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.pending_messages import (
-    make_pending_message_fetched_statement,
     get_next_pending_messages,
+    make_pending_message_fetched_statement,
 )
 from aleph.db.connection import make_engine, make_session_factory
 from aleph.db.models import MessageDb, PendingMessageDb
 from aleph.handlers.message_handler import MessageHandler
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
-from aleph.services.ipfs.common import make_ipfs_client
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
 from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSessionFactory
-from .job_utils import prepare_loop, MessageJob, make_pending_message_queue
+
 from ..toolkit.rabbitmq import make_mq_conn
+from .job_utils import MessageJob, make_pending_message_queue, prepare_loop
 
 LOGGER = getLogger(__name__)
 
@@ -175,9 +168,12 @@ async def fetch_messages_task(config: Config):
         config=config, routing_key="fetch.*", channel=mq_channel
     )
 
-    async with NodeCache(
-        redis_host=config.redis.host.value, redis_port=config.redis.port.value
-    ) as node_cache, IpfsService.new(config) as ipfs_service:
+    async with (
+        NodeCache(
+            redis_host=config.redis.host.value, redis_port=config.redis.port.value
+        ) as node_cache,
+        IpfsService.new(config) as ipfs_service,
+    ):
         storage_service = StorageService(
             storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
             ipfs_service=ipfs_service,

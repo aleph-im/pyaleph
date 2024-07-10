@@ -5,17 +5,23 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 import aiohttp
 import pytest
-from aleph.db.models import MessageDb, PostDb
-from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.channel import Channel
-from aleph.types.db_session import DbSessionFactory
-from aleph_message.models import Chain, InstanceContent, ItemType, MessageType, ItemHash
-from aleph_message.models.execution.instance import RootfsVolume
+from aleph_message.models import Chain, InstanceContent, ItemHash, ItemType, MessageType
 from aleph_message.models.execution.environment import (
     InstanceEnvironment,
     MachineResources,
 )
-from aleph_message.models.execution.volume import ImmutableVolume, ParentVolume, VolumePersistence, PersistentVolumeSizeMib
+from aleph_message.models.execution.instance import RootfsVolume
+from aleph_message.models.execution.volume import (
+    ImmutableVolume,
+    ParentVolume,
+    PersistentVolumeSizeMib,
+    VolumePersistence,
+)
+
+from aleph.db.models import MessageDb, PostDb
+from aleph.toolkit.timestamp import timestamp_to_datetime
+from aleph.types.channel import Channel
+from aleph.types.db_session import DbSessionFactory
 
 from .utils import get_messages_by_keys
 
@@ -119,7 +125,7 @@ async def test_get_messages_filter_by_chain(fixture_messages, ccn_api_client):
 async def test_get_messages_filter_invalid_chain(fixture_messages, ccn_api_client):
     response = await fetch_messages_by_chain(api_client=ccn_api_client, chain="2CHAINZ")
     text = await response.text()
-    assert response.status == 422, await response.text()
+    assert response.status == 422, text
 
 
 async def fetch_messages_by_content_hash(
@@ -506,14 +512,18 @@ def instance_message_fixture() -> MessageDb:
             payment=None,
             rootfs=RootfsVolume(
                 parent=ParentVolume(
-                    ref=ItemHash("24695709b7ce4dc343ede66fc31a1133149b3a3ea6b460a1b3d19112ebb7ab64")
+                    ref=ItemHash(
+                        "24695709b7ce4dc343ede66fc31a1133149b3a3ea6b460a1b3d19112ebb7ab64"
+                    )
                 ),
                 persistence=VolumePersistence("host"),
                 size_mib=PersistentVolumeSizeMib(1024),
             ),
             volumes=[
                 ImmutableVolume(
-                    ref=ItemHash("7db5ed835b6770a770973c03a40f6af6404b375d59e990b959eb476208bd5fb7"),
+                    ref=ItemHash(
+                        "7db5ed835b6770a770973c03a40f6af6404b375d59e990b959eb476208bd5fb7"
+                    ),
                     use_latest=True,
                 )
             ],

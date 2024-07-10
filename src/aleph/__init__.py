@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import subprocess
 
-from pkg_resources import get_distribution, DistributionNotFound
+from pkg_resources import DistributionNotFound, get_distribution
 
 
 def _get_git_version() -> str:

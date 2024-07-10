@@ -1,15 +1,22 @@
+import datetime as dt
 from enum import Enum
-from typing import Optional, List, Any, Dict
+from typing import Any, Dict, List
 
-from sqlalchemy import BigInteger, Column, String, ForeignKey, TIMESTAMP, Index, UniqueConstraint
+from sqlalchemy import (
+    TIMESTAMP,
+    BigInteger,
+    Column,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import relationship
 from sqlalchemy_utils import ChoiceType
 
-from aleph.types.files import FileType
-from .base import Base
-import datetime as dt
+from aleph.types.files import FileTag, FileType
 
-from aleph.types.files import FileTag
+from .base import Base
 
 
 class FilePinType(str, Enum):
@@ -75,9 +82,7 @@ class FilePinDb(Base):
     __mapper_args__: Dict[str, Any] = {
         "polymorphic_on": type,
     }
-    __table_args__ = (
-        UniqueConstraint("item_hash", "type"),
-    )
+    __table_args__ = (UniqueConstraint("item_hash", "type"),)
 
 
 class TxFilePinDb(FilePinDb):
@@ -109,7 +114,6 @@ class GracePeriodFilePinDb(FilePinDb):
     __mapper_args__ = {
         "polymorphic_identity": FilePinType.GRACE_PERIOD.value,
     }
-
 
 
 Index(

@@ -1,9 +1,10 @@
 import asyncio
 import logging
 
-from .service import IpfsService
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.message_status import InvalidMessageException
+
+from .service import IpfsService
 
 LOGGER = logging.getLogger(__name__)
 

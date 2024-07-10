@@ -1,24 +1,19 @@
 import datetime as dt
 from typing import (
-    Optional,
-    Iterable,
     Any,
     Dict,
-    Tuple,
-    Sequence,
-    overload,
+    Iterable,
     Literal,
+    Optional,
+    Sequence,
+    Tuple,
     Union,
+    overload,
 )
-from sqlalchemy import (
-    select,
-    delete,
-    update,
-    func,
-    literal_column,
-)
-from sqlalchemy.dialects.postgresql import insert, aggregate_order_by
-from sqlalchemy.orm import selectinload, defer
+
+from sqlalchemy import delete, func, literal_column, select, update
+from sqlalchemy.dialects.postgresql import aggregate_order_by, insert
+from sqlalchemy.orm import defer, selectinload
 
 from aleph.db.models import AggregateDb, AggregateElementDb
 from aleph.types.db_session import DbSession
@@ -41,8 +36,7 @@ def get_aggregates_by_owner(
     owner: str,
     with_info: Literal[False],
     keys: Optional[Sequence[str]] = None,
-) -> AggregateContent:
-    ...
+) -> AggregateContent: ...
 
 
 @overload
@@ -51,15 +45,13 @@ def get_aggregates_by_owner(
     owner: str,
     with_info: Literal[True],
     keys: Optional[Sequence[str]] = None,
-) -> AggregateContentWithInfo:
-    ...
+) -> AggregateContentWithInfo: ...
 
 
 @overload
 def get_aggregates_by_owner(
     session, owner: str, with_info: bool, keys: Optional[Sequence[str]] = None
-) -> Union[AggregateContent, AggregateContentWithInfo]:
-    ...
+) -> Union[AggregateContent, AggregateContentWithInfo]: ...
 
 
 def get_aggregates_by_owner(session, owner, with_info, keys=None):

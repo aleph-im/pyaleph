@@ -1,11 +1,12 @@
 """ Storage module for Aleph.
 Basically manages the IPFS storage.
 """
+
 import asyncio
 import json
 import logging
 from hashlib import sha256
-from typing import Any, IO, Optional, cast, Final
+from typing import Any, Final, Optional, cast
 
 from aleph_message.models import ItemType
 
@@ -13,8 +14,8 @@ import aleph.toolkit.json as aleph_json
 from aleph.config import get_config
 from aleph.db.accessors.files import upsert_file
 from aleph.db.models import PendingMessageDb
-from aleph.exceptions import InvalidContent, ContentCurrentlyUnavailable
-from aleph.schemas.message_content import ContentSource, RawContent, MessageContent
+from aleph.exceptions import ContentCurrentlyUnavailable, InvalidContent
+from aleph.schemas.message_content import ContentSource, MessageContent, RawContent
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.ipfs.common import get_cid_version
@@ -40,7 +41,7 @@ def check_for_u0000(item_content: aleph_json.SerializedJsonInput):
         contains_u0000 = U0000_BYTES in item_content
 
     if contains_u0000:
-        error_msg = f"Unsupported character in message: \\u0000"
+        error_msg = "Unsupported character in message: \\u0000"
         LOGGER.warning(error_msg)
         raise InvalidContent(error_msg)
 
@@ -132,7 +133,7 @@ class StorageService:
             return computed_hash
 
         except asyncio.TimeoutError:
-            LOGGER.warning(f"Timeout while computing IPFS hash.")
+            LOGGER.warning("Timeout while computing IPFS hash.")
             return None
 
     @staticmethod
