@@ -1,9 +1,9 @@
 from decimal import Decimal
 from io import StringIO
-from typing import Optional, Mapping
+from typing import Mapping, Optional
 
 from aleph_message.models import Chain
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 
 from aleph.db.models import AlephBalanceDb
 from aleph.types.db_session import DbSession

@@ -1,22 +1,23 @@
 import itertools
 import logging
-from typing import List, cast, Sequence, Set
+from typing import List, Sequence, Set, cast
 
 from aleph_message.models import AggregateContent
 
 from aleph.db.accessors.aggregates import (
+    count_aggregate_elements,
+    delete_aggregate,
+    delete_aggregate_element,
     get_aggregate_by_key,
-    merge_aggregate_elements,
+    get_aggregate_content_keys,
     insert_aggregate,
     insert_aggregate_element,
+    mark_aggregate_as_dirty,
+    merge_aggregate_elements,
     refresh_aggregate,
     update_aggregate,
-    count_aggregate_elements,
-    mark_aggregate_as_dirty,
-    get_aggregate_content_keys,
-    delete_aggregate_element, delete_aggregate,
 )
-from aleph.db.models import MessageDb, AggregateElementDb, AggregateDb
+from aleph.db.models import AggregateDb, AggregateElementDb, MessageDb
 from aleph.handlers.content.content_handler import ContentHandler
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession
@@ -209,7 +210,7 @@ class AggregateMessageHandler(ContentHandler):
             key=lambda m: (m.parsed_content.key, m.parsed_content.address, m.time),
         )
 
-        for ((key, owner), messages_by_aggregate) in itertools.groupby(
+        for (key, owner), messages_by_aggregate in itertools.groupby(
             sorted_messages,
             key=lambda m: (m.parsed_content.key, m.parsed_content.address),
         ):

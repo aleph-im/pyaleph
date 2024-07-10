@@ -2,8 +2,8 @@ from typing import Dict
 
 from aleph_message.models import Chain
 
-from aleph.chains.avalanche import AvalancheConnector
 from aleph.chains.abc import Verifier
+from aleph.chains.avalanche import AvalancheConnector
 from aleph.chains.ethereum import EthereumVerifier
 from aleph.chains.nuls import NulsConnector
 from aleph.chains.nuls2 import Nuls2Verifier

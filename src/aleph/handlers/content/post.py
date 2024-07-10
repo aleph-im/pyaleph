@@ -1,28 +1,29 @@
 import logging
-from typing import List, Any, Dict, Mapping, Union, Optional, Set
+from typing import Any, Dict, List, Mapping, Optional, Set, Union
 
-from aleph_message.models import PostContent, ChainRef, Chain
+from aleph_message.models import Chain, ChainRef, PostContent
 from sqlalchemy import update
 
 from aleph.db.accessors.balances import update_balances as update_balances_db
 from aleph.db.accessors.posts import (
+    delete_amends,
+    delete_post,
     get_matching_posts,
     get_original_post,
-    delete_post,
     refresh_latest_amend,
-    delete_amends,
 )
 from aleph.db.models.messages import MessageDb
 from aleph.db.models.posts import PostDb
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import (
-    InvalidMessageFormat,
-    CannotAmendAmend,
     AmendTargetNotFound,
-    NoAmendTarget,
+    CannotAmendAmend,
     InternalError,
+    InvalidMessageFormat,
+    NoAmendTarget,
 )
+
 from .content_handler import ContentHandler
 
 LOGGER = logging.getLogger(__name__)

@@ -2,12 +2,12 @@ import datetime as dt
 from typing import Any, Mapping
 
 import pytest
+from message_test_helpers import make_validated_message_from_dict
 
 from aleph.db.models import AggregateDb, AggregateElementDb
 from aleph.permissions import check_sender_authorization
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSessionFactory
-from message_test_helpers import make_validated_message_from_dict
 
 
 @pytest.mark.asyncio

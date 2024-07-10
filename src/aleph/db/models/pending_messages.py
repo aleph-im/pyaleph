@@ -1,17 +1,17 @@
 import datetime as dt
-from typing import Optional, Any, Dict, Mapping
+from typing import Any, Dict, Mapping, Optional
 
-from aleph_message.models import Chain, MessageType, ItemType
+from aleph_message.models import Chain, ItemType, MessageType
 from sqlalchemy import (
-    Boolean,
-    BigInteger,
-    Column,
     TIMESTAMP,
-    String,
-    Integer,
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    Column,
     ForeignKey,
     Index,
-    CheckConstraint,
+    Integer,
+    String,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
@@ -20,6 +20,7 @@ from sqlalchemy_utils.types.choice import ChoiceType
 from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.channel import Channel
+
 from .base import Base
 from .chains import ChainTxDb
 

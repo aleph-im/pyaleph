@@ -8,15 +8,12 @@ from pydantic import ValidationError, parse_obj_as
 
 from aleph.db.accessors.balances import get_total_balance
 from aleph.db.accessors.cost import get_total_cost_for_address
-from aleph.db.accessors.files import (
-    get_address_files_for_api,
-    get_address_files_stats,
-)
+from aleph.db.accessors.files import get_address_files_for_api, get_address_files_stats
 from aleph.db.accessors.messages import get_message_stats_by_address
 from aleph.schemas.api.accounts import (
     GetAccountBalanceResponse,
-    GetAccountFilesResponse,
     GetAccountFilesQueryParams,
+    GetAccountFilesResponse,
     GetAccountFilesResponseItem,
 )
 from aleph.types.db_session import DbSessionFactory

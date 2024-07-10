@@ -1,38 +1,37 @@
 import datetime as dt
 import itertools
 import json
+from decimal import Decimal
 from typing import List
 
 import pytest
 import pytz
-from aleph_message.models import ItemType, Chain, MessageType, ItemHash
+from aleph_message.models import Chain, ItemHash, ItemType, MessageType
 from aleph_message.models.execution import MachineType
 from aleph_message.models.execution.program import ProgramContent
 from aleph_message.models.execution.volume import ImmutableVolume, VolumePersistence
 from more_itertools import one
 from sqlalchemy import select
 
-from aleph.db.accessors.files import (
-    insert_message_file_pin,
-    upsert_file_tag,
-)
+from aleph.db.accessors.files import insert_message_file_pin, upsert_file_tag
 from aleph.db.accessors.messages import get_message_status, get_rejected_message
 from aleph.db.accessors.vms import get_program
 from aleph.db.models import (
-    PendingMessageDb,
-    MessageStatusDb,
-    VmBaseDb,
-    ImmutableVolumeDb,
+    AlephBalanceDb,
     EphemeralVolumeDb,
+    ImmutableVolumeDb,
+    MessageStatusDb,
+    PendingMessageDb,
     PersistentVolumeDb,
-    StoredFileDb, AlephBalanceDb,
+    StoredFileDb,
+    VmBaseDb,
 )
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.db_session import DbSessionFactory, DbSession
+from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.files import FileTag, FileType
-from aleph.types.message_status import MessageStatus, ErrorCode
-from decimal import Decimal
+from aleph.types.message_status import ErrorCode, MessageStatus
+
 
 @pytest.fixture
 def fixture_program_message(session_factory: DbSessionFactory) -> PendingMessageDb:
@@ -147,6 +146,7 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
                 last_updated=created,
             )
 
+
 @pytest.fixture
 def user_balance(session_factory: DbSessionFactory) -> AlephBalanceDb:
     balance = AlephBalanceDb(
@@ -160,6 +160,7 @@ def user_balance(session_factory: DbSessionFactory) -> AlephBalanceDb:
         session.add(balance)
         session.commit()
     return balance
+
 
 @pytest.mark.asyncio
 async def test_process_program(
@@ -227,7 +228,7 @@ async def test_process_program(
         assert len(volumes_by_type[PersistentVolumeDb]) == 1
         assert len(volumes_by_type[ImmutableVolumeDb]) == 2
 
-        persistent_volume: PersistentVolumeDb = one(volumes_by_type[PersistentVolumeDb])  # type: ignore[assignment]
+        persistent_volume: PersistentVolumeDb = one(volumes_by_type[PersistentVolumeDb])
         assert persistent_volume.name == "data"
         assert persistent_volume.mount == "/data"
         assert persistent_volume.size_mib == 128
@@ -250,7 +251,7 @@ async def test_program_with_subscriptions(
     _ = [message async for message in pipeline]
 
     assert program_message.item_content
-    content_dict = json.loads(program_message.item_content)
+    json.loads(program_message.item_content)
 
     with session_factory() as session:
         program: VmBaseDb = session.execute(select(VmBaseDb)).scalar_one()
@@ -284,11 +285,15 @@ async def test_process_program_missing_volumes(
         program_db = get_program(session=session, item_hash=ItemHash(program_hash))
         assert program_db is None
 
-        message_status = get_message_status(session=session, item_hash=ItemHash(program_hash))
+        message_status = get_message_status(
+            session=session, item_hash=ItemHash(program_hash)
+        )
         assert message_status is not None
         assert message_status.status == MessageStatus.REJECTED
 
-        rejected_message = get_rejected_message(session=session, item_hash=ItemHash(program_hash))
+        rejected_message = get_rejected_message(
+            session=session, item_hash=ItemHash(program_hash)
+        )
         assert rejected_message is not None
         assert rejected_message.error_code == ErrorCode.VM_VOLUME_NOT_FOUND
 

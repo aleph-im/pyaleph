@@ -1,34 +1,29 @@
 import datetime as dt
 import logging
-from typing import Optional, Dict, Any, Mapping
+from typing import Any, Dict, Mapping, Optional
 
 import aio_pika.abc
 import psycopg2
 import sqlalchemy.exc
-from aleph_message.models import MessageType, ItemType
+from aleph_message.models import ItemHash, ItemType, MessageType
 from configmanager import Config
 from pydantic import ValidationError
 from sqlalchemy import insert
 
-from aleph_message.models import ItemHash
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.files import insert_content_file_pin, upsert_file
 from aleph.db.accessors.messages import (
     get_message_by_item_hash,
     make_confirmation_upsert_query,
-    make_message_upsert_query,
     make_message_status_upsert_query,
+    make_message_upsert_query,
     reject_new_pending_message,
 )
 from aleph.db.accessors.pending_messages import delete_pending_message
-from aleph.db.models import (
-    PendingMessageDb,
-    MessageDb,
-    MessageStatusDb,
-)
+from aleph.db.models import MessageDb, MessageStatusDb, PendingMessageDb
 from aleph.exceptions import (
-    InvalidContent,
     ContentCurrentlyUnavailable,
+    InvalidContent,
     UnknownHashError,
 )
 from aleph.handlers.content.aggregate import AggregateMessageHandler
@@ -40,15 +35,15 @@ from aleph.handlers.content.vm import VmMessageHandler
 from aleph.schemas.pending_messages import parse_message
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.db_session import DbSessionFactory, DbSession
+from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.files import FileType
 from aleph.types.message_processing_result import ProcessedMessage
 from aleph.types.message_status import (
     InvalidMessageException,
+    InvalidMessageFormat,
     InvalidSignature,
     MessageContentUnavailable,
     MessageStatus,
-    InvalidMessageFormat,
 )
 
 LOGGER = logging.getLogger(__name__)

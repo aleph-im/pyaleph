@@ -1,17 +1,17 @@
-from typing import Sequence, Tuple, Optional
+import datetime as dt
+from typing import Optional, Sequence, Tuple
 
 import pytest
+import pytz
 import sqlalchemy.orm.exc
 
 from aleph.db.accessors.aggregates import (
     get_aggregate_by_key,
-    refresh_aggregate,
     get_aggregate_content_keys,
+    refresh_aggregate,
 )
 from aleph.db.models import AggregateDb, AggregateElementDb
 from aleph.types.db_session import DbSessionFactory
-import datetime as dt
-import pytz
 
 
 @pytest.mark.asyncio
@@ -61,9 +61,7 @@ async def test_get_aggregate_by_key(session_factory: DbSessionFactory):
 @pytest.mark.asyncio
 async def test_get_aggregate_by_key_no_data(session_factory: DbSessionFactory):
     with session_factory() as session:
-        aggregate = get_aggregate_by_key(
-            session=session, owner="owner", key="key"
-        )
+        aggregate = get_aggregate_by_key(session=session, owner="owner", key="key")
 
     assert aggregate is None
 
@@ -214,8 +212,6 @@ async def test_get_content_keys(
     # Test no match
     with session_factory() as session:
         keys = set(
-            get_aggregate_content_keys(
-                session=session, key="not-a-key", owner="no-one"
-            )
+            get_aggregate_content_keys(session=session, key="not-a-key", owner="no-one")
         )
         assert keys == set()

@@ -3,7 +3,7 @@ import logging
 
 from aleph_p2p_client import AlephP2PServiceClient
 
-from aleph.handlers.message_handler import MessageHandler, MessagePublisher
+from aleph.handlers.message_handler import MessagePublisher
 from aleph.network import decode_pubsub_message
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.message_status import InvalidMessageException

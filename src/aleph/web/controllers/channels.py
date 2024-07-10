@@ -1,6 +1,6 @@
 from typing import List
 
-from aiocache import cached, SimpleMemoryCache
+from aiocache import SimpleMemoryCache, cached
 from aiohttp import web
 
 from aleph.db.accessors.messages import get_distinct_channels
