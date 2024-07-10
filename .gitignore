@@ -13,6 +13,7 @@ __pycache__/*
 .*.swp
 */.ipynb_checkpoints/*
 .mypy_cache/*
+logfile
 
 # data folder
 data*
