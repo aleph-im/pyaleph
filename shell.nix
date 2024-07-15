@@ -1,5 +1,7 @@
 { pkgs ? import <nixpkgs> {} }:
-
+let
+  unstable = import <nixos-unstable> {};
+in
 pkgs.mkShell {
   buildInputs = [
     pkgs.glibcLocales
@@ -8,7 +10,7 @@ pkgs.mkShell {
     pkgs.postgresql
     pkgs.redis
     pkgs.kubo
-    pkgs.hatch
+    unstable.hatch
     pkgs.rustup
 
     pkgs.python312
