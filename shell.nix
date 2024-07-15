@@ -1,24 +1,28 @@
 { pkgs ? import <nixpkgs> {} }:
-
+let
+  unstable = import (fetchTarball https://nixos.org/channels/nixos-unstable/nixexprs.tar.xz) {};
+in
 pkgs.mkShell {
   buildInputs = [
     pkgs.glibcLocales
     pkgs.libiconv  # for macos
 
+    pkgs.ps
+    unstable.libsodium
+
     pkgs.postgresql
     pkgs.redis
     pkgs.kubo
-    pkgs.hatch
+    unstable.hatch
     pkgs.rustup
 
-    pkgs.python312
-    pkgs.python312Packages.virtualenv
-    pkgs.python312Packages.pip
-    pkgs.python312Packages.setuptools
+    unstable.python312
+    unstable.python312Packages.virtualenv
+    unstable.python312Packages.pip
+    unstable.python312Packages.setuptools
 
-    pkgs.python312Packages.secp256k1
-    pkgs.python312Packages.fastecdsa
-    pkgs.python312Packages.greenlet
+    unstable.python312Packages.fastecdsa
+    unstable.python312Packages.greenlet
   ];
 
   shellHook = ''
