@@ -33,11 +33,11 @@ jobs:
           # Fetch the whole history for all tags and branches (required for aleph.__version__)
           fetch-depth: 0
 
-      - name: Set up Python 3.11
+      - name: Set up Python 3.12
         id: setup-python
         uses: actions/setup-python@v2
         with:
-          python-version: 3.11
+          python-version: 3.12
 
       - name: Install latest Rust nightly toolchain
         uses: actions-rs/toolchain@v1

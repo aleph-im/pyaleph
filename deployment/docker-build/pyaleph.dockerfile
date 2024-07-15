@@ -10,7 +10,7 @@ RUN apt-get update && apt-get -y upgrade && apt-get install -y \
      git \
      libgmp-dev \
      libsecp256k1-dev \
-     python3.11
+     python3.12
 
 FROM base as builder
 
@@ -23,8 +23,9 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
     pkg-config \
-    python3.11-dev \
-    python3.11-venv \
+    python3.12-dev \
+    python3.12-venv \
+    libpq-dev \
     software-properties-common
 
 # Install Rust to build Python packages
@@ -37,11 +38,11 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 RUN rustup default nightly
 
 # Create virtualenv
-RUN python3.11 -m venv /opt/venv
+RUN python3.12 -m venv /opt/venv
 
 # Install pip
 ENV PIP_NO_CACHE_DIR yes
-RUN /opt/venv/bin/python3.11 -m pip install --upgrade pip wheel
+RUN /opt/venv/bin/python3.12 -m pip install --upgrade pip wheel
 ENV PATH="/opt/venv/bin:${PATH}"
 
 WORKDIR /opt/pyaleph
@@ -53,7 +54,7 @@ COPY .git ./.git
 COPY src ./src
 RUN pip install -e .
 COPY deployment/docker-build/aiohttp.diff /tmp/aiohttp.diff
-RUN patch /opt/venv/lib/python3.11/site-packages/aiohttp/web_protocol.py /tmp/aiohttp.diff
+RUN patch /opt/venv/lib/python3.12/site-packages/aiohttp/web_protocol.py /tmp/aiohttp.diff
 
 
 FROM base
