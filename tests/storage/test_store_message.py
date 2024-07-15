@@ -104,7 +104,7 @@ async def test_handle_new_storage_file(
     assert stored_file.type == FileType.FILE
     assert stored_file.size == len(raw_content)
 
-    assert get_hash_content_mock.called_once
+    get_hash_content_mock.assert_called_once()
 
 
 @pytest.mark.asyncio
