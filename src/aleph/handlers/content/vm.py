@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import List, Set, overload, Protocol, Optional
+from typing import List, Set, overload, Protocol, Optional, Union
 
 from aleph_message.models import (
     ProgramContent,
@@ -8,6 +8,9 @@ from aleph_message.models import (
     InstanceContent,
     MessageType,
 )
+from aleph_message.models.execution import MachineType
+from aleph_message.models.execution.instance import RootfsVolume
+from aleph_message.models.execution.program import ProgramContent
 from aleph_message.models.execution.volume import (
     AbstractVolume,
     ImmutableVolume,
@@ -72,29 +75,24 @@ LOGGER = logging.getLogger(__name__)
 
 def _get_vm_content(message: MessageDb) -> ExecutableContent:
     content = message.parsed_content
-    if not isinstance(content, ExecutableContent):
+    if not isinstance(content, (InstanceContent, ProgramContent)):
         raise InvalidMessageFormat(
             f"Unexpected content type for program message: {message.item_hash}"
         )
     return content
 
 
-from aleph_message.models.execution.program import (
-    MachineType,
-    ProgramContent,
-)
-
-
 @overload
-def _map_content_to_db_model(item_hash: str, content: InstanceContent) -> VmInstanceDb:
-    ...
+def _map_content_to_db_model(
+    item_hash: str, content: InstanceContent
+) -> VmInstanceDb: ...
 
 
 # For some reason, mypy is not happy with the overload resolution here.
 # This seems linked to multiple inheritance of Pydantic base models, a deeper investigation
 # is required.
 @overload
-def _map_content_to_db_model(item_hash: str, content: ProgramContent) -> ProgramDb:  # type: ignore[misc]
+def _map_content_to_db_model(item_hash: str, content: ProgramContent) -> ProgramDb:
     ...
 
 
@@ -117,6 +115,16 @@ def _map_content_to_db_model(item_hash, content):
             node_owner = node.owner
             node_address_regex = node.address_regex
 
+    trusted_execution_policy = None
+    trusted_execution_firmware = None
+    node_hash = None
+    if not isinstance(content, ProgramContent):
+        if content.environment.trusted_execution is not None:
+            trusted_execution_policy = content.environment.trusted_execution.policy
+            trusted_execution_firmware = content.environment.trusted_execution.firmware
+        if hasattr(content.requirements, 'node_hash'):
+            node_hash = content.requirements.node_hash
+
     return db_cls(
         owner=content.address,
         item_hash=item_hash,
@@ -127,6 +135,8 @@ def _map_content_to_db_model(item_hash, content):
         environment_internet=content.environment.internet,
         environment_aleph_api=content.environment.aleph_api,
         environment_shared_cache=content.environment.shared_cache,
+        environment_trusted_execution_policy=trusted_execution_policy,
+        environment_trusted_execution_firmware=trusted_execution_firmware,
         resources_vcpus=content.resources.vcpus,
         resources_memory=content.resources.memory,
         resources_seconds=content.resources.seconds,
@@ -136,6 +146,7 @@ def _map_content_to_db_model(item_hash, content):
         node_address_regex=node_address_regex,
         volumes=volumes,
         created=timestamp_to_datetime(content.time),
+        node_hash=node_hash
     )
 
 
@@ -172,7 +183,7 @@ def vm_message_to_db(message: MessageDb) -> VmBaseDb:
     content = _get_vm_content(message)
     vm = _map_content_to_db_model(message.item_hash, content)
 
-    if isinstance(vm, ProgramDb):
+    if isinstance(vm, ProgramDb) and isinstance(content, ProgramContent):
         vm.program_type = content.type
         vm.persistent = bool(content.on.persistent)
         vm.http_trigger = content.on.http
@@ -208,13 +219,16 @@ def vm_message_to_db(message: MessageDb) -> VmBaseDb:
 
     elif isinstance(content, InstanceContent):
         parent = content.rootfs.parent
-        vm.rootfs = RootfsVolumeDb(
-            parent_ref=parent.ref,
-            parent_use_latest=parent.use_latest,
-            size_mib=content.rootfs.size_mib,
-            persistence=content.rootfs.persistence,
-        )
-        vm.authorized_keys = content.authorized_keys
+        if isinstance(vm, VmInstanceDb):
+            vm.rootfs = RootfsVolumeDb(
+                parent_ref=parent.ref,
+                parent_use_latest=parent.use_latest,
+                size_mib=content.rootfs.size_mib,
+                persistence=content.rootfs.persistence,
+            )
+            vm.authorized_keys = content.authorized_keys
+        else:
+            raise TypeError(f"Unexpected VM message content type: {type(vm)}")
 
     else:
         raise TypeError(f"Unexpected VM message content type: {type(content)}")
@@ -265,10 +279,10 @@ def check_parent_volumes_size_requirements(
 ) -> None:
     def _get_parent_volume_file(_parent: ParentVolume) -> StoredFileDb:
         if _parent.use_latest:
-            file_tag = get_file_tag(session=session, tag=_parent.ref)
+            file_tag = get_file_tag(session=session, tag=FileTag(_parent.ref))
             if file_tag is None:
                 raise InternalError(
-                    f"Could not find latest version of parent volume {volume.parent.ref}"
+                    f"Could not find latest version of parent volume {_parent.ref}"
                 )
 
             return file_tag.file
@@ -276,7 +290,7 @@ def check_parent_volumes_size_requirements(
         file_pin = get_message_file_pin(session=session, item_hash=_parent.ref)
         if file_pin is None:
             raise InternalError(
-                f"Could not find original version of parent volume {volume.parent.ref}"
+                f"Could not find original version of parent volume {_parent.ref}"
             )
 
         return file_pin.file
@@ -285,7 +299,7 @@ def check_parent_volumes_size_requirements(
         parent: ParentVolume
         size_mib: int
 
-    volumes_with_parent: List[HasParent] = [
+    volumes_with_parent: List[Union[PersistentVolume, RootfsVolume]] = [
         volume
         for volume in content.volumes
         if isinstance(volume, PersistentVolume) and volume.parent is not None
@@ -295,16 +309,17 @@ def check_parent_volumes_size_requirements(
         volumes_with_parent.append(content.rootfs)
 
     for volume in volumes_with_parent:
-        volume_metadata = _get_parent_volume_file(volume.parent)
-        volume_size = volume.size_mib * 1024 * 1024
-        if volume_size < volume_metadata.size:
-            raise VmVolumeTooSmall(
-                parent_size=volume_metadata.size,
-                parent_ref=volume.parent.ref,
-                parent_file=volume_metadata.hash,
-                volume_name=getattr(volume, "name", "rootfs"),
-                volume_size=volume_size,
-            )
+        if volume.parent:
+            volume_metadata = _get_parent_volume_file(volume.parent)
+            volume_size = volume.size_mib * 1024 * 1024
+            if volume_size < volume_metadata.size:
+                raise VmVolumeTooSmall(
+                    parent_size=volume_metadata.size,
+                    parent_ref=volume.parent.ref,
+                    parent_file=volume_metadata.hash,
+                    volume_name=getattr(volume, "name", "rootfs"),
+                    volume_size=volume_size,
+                )
 
 
 class VmMessageHandler(ContentHandler):

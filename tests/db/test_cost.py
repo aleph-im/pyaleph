@@ -1,4 +1,4 @@
-from typing import List, Protocol
+from typing import List, Protocol, Union
 
 import pytest
 import pytz
@@ -12,7 +12,8 @@ from aleph_message.models import (
 )
 from decimal import Decimal
 
-from aleph_message.models.execution.volume import ImmutableVolume
+from aleph_message.models.execution.program import CodeContent, DataContent, FunctionRuntime
+from aleph_message.models.execution.volume import ImmutableVolume, ParentVolume
 
 from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import insert_message_file_pin, upsert_file_tag
@@ -31,13 +32,8 @@ from aleph.types.files import FileType, FileTag
 from aleph.types.message_status import MessageStatus
 
 
-class Volume(Protocol):
-    ref: str
-    use_latest: bool
-
-
-def get_volume_refs(content: ExecutableContent) -> List[Volume]:
-    volumes = []
+def get_volume_refs(content: ExecutableContent) -> List[Union[ImmutableVolume, DataContent, ParentVolume, CodeContent, FunctionRuntime]]:
+    volumes: List[Union[ImmutableVolume, DataContent, ParentVolume, CodeContent, FunctionRuntime]] = []
 
     for volume in content.volumes:
         if isinstance(volume, ImmutableVolume):
@@ -60,33 +56,34 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
     Insert volume references in the DB to make the program processable.
     """
 
-    content = InstanceContent.parse_raw(message.item_content)
-    volumes = get_volume_refs(content)
+    if message.item_content:
+        content = InstanceContent.parse_raw(message.item_content)
+        volumes = get_volume_refs(content)
 
-    created = pytz.utc.localize(dt.datetime(2023, 1, 1))
+        created = pytz.utc.localize(dt.datetime(2023, 1, 1))
 
-    for volume in volumes:
-        # Note: we use the reversed ref to generate the file hash for style points,
-        # but it could be set to any valid hash.
-        file_hash = volume.ref[::-1]
+        for volume in volumes:
+            # Note: we use the reversed ref to generate the file hash for style points,
+            # but it could be set to any valid hash.
+            file_hash = volume.ref[::-1]
 
-        session.add(StoredFileDb(hash=file_hash, size=1024 * 1024, type=FileType.FILE))
-        session.flush()
-        insert_message_file_pin(
-            session=session,
-            file_hash=volume.ref[::-1],
-            owner=content.address,
-            item_hash=volume.ref,
-            ref=None,
-            created=created,
-        )
-        upsert_file_tag(
-            session=session,
-            tag=FileTag(volume.ref),
-            owner=content.address,
-            file_hash=volume.ref[::-1],
-            last_updated=created,
-        )
+            session.add(StoredFileDb(hash=file_hash, size=1024 * 1024, type=FileType.FILE))
+            session.flush()
+            insert_message_file_pin(
+                session=session,
+                file_hash=volume.ref[::-1],
+                owner=content.address,
+                item_hash=volume.ref,
+                ref=None,
+                created=created,
+            )
+            upsert_file_tag(
+                session=session,
+                tag=FileTag(volume.ref),
+                owner=content.address,
+                file_hash=volume.ref[::-1],
+                last_updated=created,
+            )
 
 
 @pytest.fixture

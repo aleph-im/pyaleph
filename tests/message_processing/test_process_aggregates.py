@@ -182,7 +182,7 @@ async def test_process_aggregates_in_order(
         content = original.parsed_content
         assert isinstance(content, AggregateContent)
         aggregate = get_aggregate_by_key(
-            session=session, key=content.key, owner=content.address
+            session=session, key=str(content.key), owner=content.address
         )
         assert aggregate
 
@@ -205,7 +205,7 @@ async def test_process_aggregates_reverse_order(
         content = original.parsed_content
         assert isinstance(content, AggregateContent)
         aggregate = get_aggregate_by_key(
-            session=session, key=content.key, owner=content.address
+            session=session, key=str(content.key), owner=content.address
         )
         assert aggregate
 

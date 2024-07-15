@@ -10,6 +10,7 @@ from typing import (
     Dict,
     Mapping,
     Annotated,
+    Type,
 )
 
 from aleph_message.models import (
@@ -67,38 +68,38 @@ class BaseMessage(GenericModel, Generic[MType, ContentType]):
 
 
 class AggregateMessage(
-    BaseMessage[Literal[MessageType.aggregate], AggregateContent]  # type: ignore
+    BaseMessage[Literal[MessageType.aggregate], AggregateContent]
 ):
     ...
 
 
 class ForgetMessage(
-    BaseMessage[Literal[MessageType.forget], ForgetContent]  # type: ignore
+    BaseMessage[Literal[MessageType.forget], ForgetContent]
 ):
     ...
 
 
-class InstanceMessage(BaseMessage[Literal[MessageType.instance], InstanceContent]):  # type: ignore
+class InstanceMessage(BaseMessage[Literal[MessageType.instance], InstanceContent]):
     ...
 
 
-class PostMessage(BaseMessage[Literal[MessageType.post], PostContent]):  # type: ignore
+class PostMessage(BaseMessage[Literal[MessageType.post], PostContent]):
     ...
 
 
 class ProgramMessage(
-    BaseMessage[Literal[MessageType.program], ProgramContent]  # type: ignore
+    BaseMessage[Literal[MessageType.program], ProgramContent]
 ):
     ...
 
 
 class StoreMessage(
-    BaseMessage[Literal[MessageType.store], StoreContent]  # type: ignore
+    BaseMessage[Literal[MessageType.store], StoreContent]
 ):
     ...
 
 
-MESSAGE_CLS_DICT = {
+MESSAGE_CLS_DICT: Dict[Any, Type[AggregateMessage | ForgetMessage | InstanceMessage | PostMessage | ProgramMessage | StoreMessage]] = {
     MessageType.aggregate: AggregateMessage,
     MessageType.forget: ForgetMessage,
     MessageType.instance: InstanceMessage,
@@ -125,13 +126,13 @@ def format_message(message: MessageDb) -> AlephMessage:
     message_type = message.type
 
     message_cls = MESSAGE_CLS_DICT[message_type]
-    return message_cls.from_orm(message)  # type: ignore[return-value]
+    return message_cls.from_orm(message)
 
 
 def format_message_dict(message: Dict[str, Any]) -> AlephMessage:
     message_type = message.get("type")
     message_cls = MESSAGE_CLS_DICT[message_type]
-    return message_cls.parse_obj(message)  # type: ignore[return-value]
+    return message_cls.parse_obj(message)
 
 
 class BaseMessageStatus(BaseModel):

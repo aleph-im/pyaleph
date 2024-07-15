@@ -5,7 +5,7 @@ from typing import Optional
 import pytest
 import pytz
 from aleph_message.models import ItemHash
-from aleph_message.models.execution.program import MachineType, Encoding
+from aleph_message.models.execution import MachineType, Encoding
 from aleph_message.models.execution.volume import VolumePersistence
 from sqlalchemy import select
 

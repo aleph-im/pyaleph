@@ -562,7 +562,7 @@ def reject_existing_pending_message(
 
     # The message may already be processed and someone is sending invalid copies.
     # Just drop the pending message.
-    message_status = get_message_status(session=session, item_hash=item_hash)
+    message_status = get_message_status(session=session, item_hash=ItemHash(item_hash))
     if message_status:
         if message_status.status not in (MessageStatus.PENDING, MessageStatus.REJECTED):
             delete_pending_message(session=session, pending_message=pending_message)

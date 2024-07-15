@@ -3,7 +3,7 @@ import json
 from typing import Optional, Mapping
 
 import pytest
-from aleph_message.models import Chain, MessageType, ItemType
+from aleph_message.models import Chain, MessageType, ItemType, ItemHash
 from configmanager import Config
 
 from aleph.chains.signature_verifier import SignatureVerifier
@@ -142,14 +142,14 @@ async def test_process_store_no_signature(
 
     with session_factory() as session:
         message_db = get_message_by_item_hash(
-            session=session, item_hash=fixture_store_message.item_hash
+            session=session, item_hash=ItemHash(fixture_store_message.item_hash)
         )
 
         assert message_db is not None
         assert message_db.signature is None
 
         file_pin = get_message_file_pin(
-            session=session, item_hash=fixture_store_message.item_hash
+            session=session, item_hash=ItemHash(fixture_store_message.item_hash)
         )
         assert file_pin is not None
         assert file_pin.file_hash == content["item_hash"]

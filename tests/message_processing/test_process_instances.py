@@ -1,7 +1,7 @@
 import datetime as dt
 import itertools
 import json
-from typing import List, Protocol
+from typing import List, Protocol, Union
 from decimal import Decimal
 
 import pytest
@@ -13,9 +13,10 @@ from aleph_message.models import (
     InstanceContent,
     ExecutableContent,
     ForgetContent,
+    ItemHash,
 )
-from aleph_message.models.execution.program import ProgramContent
-from aleph_message.models.execution.volume import ImmutableVolume
+from aleph_message.models.execution.program import ProgramContent, CodeContent, DataContent, FunctionRuntime
+from aleph_message.models.execution.volume import ImmutableVolume, ParentVolume
 from more_itertools import one
 from sqlalchemy import text
 
@@ -169,7 +170,7 @@ def fixture_forget_instance_message(
     content = ForgetContent(
         address=fixture_instance_message.sender,
         time=(fixture_instance_message.time + dt.timedelta(seconds=1)).timestamp(),
-        hashes=[fixture_instance_message.item_hash],
+        hashes=[ItemHash(fixture_instance_message.item_hash)],
         reason="Bye Felicia",
     )
 
@@ -193,13 +194,8 @@ def fixture_forget_instance_message(
     return pending_message
 
 
-class Volume(Protocol):
-    ref: str
-    use_latest: bool
-
-
-def get_volume_refs(content: ExecutableContent) -> List[Volume]:
-    volumes = []
+def get_volume_refs(content: ExecutableContent) -> List[Union[CodeContent, DataContent, FunctionRuntime, ImmutableVolume, ParentVolume]]:
+    volumes: List[Union[CodeContent, DataContent, FunctionRuntime, ImmutableVolume, ParentVolume]] = []
 
     for volume in content.volumes:
         if isinstance(volume, ImmutableVolume):
@@ -222,6 +218,7 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
     Insert volume references in the DB to make the program processable.
     """
 
+    assert message.item_content
     content = InstanceContent.parse_raw(message.item_content)
     volumes = get_volume_refs(content)
 
@@ -357,19 +354,20 @@ async def test_process_instance_missing_volumes(
         instance = get_instance(session=session, item_hash=vm_hash)
         assert instance is None
 
-        message_status = get_message_status(session=session, item_hash=vm_hash)
+        message_status = get_message_status(session=session, item_hash=ItemHash(vm_hash))
         assert message_status is not None
         assert message_status.status == MessageStatus.REJECTED
 
-        rejected_message = get_rejected_message(session=session, item_hash=vm_hash)
+        rejected_message = get_rejected_message(session=session, item_hash=ItemHash(vm_hash))
         assert rejected_message is not None
         assert rejected_message.error_code == ErrorCode.VM_VOLUME_NOT_FOUND
 
-        content = InstanceContent.parse_raw(fixture_instance_message.item_content)
-        volume_refs = set(volume.ref for volume in get_volume_refs(content))
-        assert isinstance(rejected_message.details, dict)
-        assert set(rejected_message.details["errors"]) == volume_refs
-        assert rejected_message.traceback is None
+        if fixture_instance_message.item_content:
+            content = InstanceContent.parse_raw(fixture_instance_message.item_content)
+            volume_refs = set(volume.ref for volume in get_volume_refs(content))
+            assert isinstance(rejected_message.details, dict)
+            assert set(rejected_message.details["errors"]) == volume_refs
+            assert rejected_message.traceback is None
 
 
 @pytest.mark.asyncio
@@ -442,10 +440,11 @@ async def test_get_volume_size(
         insert_volume_refs(session, fixture_instance_message)
         session.commit()
 
-    content = InstanceContent.parse_raw(fixture_instance_message.item_content)
-    with session_factory() as session:
-        volume_size = get_volume_size(session=session, content=content)
-        assert volume_size == 21512585216
+    if fixture_instance_message.item_content:
+        content = InstanceContent.parse_raw(fixture_instance_message.item_content)
+        with session_factory() as session:
+            volume_size = get_volume_size(session=session, content=content)
+            assert volume_size == 21512585216
 
 
 @pytest.mark.asyncio
@@ -457,12 +456,13 @@ async def test_get_additional_storage_price(
         insert_volume_refs(session, fixture_instance_message)
         session.commit()
 
-    content = InstanceContent.parse_raw(fixture_instance_message.item_content)
-    with session_factory() as session:
-        additional_price = get_additional_storage_price(
-            content=content, session=session
-        )
-        assert additional_price == Decimal("1.8")
+    if fixture_instance_message.item_content:
+        content = InstanceContent.parse_raw(fixture_instance_message.item_content)
+        with session_factory() as session:
+            additional_price = get_additional_storage_price(
+                content=content, session=session
+            )
+            assert additional_price == Decimal("1.8")
 
 
 @pytest.mark.asyncio
@@ -474,10 +474,11 @@ async def test_get_compute_cost(
         insert_volume_refs(session, fixture_instance_message)
         session.commit()
 
-    content = InstanceContent.parse_raw(fixture_instance_message.item_content)
-    with session_factory() as session:
-        price: Decimal = compute_cost(content=content, session=session)
-        assert price == Decimal("2001.8")
+    if fixture_instance_message.item_content:
+        content = InstanceContent.parse_raw(fixture_instance_message.item_content)
+        with session_factory() as session:
+            price: Decimal = compute_cost(content=content, session=session)
+            assert price == Decimal("2001.8")
 
 
 @pytest.mark.asyncio
@@ -495,6 +496,7 @@ async def test_compare_cost_view_with_cost_function(
     # Exhaust the iterator
     _ = [message async for message in pipeline]
 
+    assert fixture_instance_message.item_content
     content = InstanceContent.parse_raw(fixture_instance_message.item_content)
     with session_factory() as session:
         cost_from_function: Decimal = compute_cost(session=session, content=content)

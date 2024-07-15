@@ -10,6 +10,7 @@ from configmanager import Config
 from pydantic import ValidationError
 from sqlalchemy import insert
 
+from aleph_message.models import ItemHash
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.files import insert_content_file_pin, upsert_file
 from aleph.db.accessors.messages import (
@@ -377,7 +378,7 @@ class MessageHandler(BaseMessageHandler):
         """
 
         existing_message = get_message_by_item_hash(
-            session=session, item_hash=pending_message.item_hash
+            session=session, item_hash=ItemHash(pending_message.item_hash)
         )
         if existing_message:
             await self.confirm_existing_message(

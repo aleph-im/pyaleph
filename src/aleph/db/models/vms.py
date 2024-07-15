@@ -1,7 +1,7 @@
 import datetime as dt
 from typing import Any, Optional, Dict, List
 
-from aleph_message.models.execution.program import MachineType, Encoding
+from aleph_message.models.execution import MachineType, Encoding
 from aleph_message.models.execution.volume import VolumePersistence
 from sqlalchemy import Column, String, ForeignKey, Boolean, Integer, TIMESTAMP
 from sqlalchemy.dialects.postgresql import JSONB
@@ -132,6 +132,11 @@ class VmBaseDb(Base):
     environment_aleph_api: bool = Column(Boolean, nullable=False)
     environment_shared_cache: bool = Column(Boolean, nullable=False)
 
+    environment_trusted_execution_policy: Optional[int] = Column(Integer, nullable=True)
+    environment_trusted_execution_firmware: Optional[str] = Column(
+        String, nullable=True
+    )
+
     resources_vcpus: int = Column(Integer, nullable=False)
     resources_memory: int = Column(Integer, nullable=False)
     resources_seconds: int = Column(Integer, nullable=False)
@@ -142,6 +147,7 @@ class VmBaseDb(Base):
     cpu_vendor: Optional[str] = Column(String, nullable=True)
     node_owner: Optional[str] = Column(String, nullable=True)
     node_address_regex: Optional[str] = Column(String, nullable=True)
+    node_hash: Optional[str] = Column(String, nullable=True)
 
     replaces: Optional[str] = Column(ForeignKey(item_hash), nullable=True)
     created: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
