@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = ["hatchling", "hatch-vcs", "setuptools>=70.3.0"]
 build-backend = "hatchling.build"
 
 [project]
@@ -22,7 +22,8 @@ dependencies = [
     "aiohttp-cors==0.7.0",
     "aiohttp-jinja2==1.5",
     "aiohttp==3.9.5",
-    "aioipfs@git+https://github.com/aleph-im/aioipfs.git@d671c79b2871bb4d6c8877ba1e7f3ffbe7d20b71",
+    "aioipfs==0.7.1",
+    "setuptools>=70.3.0",  # Required by aioipfs
     "alembic==1.12.1",
     "aleph-message==0.4.8",
     "aleph-p2p-client@git+https://github.com/aleph-im/p2p-service-client-python@2c04af39c566217f629fd89505ffc3270fba8676",
@@ -66,7 +67,6 @@ dependencies = [
 ]
 dependency_links = [
     "https://github.com/aleph-im/py-libp2p/tarball/0.1.4-1-use-set#egg=libp2p",
-    "https://github.com/aleph-im/aioipfs/tarball/hoh-more-exceptions#egg=aioipfs",
 ]
 
 [project.optional-dependencies]
