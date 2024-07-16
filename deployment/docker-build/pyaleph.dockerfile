@@ -9,7 +9,7 @@ RUN add-apt-repository -y ppa:deadsnakes/ppa
 RUN apt-get update && apt-get -y upgrade && apt-get install -y \
      git \
      libgmp-dev \
-     libsecp256k1-dev \
+     libpq5 \
      python3.12
 
 FROM base as builder
