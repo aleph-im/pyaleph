@@ -9,7 +9,7 @@ RUN add-apt-repository -y ppa:deadsnakes/ppa
 RUN apt-get update && apt-get -y upgrade && apt-get install -y \
      git \
      libgmp-dev \
-     libsecp256k1-dev \
+     libpq5 \
      python3.12
 
 FROM base as builder
@@ -63,6 +63,12 @@ RUN useradd -s /bin/bash aleph
 
 COPY --from=builder --chown=aleph /opt/venv /opt/venv
 COPY --from=builder --chown=aleph /opt/pyaleph /opt/pyaleph
+
+# Build-only packages
+RUN apt-get update && apt-get install -y \
+    libsodium23 \
+    libsodium-dev \
+    libgmp-dev
 
 # OpenSSL 3 disabled some hash algorithms by default. They must be reenabled
 # by enabling the "legacy" providers in /etc/ssl/openssl.cnf.
