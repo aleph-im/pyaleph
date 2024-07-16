@@ -9,7 +9,7 @@ RUN add-apt-repository -y ppa:deadsnakes/ppa
 RUN apt-get update && apt-get -y upgrade && apt-get install -y \
      git \
      libgmp-dev \
-     libsecp256k1-dev \
+     libpq5 \
      python3.12
 
 FROM base as builder
@@ -26,6 +26,9 @@ RUN apt-get update && apt-get install -y \
     python3.12-dev \
     python3.12-venv \
     libpq-dev \
+    libsodium23 \
+    libsodium-dev \
+    libgmp-dev \
     software-properties-common
 
 # Install Rust to build Python packages
