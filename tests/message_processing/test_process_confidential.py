@@ -316,5 +316,5 @@ async def test_process_confidential_vm(
             instance.environment_trusted_execution_firmware
             == trusted_execution["firmware"]
         )
-        # Check that ndde_hash is store in db (wasn't the case before)
+        # Check that node_hash is store in db (wasn't the case before)
         assert instance.node_hash == content_dict["requirements"]["node"]["node_hash"]
