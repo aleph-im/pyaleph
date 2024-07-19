@@ -66,10 +66,15 @@ def fixture_confidential_vm_message(
         "payment": {
             "chain": "AVAX",
             "type": "superfluid",
-            "receiver": "0x2319Ad3B7A8E0eE24f2E639c40D8eD124C5520Bb"
+            "receiver": "0x2319Ad3B7A8E0eE24f2E639c40D8eD124C5520Bb",
         },
         "resources": {"vcpus": 1, "memory": 128, "seconds": 30},
-        "requirements": {"cpu": {"architecture": "x86_64"}, "node_hash": "149ec451d9b099cad112d4aaa2c00ac40fb6729a92ff252ff22eef0b5c3cb6PD"},
+        "requirements": {
+            "cpu": {"architecture": "x86_64"},
+            "node": {
+                "node_hash": "149ec451d9b099cad112d4aaa2c00ac40fb6729a92ff252ff22eef0b5c3cb6PD"
+            },
+        },
         "rootfs": {
             "parent": {
                 "ref": "549ec451d9b099cad112d4aaa2c00ac40fb6729a92ff252ff22eef0b5c3cb613",
@@ -311,3 +316,5 @@ async def test_process_confidential_vm(
             instance.environment_trusted_execution_firmware
             == trusted_execution["firmware"]
         )
+        # Check that node_hash is store in db (wasn't the case before)
+        assert instance.node_hash == content_dict["requirements"]["node"]["node_hash"]

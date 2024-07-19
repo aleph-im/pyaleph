@@ -122,8 +122,8 @@ def _map_content_to_db_model(item_hash, content):
         if content.environment.trusted_execution is not None:
             trusted_execution_policy = content.environment.trusted_execution.policy
             trusted_execution_firmware = content.environment.trusted_execution.firmware
-        if hasattr(content.requirements, 'node_hash'):
-            node_hash = content.requirements.node_hash
+        if hasattr(content.requirements.node, 'node_hash'):
+            node_hash = content.requirements.node.node_hash
 
     return db_cls(
         owner=content.address,
