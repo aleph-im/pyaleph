@@ -93,40 +93,40 @@ class BasePendingMessage(AlephBaseMessage, Generic[MType, ContentType]):
 
 
 class PendingAggregateMessage(
-    BasePendingMessage[Literal[MessageType.aggregate], AggregateContent]
+    BasePendingMessage[Literal[MessageType.aggregate], AggregateContent]  # type: ignore
 ):
     pass
 
 
 class PendingForgetMessage(
-    BasePendingMessage[Literal[MessageType.forget], ForgetContent]
+    BasePendingMessage[Literal[MessageType.forget], ForgetContent]  # type: ignore
 ):
     pass
 
 
 class PendingInstanceMessage(
-    BasePendingMessage[Literal[MessageType.instance], InstanceContent]
+    BasePendingMessage[Literal[MessageType.instance], InstanceContent]  # type: ignore
 ):
     pass
 
 
-class PendingPostMessage(BasePendingMessage[Literal[MessageType.post], PostContent]):
+class PendingPostMessage(BasePendingMessage[Literal[MessageType.post], PostContent]):  # type: ignore
     pass
 
 
 class PendingProgramMessage(
-    BasePendingMessage[Literal[MessageType.program], ProgramContent]
+    BasePendingMessage[Literal[MessageType.program], ProgramContent]  # type: ignore
 ):
     pass
 
 
-class PendingStoreMessage(BasePendingMessage[Literal[MessageType.store], StoreContent]):
+class PendingStoreMessage(BasePendingMessage[Literal[MessageType.store], StoreContent]):  # type: ignore
     pass
 
 
 class PendingInlineStoreMessage(PendingStoreMessage):
     item_content: str
-    item_type: Literal[ItemType.inline]
+    item_type: Literal[ItemType.inline]  # type: ignore
 
 
 MESSAGE_TYPE_TO_CLASS: Dict[
