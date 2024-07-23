@@ -3,7 +3,7 @@ name: Test nix-shell
 on:
   push:
     branches:
-      - '*'
+      - 'doesnt_exist'
 
 jobs:
   nix-shell:
