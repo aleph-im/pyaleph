@@ -15,7 +15,7 @@ from aleph.chains.abc import ChainReader, Verifier
 from aleph.chains.chain_data_service import PendingTxPublisher
 from aleph.chains.common import get_verification_buffer
 from aleph.db.accessors.chains import get_last_height, upsert_chain_sync_status
-from aleph.db.models import ChainTxDb, PendingMessageDb
+from aleph.db.models import ChainTxDb
 from aleph.schemas.chains.tezos_indexer_response import (
     IndexerMessageEvent,
     IndexerResponse,
@@ -86,9 +86,9 @@ def micheline_verification_buffer(
 
 
 def get_tezos_verification_buffer(
-    message: PendingMessageDb, signature_type: TezosSignatureType, dapp_url: str
+    message: BasePendingMessage, signature_type: TezosSignatureType, dapp_url: str
 ) -> bytes:
-    verification_buffer = get_verification_buffer(message)  # type: ignore
+    verification_buffer = get_verification_buffer(message)
 
     if signature_type == TezosSignatureType.RAW:
         return verification_buffer
