@@ -22,7 +22,7 @@ which you will want to customize for your system.
 
 Change the Ethereum API URL to the endpoint you want the CCN to use.
 
-To run the local dev environment, you will need to set the P2P daemon, IPFS and MongoDB hosts to `127.0.0.1`.
+To run the local dev environment, you will need to set the P2P daemon and IPFS hosts to `127.0.0.1`.
 
 ### Generate your node's private key
 
@@ -41,7 +41,7 @@ Run the Docker Compose file to start all the required services:
 docker-compose -f deployment/docker-build/docker-compose.yml up -d
 ```
 
-This will instantiate the services for MongoDB, IPFS and the P2P daemon.
+This will instantiate the services for IPFS and the P2P daemon.
 
 You can now start the Core Channel Node locally using the `pyaleph` command or by running the `aleph.commands` module,
 for example from PyCharm.

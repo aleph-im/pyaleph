@@ -129,7 +129,7 @@ To check that the generation of the keys succeeded, check the content of your ke
 3. Run the node with Docker Compose
 ===================================
 
-Download the Docker Compose file that defines how to run PyAleph, MongoDB and IPFS together.
+Download the Docker Compose file that defines how to run PyAleph and IPFS together.
 
 .. parsed-literal::
 
@@ -173,11 +173,6 @@ You should see the following three containers with a State of "Up":
       - Up
       - 0.0.0.0:4001->4001/tcp, 0.0.0.0:4001->4001/udp, 5001/tcp, 8080/tcp, 8081/tcp
 
-    * - nfuser_mongodb_1
-      - docker-entrypoint.sh mongo ...
-      - Up
-      - 27017/tcp
-
     * - nfuser_pyaleph_1
       - pyaleph --config /opt/pyal ...
       - Up
@@ -208,24 +203,6 @@ IPFS Web UI: http://127.0.0.1:5001/webui
     This web interface is only accessible on localhost in the default Docker Compose configuration.
     The API running on port 5001 gives complete control over the IPFS daemon without authentication.
     Never expose this port on the Internet!
-
-Check PyAleph data via MongoDB
-------------------------------
-
-MongoDB message counts
-
-.. code-block:: bash
-
-    docker exec -ti --user mongodb debian_mongodb_1 bash
-    $ mongo
-    > use aleph
-    > show collections
-    > db.messages.count()
-    1468900
-    > db.pending_messages.count()
-    63
-    > db.pending_messages.count()
-    4
 
 5. Register your node
 =====================
