@@ -81,11 +81,13 @@ async def message_price(request: web.Request):
         message = await get_executable_message(session, request.match_info["item_hash"])
 
         content: ExecutableContent = message.parsed_content
-
-        if content.payment and content.payment.is_stream:
-            required_tokens = compute_flow_cost(session=session, content=content)
-        else:
-            required_tokens = compute_cost(session=session, content=content)
+        try:
+            if content.payment and content.payment.is_stream:
+                required_tokens = compute_flow_cost(session=session, content=content)
+            else:
+                required_tokens = compute_cost(session=session, content=content)
+        except RuntimeError as e:
+            raise web.HTTPNotFound(reason=str(e))
 
     return web.json_response({"required_tokens": float(required_tokens),
                               "payment_type": content.payment.type if content.payment else None})
