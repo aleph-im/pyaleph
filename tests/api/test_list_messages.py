@@ -25,8 +25,7 @@ MESSAGES_PAGE_URI = "/api/v0/messages/page/{page}.json"
 
 def check_message_fields(messages: Iterable[Dict]):
     """
-    Basic checks on fields. For example, check that we do not expose internal data
-    like MongoDB object IDs.
+    Basic checks on fields. For example, check that we do not expose internal data.
     """
     for message in messages:
         assert "_id" not in message
