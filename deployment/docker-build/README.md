@@ -12,12 +12,12 @@ You can build the Docker image simply using:
 
 or by running the Docker build command from the root of the repository:
 ```shell script
-docker build -t alephim/pyaleph-node -f deployment/docker/pyaleph.dockerfile .
+docker build -t alephim/pyaleph-node -f deployment/docker-build/pyaleph.dockerfile .
 ```
 
 ## Configure the CCN
 
-We provide a template configuration in the file `samples/docker-compose/config.yml`,
+We provide a template configuration in the file `deployment/docker-build/config.yml`,
 which you will want to customize for your system.
 
 Change the Ethereum API URL to the endpoint you want the CCN to use.
