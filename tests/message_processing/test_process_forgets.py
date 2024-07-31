@@ -470,3 +470,235 @@ async def test_forget_store_multi_users(
         # Check that the file is still there
         content = await storage_engine.read(filename=file_hash)
         assert content == file_content
+
+@pytest.mark.asyncio
+async def test_fully_forget_newer_first(
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    mock_config: Config,
+):
+    file_hash = "7acb40cd206a0be1eff8c5ad59dff7cfaca860be75b0d7de8646bff458b5d3ed"
+
+    pending_message1 = PendingMessageDb(
+        item_hash="8eeb2af0e5503f1d2140dcd7deda4e1bb7fcc2899ce4d8138a5cacb29ea5de31",
+        chain=Chain.ETH,
+        sender="0xd463495a6FEaC9921FD0C3a595B81E7B2C02B57d",
+        signature="0x80a55df25183a849e40d797c5e3059163593fe1910451ee7c8975cfcadeeb6763bb2537e5aead138f1b2a5216d6d74fe13b2f80731797dcb08256ea7c6c54f891c",
+        type=MessageType.store,
+        time=timestamp_to_datetime(1722420694.323802),
+        item_type=ItemType.inline,
+        item_content='{"address":"0xd463495a6FEaC9921FD0C3a595B81E7B2C02B57d","time":1722420694.323802,"item_type":"storage","item_hash":"7acb40cd206a0be1eff8c5ad59dff7cfaca860be75b0d7de8646bff458b5d3ed"}',
+        channel=None,
+        retries=0,
+        next_attempt=dt.datetime(2023, 1, 1),
+        check_message=True,
+        fetched=True,
+        reception_time=dt.datetime(2022, 1, 1),
+    )
+
+    pending_message2 = PendingMessageDb(
+        item_hash="356ea9d231e036c442cc6d330475101c0c39c83bef7e945d0b9cfa4156715519",
+        chain=Chain.ETH,
+        sender="0xd463495a6FEaC9921FD0C3a595B81E7B2C02B57d",
+        signature="0xa7b0318668d30af3bbb3348f2d7750e5d58ea3750294d2f6facb5f40f47956787f5926ce94c61e9e08a5e6967291c5783295a55be43700d93a1ce398c40c40731b",
+        type=MessageType.store,
+        time=timestamp_to_datetime(1722420696.4441047),
+        item_type=ItemType.inline,
+        item_content='{"address":"0xd463495a6FEaC9921FD0C3a595B81E7B2C02B57d","time":1722420696.4441047,"item_type":"storage","item_hash":"7acb40cd206a0be1eff8c5ad59dff7cfaca860be75b0d7de8646bff458b5d3ed"}',
+        channel=None,
+        retries=0,
+        next_attempt=dt.datetime(2023, 1, 2),
+        check_message=True,
+        fetched=True,
+        reception_time=dt.datetime(2022, 1, 2),
+    )
+
+    pending_forget_message_newer = PendingMessageDb(
+        item_hash="9505db13e325effbf45d53271de868af1103bc7e1975e650fd6ac729fa0d7e93",
+        chain=Chain.ETH,
+        sender="0xd463495a6FEaC9921FD0C3a595B81E7B2C02B57d",
+        signature="0x9be4eab3f551935311bba7443044c1837f2f471223f44f83e1e9bcb1b35517300f1058b356b5664cf4baa150699384981c71b20c9b375904ae8dafecf3e0640d1b",
+        type=MessageType.forget,
+        time=timestamp_to_datetime(1722422471.7349474),
+        item_type=ItemType.inline,
+        item_content='{"address":"0xd463495a6FEaC9921FD0C3a595B81E7B2C02B57d","time":1722422471.7349474,"hashes":["356ea9d231e036c442cc6d330475101c0c39c83bef7e945d0b9cfa4156715519"],"aggregates":[],"reason":"test"}',
+        channel=None,
+        retries=0,
+        next_attempt=dt.datetime(2023, 1, 3),
+        check_message=True,
+        fetched=True,
+        reception_time=dt.datetime(2022, 1, 3),
+    )
+
+    pending_forget_message_older = PendingMessageDb(
+        item_hash="6e16647f516de5b6562ff45e0ce31452549149ae36775753d324d0e7d821daf0",
+        chain=Chain.ETH,
+        sender="0xd463495a6FEaC9921FD0C3a595B81E7B2C02B57d",
+        signature="0x4bbf9429f2171cfb11357ed4ad4c10541bc5151ee4ee3d039f400b7f767a2a772e6111531dfb78c9bda9d06492a5759308c29b0f285bd567d3d58d923ed3ffc51c",
+        type=MessageType.forget,
+        time=timestamp_to_datetime(1722422487.5738375),
+        item_type=ItemType.inline,
+        item_content='{"address":"0xd463495a6FEaC9921FD0C3a595B81E7B2C02B57d","time":1722422487.5738375,"hashes":["8eeb2af0e5503f1d2140dcd7deda4e1bb7fcc2899ce4d8138a5cacb29ea5de31"],"aggregates":[],"reason":"test"}',
+        channel=None,
+        retries=0,
+        next_attempt=dt.datetime(2023, 1, 4),
+        check_message=True,
+        fetched=True,
+        reception_time=dt.datetime(2022, 1, 4),
+    )
+
+
+    storage_engine = message_processor.message_handler.storage_service.storage_engine
+    await storage_engine.write(
+        filename=file_hash,
+        content=b"Test",
+    )
+
+    with session_factory() as session:
+        # Process both store messages
+        await process_pending_messages(
+            message_processor=message_processor,
+            pending_messages=[pending_message1, pending_message2],
+            session=session,
+        )
+
+        # Ensure there are two pins
+        nb_references = count_file_pins(session=session, file_hash=file_hash)
+        assert nb_references == 2
+
+        # Forget the newer pin first
+        await process_pending_messages(
+            message_processor=message_processor,
+            pending_messages=[pending_forget_message_newer],
+            session=session,
+        )
+
+        # Check that only one pin remains (from pending_message1)
+        file = get_file(session=session, file_hash=file_hash)
+        assert file
+        assert file.pins
+        assert len(file.pins) == 1
+        assert file.pins[0].item_hash == "8eeb2af0e5503f1d2140dcd7deda4e1bb7fcc2899ce4d8138a5cacb29ea5de31"
+
+        # Now forget the older pin
+        await process_pending_messages(
+            message_processor=message_processor,
+            pending_messages=[pending_forget_message_older],
+            session=session,
+        )
+
+@pytest.mark.asyncio
+async def test_fully_forget_older_first(
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    mock_config: Config,
+):
+    file_hash = "7acb40cd206a0be1eff8c5ad59dff7cfaca860be75b0d7de8646bff458b5d3ed"
+
+    pending_message1 = PendingMessageDb(
+        item_hash="8eeb2af0e5503f1d2140dcd7deda4e1bb7fcc2899ce4d8138a5cacb29ea5de31",
+        chain=Chain.ETH,
+        sender="0xd463495a6FEaC9921FD0C3a595B81E7B2C02B57d",
+        signature="0x80a55df25183a849e40d797c5e3059163593fe1910451ee7c8975cfcadeeb6763bb2537e5aead138f1b2a5216d6d74fe13b2f80731797dcb08256ea7c6c54f891c",
+        type=MessageType.store,
+        time=timestamp_to_datetime(1722420694.323802),
+        item_type=ItemType.inline,
+        item_content='{"address":"0xd463495a6FEaC9921FD0C3a595B81E7B2C02B57d","time":1722420694.323802,"item_type":"storage","item_hash":"7acb40cd206a0be1eff8c5ad59dff7cfaca860be75b0d7de8646bff458b5d3ed"}',
+        channel=None,
+        retries=0,
+        next_attempt=dt.datetime(2023, 1, 1),
+        check_message=True,
+        fetched=True,
+        reception_time=dt.datetime(2022, 1, 1),
+    )
+
+    pending_message2 = PendingMessageDb(
+        item_hash="356ea9d231e036c442cc6d330475101c0c39c83bef7e945d0b9cfa4156715519",
+        chain=Chain.ETH,
+        sender="0xd463495a6FEaC9921FD0C3a595B81E7B2C02B57d",
+        signature="0xa7b0318668d30af3bbb3348f2d7750e5d58ea3750294d2f6facb5f40f47956787f5926ce94c61e9e08a5e6967291c5783295a55be43700d93a1ce398c40c40731b",
+        type=MessageType.store,
+        time=timestamp_to_datetime(1722420696.4441047),
+        item_type=ItemType.inline,
+        item_content='{"address":"0xd463495a6FEaC9921FD0C3a595B81E7B2C02B57d","time":1722420696.4441047,"item_type":"storage","item_hash":"7acb40cd206a0be1eff8c5ad59dff7cfaca860be75b0d7de8646bff458b5d3ed"}',
+        channel=None,
+        retries=0,
+        next_attempt=dt.datetime(2023, 1, 2),
+        check_message=True,
+        fetched=True,
+        reception_time=dt.datetime(2022, 1, 2),
+    )
+
+    pending_forget_message_older = PendingMessageDb(
+        item_hash="6e16647f516de5b6562ff45e0ce31452549149ae36775753d324d0e7d821daf0",
+        chain=Chain.ETH,
+        sender="0xd463495a6FEaC9921FD0C3a595B81E7B2C02B57d",
+        signature="0x4bbf9429f2171cfb11357ed4ad4c10541bc5151ee4ee3d039f400b7f767a2a772e6111531dfb78c9bda9d06492a5759308c29b0f285bd567d3d58d923ed3ffc51c",
+        type=MessageType.forget,
+        time=timestamp_to_datetime(1722422487.5738375),
+        item_type=ItemType.inline,
+        item_content='{"address":"0xd463495a6FEaC9921FD0C3a595B81E7B2C02B57d","time":1722422487.5738375,"hashes":["8eeb2af0e5503f1d2140dcd7deda4e1bb7fcc2899ce4d8138a5cacb29ea5de31"],"aggregates":[],"reason":"test"}',
+        channel=None,
+        retries=0,
+        next_attempt=dt.datetime(2023, 1, 4),
+        check_message=True,
+        fetched=True,
+        reception_time=dt.datetime(2022, 1, 4),
+    )
+
+
+    pending_forget_message_newer = PendingMessageDb(
+        item_hash="9505db13e325effbf45d53271de868af1103bc7e1975e650fd6ac729fa0d7e93",
+        chain=Chain.ETH,
+        sender="0xd463495a6FEaC9921FD0C3a595B81E7B2C02B57d",
+        signature="0x9be4eab3f551935311bba7443044c1837f2f471223f44f83e1e9bcb1b35517300f1058b356b5664cf4baa150699384981c71b20c9b375904ae8dafecf3e0640d1b",
+        type=MessageType.forget,
+        time=timestamp_to_datetime(1722422471.7349474),
+        item_type=ItemType.inline,
+        item_content='{"address":"0xd463495a6FEaC9921FD0C3a595B81E7B2C02B57d","time":1722422471.7349474,"hashes":["356ea9d231e036c442cc6d330475101c0c39c83bef7e945d0b9cfa4156715519"],"aggregates":[],"reason":"test"}',
+        channel=None,
+        retries=0,
+        next_attempt=dt.datetime(2023, 1, 3),
+        check_message=True,
+        fetched=True,
+        reception_time=dt.datetime(2022, 1, 3),
+    )
+
+    storage_engine = message_processor.message_handler.storage_service.storage_engine
+    await storage_engine.write(
+        filename=file_hash,
+        content=b"Test",
+    )
+
+    with session_factory() as session:
+        # Process both store messages
+        await process_pending_messages(
+            message_processor=message_processor,
+            pending_messages=[pending_message1, pending_message2],
+            session=session,
+        )
+
+        # Ensure there are two pins
+        nb_references = count_file_pins(session=session, file_hash=file_hash)
+        assert nb_references == 2
+
+        # Forget the older pin first
+        await process_pending_messages(
+            message_processor=message_processor,
+            pending_messages=[pending_forget_message_older],
+            session=session,
+        )
+
+        # Check that only one pin remains (from pending_message2)
+        file = get_file(session=session, file_hash=file_hash)
+        assert file
+        assert file.pins
+        assert len(file.pins) == 1
+        assert file.pins[0].item_hash == "356ea9d231e036c442cc6d330475101c0c39c83bef7e945d0b9cfa4156715519"
+
+        # Now forget the newer pin
+        await process_pending_messages(
+            message_processor=message_processor,
+            pending_messages=[pending_forget_message_newer],
+            session=session,
+        )
