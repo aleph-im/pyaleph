@@ -1,0 +1,41 @@
+name: Test keys generation instruction from the README by booting the docker image
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - "*"
+
+jobs:
+  generate-keys:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Download Docker cache image (if available)
+        run: docker pull ghcr.io/$GITHUB_REPOSITORY/build-cache || true
+
+      - name: Build the Docker image
+        run: |
+          git fetch --prune --unshallow --tags
+          docker build . -t alephim/pyaleph-node:${GITHUB_REF##*/} -f deployment/docker-build/pyaleph.dockerfile --cache-from=ghcr.io/$GITHUB_REPOSITORY/build-cache
+
+      - name: Tag the image
+        run: |
+          docker tag alephim/pyaleph-node:${GITHUB_REF##*/} ghcr.io/$GITHUB_REPOSITORY/build-cache
+
+      - name: Generate keys
+        run: |
+          mkdir keys
+          docker run --rm --user root --entrypoint "" -v $(pwd)/keys:/opt/pyaleph/keys alephim/pyaleph-node:${GITHUB_REF##*/} chown aleph:aleph /opt/pyaleph/keys
+          docker run --rm --entrypoint "" -v $(pwd)/keys:/opt/pyaleph/keys alephim/pyaleph-node:${GITHUB_REF##*/} pyaleph --gen-keys --key-dir /opt/pyaleph/keys
+
+      - name: Ensure keys exists
+        run: |
+          ls keys/node-pub.key
+          ls keys/node-secret.pkcs8.der
