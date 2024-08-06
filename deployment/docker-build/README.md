@@ -22,7 +22,7 @@ which you will want to customize for your system.
 
 Change the Ethereum API URL to the endpoint you want the CCN to use.
 
-To run the local dev environment, you will need to set the P2P daemon, IPFS and MongoDB hosts to `127.0.0.1`.
+To run the local dev environment, you will need to set the P2P daemon and IPFS hosts to `127.0.0.1`.
 
 ### Generate your node's private key
 
