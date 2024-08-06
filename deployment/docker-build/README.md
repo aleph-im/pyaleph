@@ -12,7 +12,7 @@ You can build the Docker image simply using:
 
 or by running the Docker build command from the root of the repository:
 ```shell script
-docker build -t alephim/pyaleph-node -f deployment/docker-build/pyaleph.dockerfile .
+docker build -t alephim/pyaleph-node:v0.5.2-rc3 -f deployment/docker-build/pyaleph.dockerfile .
 ```
 
 ## Configure the CCN
@@ -26,22 +26,10 @@ To run the local dev environment, you will need to set the P2P daemon and IPFS h
 
 ### Generate your node's private key
 
-An Aleph node needs an asymmetric key pair to communicate with other nodes on the network.
-
-You can generate this key using the following commands after building the Docker image:
-```shell script
-docker run --rm --user root --entrypoint "" -v $(pwd)/node-secret.key:/opt/pyaleph/node-secret.key alephim/pyaleph-node:v0.5.2-rc3 pyaleph --gen-keys
-```
+Please refer to the installation documentation for that:
+https://pyaleph.readthedocs.io/en/latest/guides/install.html#node-secret-keys
 
 ## Start the dev environment
 
-Run the Docker Compose file to start all the required services:
-
-```
-docker-compose -f deployment/docker-build/docker-compose.yml up -d
-```
-
-This will instantiate the services for IPFS and the P2P daemon.
-
-You can now start the Core Channel Node locally using the `pyaleph` command or by running the `aleph.commands` module,
-for example from PyCharm.
+Please refer to the installtation documentation for that:
+https://pyaleph.readthedocs.io/en/latest/guides/install.html#run-the-node-with-docker-compose
