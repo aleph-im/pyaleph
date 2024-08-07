@@ -306,8 +306,8 @@ async def test_process_instance(
         )
         assert rootfs.size_mib == content_dict["rootfs"]["size_mib"]
         assert rootfs.persistence == content_dict["rootfs"]["persistence"]
-
         assert len(instance.volumes) == 5
+        assert instance.node_hash is None
 
         volumes_by_type = {
             type: list(volumes_iter)
