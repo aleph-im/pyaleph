@@ -162,6 +162,9 @@ dependencies = [
     "ruff==0.4.8",
     "isort==5.13.2",
     "sqlalchemy[mypy]==1.4.41",
+    "yamlfix==1.16.0",
+    # because of aleph messages otherwise yamlfix install a too new version
+    "pydantic>=1.10.5,<2.0.0",
     "types-aiofiles",
     "types-protobuf",
     "types-pytz",
@@ -175,11 +178,13 @@ style = [
     "ruff check {args:.}",
     "black --check --diff {args:} ./src/ ./tests/",
     "isort --check-only --profile black {args:} ./src/ ./tests/",
+    "yamlfix --check .",
 ]
 fmt = [
     "black {args:} ./src/ ./tests/",
     "ruff check --fix {args:.} ./src/ ./tests/",
     "isort --profile black {args:} ./src/ ./tests/",
+    "yamlfix .",
     "style",
 ]
 all = [
@@ -312,3 +317,6 @@ exclude_lines = [
     # Don't complain about ineffective code:
     "pass",
 ]
+
+[tool.yamlfix]
+sequence_style = "keep_style"
