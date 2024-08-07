@@ -165,6 +165,7 @@ dependencies = [
     "yamlfix==1.16.0",
     # because of aleph messages otherwise yamlfix install a too new version
     "pydantic>=1.10.5,<2.0.0",
+    "pyproject-fmt==2.2.1",
     "types-aiofiles",
     "types-protobuf",
     "types-pytz",
@@ -179,12 +180,14 @@ style = [
     "black --check --diff {args:} ./src/ ./tests/",
     "isort --check-only --profile black {args:} ./src/ ./tests/",
     "yamlfix --check .",
+    "pyproject-fmt --check pyproject.toml",
 ]
 fmt = [
     "black {args:} ./src/ ./tests/",
     "ruff check --fix {args:.} ./src/ ./tests/",
     "isort --profile black {args:} ./src/ ./tests/",
     "yamlfix .",
+    "pyproject-fmt pyproject.toml",
     "style",
 ]
 all = [
