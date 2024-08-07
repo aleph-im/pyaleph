@@ -1,5 +1,5 @@
+---
 name: Test/Coverage with Python
-
 on:
   push:
     branches:
@@ -7,8 +7,7 @@ on:
       - main
   pull_request:
     branches:
-      - "*"
-
+      - '*'
 jobs:
   tests:
     runs-on: ubuntu-22.04
@@ -25,30 +24,24 @@ jobs:
         image: redis:7.0.10
         ports:
           - 127.0.0.1:6379:6379
-
-
     steps:
       - uses: actions/checkout@v4
         with:
           # Fetch the whole history for all tags and branches (required for aleph.__version__)
           fetch-depth: 0
-
       - name: Set up Python 3.12
         id: setup-python
         uses: actions/setup-python@v2
         with:
           python-version: 3.12
-
       - name: Install latest Rust nightly toolchain
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
           override: true
-
       - name: Set rust to nightly
         run: |
           rustup default nightly  # Required to build some dependencies
-
       - name: Cache dependencies
         uses: actions/cache@v4
         with:
@@ -56,20 +49,16 @@ jobs:
           key: ${{ runner.os }}-pytest-${{ hashFiles('pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-pytest-${{ hashFiles('pyproject.toml') }}
-
       - run: |
           pip install hatch coverage
-
       - run: |
           sudo cp .github/openssl-ci.cnf /etc/ssl/openssl.cnf
           export OPENSSL_CONF=/etc/ssl/openssl.cnf
           touch config.yml  # Fake config file for alembic
           # TODO: determine why ResourceWarning warnings occur in some tests.
           hatch run testing:test
-
       - run: |
           hatch run testing:cov
-
       - uses: codecov/codecov-action@v4.0.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
