@@ -1,3 +1,4 @@
+---
 nuls2:
   chain_id: 1
   enabled: false
@@ -6,35 +7,28 @@ nuls2:
   api_url: https://apiserver.nuls.io/
   explorer_url: https://nuls.world/
   token_contract: NULSd6Hh1FjbnAktH1FFvFnTzfgFnZtgAhYut
-
 ethereum:
   enabled: true
   #  api_url: https://mainnet.infura.io/v3/<project-id>
   chain_id: 1
   packing_node: false
-  sync_contract: "0x166fd4299364B21c7567e163d85D78d2fb2f8Ad5"
+  sync_contract: '0x166fd4299364B21c7567e163d85D78d2fb2f8Ad5'
   start_height: 11474360
-  token_contract: "0x27702a26126e0B3702af63Ee09aC4d1A084EF628"
+  token_contract: '0x27702a26126e0B3702af63Ee09aC4d1A084EF628'
   token_start_height: 10939074
-
-
 postgres:
-    host: postgres
-
+  host: postgres
 storage:
   store_files: true
   engine: filesystem
   folder: /var/lib/pyaleph
-
 ipfs:
   enabled: true
   host: ipfs
   port: 5001
   gateway_port: 8080
-
 aleph:
   queue_topic: ALEPH-TEST
-
 p2p:
   daemon_host: p2p-service
   http_port: 4024
@@ -45,12 +39,10 @@ p2p:
   peers:
     - /dns/api1.aleph.im/tcp/4025/p2p/Qmaxufiqdyt5uVWcy1Xh2nh3Rs3382ArnSP2umjCiNG2Vs
     - /dns/api2.aleph.im/tcp/4025/p2p/QmZkurbY2G2hWay59yiTgQNaQxHSNzKZFt2jbnwJhQcKgV
-
 rabbitmq:
   host: rabbitmq
   port: 5672
   username: aleph-p2p
   password: change-me!
-
 sentry:
-    dsn: ""
+  dsn: ''

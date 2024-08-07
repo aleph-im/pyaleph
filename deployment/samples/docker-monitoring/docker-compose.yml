@@ -1,12 +1,11 @@
+---
 version: '2.2'
-
 volumes:
   pyaleph-ipfs:
   pyaleph-local-storage:
   pyaleph-postgres:
   pyaleph-caddy-data:
   pyaleph-caddy-config:
-
 services:
   pyaleph:
     restart: always
@@ -26,14 +25,13 @@ services:
     logging:
       options:
         max-size: 50m
-
   pyaleph-api:
     restart: always
     image: alephim/pyaleph-node:v0.5.2-rc3
     command: --config /opt/pyaleph/config.yml --key-dir /opt/pyaleph/keys -v
-    entrypoint: ["bash", "deployment/scripts/run_aleph_ccn_api.sh"]
+    entrypoint: [bash, deployment/scripts/run_aleph_ccn_api.sh]
     ports:
-      - "4024:4024/tcp"
+      - 4024:4024/tcp
     volumes:
       - ./config.yml:/opt/pyaleph/config.yml
       - pyaleph-local-storage:/var/lib/pyaleph
@@ -47,7 +45,6 @@ services:
     logging:
       options:
         max-size: 50m
-
   p2p-service:
     restart: always
     image: alephim/p2p-service:0.1.3
@@ -61,19 +58,18 @@ services:
     environment:
       RUST_LOG: info
     ports:
-      - "4025:4025"
-      - "127.0.0.1:4030:4030"
+      - 4025:4025
+      - 127.0.0.1:4030:4030
     command:
-      - "--config"
-      - "/etc/p2p-service/config.yml"
-      - "--private-key-file"
-      - "/etc/p2p-service/node-secret.pkcs8.der"
-
+      - --config
+      - /etc/p2p-service/config.yml
+      - --private-key-file
+      - /etc/p2p-service/node-secret.pkcs8.der
   postgres:
     restart: always
     image: postgres:15.1
     ports:
-      - "127.0.0.1:5432:5432"
+      - 127.0.0.1:5432:5432
     volumes:
       - pyaleph-postgres:/var/lib/postgresql/data
     environment:
@@ -82,8 +78,7 @@ services:
       POSTGRES_DB: aleph
     networks:
       - pyaleph
-    shm_size: "2gb"
-
+    shm_size: 2gb
   rabbitmq:
     restart: always
     image: rabbitmq:3.11.15-management
@@ -93,47 +88,43 @@ services:
       RABBITMQ_DEFAULT_USER: aleph-p2p
       RABBITMQ_DEFAULT_PASS: change-me!
     ports:
-      - "127.0.0.1:5672:5672"
-      - "127.0.0.1:15672:15672"
-
+      - 127.0.0.1:5672:5672
+      - 127.0.0.1:15672:15672
   redis:
     restart: always
     image: redis:7.0.10
     networks:
       - pyaleph
-
   ipfs:
     restart: always
     image: ipfs/kubo:v0.15.0
     ports:
-      - "4001:4001"
-      - "4001:4001/udp"
-      - "127.0.0.1:5001:5001"
+      - 4001:4001
+      - 4001:4001/udp
+      - 127.0.0.1:5001:5001
     volumes:
-      - "pyaleph-ipfs:/data/ipfs"
+      - pyaleph-ipfs:/data/ipfs
     environment:
       - IPFS_PROFILE=server
     networks:
       - pyaleph
-    command: ["daemon", "--enable-pubsub-experiment", "--migrate"]
-
+    command: [daemon, --enable-pubsub-experiment, --migrate]
   prometheus:
     restart: always
     image: prom/prometheus
     command: --log.level=debug --config.file=/etc/prometheus/prometheus.yml
     ports:
-      - "127.0.0.1:9090:9090/tcp"
+      - 127.0.0.1:9090:9090/tcp
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     networks:
       - pyaleph
       - grafana
-
   grafana:
     restart: always
     image: grafana/grafana
     ports:
-      - "127.0.0.1:3000:3000/tcp"
+      - 127.0.0.1:3000:3000/tcp
     volumes:
       - ./grafana/prometheus.yaml:/etc/grafana/provisioning/datasources/prometheus.yaml
       - ./grafana/dashboard.yaml:/etc/grafana/provisioning/dashboards/dashboard.yaml
@@ -143,7 +134,6 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=a440fc1aa53b6b313b85b004605b7647  # Warning, change this !
     networks:
       - grafana
-
   caddy:
     restart: always
     image: caddy:latest
@@ -151,15 +141,14 @@ services:
     # Use the following command with your own domain name to enable HTTPS instead
 #    command: caddy reverse-proxy --from grafana.aleph-node.example.org --to grafana:3000
     ports:
-      - "80:80"
-      - "443:443"
+      - 80:80
+      - 443:443
     volumes:
       - pyaleph-caddy-data:/data
       - pyaleph-caddy-config:/config
     networks:
       - pyaleph
       - grafana
-
 networks:
   pyaleph:
   grafana:

@@ -1,7 +1,7 @@
+---
 apiVersion: 1
-
 providers:
-  - name: 'aleph.im'
+  - name: aleph.im
     orgId: 1
     folder: ''
     folderUid: ''
