@@ -14,10 +14,10 @@ from coincurve.keys import PrivateKey
 from configmanager import Config
 from nuls2.api.server import get_server
 from nuls2.model.data import (
+    CHEAP_UNIT_FEE,
+    get_address,
     hash_from_address,
     recover_message_address,
-    get_address,
-    CHEAP_UNIT_FEE,
 )
 from nuls2.model.transaction import Transaction
 
@@ -26,15 +26,16 @@ from aleph.db.accessors.chains import get_last_height, upsert_chain_sync_status
 from aleph.db.accessors.messages import get_unconfirmed_messages
 from aleph.db.accessors.pending_messages import count_pending_messages
 from aleph.db.accessors.pending_txs import count_pending_txs
+from aleph.schemas.chains.tx_context import TxContext
 from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSessionFactory
 from aleph.utils import run_in_executor
-from .chain_data_service import ChainDataService, PendingTxPublisher
-from .abc import Verifier, ChainWriter
-from aleph.schemas.chains.tx_context import TxContext
+
 from ..db.models import ChainTxDb
 from ..types.chain_sync import ChainEventType
+from .abc import ChainWriter, Verifier
+from .chain_data_service import ChainDataService, PendingTxPublisher
 
 LOGGER = logging.getLogger("chains.nuls2")
 CHAIN_NAME = "NULS2"

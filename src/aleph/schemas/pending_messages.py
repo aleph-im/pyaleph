@@ -17,23 +17,23 @@ TODO: this module should reasonably be part of aleph message, if only
       in aleph-client.
 """
 
-from typing import Any, Literal, Generic, Dict, Type
+from typing import Any, Dict, Generic, Literal, Type
 
 from aleph_message.models import (
     AggregateContent,
     ForgetContent,
     InstanceContent,
+    ItemType,
+    MessageType,
     PostContent,
     ProgramContent,
     StoreContent,
 )
-from aleph_message.models import ItemType, MessageType
-from pydantic import ValidationError
-from pydantic import root_validator
+from pydantic import ValidationError, root_validator
 
 import aleph.toolkit.json as aleph_json
 from aleph.exceptions import UnknownHashError
-from aleph.schemas.base_messages import AlephBaseMessage, MType, ContentType
+from aleph.schemas.base_messages import AlephBaseMessage, ContentType, MType
 from aleph.types.message_status import InvalidMessageFormat
 from aleph.utils import item_type_from_hash
 
@@ -93,43 +93,53 @@ class BasePendingMessage(AlephBaseMessage, Generic[MType, ContentType]):
 
 
 class PendingAggregateMessage(
-    BasePendingMessage[Literal[MessageType.aggregate], AggregateContent]
+    BasePendingMessage[Literal[MessageType.aggregate], AggregateContent]  # type: ignore
 ):
     pass
 
 
 class PendingForgetMessage(
-    BasePendingMessage[Literal[MessageType.forget], ForgetContent]
+    BasePendingMessage[Literal[MessageType.forget], ForgetContent]  # type: ignore
 ):
     pass
 
 
 class PendingInstanceMessage(
-    BasePendingMessage[Literal[MessageType.instance], InstanceContent]
+    BasePendingMessage[Literal[MessageType.instance], InstanceContent]  # type: ignore
 ):
     pass
 
 
-class PendingPostMessage(BasePendingMessage[Literal[MessageType.post], PostContent]):
+class PendingPostMessage(BasePendingMessage[Literal[MessageType.post], PostContent]):  # type: ignore
     pass
 
 
 class PendingProgramMessage(
-    BasePendingMessage[Literal[MessageType.program], ProgramContent]
+    BasePendingMessage[Literal[MessageType.program], ProgramContent]  # type: ignore
 ):
     pass
 
 
-class PendingStoreMessage(BasePendingMessage[Literal[MessageType.store], StoreContent]):
+class PendingStoreMessage(BasePendingMessage[Literal[MessageType.store], StoreContent]):  # type: ignore
     pass
 
 
 class PendingInlineStoreMessage(PendingStoreMessage):
     item_content: str
-    item_type: Literal[ItemType.inline]
+    item_type: Literal[ItemType.inline]  # type: ignore
 
 
-MESSAGE_TYPE_TO_CLASS: Dict[Any, Type[PendingAggregateMessage | PendingForgetMessage | PendingInstanceMessage | PendingPostMessage | PendingProgramMessage | PendingStoreMessage]] = {
+MESSAGE_TYPE_TO_CLASS: Dict[
+    Any,
+    Type[
+        PendingAggregateMessage
+        | PendingForgetMessage
+        | PendingInstanceMessage
+        | PendingPostMessage
+        | PendingProgramMessage
+        | PendingStoreMessage
+    ],
+] = {
     MessageType.aggregate: PendingAggregateMessage,
     MessageType.forget: PendingForgetMessage,
     MessageType.instance: PendingInstanceMessage,

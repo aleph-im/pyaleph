@@ -1,15 +1,10 @@
 import datetime as dt
-from typing import Optional, Iterable
-from decimal import Decimal
-from sqlalchemy import delete, func, select, text
+from typing import Iterable, Optional
+
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 
-from aleph.db.models.vms import (
-    VmBaseDb,
-    VmVersionDb,
-    ProgramDb,
-    VmInstanceDb,
-)
+from aleph.db.models.vms import ProgramDb, VmBaseDb, VmInstanceDb, VmVersionDb
 from aleph.types.db_session import DbSession
 from aleph.types.vms import VmVersion
 

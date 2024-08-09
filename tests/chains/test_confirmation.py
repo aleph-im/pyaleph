@@ -79,16 +79,16 @@ async def test_confirm_message(
     )
 
     pending_message = PendingMessageDb.from_message_dict(
-        MESSAGE_DICT, reception_time=dt.datetime(2022, 1, 1), fetched=True,
+        MESSAGE_DICT,
+        reception_time=dt.datetime(2022, 1, 1),
+        fetched=True,
     )
     with session_factory() as session:
         await message_handler.process(session=session, pending_message=pending_message)
         session.commit()
 
     with session_factory() as session:
-        message_in_db = get_message_by_item_hash(
-            session=session, item_hash=item_hash
-        )
+        message_in_db = get_message_by_item_hash(session=session, item_hash=item_hash)
 
     assert message_in_db is not None
     assert message_in_db.content == content
@@ -103,15 +103,11 @@ async def test_confirm_message(
         pending_message.tx = chain_tx
         pending_message.tx_hash = chain_tx.hash
 
-        await message_handler.process(
-            session=session, pending_message=pending_message
-        )
+        await message_handler.process(session=session, pending_message=pending_message)
         session.commit()
 
     with session_factory() as session:
-        message_in_db = get_message_by_item_hash(
-            session=session, item_hash=item_hash
-        )
+        message_in_db = get_message_by_item_hash(session=session, item_hash=item_hash)
 
     assert message_in_db is not None
     assert message_in_db.confirmed
@@ -147,19 +143,17 @@ async def test_process_confirmed_message(
         session.add(chain_tx)
 
         pending_message = PendingMessageDb.from_message_dict(
-            MESSAGE_DICT, reception_time=dt.datetime(2022, 1, 1), fetched=True,
+            MESSAGE_DICT,
+            reception_time=dt.datetime(2022, 1, 1),
+            fetched=True,
         )
         pending_message.tx_hash = chain_tx.hash
         pending_message.tx = chain_tx
-        await message_handler.process(
-            session=session, pending_message=pending_message
-        )
+        await message_handler.process(session=session, pending_message=pending_message)
         session.commit()
 
     with session_factory() as session:
-        message_in_db = get_message_by_item_hash(
-            session=session, item_hash=item_hash
-        )
+        message_in_db = get_message_by_item_hash(session=session, item_hash=item_hash)
 
     assert message_in_db is not None
     assert message_in_db.confirmed

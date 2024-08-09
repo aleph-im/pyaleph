@@ -5,14 +5,14 @@ import pytest
 import pytz
 
 from aleph.db.accessors.files import (
-    is_pinned_file,
-    upsert_file_tag,
     get_file_tag,
+    is_pinned_file,
     refresh_file_tag,
+    upsert_file_tag,
 )
-from aleph.db.models import TxFilePinDb, StoredFileDb, MessageFilePinDb
+from aleph.db.models import MessageFilePinDb, StoredFileDb, TxFilePinDb
 from aleph.types.db_session import DbSessionFactory
-from aleph.types.files import FileType, FileTag
+from aleph.types.files import FileTag, FileType
 
 
 @pytest.mark.asyncio

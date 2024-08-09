@@ -1,7 +1,7 @@
 import pytest
 
 from aleph.chains.avalanche import AvalancheConnector
-from aleph.schemas.pending_messages import parse_message, BasePendingMessage
+from aleph.schemas.pending_messages import BasePendingMessage, parse_message
 
 
 @pytest.fixture

@@ -1,10 +1,11 @@
 from typing import Callable, Iterable, List, Tuple, TypeVar
 
-
 T = TypeVar("T")
 
 
-def split_iterable(iterable: Iterable[T], cond: Callable[[T], bool]) -> Tuple[List[T], List[T]]:
+def split_iterable(
+    iterable: Iterable[T], cond: Callable[[T], bool]
+) -> Tuple[List[T], List[T]]:
     matches = []
     others = []
 

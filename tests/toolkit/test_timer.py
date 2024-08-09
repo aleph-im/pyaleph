@@ -1,5 +1,6 @@
-from aleph.toolkit.timer import Timer
 import time
+
+from aleph.toolkit.timer import Timer
 
 
 def test_timer_sleep():

@@ -6,7 +6,7 @@ import asyncio
 import base64
 import logging
 from random import sample
-from typing import Optional, List, Sequence
+from typing import List, Optional, Sequence
 
 import aiohttp
 

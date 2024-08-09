@@ -5,10 +5,10 @@ from typing import List, Sequence
 
 import pytest
 import pytest_asyncio
+from message_test_helpers import make_validated_message_from_dict
 
 from aleph.db.models import MessageDb
 from aleph.types.db_session import DbSessionFactory
-from message_test_helpers import make_validated_message_from_dict
 
 
 @pytest_asyncio.fixture

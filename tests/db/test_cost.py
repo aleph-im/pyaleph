@@ -1,39 +1,47 @@
-from typing import List, Protocol, Union
+import datetime as dt
+import json
+from decimal import Decimal
+from typing import List, Union
 
 import pytest
 import pytz
 from aleph_message.models import (
     Chain,
-    InstanceContent,
-    MessageType,
-    ItemType,
     ExecutableContent,
+    InstanceContent,
+    ItemType,
+    MessageType,
     ProgramContent,
 )
-from decimal import Decimal
-
-from aleph_message.models.execution.program import CodeContent, DataContent, FunctionRuntime
+from aleph_message.models.execution.program import (
+    CodeContent,
+    DataContent,
+    FunctionRuntime,
+)
 from aleph_message.models.execution.volume import ImmutableVolume, ParentVolume
 
 from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import insert_message_file_pin, upsert_file_tag
 from aleph.db.models import (
     AlephBalanceDb,
+    MessageStatusDb,
     PendingMessageDb,
     StoredFileDb,
-    MessageStatusDb,
 )
-import json
 from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.db_session import DbSessionFactory, DbSession
-import datetime as dt
-
-from aleph.types.files import FileType, FileTag
+from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.files import FileTag, FileType
 from aleph.types.message_status import MessageStatus
 
 
-def get_volume_refs(content: ExecutableContent) -> List[Union[ImmutableVolume, DataContent, ParentVolume, CodeContent, FunctionRuntime]]:
-    volumes: List[Union[ImmutableVolume, DataContent, ParentVolume, CodeContent, FunctionRuntime]] = []
+def get_volume_refs(
+    content: ExecutableContent,
+) -> List[
+    Union[ImmutableVolume, DataContent, ParentVolume, CodeContent, FunctionRuntime]
+]:
+    volumes: List[
+        Union[ImmutableVolume, DataContent, ParentVolume, CodeContent, FunctionRuntime]
+    ] = []
 
     for volume in content.volumes:
         if isinstance(volume, ImmutableVolume):
@@ -67,7 +75,9 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
             # but it could be set to any valid hash.
             file_hash = volume.ref[::-1]
 
-            session.add(StoredFileDb(hash=file_hash, size=1024 * 1024, type=FileType.FILE))
+            session.add(
+                StoredFileDb(hash=file_hash, size=1024 * 1024, type=FileType.FILE)
+            )
             session.flush()
             insert_message_file_pin(
                 session=session,
@@ -204,4 +214,6 @@ def test_get_total_cost_for_address(
         total_cost: Decimal = get_total_cost_for_address(
             session=session, address=fixture_instance_message.sender
         )
-        assert total_cost == Decimal(0.66666666666666662965923251249478198587894439697265625)
+        assert total_cost == Decimal(
+            0.66666666666666662965923251249478198587894439697265625
+        )

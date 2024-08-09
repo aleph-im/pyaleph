@@ -1,8 +1,6 @@
 import logging
 
-from aleph.schemas.pending_messages import (
-    BasePendingMessage,
-)
+from aleph.schemas.pending_messages import BasePendingMessage
 
 LOGGER = logging.getLogger("chains.common")
 

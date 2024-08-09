@@ -1,12 +1,12 @@
 import datetime as dt
-from typing import Optional, Iterable, Any, Dict, Sequence, Collection
+from typing import Any, Collection, Dict, Iterable, Optional, Sequence
 
 from aleph_message.models import Chain
-from sqlalchemy import select, func, update, delete
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import Update
 
-from aleph.db.models import PendingMessageDb, ChainTxDb
+from aleph.db.models import ChainTxDb, PendingMessageDb
 from aleph.types.db_session import DbSession
 
 
@@ -76,7 +76,9 @@ def get_pending_messages(
     return session.execute(select_stmt).scalars()
 
 
-def get_pending_message(session: DbSession, pending_message_id: int) -> Optional[PendingMessageDb]:
+def get_pending_message(
+    session: DbSession, pending_message_id: int
+) -> Optional[PendingMessageDb]:
     select_stmt = select(PendingMessageDb).where(
         PendingMessageDb.id == pending_message_id
     )

@@ -1,7 +1,7 @@
 import logging
 import sys
-from typing import Any, Dict, Optional
 from logging.handlers import RotatingFileHandler
+from typing import Any, Dict, Optional
 
 
 def setup_logging(

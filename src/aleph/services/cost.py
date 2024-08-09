@@ -1,17 +1,20 @@
 import math
 from decimal import Decimal
-from typing import Optional, Union, List
+from typing import List, Optional, Union
 
 from aleph_message.models import ExecutableContent, InstanceContent, ProgramContent
-from aleph_message.models.execution.volume import ImmutableVolume, EphemeralVolume, PersistentVolume
 from aleph_message.models.execution.instance import RootfsVolume
+from aleph_message.models.execution.volume import (
+    EphemeralVolume,
+    ImmutableVolume,
+    PersistentVolume,
+)
 
 from aleph.db.accessors.files import get_file_tag, get_message_file_pin
-from aleph.db.models import StoredFileDb, FileTagDb, MessageFilePinDb
+from aleph.db.models import FileTagDb, MessageFilePinDb, StoredFileDb
 from aleph.toolkit.constants import GiB, MiB
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag
-
 
 MINUTE = 60
 HOUR = 60 * MINUTE
@@ -23,7 +26,7 @@ COMPUTE_UNIT_PRICE_PER_HOUR_PERSISTENT = Decimal("0.11")
 STORAGE_INCLUDED_PER_COMPUTE_UNIT_ON_DEMAND = Decimal("2") * GiB
 STORAGE_INCLUDED_PER_COMPUTE_UNIT_PERSISTENT = Decimal("20") * GiB
 
-EXTRA_STORAGE_TOKEN_TO_HOLD = 1 / (Decimal('20') * MiB)  # Hold 1 token for 20 MiB
+EXTRA_STORAGE_TOKEN_TO_HOLD = 1 / (Decimal("20") * MiB)  # Hold 1 token for 20 MiB
 EXTRA_STORAGE_PRICE_PER_HOUR = Decimal("0.000000977")
 EXTRA_STORAGE_PRICE_PER_SECOND = EXTRA_STORAGE_PRICE_PER_HOUR / Decimal(HOUR)
 
@@ -69,7 +72,9 @@ def get_volume_size(session: DbSession, content: ExecutableContent) -> int:
                 session=session, ref=volume.ref, use_latest=volume.use_latest
             )
             if file is None:
-                raise RuntimeError(f"Could not find entry in file tags for {volume.ref}.")
+                raise RuntimeError(
+                    f"Could not find entry in file tags for {volume.ref}."
+                )
             total_volume_size += file.size
         else:
             raise RuntimeError(f"Could not find reference hash for {volume}.")
@@ -94,7 +99,9 @@ def get_additional_storage_price(
 
     total_volume_size = get_volume_size(session, content)
     additional_storage = max(
-        Decimal(total_volume_size) - (included_storage_per_compute_unit * nb_compute_units), Decimal(0)
+        Decimal(total_volume_size)
+        - (included_storage_per_compute_unit * nb_compute_units),
+        Decimal(0),
     )
     return Decimal(additional_storage) * EXTRA_STORAGE_TOKEN_TO_HOLD
 

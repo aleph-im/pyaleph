@@ -3,8 +3,12 @@ from pydantic import BaseModel, Field
 
 
 class MessageConfirmation(BaseModel):
-    chain: Chain = Field(..., description="Chain from which the confirmation was fetched.")
-    height: int = Field(..., description="Block in which the confirmation was published.")
+    chain: Chain = Field(
+        ..., description="Chain from which the confirmation was fetched."
+    )
+    height: int = Field(
+        ..., description="Block in which the confirmation was published."
+    )
     hash: str = Field(
         ...,
         description="Hash of the transaction/block in which the confirmation was published.",

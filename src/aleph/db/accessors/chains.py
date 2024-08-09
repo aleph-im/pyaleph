@@ -1,16 +1,17 @@
 import datetime as dt
 from dataclasses import dataclass
-from typing import Optional, Tuple, Iterable
+from typing import Iterable, Optional
 
 from aleph_message.models import Chain
-from sqlalchemy import select, delete
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 
 from aleph.toolkit.range import MultiRange, Range
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainEventType
 from aleph.types.db_session import DbSession
-from ..models.chains import ChainSyncStatusDb, IndexerSyncStatusDb, ChainTxDb
+
+from ..models.chains import ChainSyncStatusDb, ChainTxDb, IndexerSyncStatusDb
 
 
 def get_last_height(

@@ -1,8 +1,8 @@
+import asyncio
 import logging
 
 from aleph.db.accessors.messages import refresh_address_stats_mat_view
 from aleph.types.db_session import DbSessionFactory
-import asyncio
 
 LOGGER = logging.getLogger(__name__)
 

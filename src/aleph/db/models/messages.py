@@ -1,27 +1,27 @@
 import datetime as dt
-from typing import Any, Dict, List, Optional, Type, Mapping
+from typing import Any, Dict, List, Mapping, Optional, Type
 
 from aleph_message.models import (
-    Chain,
-    MessageType,
-    ItemType,
     AggregateContent,
     BaseContent,
+    Chain,
     ForgetContent,
+    InstanceContent,
+    ItemType,
+    MessageType,
     PostContent,
     ProgramContent,
     StoreContent,
-    InstanceContent,
 )
 from pydantic import ValidationError
 from pydantic.error_wrappers import ErrorWrapper
 from sqlalchemy import (
-    Column,
-    TIMESTAMP,
-    String,
-    Integer,
-    ForeignKey,
     ARRAY,
+    TIMESTAMP,
+    Column,
+    ForeignKey,
+    Integer,
+    String,
     Table,
     UniqueConstraint,
 )
@@ -31,7 +31,8 @@ from sqlalchemy_utils.types.choice import ChoiceType
 
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
-from aleph.types.message_status import MessageStatus, ErrorCode
+from aleph.types.message_status import ErrorCode, MessageStatus
+
 from .base import Base
 from .chains import ChainTxDb
 from .pending_messages import PendingMessageDb

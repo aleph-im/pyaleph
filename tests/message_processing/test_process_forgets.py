@@ -1,28 +1,29 @@
 import datetime as dt
 
 import pytest
-from aleph_message.models import Chain, MessageType, ItemType, ItemHash
+from aleph_message.models import Chain, ItemHash, ItemType, MessageType
 from configmanager import Config
+from message_test_helpers import process_pending_messages
 from more_itertools import one
 from sqlalchemy import select
 
 from aleph.db.accessors.files import count_file_pins, get_file
-from aleph.db.accessors.messages import get_message_status, get_forgotten_message
+from aleph.db.accessors.messages import get_forgotten_message, get_message_status
 from aleph.db.accessors.posts import get_post
 from aleph.db.models import (
+    FilePinDb,
+    GracePeriodFilePinDb,
+    MessageDb,
+    MessageFilePinDb,
+    MessageStatusDb,
     PendingMessageDb,
     StoredFileDb,
-    MessageDb,
-    MessageStatusDb,
-    FilePinDb,
-    MessageFilePinDb,
-    GracePeriodFilePinDb,
 )
 from aleph.handlers.content.aggregate import AggregateMessageHandler
 from aleph.handlers.content.forget import ForgetMessageHandler
 from aleph.handlers.content.post import PostMessageHandler
-from aleph.handlers.content.vm import VmMessageHandler
 from aleph.handlers.content.store import StoreMessageHandler
+from aleph.handlers.content.vm import VmMessageHandler
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
@@ -30,9 +31,6 @@ from aleph.types.db_session import DbSessionFactory
 from aleph.types.files import FileType
 from aleph.types.message_processing_result import ProcessedMessage, RejectedMessage
 from aleph.types.message_status import MessageStatus
-from message_test_helpers import (
-    process_pending_messages,
-)
 
 
 @pytest.fixture

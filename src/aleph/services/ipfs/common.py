@@ -8,7 +8,6 @@ async def get_base_url(config):
     return "http://{}:{}".format(config.ipfs.host.value, config.ipfs.port.value)
 
 
-
 def make_ipfs_client(config: Config, timeout: int = 60) -> aioipfs.AsyncIPFS:
     host = config.ipfs.host.value
     port = config.ipfs.port.value

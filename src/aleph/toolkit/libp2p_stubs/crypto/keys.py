@@ -62,18 +62,16 @@ class PrivateKey(Key):
     """A ``PrivateKey`` represents a cryptographic private key."""
 
     @abstractmethod
-    def sign(self, data: bytes) -> bytes:
-        ...
+    def sign(self, data: bytes) -> bytes: ...
 
     @abstractmethod
-    def get_public_key(self) -> PublicKey:
-        ...
+    def get_public_key(self) -> PublicKey: ...
 
     def _serialize_to_protobuf(self) -> protobuf.PrivateKey:
         """Return the protobuf representation of this ``Key``."""
         key_type = self.get_type().value
         data = self.to_bytes()
-        protobuf_key = protobuf.PrivateKey(key_type=key_type, data=data)    # type: ignore
+        protobuf_key = protobuf.PrivateKey(key_type=key_type, data=data)  # type: ignore
         return protobuf_key
 
     def serialize(self) -> bytes:

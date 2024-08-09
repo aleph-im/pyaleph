@@ -1,10 +1,10 @@
 import pytest
 
 from aleph.services.utils import (
-    is_valid_ip4,
+    get_IP,
     get_ip4_from_service,
     get_ip4_from_socket,
-    get_IP,
+    is_valid_ip4,
 )
 
 

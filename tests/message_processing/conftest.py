@@ -6,15 +6,15 @@ from typing import Any, Dict, Sequence
 import pytest
 import pytest_asyncio
 from configmanager import Config
+from in_memory_storage_engine import InMemoryStorageEngine
 
-from aleph.chains.connector import ChainConnector
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.models import ChainTxDb, PendingMessageDb
 from aleph.handlers.message_handler import MessageHandler
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSessionFactory
-from in_memory_storage_engine import InMemoryStorageEngine
+
 from .load_fixtures import load_fixture_messages
 
 

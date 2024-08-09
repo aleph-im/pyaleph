@@ -1,11 +1,11 @@
-from typing import Optional, Iterable
+from typing import Iterable, Optional
 
 from aleph_message.models import Chain
-from sqlalchemy import select, func, delete
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import selectinload
 
-from aleph.db.models import PendingTxDb, ChainTxDb
+from aleph.db.models import ChainTxDb, PendingTxDb
 from aleph.types.db_session import DbSession
 
 

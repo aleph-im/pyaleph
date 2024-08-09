@@ -11,12 +11,11 @@ from configmanager import Config
 from setproctitle import setproctitle
 
 from aleph.chains.chain_data_service import ChainDataService
-from aleph.db.accessors.pending_txs import get_pending_txs, delete_pending_tx
+from aleph.db.accessors.pending_txs import delete_pending_tx, get_pending_txs
 from aleph.db.connection import make_engine, make_session_factory
 from aleph.db.models import PendingTxDb
 from aleph.handlers.message_handler import MessagePublisher
 from aleph.services.cache.node_cache import NodeCache
-from aleph.services.ipfs.common import make_ipfs_client
 from aleph.services.ipfs.service import IpfsService
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
@@ -26,7 +25,8 @@ from aleph.toolkit.rabbitmq import make_mq_conn
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.db_session import DbSessionFactory
-from .job_utils import MqWatcher, prepare_loop, make_pending_tx_queue
+
+from .job_utils import MqWatcher, make_pending_tx_queue, prepare_loop
 
 LOGGER = logging.getLogger(__name__)
 
@@ -129,9 +129,12 @@ async def handle_txs_task(config: Config):
     )
     pending_tx_queue = await make_pending_tx_queue(config=config, channel=mq_channel)
 
-    async with NodeCache(
-        redis_host=config.redis.host.value, redis_port=config.redis.port.value
-    ) as node_cache, IpfsService.new(config) as ipfs_service:
+    async with (
+        NodeCache(
+            redis_host=config.redis.host.value, redis_port=config.redis.port.value
+        ) as node_cache,
+        IpfsService.new(config) as ipfs_service,
+    ):
         storage_service = StorageService(
             storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
             ipfs_service=ipfs_service,

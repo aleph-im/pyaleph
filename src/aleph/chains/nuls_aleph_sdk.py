@@ -1,6 +1,7 @@
 """
 Code imported from aleph-client to avoid a direct reference to the SDK.
 """
+
 import hashlib
 import logging
 import struct
@@ -82,7 +83,6 @@ class VarInt:
     # //     * @return the minimal encoded bytes of the value
     # //     */
     def encode(self):
-        ob = bytes()
         size = self.sizeOf(self.value)
 
         if size == 1:

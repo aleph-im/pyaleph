@@ -3,10 +3,11 @@ import logging
 from typing import Dict, List, Optional
 
 from aiohttp import web
-from aleph.db.accessors.aggregates import get_aggregates_by_owner, refresh_aggregate
-from aleph.db.models import AggregateDb
 from pydantic import BaseModel, ValidationError, validator
 from sqlalchemy import select
+
+from aleph.db.accessors.aggregates import get_aggregates_by_owner, refresh_aggregate
+from aleph.db.models import AggregateDb
 
 from .utils import LIST_FIELD_SEPARATOR
 
@@ -60,8 +61,10 @@ async def address_aggregate(request: web.Request) -> web.Response:
 
         aggregates = list(
             get_aggregates_by_owner(
-                session=session, owner=address,
-                with_info=query_params.with_info, keys=query_params.keys
+                session=session,
+                owner=address,
+                with_info=query_params.with_info,
+                keys=query_params.keys,
             )
         )
 

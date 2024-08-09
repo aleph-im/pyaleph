@@ -1,5 +1,5 @@
 import pytest
-from aleph_message.models import MessageType, Chain, ItemType
+from aleph_message.models import Chain, ItemType, MessageType
 
 from aleph.chains.solana import SolanaConnector
 from aleph.schemas.pending_messages import PendingPostMessage
@@ -33,7 +33,7 @@ async def test_solana_signature(solana_message: PendingPostMessage):
         '{"signature": "bad-signature","publicKey": "AzfsDdCQp8uqzR4ProJ7yyLGKNp9iXHt92rEoiAHG4Pw"}',
         '{"signature": "56hzHaJHH3bz1DtU6Wjhyn7eLsMCYSY4HcXkKrpwAdEHFdw7k95NPzubR3x7otstbr5JCffw81Qqpd9YUq8XJuFj","publicKey": "AzfsDdCQp8uqzR4ProJ7yyLGKNp9iXHt92rEoiAHG4Pw"}',
         '{"signature": "56hzHaJHH3bz1DtU6Wjhyn7eLsMCYSY4HcXkKrpwAdEHFdw7k95NPzubR3x7otstbr5JCffw81Qqpd9YUq8XJuFj","publicKey": "BzfsDdCQp8uqzR4ProJ7yyLGKNp9iXHt92rEoiAHG4Pw"}',
-        '{{{{{',
+        "{{{{{",
         "56hzHaJHH3bz1DtU6Wjhyn7eLsMCYSY4HcXkKrpwAdEHFdw7k95NPzubR3x7otstbr5JCffw81Qqpd9YUq8XJuFj",
     ),
     ids=(

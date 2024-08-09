@@ -4,24 +4,20 @@ Schemas for the generic Aleph message indexer.
 
 import datetime as dt
 from enum import Enum
-from typing import List, Tuple, Protocol
+from typing import List, Protocol, Tuple
 
 from pydantic import BaseModel, Field, validator
 
 
 class GenericMessageEvent(Protocol):
     @property
-    def address(self) -> str:
-        ...
+    def address(self) -> str: ...
     @property
-    def type(self) -> str:
-        ...
+    def type(self) -> str: ...
     @property
-    def content(self) -> str:
-        ...
+    def content(self) -> str: ...
     @property
-    def timestamp_seconds(self) -> float:
-        ...
+    def timestamp_seconds(self) -> float: ...
 
 
 class IndexerBlockchain(str, Enum):

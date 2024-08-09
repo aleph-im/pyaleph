@@ -3,8 +3,11 @@ from typing import Any, Dict, Iterable, List, Optional
 
 import aio_pika.abc
 import aiohttp.web_ws
-import aleph.toolkit.json as aleph_json
 from aiohttp import WSMsgType, web
+from aleph_message.models import Chain, ItemHash, MessageType
+from pydantic import BaseModel, Field, ValidationError, root_validator, validator
+
+import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.messages import (
     count_matching_messages,
     get_forgotten_message,
@@ -42,8 +45,6 @@ from aleph.web.controllers.utils import (
     LIST_FIELD_SEPARATOR,
     mq_make_aleph_message_topic_queue,
 )
-from aleph_message.models import Chain, ItemHash, MessageType
-from pydantic import BaseModel, Field, ValidationError, root_validator, validator
 
 LOGGER = logging.getLogger(__name__)
 
@@ -300,7 +301,7 @@ def message_matches_filters(
         if user_filters := getattr(query_params, query_field):
             if not isinstance(user_filters, list):
                 user_filters = [user_filters]
-            if not getattr(message, message_field) in user_filters:
+            if getattr(message, message_field) not in user_filters:
                 return False
 
     # Process filters on content and content.content
@@ -459,7 +460,9 @@ def _get_message_with_status(
         )
 
     if status == MessageStatus.PROCESSED:
-        message_db = get_message_by_item_hash(session=session, item_hash=ItemHash(item_hash))
+        message_db = get_message_by_item_hash(
+            session=session, item_hash=ItemHash(item_hash)
+        )
         if not message_db:
             raise web.HTTPNotFound()
 
