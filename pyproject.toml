@@ -121,6 +121,17 @@ include = [
     "code-of-conduct.md",
 ]
 
+[tool.check-sdist]
+git-only = [
+    "tests",
+    "docs",
+    "deployment",
+    ".coveragerc",
+    ".dockerignore",
+    "shell.nix"
+]
+default-ignore = true
+
 [tool.isort]
 profile = "black"
 
@@ -161,6 +172,7 @@ dependencies = [
     "mypy-extensions==1.0.0",
     "ruff==0.4.8",
     "isort==5.13.2",
+    "check-sdist==0.1.3",
     "sqlalchemy[mypy]==1.4.41",
     "types-aiofiles",
     "types-protobuf",
@@ -176,6 +188,7 @@ style = [
     "black --check --diff {args:} ./src/ ./tests/",
     "isort --check-only --profile black {args:} ./src/ ./tests/",
 ]
+sdist = "check-sdist --inject-junk"
 fmt = [
     "black {args:} ./src/ ./tests/",
     "ruff check --fix {args:.} ./src/ ./tests/",
@@ -185,6 +198,7 @@ fmt = [
 all = [
     "style",
     "typing",
+    "sdist",
 ]
 
 [tool.mypy]
