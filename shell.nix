@@ -60,9 +60,6 @@ pkgs.mkShell {
     # Install the required Python packages
     ./venv/bin/pip install -e .\[testing\]
 
-    # Activate the virtual environment
-    source venv/bin/activate
-
     # If config.yml does not exist, create it with the port specified in this shell. 
     [ -e config.yml ] || echo -e "postgres:\n  port: $PG_PORT" > config.yml
 
@@ -78,5 +75,8 @@ pkgs.mkShell {
     echo "PostgreSQL started. Data directory is $PGDATA, Socket directory is $PG_SOCKET_DIR" | sed 's/./=/g'
     echo -e "\033[0m"
     set +eu
+
+    # Activate the virtual environment
+    source venv/bin/activate
   '';
 }
