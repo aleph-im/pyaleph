@@ -32,3 +32,11 @@ def get_sha256(content: Union[str, bytes]) -> str:
     if isinstance(content, str):
         content = content.encode("utf-8")
     return sha256(content).hexdigest()
+
+
+def safe_getattr(obj, attr, default=None):
+    for part in attr.split("."):
+        obj = getattr(obj, part, default)
+        if obj is default:
+            break
+    return obj

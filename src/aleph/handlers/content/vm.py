@@ -69,6 +69,7 @@ from aleph.types.message_status import (
     InsufficientBalanceException,
 )
 from aleph.types.vms import VmVersion
+from aleph.utils import safe_getattr
 
 LOGGER = logging.getLogger(__name__)
 
@@ -122,11 +123,7 @@ def _map_content_to_db_model(item_hash, content):
         if content.environment.trusted_execution is not None:
             trusted_execution_policy = content.environment.trusted_execution.policy
             trusted_execution_firmware = content.environment.trusted_execution.firmware
-        if (
-                hasattr(content, "requirements")
-                and hasattr(content.requirements, "node")
-                and hasattr(content.requirements.node, "node_hash")
-        ):
+        if safe_getattr(content, "requirements.node.node_hash") is not None:
             node_hash = content.requirements.node.node_hash
 
     return db_cls(
