@@ -23,12 +23,14 @@ dependencies = [
     "aiohttp-cors==0.7.0",
     "aiohttp-jinja2==1.5",
     "aiohttp==3.9.5",
-    "aioipfs@git+https://github.com/aleph-im/aioipfs.git@d671c79b2871bb4d6c8877ba1e7f3ffbe7d20b71",
+    # "aioipfs==0.7.1",
+    # "aioipfs@git+file://home/sepal/Repos/aleph-im/aioipfs",
+    # "/home/sepal/Repos/aleph-im/aioipfs",
     "alembic==1.12.1",
     "aleph-message==0.4.9",
     "aleph-p2p-client@git+https://github.com/aleph-im/p2p-service-client-python@2c04af39c566217f629fd89505ffc3270fba8676",
     "aleph-nuls2==0.1.0",
-    "aleph-pytezos==3.13.4",
+    "aleph-pytezos@git+https://github.com/aleph-im/aleph-pytezos@73c9bfc471b576fb58e3a259dc68b60e8f9ecbe1#pytezos",
     "asyncpg==0.28.0",
     "base58>=1.0.3",
     "coincurve==20.0.0",
@@ -43,6 +45,7 @@ dependencies = [
     "msgpack==1.0.3", # required by aiocache
     "multiaddr==0.0.9", # for libp2p-stubs
     "orjson>=3.7.7", # Minimum version for Python 3.11
+    "packaging", # compatibility with deprecated distutils
     "psycopg2-binary==2.9.5", # Note: psycopg3 is not yet supported by SQLAlchemy
     "pycryptodome==3.17.0", # for libp2p-stubs
     "pymultihash==0.8.2", # for libp2p-stubs
@@ -73,6 +76,15 @@ dependency_links = [
 pyaleph = "aleph.commands:run"
 
 [project.optional-dependencies]
+test = [
+    "ipfshttpclient==0.8.0a2",  # eth/web3 test dependency, for some reason"
+    "more-itertools==8.14.0",
+    "pytest==8.0.1",
+    "pytest-cov==4.1.0",
+    "pytest-mock==3.12.0",
+    "pytest-asyncio==0.23.5",
+    "pytest-aiohttp==1.0.5",
+]
 nuls2 = [
     "aleph-nuls2==0.1.0",
     "py-ed25519-bindings==1.0.2; python_version >=\"3.11\"",
@@ -137,19 +149,20 @@ profile = "black"
 
 [tool.hatch.envs.testing]
 features = [
+    "test",
     "cosmos",
     "nuls2",
     "polkadot",
 ]
-dependencies = [
-    "ipfshttpclient==0.8.0a2",  # eth/web3 test dependency, for some reason"
-    "more-itertools==8.14.0",
-    "pytest==8.0.1",
-    "pytest-cov==4.1.0",
-    "pytest-mock==3.12.0",
-    "pytest-asyncio==0.23.5",
-    "pytest-aiohttp==1.0.5",
-]
+# dependencies = [
+#     "ipfshttpclient==0.8.0a2",  # eth/web3 test dependency, for some reason"
+#     "more-itertools==8.14.0",
+#     "pytest==8.0.1",
+#     "pytest-cov==4.1.0",
+#     "pytest-mock==3.12.0",
+#     "pytest-asyncio==0.23.5",
+#     "pytest-aiohttp==1.0.5",
+# ]
 
 # XXX see https://github.com/aleph-im/pyaleph/blob/main/.github/workflows/pyaleph-ci.yml
 [tool.hatch.envs.testing.scripts]

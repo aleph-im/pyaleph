@@ -23,6 +23,7 @@ pkgs.mkShell {
 
     unstable.python312Packages.fastecdsa
     unstable.python312Packages.greenlet
+    unstable.python312Packages.libnacl
   ];
 
   shellHook = ''
@@ -61,14 +62,14 @@ pkgs.mkShell {
 
     # Create a virtual environment in the current directory if it doesn't exist
     if [ ! -d "venv" ]; then
-      python3 -m virtualenv venv
+      python3.12 -m virtualenv venv
     fi
 
     # Install the required Python packages
-    ./venv/bin/pip install -e .\[testing\]
+    ./venv/bin/pip install -e .\[test\]
 
     # PyO3 requires a nightly or dev version of Rust.
-    rustup default nightly
+    # rustup default nightly
 
     # If config.yml does not exist, create it with the port specified in this shell. 
     [ -e config.yml ] || echo -e "postgres:\n  port: $PG_PORT" > config.yml
