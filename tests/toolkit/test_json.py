@@ -30,7 +30,7 @@ def test_reject_nans():
     """
 
     serialized_json = '{"1": 1, "2": 2, "3": NaN}'
-    with pytest.raises(aleph_json.DecodeError):
+    with pytest.raises(json.decoder.JSONDecodeError):
         _ = aleph_json.loads(serialized_json)
 
 

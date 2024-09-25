@@ -2,7 +2,7 @@
 An abstraction layer for JSON serialization/deserialization.
 Makes swapping between JSON implementations easier.
 """
-
+import json
 
 import orjson
 from typing import Any, IO, Union
@@ -26,12 +26,18 @@ def load(fp: IO) -> Any:
 
 
 def loads(s: Union[bytes, str]) -> Any:
-    return orjson.loads(s)
+    try:
+        return orjson.loads(s)
+    except TypeError as e:
+        return json.loads(s)
 
 
 def dump(fp: IO, obj: Any) -> None:
     raise NotImplementedError("orjson does not provide dump")
 
 
-def dumps(obj: Any) -> SerializedJson:
-    return orjson.dumps(obj)
+def dumps(obj: Any) -> bytes:
+    try:
+        return orjson.dumps(obj)
+    except TypeError as e:
+        return json.dumps(obj).encode()
