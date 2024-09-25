@@ -2,6 +2,7 @@
 Basically manages the IPFS storage.
 """
 import asyncio
+import json
 import logging
 from hashlib import sha256
 from typing import Any, IO, Optional, cast, Final
@@ -80,6 +81,10 @@ class StorageService:
         try:
             content = aleph_json.loads(item_content)
         except aleph_json.DecodeError as e:
+            error_msg = f"Can't decode JSON: {e}"
+            LOGGER.warning(error_msg)
+            raise InvalidContent(error_msg)
+        except json.decoder.JSONDecodeError as e:
             error_msg = f"Can't decode JSON: {e}"
             LOGGER.warning(error_msg)
             raise InvalidContent(error_msg)

@@ -28,7 +28,7 @@ def load(fp: IO) -> Any:
 def loads(s: Union[bytes, str]) -> Any:
     try:
         return orjson.loads(s)
-    except:
+    except TypeError as e:
         return json.loads(s)
 
 
@@ -39,5 +39,5 @@ def dump(fp: IO, obj: Any) -> None:
 def dumps(obj: Any) -> bytes:
     try:
         return orjson.dumps(obj)
-    except:
+    except TypeError as e:
         return json.dumps(obj).encode()
