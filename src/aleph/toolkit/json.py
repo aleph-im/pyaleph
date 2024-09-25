@@ -28,7 +28,7 @@ def load(fp: IO) -> Any:
 def loads(s: Union[bytes, str]) -> Any:
     try:
         return orjson.loads(s)
-    except TypeError as e:
+    except:
         return json.loads(s)
 
 
@@ -36,8 +36,8 @@ def dump(fp: IO, obj: Any) -> None:
     raise NotImplementedError("orjson does not provide dump")
 
 
-def dumps(obj: Any) -> SerializedJson:
+def dumps(obj: Any) -> bytes:
     try:
         return orjson.dumps(obj)
-    except TypeError as e:
-        return bytes(json.dumps(obj))
+    except:
+        return json.dumps(obj).encode()
