@@ -46,3 +46,22 @@ def test_serialized_json_type():
 
     actual = json.loads(serialized_json)
     assert actual == expected
+
+
+def test_loads_large_ints_json():
+    """
+    Check that the output of dumps and loads don't raise TypeError errors caused by large ints on orjson library.
+    """
+
+    expected = {
+        "0x3E1aba4ad853Dd7Aa531aB59F10bd9f4d89aebaF": 498729072221377800000,
+        "0x525C49BF83Ce3a1AAf425ac1A463537dB68c8bd7": 8059602048250472000000,
+        "0x7F05Ed9650E48f3E564125EAdCdc0d5E7c2E8DaB": 1991950397951749400000000,
+        "0xb6e45ADfa0C7D70886bBFC990790d64620F1BAE8": 497997000000000000000000000,
+    }
+
+    serialized_json = aleph_json.dumps(expected)
+    assert isinstance(serialized_json, aleph_json.SerializedJson)
+
+    actual = json.loads(serialized_json)
+    assert actual == expected
