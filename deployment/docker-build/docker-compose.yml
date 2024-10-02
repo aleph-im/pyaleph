@@ -1,14 +1,11 @@
+---
 # Starts all the services used by pyaleph, minus pyaleph itself. This is used for local development.
 # Use the docker-compose/docker-compose.yml file for deployment.
-
 version: '2.2'
-
 volumes:
   pyaleph-ipfs:
   pyaleph-postgres:
-
 services:
-
   rabbitmq:
     restart: always
     image: rabbitmq:3.11.15-management
@@ -20,7 +17,6 @@ services:
     ports:
       - "127.0.0.1:5672:5672"
       - "127.0.0.1:15672:15672"
-
   p2p-service:
     restart: always
     image: alephim/p2p-service:0.1.3
@@ -41,7 +37,6 @@ services:
       - "/etc/p2p-service/config.yml"
       - "--private-key-file"
       - "/etc/p2p-service/node-secret.pkcs8.der"
-
   ipfs:
     restart: always
     image: ipfs/kubo:v0.15.0
@@ -57,7 +52,6 @@ services:
     networks:
       - pyaleph
     command: ["daemon", "--enable-pubsub-experiment", "--migrate"]
-
   postgres:
     restart: always
     image: postgres:15.1
@@ -72,7 +66,6 @@ services:
     networks:
       - pyaleph
     shm_size: "2gb"
-
   redis:
     restart: always
     image: redis:7.0.10
@@ -80,6 +73,5 @@ services:
       - "127.0.0.1:6380:6379"
     networks:
       - pyaleph
-
 networks:
   pyaleph:
