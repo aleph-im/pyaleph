@@ -1,24 +1,31 @@
 ---
 name: Test nix-shell
+
+
 on:
   push:
     branches:
       - 'doesnt_exist'
+
+
 jobs:
   nix-shell:
     strategy:
       matrix:
         os: [macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
+
     steps:
       - uses: actions/checkout@v4
         with:
             # Fetch the whole history for all tags and branches (required for aleph.__version__)
           fetch-depth: 0
+
       - name: Set up Nix
         uses: cachix/install-nix-action@v27
         with:
             # Use channel nixos-23.11 for Linux and nixpkgs-23.11-darwin for macOS
           nix_path: nixpkgs=channel:${{ matrix.os == 'macos-latest' && 'nixpkgs-24.05-darwin' || 'nixos-24.05' }}
+
       - name: Run tests
         run: nix-shell --run "hatch run testing:test -- ./src/ ./test/"

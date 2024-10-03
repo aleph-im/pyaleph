@@ -7,8 +7,11 @@ nuls2:
   api_url: https://apiserver.nuls.io/
   explorer_url: https://nuls.world/
   token_contract: NULSd6Hh1FjbnAktH1FFvFnTzfgFnZtgAhYut
+
+
 ethereum:
   enabled: false
+
 #    api_url: {{ ALEPH_ETHEREUM_URL }}
   chain_id: 1
   packing_node: false
@@ -16,27 +19,41 @@ ethereum:
   start_height: 11474360
   token_contract: "0x27702a26126e0B3702af63Ee09aC4d1A084EF628"
   token_start_height: 10939074
+
+
 binancechain:
   enabled: false
   packing_node: false
+
+
 mongodb:
   uri: "mongodb://127.0.0.1:27017"
   database: aleph
+
+
 storage:
   store_files: true
   engine: mongodb
+
+
 ipfs:
   enabled: true
   host: 127.0.0.1
   port: 5001
   gateway_port: 8080
+
+
 aleph:
   queue_topic: ALEPH-TEST
+
+
 p2p:
   host: 0.0.0.0
   http_port: 4024
   port: 4025
   control_port: 4030
   reconnect_delay: 60
+
+
 sentry:
   dsn:
