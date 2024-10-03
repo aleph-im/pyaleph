@@ -63,7 +63,7 @@ dependencies = [
   "substrate-interface==1.7.4",
   "types-aiofiles==23.2.0.20240403",
   "ujson==5.1",                                                                                                            # required by aiocache
-  "urllib3==2.0.7",
+  "urllib3==2.2.2",
   "uvloop==0.19",
   "web3==6.11.2",
 ]
