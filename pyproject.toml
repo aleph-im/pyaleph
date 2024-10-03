@@ -335,3 +335,5 @@ allow_redefinition = true
 [tool.yamlfix]
 sequence_style = "keep_style"
 preserve_quotes = true
+whitelines = 1
+section_whitelines = 2
