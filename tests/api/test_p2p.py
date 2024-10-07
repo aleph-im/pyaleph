@@ -100,4 +100,4 @@ async def test_post_message_sync(ccn_api_client, mocker):
     assert pub_status["failed"] == []
 
     # Check that we cleaned up the queue
-    mocked_queue.delete.assert_called_once()
+    mocked_queue.return_value.delete.assert_awaited_once()
