@@ -530,7 +530,7 @@ async def test_compare_cost_view_with_cost_function(
 
 
 @pytest.mark.asyncio
-async def test_persistent_volume_1tb(
+async def test_persistent_volume_500_GB(
     session_factory: DbSessionFactory,
     message_processor: PendingMessageProcessor,
     fixture_instance_message: PendingMessageDb,
@@ -541,7 +541,7 @@ async def test_persistent_volume_1tb(
     # Update the 'store' volume to 1000 GiB
     for volume in content_dict["volumes"]:
         if volume.get("persistence") == "store" and volume.get("name") == "statistics":
-            volume["size_mib"] = gigabyte_to_mebibyte(Gigabytes(1000))
+            volume["size_mib"] = gigabyte_to_mebibyte(Gigabytes(500))
 
     fixture_instance_message.item_content = json.dumps(content_dict)
 
@@ -571,4 +571,4 @@ async def test_persistent_volume_1tb(
         )
 
         assert persistent_volume is not None, "PersistentVolume not found"
-        assert persistent_volume.size_mib == gigabyte_to_mebibyte(Gigabytes(1000))
+        assert persistent_volume.size_mib == gigabyte_to_mebibyte(Gigabytes(500))
