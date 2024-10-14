@@ -22,6 +22,7 @@ from aleph_message.models.execution.program import (
     ProgramContent,
 )
 from aleph_message.models.execution.volume import ImmutableVolume, ParentVolume
+from aleph_message.utils import Gigabytes, gigabyte_to_mebibyte
 from more_itertools import one
 from sqlalchemy import text
 
@@ -154,7 +155,7 @@ def user_balance(session_factory: DbSessionFactory) -> AlephBalanceDb:
     balance = AlephBalanceDb(
         address="0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
         chain=Chain.ETH,
-        balance=Decimal(22_192),
+        balance=Decimal(50_000),
         eth_height=0,
     )
 
@@ -526,3 +527,48 @@ async def test_compare_cost_view_with_cost_function(
         ).scalar_one()
 
     assert Decimal(str(cost_from_view)) == cost_from_function
+
+
+@pytest.mark.asyncio
+async def test_persistent_volume_1tb(
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    fixture_instance_message: PendingMessageDb,
+    user_balance: AlephBalanceDb,
+):
+    assert fixture_instance_message.item_content
+    content_dict = json.loads(fixture_instance_message.item_content)
+    # Update the 'store' volume to 1000 GiB
+    for volume in content_dict["volumes"]:
+        if volume.get("persistence") == "store" and volume.get("name") == "statistics":
+            volume["size_mib"] = gigabyte_to_mebibyte(Gigabytes(1000))
+
+    fixture_instance_message.item_content = json.dumps(content_dict)
+
+    with session_factory() as session:
+        session.merge(fixture_instance_message)  # Update previous change of volume size
+        insert_volume_refs(session, fixture_instance_message)
+        session.commit()
+
+    pipeline = message_processor.make_pipeline()
+    _ = [message async for message in pipeline]
+
+    with session_factory() as session:
+        instance = get_instance(
+            session=session, item_hash=fixture_instance_message.item_hash
+        )
+        assert instance is not None
+
+        persistent_volume = next(
+            (
+                vol
+                for vol in instance.volumes
+                if isinstance(vol, PersistentVolumeDb)
+                and vol.persistence == "store"
+                and vol.name == "statistics"
+            ),
+            None,
+        )
+
+        assert persistent_volume is not None, "PersistentVolume not found"
+        assert persistent_volume.size_mib == gigabyte_to_mebibyte(Gigabytes(1000))
