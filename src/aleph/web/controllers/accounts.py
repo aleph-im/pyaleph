@@ -6,7 +6,7 @@ from aiohttp import web
 from aleph_message.models import MessageType
 from pydantic import ValidationError, parse_obj_as
 
-from aleph.db.accessors.balances import get_total_balance
+from aleph.db.accessors.balances import get_balance_by_chain, get_total_balance
 from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import get_address_files_for_api, get_address_files_stats
 from aleph.db.accessors.messages import get_message_stats_by_address
@@ -15,6 +15,7 @@ from aleph.schemas.api.accounts import (
     GetAccountFilesQueryParams,
     GetAccountFilesResponse,
     GetAccountFilesResponseItem,
+    GetAccountQueryParams,
 )
 from aleph.types.db_session import DbSessionFactory
 from aleph.web.controllers.app_state_getters import get_session_factory_from_request
@@ -62,15 +63,27 @@ def _get_address_from_request(request: web.Request) -> str:
 async def get_account_balance(request: web.Request):
     address = _get_address_from_request(request)
 
+    try:
+        query_params = GetAccountQueryParams.parse_obj(request.query)
+    except ValidationError as e:
+        raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
+
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
     with session_factory() as session:
-        balance = get_total_balance(
-            session=session, address=address, include_dapps=False
-        )
-        total_cost = get_total_cost_for_address(session=session, address=address)
+        if query_params.chain is None:
+            balance = (
+                get_total_balance(session=session, address=address, include_dapps=False)
+                or 0
+            )
+        else:
+            balance = (
+                get_balance_by_chain(
+                    session=session, address=address, chain=query_params.chain
+                )
+                or 0
+            )
 
-    if balance is None:
-        raise web.HTTPNotFound()
+        total_cost = get_total_cost_for_address(session=session, address=address)
 
     return web.json_response(
         text=GetAccountBalanceResponse(
