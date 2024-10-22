@@ -1,6 +1,6 @@
 from decimal import Decimal
 from io import StringIO
-from typing import Mapping, Optional
+from typing import Dict, Mapping, Optional
 
 from aleph_message.models import Chain
 from sqlalchemy import func, select
@@ -40,6 +40,26 @@ def get_total_balance(
         return None
 
     return result.balance
+
+
+def get_total_detailed_balance(
+    session: DbSession, address: str, include_dapps: bool = False
+) -> Dict[str, Decimal]:
+    where_clause = AlephBalanceDb.address == address
+    if not include_dapps:
+        where_clause = where_clause & AlephBalanceDb.dapp.is_(None)
+
+    select_stmt = (
+        select(AlephBalanceDb.chain, func.sum(AlephBalanceDb.balance).label("balance"))
+        .where(where_clause)
+        .group_by(AlephBalanceDb.chain)
+    )
+
+    result = session.execute(select_stmt).fetchall()
+
+    balances_by_chain = {row.chain: row.balance or Decimal(0) for row in result}
+
+    return balances_by_chain
 
 
 def update_balances(

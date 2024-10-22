@@ -27,6 +27,9 @@ async def test_get_balance(
     assert data["balance"] == user_balance.balance
     assert data["locked_amount"] == 2002.4666666666667
 
+    details = data["details"]
+    assert details["ETH"] == user_balance.balance
+
 
 @pytest.mark.asyncio
 async def test_get_balance_with_chain(
@@ -68,6 +71,11 @@ async def test_get_balance_with_chain(
     assert total_data["balance"] == total_expected_balance
     assert total_data["locked_amount"] == expected_locked_amount
 
+    details = total_data["details"]
+    assert details is not None
+    assert details["ETH"] == user_balance_eth_avax.balance
+    assert details["AVAX"] == user_balance_eth_avax.balance
+
 
 @pytest.mark.asyncio
 async def test_get_balance_with_no_balance(
@@ -87,3 +95,5 @@ async def test_get_balance_with_no_balance(
     data = await response.json()
     assert data["balance"] == 0
     assert data["locked_amount"] == 0
+    details = data["details"]
+    assert not details

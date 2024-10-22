@@ -1,6 +1,6 @@
 import datetime as dt
 from decimal import Decimal
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from aleph_message.models import Chain
 from pydantic import BaseModel, Field
@@ -19,6 +19,7 @@ class GetAccountQueryParams(BaseModel):
 class GetAccountBalanceResponse(BaseModel):
     address: str
     balance: Decimal
+    details: Optional[Dict[Chain, Decimal]]
     locked_amount: Decimal
 
 
