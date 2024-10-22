@@ -1,7 +1,8 @@
 import datetime as dt
 from decimal import Decimal
-from typing import List
+from typing import Dict, List, Optional
 
+from aleph_message.models import Chain
 from pydantic import BaseModel, Field
 
 from aleph.types.files import FileType
@@ -9,9 +10,16 @@ from aleph.types.sort_order import SortOrder
 from aleph.web.controllers.utils import DEFAULT_PAGE
 
 
+class GetAccountQueryParams(BaseModel):
+    chain: Optional[Chain] = Field(
+        default=None, description="Get Balance on a specific EVM Chain"
+    )
+
+
 class GetAccountBalanceResponse(BaseModel):
     address: str
     balance: Decimal
+    details: Optional[Dict[str, Decimal]]
     locked_amount: Decimal
 
 

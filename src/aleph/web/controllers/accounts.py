@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal
 from itertools import groupby
 from typing import Any, Dict, List
 
@@ -6,7 +7,7 @@ from aiohttp import web
 from aleph_message.models import MessageType
 from pydantic import ValidationError, parse_obj_as
 
-from aleph.db.accessors.balances import get_total_balance
+from aleph.db.accessors.balances import get_total_detailed_balance
 from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import get_address_files_for_api, get_address_files_stats
 from aleph.db.accessors.messages import get_message_stats_by_address
@@ -15,6 +16,7 @@ from aleph.schemas.api.accounts import (
     GetAccountFilesQueryParams,
     GetAccountFilesResponse,
     GetAccountFilesResponseItem,
+    GetAccountQueryParams,
 )
 from aleph.types.db_session import DbSessionFactory
 from aleph.web.controllers.app_state_getters import get_session_factory_from_request
@@ -62,19 +64,24 @@ def _get_address_from_request(request: web.Request) -> str:
 async def get_account_balance(request: web.Request):
     address = _get_address_from_request(request)
 
+    try:
+        query_params = GetAccountQueryParams.parse_obj(request.query)
+    except ValidationError as e:
+        raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
+
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
     with session_factory() as session:
-        balance = get_total_balance(
-            session=session, address=address, include_dapps=False
-        )
+        balance_detail = get_total_detailed_balance(session=session, address=address)
+        if query_params.chain is None:
+            balance = Decimal(sum(balance_detail.values()))
+            details = balance_detail
+        else:
+            balance = balance_detail.get(query_params.chain, Decimal(0))
+            details = {}
         total_cost = get_total_cost_for_address(session=session, address=address)
-
-    if balance is None:
-        raise web.HTTPNotFound()
-
     return web.json_response(
         text=GetAccountBalanceResponse(
-            address=address, balance=balance, locked_amount=total_cost
+            address=address, balance=balance, locked_amount=total_cost, details=details
         ).json()
     )
 

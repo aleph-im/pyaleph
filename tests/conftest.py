@@ -352,3 +352,27 @@ def user_balance(session_factory: DbSessionFactory) -> AlephBalanceDb:
         session.add(balance)
         session.commit()
     return balance
+
+
+@pytest.fixture
+def user_balance_eth_avax(session_factory: DbSessionFactory) -> AlephBalanceDb:
+    balance_eth = AlephBalanceDb(
+        address="0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
+        chain=Chain.ETH,
+        balance=Decimal(22_192),
+        eth_height=0,
+    )
+
+    balance_avax = AlephBalanceDb(
+        address="0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
+        chain=Chain.AVAX,
+        balance=Decimal(22_192),
+        eth_height=0,
+    )
+
+    with session_factory() as session:
+        session.add(balance_eth)
+        session.add(balance_avax)
+
+        session.commit()
+    return balance_avax
