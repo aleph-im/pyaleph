@@ -19,7 +19,7 @@ class GetAccountQueryParams(BaseModel):
 class GetAccountBalanceResponse(BaseModel):
     address: str
     balance: Decimal
-    details: Optional[Dict[Chain, Decimal]]
+    details: Optional[Dict[str, Decimal]]
     locked_amount: Decimal
 
 
