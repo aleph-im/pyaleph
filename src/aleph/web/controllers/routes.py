@@ -47,6 +47,9 @@ def register_routes(app: web.Application):
     # of the large amount of code shared with pub_json.
     app.router.add_post("/api/v0/messages", p2p.pub_message)
     app.router.add_get("/api/v0/messages/{item_hash}", messages.view_message)
+    app.router.add_get(
+        "/api/v0/messages/{item_hash}/content", messages.view_message_content
+    )
     app.router.add_get("/api/v0/messages/page/{page}.json", messages.view_messages_list)
     app.router.add_get("/api/ws0/messages", messages.messages_ws)
 

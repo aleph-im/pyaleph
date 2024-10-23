@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -25,6 +26,7 @@ from aleph.schemas.api.messages import (
     MessageWithStatus,
     PendingMessage,
     PendingMessageStatus,
+    PostMessage,
     ProcessedMessageStatus,
     RejectedMessageStatus,
     format_message,
@@ -520,3 +522,39 @@ async def view_message(request: web.Request):
         )
 
     return web.json_response(text=message_with_status.json())
+
+
+async def view_message_content(request: web.Request):
+    item_hash_str = request.match_info.get("item_hash")
+    if not item_hash_str:
+        raise web.HTTPUnprocessableEntity(text=f"Invalid message hash: {item_hash_str}")
+
+    item_hash = ItemHash(item_hash_str)
+
+    session_factory: DbSessionFactory = request.app["session_factory"]
+    with session_factory() as session:
+        message_status_db = get_message_status(session=session, item_hash=item_hash)
+        if message_status_db is None:
+            raise web.HTTPNotFound()
+        message_with_status = _get_message_with_status(
+            session=session, status_db=message_status_db
+        )
+
+    status = message_with_status.status
+    if (
+        status != MessageStatus.PROCESSED
+        or not hasattr(message_with_status, "message")
+        or not isinstance(message_with_status.message, PostMessage)
+    ):
+        raise web.HTTPUnprocessableEntity(
+            text=f"Invalid message hash status {status} for hash {item_hash_str}"
+        )
+
+    message_type = message_with_status.message.type
+    if message_type != MessageType.post:
+        raise web.HTTPUnprocessableEntity(
+            text=f"Invalid message hash type {message_type} for hash {item_hash_str}"
+        )
+
+    content = message_with_status.message.content.content
+    return web.json_response(text=json.dumps(content))
