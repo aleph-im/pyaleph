@@ -165,7 +165,7 @@ class IpfsService:
 
             resp = await session.post(url, data=data)
             resp.raise_for_status()
-            return await resp.json()
+            return await resp.model_dump_json()
 
     async def sub(self, topic: str):
         ipfs_client = self.ipfs_client

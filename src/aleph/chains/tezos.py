@@ -139,7 +139,7 @@ def make_graphql_query(
 async def get_indexer_status(http_session: aiohttp.ClientSession) -> SyncStatus:
     response = await http_session.post("/", json={"query": make_graphql_status_query()})
     response.raise_for_status()
-    response_json = await response.json()
+    response_json = await response.model_dump_json()
 
     return SyncStatus(response_json["data"]["indexStatus"]["status"])
 
@@ -160,7 +160,7 @@ async def fetch_messages(
 
     response = await http_session.post("/", json={"query": query})
     response.raise_for_status()
-    response_json = await response.json()
+    response_json = await response.model_dump_json()
 
     return IndexerResponse[IndexerMessageEvent].model_validate(response_json)
 

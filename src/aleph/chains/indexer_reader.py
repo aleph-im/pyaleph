@@ -146,7 +146,7 @@ class AlephIndexerClient:
 
         response = await self.http_session.post("/", json={"query": query})
         response.raise_for_status()
-        response_json = await response.json()
+        response_json = await response.model_dump_json()
         return model.model_validate(response_json)
 
     async def fetch_account_state(

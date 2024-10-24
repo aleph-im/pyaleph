@@ -119,7 +119,7 @@ async def fetch_reference_total_messages() -> Optional[int]:
             async with session.get(
                 urljoin(url, "metrics.json"), raise_for_status=True
             ) as resp:
-                data = await resp.json()
+                data = await resp.model_dump_json()
                 return int(data["pyaleph_status_sync_messages_total"])
         except aiohttp.ClientResponseError:
             LOGGER.warning("ETH height could not be obtained")
