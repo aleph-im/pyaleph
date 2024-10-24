@@ -25,8 +25,8 @@ from aleph_message.models import (
     ProgramContent,
     StoreContent,
 )
-from pydantic import BaseModel, Field
-from pydantic.generics import GenericModel
+from pydantic.v1 import BaseModel, Field
+from pydantic.v1.generics import GenericModel
 
 import aleph.toolkit.json as aleph_json
 from aleph.db.models import MessageDb

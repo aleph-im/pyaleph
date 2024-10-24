@@ -1,5 +1,5 @@
 from aiohttp import web
-from pydantic import BaseModel, ValidationError
+from pydantic.v1 import BaseModel, ValidationError
 
 from aleph.db.accessors.messages import get_programs_triggered_by_messages
 from aleph.types.db_session import DbSessionFactory

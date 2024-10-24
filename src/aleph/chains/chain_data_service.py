@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Mapping, Optional, Self, Set, Type, Union, c
 import aio_pika.abc
 from aleph_message.models import Chain, ItemHash, ItemType, MessageType, StoreContent
 from configmanager import Config
-from pydantic import ValidationError
+from pydantic.v1 import ValidationError
 
 from aleph.chains.common import LOGGER
 from aleph.config import get_config

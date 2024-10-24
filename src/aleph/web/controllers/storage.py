@@ -8,12 +8,11 @@ from typing import Optional
 
 import aio_pika
 import aiofiles
-import pydantic
 from aiohttp import BodyPartReader, web
 from aiohttp.web_request import FileField
 from aleph_message.models import ItemType, StoreContent
 from mypy.dmypy_server import MiB
-from pydantic import ValidationError
+from pydantic.v1 import BaseModel, ValidationError
 
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.balances import get_total_balance
@@ -114,7 +113,7 @@ async def _verify_user_balance(session: DbSession, address: str, size: int) -> N
             raise web.HTTPPaymentRequired()
 
 
-class StorageMetadata(pydantic.BaseModel):
+class StorageMetadata(BaseModel):
     message: PendingInlineStoreMessage
     sync: bool
 

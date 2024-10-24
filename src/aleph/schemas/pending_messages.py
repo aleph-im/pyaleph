@@ -29,7 +29,7 @@ from aleph_message.models import (
     ProgramContent,
     StoreContent,
 )
-from pydantic import ValidationError, root_validator
+from pydantic.v1 import ValidationError, root_validator
 
 import aleph.toolkit.json as aleph_json
 from aleph.exceptions import UnknownHashError

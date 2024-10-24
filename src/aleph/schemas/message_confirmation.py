@@ -1,5 +1,5 @@
 from aleph_message.models import Chain
-from pydantic import BaseModel, Field
+from pydantic.v1 import BaseModel, Field
 
 
 class MessageConfirmation(BaseModel):

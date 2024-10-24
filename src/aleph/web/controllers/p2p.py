@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Union, cast
 from aiohttp import web
 from aleph_p2p_client import AlephP2PServiceClient
 from configmanager import Config
-from pydantic import BaseModel, Field, ValidationError
+from pydantic.v1 import BaseModel, Field, ValidationError
 
 from aleph.services.ipfs import IpfsService
 from aleph.services.p2p.pubsub import publish as pub_p2p

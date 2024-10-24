@@ -13,7 +13,7 @@ from aiohttp import web
 from aiohttp.web_request import FileField
 from aleph_p2p_client import AlephP2PServiceClient
 from configmanager import Config
-from pydantic import BaseModel
+from pydantic.v1 import BaseModel
 
 import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.files import insert_grace_period_file_pin

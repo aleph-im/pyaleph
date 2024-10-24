@@ -3,7 +3,7 @@ import logging
 from typing import Dict, List, Optional
 
 from aiohttp import web
-from pydantic import BaseModel, ValidationError, validator
+from pydantic.v1 import BaseModel, ValidationError, validator
 from sqlalchemy import select
 
 from aleph.db.accessors.aggregates import get_aggregates_by_owner, refresh_aggregate

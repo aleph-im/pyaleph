@@ -6,7 +6,7 @@ import aio_pika.abc
 import aiohttp.web_ws
 from aiohttp import WSMsgType, web
 from aleph_message.models import Chain, ItemHash, MessageType
-from pydantic import BaseModel, Field, ValidationError, root_validator, validator
+from pydantic.v1 import BaseModel, Field, ValidationError, root_validator, validator
 
 import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.messages import (

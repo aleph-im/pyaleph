@@ -6,7 +6,7 @@ import datetime as dt
 from enum import Enum
 from typing import List, Protocol, Tuple
 
-from pydantic import BaseModel, Field, validator
+from pydantic.v1 import BaseModel, Field, validator
 
 
 class GenericMessageEvent(Protocol):

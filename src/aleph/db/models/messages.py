@@ -13,8 +13,8 @@ from aleph_message.models import (
     ProgramContent,
     StoreContent,
 )
-from pydantic import ValidationError
-from pydantic.error_wrappers import ErrorWrapper
+from pydantic.v1 import ValidationError
+from pydantic.v1.error_wrappers import ErrorWrapper
 from sqlalchemy import (
     ARRAY,
     TIMESTAMP,

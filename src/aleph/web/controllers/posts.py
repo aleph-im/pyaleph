@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional
 
 from aiohttp import web
 from aleph_message.models import ItemHash
-from pydantic import BaseModel, Field, ValidationError, root_validator, validator
+from pydantic.v1 import BaseModel, Field, ValidationError, root_validator, validator
 from sqlalchemy import select
 
 from aleph.db.accessors.posts import (

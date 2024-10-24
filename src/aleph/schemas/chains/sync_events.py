@@ -2,7 +2,7 @@ import datetime as dt
 from typing import Annotated, List, Literal, Optional, Union
 
 from aleph_message.models import Chain, ItemHash, ItemType, MessageType
-from pydantic import BaseModel, Field, validator
+from pydantic.v1 import BaseModel, Field, validator
 
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.channel import Channel

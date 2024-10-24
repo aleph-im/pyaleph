@@ -2,7 +2,7 @@ import datetime as dt
 from decimal import Decimal
 from typing import List
 
-from pydantic import BaseModel, Field
+from pydantic.v1 import BaseModel, Field
 
 from aleph.types.files import FileType
 from aleph.types.sort_order import SortOrder

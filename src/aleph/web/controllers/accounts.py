@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 
 from aiohttp import web
 from aleph_message.models import MessageType
-from pydantic import ValidationError, parse_obj_as
+from pydantic.v1 import ValidationError, parse_obj_as
 
 from aleph.db.accessors.balances import get_total_balance
 from aleph.db.accessors.cost import get_total_cost_for_address

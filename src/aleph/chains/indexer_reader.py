@@ -18,7 +18,7 @@ from typing import (
 
 import aiohttp
 from aleph_message.models import Chain
-from pydantic import BaseModel
+from pydantic.v1 import BaseModel
 
 import aleph.toolkit.json as aleph_json
 from aleph.chains.chain_data_service import PendingTxPublisher
