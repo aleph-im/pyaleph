@@ -45,8 +45,8 @@ class BasePendingMessage(AlephBaseMessage, Generic[MType, ContentType]):
     A raw Aleph message, as sent by users to the Aleph network.
     """
 
-    @model_validator(mode="before")
     @classmethod
+    @model_validator(mode="before")
     def load_content(cls, values):
         """
         Preload inline content. We let the CCN populate this field later

@@ -95,7 +95,7 @@ async def _pub_on_p2p_topics(
 
 async def pub_json(request: web.Request):
     """Forward the message to P2P host and IPFS server as a pubsub message"""
-    request_data = await request.model_dump_json()
+    request_data = await request.json()
     _validate_request_data(
         config=get_config_from_request(request), request_data=request_data
     )
@@ -125,7 +125,7 @@ class PubMessageRequest(BaseModel):
 @shielded
 async def pub_message(request: web.Request):
     try:
-        request_data = PubMessageRequest.model_validate(await request.model_dump_json())
+        request_data = PubMessageRequest.model_validate(await request.json())
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
     except ValueError:

@@ -55,6 +55,7 @@ class AlephBaseMessage(BaseModel, Generic[MType, ContentType]):
                 raise ValueError(
                     f"Expected {expected_item_type} based on hash but item type is {item_type}."
                 )
+        return self
 
     @classmethod
     @field_validator("item_hash", mode="after")

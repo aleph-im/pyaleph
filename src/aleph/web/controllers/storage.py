@@ -57,7 +57,7 @@ async def add_ipfs_json_controller(request: web.Request):
     config = get_config_from_request(request)
     grace_period = config.storage.grace_period.value
 
-    data = await request.model_dump_json()
+    data = await request.json()
     with session_factory() as session:
         output = {
             "status": "success",
@@ -80,7 +80,7 @@ async def add_storage_json_controller(request: web.Request):
     config = get_config_from_request(request)
     grace_period = config.storage.grace_period.value
 
-    data = await request.model_dump_json()
+    data = await request.json()
     with session_factory() as session:
         output = {
             "status": "success",

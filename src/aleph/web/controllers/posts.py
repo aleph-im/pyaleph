@@ -96,6 +96,8 @@ class PostQueryParams(BaseModel):
         if start_date and end_date and (end_date < start_date):
             raise ValueError("end date cannot be lower than start date.")
 
+        return self
+
     @classmethod
     @field_validator(
         "addresses", "hashes", "refs", "post_types", "channels", "tags", mode="before"

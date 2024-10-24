@@ -128,6 +128,8 @@ class BaseMessageQueryParams(BaseModel):
         if start_block and end_block and (end_block < start_block):
             raise ValueError("end block cannot be lower than start block.")
 
+        return self
+
     @classmethod
     @field_validator(
         "hashes",
