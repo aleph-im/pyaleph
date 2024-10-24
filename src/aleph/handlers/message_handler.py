@@ -7,7 +7,7 @@ import psycopg2
 import sqlalchemy.exc
 from aleph_message.models import ItemHash, ItemType, MessageType
 from configmanager import Config
-from pydantic.v1 import ValidationError
+from pydantic import ValidationError
 from sqlalchemy import insert
 
 from aleph.chains.signature_verifier import SignatureVerifier

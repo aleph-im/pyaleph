@@ -4,11 +4,11 @@ Base (abstract) class for messages.
 
 import datetime as dt
 from hashlib import sha256
-from typing import Any, Generic, Mapping, Optional, TypeVar, cast
+from typing import Any, Generic, Optional, TypeVar, cast
 
 from aleph_message.models import BaseContent, Chain, ItemType, MessageType
-from pydantic.v1 import root_validator, validator
-from pydantic.v1.generics import GenericModel
+from pydantic import ValidationInfo, field_validator, model_validator
+from pydantic.generics import GenericModel
 
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.utils import item_type_from_hash
@@ -24,9 +24,6 @@ class AlephBaseMessage(GenericModel, Generic[MType, ContentType]):
     of messages on the Aleph network.
     """
 
-    class Config:
-        arbitrary_types_allowed = True
-
     sender: str
     chain: Chain
     signature: Optional[str]
@@ -38,7 +35,7 @@ class AlephBaseMessage(GenericModel, Generic[MType, ContentType]):
     channel: Optional[str] = None
     content: Optional[ContentType] = None
 
-    @root_validator()
+    @model_validator(mode="before")
     def check_item_type(cls, values):
         """
         Checks that the item hash of the message matches the one inferred from the hash.
@@ -63,19 +60,19 @@ class AlephBaseMessage(GenericModel, Generic[MType, ContentType]):
             )
         return values
 
-    @validator("item_hash")
-    def check_item_hash(cls, v: Any, values: Mapping[str, Any]):
+    @field_validator("item_hash")
+    def check_item_hash(cls, v: Any, info: ValidationInfo):
         """
         For inline item types, check that the item hash is equal to
         the hash of the item content.
         """
 
-        item_type = values.get("item_type")
+        item_type = info.data["item_type"]
         if item_type is None:
             raise ValueError("Could not determine item type")
 
         if item_type == ItemType.inline:
-            item_content = cast(Optional[str], values.get("item_content"))
+            item_content = cast(Optional[str], info.data["item_content"])
             if item_content is None:
                 raise ValueError("Could not find inline item content")
 
@@ -93,8 +90,8 @@ class AlephBaseMessage(GenericModel, Generic[MType, ContentType]):
                 raise ValueError(f"Unknown item type: '{item_type}'")
         return v
 
-    @validator("time", pre=True)
-    def check_time(cls, v, values):
+    @field_validator("time", mode="before")
+    def check_time(cls, v, info: ValidationInfo):
         """
         Parses the time field as a UTC datetime. Contrary to the default datetime
         validator, this implementation raises an exception if the time field is

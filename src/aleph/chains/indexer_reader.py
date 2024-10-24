@@ -18,7 +18,7 @@ from typing import (
 
 import aiohttp
 from aleph_message.models import Chain
-from pydantic.v1 import BaseModel
+from pydantic import BaseModel
 
 import aleph.toolkit.json as aleph_json
 from aleph.chains.chain_data_service import PendingTxPublisher
@@ -93,7 +93,7 @@ def make_events_query(
         model = SyncEvent
         event_type_str = "syncEvents"
 
-    fields = "\n".join(model.__fields__.keys())
+    fields = "\n".join(model.model_fields.keys())
     params: Dict[str, Any] = {
         "blockchain": f'"{blockchain.value}"',
         "limit": limit,
@@ -147,7 +147,7 @@ class AlephIndexerClient:
         response = await self.http_session.post("/", json={"query": query})
         response.raise_for_status()
         response_json = await response.json()
-        return model.parse_obj(response_json)
+        return model.model_validate(response_json)
 
     async def fetch_account_state(
         self,

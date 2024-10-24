@@ -13,8 +13,7 @@ from aleph_message.models import (
     ProgramContent,
     StoreContent,
 )
-from pydantic.v1 import ValidationError
-from pydantic.v1.error_wrappers import ErrorWrapper
+from pydantic import ValidationError
 from sqlalchemy import (
     ARRAY,
     TIMESTAMP,
@@ -62,14 +61,14 @@ def validate_message_content(
     content_dict: Dict[str, Any],
 ) -> BaseContent:
     content_type = CONTENT_TYPE_MAP[message_type]
-    content = content_type.parse_obj(content_dict)
+    content = content_type.model_validate(content_dict)
     # Validate that the content time can be converted to datetime. This will
     # raise a ValueError and be caught
     # TODO: move this validation in aleph-message
     try:
         _ = dt.datetime.fromtimestamp(content_dict["time"])
     except ValueError as e:
-        raise ValidationError([ErrorWrapper(e, loc="time")], model=content_type) from e
+        raise ValidationError(str(e)) from e
 
     return content
 

@@ -12,7 +12,7 @@ from aiohttp import BodyPartReader, web
 from aiohttp.web_request import FileField
 from aleph_message.models import ItemType, StoreContent
 from mypy.dmypy_server import MiB
-from pydantic.v1 import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError
 
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.balances import get_total_balance

@@ -3,7 +3,7 @@ import logging
 from typing import Dict, List, Optional
 
 from aiohttp import web
-from pydantic.v1 import BaseModel, ValidationError, validator
+from pydantic import BaseModel, ValidationError, field_validator
 from sqlalchemy import select
 
 from aleph.db.accessors.aggregates import get_aggregates_by_owner, refresh_aggregate
@@ -22,9 +22,9 @@ class AggregatesQueryParams(BaseModel):
     with_info: bool = False
     value_only: bool = False
 
-    @validator(
+    @field_validator(
         "keys",
-        pre=True,
+        mode="before",
     )
     def split_str(cls, v):
         if isinstance(v, str):
@@ -40,7 +40,7 @@ async def address_aggregate(request: web.Request) -> web.Response:
     address: str = request.match_info["address"]
 
     try:
-        query_params = AggregatesQueryParams.parse_obj(request.query)
+        query_params = AggregatesQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(
             text=e.json(), content_type="application/json"

@@ -2,7 +2,7 @@ import datetime as dt
 from typing import Annotated, List, Literal, Optional, Union
 
 from aleph_message.models import Chain, ItemHash, ItemType, MessageType
-from pydantic.v1 import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.channel import Channel
@@ -10,7 +10,7 @@ from aleph.types.channel import Channel
 
 class OnChainMessage(BaseModel):
     class Config:
-        orm_mode = True
+        from_attributes = True
 
     sender: str
     chain: Chain
@@ -22,7 +22,7 @@ class OnChainMessage(BaseModel):
     time: float
     channel: Optional[Channel] = None
 
-    @validator("time", pre=True)
+    @field_validator("time", mode="before")
     def check_time(cls, v, values):
         if isinstance(v, dt.datetime):
             return v.timestamp()

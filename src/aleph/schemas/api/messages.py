@@ -25,8 +25,8 @@ from aleph_message.models import (
     ProgramContent,
     StoreContent,
 )
-from pydantic.v1 import BaseModel, Field
-from pydantic.v1.generics import GenericModel
+from pydantic import BaseModel, Field
+from pydantic.generics import GenericModel
 
 import aleph.toolkit.json as aleph_json
 from aleph.db.models import MessageDb
@@ -40,7 +40,7 @@ class MessageConfirmation(BaseModel):
     """Format of the result when a message has been confirmed on a blockchain"""
 
     class Config:
-        orm_mode = True
+        from_attributes = True
         json_encoders = {dt.datetime: lambda d: d.timestamp()}
 
     chain: Chain
@@ -50,8 +50,7 @@ class MessageConfirmation(BaseModel):
 
 class BaseMessage(GenericModel, Generic[MType, ContentType]):
     class Config:
-        arbitrary_types_allowed = True
-        orm_mode = True
+        from_attributes = True
         json_loads = aleph_json.loads
         json_encoders = {dt.datetime: lambda d: d.timestamp()}
 
@@ -134,7 +133,7 @@ def format_message(message: MessageDb) -> AlephMessage:
 def format_message_dict(message: Dict[str, Any]) -> AlephMessage:
     message_type = message.get("type")
     message_cls = MESSAGE_CLS_DICT[message_type]
-    return message_cls.parse_obj(message)
+    return message_cls.model_validate(message)
 
 
 class BaseMessageStatus(BaseModel):
@@ -147,7 +146,7 @@ class BaseMessageStatus(BaseModel):
 # is only used for formatting and does not try to be smart.
 class PendingMessage(BaseModel):
     class Config:
-        orm_mode = True
+        from_attributes = True
 
     sender: str
     chain: Chain
@@ -164,7 +163,7 @@ class PendingMessage(BaseModel):
 
 class PendingMessageStatus(BaseMessageStatus):
     class Config:
-        orm_mode = True
+        from_attributes = True
 
     status: MessageStatus = MessageStatus.PENDING
     messages: List[PendingMessage]
@@ -172,7 +171,7 @@ class PendingMessageStatus(BaseMessageStatus):
 
 class ProcessedMessageStatus(BaseMessageStatus):
     class Config:
-        orm_mode = True
+        from_attributes = True
 
     status: MessageStatus = MessageStatus.PROCESSED
     message: AlephMessage
@@ -180,7 +179,7 @@ class ProcessedMessageStatus(BaseMessageStatus):
 
 class ForgottenMessage(BaseModel):
     class Config:
-        orm_mode = True
+        from_attributes = True
 
     sender: str
     chain: Chain

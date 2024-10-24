@@ -6,7 +6,7 @@ import aio_pika.abc
 import aiohttp.web_ws
 from aiohttp import WSMsgType, web
 from aleph_message.models import Chain, ItemHash, MessageType
-from pydantic.v1 import BaseModel, Field, ValidationError, root_validator, validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.messages import (
@@ -110,7 +110,7 @@ class BaseMessageQueryParams(BaseModel):
         default=None, description="Accepted values for the 'item_hash' field."
     )
 
-    @root_validator
+    @model_validator(mode="before")
     def validate_field_dependencies(cls, values):
         start_date = values.get("start_date")
         end_date = values.get("end_date")
@@ -122,7 +122,7 @@ class BaseMessageQueryParams(BaseModel):
             raise ValueError("end block cannot be lower than start block.")
         return values
 
-    @validator(
+    @field_validator(
         "hashes",
         "addresses",
         "refs",
@@ -133,7 +133,7 @@ class BaseMessageQueryParams(BaseModel):
         "channels",
         "message_types",
         "tags",
-        pre=True,
+        mode="before",
     )
     def split_str(cls, v):
         if isinstance(v, str):
@@ -237,7 +237,7 @@ async def view_messages_list(request: web.Request) -> web.Response:
     """Messages list view with filters"""
 
     try:
-        query_params = MessageQueryParams.parse_obj(request.query)
+        query_params = MessageQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 
@@ -382,7 +382,7 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
     mq_channel = await get_mq_ws_channel_from_request(request=request, logger=LOGGER)
 
     try:
-        query_params = WsMessageQueryParams.parse_obj(request.query)
+        query_params = WsMessageQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 

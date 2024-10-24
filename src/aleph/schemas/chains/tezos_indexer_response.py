@@ -2,8 +2,8 @@ import datetime as dt
 from enum import Enum
 from typing import Generic, List, TypeVar
 
-from pydantic.v1 import BaseModel, Field
-from pydantic.v1.generics import GenericModel
+from pydantic import BaseModel, Field
+from pydantic.generics import GenericModel
 
 PayloadType = TypeVar("PayloadType")
 

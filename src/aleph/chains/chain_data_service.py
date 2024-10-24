@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Mapping, Optional, Self, Set, Type, Union, c
 import aio_pika.abc
 from aleph_message.models import Chain, ItemHash, ItemType, MessageType, StoreContent
 from configmanager import Config
-from pydantic.v1 import ValidationError
+from pydantic import ValidationError
 
 from aleph.chains.common import LOGGER
 from aleph.config import get_config
@@ -166,7 +166,9 @@ class ChainDataService:
         )
 
         try:
-            payload = cast(GenericMessageEvent, payload_model.parse_obj(tx.content))
+            payload = cast(
+                GenericMessageEvent, payload_model.model_validate(tx.content)
+            )
         except ValidationError:
             raise InvalidContent(f"Incompatible tx content for {tx.chain}/{tx.hash}")
 

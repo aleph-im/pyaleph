@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 
 from aiohttp import web
 from aleph_message.models import MessageType
-from pydantic.v1 import ValidationError, parse_obj_as
+from pydantic import ValidationError, parse_obj_as
 
 from aleph.db.accessors.balances import get_total_balance
 from aleph.db.accessors.cost import get_total_cost_for_address
@@ -83,7 +83,7 @@ async def get_account_files(request: web.Request) -> web.Response:
     address = _get_address_from_request(request)
 
     try:
-        query_params = GetAccountFilesQueryParams.parse_obj(request.query)
+        query_params = GetAccountFilesQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 

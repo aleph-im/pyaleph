@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional
 
 from aiohttp import web
 from aleph_message.models import ItemHash
-from pydantic.v1 import BaseModel, Field, ValidationError, root_validator, validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 from sqlalchemy import select
 
 from aleph.db.accessors.posts import (
@@ -82,7 +82,7 @@ class PostQueryParams(BaseModel):
         "-1 means most recent messages first, 1 means older messages first.",
     )
 
-    @root_validator
+    @model_validator(mode="before")
     def validate_field_dependencies(cls, values):
         start_date = values.get("start_date")
         end_date = values.get("end_date")
@@ -90,14 +90,14 @@ class PostQueryParams(BaseModel):
             raise ValueError("end date cannot be lower than start date.")
         return values
 
-    @validator(
+    @field_validator(
         "addresses",
         "hashes",
         "refs",
         "post_types",
         "channels",
         "tags",
-        pre=True,
+        mode="before",
     )
     def split_str(cls, v):
         if isinstance(v, str):
@@ -173,7 +173,7 @@ def merged_post_v0_to_dict(
 
 def get_query_params(request: web.Request) -> PostQueryParams:
     try:
-        query_params = PostQueryParams.parse_obj(request.query)
+        query_params = PostQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 
@@ -231,7 +231,7 @@ async def view_posts_list_v1(request) -> web.Response:
     query_string = request.query_string
 
     try:
-        query_params = PostQueryParams.parse_obj(request.query)
+        query_params = PostQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 

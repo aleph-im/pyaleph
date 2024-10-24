@@ -2,7 +2,7 @@ import datetime as dt
 from decimal import Decimal
 from typing import List
 
-from pydantic.v1 import BaseModel, Field
+from pydantic import BaseModel, Field
 
 from aleph.types.files import FileType
 from aleph.types.sort_order import SortOrder
@@ -41,7 +41,7 @@ class GetAccountFilesResponseItem(BaseModel):
 
 class GetAccountFilesResponse(BaseModel):
     class Config:
-        orm_mode = True
+        from_attributes = True
 
     address: str
     total_size: int

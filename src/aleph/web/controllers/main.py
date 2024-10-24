@@ -5,7 +5,7 @@ from typing import Dict, Optional
 
 import aiohttp_jinja2
 from aiohttp import web
-from pydantic.v1 import BaseModel
+from pydantic import BaseModel
 
 from aleph.db.accessors.metrics import query_metric_ccn, query_metric_crn
 from aleph.types.db_session import DbSessionFactory
@@ -98,7 +98,7 @@ async def ccn_metric(request: web.Request) -> web.Response:
     """Fetch metrics for CCN node id"""
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
-    query_params = Metrics.parse_obj(request.query)
+    query_params = Metrics.model_validate(request.query)
 
     node_id = _get_node_id_from_request(request)
 
@@ -124,7 +124,7 @@ async def crn_metric(request: web.Request) -> web.Response:
     """Fetch Metric for crn."""
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
-    query_params = Metrics.parse_obj(request.query)
+    query_params = Metrics.model_validate(request.query)
 
     node_id = _get_node_id_from_request(request)
 

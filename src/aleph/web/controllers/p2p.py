@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Union, cast
 from aiohttp import web
 from aleph_p2p_client import AlephP2PServiceClient
 from configmanager import Config
-from pydantic.v1 import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from aleph.services.ipfs import IpfsService
 from aleph.services.p2p.pubsub import publish as pub_p2p
@@ -125,7 +125,7 @@ class PubMessageRequest(BaseModel):
 @shielded
 async def pub_message(request: web.Request):
     try:
-        request_data = PubMessageRequest.parse_obj(await request.json())
+        request_data = PubMessageRequest.model_validate(await request.json())
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
     except ValueError:

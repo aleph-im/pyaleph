@@ -13,7 +13,7 @@ from aiohttp import web
 from aiohttp.web_request import FileField
 from aleph_p2p_client import AlephP2PServiceClient
 from configmanager import Config
-from pydantic.v1 import BaseModel
+from pydantic import BaseModel
 
 import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.files import insert_grace_period_file_pin
@@ -300,7 +300,7 @@ class BroadcastStatus(BaseModel):
 
 
 def broadcast_status_to_http_status(broadcast_status: BroadcastStatus) -> int:
-    if broadcast_status.publication_status == "error":
+    if broadcast_status.publication_status.status == "error":
         return 500
 
     message_status = broadcast_status.message_status
