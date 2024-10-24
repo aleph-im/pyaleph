@@ -95,6 +95,7 @@ class PostQueryParams(BaseModel):
         end_date = self.end_date
         if start_date and end_date and (end_date < start_date):
             raise ValueError("end date cannot be lower than start date.")
+        return values
 
         return self
 
