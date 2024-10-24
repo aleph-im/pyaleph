@@ -29,7 +29,7 @@ from aleph_message.models import (
     ProgramContent,
     StoreContent,
 )
-from pydantic import ValidationError, root_validator
+from pydantic import ValidationError, model_validator
 
 import aleph.toolkit.json as aleph_json
 from aleph.exceptions import UnknownHashError
@@ -45,7 +45,8 @@ class BasePendingMessage(AlephBaseMessage, Generic[MType, ContentType]):
     A raw Aleph message, as sent by users to the Aleph network.
     """
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
+    @classmethod
     def load_content(cls, values):
         """
         Preload inline content. We let the CCN populate this field later

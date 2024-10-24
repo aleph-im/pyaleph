@@ -296,11 +296,11 @@ async def pub_on_p2p_topics(
 
 class BroadcastStatus(BaseModel):
     publication_status: PublicationStatus
-    message_status: Optional[MessageStatus]
+    message_status: Optional[MessageStatus] = None
 
 
 def broadcast_status_to_http_status(broadcast_status: BroadcastStatus) -> int:
-    if broadcast_status.publication_status == "error":
+    if broadcast_status.publication_status.status == "error":
         return 500
 
     message_status = broadcast_status.message_status

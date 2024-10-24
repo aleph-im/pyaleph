@@ -7,8 +7,7 @@ from hashlib import sha256
 from typing import Any, Generic, Mapping, Optional, TypeVar, cast
 
 from aleph_message.models import BaseContent, Chain, ItemType, MessageType
-from pydantic import root_validator, validator
-from pydantic.generics import GenericModel
+from pydantic import BaseModel, model_validator, validator
 
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.utils import item_type_from_hash
@@ -17,7 +16,7 @@ MType = TypeVar("MType", bound=MessageType)
 ContentType = TypeVar("ContentType", bound=BaseContent)
 
 
-class AlephBaseMessage(GenericModel, Generic[MType, ContentType]):
+class AlephBaseMessage(BaseModel, Generic[MType, ContentType]):
     """
     The base structure of an Aleph message.
     All the fields of this class appear in all the representations
@@ -26,16 +25,17 @@ class AlephBaseMessage(GenericModel, Generic[MType, ContentType]):
 
     sender: str
     chain: Chain
-    signature: Optional[str]
+    signature: Optional[str] = None
     type: MType
-    item_content: Optional[str]
+    item_content: Optional[str] = None
     item_type: ItemType
     item_hash: str
     time: dt.datetime
     channel: Optional[str] = None
     content: Optional[ContentType] = None
 
-    @root_validator()
+    @model_validator(mode="after")
+    @classmethod
     def check_item_type(cls, values):
         """
         Checks that the item hash of the message matches the one inferred from the hash.
@@ -60,6 +60,8 @@ class AlephBaseMessage(GenericModel, Generic[MType, ContentType]):
             )
         return values
 
+    # TODO[pydantic]: We couldn't refactor the `validator`, please replace it by `field_validator` manually.
+    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-validators for more information.
     @validator("item_hash")
     def check_item_hash(cls, v: Any, values: Mapping[str, Any]):
         """
@@ -90,6 +92,8 @@ class AlephBaseMessage(GenericModel, Generic[MType, ContentType]):
                 raise ValueError(f"Unknown item type: '{item_type}'")
         return v
 
+    # TODO[pydantic]: We couldn't refactor the `validator`, please replace it by `field_validator` manually.
+    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-validators for more information.
     @validator("time", pre=True)
     def check_time(cls, v, values):
         """

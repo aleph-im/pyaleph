@@ -2,7 +2,14 @@ from typing import Any, Dict, List, Optional
 
 from aiohttp import web
 from aleph_message.models import ItemHash
-from pydantic import BaseModel, Field, ValidationError, root_validator, validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 from sqlalchemy import select
 
 from aleph.db.accessors.posts import (
@@ -82,7 +89,7 @@ class PostQueryParams(BaseModel):
         "-1 means most recent messages first, 1 means older messages first.",
     )
 
-    @root_validator
+    @model_validator(mode="after")
     def validate_field_dependencies(cls, values):
         start_date = values.get("start_date")
         end_date = values.get("end_date")
@@ -90,22 +97,16 @@ class PostQueryParams(BaseModel):
             raise ValueError("end date cannot be lower than start date.")
         return values
 
-    @validator(
-        "addresses",
-        "hashes",
-        "refs",
-        "post_types",
-        "channels",
-        "tags",
-        pre=True,
+    @field_validator(
+        "addresses", "hashes", "refs", "post_types", "channels", "tags", mode="before"
     )
+    @classmethod
     def split_str(cls, v):
         if isinstance(v, str):
             return v.split(LIST_FIELD_SEPARATOR)
         return v
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 def merged_post_to_dict(merged_post: MergedPost) -> Dict[str, Any]:

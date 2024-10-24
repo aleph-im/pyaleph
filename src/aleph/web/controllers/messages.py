@@ -6,7 +6,14 @@ import aio_pika.abc
 import aiohttp.web_ws
 from aiohttp import WSMsgType, web
 from aleph_message.models import Chain, ItemHash, MessageType
-from pydantic import BaseModel, Field, ValidationError, root_validator, validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.messages import (
@@ -110,7 +117,7 @@ class BaseMessageQueryParams(BaseModel):
         default=None, description="Accepted values for the 'item_hash' field."
     )
 
-    @root_validator
+    @model_validator(mode="after")
     def validate_field_dependencies(cls, values):
         start_date = values.get("start_date")
         end_date = values.get("end_date")
@@ -122,7 +129,7 @@ class BaseMessageQueryParams(BaseModel):
             raise ValueError("end block cannot be lower than start block.")
         return values
 
-    @validator(
+    @field_validator(
         "hashes",
         "addresses",
         "refs",
@@ -133,15 +140,15 @@ class BaseMessageQueryParams(BaseModel):
         "channels",
         "message_types",
         "tags",
-        pre=True,
+        mode="before",
     )
+    @classmethod
     def split_str(cls, v):
         if isinstance(v, str):
             return v.split(LIST_FIELD_SEPARATOR)
         return v
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class MessageQueryParams(BaseMessageQueryParams):

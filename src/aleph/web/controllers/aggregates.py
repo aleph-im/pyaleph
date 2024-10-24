@@ -3,7 +3,7 @@ import logging
 from typing import Dict, List, Optional
 
 from aiohttp import web
-from pydantic import BaseModel, ValidationError, validator
+from pydantic import BaseModel, ValidationError, field_validator
 from sqlalchemy import select
 
 from aleph.db.accessors.aggregates import get_aggregates_by_owner, refresh_aggregate
@@ -22,10 +22,8 @@ class AggregatesQueryParams(BaseModel):
     with_info: bool = False
     value_only: bool = False
 
-    @validator(
-        "keys",
-        pre=True,
-    )
+    @field_validator("keys", mode="before")
+    @classmethod
     def split_str(cls, v):
         if isinstance(v, str):
             return v.split(LIST_FIELD_SEPARATOR)

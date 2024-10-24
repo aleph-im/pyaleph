@@ -93,7 +93,7 @@ def make_events_query(
         model = SyncEvent
         event_type_str = "syncEvents"
 
-    fields = "\n".join(model.__fields__.keys())
+    fields = "\n".join(model.model_fields.keys())
     params: Dict[str, Any] = {
         "blockchain": f'"{blockchain.value}"',
         "limit": limit,

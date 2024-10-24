@@ -14,7 +14,6 @@ from aleph_message.models import (
     StoreContent,
 )
 from pydantic import ValidationError
-from pydantic.error_wrappers import ErrorWrapper
 from sqlalchemy import (
     ARRAY,
     TIMESTAMP,
@@ -69,7 +68,7 @@ def validate_message_content(
     try:
         _ = dt.datetime.fromtimestamp(content_dict["time"])
     except ValueError as e:
-        raise ValidationError([ErrorWrapper(e, loc="time")], model=content_type) from e
+        raise ValidationError(str(e)) from e
 
     return content
 
