@@ -261,9 +261,7 @@ async def test_get_amended_posts_tags(
         session.commit()
 
     # Match one tag
-    response = await ccn_api_client.get(
-        "/api/v0/posts.json", params={"tags": "amend"}
-    )
+    response = await ccn_api_client.get("/api/v0/posts.json", params={"tags": "amend"})
     assert response.status == 200
     response_json = await response.json()
     assert len(response_json["posts"]) == 1
