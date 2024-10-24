@@ -655,6 +655,11 @@ async def test_compare_account_cost_with_cost_function_hold(
         )
 
     assert db_cost == cost
+    if fixture_instance_message.item_content:
+        content = InstanceContent.model_validate_json(fixture_instance_message.item_content)
+        with session_factory() as session:
+            price: Decimal = compute_cost(content=content, session=session)
+            assert price == Decimal("2001.8")
 
 
 @pytest.mark.asyncio

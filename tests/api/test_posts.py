@@ -70,7 +70,7 @@ async def test_get_posts_refs(
 
     # Match the ref
     response = await ccn_api_client.get(
-        "/api/v0/posts.json", params={"refs": f"{post_db.ref}"}
+        "/api/v0/posts.json", params={"refs": [f"{post_db.ref}"]}
     )
     assert response.status == 200
     response_json = await response.json()
@@ -85,7 +85,7 @@ async def test_get_posts_refs(
 
     # Unknown ref
     response = await ccn_api_client.get(
-        "/api/v0/posts.json", params={"refs": "not-a-ref"}
+        "/api/v0/posts.json", params={"refs": ["not-a-ref"]}
     )
     assert response.status == 200
     response_json = await response.json()
@@ -94,7 +94,7 @@ async def test_get_posts_refs(
 
     # Search for several refs
     response = await ccn_api_client.get(
-        "/api/v0/posts.json", params={"refs": f"{post_db.ref},not-a-ref"}
+        "/api/v0/posts.json", params={"refs": [f"{post_db.ref},not-a-ref"]}
     )
     assert response.status == 200
     response_json = await response.json()
@@ -131,7 +131,7 @@ async def test_get_amended_posts_refs(
 
     # Match the ref
     response = await ccn_api_client.get(
-        "/api/v0/posts.json", params={"refs": f"{original_post_db.ref}"}
+        "/api/v0/posts.json", params={"refs": [f"{original_post_db.ref}"]}
     )
     assert response.status == 200
     response_json = await response.json()
@@ -146,7 +146,7 @@ async def test_get_amended_posts_refs(
 
     # Unknown ref
     response = await ccn_api_client.get(
-        "/api/v0/posts.json", params={"refs": "not-a-ref"}
+        "/api/v0/posts.json", params={"refs": ["not-a-ref"]}
     )
     assert response.status == 200
     response_json = await response.json()
@@ -155,7 +155,7 @@ async def test_get_amended_posts_refs(
 
     # Search for several refs
     response = await ccn_api_client.get(
-        "/api/v0/posts.json", params={"refs": f"{original_post_db.ref},not-a-ref"}
+        "/api/v0/posts.json", params={"refs": [f"{original_post_db.ref},not-a-ref"]}
     )
     assert response.status == 200
     response_json = await response.json()
@@ -186,7 +186,7 @@ async def test_get_posts_tags(
 
     # Match one tag
     response = await ccn_api_client.get(
-        "/api/v0/posts.json", params={"tags": "mainnet"}
+        "/api/v0/posts.json", params={"tags": ["mainnet"]}
     )
     assert response.status == 200, await response.text()
     response_json = await response.json()
@@ -200,7 +200,7 @@ async def test_get_posts_tags(
 
     # Unknown tag
     response = await ccn_api_client.get(
-        "/api/v0/posts.json", params={"tags": "not-a-tag"}
+        "/api/v0/posts.json", params={"tags": ["not-a-tag"]}
     )
     assert response.status == 200
     response_json = await response.json()
@@ -209,7 +209,7 @@ async def test_get_posts_tags(
 
     # Search for several tags
     response = await ccn_api_client.get(
-        "/api/v0/posts.json", params={"tags": "mainnet,not-a-ref"}
+        "/api/v0/posts.json", params={"tags": ["mainnet,not-a-ref"]}
     )
     assert response.status == 200
     response_json = await response.json()
@@ -225,7 +225,7 @@ async def test_get_posts_tags(
     # Check for several matching tags
     # Search for several tags
     response = await ccn_api_client.get(
-        "/api/v0/posts.json", params={"tags": "original,mainnet"}
+        "/api/v0/posts.json", params={"tags": ["original,mainnet"]}
     )
     assert response.status == 200
     response_json = await response.json()
@@ -261,7 +261,7 @@ async def test_get_amended_posts_tags(
         session.commit()
 
     # Match one tag
-    response = await ccn_api_client.get("/api/v0/posts.json", params={"tags": "amend"})
+    response = await ccn_api_client.get("/api/v0/posts.json", params={"tags": ["amend"]})
     assert response.status == 200
     response_json = await response.json()
     assert len(response_json["posts"]) == 1
@@ -275,7 +275,7 @@ async def test_get_amended_posts_tags(
 
     # Unknown tag
     response = await ccn_api_client.get(
-        "/api/v0/posts.json", params={"tags": "not-a-tag"}
+        "/api/v0/posts.json", params={"tags": ["not-a-tag"]}
     )
     assert response.status == 200
     response_json = await response.json()
@@ -284,7 +284,7 @@ async def test_get_amended_posts_tags(
 
     # Tag of the original
     response = await ccn_api_client.get(
-        "/api/v0/posts.json", params={"tags": "original"}
+        "/api/v0/posts.json", params={"tags": ["original"]}
     )
     assert response.status == 200
     response_json = await response.json()
@@ -293,7 +293,7 @@ async def test_get_amended_posts_tags(
 
     # Search for several tags
     response = await ccn_api_client.get(
-        "/api/v0/posts.json", params={"tags": "mainnet,not-a-tag"}
+        "/api/v0/posts.json", params={"tags": ["mainnet,not-a-tag"]}
     )
     assert response.status == 200
     response_json = await response.json()
