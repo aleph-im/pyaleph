@@ -37,8 +37,6 @@ ContentType = TypeVar("ContentType", bound=BaseContent)
 class MessageConfirmation(BaseModel):
     """Format of the result when a message has been confirmed on a blockchain"""
 
-    # TODO[pydantic]: The following keys were removed: `json_encoders`.
-    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
     model_config = ConfigDict(
         from_attributes=True, json_encoders={dt.datetime: lambda d: d.timestamp()}
     )
@@ -49,8 +47,6 @@ class MessageConfirmation(BaseModel):
 
 
 class BaseMessage(BaseModel, Generic[MType, ContentType]):
-    # TODO[pydantic]: The following keys were removed: `json_loads`, `json_encoders`.
-    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
     model_config = ConfigDict(
         from_attributes=True,
         json_encoders={dt.datetime: lambda d: d.timestamp()},
@@ -211,8 +207,6 @@ MessageWithStatus = Union[
 
 
 class MessageListResponse(BaseModel):
-    # TODO[pydantic]: The following keys were removed: `json_encoders`, `json_loads`.
-    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
     model_config = ConfigDict(
         json_encoders={dt.datetime: lambda d: d.timestamp()},
     )

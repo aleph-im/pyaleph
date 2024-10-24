@@ -6,7 +6,7 @@ import datetime as dt
 from enum import Enum
 from typing import List, Protocol, Tuple
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class GenericMessageEvent(Protocol):
@@ -43,9 +43,7 @@ class AccountEntityState(BaseModel):
     pending: List[Tuple[dt.datetime, dt.datetime]]
     processed: List[Tuple[dt.datetime, dt.datetime]]
 
-    # TODO[pydantic]: We couldn't refactor the `validator`, please replace it by `field_validator` manually.
-    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-validators for more information.
-    @validator("pending", "processed", pre=True, each_item=True)
+    @field_validator("pending", "processed", mode="before")
     def split_datetime_ranges(cls, v):
         if isinstance(v, str):
             return v.split("/")
