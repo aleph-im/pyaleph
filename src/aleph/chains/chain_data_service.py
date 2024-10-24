@@ -69,7 +69,7 @@ class ChainDataService:
                 messages=[OnChainMessage.from_orm(message) for message in messages]
             ),
         )
-        archive_content: bytes = archive.json().encode("utf-8")
+        archive_content: bytes = archive.model_dump_json().encode("utf-8")
 
         ipfs_cid = await self.storage_service.add_file(
             session=session, file_content=archive_content, engine=ItemType.ipfs
@@ -191,7 +191,7 @@ class ChainDataService:
                 item_hash=ItemHash(payload.content),
                 metadata=None,
             )
-            item_content = content.json(exclude_none=True)
+            item_content = content.model_dump_json(exclude_none=True)
         else:
             item_content = payload.content
 

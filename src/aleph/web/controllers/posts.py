@@ -188,7 +188,7 @@ async def view_posts_list_v0(request: web.Request) -> web.Response:
     query_string = request.query_string
     query_params = get_query_params(request)
 
-    find_filters = query_params.dict(exclude_none=True)
+    find_filters = query_params.model_dump(exclude_none=True)
 
     pagination_page = query_params.page
     pagination_per_page = query_params.pagination
@@ -239,7 +239,7 @@ async def view_posts_list_v1(request) -> web.Response:
     if path_page:
         query_params.page = path_page
 
-    find_filters = query_params.dict(exclude_none=True)
+    find_filters = query_params.model_dump(exclude_none=True)
 
     pagination_page = query_params.page
     pagination_per_page = query_params.pagination

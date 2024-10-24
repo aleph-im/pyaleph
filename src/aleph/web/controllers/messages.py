@@ -252,7 +252,7 @@ async def view_messages_list(request: web.Request) -> web.Response:
     if url_page_param := request.match_info.get("page"):
         query_params.page = int(url_page_param)
 
-    find_filters = query_params.dict(exclude_none=True)
+    find_filters = query_params.model_dump(exclude_none=True)
 
     pagination_page = query_params.page
     pagination_per_page = query_params.pagination
@@ -283,10 +283,10 @@ async def _send_history_to_ws(
             session=session,
             pagination=history,
             include_confirmations=True,
-            **query_params.dict(exclude_none=True),
+            **query_params.model_dump(exclude_none=True),
         )
         for message in messages:
-            await ws.send_str(format_message(message).json())
+            await ws.send_str(format_message(message).model_dump_json())
 
 
 def message_matches_filters(
@@ -363,7 +363,7 @@ async def _start_mq_consumer(
 
         if message_matches_filters(message=message, query_params=query_params):
             try:
-                await ws.send_str(message.json())
+                await ws.send_str(message.model_dump_json())
             except ConnectionResetError:
                 # We can detect the WS closing in this task in addition to the main one.
                 # The main task will also detect the close event.
@@ -527,7 +527,7 @@ async def view_message(request: web.Request):
             session=session, status_db=message_status_db
         )
 
-    return web.json_response(text=message_with_status.json())
+    return web.json_response(text=message_with_status.model_dump_json())
 
 
 async def view_message_content(request: web.Request):

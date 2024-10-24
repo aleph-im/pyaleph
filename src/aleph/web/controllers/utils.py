@@ -311,7 +311,7 @@ def broadcast_status_to_http_status(broadcast_status: BroadcastStatus) -> int:
 
 
 def format_pending_message_dict(pending_message: BasePendingMessage) -> Dict[str, Any]:
-    pending_message_dict = pending_message.dict(exclude_none=True)
+    pending_message_dict = pending_message.model_dump(exclude_none=True)
     pending_message_dict["time"] = pending_message_dict["time"].timestamp()
     return pending_message_dict
 

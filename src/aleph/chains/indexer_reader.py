@@ -146,7 +146,7 @@ class AlephIndexerClient:
 
         response = await self.http_session.post("/", json={"query": query})
         response.raise_for_status()
-        response_json = await response.json()
+        response_json = await response.model_dump_json()
         return model.model_validate(response_json)
 
     async def fetch_account_state(
@@ -196,7 +196,7 @@ def indexer_event_to_chain_tx(
     if isinstance(indexer_event, MessageEvent):
         protocol = ChainSyncProtocol.SMART_CONTRACT
         protocol_version = 1
-        content = indexer_event.dict()
+        content = indexer_event.model_dump()
     else:
         sync_message = aleph_json.loads(indexer_event.message)
 
