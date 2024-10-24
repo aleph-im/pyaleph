@@ -98,11 +98,11 @@ class PostQueryParams(BaseModel):
 
         return self
 
-    @classmethod
     @field_validator(
         "addresses", "hashes", "refs", "post_types", "channels", "tags", mode="before"
     )
-    def split_str(cls, v):
+    @classmethod
+    def split_str(cls, v) -> List[str]:
         if isinstance(v, str):
             return v.split(LIST_FIELD_SEPARATOR)
         return v
