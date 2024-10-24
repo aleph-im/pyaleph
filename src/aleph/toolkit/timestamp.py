@@ -10,7 +10,7 @@ def timestamp_to_datetime(timestamp: float) -> dt.datetime:
     object.
     """
 
-    return pytz.utc.localize(dt.datetime.utcfromtimestamp(timestamp))
+    return pytz.utc.localize(dt.datetime.fromtimestamp(timestamp, dt.UTC))
 
 
 def coerce_to_datetime(

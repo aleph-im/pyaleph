@@ -70,7 +70,7 @@ async def test_get_messages(fixture_messages: Sequence[Dict[str, Any]], ccn_api_
 @pytest.mark.asyncio
 async def test_get_messages_filter_by_channel(fixture_messages, ccn_api_client):
     async def fetch_messages_by_channel(channel: str) -> Dict:
-        response = await ccn_api_client.get(MESSAGES_URI, params={"channels": channel})
+        response = await ccn_api_client.get(MESSAGES_URI, params={"channels": [channel]})
         assert response.status == 200, await response.text()
         return await response.json()
 
@@ -104,7 +104,7 @@ async def test_get_messages_filter_by_channel(fixture_messages, ccn_api_client):
 
 
 async def fetch_messages_by_chain(api_client, chain: str) -> aiohttp.ClientResponse:
-    response = await api_client.get(MESSAGES_URI, params={"chains": chain})
+    response = await api_client.get(MESSAGES_URI, params={"chains": [chain]})
     return response
 
 
@@ -130,7 +130,7 @@ async def test_get_messages_filter_invalid_chain(fixture_messages, ccn_api_clien
 async def fetch_messages_by_content_hash(
     api_client, item_hash: str
 ) -> aiohttp.ClientResponse:
-    response = await api_client.get(MESSAGES_URI, params={"contentHashes": item_hash})
+    response = await api_client.get(MESSAGES_URI, params={"contentHashes": [item_hash]})
     return response
 
 
@@ -186,40 +186,40 @@ async def test_get_messages_filter_by_tags(
         session.commit()
 
     # Matching tag for both messages
-    response = await ccn_api_client.get(MESSAGES_URI, params={"tags": "mainnet"})
+    response = await ccn_api_client.get(MESSAGES_URI, params={"tags": ["mainnet"]})
     assert response.status == 200, await response.text()
     messages = (await response.json())["messages"]
     assert len(messages) == 2
 
     # Matching tags for both messages
-    response = await ccn_api_client.get(MESSAGES_URI, params={"tags": "original,amend"})
+    response = await ccn_api_client.get(MESSAGES_URI, params={"tags": ["original,amend"]})
     assert response.status == 200, await response.text()
     messages = (await response.json())["messages"]
     assert len(messages) == 2
 
     # Matching the original tag
-    response = await ccn_api_client.get(MESSAGES_URI, params={"tags": "original"})
+    response = await ccn_api_client.get(MESSAGES_URI, params={"tags": ["original"]})
     assert response.status == 200, await response.text()
     messages = (await response.json())["messages"]
     assert len(messages) == 1
     assert messages[0]["item_hash"] == message_db.item_hash
 
     # Matching the amend tag
-    response = await ccn_api_client.get(MESSAGES_URI, params={"tags": "amend"})
+    response = await ccn_api_client.get(MESSAGES_URI, params={"tags": ["amend"]})
     assert response.status == 200, await response.text()
     messages = (await response.json())["messages"]
     assert len(messages) == 1
     assert messages[0]["item_hash"] == amend_message_db.item_hash
 
     # No match
-    response = await ccn_api_client.get(MESSAGES_URI, params={"tags": "not-a-tag"})
+    response = await ccn_api_client.get(MESSAGES_URI, params={"tags": ["not-a-tag"]})
     assert response.status == 200, await response.text()
     messages = (await response.json())["messages"]
     assert len(messages) == 0
 
     # Matching the amend tag with other tags
     response = await ccn_api_client.get(
-        MESSAGES_URI, params={"tags": "amend,not-a-tag,not-a-tag-either"}
+        MESSAGES_URI, params={"tags": ["amend,not-a-tag,not-a-tag-either"]}
     )
     assert response.status == 200, await response.text()
     messages = (await response.json())["messages"]
@@ -253,7 +253,7 @@ async def test_get_messages_filter_by_tags_no_match(fixture_messages, ccn_api_cl
     """
 
     # Matching tag
-    response = await ccn_api_client.get(MESSAGES_URI, params={"tags": "mainnet"})
+    response = await ccn_api_client.get(MESSAGES_URI, params={"tags": ["mainnet"]})
     assert response.status == 200, await response.text()
     messages = (await response.json())["messages"]
     assert len(messages) == 0
@@ -526,7 +526,7 @@ def instance_message_fixture() -> MessageDb:
                     use_latest=True,
                 )
             ],
-        ).dict(),
+        ).model_dump(),
         size=3000,
         time=timestamp_to_datetime(1686572207.89381),
         channel=Channel("TEST"),
