@@ -95,15 +95,12 @@ class PostQueryParams(BaseModel):
         end_date = self.end_date
         if start_date and end_date and (end_date < start_date):
             raise ValueError("end date cannot be lower than start date.")
-        return values
 
-        return self
-
+    @classmethod
     @field_validator(
         "addresses", "hashes", "refs", "post_types", "channels", "tags", mode="before"
     )
-    @classmethod
-    def split_str(cls, v) -> List[str]:
+    def split_str(cls, v):
         if isinstance(v, str):
             return v.split(LIST_FIELD_SEPARATOR)
         return v
@@ -176,7 +173,7 @@ def merged_post_v0_to_dict(
 
 def get_query_params(request: web.Request) -> PostQueryParams:
     try:
-        query_params = PostQueryParams.model_validate(request.query)
+        query_params = PostQueryParams.parse_obj(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 
@@ -191,7 +188,7 @@ async def view_posts_list_v0(request: web.Request) -> web.Response:
     query_string = request.query_string
     query_params = get_query_params(request)
 
-    find_filters = query_params.model_dump(exclude_none=True)
+    find_filters = query_params.dict(exclude_none=True)
 
     pagination_page = query_params.page
     pagination_per_page = query_params.pagination
@@ -234,7 +231,7 @@ async def view_posts_list_v1(request) -> web.Response:
     query_string = request.query_string
 
     try:
-        query_params = PostQueryParams.model_validate(request.query)
+        query_params = PostQueryParams.parse_obj(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 
@@ -242,7 +239,7 @@ async def view_posts_list_v1(request) -> web.Response:
     if path_page:
         query_params.page = path_page
 
-    find_filters = query_params.model_dump(exclude_none=True)
+    find_filters = query_params.dict(exclude_none=True)
 
     pagination_page = query_params.page
     pagination_per_page = query_params.pagination
