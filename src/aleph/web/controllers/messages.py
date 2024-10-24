@@ -243,7 +243,7 @@ async def view_messages_list(request: web.Request) -> web.Response:
     """Messages list view with filters"""
 
     try:
-        query_params = MessageQueryParams.parse_obj(request.query)
+        query_params = MessageQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 
@@ -388,7 +388,7 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
     mq_channel = await get_mq_ws_channel_from_request(request=request, logger=LOGGER)
 
     try:
-        query_params = WsMessageQueryParams.parse_obj(request.query)
+        query_params = WsMessageQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 

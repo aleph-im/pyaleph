@@ -61,7 +61,7 @@ def validate_message_content(
     content_dict: Dict[str, Any],
 ) -> BaseContent:
     content_type = CONTENT_TYPE_MAP[message_type]
-    content = content_type.parse_obj(content_dict)
+    content = content_type.model_validate(content_dict)
     # Validate that the content time can be converted to datetime. This will
     # raise a ValueError and be caught
     # TODO: move this validation in aleph-message

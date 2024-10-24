@@ -38,7 +38,7 @@ async def address_aggregate(request: web.Request) -> web.Response:
     address: str = request.match_info["address"]
 
     try:
-        query_params = AggregatesQueryParams.parse_obj(request.query)
+        query_params = AggregatesQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(
             text=e.json(), content_type="application/json"

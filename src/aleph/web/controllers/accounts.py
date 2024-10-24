@@ -83,7 +83,7 @@ async def get_account_files(request: web.Request) -> web.Response:
     address = _get_address_from_request(request)
 
     try:
-        query_params = GetAccountFilesQueryParams.parse_obj(request.query)
+        query_params = GetAccountFilesQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 

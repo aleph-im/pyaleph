@@ -44,10 +44,10 @@ class AccountEntityState(BaseModel):
     processed: List[Tuple[dt.datetime, dt.datetime]]
 
     @field_validator("pending", "processed", mode="before")
-    def split_datetime_ranges(cls, v):
-        if isinstance(v, str):
-            return v.split("/")
-        return v
+    def split_datetime_ranges(cls, values):
+        return map(
+            lambda value: value.split("/") if isinstance(value, str) else value, values
+        )
 
 
 class IndexerAccountStateResponseData(BaseModel):

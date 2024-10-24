@@ -131,7 +131,7 @@ def format_message(message: MessageDb) -> AlephMessage:
 def format_message_dict(message: Dict[str, Any]) -> AlephMessage:
     message_type = message.get("type")
     message_cls = MESSAGE_CLS_DICT[message_type]
-    return message_cls.parse_obj(message)
+    return message_cls.model_validate(message)
 
 
 class BaseMessageStatus(BaseModel):

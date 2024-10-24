@@ -166,7 +166,9 @@ class ChainDataService:
         )
 
         try:
-            payload = cast(GenericMessageEvent, payload_model.parse_obj(tx.content))
+            payload = cast(
+                GenericMessageEvent, payload_model.model_validate(tx.content)
+            )
         except ValidationError:
             raise InvalidContent(f"Incompatible tx content for {tx.chain}/{tx.hash}")
 

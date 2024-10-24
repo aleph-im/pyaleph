@@ -162,7 +162,7 @@ async def fetch_messages(
     response.raise_for_status()
     response_json = await response.json()
 
-    return IndexerResponse[IndexerMessageEvent].parse_obj(response_json)
+    return IndexerResponse[IndexerMessageEvent].model_validate(response_json)
 
 
 def indexer_event_to_chain_tx(

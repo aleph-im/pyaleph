@@ -173,7 +173,7 @@ def merged_post_v0_to_dict(
 
 def get_query_params(request: web.Request) -> PostQueryParams:
     try:
-        query_params = PostQueryParams.parse_obj(request.query)
+        query_params = PostQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 
@@ -231,7 +231,7 @@ async def view_posts_list_v1(request) -> web.Response:
     query_string = request.query_string
 
     try:
-        query_params = PostQueryParams.parse_obj(request.query)
+        query_params = PostQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 

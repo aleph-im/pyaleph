@@ -125,7 +125,7 @@ class PubMessageRequest(BaseModel):
 @shielded
 async def pub_message(request: web.Request):
     try:
-        request_data = PubMessageRequest.parse_obj(await request.json())
+        request_data = PubMessageRequest.model_validate(await request.json())
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
     except ValueError:
