@@ -57,8 +57,8 @@ class AlephBaseMessage(BaseModel, Generic[MType, ContentType]):
                 )
         return self
 
-    @classmethod
     @field_validator("item_hash", mode="after")
+    @classmethod
     def check_item_hash(cls, v: Any, info: ValidationInfo):
         """
         For inline item types, check that the item hash is equal to
@@ -88,8 +88,8 @@ class AlephBaseMessage(BaseModel, Generic[MType, ContentType]):
                 raise ValueError(f"Unknown item type: '{item_type}'")
         return v
 
-    @classmethod
     @field_validator("time", mode="before")
+    @classmethod
     def check_time(cls, v: Any, info: ValidationInfo):
         """
         Parses the time field as a UTC datetime. Contrary to the default datetime

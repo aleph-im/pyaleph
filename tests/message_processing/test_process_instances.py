@@ -375,7 +375,9 @@ async def test_process_instance_missing_volumes(
         assert rejected_message.error_code == ErrorCode.VM_VOLUME_NOT_FOUND
 
         if fixture_instance_message.item_content:
-            content = InstanceContent.model_validate_json(fixture_instance_message.item_content)
+            content = InstanceContent.model_validate_json(
+                fixture_instance_message.item_content
+            )
             volume_refs = set(volume.ref for volume in get_volume_refs(content))
             assert isinstance(rejected_message.details, dict)
             assert set(rejected_message.details["errors"]) == volume_refs
@@ -453,7 +455,9 @@ async def test_get_volume_size(
         session.commit()
 
     if fixture_instance_message.item_content:
-        content = InstanceContent.model_validate_json(fixture_instance_message.item_content)
+        content = InstanceContent.model_validate_json(
+            fixture_instance_message.item_content
+        )
         with session_factory() as session:
             volume_size = get_volume_size(session=session, content=content)
             assert volume_size == 21512585216
@@ -469,7 +473,9 @@ async def test_get_additional_storage_price(
         session.commit()
 
     if fixture_instance_message.item_content:
-        content = InstanceContent.model_validate_json(fixture_instance_message.item_content)
+        content = InstanceContent.model_validate_json(
+            fixture_instance_message.item_content
+        )
         with session_factory() as session:
             additional_price = get_additional_storage_price(
                 content=content, session=session
@@ -487,7 +493,9 @@ async def test_get_compute_cost(
         session.commit()
 
     if fixture_instance_message.item_content:
-        content = InstanceContent.model_validate_json(fixture_instance_message.item_content)
+        content = InstanceContent.model_validate_json(
+            fixture_instance_message.item_content
+        )
         with session_factory() as session:
             price: Decimal = compute_cost(content=content, session=session)
             assert price == Decimal("2001.8")

@@ -130,7 +130,6 @@ class BaseMessageQueryParams(BaseModel):
 
         return self
 
-    @classmethod
     @field_validator(
         "hashes",
         "addresses",
@@ -144,6 +143,7 @@ class BaseMessageQueryParams(BaseModel):
         "tags",
         mode="before",
     )
+    @classmethod
     def split_str(cls, v):
         if isinstance(v, str):
             return v.split(LIST_FIELD_SEPARATOR)
