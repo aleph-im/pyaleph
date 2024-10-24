@@ -24,6 +24,9 @@ class AlephBaseMessage(GenericModel, Generic[MType, ContentType]):
     of messages on the Aleph network.
     """
 
+    class Config:
+        arbitrary_types_allowed = True
+
     sender: str
     chain: Chain
     signature: Optional[str]

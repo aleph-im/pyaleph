@@ -14,7 +14,6 @@ from aleph_message.models.execution.instance import RootfsVolume
 from aleph_message.models.execution.volume import (
     ImmutableVolume,
     ParentVolume,
-    PersistentVolumeSizeMib,
     VolumePersistence,
 )
 
@@ -517,7 +516,7 @@ def instance_message_fixture() -> MessageDb:
                     )
                 ),
                 persistence=VolumePersistence("host"),
-                size_mib=PersistentVolumeSizeMib(1024),
+                size_mib=1024,
             ),
             volumes=[
                 ImmutableVolume(

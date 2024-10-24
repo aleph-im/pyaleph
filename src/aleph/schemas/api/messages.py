@@ -50,6 +50,7 @@ class MessageConfirmation(BaseModel):
 
 class BaseMessage(GenericModel, Generic[MType, ContentType]):
     class Config:
+        arbitrary_types_allowed = True
         orm_mode = True
         json_loads = aleph_json.loads
         json_encoders = {dt.datetime: lambda d: d.timestamp()}
