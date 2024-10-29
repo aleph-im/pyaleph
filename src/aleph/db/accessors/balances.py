@@ -43,23 +43,34 @@ def get_total_balance(
 
 
 def get_total_detailed_balance(
-    session: DbSession, address: str, include_dapps: bool = False
-) -> Dict[str, Decimal]:
-    where_clause = AlephBalanceDb.address == address
-    if not include_dapps:
-        where_clause = where_clause & AlephBalanceDb.dapp.is_(None)
+    session: DbSession, address: str, chain: Optional[str] = None
+) -> tuple[Decimal, Dict[str, Decimal]]:
+    if chain is not None:
+        query = (
+            select(func.sum(AlephBalanceDb.balance))
+            .where((AlephBalanceDb.address == address) & (AlephBalanceDb.chain == chain))
+            .group_by(AlephBalanceDb.address)
+        )
 
-    select_stmt = (
+        result = session.execute(query).first()
+        return result[0] if result is not None else Decimal(0), {}
+
+    query = (
         select(AlephBalanceDb.chain, func.sum(AlephBalanceDb.balance).label("balance"))
-        .where(where_clause)
+        .where(AlephBalanceDb.address == address)
         .group_by(AlephBalanceDb.chain)
     )
 
-    result = session.execute(select_stmt).fetchall()
+    balances_by_chain = {row.chain: row.balance or Decimal(0) for row in session.execute(query).fetchall()}
 
-    balances_by_chain = {row.chain: row.balance or Decimal(0) for row in result}
+    query = (
+        select(func.sum(AlephBalanceDb.balance))
+        .where(AlephBalanceDb.address == address)
+        .group_by(AlephBalanceDb.address)
+    )
 
-    return balances_by_chain
+    result = session.execute(query).first()
+    return result[0] if result is not None else Decimal(0), balances_by_chain
 
 
 def update_balances(
