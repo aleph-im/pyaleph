@@ -70,7 +70,9 @@ async def get_account_balance(request: web.Request):
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
     with session_factory() as session:
-        balance, details = get_total_detailed_balance(session=session, address=address, chain=query_params.chain)
+        balance, details = get_total_detailed_balance(
+            session=session, address=address, chain=query_params.chain
+        )
         total_cost = get_total_cost_for_address(session=session, address=address)
     return web.json_response(
         text=GetAccountBalanceResponse(
