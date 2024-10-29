@@ -1,5 +1,4 @@
 import json
-from decimal import Decimal
 from itertools import groupby
 from typing import Any, Dict, List
 
