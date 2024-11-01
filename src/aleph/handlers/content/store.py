@@ -102,10 +102,11 @@ class StoreMessageHandler(ContentHandler):
     ) -> None:
         # TODO: simplify this function, it's overly complicated for no good reason.
 
-        # TODO: this check is useless, remove it
+        # This check is essential to ensure that files are not added to the system
+        # or the current node when the configuration disables storing of files.
         config = get_config()
         if not config.storage.store_files.value:
-            return  # Ignore
+            return  # Ignore if files are not to be stored.
 
         content = message.parsed_content
         assert isinstance(content, StoreContent)
