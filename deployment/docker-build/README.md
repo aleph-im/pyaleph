@@ -12,7 +12,7 @@ You can build the Docker image simply using:
 
 or by running the Docker build command from the root of the repository:
 ```shell script
-docker build -t alephim/pyaleph-node:0.5.4 -f deployment/docker-build/pyaleph.dockerfile .
+docker build -t alephim/pyaleph-node:0.5.5 -f deployment/docker-build/pyaleph.dockerfile .
 ```
 
 ## Configure the CCN
