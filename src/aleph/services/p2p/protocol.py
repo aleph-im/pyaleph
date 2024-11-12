@@ -7,6 +7,7 @@ from aleph.handlers.message_handler import MessagePublisher
 from aleph.network import decode_pubsub_message
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.message_status import InvalidMessageException
+from collections import deque
 
 LOGGER = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ async def incoming_channel(
     LOGGER.debug("incoming channel started...")
 
     await p2p_client.subscribe(topic)
+    seen_hashes = deque([], maxlen=200000)
 
     while True:
         try:
@@ -34,6 +36,12 @@ async def incoming_channel(
                     # and such things...
                     try:
                         message_dict = await decode_pubsub_message(message.body)
+                        # Implemented an in-memory cache to avoid deal with the same messages different times.
+                        if (message_dict["sender"], message_dict["item_hash"]) in seen_hashes:
+                            await message.ack()
+                            continue
+
+                        seen_hashes.append((message_dict["sender"], message_dict["item_hash"]))
                     except InvalidMessageException:
                         LOGGER.warning(
                             "Received invalid message on P2P topic %s from %s",
