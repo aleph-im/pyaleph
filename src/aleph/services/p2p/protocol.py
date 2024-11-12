@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections import deque
 
 from aleph_p2p_client import AlephP2PServiceClient
 
@@ -17,6 +18,7 @@ async def incoming_channel(
     LOGGER.debug("incoming channel started...")
 
     await p2p_client.subscribe(topic)
+    seen_hashes = deque([], maxlen=200000)
 
     while True:
         try:
@@ -34,6 +36,22 @@ async def incoming_channel(
                     # and such things...
                     try:
                         message_dict = await decode_pubsub_message(message.body)
+                        # Implemented an in-memory cache to avoid deal with the same messages different times.
+                        if (
+                            message_dict["sender"],
+                            message_dict["item_hash"],
+                            message_dict["signature"],
+                        ) in seen_hashes:
+                            await message.ack()
+                            continue
+
+                        seen_hashes.append(
+                            (
+                                message_dict["sender"],
+                                message_dict["item_hash"],
+                                message_dict["signature"],
+                            )
+                        )
                     except InvalidMessageException:
                         LOGGER.warning(
                             "Received invalid message on P2P topic %s from %s",
