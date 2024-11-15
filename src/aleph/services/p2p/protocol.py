@@ -32,7 +32,7 @@ async def incoming_channel(
                         peer_id,
                     )
 
-                    # we should check the sender here to avoid spam
+                    # We should check the sender here to avoid spam
                     # and such things...
                     try:
                         message_dict = await decode_pubsub_message(message.body)
@@ -42,7 +42,8 @@ async def incoming_channel(
                             message_dict["item_hash"],
                             message_dict["signature"],
                         ) in seen_hashes:
-                            await message.ack()
+                            # Messages are already ACKed on underlying implementation in p2p_client.receive_messages()
+                            # if the process don't have issues
                             continue
 
                         seen_hashes.append(
