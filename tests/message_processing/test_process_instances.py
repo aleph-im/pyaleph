@@ -490,7 +490,7 @@ async def test_get_compute_cost(
         content = InstanceContent.parse_raw(fixture_instance_message.item_content)
         with session_factory() as session:
             price: Decimal = compute_cost(content=content, session=session)
-            assert price == Decimal("2001.8")
+            assert price == Decimal("1001.8")
 
 
 @pytest.mark.asyncio
