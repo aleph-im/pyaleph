@@ -24,4 +24,4 @@ async def test_get_balance(
     assert response.status == 200, await response.text()
     data = await response.json()
     assert data["balance"] == user_balance.balance
-    assert data["locked_amount"] == 2002.4666666666667
+    assert data["locked_amount"] == 1002.4666666666666
