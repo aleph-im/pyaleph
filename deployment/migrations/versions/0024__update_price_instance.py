@@ -6,6 +6,7 @@ Create Date: 2024-11-18 14:13:33.677379
 
 """
 from alembic import op
+import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
@@ -16,6 +17,8 @@ depends_on = None
 
 
 def upgrade() -> None:
+    op.add_column('vms', sa.Column('payment_type', sa.String(), nullable=True))
+
     op.execute(
         """
         CREATE OR REPLACE VIEW vm_costs_view AS
@@ -64,7 +67,8 @@ def upgrade() -> None:
                                        free_disk.included_disk_space,
                                        0::double precision) AS additional_disk_space) additional_disk,
              LATERAL ( SELECT CASE
-                                  WHEN COALESCE(persistent, true) 
+                                  WHEN vms.payment_type = 'superfluid' THEN 0
+                                  WHEN COALESCE(persistent, true)
                                     AND environment_trusted_execution_policy IS NOT NULL 
                                     AND environment_trusted_execution_firmware IS NOT NULL THEN 2000
                                   WHEN COALESCE(persistent, true) THEN 1000
@@ -76,14 +80,20 @@ def upgrade() -> None:
                                   END AS compute_unit_price_multiplier) m,
              LATERAL ( SELECT cu.compute_units_required * m.compute_unit_price_multiplier::double precision *
                               bcp.base_compute_unit_price::double precision AS compute_unit_price) cpm,
-             LATERAL ( SELECT additional_disk.additional_disk_space / 20::double precision /
-                              (1024 * 1024)::double precision AS disk_price) adp,
+             LATERAL ( SELECT CASE
+                        WHEN vms.payment_type = 'superfluid' THEN 0
+                        ELSE additional_disk.additional_disk_space / 20::double precision / (1024 * 1024)::double precision
+                        END AS disk_price
+             ) adp,
              LATERAL ( SELECT cpm.compute_unit_price + adp.disk_price AS total_price) tp
         """
+
     )
 
 
 def downgrade() -> None:
+    op.drop_column('vms', 'payment_type')
+
     op.execute(
         """
         CREATE OR REPLACE VIEW vm_costs_view AS
