@@ -14,7 +14,6 @@ from aleph_message.models import (
     ItemHash,
     ItemType,
     MessageType,
-    Payment,
     PaymentType,
 )
 from aleph_message.models.execution.program import (
@@ -39,11 +38,9 @@ from aleph.db.models import (
     PersistentVolumeDb,
     StoredFileDb,
 )
-from aleph.handlers.content.vm import _get_vm_content
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.services.cost import (
     compute_cost,
-    compute_flow_cost,
     get_additional_storage_price,
     get_volume_size,
 )
