@@ -18,7 +18,7 @@ async def incoming_channel(
     LOGGER.debug("incoming channel started...")
 
     await p2p_client.subscribe(topic)
-    seen_hashes = deque([], maxlen=200000)
+    seen_hashes: deque = deque([], maxlen=200000)
 
     while True:
         try:
