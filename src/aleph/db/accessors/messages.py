@@ -125,9 +125,10 @@ def make_matching_messages_query(
             select(
                 message_confirmations.c.item_hash,
                 func.min(ChainTxDb.datetime).label("earliest_confirmation"),
+                ChainTxDb.height,
             )
             .join(ChainTxDb, message_confirmations.c.tx_hash == ChainTxDb.hash)
-            .group_by(message_confirmations.c.item_hash)
+            .group_by(message_confirmations.c.item_hash, ChainTxDb.height)
         ).subquery()
         select_stmt = select_stmt.join(
             select_earliest_confirmation,
