@@ -23,6 +23,7 @@ from aleph.schemas.api.messages import (
     AlephMessage,
     ForgottenMessage,
     ForgottenMessageStatus,
+    MessageStatusInfo,
     MessageWithStatus,
     PendingMessage,
     PendingMessageStatus,
@@ -558,3 +559,20 @@ async def view_message_content(request: web.Request):
 
     content = message_with_status.message.content.content
     return web.json_response(text=json.dumps(content))
+
+
+async def view_message_status(request: web.Request):
+    item_hash_str = request.match_info.get("item_hash")
+    if not item_hash_str:
+        raise web.HTTPUnprocessableEntity(text=f"Invalid message hash: {item_hash_str}")
+
+    item_hash = ItemHash(item_hash_str)
+
+    session_factory: DbSessionFactory = request.app["session_factory"]
+    with session_factory() as session:
+        message_status = get_message_status(session=session, item_hash=item_hash)
+        if message_status is None:
+            raise web.HTTPNotFound()
+
+    status_info = MessageStatusInfo.from_orm(message_status)
+    return web.json_response(text=status_info.json())

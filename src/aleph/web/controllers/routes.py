@@ -50,6 +50,9 @@ def register_routes(app: web.Application):
     app.router.add_get(
         "/api/v0/messages/{item_hash}/content", messages.view_message_content
     )
+    app.router.add_get(
+        "/api/v0/messages/{item_hash}/status", messages.view_message_status
+    )
     app.router.add_get("/api/v0/messages/page/{page}.json", messages.view_messages_list)
     app.router.add_get("/api/ws0/messages", messages.messages_ws)
 

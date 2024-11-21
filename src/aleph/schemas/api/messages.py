@@ -204,6 +204,12 @@ class RejectedMessageStatus(BaseMessageStatus):
     details: Any
 
 
+class MessageStatusInfo(BaseMessageStatus):
+    class Config:
+        orm_mode = True
+        fields = {"item_hash": {"exclude": True}}
+
+
 MessageWithStatus = Union[
     PendingMessageStatus,
     ProcessedMessageStatus,
