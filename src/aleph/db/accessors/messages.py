@@ -138,8 +138,7 @@ def make_matching_messages_query(
         if start_block:
             select_stmt = select_stmt.where(
                 select_earliest_confirmation.c.height.is_(None)
-                | select_earliest_confirmation.c.height
-                >= start_block
+                | (select_earliest_confirmation.c.height >= start_block)
             )
         if end_block:
             select_stmt = select_stmt.where(
