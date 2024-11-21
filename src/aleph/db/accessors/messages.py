@@ -118,7 +118,7 @@ def make_matching_messages_query(
     if channels:
         select_stmt = select_stmt.where(MessageDb.channel.in_(channels))
 
-    order_by_columns: Tuple  # For mypy to leave us alone until SQLA2
+    order_by_columns: Tuple = ()  # For mypy to leave us alone until SQLA2
 
     if sort_by == SortBy.TX_TIME or start_block or end_block:
         select_earliest_confirmation = (
