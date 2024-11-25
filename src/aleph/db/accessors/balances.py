@@ -4,10 +4,10 @@ from typing import Dict, Mapping, Optional, Sequence
 
 from aleph_message.models import Chain
 from sqlalchemy import func, select
+from sqlalchemy.sql import Select
 
 from aleph.db.models import AlephBalanceDb
 from aleph.types.db_session import DbSession
-from aleph.types.sort_order import SortOrder
 
 
 def get_balance_by_chain(
@@ -28,8 +28,7 @@ def make_balances_by_chain_query(
     page: int = 1,
     pagination: int = 100,
     min_balance: int = 0,
-    sort_order: SortOrder = SortOrder.DESCENDING,
-) -> Dict[str, Decimal]:
+) -> Select:
     query = select(AlephBalanceDb.address, AlephBalanceDb.balance, AlephBalanceDb.chain)
 
     if chains:
@@ -38,11 +37,6 @@ def make_balances_by_chain_query(
     if min_balance > 0:
         query = query.filter(AlephBalanceDb.balance >= min_balance)
 
-    if sort_order == SortOrder.DESCENDING:
-        query = query.order_by(AlephBalanceDb.balance.desc())
-    else:
-        query = query.order_by(AlephBalanceDb.balance.asc())
-
     query = query.offset((page - 1) * pagination)
 
     # If pagination == 0, return all matching results
@@ -50,9 +44,6 @@ def make_balances_by_chain_query(
         query = query.limit(pagination)
 
     return query
-
-    # result = session.execute(query).all()
-    # return {row.address: row.balance for row in result}
 
 
 def get_balances_by_chain(session: DbSession, **kwargs):

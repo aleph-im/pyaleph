@@ -51,11 +51,6 @@ class GetBalancesChainsQueryParams(BaseModel):
     page: int = Field(
         default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
     )
-    sort_order: SortOrder = Field(
-        default=SortOrder.DESCENDING,
-        description="Order in which files should be listed: "
-        "-1 means most recent messages first, 1 means older messages first.",
-    )
     min_balance: int = Field(default=0, ge=1, description="Minimum Balance needed")
 
     @validator("chains", pre=True)
