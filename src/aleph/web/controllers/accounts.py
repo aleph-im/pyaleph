@@ -120,7 +120,7 @@ async def get_chain_balances(request: web.Request) -> web.Response:
         )
 
     address_balances = [
-        AddressBalanceResponse(address=address, balance=balance)
+        AddressBalanceResponse(address=address, balance=str(balance))
         for address, balance in balances.items()
     ]
 
