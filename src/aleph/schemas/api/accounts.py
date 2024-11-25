@@ -71,6 +71,7 @@ class AddressBalanceResponse(BaseModel):
 
     address: str
     balance: str
+    chain: Chain
 
 
 class GetAccountFilesResponseItem(BaseModel):

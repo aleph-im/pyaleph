@@ -30,7 +30,7 @@ def make_balances_by_chain_query(
     min_balance: int = 0,
     sort_order: SortOrder = SortOrder.DESCENDING,
 ) -> Dict[str, Decimal]:
-    query = select(AlephBalanceDb.address, AlephBalanceDb.balance)
+    query = select(AlephBalanceDb.address, AlephBalanceDb.balance, AlephBalanceDb.chain)
 
     if chains:
         query = query.where(AlephBalanceDb.chain.in_(chains))
