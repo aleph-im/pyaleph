@@ -3,10 +3,12 @@ from itertools import groupby
 from typing import Any, Dict, List
 
 from aiohttp import web
-from aleph_message.models import Chain, MessageType
+from aleph_message.models import MessageType
 from pydantic import ValidationError, parse_obj_as
 
+import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.balances import (
+    count_balances_by_chain,
     get_balances_by_chain,
     get_total_detailed_balance,
 )
@@ -21,10 +23,8 @@ from aleph.schemas.api.accounts import (
     GetAccountFilesResponseItem,
     GetAccountQueryParams,
     GetBalancesChainsQueryParams,
-    GetChainsBalanceResponse,
 )
 from aleph.types.db_session import DbSessionFactory
-from aleph.types.sort_order import SortOrder
 from aleph.web.controllers.app_state_getters import get_session_factory_from_request
 
 
@@ -97,36 +97,31 @@ async def get_account_balance(request: web.Request):
 
 async def get_chain_balances(request: web.Request) -> web.Response:
     try:
-        query_params = GetBalancesChainsQueryParams(**request.query)
+        query_params = GetBalancesChainsQueryParams.parse_obj(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 
-    chain_name = request.match_info.get("chain")
-    try:
-        chain: Chain = Chain(chain_name.upper())
-    except ValueError:
-        raise web.HTTPUnprocessableEntity(text="Chain not valid")
+    find_filters = query_params.dict(exclude_none=True)
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
-
     with session_factory() as session:
-        balances = get_balances_by_chain(
-            session,
-            chain=chain,
-            page=query_params.page,
-            page_size=query_params.pagination,
-            min_balance=query_params.min_balance,
-            order="desc" if query_params.sort_order == SortOrder.DESCENDING else "asc",
-        )
+        balances = get_balances_by_chain(session, **find_filters)
 
-    address_balances = [
-        AddressBalanceResponse(address=address, balance=str(balance))
-        for address, balance in balances.items()
-    ]
+        formatted_balances = [AddressBalanceResponse.from_orm(b) for b in balances]
 
-    response_model = GetChainsBalanceResponse(balances=address_balances)
+        total_balances = count_balances_by_chain(session, **find_filters)
 
-    return web.json_response(response_model.dict())
+        pagination_page = query_params.page
+        pagination_per_page = query_params.pagination
+        response = {
+            "balances": formatted_balances,
+            "pagination_per_page": pagination_per_page,
+            "pagination_page": pagination_page,
+            "pagination_total": total_balances,
+            "pagination_item": "balances",
+        }
+
+        return web.json_response(text=aleph_json.dumps(response).decode("utf-8"))
 
 
 async def get_account_files(request: web.Request) -> web.Response:

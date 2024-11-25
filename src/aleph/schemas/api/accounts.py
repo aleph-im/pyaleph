@@ -3,11 +3,11 @@ from decimal import Decimal
 from typing import Dict, List, Optional
 
 from aleph_message.models import Chain
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 
 from aleph.types.files import FileType
 from aleph.types.sort_order import SortOrder
-from aleph.web.controllers.utils import DEFAULT_PAGE
+from aleph.web.controllers.utils import DEFAULT_PAGE, LIST_FIELD_SEPARATOR
 
 
 class GetAccountQueryParams(BaseModel):
@@ -40,6 +40,9 @@ class GetAccountFilesQueryParams(BaseModel):
 
 
 class GetBalancesChainsQueryParams(BaseModel):
+    chains: Optional[List[Chain]] = Field(
+        default=None, description="Accepted values for the 'chain' field."
+    )
     pagination: int = Field(
         default=100,
         ge=0,
@@ -55,14 +58,19 @@ class GetBalancesChainsQueryParams(BaseModel):
     )
     min_balance: int = Field(default=0, ge=1, description="Minimum Balance needed")
 
+    @validator("chains", pre=True)
+    def split_str(cls, v):
+        if isinstance(v, str):
+            return v.split(LIST_FIELD_SEPARATOR)
+        return v
+
 
 class AddressBalanceResponse(BaseModel):
+    class Config:
+        orm_mode = True
+
     address: str
     balance: str
-
-
-class GetChainsBalanceResponse(BaseModel):
-    balances: List[AddressBalanceResponse]
 
 
 class GetAccountFilesResponseItem(BaseModel):

@@ -1,12 +1,13 @@
 from decimal import Decimal
 from io import StringIO
-from typing import Dict, Mapping, Optional
+from typing import Dict, Mapping, Optional, Sequence
 
 from aleph_message.models import Chain
 from sqlalchemy import func, select
 
 from aleph.db.models import AlephBalanceDb
 from aleph.types.db_session import DbSession
+from aleph.types.sort_order import SortOrder
 
 
 def get_balance_by_chain(
@@ -21,31 +22,50 @@ def get_balance_by_chain(
     ).scalar()
 
 
-def get_balances_by_chain(
+def make_balances_by_chain_query(
     session: DbSession,
-    chain: Chain,
+    chains: Optional[Sequence[Chain]] = None,
     page: int = 1,
-    page_size: int = 100,
+    pagination: int = 100,
     min_balance: int = 0,
-    order: str = "desc",
+    sort_order: SortOrder = SortOrder.DESCENDING,
 ) -> Dict[str, Decimal]:
-    query = select(AlephBalanceDb.address, AlephBalanceDb.balance).filter(
-        AlephBalanceDb.chain == chain.value
-    )
+    query = select(AlephBalanceDb.address, AlephBalanceDb.balance)
+
+    if chains:
+        query = query.where(AlephBalanceDb.chain.in_(chains))
 
     if min_balance > 0:
         query = query.filter(AlephBalanceDb.balance >= min_balance)
 
-    if order == "desc":
+    if sort_order == SortOrder.DESCENDING:
         query = query.order_by(AlephBalanceDb.balance.desc())
     else:
         query = query.order_by(AlephBalanceDb.balance.asc())
 
-    query = query.offset((page - 1) * page_size).limit(page_size)
+    query = query.offset((page - 1) * pagination)
 
-    result = session.execute(query).all()
+    # If pagination == 0, return all matching results
+    if pagination:
+        query = query.limit(pagination)
 
-    return {row.address: row.balance for row in result}
+    return query
+
+    # result = session.execute(query).all()
+    # return {row.address: row.balance for row in result}
+
+
+def get_balances_by_chain(session: DbSession, **kwargs):
+    select_stmt = make_balances_by_chain_query(session=session, **kwargs)
+    return (session.execute(select_stmt)).all()
+
+
+def count_balances_by_chain(session: DbSession, pagination: int = 0, **kwargs):
+    select_stmt = make_balances_by_chain_query(
+        session=session, pagination=0, **kwargs
+    ).subquery()
+    select_count_stmt = select(func.count()).select_from(select_stmt)
+    return session.execute(select_count_stmt).scalar_one()
 
 
 def get_total_balance(
@@ -155,9 +175,9 @@ def update_balances(
     session.execute(
         """
         INSERT INTO balances(address, chain, dapp, balance, eth_height)
-            (SELECT address, chain, dapp, balance, eth_height FROM temp_balances) 
-            ON CONFLICT ON CONSTRAINT balances_address_chain_dapp_uindex DO UPDATE 
-            SET balance = excluded.balance, eth_height = excluded.eth_height 
+            (SELECT address, chain, dapp, balance, eth_height FROM temp_balances)
+            ON CONFLICT ON CONSTRAINT balances_address_chain_dapp_uindex DO UPDATE
+            SET balance = excluded.balance, eth_height = excluded.eth_height
             WHERE excluded.eth_height > balances.eth_height
         """  # type: ignore[arg-type]
     )
