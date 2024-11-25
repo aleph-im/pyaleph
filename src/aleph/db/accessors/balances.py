@@ -21,6 +21,33 @@ def get_balance_by_chain(
     ).scalar()
 
 
+def get_balances_by_chain(
+    session: DbSession,
+    chain: Chain,
+    page: int = 1,
+    page_size: int = 100,
+    min_balance: int = 0,
+    order: str = "desc",
+) -> Dict[str, Decimal]:
+    query = select(AlephBalanceDb.address, AlephBalanceDb.balance).filter(
+        AlephBalanceDb.chain == chain.value
+    )
+
+    if min_balance > 0:
+        query = query.filter(AlephBalanceDb.balance >= min_balance)
+
+    if order == "desc":
+        query = query.order_by(AlephBalanceDb.balance.desc())
+    else:
+        query = query.order_by(AlephBalanceDb.balance.asc())
+
+    query = query.offset((page - 1) * page_size).limit(page_size)
+
+    result = session.execute(query).all()
+
+    return {row.address: row.balance for row in result}
+
+
 def get_total_balance(
     session: DbSession, address: str, include_dapps: bool = False
 ) -> Optional[Decimal]:

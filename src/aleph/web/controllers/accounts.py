@@ -3,21 +3,28 @@ from itertools import groupby
 from typing import Any, Dict, List
 
 from aiohttp import web
-from aleph_message.models import MessageType
+from aleph_message.models import Chain, MessageType
 from pydantic import ValidationError, parse_obj_as
 
-from aleph.db.accessors.balances import get_total_detailed_balance
+from aleph.db.accessors.balances import (
+    get_balances_by_chain,
+    get_total_detailed_balance,
+)
 from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import get_address_files_for_api, get_address_files_stats
 from aleph.db.accessors.messages import get_message_stats_by_address
 from aleph.schemas.api.accounts import (
+    AddressBalanceResponse,
     GetAccountBalanceResponse,
     GetAccountFilesQueryParams,
     GetAccountFilesResponse,
     GetAccountFilesResponseItem,
     GetAccountQueryParams,
+    GetBalancesChainsQueryParams,
+    GetChainsBalanceResponse,
 )
 from aleph.types.db_session import DbSessionFactory
+from aleph.types.sort_order import SortOrder
 from aleph.web.controllers.app_state_getters import get_session_factory_from_request
 
 
@@ -60,6 +67,13 @@ def _get_address_from_request(request: web.Request) -> str:
     return address
 
 
+def _get_chain_from_request(request: web.Request) -> str:
+    chain = request.match_info.get("chain")
+    if chain is None:
+        raise web.HTTPUnprocessableEntity(text="Chain must be specified.")
+    return chain
+
+
 async def get_account_balance(request: web.Request):
     address = _get_address_from_request(request)
 
@@ -79,6 +93,40 @@ async def get_account_balance(request: web.Request):
             address=address, balance=balance, locked_amount=total_cost, details=details
         ).json()
     )
+
+
+async def get_chain_balances(request: web.Request) -> web.Response:
+    try:
+        query_params = GetBalancesChainsQueryParams(**request.query)
+    except ValidationError as e:
+        raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
+
+    chain_name = request.match_info.get("chain")
+    try:
+        chain: Chain = Chain(chain_name.upper())
+    except ValueError:
+        raise web.HTTPUnprocessableEntity(text="Chain not valid")
+
+    session_factory: DbSessionFactory = get_session_factory_from_request(request)
+
+    with session_factory() as session:
+        balances = get_balances_by_chain(
+            session,
+            chain=chain,
+            page=query_params.page,
+            page_size=query_params.pagination,
+            min_balance=query_params.min_balance,
+            order="desc" if query_params.sort_order == SortOrder.DESCENDING else "asc",
+        )
+
+    address_balances = [
+        AddressBalanceResponse(address=address, balance=balance)
+        for address, balance in balances.items()
+    ]
+
+    response_model = GetChainsBalanceResponse(balances=address_balances)
+
+    return web.json_response(response_model.dict())
 
 
 async def get_account_files(request: web.Request) -> web.Response:

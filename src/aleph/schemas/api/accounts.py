@@ -39,6 +39,32 @@ class GetAccountFilesQueryParams(BaseModel):
     )
 
 
+class GetBalancesChainsQueryParams(BaseModel):
+    pagination: int = Field(
+        default=100,
+        ge=0,
+        description="Maximum number of files to return. Specifying 0 removes this limit.",
+    )
+    page: int = Field(
+        default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
+    )
+    sort_order: SortOrder = Field(
+        default=SortOrder.DESCENDING,
+        description="Order in which files should be listed: "
+        "-1 means most recent messages first, 1 means older messages first.",
+    )
+    min_balance: int = Field(default=0, ge=1, description="Minimum Balance needed")
+
+
+class AddressBalanceResponse(BaseModel):
+    address: str
+    balance: str
+
+
+class GetChainsBalanceResponse(BaseModel):
+    balances: List[AddressBalanceResponse]
+
+
 class GetAccountFilesResponseItem(BaseModel):
     file_hash: str
     size: int
