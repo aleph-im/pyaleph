@@ -85,7 +85,6 @@ urls.Homepage = "https://github.com/aleph-im/pyaleph"
 scripts.pyaleph = "aleph.commands:run"
 dependency_links = [
   "https://github.com/aleph-im/py-libp2p/tarball/0.1.4-1-use-set#egg=libp2p",
-  "https://github.com/aleph-im/aioipfs/tarball/hoh-more-exceptions#egg=aioipfs",
 ]
 
 [tool.hatch.metadata]
