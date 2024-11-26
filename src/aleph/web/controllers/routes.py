@@ -50,6 +50,9 @@ def register_routes(app: web.Application):
     app.router.add_get(
         "/api/v0/messages/{item_hash}/content", messages.view_message_content
     )
+    app.router.add_get(
+        "/api/v0/messages/{item_hash}/status", messages.view_message_status
+    )
     app.router.add_get("/api/v0/messages/page/{page}.json", messages.view_messages_list)
     app.router.add_get("/api/ws0/messages", messages.messages_ws)
 
@@ -67,6 +70,7 @@ def register_routes(app: web.Application):
     app.router.add_get(
         "/api/v0/addresses/{address}/balance", accounts.get_account_balance
     )
+    app.router.add_get("/api/v0/balances", accounts.get_chain_balances)
     app.router.add_get("/api/v0/addresses/{address}/files", accounts.get_account_files)
 
     app.router.add_post("/api/v0/ipfs/add_json", storage.add_ipfs_json_controller)
