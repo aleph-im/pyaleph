@@ -59,7 +59,7 @@ def make_account_state_query(
     type
     indexer
     account
-    accurate
+    completeHistory
     progress
     pending
     processed

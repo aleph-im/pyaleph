@@ -3,6 +3,7 @@ from decimal import Decimal
 from typing import List, Optional, Union
 
 from aleph_message.models import ExecutableContent, InstanceContent, ProgramContent
+from aleph_message.models.execution.environment import InstanceEnvironment
 from aleph_message.models.execution.instance import RootfsVolume
 from aleph_message.models.execution.volume import (
     EphemeralVolume,
@@ -20,9 +21,13 @@ MINUTE = 60
 HOUR = 60 * MINUTE
 
 COMPUTE_UNIT_TOKEN_TO_HOLD_ON_DEMAND = Decimal("200")
-COMPUTE_UNIT_TOKEN_TO_HOLD_PERSISTENT = Decimal("2000")
+COMPUTE_UNIT_TOKEN_TO_HOLD_PERSISTENT = Decimal("1000")
+COMPUTE_UNIT_TOKEN_TO_HOLD_PERSISTENT_CONF = Decimal("2000")
 COMPUTE_UNIT_PRICE_PER_HOUR_ON_DEMAND = Decimal("0.011")
-COMPUTE_UNIT_PRICE_PER_HOUR_PERSISTENT = Decimal("0.11")
+COMPUTE_UNIT_PRICE_PER_HOUR_PERSISTENT = Decimal("0.055")
+COMPUTE_UNIT_PRICE_PER_HOUR_PERSISTENT_CONF = Decimal("0.11")
+
+
 STORAGE_INCLUDED_PER_COMPUTE_UNIT_ON_DEMAND = Decimal("2") * GiB
 STORAGE_INCLUDED_PER_COMPUTE_UNIT_PERSISTENT = Decimal("20") * GiB
 
@@ -126,10 +131,20 @@ def _get_compute_unit_multiplier(content: ExecutableContent) -> int:
 
 def compute_cost(session: DbSession, content: ExecutableContent) -> Decimal:
     is_on_demand = isinstance(content, ProgramContent) and not content.on.persistent
+    is_confidential_vm = (
+        not is_on_demand
+        and isinstance(getattr(content, "environment", None), InstanceEnvironment)
+        and getattr(content.environment, "trusted_execution", False)
+    )
+
     compute_unit_cost = (
         COMPUTE_UNIT_TOKEN_TO_HOLD_ON_DEMAND
         if is_on_demand
-        else COMPUTE_UNIT_TOKEN_TO_HOLD_PERSISTENT
+        else (
+            COMPUTE_UNIT_TOKEN_TO_HOLD_PERSISTENT_CONF
+            if is_confidential_vm
+            else COMPUTE_UNIT_TOKEN_TO_HOLD_PERSISTENT
+        )
     )
 
     compute_units_required = _get_nb_compute_units(content)
@@ -145,10 +160,20 @@ def compute_cost(session: DbSession, content: ExecutableContent) -> Decimal:
 def compute_flow_cost(session: DbSession, content: ExecutableContent) -> Decimal:
     # TODO: Use PAYMENT_PRICING_AGGREGATE when possible
     is_on_demand = isinstance(content, ProgramContent) and not content.on.persistent
+    is_confidential_vm = (
+        not is_on_demand
+        and isinstance(getattr(content, "environment", None), InstanceEnvironment)
+        and getattr(content.environment, "trusted_execution", False)
+    )
+
     compute_unit_cost_hour = (
         COMPUTE_UNIT_PRICE_PER_HOUR_ON_DEMAND
         if is_on_demand
-        else COMPUTE_UNIT_PRICE_PER_HOUR_PERSISTENT
+        else (
+            COMPUTE_UNIT_PRICE_PER_HOUR_PERSISTENT_CONF
+            if is_confidential_vm
+            else COMPUTE_UNIT_PRICE_PER_HOUR_PERSISTENT
+        )
     )
 
     compute_unit_cost_second = compute_unit_cost_hour / HOUR

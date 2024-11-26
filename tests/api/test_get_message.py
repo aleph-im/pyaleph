@@ -24,6 +24,7 @@ from aleph.types.db_session import DbSessionFactory
 from aleph.types.message_status import ErrorCode, MessageStatus
 
 MESSAGE_URI = "/api/v0/messages/{}"
+MESSAGE_CONTENT_URI = "/api/v0/messages/{}/content"
 
 
 RECEPTION_DATETIME = pytz.utc.localize(dt.datetime(2023, 1, 1))
@@ -100,7 +101,26 @@ def fixture_messages_with_status(
             size=154,
             time=timestamp_to_datetime(1645794065.439),
             channel=Channel("TEST"),
-        )
+        ),
+        MessageDb(
+            item_hash="f3b24727335e34016247c0d37e2b0203bb8c2d76deddafc1700b4cf0e13845c6",
+            chain=Chain.ETH,
+            sender="0xB68B9D4f3771c246233823ed1D3Add451055F9Ef",
+            signature="0xabfa661aab1a9f58955940ea213387de4773f8b1f244c2236cd4ac5ba7bf2ba902e17074bc4b289ba200807bb40951f4249668b055dc15af145b8842ecfad0601c",
+            item_type=ItemType.storage,
+            type=MessageType.post,
+            item_content=None,
+            content={
+                "address": "0xB68B9D4f3771c246233823ed1D3Add451055F9Ef",
+                "time": 1645794065.439,
+                "type": "content-test",
+                "content": {"test": "value"},
+                "ref": "None",
+            },
+            size=154,
+            time=timestamp_to_datetime(1645794065.439),
+            channel=Channel("TEST"),
+        ),
     ]
 
     forgotten_messages = [
@@ -190,6 +210,20 @@ async def test_get_processed_message_status(
         assert parsed_response.message.item_content == processed_message.item_content
         assert response_json["message"]["content"] == processed_message.content
         assert parsed_response.message.time == processed_message.time
+
+
+@pytest.mark.asyncio
+async def test_get_processed_message_content(
+    fixture_messages_with_status: Mapping[MessageStatus, Sequence[Any]], ccn_api_client
+):
+    for processed_message in fixture_messages_with_status[MessageStatus.PROCESSED]:
+        if processed_message.type == MessageType.post:
+            response = await ccn_api_client.get(
+                MESSAGE_CONTENT_URI.format(processed_message.item_hash)
+            )
+            assert response.status == 200, await response.text()
+            response_json = await response.json()
+            assert response_json == processed_message.content["content"]
 
 
 @pytest.mark.asyncio

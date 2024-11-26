@@ -38,7 +38,7 @@ class AccountEntityState(BaseModel):
     type: EntityType
     indexer: str
     account: str
-    accurate: bool
+    completeHistory: bool
     progress: float
     pending: List[Tuple[dt.datetime, dt.datetime]]
     processed: List[Tuple[dt.datetime, dt.datetime]]
