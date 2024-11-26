@@ -214,6 +214,29 @@ def test_compute_cost(fixture_hold_instance_message):
     mock = Mock()
     mock.patch("_get_file_from_ref", return_value=file_db)
     cost = compute_cost(content=fixture_hold_instance_message, session=DbSession())
+    assert cost == 1000
+
+
+def test_compute_cost_conf(fixture_hold_instance_message):
+    message_dict = fixture_hold_instance_message.dict()
+
+    # Convert the message to conf
+    message_dict["environment"].update(
+        {
+            "hypervisor": "qemu",  # Add qemu to the environment
+            "trusted_execution": {
+                "policy": 1,
+                "firmware": "e258d248fda94c63753607f7c4494ee0fcbe92f1a76bfdac795c9d84101eb317",
+            },
+        }
+    )
+
+    rebuilt_message = InstanceContent.parse_obj(message_dict)
+
+    file_db = StoredFileDb()
+    mock = Mock()
+    mock.patch("_get_file_from_ref", return_value=file_db)
+    cost = compute_cost(content=rebuilt_message, session=DbSession())
     assert cost == 2000
 
 
@@ -234,7 +257,7 @@ def test_compute_cost_complete(fixture_hold_instance_message_complete):
     cost = compute_cost(
         content=fixture_hold_instance_message_complete, session=DbSession()
     )
-    assert cost == 2017.50
+    assert cost == 1017.50
 
 
 def test_compute_flow_cost(fixture_flow_instance_message):
@@ -242,6 +265,32 @@ def test_compute_flow_cost(fixture_flow_instance_message):
     mock = Mock()
     mock.patch("_get_file_from_ref", return_value=file_db)
     cost = compute_flow_cost(content=fixture_flow_instance_message, session=DbSession())
+    assert cost == Decimal("0.00001527777777777777777777777778")
+    cost_per_hour = cost * HOUR
+    assert cost_per_hour == Decimal("0.05500000000000000000000000001")
+
+
+def test_compute_flow_cost_conf(fixture_flow_instance_message):
+    message_dict = fixture_flow_instance_message.dict()
+
+    # Convert the message to conf
+    message_dict["environment"].update(
+        {
+            "hypervisor": "qemu",  # Add qemu to the environment
+            "trusted_execution": {
+                "policy": 1,
+                "firmware": "e258d248fda94c63753607f7c4494ee0fcbe92f1a76bfdac795c9d84101eb317",
+            },
+        }
+    )
+
+    rebuilt_message = InstanceContent.parse_obj(message_dict)
+
+    # Proceed with the test
+    file_db = StoredFileDb()
+    mock = Mock()
+    mock.patch("_get_file_from_ref", return_value=file_db)
+    cost = compute_flow_cost(content=rebuilt_message, session=DbSession())
     assert cost == Decimal("0.00003055555555555555555555555556")
     cost_per_hour = cost * HOUR
     assert cost_per_hour == Decimal("0.11")
@@ -254,6 +303,6 @@ def test_compute_flow_cost_complete(fixture_flow_instance_message_complete):
     cost = compute_flow_cost(
         content=fixture_flow_instance_message_complete, session=DbSession()
     )
-    assert cost == Decimal("0.00004752116055555555555555555556")
+    assert cost == Decimal("0.00003224338277777777777777777778")
     cost_per_hour = cost * HOUR
-    assert cost_per_hour == Decimal("0.171076178")
+    assert cost_per_hour == Decimal("0.116076178")

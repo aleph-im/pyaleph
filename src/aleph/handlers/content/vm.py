@@ -2,7 +2,13 @@ import logging
 from decimal import Decimal
 from typing import List, Protocol, Set, Union, overload
 
-from aleph_message.models import ExecutableContent, InstanceContent, ProgramContent
+from aleph_message.models import (
+    ExecutableContent,
+    InstanceContent,
+    Payment,
+    PaymentType,
+    ProgramContent,
+)
 from aleph_message.models.execution.instance import RootfsVolume
 from aleph_message.models.execution.volume import (
     AbstractVolume,
@@ -90,6 +96,7 @@ def _map_content_to_db_model(item_hash: str, content: ProgramContent) -> Program
 
 def _map_content_to_db_model(item_hash, content):
     db_cls = ProgramDb if isinstance(content, ProgramContent) else VmInstanceDb
+    payment_type = PaymentType.hold
 
     volumes = [map_volume(volume) for volume in content.volumes]
 
@@ -117,6 +124,10 @@ def _map_content_to_db_model(item_hash, content):
         if safe_getattr(content, "requirements.node.node_hash") is not None:
             node_hash = content.requirements.node.node_hash
 
+    if isinstance(content.payment, Payment):
+        if content.payment.type is not None:
+            payment_type = content.payment.type
+
     return db_cls(
         owner=content.address,
         item_hash=item_hash,
@@ -139,6 +150,7 @@ def _map_content_to_db_model(item_hash, content):
         volumes=volumes,
         created=timestamp_to_datetime(content.time),
         node_hash=node_hash,
+        payment_type=payment_type,
     )
 
 
