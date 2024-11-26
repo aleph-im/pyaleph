@@ -22,7 +22,6 @@ async def incoming_channel(
 
     seen_hashes: Deque[tuple] = deque([], maxlen=200000)
 
-
     while True:
         try:
             async for message in p2p_client.receive_messages(topic):
