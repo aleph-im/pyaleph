@@ -138,6 +138,7 @@ class VmBaseDb(Base):
         String, nullable=True
     )
 
+    payment_type: Optional[str] = Column(String, nullable=True)
     resources_vcpus: int = Column(Integer, nullable=False)
     resources_memory: int = Column(Integer, nullable=False)
     resources_seconds: int = Column(Integer, nullable=False)

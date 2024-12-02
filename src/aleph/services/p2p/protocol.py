@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from collections import deque
-from typing import Deque
+from typing import Any
 
 from aleph_p2p_client import AlephP2PServiceClient
 
@@ -19,7 +19,7 @@ async def incoming_channel(
     LOGGER.debug("incoming channel started...")
 
     await p2p_client.subscribe(topic)
-    seen_hashes: Deque[tuple] = deque([], maxlen=200000)
+    seen_hashes: deque[tuple[Any, Any, Any]] = deque([], maxlen=200000)
 
     while True:
         try:
