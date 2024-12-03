@@ -126,6 +126,8 @@ def get_defaults():
             "archive_delay": 30,
             # Delay in seconds between blockchain message checks.
             "message_delay": 30,
+            # http client timeout, default 60s
+            "client_timeout": 60,
         },
         "tezos": {
             # Whether to fetch transactions from Tezos.
