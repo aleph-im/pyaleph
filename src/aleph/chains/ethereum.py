@@ -36,7 +36,12 @@ CHAIN_NAME = "ETH"
 
 
 def get_web3(config) -> Web3:
-    web3 = Web3(Web3.HTTPProvider(config.ethereum.api_url.value))
+    web3 = Web3(
+        Web3.HTTPProvider(
+            config.ethereum.api_url.value,
+            request_kwargs={"timeout": config.ethereum.client_timeout.value},
+        )
+    )
     if config.ethereum.chain_id.value == 4:  # rinkeby
         web3.middleware_onion.inject(geth_poa_middleware, layer=0)
     web3.middleware_onion.add(local_filter_middleware)
