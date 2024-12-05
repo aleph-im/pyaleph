@@ -107,7 +107,7 @@ class EthereumConnector(ChainWriter):
 
             if not logs:
                 LOGGER.info(
-                    f"No recent transactions, waiting {config.ethereum.archive_delay.value} seconds."
+                    f"No recent transaction, waiting {config.ethereum.archive_delay.value} seconds."
                 )
                 await asyncio.sleep(config.ethereum.archive_delay.value)
 
