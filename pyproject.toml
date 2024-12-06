@@ -26,7 +26,7 @@ dependencies = [
   "aiohttp==3.9.5",
   "aiohttp-cors==0.7",
   "aiohttp-jinja2==1.5",
-  "aioipfs @ git+https://github.com/aleph-im/aioipfs.git@d671c79b2871bb4d6c8877ba1e7f3ffbe7d20b71",
+  "aioipfs>=0.7.1",
   "alembic==1.12.1",
   "aleph-message==0.5",
   "aleph-nuls2==0.1",
