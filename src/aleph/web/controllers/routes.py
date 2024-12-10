@@ -46,6 +46,9 @@ def register_routes(app: web.Application):
     # Note that this endpoint is implemented in the p2p module out of simplicity because
     # of the large amount of code shared with pub_json.
     app.router.add_post("/api/v0/messages", p2p.pub_message)
+    app.router.add_get(
+        "/api/v0/messages/hashes", messages.view_message_hashes
+    )
     app.router.add_get("/api/v0/messages/{item_hash}", messages.view_message)
     app.router.add_get(
         "/api/v0/messages/{item_hash}/content", messages.view_message_content
