@@ -642,7 +642,6 @@ async def view_message_status(request: web.Request):
 
 
 async def view_message_hashes(request: web.Request):
-    print("run once?")
     try:
         query_params = MessageHashesQueryParams.parse_obj(request.query)
     except ValidationError as e:
