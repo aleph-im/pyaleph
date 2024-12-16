@@ -118,16 +118,17 @@ def make_matching_messages_query(
     if channels:
         select_stmt = select_stmt.where(MessageDb.channel.in_(channels))
 
-    order_by_columns: Tuple  # For mypy to leave us alone until SQLA2
+    order_by_columns: Tuple = ()  # For mypy to leave us alone until SQLA2
 
     if sort_by == SortBy.TX_TIME or start_block or end_block:
         select_earliest_confirmation = (
             select(
                 message_confirmations.c.item_hash,
                 func.min(ChainTxDb.datetime).label("earliest_confirmation"),
+                ChainTxDb.height,
             )
             .join(ChainTxDb, message_confirmations.c.tx_hash == ChainTxDb.hash)
-            .group_by(message_confirmations.c.item_hash)
+            .group_by(message_confirmations.c.item_hash, ChainTxDb.height)
         ).subquery()
         select_stmt = select_stmt.join(
             select_earliest_confirmation,
@@ -137,8 +138,7 @@ def make_matching_messages_query(
         if start_block:
             select_stmt = select_stmt.where(
                 select_earliest_confirmation.c.height.is_(None)
-                | select_earliest_confirmation.c.height
-                >= start_block
+                | (select_earliest_confirmation.c.height >= start_block)
             )
         if end_block:
             select_stmt = select_stmt.where(

@@ -511,7 +511,10 @@ async def view_message(request: web.Request):
     if not item_hash_str:
         raise web.HTTPUnprocessableEntity(text=f"Invalid message hash: {item_hash_str}")
 
-    item_hash = ItemHash(item_hash_str)
+    try:
+        item_hash = ItemHash(item_hash_str)
+    except ValueError:
+        raise web.HTTPBadRequest(body=f"Invalid message hash: {item_hash_str}")
 
     session_factory: DbSessionFactory = request.app["session_factory"]
     with session_factory() as session:
@@ -530,7 +533,10 @@ async def view_message_content(request: web.Request):
     if not item_hash_str:
         raise web.HTTPUnprocessableEntity(text=f"Invalid message hash: {item_hash_str}")
 
-    item_hash = ItemHash(item_hash_str)
+    try:
+        item_hash = ItemHash(item_hash_str)
+    except ValueError:
+        raise web.HTTPBadRequest(body=f"Invalid message hash: {item_hash_str}")
 
     session_factory: DbSessionFactory = request.app["session_factory"]
     with session_factory() as session:
@@ -566,7 +572,10 @@ async def view_message_status(request: web.Request):
     if not item_hash_str:
         raise web.HTTPUnprocessableEntity(text=f"Invalid message hash: {item_hash_str}")
 
-    item_hash = ItemHash(item_hash_str)
+    try:
+        item_hash = ItemHash(item_hash_str)
+    except ValueError:
+        raise web.HTTPBadRequest(body=f"Invalid message hash: {item_hash_str}")
 
     session_factory: DbSessionFactory = request.app["session_factory"]
     with session_factory() as session:

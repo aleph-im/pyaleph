@@ -106,8 +106,10 @@ class EthereumConnector(ChainWriter):
                 yield log
 
             if not logs:
-                LOGGER.info("No recent transactions, waiting 10 seconds.")
-                await asyncio.sleep(10)
+                LOGGER.info(
+                    f"No recent transaction, waiting {config.ethereum.archive_delay.value} seconds."
+                )
+                await asyncio.sleep(config.ethereum.archive_delay.value)
 
         except ValueError as e:
             # we got an error, let's try the pagination aware version.
@@ -130,8 +132,10 @@ class EthereumConnector(ChainWriter):
                         yield log
 
                     if not logs:
-                        LOGGER.info("Processed all transactions, waiting 10 seconds.")
-                        await asyncio.sleep(10)
+                        LOGGER.info(
+                            f"Processed all transactions, waiting {config.ethereum.archive_delay.value} seconds."
+                        )
+                        await asyncio.sleep(config.ethereum.archive_delay.value)
 
                     start_height = end_height + 1
                     end_height = start_height + 1000
@@ -243,8 +247,10 @@ class EthereumConnector(ChainWriter):
                     "relaunching Ethereum message sync in 10 seconds"
                 )
             else:
-                LOGGER.info("Processed all transactions, waiting 10 seconds.")
-            await asyncio.sleep(10)
+                LOGGER.info(
+                    f"Processed all transactions, waiting {config.ethereum.message_delay.value} seconds."
+                )
+            await asyncio.sleep(config.ethereum.message_delay.value)
 
     async def fetcher(self, config: Config):
         message_event_task = self.indexer_reader.fetcher(
