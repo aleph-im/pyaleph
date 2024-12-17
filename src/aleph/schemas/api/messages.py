@@ -210,6 +210,11 @@ class MessageStatusInfo(BaseMessageStatus):
         fields = {"item_hash": {"exclude": True}}
 
 
+class MessageHashes(BaseMessageStatus):
+    class Config:
+        orm_mode = True
+
+
 MessageWithStatus = Union[
     PendingMessageStatus,
     ProcessedMessageStatus,

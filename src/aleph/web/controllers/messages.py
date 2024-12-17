@@ -10,8 +10,10 @@ from pydantic import BaseModel, Field, ValidationError, root_validator, validato
 
 import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.messages import (
+    count_matching_hashes,
     count_matching_messages,
     get_forgotten_message,
+    get_matching_hashes,
     get_matching_messages,
     get_message_by_item_hash,
     get_message_status,
@@ -23,6 +25,7 @@ from aleph.schemas.api.messages import (
     AlephMessage,
     ForgottenMessage,
     ForgottenMessageStatus,
+    MessageHashes,
     MessageStatusInfo,
     MessageWithStatus,
     PendingMessage,
@@ -193,6 +196,57 @@ class WsMessageQueryParams(BaseMessageQueryParams):
         lt=200,
         description="Historical elements to send through the websocket.",
     )
+
+
+class MessageHashesQueryParams(BaseModel):
+    status: Optional[MessageStatus] = Field(
+        default=None,
+        description="Message status.",
+    )
+    page: int = Field(
+        default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
+    )
+    pagination: int = Field(
+        default=DEFAULT_MESSAGES_PER_PAGE,
+        ge=0,
+        description="Maximum number of messages to return. Specifying 0 removes this limit.",
+    )
+    start_date: float = Field(
+        default=0,
+        ge=0,
+        alias="startDate",
+        description="Start date timestamp. If specified, only messages with "
+        "a time field greater or equal to this value will be returned.",
+    )
+    end_date: float = Field(
+        default=0,
+        ge=0,
+        alias="endDate",
+        description="End date timestamp. If specified, only messages with "
+        "a time field lower than this value will be returned.",
+    )
+    sort_order: SortOrder = Field(
+        default=SortOrder.DESCENDING,
+        alias="sortOrder",
+        description="Order in which messages should be listed: "
+        "-1 means most recent messages first, 1 means older messages first.",
+    )
+    hash_only: bool = Field(
+        default=True,
+        description="By default, only hashes are returned. "
+        "Set this to false to include metadata alongside the hashes in the response.",
+    )
+
+    @root_validator
+    def validate_field_dependencies(cls, values):
+        start_date = values.get("start_date")
+        end_date = values.get("end_date")
+        if start_date and end_date and (end_date < start_date):
+            raise ValueError("end date cannot be lower than start date.")
+        return values
+
+    class Config:
+        allow_population_by_field_name = True
 
 
 def message_to_dict(message: MessageDb) -> Dict[str, Any]:
@@ -585,3 +639,35 @@ async def view_message_status(request: web.Request):
 
     status_info = MessageStatusInfo.from_orm(message_status)
     return web.json_response(text=status_info.json())
+
+
+async def view_message_hashes(request: web.Request):
+    try:
+        query_params = MessageHashesQueryParams.parse_obj(request.query)
+    except ValidationError as e:
+        raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
+
+    find_filters = query_params.dict(exclude_none=True)
+
+    pagination_page = query_params.page
+    pagination_per_page = query_params.pagination
+
+    session_factory = get_session_factory_from_request(request)
+    with session_factory() as session:
+        hashes = get_matching_hashes(session, **find_filters)
+
+        if find_filters["hash_only"]:
+            formatted_hashes = [h for h in hashes]
+        else:
+            formatted_hashes = [MessageHashes.from_orm(h) for h in hashes]
+
+        total_hashes = count_matching_hashes(session, **find_filters)
+        response = {
+            "hashes": formatted_hashes,
+            "pagination_per_page": pagination_per_page,
+            "pagination_page": pagination_page,
+            "pagination_total": total_hashes,
+            "pagination_item": "hashes",
+        }
+
+        return web.json_response(text=aleph_json.dumps(response).decode("utf-8"))
