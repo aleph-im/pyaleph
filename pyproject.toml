@@ -23,7 +23,7 @@ dependencies = [
   "aio-pika==9.5",
   "aiocache==0.12.2",
   "aiofiles==23.2.1",
-  "aiohttp==3.9.5",
+  "aiohttp==3.11.10",
   "aiohttp-cors==0.7",
   "aiohttp-jinja2==1.5",
   "aioipfs~=0.7.1",
