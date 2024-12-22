@@ -231,6 +231,8 @@ def filter_post_select_stmt(
         )
     if channels:
         select_stmt = select_stmt.where(literal_column("channel").in_(channels))
+    else:
+        select_stmt = select_stmt.where(literal_column("channel").is_not(None))
     if start_datetime:
         select_stmt = select_stmt.where(last_updated_column >= start_datetime)
     if end_datetime:

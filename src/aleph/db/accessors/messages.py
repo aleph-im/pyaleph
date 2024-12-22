@@ -117,6 +117,8 @@ def make_matching_messages_query(
         )
     if channels:
         select_stmt = select_stmt.where(MessageDb.channel.in_(channels))
+    else:
+        select_stmt = select_stmt.where(MessageDb.channel.is_not(None))
 
     order_by_columns: Tuple = ()  # For mypy to leave us alone until SQLA2
 
