@@ -40,19 +40,6 @@ Add your user to the Docker group
 
 Logout, and login again to apply the new group membership.
 
-Optional: Configure a firewall
-------------------------------
-
-A firewall can help you protect against unauthorized access on ports that should not be
-exposed publicly. This guide section shows how to use the `UFW <https://launchpad.net/ufw>`_
-simple and popular firewall.
-
-.. code-block:: bash
-
-    sudo apt install docker.io docker-compose gnupg2 pass ufw
-    sudo ufw allow 22,4001,4024,4025/tcp
-    sudo ufw allow 4001/udp
-
 2. Configuration
 ================
 
