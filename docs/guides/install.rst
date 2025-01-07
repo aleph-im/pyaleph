@@ -79,7 +79,7 @@ The endpoint should look like:
 
 Edit the `config.yml` file to add the endpoint URL in the field [ethereum > api_url].
 
-Sentry DNS
+Sentry DSN
 ^^^^^^^^^^
 
 `Sentry <https://sentry.io/>`_ can be used to track errors and receive alerts if an issue
