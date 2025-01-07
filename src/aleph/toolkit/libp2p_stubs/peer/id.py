@@ -3,6 +3,7 @@ from typing import Optional, Union
 
 import base58
 import multihash
+import multihash.funcs
 
 from aleph.toolkit.libp2p_stubs.crypto.keys import PublicKey
 
@@ -28,7 +29,7 @@ if ENABLE_INLINING:
         def digest(self) -> bytes:
             return self._digest
 
-    multihash.FuncReg.register(
+    multihash.funcs.FuncReg.register(
         IDENTITY_MULTIHASH_CODE, "identity", hash_new=lambda: IdentityHash()
     )
 
@@ -82,10 +83,10 @@ class ID:
     @classmethod
     def from_pubkey(cls, key: PublicKey) -> "ID":
         serialized_key = key.serialize()
-        algo = multihash.Func.sha2_256
+        algo = multihash.funcs.Func.sha2_256
         if ENABLE_INLINING and len(serialized_key) <= MAX_INLINE_KEY_LENGTH:
             algo = IDENTITY_MULTIHASH_CODE
-        mh_digest = multihash.digest(serialized_key, algo)
+        mh_digest = multihash.Multihash.digest(serialized_key, algo)
         return cls(mh_digest.encode())
 
 
