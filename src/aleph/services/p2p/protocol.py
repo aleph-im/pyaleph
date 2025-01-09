@@ -71,4 +71,4 @@ async def incoming_channel(
         except Exception:
             LOGGER.exception("Exception in pubsub, reconnecting.")
 
-        await asyncio.sleep(2)
+        await asyncio.sleep(0.1)
