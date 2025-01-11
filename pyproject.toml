@@ -30,7 +30,7 @@ dependencies = [
   "alembic==1.12.1",
   "aleph-message==0.6",
   "aleph-nuls2==0.1",
-  "aleph-p2p-client @ git+https://github.com/aleph-im/p2p-service-client-python@2c04af39c566217f629fd89505ffc3270fba8676",
+  "aleph-p2p-client @ git+https://github.com/aleph-im/p2p-service-client-python@cbfebb871db94b2ca580e66104a67cd730c5020c",
   "aleph-pytezos==3.13.4",
   "asyncpg==0.30",
   "base58>=1.0.3",
