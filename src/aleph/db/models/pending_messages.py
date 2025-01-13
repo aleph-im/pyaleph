@@ -85,7 +85,7 @@ class PendingMessageDb(Base):
         tx_hash: Optional[str] = None,
         check_message: bool = True,
         fetched: bool = False,
-        origin: Optional[MessageOrigin] = MessageOrigin.P2P
+        origin: Optional[MessageOrigin] = MessageOrigin.P2P,
     ) -> "PendingMessageDb":
 
         return cls(

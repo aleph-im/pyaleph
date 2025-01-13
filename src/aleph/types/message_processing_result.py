@@ -18,7 +18,12 @@ class MessageProcessingResult(Protocol):
 
 
 class ProcessedMessage(MessageProcessingResult):
-    def __init__(self, message: MessageDb, is_confirmation: bool = False, origin: Optional[MessageOrigin] = MessageOrigin.P2P):
+    def __init__(
+        self,
+        message: MessageDb,
+        is_confirmation: bool = False,
+        origin: Optional[MessageOrigin] = MessageOrigin.P2P,
+    ):
         self.message = message
         self.status = (
             MessageProcessingStatus.PROCESSED_CONFIRMATION

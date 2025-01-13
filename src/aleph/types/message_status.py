@@ -8,6 +8,7 @@ class MessageOrigin:
     P2P = "p2p"
     IPFS = "ipfs"
 
+
 class MessageStatus(str, Enum):
     PENDING = "pending"
     PROCESSED = "processed"

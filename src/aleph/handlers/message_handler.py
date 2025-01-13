@@ -43,7 +43,8 @@ from aleph.types.message_status import (
     InvalidMessageFormat,
     InvalidSignature,
     MessageContentUnavailable,
-    MessageStatus, MessageOrigin,
+    MessageStatus,
+    MessageOrigin,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -189,7 +190,8 @@ class MessagePublisher(BaseMessageHandler):
         process_or_fetch = "process" if pending_message.fetched else "fetch"
         if pending_message.origin != MessageOrigin.ONCHAIN:
             await self.pending_message_exchange.publish(
-                mq_message, routing_key=f"{process_or_fetch}.{pending_message.item_hash}"
+                mq_message,
+                routing_key=f"{process_or_fetch}.{pending_message.item_hash}",
             )
 
     async def add_pending_message(
@@ -198,7 +200,7 @@ class MessagePublisher(BaseMessageHandler):
         reception_time: dt.datetime,
         tx_hash: Optional[str] = None,
         check_message: bool = True,
-        origin: Optional[str] = MessageOrigin.P2P
+        origin: Optional[str] = MessageOrigin.P2P,
     ) -> Optional[PendingMessageDb]:
         # TODO: this implementation is just messy, improve it.
         with self.session_factory() as session:
@@ -397,7 +399,9 @@ class MessageHandler(BaseMessageHandler):
             session=session, pending_message=pending_message, message=message
         )
         await content_handler.process(session=session, messages=[message])
-        return ProcessedMessage(message=message, origin=pending_message.origin, is_confirmation=False)
+        return ProcessedMessage(
+            message=message, origin=pending_message.origin, is_confirmation=False
+        )
 
     async def check_permissions(self, session: DbSession, message: MessageDb):
         content_handler = self.get_content_handler(message.type)

@@ -69,7 +69,7 @@ class PendingTxProcessor(MqWatcher):
                     reception_time=utc_now(),
                     tx_hash=tx.hash,
                     check_message=tx.protocol != ChainSyncProtocol.SMART_CONTRACT,
-                    origin=MessageOrigin.ONCHAIN
+                    origin=MessageOrigin.ONCHAIN,
                 )
 
             # bogus or handled, we remove it.

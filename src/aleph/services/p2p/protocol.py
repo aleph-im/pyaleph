@@ -26,6 +26,13 @@ async def incoming_channel(
             async for message in p2p_client.receive_messages(topic):
                 try:
                     protocol, topic, peer_id = message.routing_key.split(".")
+                    LOGGER.info(
+                        "Received new %s message on topic %s from %s",
+                        protocol,
+                        topic,
+                        peer_id,
+                    )
+                    LOGGER.info("Received new message %r ", message)
                     LOGGER.debug(
                         "Received new %s message on topic %s from %s",
                         protocol,
