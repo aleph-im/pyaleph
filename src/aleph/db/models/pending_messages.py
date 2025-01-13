@@ -20,6 +20,7 @@ from sqlalchemy_utils.types.choice import ChoiceType
 from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.channel import Channel
+from aleph.types.message_status import MessageOrigin
 
 from .base import Base
 from .chains import ChainTxDb
@@ -65,6 +66,7 @@ class PendingMessageDb(Base):
     retries: int = Column(Integer, nullable=False)
     tx_hash: Optional[str] = Column(ForeignKey("chain_txs.hash"), nullable=True)
     fetched: bool = Column(Boolean, nullable=False)
+    origin: str = Column(String, nullable=True, default=MessageOrigin.P2P)
 
     __table_args__ = (
         CheckConstraint(

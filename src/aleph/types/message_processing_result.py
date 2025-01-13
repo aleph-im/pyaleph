@@ -1,12 +1,13 @@
-from typing import Any, Dict, Protocol
+from typing import Any, Dict, Protocol, Optional
 
 from aleph.db.models import MessageDb, PendingMessageDb
 from aleph.schemas.api.messages import format_message
-from aleph.types.message_status import ErrorCode, MessageProcessingStatus
+from aleph.types.message_status import ErrorCode, MessageProcessingStatus, MessageOrigin
 
 
 class MessageProcessingResult(Protocol):
     status: MessageProcessingStatus
+    origin: MessageOrigin
 
     @property
     def item_hash(self) -> str:
@@ -17,13 +18,14 @@ class MessageProcessingResult(Protocol):
 
 
 class ProcessedMessage(MessageProcessingResult):
-    def __init__(self, message: MessageDb, is_confirmation: bool = False):
+    def __init__(self, message: MessageDb, is_confirmation: bool = False, origin: Optional[MessageOrigin] = MessageOrigin.P2P):
         self.message = message
         self.status = (
             MessageProcessingStatus.PROCESSED_CONFIRMATION
             if is_confirmation
             else MessageProcessingStatus.PROCESSED_NEW_MESSAGE
         )
+        self.origin = origin
 
     @property
     def item_hash(self) -> str:

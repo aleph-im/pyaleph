@@ -26,6 +26,7 @@ from aleph.types.db_session import DbSessionFactory
 from aleph.types.message_processing_result import MessageProcessingResult
 
 from .job_utils import MessageJob, prepare_loop
+from ..types.message_status import MessageOrigin
 
 LOGGER = getLogger(__name__)
 
@@ -131,11 +132,12 @@ class PendingMessageProcessor(MessageJob):
     ) -> AsyncIterator[Sequence[MessageProcessingResult]]:
         async for processing_results in message_iterator:
             for result in processing_results:
-                mq_message = aio_pika.Message(body=aleph_json.dumps(result.to_dict()))
-                await self.mq_message_exchange.publish(
-                    mq_message,
-                    routing_key=f"{result.status.value}.{result.item_hash}",
-                )
+                if result.origin != MessageOrigin.ONCHAIN:
+                    mq_message = aio_pika.Message(body=aleph_json.dumps(result.to_dict()))
+                    await self.mq_message_exchange.publish(
+                        mq_message,
+                        routing_key=f"{result.status.value}.{result.item_hash}",
+                    )
 
             yield processing_results
 

@@ -27,6 +27,7 @@ from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.db_session import DbSessionFactory
 
 from .job_utils import MqWatcher, make_pending_tx_queue, prepare_loop
+from ..types.message_status import MessageOrigin
 
 LOGGER = logging.getLogger(__name__)
 
@@ -68,6 +69,7 @@ class PendingTxProcessor(MqWatcher):
                     reception_time=utc_now(),
                     tx_hash=tx.hash,
                     check_message=tx.protocol != ChainSyncProtocol.SMART_CONTRACT,
+                    origin=MessageOrigin.ONCHAIN
                 )
 
             # bogus or handled, we remove it.
