@@ -104,7 +104,7 @@ class PendingMessageDb(Base):
             tx_hash=tx_hash,
             reception_time=reception_time,
             fetched=fetched,
-            origin=str(origin),
+            origin=origin,
         )
 
     @classmethod
@@ -142,7 +142,7 @@ class PendingMessageDb(Base):
             retries=0,
             tx_hash=tx_hash,
             reception_time=reception_time,
-            origin=str(origin),
+            origin=origin,
         )
 
 
