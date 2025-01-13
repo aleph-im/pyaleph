@@ -187,9 +187,10 @@ class MessagePublisher(BaseMessageHandler):
     async def _publish_pending_message(self, pending_message: PendingMessageDb) -> None:
         mq_message = aio_pika.Message(body=f"{pending_message.id}".encode("utf-8"))
         process_or_fetch = "process" if pending_message.fetched else "fetch"
-        await self.pending_message_exchange.publish(
-            mq_message, routing_key=f"{process_or_fetch}.{pending_message.item_hash}"
-        )
+        if pending_message.origin != MessageOrigin.ONCHAIN:
+            await self.pending_message_exchange.publish(
+                mq_message, routing_key=f"{process_or_fetch}.{pending_message.item_hash}"
+            )
 
     async def add_pending_message(
         self,
@@ -220,6 +221,7 @@ class MessagePublisher(BaseMessageHandler):
                 reception_time=reception_time,
                 tx_hash=tx_hash,
                 check_message=check_message,
+                origin=origin,
             )
 
             try:
