@@ -26,8 +26,8 @@ from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.db_session import DbSessionFactory
 
-from .job_utils import MqWatcher, make_pending_tx_queue, prepare_loop
 from ..types.message_status import MessageOrigin
+from .job_utils import MqWatcher, make_pending_tx_queue, prepare_loop
 
 LOGGER = logging.getLogger(__name__)
 

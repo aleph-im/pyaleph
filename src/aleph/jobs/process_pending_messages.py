@@ -25,8 +25,8 @@ from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.message_processing_result import MessageProcessingResult
 
-from .job_utils import MessageJob, prepare_loop
 from ..types.message_status import MessageOrigin
+from .job_utils import MessageJob, prepare_loop
 
 LOGGER = getLogger(__name__)
 

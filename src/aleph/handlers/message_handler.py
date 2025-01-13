@@ -43,8 +43,8 @@ from aleph.types.message_status import (
     InvalidMessageFormat,
     InvalidSignature,
     MessageContentUnavailable,
-    MessageStatus,
     MessageOrigin,
+    MessageStatus,
 )
 
 LOGGER = logging.getLogger(__name__)

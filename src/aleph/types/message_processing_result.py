@@ -1,8 +1,8 @@
-from typing import Any, Dict, Protocol, Optional
+from typing import Any, Dict, Optional, Protocol
 
 from aleph.db.models import MessageDb, PendingMessageDb
 from aleph.schemas.api.messages import format_message
-from aleph.types.message_status import ErrorCode, MessageProcessingStatus, MessageOrigin
+from aleph.types.message_status import ErrorCode, MessageOrigin, MessageProcessingStatus
 
 
 class MessageProcessingResult(Protocol):
