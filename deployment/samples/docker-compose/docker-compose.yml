@@ -116,7 +116,7 @@ services:
       - IPFS_PROFILE=server
     networks:
       - pyaleph
-    command: ["daemon", "--enable-pubsub-experiment", "--migrate"]
+    command: ["daemon", "--enable-pubsub-experiment", "--migrate", "--enable-gc"]
 
 
 networks:
