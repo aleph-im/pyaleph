@@ -401,7 +401,11 @@ class MessageHandler(BaseMessageHandler):
         await content_handler.process(session=session, messages=[message])
         return ProcessedMessage(
             message=message,
-            origin=MessageOrigin(pending_message.origin),
+            origin=(
+                MessageOrigin(pending_message.origin)
+                if pending_message.origin
+                else None
+            ),
             is_confirmation=False,
         )
 
