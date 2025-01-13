@@ -66,7 +66,7 @@ class PendingMessageDb(Base):
     retries: int = Column(Integer, nullable=False)
     tx_hash: Optional[str] = Column(ForeignKey("chain_txs.hash"), nullable=True)
     fetched: bool = Column(Boolean, nullable=False)
-    origin: str = Column(String, nullable=True, default=MessageOrigin.P2P)
+    origin: Optional[str] = Column(String, nullable=True, default=MessageOrigin.P2P)
 
     __table_args__ = (
         CheckConstraint(
@@ -104,7 +104,7 @@ class PendingMessageDb(Base):
             tx_hash=tx_hash,
             reception_time=reception_time,
             fetched=fetched,
-            origin=origin,
+            origin=str(origin),
         )
 
     @classmethod
@@ -115,6 +115,7 @@ class PendingMessageDb(Base):
         fetched: bool,
         tx_hash: Optional[str] = None,
         check_message: bool = True,
+        origin: Optional[MessageOrigin] = MessageOrigin.P2P,
     ) -> "PendingMessageDb":
         """
         Utility function to translate Aleph message dictionaries, such as those returned by the API,
@@ -141,6 +142,7 @@ class PendingMessageDb(Base):
             retries=0,
             tx_hash=tx_hash,
             reception_time=reception_time,
+            origin=str(origin),
         )
 
 

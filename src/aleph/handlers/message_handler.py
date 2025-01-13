@@ -200,7 +200,7 @@ class MessagePublisher(BaseMessageHandler):
         reception_time: dt.datetime,
         tx_hash: Optional[str] = None,
         check_message: bool = True,
-        origin: Optional[str] = MessageOrigin.P2P,
+        origin: Optional[MessageOrigin] = MessageOrigin.P2P,
     ) -> Optional[PendingMessageDb]:
         # TODO: this implementation is just messy, improve it.
         with self.session_factory() as session:
@@ -400,7 +400,9 @@ class MessageHandler(BaseMessageHandler):
         )
         await content_handler.process(session=session, messages=[message])
         return ProcessedMessage(
-            message=message, origin=pending_message.origin, is_confirmation=False
+            message=message,
+            origin=MessageOrigin(pending_message.origin),
+            is_confirmation=False,
         )
 
     async def check_permissions(self, session: DbSession, message: MessageDb):

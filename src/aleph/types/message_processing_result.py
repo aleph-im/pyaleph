@@ -7,7 +7,7 @@ from aleph.types.message_status import ErrorCode, MessageOrigin, MessageProcessi
 
 class MessageProcessingResult(Protocol):
     status: MessageProcessingStatus
-    origin: MessageOrigin
+    origin: Optional[MessageOrigin] = None
 
     @property
     def item_hash(self) -> str:
@@ -22,7 +22,7 @@ class ProcessedMessage(MessageProcessingResult):
         self,
         message: MessageDb,
         is_confirmation: bool = False,
-        origin: Optional[MessageOrigin] = MessageOrigin.P2P,
+        origin: Optional[MessageOrigin] = None,
     ):
         self.message = message
         self.status = (

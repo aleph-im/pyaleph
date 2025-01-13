@@ -3,7 +3,7 @@ from enum import Enum, IntEnum
 from typing import Any, Dict, Optional, Sequence, Union
 
 
-class MessageOrigin:
+class MessageOrigin(str, Enum):
     ONCHAIN = "onchain"
     P2P = "p2p"
     IPFS = "ipfs"
