@@ -5,7 +5,6 @@ from typing import Any, Dict, Mapping, Optional
 import aio_pika.abc
 import psycopg2
 import sqlalchemy.exc
-
 from aleph_message.models import ItemHash, ItemType, MessageType
 from configmanager import Config
 from pydantic import ValidationError
