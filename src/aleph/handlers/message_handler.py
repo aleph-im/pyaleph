@@ -43,6 +43,7 @@ from aleph.types.message_status import (
     InvalidMessageFormat,
     InvalidSignature,
     MessageContentUnavailable,
+    MessageOrigin,
     MessageStatus,
 )
 
@@ -187,9 +188,11 @@ class MessagePublisher(BaseMessageHandler):
     async def _publish_pending_message(self, pending_message: PendingMessageDb) -> None:
         mq_message = aio_pika.Message(body=f"{pending_message.id}".encode("utf-8"))
         process_or_fetch = "process" if pending_message.fetched else "fetch"
-        await self.pending_message_exchange.publish(
-            mq_message, routing_key=f"{process_or_fetch}.{pending_message.item_hash}"
-        )
+        if pending_message.origin != MessageOrigin.ONCHAIN:
+            await self.pending_message_exchange.publish(
+                mq_message,
+                routing_key=f"{process_or_fetch}.{pending_message.item_hash}",
+            )
 
     async def add_pending_message(
         self,
@@ -197,6 +200,7 @@ class MessagePublisher(BaseMessageHandler):
         reception_time: dt.datetime,
         tx_hash: Optional[str] = None,
         check_message: bool = True,
+        origin: Optional[MessageOrigin] = MessageOrigin.P2P,
     ) -> Optional[PendingMessageDb]:
         # TODO: this implementation is just messy, improve it.
         with self.session_factory() as session:
@@ -219,6 +223,7 @@ class MessagePublisher(BaseMessageHandler):
                 reception_time=reception_time,
                 tx_hash=tx_hash,
                 check_message=check_message,
+                origin=origin,
             )
 
             try:
@@ -394,7 +399,15 @@ class MessageHandler(BaseMessageHandler):
             session=session, pending_message=pending_message, message=message
         )
         await content_handler.process(session=session, messages=[message])
-        return ProcessedMessage(message=message, is_confirmation=False)
+        return ProcessedMessage(
+            message=message,
+            origin=(
+                MessageOrigin(pending_message.origin)
+                if pending_message.origin
+                else None
+            ),
+            is_confirmation=False,
+        )
 
     async def check_permissions(self, session: DbSession, message: MessageDb):
         content_handler = self.get_content_handler(message.type)

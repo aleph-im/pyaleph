@@ -3,6 +3,12 @@ from enum import Enum, IntEnum
 from typing import Any, Dict, Optional, Sequence, Union
 
 
+class MessageOrigin(str, Enum):
+    ONCHAIN = "onchain"
+    P2P = "p2p"
+    IPFS = "ipfs"
+
+
 class MessageStatus(str, Enum):
     PENDING = "pending"
     PROCESSED = "processed"
