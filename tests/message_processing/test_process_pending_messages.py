@@ -12,7 +12,7 @@ from .load_fixtures import load_fixture_message
 
 
 @pytest.mark.asyncio
-async def test_pending_message(
+async def test_duplicated_pending_message(
     mocker,
     mock_config: Config,
     session_factory: DbSessionFactory,
