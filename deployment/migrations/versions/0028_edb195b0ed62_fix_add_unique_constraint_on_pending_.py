@@ -16,6 +16,7 @@ depends_on = None
 
 
 def upgrade() -> None:
+    op.execute("DELETE FROM pending_messages a USING pending_messages b WHERE a.id < b.id AND a.item_hash = b.item_hash;")
     op.create_unique_constraint('uq_pending_message', 'pending_messages', ['item_hash'])
 
 

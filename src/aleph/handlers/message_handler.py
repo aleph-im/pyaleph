@@ -256,8 +256,8 @@ class MessagePublisher(BaseMessageHandler):
                 session.execute(insert_pending_message_stmt)
                 session.commit()
             except sqlalchemy.exc.IntegrityError:
-                # Handle the unique constraint violation
-                LOGGER.warning(
+                # Handle the unique constraint violation and log as debug to avoid multiple errors.
+                LOGGER.debug(
                     "Duplicate pending message detected. Fetching existing record."
                 )
                 session.rollback()
