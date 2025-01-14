@@ -37,7 +37,7 @@ class PostQueryParams(BaseModel):
     )
     post_types: Optional[List[str]] = Field(
         default=None,
-        alias="types[]",
+        alias="types",
         description="Accepted values for the 'content.type' field.",
     )
     tags: Optional[List[str]] = Field(
