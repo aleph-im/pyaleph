@@ -5,6 +5,7 @@ from typing import Any, Dict, Mapping, Optional
 import aio_pika.abc
 import psycopg2
 import sqlalchemy.exc
+
 from aleph_message.models import ItemHash, ItemType, MessageType
 from configmanager import Config
 from pydantic import ValidationError
@@ -255,6 +256,24 @@ class MessagePublisher(BaseMessageHandler):
                 session.execute(upsert_message_status_stmt)
                 session.execute(insert_pending_message_stmt)
                 session.commit()
+            except sqlalchemy.exc.IntegrityError:
+                # Handle the unique constraint violation
+                LOGGER.warning(
+                    "Duplicate pending message detected. Fetching existing record."
+                )
+                session.rollback()
+                # Fetch the existing record
+                existing_message = (
+                    session.query(PendingMessageDb)
+                    .filter_by(
+                        sender=pending_message.sender,
+                        item_hash=pending_message.item_hash,
+                        signature=pending_message.signature,
+                    )
+                    .one_or_none()
+                )
+                if existing_message:
+                    return existing_message
 
             except (psycopg2.Error, sqlalchemy.exc.SQLAlchemyError) as e:
                 LOGGER.warning(

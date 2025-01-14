@@ -16,7 +16,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_unique_constraint('uq_pending_message', 'pending_messages', ['sender', 'item_hash', 'signature'])
+    op.create_unique_constraint('uq_pending_message', 'pending_messages', ['item_hash'])
 
 
 def downgrade() -> None:

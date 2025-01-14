@@ -74,7 +74,7 @@ class PendingMessageDb(Base):
             "signature is not null or not check_message",
             name="signature_not_null_if_check_message",
         ),
-        UniqueConstraint("sender", "item_hash", "signature", name="uq_pending_message"),
+        UniqueConstraint("item_hash", name="uq_pending_message"),
     )
 
     tx: Optional[ChainTxDb] = relationship("ChainTxDb")
