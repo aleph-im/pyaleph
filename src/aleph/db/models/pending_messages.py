@@ -12,6 +12,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
@@ -73,6 +74,7 @@ class PendingMessageDb(Base):
             "signature is not null or not check_message",
             name="signature_not_null_if_check_message",
         ),
+        UniqueConstraint("item_hash", name="uq_pending_message"),
     )
 
     tx: Optional[ChainTxDb] = relationship("ChainTxDb")
