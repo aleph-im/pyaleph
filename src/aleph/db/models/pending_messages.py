@@ -7,12 +7,12 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
-    UniqueConstraint,
     Column,
     ForeignKey,
     Index,
     Integer,
     String,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
