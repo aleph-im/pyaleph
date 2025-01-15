@@ -4,7 +4,7 @@ from typing import Iterable, Optional
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 
-from aleph.db.models.vms import ProgramDb, VmBaseDb, VmInstanceDb, VmVersionDb
+from aleph.db.models.vms import ProgramDb, VmBaseDb, VmInstanceDb, VmVersionDb, MachineVolumeBaseDb
 from aleph.types.db_session import DbSession
 from aleph.types.vms import VmVersion
 
@@ -48,6 +48,12 @@ def delete_vm_updates(session: DbSession, vm_hash: str) -> Iterable[str]:
 def get_vm_version(session: DbSession, vm_hash: str) -> Optional[VmVersionDb]:
     return session.execute(
         select(VmVersionDb).where(VmVersionDb.vm_hash == vm_hash)
+    ).scalar_one_or_none()
+
+
+def get_machine_volumes(session: DbSession, volume_hash: str) -> Optional[VmBaseDb]:
+    return session.execute(
+        select(MachineVolumeBaseDb).where(MachineVolumeBaseDb.ref == volume_hash)
     ).scalar_one_or_none()
 
 
