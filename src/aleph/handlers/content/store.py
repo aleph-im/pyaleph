@@ -25,6 +25,7 @@ from aleph.db.accessors.files import (
     upsert_file,
     upsert_file_tag,
 )
+from aleph.db.accessors.vms import get_machine_volumes
 from aleph.db.models import MessageDb
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.handlers.content.content_handler import ContentHandler
@@ -37,6 +38,7 @@ from aleph.types.message_status import (
     InvalidMessageFormat,
     PermissionDenied,
     StoreCannotUpdateStoreWithRef,
+    StoreForgetNotAllowed,
     StoreRefNotFound,
 )
 from aleph.utils import item_type_from_hash
@@ -227,6 +229,11 @@ class StoreMessageHandler(ContentHandler):
         if ref_file_pin_db.ref is not None:
             raise StoreCannotUpdateStoreWithRef()
 
+        # Check file references, like on VMs to block the deletion if we found ones
+        dependent_vms = get_machine_volumes(session=session, volume_hash=message.item_hash)
+        if dependent_vms is not None:
+            raise StoreForgetNotAllowed()
+
     async def check_permissions(self, session: DbSession, message: MessageDb):
         await super().check_permissions(session=session, message=message)
         content = _get_store_content(message)
@@ -317,6 +324,8 @@ class StoreMessageHandler(ContentHandler):
 
     async def forget_message(self, session: DbSession, message: MessageDb) -> Set[str]:
         content = _get_store_content(message)
+
+
 
         delete_file_pin(session=session, item_hash=message.item_hash)
         refresh_file_tag(

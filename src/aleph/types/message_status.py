@@ -52,6 +52,7 @@ class ErrorCode(IntEnum):
     FORGET_NO_TARGET = 500
     FORGET_TARGET_NOT_FOUND = 501
     FORGET_FORGET = 502
+    FORGET_NOT_ALLOWED = 503
 
 
 class MessageProcessingException(Exception):
@@ -200,6 +201,14 @@ class StoreCannotUpdateStoreWithRef(InvalidMessageException):
     """
 
     error_code = ErrorCode.STORE_UPDATE_UPDATE
+
+
+class StoreForgetNotAllowed(InvalidMessageException):
+    """
+    The original store message hash specified in the `ref` field could not be found.
+    """
+
+    error_code = ErrorCode.FORGET_NOT_ALLOWED
 
 
 class VmRefNotFound(RetryMessageException):
