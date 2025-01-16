@@ -34,7 +34,7 @@ def upgrade() -> None:
                additional_disk.additional_disk_space,
                adp.disk_price,
                tp.total_price,
-               ms.ms_status,
+               ms.ms_status
         FROM vm_versions
                  JOIN vms ON vm_versions.current_version::text = vms.item_hash::text
                  LEFT JOIN (SELECT volume.vm_hash,
@@ -51,7 +51,7 @@ def upgrade() -> None:
                        FROM vm_machine_volumes
                        GROUP BY vm_machine_volumes.vm_hash) other_volumes_size
                       ON vm_versions.current_version::text = other_volumes_size.vm_hash::text
-                 left join (select message_status.item_hash, message_status.status as ms_status from message_status) ms ON vm_versions.vm_hash = ms.item_hash,
+                 LEFT JOIN (select message_status.item_hash, message_status.status as ms_status from message_status) ms ON vm_versions.vm_hash = ms.item_hash,
              LATERAL ( SELECT file_volumes_size.file_volumes_size +
                               other_volumes_size.other_volumes_size::numeric AS required_disk_space) used_disk,
              LATERAL ( SELECT ceil(GREATEST(ceil((vms.resources_vcpus / 1)::double precision),
