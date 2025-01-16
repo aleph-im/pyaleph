@@ -203,10 +203,13 @@ class StoreCannotUpdateStoreWithRef(InvalidMessageException):
     error_code = ErrorCode.STORE_UPDATE_UPDATE
 
 
-class StoreForgetNotAllowed(InvalidMessageException):
+class ForgetNotAllowed(InvalidMessageException):
     """
-    The original store message hash specified in the `ref` field could not be found.
+    The store message targeted by the `ref` field has a value in the `ref` field of a dependent volume.
     """
+
+    def __init__(self, file_hash: str, vm_hash: str):
+        super().__init__(f"File {file_hash} used on vm {vm_hash}")
 
     error_code = ErrorCode.FORGET_NOT_ALLOWED
 

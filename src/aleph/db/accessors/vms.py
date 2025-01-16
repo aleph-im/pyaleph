@@ -1,10 +1,20 @@
 import datetime as dt
 from typing import Iterable, Optional
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 
-from aleph.db.models.vms import ProgramDb, VmBaseDb, VmInstanceDb, VmVersionDb, MachineVolumeBaseDb
+from aleph.db.models.vms import (
+    CodeVolumeDb,
+    DataVolumeDb,
+    ImmutableVolumeDb,
+    ProgramDb,
+    RootfsVolumeDb,
+    RuntimeDb,
+    VmBaseDb,
+    VmInstanceDb,
+    VmVersionDb,
+)
 from aleph.types.db_session import DbSession
 from aleph.types.vms import VmVersion
 
@@ -51,10 +61,39 @@ def get_vm_version(session: DbSession, vm_hash: str) -> Optional[VmVersionDb]:
     ).scalar_one_or_none()
 
 
-def get_machine_volumes(session: DbSession, volume_hash: str) -> Optional[VmBaseDb]:
-    return session.execute(
-        select(MachineVolumeBaseDb).where(MachineVolumeBaseDb.ref == volume_hash)
-    ).scalar_one_or_none()
+def get_vms_dependent_volumes(
+    session: DbSession, volume_hash: str
+) -> Optional[VmBaseDb]:
+    statement = (
+        select(VmBaseDb)
+        .join(
+            ImmutableVolumeDb,
+            ImmutableVolumeDb.vm_hash == VmBaseDb.item_hash,
+            isouter=True,
+        )
+        .join(
+            CodeVolumeDb, CodeVolumeDb.program_hash == VmBaseDb.item_hash, isouter=True
+        )
+        .join(
+            DataVolumeDb, DataVolumeDb.program_hash == VmBaseDb.item_hash, isouter=True
+        )
+        .join(RuntimeDb, RuntimeDb.program_hash == VmBaseDb.item_hash, isouter=True)
+        .join(
+            RootfsVolumeDb,
+            RootfsVolumeDb.instance_hash == VmBaseDb.item_hash,
+            isouter=True,
+        )
+        .where(
+            or_(
+                ImmutableVolumeDb.ref == volume_hash,
+                CodeVolumeDb.ref == volume_hash,
+                DataVolumeDb.ref == volume_hash,
+                RuntimeDb.ref == volume_hash,
+                RootfsVolumeDb.parent_ref == volume_hash,
+            )
+        )
+    )
+    return session.execute(statement).scalar_one_or_none()
 
 
 def upsert_vm_version(
