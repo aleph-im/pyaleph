@@ -21,7 +21,6 @@ def upgrade() -> None:
         CREATE OR REPLACE VIEW vm_costs_view AS
         SELECT vm_versions.vm_hash,
                vm_versions.owner,
-               ms.ms_status,
                vms.resources_vcpus,
                vms.resources_memory,
                file_volumes_size.file_volumes_size,
@@ -34,7 +33,8 @@ def upgrade() -> None:
                free_disk.included_disk_space,
                additional_disk.additional_disk_space,
                adp.disk_price,
-               tp.total_price
+               tp.total_price,
+               ms.ms_status,
         FROM vm_versions
                  JOIN vms ON vm_versions.current_version::text = vms.item_hash::text
                  LEFT JOIN (SELECT volume.vm_hash,
