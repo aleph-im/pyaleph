@@ -53,8 +53,6 @@ COPY deployment/scripts ./deployment/scripts
 COPY .git ./.git
 COPY src ./src
 RUN pip install -e .
-COPY deployment/docker-build/aiohttp.diff /tmp/aiohttp.diff
-RUN patch /opt/venv/lib/python3.12/site-packages/aiohttp/web_protocol.py /tmp/aiohttp.diff
 
 
 FROM base
