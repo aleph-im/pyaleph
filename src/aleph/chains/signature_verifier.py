@@ -4,6 +4,7 @@ from aleph_message.models import Chain
 
 from aleph.chains.abc import Verifier
 from aleph.chains.avalanche import AvalancheConnector
+from aleph.chains.cosmos import CosmosConnector
 from aleph.chains.ethereum import EthereumVerifier
 from aleph.chains.evm import EVMVerifier
 from aleph.chains.nuls import NulsConnector
@@ -27,7 +28,7 @@ class SignatureVerifier:
             Chain.BOB: EVMVerifier(),
             Chain.BSC: EVMVerifier(),
             Chain.CYBER: EVMVerifier(),
-            Chain.CSDK: EVMVerifier(),
+            Chain.CSDK: CosmosConnector(),
             Chain.DOT: SubstrateConnector(),
             Chain.ETH: EthereumVerifier(),
             Chain.FRAXTAL: EVMVerifier(),

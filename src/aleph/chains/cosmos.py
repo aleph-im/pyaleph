@@ -87,7 +87,7 @@ class CosmosConnector(Verifier):
             return False
 
         try:
-            sig_compact = base64.b64decode(signature.get("signature"))
+            sig_compact = base64.b64decode(signature.get("signature").encode("utf-8"))
         except Exception:
             LOGGER.exception("Cosmos signature deserialization error")
             return False
@@ -104,7 +104,9 @@ class CosmosConnector(Verifier):
             verif = await get_verification_string(message)
             vk = ecdsa.VerifyingKey.from_string(pub_key, curve=ecdsa.SECP256k1)
             verified = vk.verify(
-                sig_compact, verif.encode("utf-8"), hashfunc=hashlib.sha256
+                sig_compact,
+                verif.encode("utf-8"),
+                hashfunc=hashlib.sha256,
             )
             return verified
 
