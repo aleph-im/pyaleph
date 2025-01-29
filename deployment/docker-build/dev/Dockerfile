@@ -53,7 +53,7 @@ COPY deployment/scripts ./deployment/scripts
 COPY .git ./.git
 COPY src ./src
 RUN pip install -e .
-
+RUN pip install hatch
 
 FROM base
 
@@ -74,4 +74,6 @@ RUN mkdir /var/lib/pyaleph
 
 ENV PATH="/opt/venv/bin:${PATH}"
 WORKDIR /opt/pyaleph
+
+RUN hatch build
 ENTRYPOINT ["bash", "deployment/scripts/run_aleph_ccn.sh"]
