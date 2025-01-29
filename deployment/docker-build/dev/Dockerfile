@@ -52,17 +52,10 @@ COPY deployment/migrations ./deployment/migrations
 COPY deployment/scripts ./deployment/scripts
 COPY .git ./.git
 COPY src ./src
+RUN pip install -e .
 
-# Install project deps and test deps
-RUN pip install -e .[testing,docs]
-RUN pip install hatch
 
 FROM base
-
-# RUN useradd -s /bin/bash aleph
-
-# COPY --from=builder --chown=aleph /opt/venv /opt/venv
-# COPY --from=builder --chown=aleph /opt/pyaleph /opt/pyaleph
 
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /opt/pyaleph /opt/pyaleph
@@ -72,34 +65,13 @@ RUN apt-get update && apt-get install -y \
     libsodium-dev \
     libgmp-dev
 
-# FOR TESTS: This is for allowing remote container development in vscode
-# RUN mkdir /home/aleph
-
-# FOR TESTS: Install test deps
-RUN apt-get install -y \
-    postgresql \
-    redis \
-    curl
-
-# FOR TESTS: Install Rust to build Python packages
-RUN curl https://sh.rustup.rs > rustup-installer.sh
-RUN sh rustup-installer.sh -y
-ENV PATH="/root/.cargo/bin:${PATH}"
-RUN rustup default nightly
-
-# FOR TESTS: This is for allowing remote container development in vscode
-# RUN chown -R aleph:aleph /home/aleph
-# RUN chmod -R 777 /home/aleph
-
 # OpenSSL 3 disabled some hash algorithms by default. They must be reenabled
 # by enabling the "legacy" providers in /etc/ssl/openssl.cnf.
 COPY ./deployment/docker-build/openssl.cnf.patch /etc/ssl/openssl.cnf.patch
 RUN patch /etc/ssl/openssl.cnf /etc/ssl/openssl.cnf.patch
 
 RUN mkdir /var/lib/pyaleph
-# RUN chown -R aleph:aleph /var/lib/pyaleph
 
 ENV PATH="/opt/venv/bin:${PATH}"
 WORKDIR /opt/pyaleph
-# USER aleph
 ENTRYPOINT ["bash", "deployment/scripts/run_aleph_ccn.sh"]
