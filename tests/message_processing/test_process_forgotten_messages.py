@@ -9,6 +9,8 @@ from aleph.db.models.messages import ForgottenMessageDb, MessageDb
 from aleph.handlers.message_handler import MessageHandler
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSessionFactory
+from aleph.types.message_processing_result import ProcessedMessage, RejectedMessage
+from aleph.types.message_status import ErrorCode
 
 from .load_fixtures import load_fixture_message_list
 
@@ -47,7 +49,7 @@ async def test_duplicated_forgotten_message(
             session=session,
             pending_message=m1,
         )
-        assert test1
+        assert isinstance(test1, ProcessedMessage)
 
         res1 = cast(
             MessageDb,
@@ -60,7 +62,7 @@ async def test_duplicated_forgotten_message(
             session=session,
             pending_message=m2,
         )
-        assert test2
+        assert isinstance(test2, ProcessedMessage)
 
         res2 = cast(
             MessageDb,
@@ -73,7 +75,8 @@ async def test_duplicated_forgotten_message(
             session=session,
             pending_message=m3,
         )
-        assert test3
+        assert isinstance(test3, RejectedMessage)
+        assert test3.error_code == ErrorCode.FORGET_TARGET_NOT_FOUND
 
         res3 = cast(
             MessageDb,

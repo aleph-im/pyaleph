@@ -39,8 +39,9 @@ from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.files import FileType
-from aleph.types.message_processing_result import ProcessedMessage
+from aleph.types.message_processing_result import ProcessedMessage, RejectedMessage
 from aleph.types.message_status import (
+    ErrorCode,
     InvalidMessageException,
     InvalidMessageFormat,
     InvalidSignature,
@@ -378,7 +379,7 @@ class MessageHandler(BaseMessageHandler):
 
     async def process(
         self, session: DbSession, pending_message: PendingMessageDb
-    ) -> ProcessedMessage:
+    ) -> ProcessedMessage | RejectedMessage:
         """
         Process a pending message.
 
@@ -415,7 +416,10 @@ class MessageHandler(BaseMessageHandler):
                 forgotten_message=forgotten_message,
                 pending_message=pending_message,
             )
-            return ProcessedMessage(message=forgotten_message, is_confirmation=True)
+            return RejectedMessage(
+                pending_message=pending_message,
+                error_code=ErrorCode.FORGET_TARGET_NOT_FOUND,
+            )
 
         message = await self.verify_and_fetch(
             session=session, pending_message=pending_message
