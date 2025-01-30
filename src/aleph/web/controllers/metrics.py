@@ -143,6 +143,7 @@ async def fetch_eth_height() -> Optional[int]:
         return -1  # We got a boggus value!
 
 
+@cached(ttl=10)
 async def get_metrics(session: DbSession, node_cache: NodeCache) -> Metrics:
     sync_messages_reference_total = await fetch_reference_total_messages()
     eth_reference_height = await fetch_eth_height()
