@@ -53,6 +53,7 @@ class ErrorCode(IntEnum):
     FORGET_TARGET_NOT_FOUND = 501
     FORGET_FORGET = 502
     FORGET_NOT_ALLOWED = 503
+    FORGOTTEN_DUPLICATE = 504
 
 
 class MessageProcessingException(Exception):

@@ -20,10 +20,11 @@ import logging
 logger = logging.getLogger("alembic")
 
 # revision identifiers, used by Alembic.
-revision = 'a3ef27f0db81'
-down_revision = 'd8e9852e5775'
+revision = "a3ef27f0db81"
+down_revision = "d8e9852e5775"
 branch_labels = None
 depends_on = None
+
 
 def refresh_vm_version(session: DbSession, vm_hash: str) -> None:
     coalesced_ref = sa.func.coalesce(VmBaseDb.replaces, VmBaseDb.item_hash)
@@ -62,17 +63,22 @@ def refresh_vm_version(session: DbSession, vm_hash: str) -> None:
     session.execute(sa.delete(VmVersionDb).where(VmVersionDb.vm_hash == vm_hash))
     session.execute(upsert_stmt)
 
+
 def do_delete_vms(session: DbSession) -> None:
     # DELETE VMS
 
-    vm_hashes = session.execute(
-        """
+    vm_hashes = (
+        session.execute(
+            """
         SELECT m.item_hash
             FROM messages m
             INNER JOIN forgotten_messages fm on (m.item_hash = fm.item_hash)
             WHERE m.type = 'INSTANCE' or m.type = 'PROGRAM'
         """
-    ).scalars().all()
+        )
+        .scalars()
+        .all()
+    )
 
     logger.debug("DELETE VMS: %r", vm_hashes)
 
@@ -85,8 +91,9 @@ def do_delete_vms(session: DbSession) -> None:
                     FROM messages m
                     INNER JOIN forgotten_messages fm on (m.item_hash = fm.item_hash)
                     WHERE m.type = 'INSTANCE' or m.type = 'PROGRAM')
-        """)
-    
+        """
+    )
+
     session.execute(
         """
         DELETE
@@ -96,10 +103,12 @@ def do_delete_vms(session: DbSession) -> None:
                     FROM messages m
                     INNER JOIN forgotten_messages fm on (m.item_hash = fm.item_hash)
                     WHERE m.type = 'INSTANCE' or m.type = 'PROGRAM')
-        """)
-    
+        """
+    )
+
     for item_hash in vm_hashes:
         refresh_vm_version(session, item_hash)
+
 
 def do_delete_store(session: DbSession) -> None:
     # DELETE STORE
@@ -114,7 +123,9 @@ def do_delete_store(session: DbSession) -> None:
 		    INNER JOIN forgotten_messages fm ON m.item_hash = fm.item_hash
 		    WHERE m.type = 'STORE'
 	    )
-        """)
+        """
+    )
+
 
 def do_delete_messages(session: DbSession) -> None:
     # DELETE MESSAGES
@@ -125,17 +136,28 @@ def do_delete_messages(session: DbSession) -> None:
 	        FROM messages m
 	        using forgotten_messages fm 
 	        WHERE m.item_hash = fm.item_hash
-        """)
+        """
+    )
+
 
 def do_delete(session: DbSession) -> None:
     """
-        NOTE: We need to migrate (delete duplicates) from aggregate_elements, aggregates, file_tags and posts tables.
-        The issue that was causing this inconsistent state has been fixed and we have considered that it doesn't worth to clean
-        this tables for now as there are less than 1k orphan rows
+    NOTE: We need to migrate (delete duplicates) from aggregate_elements, aggregates, file_tags and posts tables.
+    The issue that was causing this inconsistent state has been fixed and we have considered that it doesn't worth to clean
+    this tables for now as there are less than 1k orphan rows
     """
+
+    op.execute(
+        """
+        INSERT INTO error_codes(code, description) VALUES 
+            (504, 'Cannot process a forgotten message')
+        """
+    )
+
     do_delete_vms(session)
     do_delete_store(session)
     do_delete_messages(session)
+
 
 async def upgrade_async() -> None:
     session = DbSession(bind=op.get_bind())
@@ -146,10 +168,12 @@ async def upgrade_async() -> None:
 def upgrade_thread():
     asyncio.run(upgrade_async())
 
+
 def upgrade() -> None:
     thread = Thread(target=upgrade_thread, daemon=True)
     thread.start()
     thread.join()
 
+
 def downgrade() -> None:
-    pass
+    op.execute("DELETE FROM error_codes WHERE code = 504")

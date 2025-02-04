@@ -76,7 +76,7 @@ async def test_duplicated_forgotten_message(
             pending_message=m3,
         )
         assert isinstance(test3, RejectedMessage)
-        assert test3.error_code == ErrorCode.FORGET_TARGET_NOT_FOUND
+        assert test3.error_code == ErrorCode.FORGOTTEN_DUPLICATE
 
         res3 = cast(
             MessageDb,

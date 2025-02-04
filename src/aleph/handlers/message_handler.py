@@ -418,7 +418,7 @@ class MessageHandler(BaseMessageHandler):
             )
             return RejectedMessage(
                 pending_message=pending_message,
-                error_code=ErrorCode.FORGET_TARGET_NOT_FOUND,
+                error_code=ErrorCode.FORGOTTEN_DUPLICATE,
             )
 
         message = await self.verify_and_fetch(
