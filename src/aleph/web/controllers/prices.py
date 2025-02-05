@@ -1,18 +1,25 @@
+import datetime as dt
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from aiohttp import web
 from aiohttp.web_exceptions import HTTPException
 from aleph_message.models import ExecutableContent, ItemHash, MessageType
 from dataclasses_json import DataClassJsonMixin
+from pydantic import BaseModel, Field
 
 from aleph.db.accessors.messages import get_message_by_item_hash, get_message_status
 from aleph.db.models import MessageDb
+from aleph.db.models.pending_messages import PendingMessageDb
 from aleph.services.cost import compute_cost, compute_flow_cost
-from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.db_session import DbSession
 from aleph.types.message_status import MessageStatus
+from aleph.web.controllers.app_state_getters import (
+    get_session_factory_from_request,
+    get_storage_service_from_request,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -76,11 +83,56 @@ async def get_executable_message(session: DbSession, item_hash_str: str) -> Mess
 async def message_price(request: web.Request):
     """Returns the price of an executable message."""
 
-    session_factory: DbSessionFactory = request.app["session_factory"]
+    session_factory = get_session_factory_from_request(request)
     with session_factory() as session:
         message = await get_executable_message(session, request.match_info["item_hash"])
 
         content: ExecutableContent = message.parsed_content
+        try:
+            if content.payment and content.payment.is_stream:
+                required_tokens = compute_flow_cost(session=session, content=content)
+            else:
+                required_tokens = compute_cost(session=session, content=content)
+        except RuntimeError as e:
+            raise web.HTTPNotFound(reason=str(e))
+
+    return web.json_response(
+        {
+            "required_tokens": float(required_tokens),
+            "payment_type": content.payment.type if content.payment else None,
+        }
+    )
+
+
+class PubMessageRequest(BaseModel):
+    sync: bool = False
+    message_dict: Dict[str, Any] = Field(alias="message")
+
+
+async def message_price_estimate(request: web.Request):
+    """Returns the estimated price of an executable message passed on the body."""
+
+    session_factory = get_session_factory_from_request(request)
+    storage_service = get_storage_service_from_request(request)
+
+    with session_factory() as session:
+        parsed_body = PubMessageRequest.parse_obj(await request.json())
+        pending_message = PendingMessageDb.from_message_dict(
+            parsed_body.message_dict,
+            reception_time=dt.datetime.now(),
+            fetched=False,
+        )
+
+        content_dict = await storage_service.get_message_content(pending_message)
+
+        message = MessageDb.from_pending_message(
+            pending_message,
+            content_dict=content_dict.value,
+            content_size=len(content_dict.raw_value),
+        )
+
+        content: ExecutableContent = message.parsed_content
+
         try:
             if content.payment and content.payment.is_stream:
                 required_tokens = compute_flow_cost(session=session, content=content)

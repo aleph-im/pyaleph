@@ -66,6 +66,7 @@ def register_routes(app: web.Application):
     app.router.add_get("/api/v1/posts/page/{page}.json", posts.view_posts_list_v1)
 
     app.router.add_get("/api/v0/price/{item_hash}", prices.message_price)
+    app.router.add_post("/api/v0/price/estimate", prices.message_price_estimate)
 
     app.router.add_get("/api/v0/addresses/stats.json", accounts.addresses_stats_view)
     app.router.add_get(
