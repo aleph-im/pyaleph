@@ -104,7 +104,7 @@ pyaleph_build_info = BuildInfo(
 
 
 # Cache Aleph messages count for 2 minutes by default
-@cached(ttl=config.aleph.cache.ttl.total_aleph_messages)
+@cached(ttl=config.aleph.cache.ttl.total_aleph_messages.value)
 async def fetch_reference_total_messages() -> Optional[int]:
     """Obtain the total number of Aleph messages from another node."""
     LOGGER.debug("Fetching Aleph messages count")
@@ -127,7 +127,7 @@ async def fetch_reference_total_messages() -> Optional[int]:
 
 
 # Cache ETH height for 10 minutes by default
-@cached(ttl=config.aleph.cache.ttl.eth_height)
+@cached(ttl=config.aleph.cache.ttl.eth_height.value)
 async def fetch_eth_height() -> Optional[int]:
     """Obtain the height of the Ethereum blockchain."""
     LOGGER.debug("Fetching ETH height")
@@ -146,7 +146,7 @@ async def fetch_eth_height() -> Optional[int]:
 
 
 # Cache metrics for 10 seconds by default
-@cached(ttl=config.aleph.cache.ttl.metrics)
+@cached(ttl=config.aleph.cache.ttl.metrics.value)
 async def get_metrics(session: DbSession, node_cache: NodeCache) -> Metrics:
     sync_messages_reference_total = await fetch_reference_total_messages()
     eth_reference_height = await fetch_eth_height()
