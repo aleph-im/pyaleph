@@ -92,6 +92,20 @@ def get_payment_type(content: CostComputableContent) -> PaymentType:
         else PaymentType.hold
     )
 
+type CostComputableContent = ExecutableContent | StoreContent
+
+
+def get_payment_type(content: CostComputableContent) -> PaymentType:
+    return (
+        PaymentType.superfluid
+        if (
+            hasattr(content, "payment")
+            and content.payment
+            and content.payment.is_stream
+        )
+        else PaymentType.hold
+    )
+
 
 def _is_on_demand(content: ExecutableContent) -> bool:
     return isinstance(content, ProgramContent) and not content.on.persistent
@@ -460,6 +474,16 @@ def _calculate_executable_costs(
     # EXECUTION COST
     compute_units_required = _get_nb_compute_units(content, pricing.compute_unit)
     compute_unit_multiplier = _get_compute_unit_multiplier(content)
+
+    compute_unit_cost = pricing.price.compute_unit.holding
+    compute_unit_cost_second = pricing.price.compute_unit.payg / HOUR
+
+    if not pricing.price.compute_unit:
+        raise ValueError(
+            "compute_unit not defined for type '{}' in pricing aggregate".format(
+                pricing.type.value
+            )
+        )
 
     compute_unit_cost = pricing.price.compute_unit.holding
     compute_unit_cost_second = pricing.price.compute_unit.payg / HOUR
