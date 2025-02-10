@@ -129,7 +129,6 @@ def do_calculate_costs() -> None:
 
     for item_hash in msg_item_hashes:
         message = get_message_by_item_hash(session, item_hash)
-
         if message:
             content = message.parsed_content
             type = _get_product_price_type(content)

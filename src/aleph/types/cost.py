@@ -4,6 +4,8 @@ from typing import List, Optional
 
 from pydantic import ConstrainedInt
 
+from pydantic import ConstrainedInt
+
 from aleph.db.models.aggregates import AggregateDb
 
 
