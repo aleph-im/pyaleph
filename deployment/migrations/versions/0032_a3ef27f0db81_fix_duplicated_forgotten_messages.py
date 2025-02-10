@@ -133,6 +133,15 @@ def do_delete_messages(session: DbSession) -> None:
     session.execute(
         """
         DELETE
+	        FROM message_confirmations mc
+	        using forgotten_messages fm 
+	        WHERE mc.item_hash = fm.item_hash
+        """
+    )
+
+    session.execute(
+        """
+        DELETE
 	        FROM messages m
 	        using forgotten_messages fm 
 	        WHERE m.item_hash = fm.item_hash
