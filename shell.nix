@@ -1,6 +1,6 @@
 { pkgs ? import <nixpkgs> {} }:
 let
-  unstable = import (fetchTarball https://nixos.org/channels/nixos-unstable/nixexprs.tar.xz) {};
+  unstable = import (fetchTarball "https://nixos.org/channels/nixos-unstable/nixexprs.tar.xz") {};
 in
 pkgs.mkShell {
   buildInputs = [
@@ -20,7 +20,12 @@ pkgs.mkShell {
     unstable.python312Packages.virtualenv
     unstable.python312Packages.pip
     unstable.python312Packages.setuptools
+    unstable.python312Packages.ed25519
+    unstable.python312Packages.pytest
+    unstable.python312Packages.pytest-asyncio
+    unstable.python312Packages.pytz
 
+    unstable.python312Packages.alembic
     unstable.python312Packages.fastecdsa
     unstable.python312Packages.greenlet
     unstable.python312Packages.libnacl
@@ -62,7 +67,7 @@ pkgs.mkShell {
 
     # Create a virtual environment in the current directory if it doesn't exist
     if [ ! -d "venv" ]; then
-      python3.12 -m virtualenv venv
+      python3.12 -m virtualenv --system-site-packages venv
     fi
 
     # Install the required Python packages
