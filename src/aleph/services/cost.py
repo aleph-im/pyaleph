@@ -261,6 +261,7 @@ def _get_execution_volumes_costs(
                 SizedVolume(
                     CostType.EXECUTION_VOLUME_PERSISTENT,
                     volume.size_mib,
+                    None,
                     volume.mount,
                 ),
             )
@@ -434,7 +435,7 @@ def get_total_and_detailed_costs(
     return Decimal(cost), list(costs)
 
 
-def get_get_total_and_detailed_costs_from_db(
+def get_total_and_detailed_costs_from_db(
     session: DbSession,
     content: ExecutableContent,
     item_hash: str,
