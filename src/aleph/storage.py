@@ -10,10 +10,10 @@ from typing import Any, Final, Optional, cast
 
 from aleph_message.models import ItemType
 
+from aleph.schemas.base_messages import AlephBaseMessage
 import aleph.toolkit.json as aleph_json
 from aleph.config import get_config
 from aleph.db.accessors.files import upsert_file
-from aleph.db.models import PendingMessageDb
 from aleph.exceptions import ContentCurrentlyUnavailable, InvalidContent
 from aleph.schemas.message_content import ContentSource, MessageContent, RawContent
 from aleph.services.cache.node_cache import NodeCache
@@ -57,7 +57,7 @@ class StorageService:
         self.ipfs_service = ipfs_service
         self.node_cache = node_cache
 
-    async def get_message_content(self, message: PendingMessageDb) -> MessageContent:
+    async def get_message_content(self, message: AlephBaseMessage) -> MessageContent:
         item_type = message.item_type
         item_hash = message.item_hash
 

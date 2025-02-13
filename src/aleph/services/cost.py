@@ -23,6 +23,7 @@ from aleph.db.accessors.files import get_file, get_file_tag, get_message_file_pi
 from aleph.db.models import FileTagDb, MessageFilePinDb, StoredFileDb
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.db.models.aggregates import AggregateDb
+from aleph.schemas.cost_estimation_messages import CostEstimationMessageContent
 from aleph.toolkit.constants import (
     HOUR,
     PRICE_AGGREGATE_KEY,
@@ -92,8 +93,7 @@ def get_payment_type(content: CostComputableContent) -> PaymentType:
         else PaymentType.hold
     )
 
-CostComputableContent: TypeAlias = InstanceContent | ProgramContent | StoreContent
-
+CostComputableContent: TypeAlias = CostEstimationMessageContent
 
 def get_payment_type(content: CostComputableContent) -> PaymentType:
     return (
@@ -271,6 +271,7 @@ def _get_volumes_costs(
                     owner=owner,
                     item_hash=item_hash,
                     type=volume.cost_type,
+                    ref=volume.ref,
                     name=volume.name,
                     payment_type=payment_type,
                     cost_hold=cost_hold,
