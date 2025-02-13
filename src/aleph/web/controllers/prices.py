@@ -15,11 +15,7 @@ from aleph.db.accessors.messages import get_message_by_item_hash, get_message_st
 from aleph.db.models import MessageDb
 from aleph.db.models.pending_messages import PendingMessageDb
 from aleph.schemas.api.costs import EstimatedCostsResponse
-from aleph.services.cost import (
-    get_get_total_and_detailed_costs_from_db,
-    get_payment_type,
-    get_total_and_detailed_costs,
-)
+from aleph.services.cost import get_payment_type, get_total_and_detailed_costs
 from aleph.toolkit.costs import format_cost_str
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import MessageStatus
@@ -102,7 +98,7 @@ async def message_price(request: web.Request):
 
         try:
             payment_type = get_payment_type(content)
-            required_tokens, costs = get_get_total_and_detailed_costs_from_db(
+            required_tokens, costs = get_total_and_detailed_costs_from_db(
                 session, content, item_hash
             )
 
