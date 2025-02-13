@@ -4,13 +4,16 @@ from unittest.mock import Mock
 import pytest
 from aleph_message.models import ExecutableContent, InstanceContent, PaymentType
 
-from aleph.db.models import StoredFileDb
 from aleph.services.cost import (
     _get_additional_storage_price,
     _get_product_price,
     get_total_and_detailed_costs,
 )
 from aleph.types.db_session import DbSessionFactory
+
+
+class StoredFileDb:
+    pass
 
 
 @pytest.fixture
