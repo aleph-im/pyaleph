@@ -15,7 +15,7 @@ from aleph_message.models.execution.volume import ImmutableVolume
 
 from aleph.db.accessors.aggregates import get_aggregate_by_key
 from aleph.db.accessors.cost import get_message_costs
-from aleph.db.accessors.files import get_file_tag, get_message_file_pin
+from aleph.db.accessors.files import get_file, get_file_tag, get_message_file_pin
 from aleph.db.models import FileTagDb, MessageFilePinDb, StoredFileDb
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.db.models.aggregates import AggregateDb
@@ -388,20 +388,29 @@ def _calculate_storage_costs(
     item_hash: str,
 ) -> List[AccountCostsDb]:
     payment_type = get_payment_type(content)
-    volume = RefVolume(CostType.STORAGE, item_hash, False)
+
+    file = get_file(session=session, file_hash=content.item_hash)
 
     price_per_mib = pricing.price.storage.holding
     price_per_mib_second = pricing.price.storage.payg / HOUR
 
-    return _get_volumes_costs(
-        session,
-        [volume],
-        payment_type,
-        price_per_mib,
-        price_per_mib_second,
-        content.address,
-        item_hash,
+    storage_mib = Decimal(file.size / MiB)
+
+    cost_hold = format_cost(storage_mib * price_per_mib)
+    cost_stream = format_cost(
+        storage_mib * price_per_mib_second,
     )
+    return [
+        AccountCostsDb(
+            owner=content.address,
+            item_hash=item_hash,
+            type=CostType.STORAGE,
+            name=CostType.STORAGE,
+            payment_type=payment_type,
+            cost_hold=cost_hold,
+            cost_stream=cost_stream,
+        )
+    ]
 
 
 def get_detailed_costs(
