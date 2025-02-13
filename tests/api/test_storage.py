@@ -14,6 +14,7 @@ from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.files import get_file
 from aleph.db.models import AlephBalanceDb
 from aleph.storage import StorageService
+
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.files import FileType
 from aleph.types.message_status import MessageStatus
@@ -206,6 +207,7 @@ async def add_file_with_message(
 
 async def add_file_with_message_202(
     api_client,
+
     session_factory: DbSessionFactory,
     uri: str,
     file_content: bytes,
@@ -292,6 +294,7 @@ async def test_storage_add_file_raw_upload(
 @pytest.mark.asyncio
 async def test_storage_add_file_with_message(
     api_client,
+    fixture_product_prices_aggregate_in_db,
     session_factory: DbSessionFactory,
     file_content,
     expected_hash,
@@ -333,6 +336,7 @@ async def test_storage_add_file_with_message_202(
     error_code,
     balance,
     mocker,
+    fixture_product_prices_aggregate_in_db,
 ):
     await add_file_with_message_202(
         api_client,
