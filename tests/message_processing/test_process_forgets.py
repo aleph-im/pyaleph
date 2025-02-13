@@ -154,6 +154,7 @@ async def test_forget_store_message(
     session_factory: DbSessionFactory,
     message_processor: PendingMessageProcessor,
     mock_config: Config,
+    fixture_product_prices_aggregate_in_db,
 ):
     file_hash = "5ccdd7bccfbc5955e2e40166dd0cdea0b093154fd87bc2bea57e7c768cde2f21"
 
@@ -476,6 +477,7 @@ async def test_forget_store_message_dependent(
     session_factory: DbSessionFactory,
     message_processor: PendingMessageProcessor,
     mock_config: Config,
+    fixture_product_prices_aggregate_in_db,
 ):
     file_hash = "5ccdd7bccfbc5955e2e40166dd0cdea0b093154fd87bc2bea57e7c768cde2f21"
 
