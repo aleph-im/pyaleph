@@ -2,20 +2,17 @@ from decimal import Decimal
 from unittest.mock import Mock
 
 import pytest
-from aleph_message.models import ExecutableContent, InstanceContent
+from aleph_message.models import ExecutableContent, InstanceContent, PaymentType
 
+from aleph.db.models import StoredFileDb
 from aleph.services.cost import (
+    _get_additional_storage_price,
     _get_product_price,
-    compute_cost,
-    compute_flow_cost,
-    get_additional_storage_price,
+    get_total_and_detailed_costs,
 )
 from aleph.toolkit.constants import HOUR
+from aleph.toolkit.costs import format_cost
 from aleph.types.db_session import DbSessionFactory
-
-
-class StoredFileDb:
-    pass
 
 
 @pytest.fixture
@@ -220,8 +217,10 @@ def test_compute_cost(
     mock.patch("_get_file_from_ref", return_value=file_db)
 
     with session_factory() as session:
-        cost = compute_cost(content=fixture_hold_instance_message, session=session)
-        assert cost == 1000
+        cost, details = get_total_and_detailed_costs(
+            session=session, content=fixture_hold_instance_message, item_hash="abab"
+        )
+        assert cost == Decimal("1000")
 
 
 def test_compute_cost_conf(
@@ -249,7 +248,9 @@ def test_compute_cost_conf(
     mock.patch("_get_file_from_ref", return_value=file_db)
 
     with session_factory() as session:
-        cost = compute_cost(content=rebuilt_message, session=session)
+        cost, _ = get_total_and_detailed_costs(
+            session=session, content=rebuilt_message, item_hash="abab"
+        )
         assert cost == 2000
 
 
@@ -264,13 +265,18 @@ def test_get_additional_storage_price(
 
     with session_factory() as session:
         content = fixture_hold_instance_message
-
         pricing = _get_product_price(session, content=content)
 
-        cost = get_additional_storage_price(
-            content=content, pricing=pricing, session=session
+        cost = _get_additional_storage_price(
+            session=session,
+            content=content,
+            item_hash="abab",
+            pricing=pricing,
+            payment_type=PaymentType.hold,
         )
-        assert cost == 0
+        additional_cost = sum(c.cost_hold for c in cost)
+
+        assert additional_cost == 0
 
 
 def test_compute_cost_complete(
@@ -283,8 +289,10 @@ def test_compute_cost_complete(
     mock.patch("_get_file_from_ref", return_value=file_db)
 
     with session_factory() as session:
-        cost = compute_cost(
-            content=fixture_hold_instance_message_complete, session=session
+        cost, _ = get_total_and_detailed_costs(
+            session=session,
+            content=fixture_hold_instance_message_complete,
+            item_hash="abab",
         )
         assert cost == 1017.50
 
@@ -299,10 +307,14 @@ def test_compute_flow_cost(
     mock.patch("_get_file_from_ref", return_value=file_db)
 
     with session_factory() as session:
-        cost = compute_flow_cost(content=fixture_flow_instance_message, session=session)
-        assert cost == Decimal("0.00001527777777777777777777777778")
-        cost_per_hour = cost * HOUR
-        assert cost_per_hour == Decimal("0.05500000000000000000000000001")
+        cost, _ = get_total_and_detailed_costs(
+            session=session, content=fixture_flow_instance_message, item_hash="abab"
+        )
+
+        assert cost == Decimal("0.000015277777777778")
+        cost_per_hour = cost * Decimal(HOUR)
+
+        assert format_cost(cost_per_hour, p=8) == Decimal("0.055")
 
 
 def test_compute_flow_cost_conf(
@@ -331,10 +343,15 @@ def test_compute_flow_cost_conf(
     mock.patch("_get_file_from_ref", return_value=file_db)
 
     with session_factory() as session:
-        cost = compute_flow_cost(content=rebuilt_message, session=session)
-        assert cost == Decimal("0.00003055555555555555555555555556")
+        cost, _ = get_total_and_detailed_costs(
+            session=session, content=rebuilt_message, item_hash="abab"
+        )
+
+        assert cost == Decimal("0.000030555555555556")
+
         cost_per_hour = cost * HOUR
-        assert cost_per_hour == Decimal("0.11")
+
+        assert format_cost(cost_per_hour, p=8) == Decimal("0.11")
 
 
 def test_compute_flow_cost_complete(
@@ -347,9 +364,14 @@ def test_compute_flow_cost_complete(
     mock.patch("_get_file_from_ref", return_value=file_db)
 
     with session_factory() as session:
-        cost = compute_flow_cost(
-            content=fixture_flow_instance_message_complete, session=session
+        cost, _ = get_total_and_detailed_costs(
+            session=session,
+            content=fixture_flow_instance_message_complete,
+            item_hash="abab",
         )
-        assert cost == Decimal("0.00003224338277777777777777777778")
+
+        assert cost == Decimal("0.000032243382777777")
+
         cost_per_hour = cost * HOUR
-        assert cost_per_hour == Decimal("0.116076178")
+
+        assert format_cost(cost_per_hour, p=8) == Decimal("0.11607618")
