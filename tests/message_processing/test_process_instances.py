@@ -649,6 +649,7 @@ async def test_compare_account_cost_with_cost_payg_funct(
     session_factory: DbSessionFactory,
     message_processor: PendingMessageProcessor,
     fixture_instance_message_payg: PendingMessageDb,
+    fixture_product_prices_aggregate_in_db,
     user_balance: AlephBalanceDb,
 ):
     with session_factory() as session:
@@ -679,7 +680,7 @@ async def test_compare_account_cost_with_cost_payg_funct(
             item_hash=fixture_instance_message_payg.item_hash,
         )
 
-    assert cost == 0
+    assert cost == Decimal("0.000015287547777772")
     assert cost == db_cost
 
 
