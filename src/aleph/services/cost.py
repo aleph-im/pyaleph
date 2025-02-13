@@ -1,7 +1,7 @@
 import math
 from decimal import Decimal
 from functools import reduce
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, TypeAlias, Union
 
 from aleph_message.models import (
     ExecutableContent,
@@ -36,7 +36,7 @@ from aleph.types.cost import (
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag
 
-type CostComputableContent = ExecutableContent | StoreContent
+CostComputableContent: TypeAlias = InstanceContent | ProgramContent | StoreContent
 
 
 def get_payment_type(content: CostComputableContent) -> PaymentType:
