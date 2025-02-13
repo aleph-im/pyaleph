@@ -1,11 +1,10 @@
-from decimal import Decimal
-from math import ceil
+from decimal import Context, Decimal
 
 from aleph.toolkit.constants import PRICE_PRECISION
 
 
 def format_cost(v: Decimal | str, p: int = PRICE_PRECISION) -> Decimal:
-    return ceil(Decimal(v) * 10**p) / Decimal(10**p)
+    return Decimal(v).quantize(Decimal(1) / Decimal(10**p), context=Context(prec=36))
 
 
 def format_cost_str(v: Decimal | str, p: int = PRICE_PRECISION) -> str:
