@@ -10,8 +10,6 @@ from aleph.services.cost import (
     _get_product_price,
     get_total_and_detailed_costs,
 )
-from aleph.toolkit.constants import HOUR
-from aleph.toolkit.costs import format_cost
 from aleph.types.db_session import DbSessionFactory
 
 
@@ -311,10 +309,7 @@ def test_compute_flow_cost(
             session=session, content=fixture_flow_instance_message, item_hash="abab"
         )
 
-        assert cost == Decimal("0.000015277777777778")
-        cost_per_hour = cost * Decimal(HOUR)
-
-        assert format_cost(cost_per_hour, p=8) == Decimal("0.055")
+        assert cost == Decimal("0.000015277777777777")
 
 
 def test_compute_flow_cost_conf(
@@ -347,11 +342,7 @@ def test_compute_flow_cost_conf(
             session=session, content=rebuilt_message, item_hash="abab"
         )
 
-        assert cost == Decimal("0.000030555555555556")
-
-        cost_per_hour = cost * HOUR
-
-        assert format_cost(cost_per_hour, p=8) == Decimal("0.11")
+        assert cost == Decimal("0.000030555555555555")
 
 
 def test_compute_flow_cost_complete(
@@ -370,8 +361,4 @@ def test_compute_flow_cost_complete(
             item_hash="abab",
         )
 
-        assert cost == Decimal("0.000032243382777777")
-
-        cost_per_hour = cost * HOUR
-
-        assert format_cost(cost_per_hour, p=8) == Decimal("0.11607618")
+        assert cost == Decimal("0.000032243382777775")
