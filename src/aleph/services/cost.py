@@ -390,6 +390,8 @@ def _calculate_storage_costs(
     payment_type = get_payment_type(content)
 
     file = get_file(session=session, file_hash=content.item_hash)
+    if file is None:
+        raise RuntimeError(f"Could not find file {item_hash}.")
 
     price_per_mib = pricing.price.storage.holding
     price_per_mib_second = pricing.price.storage.payg / HOUR
