@@ -75,16 +75,14 @@ class ProductPricing:
         content = aggregate.content[type.value]
 
         price = content["price"]
-        compute_unit = (
-            content["compute_unit"] if hasattr(content, "compute_unit") else None
-        )
+        compute_unit = content.get("compute_unit", None)
 
         pricing = ProductPricing(
             type,
             ProductPrice(
                 ProductPriceOptions(
                     price["storage"]["holding"],
-                    price["storage"]["payg"] if "payg" in price["storage"] else None,
+                    price["storage"].get("payg", None),
                 ),
                 (
                     ProductPriceOptions(
