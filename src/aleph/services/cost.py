@@ -11,7 +11,10 @@ from aleph_message.models import (
     ProgramContent,
     StoreContent,
 )
-from aleph_message.models.execution.environment import InstanceEnvironment
+from aleph_message.models.execution.environment import (
+    HostRequirements,
+    InstanceEnvironment,
+)
 from aleph_message.models.execution.volume import ImmutableVolume
 
 from aleph.db.accessors.aggregates import get_aggregate_by_key
@@ -95,7 +98,7 @@ def _is_confidential_vm(
 def _is_gpu_vm(content: ExecutableContent) -> bool:
 
     return isinstance(
-        getattr(content, "requirements", None), InstanceEnvironment
+        getattr(content, "requirements", None), HostRequirements
     ) and getattr(content.requirements, "gpu", False)
 
 

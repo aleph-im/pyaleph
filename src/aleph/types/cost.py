@@ -115,14 +115,14 @@ class ProductPricing:
         pricing = ProductPricing(
             price_type=price_type,
             price=ProductPrice(
-                ProductPriceOptions(
-                    price["storage"]["holding"],
+                storage=ProductPriceOptions(
+                    price["storage"].get("holding", None),
                     price["storage"].get("payg", None),
                 ),
-                (
+                compute_unit=(
                     ProductPriceOptions(
-                        price["compute_unit"]["holding"],
-                        price["compute_unit"]["payg"],
+                        price["compute_unit"].get("holding", None),
+                        price["compute_unit"].get("payg", None),
                     )
                     if compute_unit
                     else None
