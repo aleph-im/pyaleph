@@ -40,7 +40,12 @@ from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
-from aleph.toolkit.constants import PRICE_AGGREGATE_KEY, PRICE_AGGREGATE_OWNER
+from aleph.toolkit.constants import (
+    PRICE_AGGREGATE_KEY,
+    PRICE_AGGREGATE_OWNER,
+    SETTINGS_AGGREGATE_KEY,
+    SETTINGS_AGGREGATE_OWNER,
+)
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.files import FileTag, FileType
@@ -543,6 +548,155 @@ def fixture_product_prices_aggregate_in_db(session_factory: DbSessionFactory) ->
             AggregateDb(
                 key=PRICE_AGGREGATE_KEY,
                 owner=PRICE_AGGREGATE_OWNER,
+                content=content,
+                creation_datetime=dt.datetime(2025, 1, 31),
+                last_revision_hash=item_hash,
+                dirty=False,
+            )
+        )
+
+        session.commit()
+
+
+@pytest.fixture
+def fixture_settings_aggregate_in_db(session_factory: DbSessionFactory) -> None:
+    with session_factory() as session:
+        item_hash = "a319a7216d39032212c2f11028a21efaac4e5f78254baa34001483c7af22b7a4"
+        content = {
+            "compatible_gpus": [
+                {
+                    "name": "AD102GL [L40S]",
+                    "model": "L40S",
+                    "vendor": "NVIDIA",
+                    "device_id": "10de:26b9",
+                },
+                {
+                    "name": "GB202 [GeForce RTX 5090]",
+                    "model": "RTX 5090",
+                    "vendor": "NVIDIA",
+                    "device_id": "10de:2685",
+                },
+                {
+                    "name": "GB202 [GeForce RTX 5090 D]",
+                    "model": "RTX 5090",
+                    "vendor": "NVIDIA",
+                    "device_id": "10de:2687",
+                },
+                {
+                    "name": "AD102 [GeForce RTX 4090]",
+                    "model": "RTX 4090",
+                    "vendor": "NVIDIA",
+                    "device_id": "10de:2684",
+                },
+                {
+                    "name": "AD102 [GeForce RTX 4090 D]",
+                    "model": "RTX 4090",
+                    "vendor": "NVIDIA",
+                    "device_id": "10de:2685",
+                },
+                {
+                    "name": "GA102 [GeForce RTX 3090]",
+                    "model": "RTX 3090",
+                    "vendor": "NVIDIA",
+                    "device_id": "10de:2204",
+                },
+                {
+                    "name": "GA102 [GeForce RTX 3090 Ti]",
+                    "model": "RTX 3090",
+                    "vendor": "NVIDIA",
+                    "device_id": "10de:2203",
+                },
+                {
+                    "name": "AD104GL [RTX 4000 SFF Ada Generation]",
+                    "model": "RTX 4000 ADA",
+                    "vendor": "NVIDIA",
+                    "device_id": "10de:27b0",
+                },
+                {
+                    "name": "AD104GL [RTX 4000 Ada Generation]",
+                    "model": "RTX 4000 ADA",
+                    "vendor": "NVIDIA",
+                    "device_id": "10de:27b2",
+                },
+                {
+                    "name": "GH100 [H100]",
+                    "model": "H100",
+                    "vendor": "NVIDIA",
+                    "device_id": "10de:2336",
+                },
+                {
+                    "name": "GH100 [H100 NVSwitch]",
+                    "model": "H100",
+                    "vendor": "NVIDIA",
+                    "device_id": "10de:22a3",
+                },
+                {
+                    "name": "GH100 [H100 CNX]",
+                    "model": "H100",
+                    "vendor": "NVIDIA",
+                    "device_id": "10de:2313",
+                },
+                {
+                    "name": "GH100 [H100 SXM5 80GB]",
+                    "model": "H100",
+                    "vendor": "NVIDIA",
+                    "device_id": "10de:2330",
+                },
+                {
+                    "name": "GH100 [H100 PCIe]",
+                    "model": "H100",
+                    "vendor": "NVIDIA",
+                    "device_id": "10de:2331",
+                },
+                {
+                    "name": "GA100",
+                    "model": "A100",
+                    "vendor": "NVIDIA",
+                    "device_id": "10de:2080",
+                },
+                {
+                    "name": "GA100",
+                    "model": "A100",
+                    "vendor": "NVIDIA",
+                    "device_id": "10de:2081",
+                },
+                {
+                    "name": "GA100 [A100 SXM4 80GB]",
+                    "model": "A100",
+                    "vendor": "NVIDIA",
+                    "device_id": "10de:20b2",
+                },
+                {
+                    "name": "GA100 [A100 PCIe 80GB]",
+                    "model": "A100",
+                    "vendor": "NVIDIA",
+                    "device_id": "10de:20b5",
+                },
+                {
+                    "name": "GA100 [A100X]",
+                    "model": "A100",
+                    "vendor": "NVIDIA",
+                    "device_id": "10de:20b8",
+                },
+            ],
+            "community_wallet_address": "0x5aBd3258C5492fD378EBC2e0017416E199e5Da56",
+            "community_wallet_timestamp": 1739301770,
+        }
+
+        session.add(
+            AggregateElementDb(
+                item_hash=item_hash,
+                key=SETTINGS_AGGREGATE_KEY,
+                owner=SETTINGS_AGGREGATE_OWNER,
+                content=content,
+                creation_datetime=dt.datetime(2025, 1, 31),
+            )
+        )
+
+        session.add(
+            AggregateDb(
+                key=SETTINGS_AGGREGATE_KEY,
+                owner=SETTINGS_AGGREGATE_OWNER,
                 content=content,
                 creation_datetime=dt.datetime(2025, 1, 31),
                 last_revision_hash=item_hash,

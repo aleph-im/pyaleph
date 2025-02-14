@@ -24,6 +24,8 @@ from aleph.toolkit.constants import (
     HOUR,
     PRICE_AGGREGATE_KEY,
     PRICE_AGGREGATE_OWNER,
+    SETTINGS_AGGREGATE_KEY,
+    SETTINGS_AGGREGATE_OWNER,
     MiB,
 )
 from aleph.toolkit.costs import format_cost
@@ -37,10 +39,29 @@ from aleph.types.cost import (
 )
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag
+from aleph.types.settings import Settings
 
 CostComputableContent: TypeAlias = InstanceContent | ProgramContent | StoreContent
 
 logger = logging.getLogger(__name__)
+
+
+# TODO: Cache aggregate for 5 min
+def _get_settings_aggregate(session: DbSession) -> AggregateDb:
+    aggregate = get_aggregate_by_key(
+        session=session, owner=SETTINGS_AGGREGATE_OWNER, key=SETTINGS_AGGREGATE_KEY
+    )
+
+    if not aggregate:
+        raise Exception()
+
+    return aggregate
+
+
+def _get_settings(session: DbSession) -> Settings:
+    aggregate = _get_settings_aggregate(session)
+
+    return Settings.from_aggregate(aggregate)
 
 
 def get_payment_type(content: CostComputableContent) -> PaymentType:
@@ -71,21 +92,60 @@ def _is_confidential_vm(
     )
 
 
-def _get_product_price_type(content: CostComputableContent) -> ProductPriceType:
+def _is_gpu_vm(content: ExecutableContent) -> bool:
+
+    return isinstance(
+        getattr(content, "requirements", None), InstanceEnvironment
+    ) and getattr(content.requirements, "gpu", False)
+
+
+def _get_product_instance_type(
+    content: CostComputableContent, settings: Settings, price_aggregate: AggregateDb
+) -> ProductPriceType:
+    if _is_confidential_vm(content, False):
+        return ProductPriceType.INSTANCE_CONFIDENTIAL
+
+    if not _is_gpu_vm(content):
+        return ProductPriceType.INSTANCE
+
+    # TODO: Improve the way to compare tiers
+    premium_gpu_price = ProductPricing.from_aggregate(
+        ProductPriceType.INSTANCE_GPU_PREMIUM, price_aggregate
+    )
+    standard_gpu_price = ProductPricing.from_aggregate(
+        ProductPriceType.INSTANCE_GPU_STANDARD, price_aggregate
+    )
+
+    # TODO: Allow to get more than one GPU
+    selected_gpu = content.requirements.gpu[0]
+
+    gpu_model = next(
+        compatible_gpu.model
+        for compatible_gpu in settings.compatible_gpus
+        if compatible_gpu.device_id == selected_gpu.device_id
+    )
+
+    if gpu_model in [tier.model for tier in premium_gpu_price.tiers]:
+        return ProductPriceType.INSTANCE_GPU_PREMIUM
+    else:
+        if gpu_model in [tier.model for tier in standard_gpu_price.tiers]:
+            return ProductPriceType.INSTANCE_GPU_STANDARD
+        else:
+            raise ValueError(f"GPU model {gpu_model} not supported")
+
+
+def _get_product_price_type(
+    content: CostComputableContent, settings: Settings, price_aggregate: AggregateDb
+) -> ProductPriceType:
     if isinstance(content, StoreContent):
         return ProductPriceType.STORAGE
 
     is_on_demand = _is_on_demand(content)
-    is_confidential_vm = _is_confidential_vm(content, is_on_demand)
 
     return (
         ProductPriceType.PROGRAM
         if is_on_demand
-        else (
-            ProductPriceType.INSTANCE_CONFIDENTIAL
-            if is_confidential_vm
-            else ProductPriceType.INSTANCE
-        )
+        else _get_product_instance_type(content, settings, price_aggregate)
     )
 
 
@@ -102,12 +162,12 @@ def _get_price_aggregate(session: DbSession) -> AggregateDb:
 
 
 def _get_product_price(
-    session: DbSession, content: CostComputableContent
+    session: DbSession, content: CostComputableContent, settings: Settings
 ) -> ProductPricing:
-    type = _get_product_price_type(content)
-    aggregate = _get_price_aggregate(session)
+    price_aggregate = _get_price_aggregate(session)
+    price_type = _get_product_price_type(content, settings, price_aggregate)
 
-    return ProductPricing.from_aggregate(type, aggregate)
+    return ProductPricing.from_aggregate(price_type, price_aggregate)
 
 
 def _get_file_from_ref(
@@ -454,8 +514,10 @@ def get_detailed_costs(
     content: CostComputableContent,
     item_hash: str,
     pricing: Optional[ProductPricing] = None,
+    settings: Optional[Settings] = None,
 ) -> List[AccountCostsDb]:
-    pricing = pricing or _get_product_price(session, content)
+    settings = settings or _get_settings(session)
+    pricing = pricing or _get_product_price(session, content, settings)
 
     if isinstance(content, StoreContent):
         return _calculate_storage_costs(session, content, pricing, item_hash)

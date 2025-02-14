@@ -229,6 +229,7 @@ async def test_process_confidential_vm(
     message_processor: PendingMessageProcessor,
     fixture_confidential_vm_message: PendingMessageDb,
     fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
     user_balance: AlephBalanceDb,
 ):
     with session_factory() as session:

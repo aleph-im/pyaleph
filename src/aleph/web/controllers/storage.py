@@ -24,7 +24,7 @@ from aleph.schemas.pending_messages import (
     PendingInlineStoreMessage,
     PendingStoreMessage,
 )
-from aleph.services.cost import _get_product_price
+from aleph.services.cost import _get_product_price, _get_settings
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import InvalidSignature
@@ -112,7 +112,10 @@ async def _verify_user_balance(
     current_balance = get_total_balance(session=session, address=address)
     current_cost_for_user = get_total_cost_for_address(session=session, address=address)
 
-    store_pricing = _get_product_price(session=session, content=content)
+    settings = _get_settings(session)
+    store_pricing = _get_product_price(
+        session=session, content=content, settings=settings
+    )
     required_balance = current_cost_for_user + (
         store_pricing.price.storage.holding * size
     )

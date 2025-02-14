@@ -64,6 +64,7 @@ async def test_process_store(
     mock_config: Config,
     session_factory: DbSessionFactory,
     fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
     fixture_store_message: PendingMessageDb,
 ):
     storage_service = StorageService(
@@ -97,6 +98,7 @@ async def test_process_store_no_signature(
     message_processor: PendingMessageProcessor,
     fixture_store_message: PendingMessageDb,
     fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
 ):
     """
     Test that a STORE message with no signature (i.e., coming from a smart contract)
