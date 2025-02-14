@@ -1,3 +1,4 @@
+import logging
 import math
 from decimal import Decimal
 from functools import reduce
@@ -28,6 +29,7 @@ from aleph.toolkit.constants import (
 from aleph.toolkit.costs import format_cost
 from aleph.types.cost import (
     CostType,
+    ProductComputeUnit,
     ProductPriceType,
     ProductPricing,
     RefVolume,
@@ -37,6 +39,8 @@ from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag
 
 CostComputableContent: TypeAlias = InstanceContent | ProgramContent | StoreContent
+
+logger = logging.getLogger(__name__)
 
 
 def get_payment_type(content: CostComputableContent) -> PaymentType:
@@ -122,9 +126,19 @@ def _get_file_from_ref(
     return None
 
 
-def _get_nb_compute_units(content: ExecutableContent) -> int:
+def _get_nb_compute_units(
+    content: ExecutableContent, product_compute_unit: Optional[ProductComputeUnit]
+) -> int:
+    default_compute_unit = ProductComputeUnit(
+        vcpus=1,
+        memory_mib=2048,
+        disk_mib=2048,
+    )
+    if not product_compute_unit:
+        product_compute_unit = default_compute_unit
+
     cpu = content.resources.vcpus
-    memory = math.ceil(content.resources.memory / 2048)
+    memory = math.ceil(content.resources.memory / product_compute_unit.memory_mib)
     nb_compute_units = cpu if cpu >= memory else memory
     return nb_compute_units
 
@@ -306,7 +320,7 @@ def _get_additional_storage_price(
     )
 
     # EXECUTION STORAGE DISCOUNT
-    nb_compute_units = _get_nb_compute_units(content)
+    nb_compute_units = _get_nb_compute_units(content, pricing.compute_unit)
     execution_volume_discount_mib = (
         pricing.compute_unit.disk_mib if pricing.compute_unit else 0
     ) * nb_compute_units
@@ -352,16 +366,23 @@ def _calculate_executable_costs(
 ) -> List[AccountCostsDb]:
     payment_type = get_payment_type(content)
 
-    # EXECUTION COST
-    compute_units_required = _get_nb_compute_units(content)
-    compute_unit_multiplier = _get_compute_unit_multiplier(content)
-
-    if not pricing.price.compute_unit:
-        raise ValueError(
+    if not pricing.compute_unit:
+        logger.warning(
             "compute_unit not defined for type '{}' in pricing aggregate".format(
                 pricing.type.value
             )
         )
+
+    if not pricing.price.compute_unit:
+        raise ValueError(
+            "compute_unit price not defined for type '{}' in pricing aggregate".format(
+                pricing.type.value
+            )
+        )
+
+    # EXECUTION COST
+    compute_units_required = _get_nb_compute_units(content, pricing.compute_unit)
+    compute_unit_multiplier = _get_compute_unit_multiplier(content)
 
     compute_unit_cost = pricing.price.compute_unit.holding
     compute_unit_cost_second = pricing.price.compute_unit.payg / HOUR
