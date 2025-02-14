@@ -247,10 +247,16 @@ def _get_execution_volumes_costs(
                 ),
             )
 
-    for idx, volume in enumerate(content.volumes):
-        name = volume.mount or "vol-{}".format(idx)
+    for i, volume in enumerate(content.volumes):
+        # NOTE: There are legacy volumes with no "mount" property set
+        # or with same values for different volumes causing unique key constraint errors
+        name_prefix = f"#{i}"
 
         if isinstance(volume, ImmutableVolume):
+            name = (
+                f"{name_prefix}:{volume.mount or CostType.EXECUTION_VOLUME_INMUTABLE}"
+            )
+
             volumes.append(
                 RefVolume(
                     CostType.EXECUTION_VOLUME_INMUTABLE,
@@ -260,6 +266,10 @@ def _get_execution_volumes_costs(
                 ),
             )
         else:
+            name = (
+                f"{name_prefix}:{volume.mount or CostType.EXECUTION_VOLUME_PERSISTENT}"
+            )
+
             volumes.append(
                 SizedVolume(
                     CostType.EXECUTION_VOLUME_PERSISTENT,
