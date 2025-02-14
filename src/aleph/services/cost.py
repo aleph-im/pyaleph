@@ -177,10 +177,11 @@ def _get_volumes_costs(
             file = _get_file_from_ref(
                 session=session, ref=volume.ref, use_latest=volume.use_latest
             )
+
             if file is None:
-                raise RuntimeError(
-                    f"Could not find entry in file tags for {volume.ref}."
-                )
+                # NOTE: There are legacy volumes with missing references
+                # skip cost calculation for them instead of raising an error
+                continue
 
             storage_mib = Decimal(file.size / MiB)
 
