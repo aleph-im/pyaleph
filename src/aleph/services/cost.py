@@ -78,7 +78,7 @@ def get_payment_type(content: CostComputableContent) -> PaymentType:
         else PaymentType.hold
     )
 
-type CostComputableContent = ExecutableContent | StoreContent
+CostComputableContent: TypeAlias = InstanceContent | ProgramContent | StoreContent
 
 
 def get_payment_type(content: CostComputableContent) -> PaymentType:
