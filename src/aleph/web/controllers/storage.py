@@ -3,7 +3,6 @@ import hashlib
 import logging
 import os
 import tempfile
-from decimal import Decimal
 from typing import Optional
 
 import aio_pika
@@ -25,6 +24,7 @@ from aleph.schemas.pending_messages import (
     PendingInlineStoreMessage,
     PendingStoreMessage,
 )
+from aleph.services.cost import _get_product_price
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import InvalidSignature
@@ -105,13 +105,20 @@ async def _verify_message_signature(
         raise web.HTTPForbidden()
 
 
-async def _verify_user_balance(session: DbSession, address: str, size: int) -> None:
-    current_balance = get_total_balance(session=session, address=address) or Decimal(0)
-    required_balance = (size / MiB) / 3
+async def _verify_user_balance(
+    session: DbSession, content: StoreContent, size: int
+) -> None:
+    address = content.address
+    current_balance = get_total_balance(session=session, address=address)
     current_cost_for_user = get_total_cost_for_address(session=session, address=address)
-    if size > 25 * MiB:
-        if current_balance < (Decimal(required_balance) + current_cost_for_user):
-            raise web.HTTPPaymentRequired()
+
+    store_pricing = _get_product_price(session=session, content=content)
+    required_balance = current_cost_for_user + (
+        store_pricing.price.storage.holding * size
+    )
+
+    if size > 25 * MiB and current_balance < required_balance:
+        raise web.HTTPPaymentRequired()
 
 
 class StorageMetadata(pydantic.BaseModel):
@@ -236,7 +243,7 @@ async def _check_and_add_file(
 
         await _verify_user_balance(
             session=session,
-            address=message_content.address,
+            content=message_content,
             size=uploaded_file.size,
         )
     else:

@@ -1,19 +1,23 @@
 import math
 from decimal import Decimal
-from typing import List, Optional, Union
+from functools import reduce
+from typing import List, Optional, Tuple, TypeAlias, Union
 
-from aleph_message.models import ExecutableContent, InstanceContent, ProgramContent
-from aleph_message.models.execution.environment import InstanceEnvironment
-from aleph_message.models.execution.instance import RootfsVolume
-from aleph_message.models.execution.volume import (
-    EphemeralVolume,
-    ImmutableVolume,
-    PersistentVolume,
+from aleph_message.models import (
+    ExecutableContent,
+    InstanceContent,
+    PaymentType,
+    ProgramContent,
+    StoreContent,
 )
+from aleph_message.models.execution.environment import InstanceEnvironment
+from aleph_message.models.execution.volume import ImmutableVolume
 
 from aleph.db.accessors.aggregates import get_aggregate_by_key
-from aleph.db.accessors.files import get_file_tag, get_message_file_pin
+from aleph.db.accessors.cost import get_message_costs
+from aleph.db.accessors.files import get_file, get_file_tag, get_message_file_pin
 from aleph.db.models import FileTagDb, MessageFilePinDb, StoredFileDb
+from aleph.db.models.account_costs import AccountCostsDb
 from aleph.db.models.aggregates import AggregateDb
 from aleph.toolkit.constants import (
     HOUR,
@@ -21,9 +25,30 @@ from aleph.toolkit.constants import (
     PRICE_AGGREGATE_OWNER,
     MiB,
 )
-from aleph.types.cost import ProductPriceType, ProductPricing
+from aleph.toolkit.costs import format_cost
+from aleph.types.cost import (
+    CostType,
+    ProductPriceType,
+    ProductPricing,
+    RefVolume,
+    SizedVolume,
+)
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag
+
+CostComputableContent: TypeAlias = InstanceContent | ProgramContent | StoreContent
+
+
+def get_payment_type(content: CostComputableContent) -> PaymentType:
+    return (
+        PaymentType.superfluid
+        if (
+            hasattr(content, "payment")
+            and content.payment
+            and content.payment.is_stream
+        )
+        else PaymentType.hold
+    )
 
 
 def _is_on_demand(content: ExecutableContent) -> bool:
@@ -42,7 +67,10 @@ def _is_confidential_vm(
     )
 
 
-def _get_product_price_type(content: ExecutableContent) -> ProductPriceType:
+def _get_product_price_type(content: CostComputableContent) -> ProductPriceType:
+    if isinstance(content, StoreContent):
+        return ProductPriceType.STORAGE
+
     is_on_demand = _is_on_demand(content)
     is_confidential_vm = _is_confidential_vm(content, is_on_demand)
 
@@ -70,7 +98,7 @@ def _get_price_aggregate(session: DbSession) -> AggregateDb:
 
 
 def _get_product_price(
-    session: DbSession, content: ExecutableContent
+    session: DbSession, content: CostComputableContent
 ) -> ProductPricing:
     type = _get_product_price_type(content)
     aggregate = _get_price_aggregate(session)
@@ -113,116 +141,336 @@ def _get_compute_unit_multiplier(content: ExecutableContent) -> int:
     return compute_unit_multiplier
 
 
-def get_volume_size(session: DbSession, content: ExecutableContent) -> int:
-    ref_volumes = []
-    sized_volumes: List[Union[EphemeralVolume, PersistentVolume, RootfsVolume]] = []
+def _get_volumes_costs(
+    session: DbSession,
+    volumes: List[RefVolume | SizedVolume],
+    payment_type: PaymentType,
+    price_per_mib: Decimal,
+    price_per_mib_second: Decimal,
+    owner: str,
+    item_hash: str,
+) -> List[AccountCostsDb]:
+    costs: List[AccountCostsDb] = []
 
-    if isinstance(content, InstanceContent):
-        sized_volumes.append(content.rootfs)
-    elif isinstance(content, ProgramContent):
-        ref_volumes += [content.code, content.runtime]
-        if content.data:
-            ref_volumes.append(content.data)
+    for volume in volumes:
+        if isinstance(volume, SizedVolume):
+            storage_mib = Decimal(volume.size_mib)
 
-    for volume in content.volumes:
-        if isinstance(volume, ImmutableVolume):
-            ref_volumes.append(volume)
-        else:
-            sized_volumes.append(volume)
+            cost_hold = format_cost(storage_mib * price_per_mib)
+            cost_stream = format_cost(
+                storage_mib * price_per_mib_second,
+            )
 
-    total_volume_size: int = 0
+            costs.append(
+                AccountCostsDb(
+                    owner=owner,
+                    item_hash=item_hash,
+                    type=volume.cost_type,
+                    name=volume.name,
+                    payment_type=payment_type,
+                    cost_hold=cost_hold,
+                    cost_stream=cost_stream,
+                )
+            )
 
-    for volume in ref_volumes:
-        if hasattr(volume, "ref") and hasattr(volume, "use_latest"):
+        elif isinstance(volume, RefVolume):
             file = _get_file_from_ref(
                 session=session, ref=volume.ref, use_latest=volume.use_latest
             )
+
             if file is None:
-                raise RuntimeError(
-                    f"Could not find entry in file tags for {volume.ref}."
+                # NOTE: There are legacy volumes with missing references
+                # skip cost calculation for them instead of raising an error
+                continue
+
+            storage_mib = Decimal(file.size / MiB)
+
+            cost_hold = format_cost(storage_mib * price_per_mib)
+            cost_stream = format_cost(
+                storage_mib * price_per_mib_second,
+            )
+
+            costs.append(
+                AccountCostsDb(
+                    owner=owner,
+                    item_hash=item_hash,
+                    type=volume.cost_type,
+                    name=volume.name,
+                    ref=volume.ref,
+                    payment_type=payment_type,
+                    cost_hold=cost_hold,
+                    cost_stream=cost_stream,
                 )
-            total_volume_size += file.size
+            )
+
+    return costs
+
+
+def _get_execution_volumes_costs(
+    session: DbSession,
+    content: ExecutableContent,
+    pricing: ProductPricing,
+    payment_type: PaymentType,
+    item_hash: str,
+) -> List[AccountCostsDb]:
+    volumes: List[RefVolume | SizedVolume] = []
+
+    if isinstance(content, InstanceContent):
+        volumes.append(
+            SizedVolume(
+                CostType.EXECUTION_INSTANCE_VOLUME_ROOTFS,
+                content.rootfs.size_mib,
+                content.rootfs.parent.ref,
+            )
+        )
+
+    elif isinstance(content, ProgramContent):
+        volumes += [
+            RefVolume(
+                CostType.EXECUTION_PROGRAM_VOLUME_CODE,
+                content.code.ref,
+                content.code.use_latest,
+            ),
+            RefVolume(
+                CostType.EXECUTION_PROGRAM_VOLUME_RUNTIME,
+                content.runtime.ref,
+                content.runtime.use_latest,
+            ),
+        ]
+
+        if content.data:
+            volumes.append(
+                RefVolume(
+                    CostType.EXECUTION_PROGRAM_VOLUME_DATA,
+                    content.data.ref,
+                    content.data.use_latest,
+                ),
+            )
+
+    for i, volume in enumerate(content.volumes):
+        # NOTE: There are legacy volumes with no "mount" property set
+        # or with same values for different volumes causing unique key constraint errors
+        name_prefix = f"#{i}"
+
+        if isinstance(volume, ImmutableVolume):
+            name = (
+                f"{name_prefix}:{volume.mount or CostType.EXECUTION_VOLUME_INMUTABLE}"
+            )
+
+            volumes.append(
+                RefVolume(
+                    CostType.EXECUTION_VOLUME_INMUTABLE,
+                    volume.ref,
+                    volume.use_latest,
+                    name,
+                ),
+            )
         else:
-            raise RuntimeError(f"Could not find reference hash for {volume}.")
+            name = (
+                f"{name_prefix}:{volume.mount or CostType.EXECUTION_VOLUME_PERSISTENT}"
+            )
 
-    for volume in sized_volumes:
-        total_volume_size += volume.size_mib * MiB
+            volumes.append(
+                SizedVolume(
+                    CostType.EXECUTION_VOLUME_PERSISTENT,
+                    volume.size_mib,
+                    None,
+                    name,
+                ),
+            )
 
-    return total_volume_size
+    price_per_mib = pricing.price.storage.holding
+    price_per_mib_second = pricing.price.storage.payg / HOUR
 
-
-def get_additional_storage_bytes(
-    content: ExecutableContent, pricing: ProductPricing, session: DbSession
-) -> Decimal:
-    nb_compute_units = _get_nb_compute_units(content)
-    included_storage_per_compute_unit = (
-        pricing.compute_unit.disk_mib if pricing.compute_unit else 0
-    ) * MiB
-    total_storage_for_free = included_storage_per_compute_unit * nb_compute_units
-
-    total_volume_size = get_volume_size(session, content)
-
-    additional_storage = max(
-        total_volume_size - total_storage_for_free,
-        0,
+    return _get_volumes_costs(
+        session,
+        volumes,
+        payment_type,
+        price_per_mib,
+        price_per_mib_second,
+        content.address,
+        item_hash,
     )
 
-    return Decimal(additional_storage)
 
+def _get_additional_storage_price(
+    session: DbSession,
+    content: ExecutableContent,
+    pricing: ProductPricing,
+    payment_type: PaymentType,
+    item_hash: str,
+) -> List[AccountCostsDb]:
+    # EXECUTION VOLUMES COSTS
+    costs = _get_execution_volumes_costs(
+        session, content, pricing, payment_type, item_hash
+    )
 
-def get_additional_storage_price(
-    content: ExecutableContent, pricing: ProductPricing, session: DbSession
-) -> Decimal:
-    additional_storage_bytes = get_additional_storage_bytes(content, pricing, session)
+    # EXECUTION STORAGE DISCOUNT
+    nb_compute_units = _get_nb_compute_units(content)
+    execution_volume_discount_mib = (
+        pricing.compute_unit.disk_mib if pricing.compute_unit else 0
+    ) * nb_compute_units
 
-    additional_storage_mib = additional_storage_bytes / MiB
     price_per_mib = pricing.price.storage.holding
+    price_per_mib_second = pricing.price.storage.payg / HOUR
 
-    return additional_storage_mib * price_per_mib
+    max_discount_hold = execution_volume_discount_mib * price_per_mib
+    max_discount_stream = execution_volume_discount_mib * price_per_mib_second
+
+    discount_holding = min(
+        Decimal(reduce(lambda x, y: x + Decimal(y.cost_hold), costs, Decimal(0))),
+        max_discount_hold,
+    )
+    discount_stream = min(
+        Decimal(reduce(lambda x, y: x + Decimal(y.cost_stream), costs, Decimal(0))),
+        max_discount_stream,
+    )
+
+    cost_hold = format_cost(-discount_holding)
+    cost_stream = format_cost(-discount_stream)
+
+    costs.append(
+        AccountCostsDb(
+            owner=content.address,
+            item_hash=item_hash,
+            type=CostType.EXECUTION_VOLUME_DISCOUNT,
+            name=CostType.EXECUTION_VOLUME_DISCOUNT,
+            payment_type=payment_type,
+            cost_hold=cost_hold,
+            cost_stream=cost_stream,
+        )
+    )
+
+    return costs
 
 
-def _get_additional_storage_flow_price(
-    content: ExecutableContent, pricing: ProductPricing, session: DbSession
-) -> Decimal:
-    additional_storage_bytes = get_additional_storage_bytes(content, pricing, session)
+def _calculate_executable_costs(
+    session: DbSession,
+    content: ExecutableContent,
+    pricing: ProductPricing,
+    item_hash: str,
+) -> List[AccountCostsDb]:
+    payment_type = get_payment_type(content)
 
-    additional_storage_mib = additional_storage_bytes / MiB
-    price_per_mib_hour = pricing.price.storage.payg
-    price_per_mib_second = price_per_mib_hour / HOUR
-
-    return additional_storage_mib * price_per_mib_second
-
-
-def compute_cost(session: DbSession, content: ExecutableContent) -> Decimal:
-    pricing = _get_product_price(session, content)
-
-    compute_unit_cost = pricing.price.compute_unit.holding
-
+    # EXECUTION COST
     compute_units_required = _get_nb_compute_units(content)
     compute_unit_multiplier = _get_compute_unit_multiplier(content)
+
+    if not pricing.price.compute_unit:
+        raise ValueError(
+            "compute_unit not defined for type '{}' in pricing aggregate".format(
+                pricing.type.value
+            )
+        )
+
+    compute_unit_cost = pricing.price.compute_unit.holding
+    compute_unit_cost_second = pricing.price.compute_unit.payg / HOUR
 
     compute_unit_price = (
         compute_units_required * compute_unit_multiplier * compute_unit_cost
     )
-
-    additional_storage_price = get_additional_storage_price(content, pricing, session)
-    return Decimal(compute_unit_price + additional_storage_price)
-
-
-def compute_flow_cost(session: DbSession, content: ExecutableContent) -> Decimal:
-    pricing = _get_product_price(session, content)
-
-    compute_unit_cost_hour = pricing.price.compute_unit.payg
-    compute_unit_cost_second = compute_unit_cost_hour / HOUR
-
-    compute_units_required = _get_nb_compute_units(content)
-    compute_unit_multiplier = _get_compute_unit_multiplier(content)
-
-    compute_unit_price = (
+    compute_unit_price_stream = (
         compute_units_required * compute_unit_multiplier * compute_unit_cost_second
     )
 
-    additional_storage_flow_price = _get_additional_storage_flow_price(
-        content, pricing, session
+    cost_hold = format_cost(compute_unit_price)
+    cost_stream = format_cost(compute_unit_price_stream)
+
+    execution_cost = AccountCostsDb(
+        owner=content.address,
+        item_hash=item_hash,
+        type=CostType.EXECUTION,
+        name=pricing.type,
+        payment_type=payment_type,
+        cost_hold=cost_hold,
+        cost_stream=cost_stream,
     )
-    return Decimal(compute_unit_price + additional_storage_flow_price)
+
+    costs: List[AccountCostsDb] = [execution_cost]
+    costs += _get_additional_storage_price(
+        session, content, pricing, payment_type, item_hash
+    )
+
+    return costs
+
+
+def _calculate_storage_costs(
+    session: DbSession,
+    content: StoreContent,
+    pricing: ProductPricing,
+    item_hash: str,
+) -> List[AccountCostsDb]:
+    payment_type = get_payment_type(content)
+
+    file = get_file(session=session, file_hash=content.item_hash)
+    if file is None:
+        raise RuntimeError(f"Could not find file {item_hash}.")
+
+    price_per_mib = pricing.price.storage.holding
+    price_per_mib_second = pricing.price.storage.payg / HOUR
+
+    storage_mib = Decimal(file.size / MiB)
+
+    cost_hold = format_cost(storage_mib * price_per_mib)
+    cost_stream = format_cost(
+        storage_mib * price_per_mib_second,
+    )
+    return [
+        AccountCostsDb(
+            owner=content.address,
+            item_hash=item_hash,
+            type=CostType.STORAGE,
+            name=CostType.STORAGE,
+            payment_type=payment_type,
+            cost_hold=cost_hold,
+            cost_stream=cost_stream,
+        )
+    ]
+
+
+def get_detailed_costs(
+    session: DbSession,
+    content: CostComputableContent,
+    item_hash: str,
+    pricing: Optional[ProductPricing] = None,
+) -> List[AccountCostsDb]:
+    pricing = pricing or _get_product_price(session, content)
+
+    if isinstance(content, StoreContent):
+        return _calculate_storage_costs(session, content, pricing, item_hash)
+    else:
+        return _calculate_executable_costs(session, content, pricing, item_hash)
+
+
+def get_total_and_detailed_costs(
+    session: DbSession,
+    content: CostComputableContent,
+    item_hash: str,
+) -> Tuple[Decimal, List[AccountCostsDb]]:
+    payment_type = get_payment_type(content)
+
+    costs = get_detailed_costs(session, content, item_hash)
+    cost = format_cost(
+        reduce(lambda x, y: x + y.cost_stream, costs, Decimal(0))
+        if payment_type == PaymentType.superfluid
+        else reduce(lambda x, y: x + y.cost_hold, costs, Decimal(0))
+    )
+
+    return Decimal(cost), list(costs)
+
+
+def get_total_and_detailed_costs_from_db(
+    session: DbSession,
+    content: ExecutableContent,
+    item_hash: str,
+) -> Tuple[Decimal, List[AccountCostsDb]]:
+    payment_type = get_payment_type(content)
+
+    costs = get_message_costs(session, item_hash)
+    cost = format_cost(
+        reduce(lambda x, y: x + y.cost_stream, costs, Decimal(0))
+        if payment_type == PaymentType.superfluid
+        else reduce(lambda x, y: x + y.cost_hold, costs, Decimal(0))
+    )
+
+    return Decimal(cost), list(costs)

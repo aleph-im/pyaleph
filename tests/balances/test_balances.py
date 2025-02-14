@@ -188,4 +188,4 @@ def test_get_total_balance(session_factory: DbSessionFactory):
         balance_unknown_address = get_total_balance(
             session=session, address="unknown-address", include_dapps=False
         )
-        assert balance_unknown_address is None
+        assert balance_unknown_address == Decimal(0)
