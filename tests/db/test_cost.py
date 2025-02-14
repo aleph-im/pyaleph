@@ -210,6 +210,7 @@ async def test_get_total_cost_for_address(
     session_factory: DbSessionFactory,
     fixture_instance_message,
     fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
 ):
     with session_factory() as session:
         session.add(

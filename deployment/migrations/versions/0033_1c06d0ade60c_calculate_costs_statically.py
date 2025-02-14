@@ -12,9 +12,12 @@ from alembic import op
 import sqlalchemy as sa
 import logging
 
+from aleph_message.models import StoreContent, ExecutableContent, ProgramContent
+from aleph_message.models.execution.environment import InstanceEnvironment
+
 from aleph.db.accessors.cost import make_costs_upsert_query
 from aleph.db.accessors.messages import get_message_by_item_hash
-from aleph.services.cost import _get_product_price_type, get_detailed_costs
+from aleph.services.cost import get_detailed_costs, CostComputableContent
 from aleph.types.cost import ProductComputeUnit, ProductPrice, ProductPriceOptions, ProductPriceType, ProductPricing
 from aleph.types.db_session import DbSession
 
@@ -70,6 +73,41 @@ hardcoded_initial_price: Dict[ProductPriceType, ProductPricing] = {
 }
 
 
+def _is_confidential_vm(
+        content: ExecutableContent
+) -> bool:
+    is_on_demand = isinstance(content, ProgramContent) and not content.on.persistent
+
+    return (
+            not is_on_demand
+            and isinstance(getattr(content, "environment", None), InstanceEnvironment)
+            and getattr(content.environment, "trusted_execution", False)
+    )
+
+
+def _get_product_instance_type(
+        content: CostComputableContent
+) -> ProductPriceType:
+    if _is_confidential_vm(content):
+        return ProductPriceType.INSTANCE_CONFIDENTIAL
+
+    return ProductPriceType.INSTANCE
+
+
+def _get_product_price_type(
+        content: CostComputableContent
+) -> ProductPriceType:
+    if isinstance(content, StoreContent):
+        return ProductPriceType.STORAGE
+
+    is_on_demand = isinstance(content, ProgramContent) and not content.on.persistent
+
+    return (
+        ProductPriceType.PROGRAM
+        if is_on_demand
+        else _get_product_instance_type(content)
+    )
+
 
 def do_calculate_costs() -> None:
     session = DbSession(bind=op.get_bind())
@@ -91,7 +129,7 @@ def do_calculate_costs() -> None:
 
     for item_hash in msg_item_hashes:
         message = get_message_by_item_hash(session, item_hash)
-        
+
         if message:
             content = message.parsed_content
             type = _get_product_price_type(content)

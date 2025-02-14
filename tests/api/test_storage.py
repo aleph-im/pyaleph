@@ -293,6 +293,7 @@ async def test_storage_add_file_raw_upload(
 async def test_storage_add_file_with_message(
     api_client,
     fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
     session_factory: DbSessionFactory,
     file_content,
     expected_hash,
@@ -335,6 +336,7 @@ async def test_storage_add_file_with_message_202(
     balance,
     mocker,
     fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
 ):
     await add_file_with_message_202(
         api_client,

@@ -7,6 +7,7 @@ from aleph_message.models import ExecutableContent, InstanceContent, PaymentType
 from aleph.services.cost import (
     _get_additional_storage_price,
     _get_product_price,
+    _get_settings,
     get_total_and_detailed_costs,
 )
 from aleph.types.db_session import DbSessionFactory
@@ -211,6 +212,7 @@ def fixture_flow_instance_message_complete() -> ExecutableContent:
 def test_compute_cost(
     session_factory: DbSessionFactory,
     fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
     fixture_hold_instance_message,
 ):
     file_db = StoredFileDb()
@@ -227,6 +229,7 @@ def test_compute_cost(
 def test_compute_cost_conf(
     session_factory: DbSessionFactory,
     fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
     fixture_hold_instance_message,
 ):
     message_dict = fixture_hold_instance_message.dict()
@@ -258,6 +261,7 @@ def test_compute_cost_conf(
 def test_get_additional_storage_price(
     session_factory: DbSessionFactory,
     fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
     fixture_hold_instance_message,
 ):
     file_db = StoredFileDb()
@@ -266,7 +270,10 @@ def test_get_additional_storage_price(
 
     with session_factory() as session:
         content = fixture_hold_instance_message
-        pricing = _get_product_price(session, content=content)
+        settings = _get_settings(session)
+        pricing = _get_product_price(
+            session=session, content=content, settings=settings
+        )
 
         cost = _get_additional_storage_price(
             session=session,
@@ -283,6 +290,7 @@ def test_get_additional_storage_price(
 def test_compute_cost_complete(
     session_factory: DbSessionFactory,
     fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
     fixture_hold_instance_message_complete,
 ):
     file_db = StoredFileDb()
@@ -301,6 +309,7 @@ def test_compute_cost_complete(
 def test_compute_flow_cost(
     session_factory: DbSessionFactory,
     fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
     fixture_flow_instance_message,
 ):
     file_db = StoredFileDb()
@@ -318,6 +327,7 @@ def test_compute_flow_cost(
 def test_compute_flow_cost_conf(
     session_factory: DbSessionFactory,
     fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
     fixture_flow_instance_message,
 ):
     message_dict = fixture_flow_instance_message.dict()
@@ -351,6 +361,7 @@ def test_compute_flow_cost_conf(
 def test_compute_flow_cost_complete(
     session_factory: DbSessionFactory,
     fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
     fixture_flow_instance_message_complete,
 ):
     file_db = StoredFileDb()

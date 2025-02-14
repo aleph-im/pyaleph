@@ -169,6 +169,7 @@ async def test_process_program(
     message_processor: PendingMessageProcessor,
     fixture_program_message: PendingMessageDb,
     fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
 ):
     with session_factory() as session:
         insert_volume_refs(session, fixture_program_message)
@@ -242,6 +243,7 @@ async def test_program_with_subscriptions(
     message_processor: PendingMessageProcessor,
     fixture_program_message_with_subscriptions: PendingMessageDb,
     fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
 ):
     program_message = fixture_program_message_with_subscriptions
     with session_factory() as session:

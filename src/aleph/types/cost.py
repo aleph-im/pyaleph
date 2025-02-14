@@ -1,6 +1,6 @@
 from decimal import Decimal
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import ConstrainedInt
 
@@ -55,53 +55,89 @@ class ProductPrice:
         self.compute_unit = compute_unit
 
 
+class ProductTier:
+    id: str
+    compute_units: int
+    model: Optional[str] = None
+    vram: Optional[int] = None
+
+    def __init__(
+        self,
+        id: str,
+        compute_units: int,
+        model: Optional[str] = None,
+        vram: Optional[int] = None,
+    ):
+        self.id = id
+        self.compute_units = compute_units
+        self.model = model
+        self.vram = vram
+
+
 class ProductPricing:
     type: ProductPriceType
     price: ProductPrice
     compute_unit: Optional[ProductComputeUnit]
+    tiers: Optional[List[ProductTier]]
 
     def __init__(
         self,
-        type: ProductPriceType,
+        price_type: ProductPriceType,
         price: ProductPrice,
         compute_unit: Optional[ProductComputeUnit] = None,
+        tiers: Optional[List[ProductTier]] = None,
     ):
-        self.type = type
+        self.type = price_type
         self.price = price
         self.compute_unit = compute_unit
+        self.tiers = tiers
 
     @staticmethod
-    def from_aggregate(type: ProductPriceType, aggregate: AggregateDb):
-        content = aggregate.content[type.value]
+    def from_aggregate(price_type: ProductPriceType, aggregate: AggregateDb):
+        content = aggregate.content[price_type.value]
 
         price = content["price"]
         compute_unit = content.get("compute_unit", None)
+        tiers = content.get("tiers", None)
+
+        product_tiers = []
+        if tiers:
+            product_tiers = [
+                ProductTier(
+                    id=tier["id"],
+                    compute_units=tier["compute_units"],
+                    model=tier.get("model", None),
+                    vram=tier.get("vram", None),
+                )
+                for tier in tiers
+            ]
 
         pricing = ProductPricing(
-            type,
-            ProductPrice(
-                ProductPriceOptions(
-                    price["storage"]["holding"],
+            price_type=price_type,
+            price=ProductPrice(
+                storage=ProductPriceOptions(
+                    price["storage"].get("holding", None),
                     price["storage"].get("payg", None),
                 ),
-                (
+                compute_unit=(
                     ProductPriceOptions(
-                        price["compute_unit"]["holding"],
-                        price["compute_unit"]["payg"],
+                        price["compute_unit"].get("holding", None),
+                        price["compute_unit"].get("payg", None),
                     )
                     if compute_unit
                     else None
                 ),
             ),
-            (
+            compute_unit=(
                 ProductComputeUnit(
                     compute_unit["vcpus"],
                     compute_unit["disk_mib"],
                     compute_unit["memory_mib"],
                 )
-                if compute_unit
+                if tiers
                 else None
             ),
+            tiers=product_tiers,
         )
 
         return pricing
