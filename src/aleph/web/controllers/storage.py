@@ -24,7 +24,7 @@ from aleph.schemas.pending_messages import (
     PendingInlineStoreMessage,
     PendingStoreMessage,
 )
-from aleph.services.cost import get_total_and_detailed_costs
+from aleph.services.cost import _get_product_price
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import InvalidSignature
@@ -112,10 +112,12 @@ async def _verify_user_balance(
     current_balance = get_total_balance(session=session, address=address)
     current_cost_for_user = get_total_cost_for_address(session=session, address=address)
 
-    required_balance, _ = get_total_and_detailed_costs(session, content, "")
-    total_required_balance = required_balance + current_cost_for_user
+    store_pricing = _get_product_price(session=session, content=content)
+    required_balance = current_cost_for_user + (
+        store_pricing.price.storage.holding * size
+    )
 
-    if size > 25 * MiB and current_balance < total_required_balance:
+    if size > 25 * MiB and current_balance < required_balance:
         raise web.HTTPPaymentRequired()
 
 

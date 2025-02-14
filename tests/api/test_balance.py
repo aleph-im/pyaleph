@@ -27,7 +27,7 @@ async def test_get_balance(
     data = await response.json()
     assert data["balance"] == user_balance.balance
 
-    assert data["locked_amount"] == 1002.4666666666666
+    assert data["locked_amount"] == 1001.8
 
     details = data["details"]
     assert details["ETH"] == user_balance.balance
@@ -46,7 +46,7 @@ async def test_get_balance_with_chain(
     _ = [message async for message in pipeline]
 
     assert fixture_instance_message.item_content
-    expected_locked_amount = 1002.4666666666666
+    expected_locked_amount = 1001.8
     chain = Chain.AVAX.value
     # Test Avax
     avax_response = await ccn_api_client.get(f"{MESSAGES_URI}?chain={chain}")
