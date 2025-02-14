@@ -77,7 +77,7 @@ def do_calculate_costs() -> None:
     msg_item_hashes = (
         session.execute(
            """
-           SELECT m.item_hash, ms.status
+           SELECT m.item_hash
                 FROM messages m
                 INNER JOIN message_status ms on (m.item_hash = ms.item_hash)
                 WHERE ms.status = 'processed' and (m.type = 'INSTANCE' or m.type = 'PROGRAM' or m.type = 'STORE')

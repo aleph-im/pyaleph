@@ -246,14 +246,16 @@ def _get_execution_volumes_costs(
                 ),
             )
 
-    for volume in content.volumes:
+    for idx, volume in enumerate(content.volumes):
+        name = volume.mount or "vol-{}".format(idx)
+
         if isinstance(volume, ImmutableVolume):
             volumes.append(
                 RefVolume(
                     CostType.EXECUTION_VOLUME_INMUTABLE,
                     volume.ref,
                     volume.use_latest,
-                    volume.mount,
+                    name,
                 ),
             )
         else:
@@ -262,7 +264,7 @@ def _get_execution_volumes_costs(
                     CostType.EXECUTION_VOLUME_PERSISTENT,
                     volume.size_mib,
                     None,
-                    volume.mount,
+                    name,
                 ),
             )
 
