@@ -26,7 +26,7 @@ from aleph.web.controllers.app_state_getters import (
     get_session_factory_from_request,
     get_storage_service_from_request,
 )
-
+    
 LOGGER = logging.getLogger(__name__)
 
 
