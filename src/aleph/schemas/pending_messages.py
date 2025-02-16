@@ -21,8 +21,8 @@ import datetime as dt
 from typing import Any, Dict, Generic, Literal, Type
 
 from aleph_message.models import (
-    Chain,
     AggregateContent,
+    Chain,
     ForgetContent,
     InstanceContent,
     ItemType,
@@ -34,9 +34,9 @@ from aleph_message.models import (
 from pydantic import ValidationError, root_validator, validator
 
 import aleph.toolkit.json as aleph_json
-from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.exceptions import UnknownHashError
 from aleph.schemas.base_messages import AlephBaseMessage, ContentType, MType
+from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.message_status import InvalidMessageFormat
 from aleph.utils import item_type_from_hash
 
@@ -58,9 +58,7 @@ def base_pending_message_load_content(values):
 
     try:
         default_item_type = (
-            item_type_from_hash(item_hash)
-            if item_content is None
-            else ItemType.inline
+            item_type_from_hash(item_hash) if item_content is None else ItemType.inline
         )
     except UnknownHashError:
         raise ValueError(f"Unexpected hash type: '{item_hash}'")
@@ -109,13 +107,13 @@ class BasePendingMessage(AlephBaseMessage, Generic[MType, ContentType]):
 
     sender: str
     chain: Chain
-    type: MType 
+    type: MType
     time: dt.datetime
 
     @root_validator(pre=True)
     def load_content(cls, values):
-       return base_pending_message_load_content(values)
-    
+        return base_pending_message_load_content(values)
+
     @validator("time", pre=True)
     def check_time(cls, v, values):
         return base_pending_message_validator_check_time(v, values)

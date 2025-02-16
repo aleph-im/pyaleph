@@ -6,10 +6,10 @@ import datetime as dt
 from hashlib import sha256
 from typing import Any, Generic, Mapping, Optional, TypeVar, cast
 
+from aleph_message.models import BaseContent, Chain, ItemType, MessageType
 from pydantic import root_validator, validator
 from pydantic.generics import GenericModel
 
-from aleph_message.models import BaseContent, Chain, ItemType, MessageType
 from aleph.utils import item_type_from_hash
 
 MType = TypeVar("MType", bound=MessageType)
@@ -81,7 +81,7 @@ class AlephBaseMessage(GenericModel, Generic[MType, ContentType]):
     sender: Optional[str] = None
     chain: Optional[Chain] = None
     signature: Optional[str] = None
-    type: Optional[MType] =  None
+    type: Optional[MType] = None
     item_content: Optional[str] = None
     item_type: ItemType
     item_hash: str
@@ -91,7 +91,7 @@ class AlephBaseMessage(GenericModel, Generic[MType, ContentType]):
 
     @root_validator()
     def check_item_type(cls, values):
-       return base_message_validator_check_item_type(values)
+        return base_message_validator_check_item_type(values)
 
     @validator("item_hash")
     def check_item_hash(cls, v: Any, values: Mapping[str, Any]):

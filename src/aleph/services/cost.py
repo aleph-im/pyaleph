@@ -5,7 +5,6 @@ from functools import reduce
 from typing import List, Optional, Tuple, TypeAlias, Union
 
 from aleph_message.models import (
-    ExecutableContent,
     InstanceContent,
     PaymentType,
     ProgramContent,
@@ -23,7 +22,13 @@ from aleph.db.accessors.files import get_file, get_file_tag, get_message_file_pi
 from aleph.db.models import FileTagDb, MessageFilePinDb, StoredFileDb
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.db.models.aggregates import AggregateDb
-from aleph.schemas.cost_estimation_messages import CostEstimationMessageContent
+from aleph.schemas.cost_estimation_messages import (
+    CostEstimationContent,
+    CostEstimationImmutableVolume,
+    CostEstimationInstanceContent,
+    CostEstimationProgramContent,
+    CostEstimationStoreContent,
+)
 from aleph.toolkit.constants import (
     HOUR,
     PRICE_AGGREGATE_KEY,
@@ -45,9 +50,18 @@ from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag
 from aleph.types.settings import Settings
 
-CostComputableContent: TypeAlias = InstanceContent | ProgramContent | StoreContent
-
 logger = logging.getLogger(__name__)
+
+CostComputableContent: TypeAlias = (
+    CostEstimationContent | InstanceContent | ProgramContent | StoreContent
+)
+
+CostComputableExecutableContent: TypeAlias = (
+    CostEstimationInstanceContent
+    | CostEstimationProgramContent
+    | InstanceContent
+    | ProgramContent
+)
 
 
 # TODO: Cache aggregate for 5 min
@@ -79,64 +93,30 @@ def get_payment_type(content: CostComputableContent) -> PaymentType:
         else PaymentType.hold
     )
 
-CostComputableContent: TypeAlias = InstanceContent | ProgramContent | StoreContent
-
-
-def get_payment_type(content: CostComputableContent) -> PaymentType:
-    return (
-        PaymentType.superfluid
-        if (
-            hasattr(content, "payment")
-            and content.payment
-            and content.payment.is_stream
-        )
-        else PaymentType.hold
-    )
-
-CostComputableContent: TypeAlias = CostEstimationMessageContent
-
-def get_payment_type(content: CostComputableContent) -> PaymentType:
-    return (
-        PaymentType.superfluid
-        if (
-            hasattr(content, "payment")
-            and content.payment
-            and content.payment.is_stream
-        )
-        else PaymentType.hold
-    )
-
-
-def _is_on_demand(content: ExecutableContent) -> bool:
-    return isinstance(content, ProgramContent) and not content.on.persistent
-
 
 def _is_confidential_vm(
-    content: ExecutableContent, is_on_demand: Optional[bool]
+    content: InstanceContent | CostEstimationInstanceContent,
 ) -> bool:
-    is_on_demand = is_on_demand or _is_on_demand(content=content)
-
-    return (
-        not is_on_demand
-        and isinstance(getattr(content, "environment", None), InstanceEnvironment)
-        and getattr(content.environment, "trusted_execution", False)
-    )
+    return isinstance(
+        getattr(content, "environment", None), InstanceEnvironment
+    ) and getattr(content.environment, "trusted_execution", False)
 
 
-def _is_gpu_vm(content: ExecutableContent) -> bool:
-
+def _is_gpu_vm(content: InstanceContent | CostEstimationInstanceContent) -> bool:
     return isinstance(
         getattr(content, "requirements", None), HostRequirements
     ) and getattr(content.requirements, "gpu", False)
 
 
 def _get_product_instance_type(
-    content: CostComputableContent, settings: Settings, price_aggregate: AggregateDb
+    content: InstanceContent | CostEstimationInstanceContent,
+    settings: Settings,
+    price_aggregate: AggregateDb,
 ) -> ProductPriceType:
-    if _is_confidential_vm(content, False):
+    if _is_confidential_vm(content):
         return ProductPriceType.INSTANCE_CONFIDENTIAL
 
-    if not _is_gpu_vm(content):
+    if _is_gpu_vm(content):
         return ProductPriceType.INSTANCE
 
     # TODO: Improve the way to compare tiers
@@ -171,13 +151,15 @@ def _get_product_price_type(
     if isinstance(content, StoreContent):
         return ProductPriceType.STORAGE
 
-    is_on_demand = _is_on_demand(content)
+    if isinstance(content, ProgramContent):
+        is_on_demand = not content.on.persistent
+        return (
+            ProductPriceType.PROGRAM
+            if is_on_demand
+            else ProductPriceType.PROGRAM_PERSISTENT
+        )
 
-    return (
-        ProductPriceType.PROGRAM
-        if is_on_demand
-        else _get_product_instance_type(content, settings, price_aggregate)
-    )
+    return _get_product_instance_type(content, settings, price_aggregate)
 
 
 # TODO: Cache aggregate for 5 min
@@ -218,7 +200,8 @@ def _get_file_from_ref(
 
 
 def _get_nb_compute_units(
-    content: ExecutableContent, product_compute_unit: Optional[ProductComputeUnit]
+    content: CostComputableExecutableContent,
+    product_compute_unit: Optional[ProductComputeUnit],
 ) -> int:
     default_compute_unit = ProductComputeUnit(
         vcpus=1,
@@ -235,7 +218,7 @@ def _get_nb_compute_units(
 
 
 # TODO: Include this in the aggregate
-def _get_compute_unit_multiplier(content: ExecutableContent) -> int:
+def _get_compute_unit_multiplier(content: CostComputableContent) -> int:
     compute_unit_multiplier = 1
     if (
         isinstance(content, ProgramContent)
@@ -261,24 +244,6 @@ def _get_volumes_costs(
         if isinstance(volume, SizedVolume):
             storage_mib = Decimal(volume.size_mib)
 
-            cost_hold = format_cost(storage_mib * price_per_mib)
-            cost_stream = format_cost(
-                storage_mib * price_per_mib_second,
-            )
-
-            costs.append(
-                AccountCostsDb(
-                    owner=owner,
-                    item_hash=item_hash,
-                    type=volume.cost_type,
-                    ref=volume.ref,
-                    name=volume.name,
-                    payment_type=payment_type,
-                    cost_hold=cost_hold,
-                    cost_stream=cost_stream,
-                )
-            )
-
         elif isinstance(volume, RefVolume):
             file = _get_file_from_ref(
                 session=session, ref=volume.ref, use_latest=volume.use_latest
@@ -291,30 +256,30 @@ def _get_volumes_costs(
 
             storage_mib = Decimal(file.size / MiB)
 
-            cost_hold = format_cost(storage_mib * price_per_mib)
-            cost_stream = format_cost(
-                storage_mib * price_per_mib_second,
-            )
+        cost_hold = format_cost(storage_mib * price_per_mib)
+        cost_stream = format_cost(
+            storage_mib * price_per_mib_second,
+        )
 
-            costs.append(
-                AccountCostsDb(
-                    owner=owner,
-                    item_hash=item_hash,
-                    type=volume.cost_type,
-                    name=volume.name,
-                    ref=volume.ref,
-                    payment_type=payment_type,
-                    cost_hold=cost_hold,
-                    cost_stream=cost_stream,
-                )
+        costs.append(
+            AccountCostsDb(
+                owner=owner,
+                item_hash=item_hash,
+                type=volume.cost_type,
+                ref=volume.ref,
+                name=volume.name,
+                payment_type=payment_type,
+                cost_hold=cost_hold,
+                cost_stream=cost_stream,
             )
+        )
 
     return costs
 
 
 def _get_execution_volumes_costs(
     session: DbSession,
-    content: ExecutableContent,
+    content: CostComputableExecutableContent,
     pricing: ProductPricing,
     payment_type: PaymentType,
     item_hash: str,
@@ -363,14 +328,27 @@ def _get_execution_volumes_costs(
                 f"{name_prefix}:{volume.mount or CostType.EXECUTION_VOLUME_INMUTABLE}"
             )
 
-            volumes.append(
-                RefVolume(
-                    CostType.EXECUTION_VOLUME_INMUTABLE,
-                    volume.ref,
-                    volume.use_latest,
-                    name,
-                ),
-            )
+            if (
+                isinstance(volume, CostEstimationImmutableVolume)
+                and volume.estimated_size_mib
+            ):
+                volumes.append(
+                    SizedVolume(
+                        CostType.EXECUTION_VOLUME_INMUTABLE,
+                        volume.estimated_size_mib,
+                        volume.ref,
+                        name,
+                    ),
+                )
+            else:
+                volumes.append(
+                    RefVolume(
+                        CostType.EXECUTION_VOLUME_INMUTABLE,
+                        volume.ref,
+                        volume.use_latest,
+                        name,
+                    ),
+                )
         else:
             name = (
                 f"{name_prefix}:{volume.mount or CostType.EXECUTION_VOLUME_PERSISTENT}"
@@ -401,7 +379,7 @@ def _get_execution_volumes_costs(
 
 def _get_additional_storage_price(
     session: DbSession,
-    content: ExecutableContent,
+    content: CostComputableExecutableContent,
     pricing: ProductPricing,
     payment_type: PaymentType,
     item_hash: str,
@@ -452,7 +430,7 @@ def _get_additional_storage_price(
 
 def _calculate_executable_costs(
     session: DbSession,
-    content: ExecutableContent,
+    content: CostComputableExecutableContent,
     pricing: ProductPricing,
     item_hash: str,
 ) -> List[AccountCostsDb]:
@@ -529,36 +507,34 @@ def _calculate_executable_costs(
 
 def _calculate_storage_costs(
     session: DbSession,
-    content: StoreContent,
+    content: CostEstimationStoreContent | StoreContent,
     pricing: ProductPricing,
     item_hash: str,
 ) -> List[AccountCostsDb]:
     payment_type = get_payment_type(content)
 
-    file = get_file(session=session, file_hash=content.item_hash)
-    if file is None:
-        raise RuntimeError(f"Could not find file {item_hash}.")
+    if isinstance(content, CostEstimationStoreContent) and content.estimated_size_mib:
+        storage_mib = content.estimated_size_mib
+    else:
+        file = get_file(session, content.item_hash)
+        if not file:
+            return []
+        storage_mib = int(file.size / MiB)
+
+    volume = SizedVolume(CostType.STORAGE, storage_mib, item_hash)
 
     price_per_mib = pricing.price.storage.holding
     price_per_mib_second = pricing.price.storage.payg / HOUR
 
-    storage_mib = Decimal(file.size / MiB)
-
-    cost_hold = format_cost(storage_mib * price_per_mib)
-    cost_stream = format_cost(
-        storage_mib * price_per_mib_second,
+    return _get_volumes_costs(
+        session,
+        [volume],
+        payment_type,
+        price_per_mib,
+        price_per_mib_second,
+        content.address,
+        item_hash,
     )
-    return [
-        AccountCostsDb(
-            owner=content.address,
-            item_hash=item_hash,
-            type=CostType.STORAGE,
-            name=CostType.STORAGE,
-            payment_type=payment_type,
-            cost_hold=cost_hold,
-            cost_stream=cost_stream,
-        )
-    ]
 
 
 def get_detailed_costs(
@@ -596,7 +572,7 @@ def get_total_and_detailed_costs(
 
 def get_total_and_detailed_costs_from_db(
     session: DbSession,
-    content: ExecutableContent,
+    content: CostComputableContent,
     item_hash: str,
 ) -> Tuple[Decimal, List[AccountCostsDb]]:
     payment_type = get_payment_type(content)

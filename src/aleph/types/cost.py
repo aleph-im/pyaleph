@@ -2,12 +2,6 @@ from decimal import Decimal
 from enum import Enum
 from typing import List, Optional
 
-from pydantic import ConstrainedInt
-
-from pydantic import ConstrainedInt
-
-from pydantic import ConstrainedInt
-
 from aleph.db.models.aggregates import AggregateDb
 
 
@@ -169,7 +163,7 @@ class SizedVolume(VolumeCost):
     def __init__(
         self,
         cost_type: CostType,
-        size_mib: ConstrainedInt,
+        size_mib: int,
         ref: Optional[str] = None,
         *args,
     ):

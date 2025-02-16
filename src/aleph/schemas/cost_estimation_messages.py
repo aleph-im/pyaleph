@@ -1,20 +1,56 @@
-from typing import Any, Dict, Generic, Literal, Type, TypeAlias
-from aiohttp import web
-from pydantic import ValidationError, root_validator
+from typing import Any, Dict, Generic, List, Literal, Optional, Type, TypeAlias, Union
 
+from aiohttp import web
 from aleph_message.models import (
     InstanceContent,
     MessageType,
     ProgramContent,
     StoreContent,
 )
+from aleph_message.models.execution.volume import (
+    EphemeralVolume,
+    ImmutableVolume,
+    PersistentVolume,
+)
+from pydantic import Field, ValidationError, root_validator
+
 from aleph.schemas.base_messages import AlephBaseMessage, ContentType, MType
 from aleph.schemas.pending_messages import base_pending_message_load_content
 from aleph.storage import StorageService
 from aleph.types.message_status import InvalidMessageException, InvalidMessageFormat
 
 
-class CostEstimationMessage(AlephBaseMessage, Generic[MType, ContentType]):
+class CostEstimationImmutableVolume(ImmutableVolume):
+    estimated_size_mib: Optional[int] = None
+
+
+CostEstimationMachineVolume = Union[
+    CostEstimationImmutableVolume,
+    EphemeralVolume,
+    PersistentVolume,
+]
+
+
+class CostEstimationInstanceContent(InstanceContent):
+    volumes: List[CostEstimationMachineVolume] = Field(
+        default=[], description="Volumes to mount on the filesystem"
+    )
+
+
+class CostEstimationProgramContent(ProgramContent):
+    volumes: List[CostEstimationMachineVolume] = Field(
+        default=[], description="Volumes to mount on the filesystem"
+    )
+
+
+class CostEstimationStoreContent(StoreContent):
+    estimated_size_mib: Optional[int] = None
+
+
+# ----
+
+
+class BaseCostEstimationMessage(AlephBaseMessage, Generic[MType, ContentType]):
     """
     A raw Aleph message, sent by users to estimate costs before reaching the network
     """
@@ -28,18 +64,18 @@ class CostEstimationMessage(AlephBaseMessage, Generic[MType, ContentType]):
 
 
 class CostEstimationInstanceMessage(
-    CostEstimationMessage[Literal[MessageType.instance], InstanceContent]  # type: ignore
+    BaseCostEstimationMessage[Literal[MessageType.instance], CostEstimationInstanceContent]  # type: ignore
 ):
     pass
 
 
 class CostEstimationProgramMessage(
-    CostEstimationMessage[Literal[MessageType.program], ProgramContent]  # type: ignore
+    BaseCostEstimationMessage[Literal[MessageType.program], CostEstimationProgramContent]  # type: ignore
 ):
     pass
 
 
-class CostEstimationStoreMessage(CostEstimationMessage[Literal[MessageType.store], StoreContent]):  # type: ignore
+class CostEstimationStoreMessage(BaseCostEstimationMessage[Literal[MessageType.store], CostEstimationStoreContent]):  # type: ignore
     pass
 
 
@@ -49,8 +85,19 @@ CostEstimationMessage: TypeAlias = (
     | CostEstimationStoreMessage
 )
 
-CostEstimationMessageContent: TypeAlias = (
-    InstanceContent | ProgramContent | StoreContent
+
+CostEstimationContent: TypeAlias = (
+    CostEstimationInstanceContent
+    | CostEstimationProgramContent
+    | CostEstimationStoreContent
+)
+
+
+CostEstimationExecutableContent: TypeAlias = (
+    CostEstimationInstanceContent | CostEstimationProgramContent
+)
+CostEstimationExecutableMessage: TypeAlias = (
+    CostEstimationInstanceMessage | CostEstimationProgramMessage
 )
 
 
@@ -64,10 +111,10 @@ COST_MESSAGE_TYPE_TO_CLASS: Dict[
 }
 
 
-COST_MESSAGE_TYPE_TO_CONTENT: Dict[MessageType, Type[CostEstimationMessageContent]] = {
-    MessageType.instance: InstanceContent,
-    MessageType.program: ProgramContent,
-    MessageType.store: StoreContent,
+COST_MESSAGE_TYPE_TO_CONTENT: Dict[MessageType, Type[CostEstimationContent]] = {
+    MessageType.instance: CostEstimationInstanceContent,
+    MessageType.program: CostEstimationProgramContent,
+    MessageType.store: CostEstimationStoreContent,
 }
 
 
@@ -89,14 +136,16 @@ def parse_message(message_dict: Any) -> CostEstimationMessage:
         raise InvalidMessageFormat(e.errors()) from e
 
 
-async def validate_cost_estimation_message_content(message: CostEstimationMessage, storage_service: StorageService) -> CostEstimationMessageContent:
-    content = await storage_service.get_message_content(message)
-    content_type = COST_MESSAGE_TYPE_TO_CONTENT[message.type]
-    return content_type.parse_obj(content.value)
-
-
 def validate_cost_estimation_message_dict(message_dict: Any) -> CostEstimationMessage:
     try:
         return parse_message(message_dict)
     except InvalidMessageException as e:
         raise web.HTTPUnprocessableEntity(text=str(e))
+
+
+async def validate_cost_estimation_message_content(
+    message: CostEstimationMessage, storage_service: StorageService
+) -> CostEstimationContent:
+    content = await storage_service.get_message_content(message)
+    content_type = COST_MESSAGE_TYPE_TO_CONTENT[message.type]
+    return content_type.parse_obj(content.value)

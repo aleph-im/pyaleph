@@ -13,20 +13,23 @@ import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.messages import get_message_by_item_hash, get_message_status
 from aleph.db.models import MessageDb
 from aleph.schemas.api.costs import EstimatedCostsResponse
+from aleph.schemas.cost_estimation_messages import (
+    validate_cost_estimation_message_content,
+    validate_cost_estimation_message_dict,
+)
 from aleph.services.cost import (
     get_payment_type,
     get_total_and_detailed_costs,
     get_total_and_detailed_costs_from_db,
 )
 from aleph.toolkit.costs import format_cost_str
-from aleph.schemas.cost_estimation_messages import validate_cost_estimation_message_content, validate_cost_estimation_message_dict
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import MessageStatus
 from aleph.web.controllers.app_state_getters import (
     get_session_factory_from_request,
     get_storage_service_from_request,
 )
-    
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -133,9 +136,11 @@ async def message_price_estimate(request: web.Request):
     with session_factory() as session:
         parsed_body = PubMessageRequest.parse_obj(await request.json())
         message = validate_cost_estimation_message_dict(parsed_body.message_dict)
-        content = await validate_cost_estimation_message_content(message, storage_service)
+        content = await validate_cost_estimation_message_content(
+            message, storage_service
+        )
         item_hash = message.item_hash
- 
+
         try:
             payment_type = get_payment_type(content)
             required_tokens, costs = get_total_and_detailed_costs(
