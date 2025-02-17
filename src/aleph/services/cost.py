@@ -116,7 +116,7 @@ def _get_product_instance_type(
     if _is_confidential_vm(content):
         return ProductPriceType.INSTANCE_CONFIDENTIAL
 
-    if _is_gpu_vm(content):
+    if not _is_gpu_vm(content):
         return ProductPriceType.INSTANCE
 
     # TODO: Improve the way to compare tiers
