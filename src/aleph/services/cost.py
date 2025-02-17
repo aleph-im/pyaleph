@@ -457,26 +457,6 @@ def _calculate_executable_costs(
     compute_unit_cost = pricing.price.compute_unit.holding
     compute_unit_cost_second = pricing.price.compute_unit.payg / HOUR
 
-    if not pricing.price.compute_unit:
-        raise ValueError(
-            "compute_unit not defined for type '{}' in pricing aggregate".format(
-                pricing.type.value
-            )
-        )
-
-    compute_unit_cost = pricing.price.compute_unit.holding
-    compute_unit_cost_second = pricing.price.compute_unit.payg / HOUR
-
-    if not pricing.price.compute_unit:
-        raise ValueError(
-            "compute_unit not defined for type '{}' in pricing aggregate".format(
-                pricing.type.value
-            )
-        )
-
-    compute_unit_cost = pricing.price.compute_unit.holding
-    compute_unit_cost_second = pricing.price.compute_unit.payg / HOUR
-
     compute_unit_price = (
         compute_units_required * compute_unit_multiplier * compute_unit_cost
     )

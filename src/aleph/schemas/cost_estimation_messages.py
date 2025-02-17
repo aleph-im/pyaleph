@@ -47,9 +47,6 @@ class CostEstimationStoreContent(StoreContent):
     estimated_size_mib: Optional[int] = None
 
 
-# ----
-
-
 class BaseCostEstimationMessage(AlephBaseMessage, Generic[MType, ContentType]):
     """
     A raw Aleph message, sent by users to estimate costs before reaching the network
