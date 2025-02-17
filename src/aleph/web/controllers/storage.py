@@ -10,7 +10,7 @@ import aiofiles
 import pydantic
 from aiohttp import BodyPartReader, web
 from aiohttp.web_request import FileField
-from aleph_message.models import ItemType, StoreContent
+from aleph_message.models import ItemType
 from mypy.dmypy_server import MiB
 from pydantic import ValidationError
 
@@ -19,12 +19,13 @@ from aleph.db.accessors.balances import get_total_balance
 from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import count_file_pins, get_file
 from aleph.exceptions import AlephStorageException, UnknownHashError
+from aleph.schemas.cost_estimation_messages import CostEstimationStoreContent
 from aleph.schemas.pending_messages import (
     BasePendingMessage,
     PendingInlineStoreMessage,
     PendingStoreMessage,
 )
-from aleph.services.cost import _get_product_price, _get_settings
+from aleph.services.cost import get_total_and_detailed_costs
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import InvalidSignature
@@ -106,22 +107,19 @@ async def _verify_message_signature(
 
 
 async def _verify_user_balance(
-    session: DbSession, content: StoreContent, size: int
+    session: DbSession, content: CostEstimationStoreContent
 ) -> None:
-    address = content.address
-    current_balance = get_total_balance(session=session, address=address)
-    current_cost_for_user = get_total_cost_for_address(session=session, address=address)
+    if content.estimated_size_mib and content.estimated_size_mib > 25 * MiB:
+        current_balance = get_total_balance(session=session, address=content.address)
+        current_cost_for_user = get_total_cost_for_address(
+            session=session, address=content.address
+        )
+        required_storage_cost, _ = get_total_and_detailed_costs(session, content, "")
 
-    settings = _get_settings(session)
-    store_pricing = _get_product_price(
-        session=session, content=content, settings=settings
-    )
-    required_balance = current_cost_for_user + (
-        store_pricing.price.storage.holding * size
-    )
+        required_balance = current_cost_for_user + required_storage_cost
 
-    if size > 25 * MiB and current_balance < required_balance:
-        raise web.HTTPPaymentRequired()
+        if current_balance < required_balance:
+            raise web.HTTPPaymentRequired()
 
 
 class StorageMetadata(pydantic.BaseModel):
@@ -234,7 +232,9 @@ async def _check_and_add_file(
             raise web.HTTPUnprocessableEntity(reason="Store message content needed")
 
         try:
-            message_content = StoreContent.parse_raw(message.item_content)
+            message_content = CostEstimationStoreContent.parse_raw(message.item_content)
+            message_content.estimated_size_mib = uploaded_file.size
+
             if message_content.item_hash != file_hash:
                 raise web.HTTPUnprocessableEntity(
                     reason=f"File hash does not match ({file_hash} != {message_content.item_hash})"
@@ -244,11 +244,7 @@ async def _check_and_add_file(
                 reason=f"Invalid store message content: {e.json()}"
             )
 
-        await _verify_user_balance(
-            session=session,
-            content=message_content,
-            size=uploaded_file.size,
-        )
+        await _verify_user_balance(session=session, content=message_content)
     else:
         message_content = None
 

@@ -1,4 +1,3 @@
-import datetime as dt
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
@@ -13,8 +12,11 @@ from pydantic import BaseModel, Field
 import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.messages import get_message_by_item_hash, get_message_status
 from aleph.db.models import MessageDb
-from aleph.db.models.pending_messages import PendingMessageDb
 from aleph.schemas.api.costs import EstimatedCostsResponse
+from aleph.schemas.cost_estimation_messages import (
+    validate_cost_estimation_message_content,
+    validate_cost_estimation_message_dict,
+)
 from aleph.services.cost import (
     get_payment_type,
     get_total_and_detailed_costs,
@@ -122,7 +124,6 @@ async def message_price(request: web.Request):
 
 
 class PubMessageRequest(BaseModel):
-    sync: bool = False
     message_dict: Dict[str, Any] = Field(alias="message")
 
 
@@ -134,22 +135,11 @@ async def message_price_estimate(request: web.Request):
 
     with session_factory() as session:
         parsed_body = PubMessageRequest.parse_obj(await request.json())
-        pending_message = PendingMessageDb.from_message_dict(
-            parsed_body.message_dict,
-            reception_time=dt.datetime.now(),
-            fetched=False,
+        message = validate_cost_estimation_message_dict(parsed_body.message_dict)
+        content = await validate_cost_estimation_message_content(
+            message, storage_service
         )
-
-        content_dict = await storage_service.get_message_content(pending_message)
-
-        message = MessageDb.from_pending_message(
-            pending_message,
-            content_dict=content_dict.value,
-            content_size=len(content_dict.raw_value),
-        )
-
         item_hash = message.item_hash
-        content: ExecutableContent = message.parsed_content
 
         try:
             payment_type = get_payment_type(content)
