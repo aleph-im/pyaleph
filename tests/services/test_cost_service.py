@@ -4,10 +4,13 @@ from unittest.mock import Mock
 import pytest
 from aleph_message.models import ExecutableContent, InstanceContent, PaymentType
 
+from aleph.db.models import AggregateDb
 from aleph.services.cost import (
     _get_additional_storage_price,
+    _get_price_aggregate,
     _get_product_price,
     _get_settings,
+    _get_settings_aggregate,
     get_total_and_detailed_costs,
 )
 from aleph.types.db_session import DbSessionFactory
@@ -376,3 +379,35 @@ def test_compute_flow_cost_complete(
         )
 
         assert cost == Decimal("0.000032243382777775")
+
+
+def test_default_settings_aggregates(
+    session_factory: DbSessionFactory,
+):
+    with session_factory() as session:
+        aggregate = _get_settings_aggregate(session)
+        assert isinstance(aggregate, dict)
+
+
+def test_default_price_aggregates(
+    session_factory: DbSessionFactory,
+):
+    with session_factory() as session:
+        price_aggregate = _get_price_aggregate(session=session)
+        assert isinstance(price_aggregate, dict)
+
+
+def test_default_settings_aggregates_db(
+    session_factory: DbSessionFactory, fixture_settings_aggregate_in_db
+):
+    with session_factory() as session:
+        aggregate = _get_settings_aggregate(session)
+        assert isinstance(aggregate, AggregateDb)
+
+
+def test_default_price_aggregates_db(
+    session_factory: DbSessionFactory, fixture_product_prices_aggregate_in_db
+):
+    with session_factory() as session:
+        price_aggregate = _get_price_aggregate(session=session)
+        assert isinstance(price_aggregate, AggregateDb)
