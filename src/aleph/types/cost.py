@@ -1,8 +1,8 @@
 from decimal import Decimal
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Union
 
-from aleph.db.models.aggregates import AggregateDb
+from aleph.db.models import AggregateDb
 
 
 class ProductPriceType(str, Enum):
@@ -91,8 +91,14 @@ class ProductPricing:
         self.tiers = tiers
 
     @staticmethod
-    def from_aggregate(price_type: ProductPriceType, aggregate: AggregateDb):
-        content = aggregate.content[price_type.value]
+    def from_aggregate(
+        price_type: ProductPriceType, aggregate: Union[AggregateDb, dict]
+    ):
+        content = (
+            aggregate.content[price_type.value]
+            if isinstance(aggregate, AggregateDb)
+            else aggregate[price_type.value]
+        )
 
         price = content["price"]
         compute_unit = content.get("compute_unit", None)

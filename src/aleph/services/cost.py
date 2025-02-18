@@ -30,6 +30,8 @@ from aleph.schemas.cost_estimation_messages import (
     CostEstimationStoreContent,
 )
 from aleph.toolkit.constants import (
+    DEFAULT_PRICE_AGGREGATE,
+    DEFAULT_SETTINGS_AGGREGATE,
     HOUR,
     PRICE_AGGREGATE_KEY,
     PRICE_AGGREGATE_OWNER,
@@ -65,13 +67,13 @@ CostComputableExecutableContent: TypeAlias = (
 
 
 # TODO: Cache aggregate for 5 min
-def _get_settings_aggregate(session: DbSession) -> AggregateDb:
+def _get_settings_aggregate(session: DbSession) -> Union[AggregateDb, dict]:
     aggregate = get_aggregate_by_key(
         session=session, owner=SETTINGS_AGGREGATE_OWNER, key=SETTINGS_AGGREGATE_KEY
     )
 
     if not aggregate:
-        raise Exception()
+        return DEFAULT_SETTINGS_AGGREGATE
 
     return aggregate
 
@@ -111,7 +113,7 @@ def _is_gpu_vm(content: InstanceContent | CostEstimationInstanceContent) -> bool
 def _get_product_instance_type(
     content: InstanceContent | CostEstimationInstanceContent,
     settings: Settings,
-    price_aggregate: AggregateDb,
+    price_aggregate: Union[AggregateDb, dict],
 ) -> ProductPriceType:
     if _is_confidential_vm(content):
         return ProductPriceType.INSTANCE_CONFIDENTIAL
@@ -146,7 +148,9 @@ def _get_product_instance_type(
 
 
 def _get_product_price_type(
-    content: CostComputableContent, settings: Settings, price_aggregate: AggregateDb
+    content: CostComputableContent,
+    settings: Settings,
+    price_aggregate: Union[AggregateDb, dict],
 ) -> ProductPriceType:
     if isinstance(content, StoreContent):
         return ProductPriceType.STORAGE
@@ -163,13 +167,13 @@ def _get_product_price_type(
 
 
 # TODO: Cache aggregate for 5 min
-def _get_price_aggregate(session: DbSession) -> AggregateDb:
+def _get_price_aggregate(session: DbSession) -> Union[AggregateDb, dict]:
     aggregate = get_aggregate_by_key(
         session=session, owner=PRICE_AGGREGATE_OWNER, key=PRICE_AGGREGATE_KEY
     )
 
     if not aggregate:
-        raise Exception()
+        return DEFAULT_PRICE_AGGREGATE
 
     return aggregate
 

@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Union
 
 from pydantic import BaseModel
 
@@ -18,8 +18,8 @@ class Settings(BaseModel):
     community_wallet_timestamp: int
 
     @staticmethod
-    def from_aggregate(aggregate: AggregateDb):
-        content = aggregate.content
+    def from_aggregate(aggregate: Union[AggregateDb, dict]):
+        content = aggregate.content if isinstance(aggregate, AggregateDb) else aggregate
 
         community_wallet_address = content.get("community_wallet_address", "")
         community_wallet_timestamp = content.get("community_wallet_timestamp", 0)
