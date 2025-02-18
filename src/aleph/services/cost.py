@@ -30,13 +30,13 @@ from aleph.schemas.cost_estimation_messages import (
     CostEstimationStoreContent,
 )
 from aleph.toolkit.constants import (
+    DEFAULT_PRICE,
     HOUR,
     PRICE_AGGREGATE_KEY,
     PRICE_AGGREGATE_OWNER,
     SETTINGS_AGGREGATE_KEY,
     SETTINGS_AGGREGATE_OWNER,
     MiB,
-    DEFAULT_PRICE,
 )
 from aleph.toolkit.costs import format_cost
 from aleph.types.cost import (
