@@ -2,8 +2,6 @@ from decimal import Decimal
 from enum import Enum
 from typing import List, Optional
 
-from aleph.db.models.aggregates import AggregateDb
-
 
 class ProductPriceType(str, Enum):
     STORAGE = "storage"
@@ -91,8 +89,8 @@ class ProductPricing:
         self.tiers = tiers
 
     @staticmethod
-    def from_aggregate(price_type: ProductPriceType, aggregate: AggregateDb):
-        content = aggregate.content[price_type.value]
+    def from_aggregate_content(price_type: ProductPriceType, aggregate_content: dict):
+        content = aggregate_content[price_type.value]
 
         price = content["price"]
         compute_unit = content.get("compute_unit", None)

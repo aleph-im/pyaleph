@@ -36,6 +36,7 @@ from aleph.toolkit.constants import (
     SETTINGS_AGGREGATE_KEY,
     SETTINGS_AGGREGATE_OWNER,
     MiB,
+    DEFAULT_PRICE,
 )
 from aleph.toolkit.costs import format_cost
 from aleph.types.cost import (
@@ -77,7 +78,10 @@ def _get_settings_aggregate(session: DbSession) -> AggregateDb:
 
 
 def _get_settings(session: DbSession) -> Settings:
-    aggregate = _get_settings_aggregate(session)
+    try:
+        aggregate = _get_settings_aggregate(session)
+    except Exception:
+        return Settings.default()
 
     return Settings.from_aggregate(aggregate)
 
@@ -111,7 +115,7 @@ def _is_gpu_vm(content: InstanceContent | CostEstimationInstanceContent) -> bool
 def _get_product_instance_type(
     content: InstanceContent | CostEstimationInstanceContent,
     settings: Settings,
-    price_aggregate: AggregateDb,
+    price_aggregate: dict,
 ) -> ProductPriceType:
     if _is_confidential_vm(content):
         return ProductPriceType.INSTANCE_CONFIDENTIAL
@@ -120,10 +124,10 @@ def _get_product_instance_type(
         return ProductPriceType.INSTANCE
 
     # TODO: Improve the way to compare tiers
-    premium_gpu_price = ProductPricing.from_aggregate(
+    premium_gpu_price = ProductPricing.from_aggregate_content(
         ProductPriceType.INSTANCE_GPU_PREMIUM, price_aggregate
     )
-    standard_gpu_price = ProductPricing.from_aggregate(
+    standard_gpu_price = ProductPricing.from_aggregate_content(
         ProductPriceType.INSTANCE_GPU_STANDARD, price_aggregate
     )
 
@@ -146,7 +150,7 @@ def _get_product_instance_type(
 
 
 def _get_product_price_type(
-    content: CostComputableContent, settings: Settings, price_aggregate: AggregateDb
+    content: CostComputableContent, settings: Settings, price_aggregate: dict
 ) -> ProductPriceType:
     if isinstance(content, StoreContent):
         return ProductPriceType.STORAGE
@@ -163,15 +167,15 @@ def _get_product_price_type(
 
 
 # TODO: Cache aggregate for 5 min
-def _get_price_aggregate(session: DbSession) -> AggregateDb:
+def _get_price_aggregate(session: DbSession) -> dict:
     aggregate = get_aggregate_by_key(
         session=session, owner=PRICE_AGGREGATE_OWNER, key=PRICE_AGGREGATE_KEY
     )
 
     if not aggregate:
-        raise Exception()
+        return DEFAULT_PRICE
 
-    return aggregate
+    return aggregate.content
 
 
 def _get_product_price(
@@ -180,7 +184,7 @@ def _get_product_price(
     price_aggregate = _get_price_aggregate(session)
     price_type = _get_product_price_type(content, settings, price_aggregate)
 
-    return ProductPricing.from_aggregate(price_type, price_aggregate)
+    return ProductPricing.from_aggregate_content(price_type, price_aggregate)
 
 
 def _get_file_from_ref(
