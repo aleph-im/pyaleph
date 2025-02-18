@@ -8,7 +8,7 @@ HOUR = 60 * MINUTE
 PRICE_AGGREGATE_OWNER = "0xFba561a84A537fCaa567bb7A2257e7142701ae2A"
 PRICE_AGGREGATE_KEY = "pricing"
 PRICE_PRECISION = 18
-DEFAULT_PRICE = {
+DEFAULT_PRICE_AGGREGATE = {
     "program": {
         "price": {
             "storage": {"payg": "0.000000977", "holding": "0.05"},
@@ -153,7 +153,7 @@ DEFAULT_PRICE = {
 
 SETTINGS_AGGREGATE_OWNER = "0xFba561a84A537fCaa567bb7A2257e7142701ae2A"
 SETTINGS_AGGREGATE_KEY = "settings"
-DEFAULT_SETTINGS = {
+DEFAULT_SETTINGS_AGGREGATE = {
     "compatible_gpus": [
         {
             "name": "AD102GL [L40S]",

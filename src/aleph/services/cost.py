@@ -30,7 +30,7 @@ from aleph.schemas.cost_estimation_messages import (
     CostEstimationStoreContent,
 )
 from aleph.toolkit.constants import (
-    DEFAULT_PRICE,
+    DEFAULT_PRICE_AGGREGATE,
     HOUR,
     PRICE_AGGREGATE_KEY,
     PRICE_AGGREGATE_OWNER,
@@ -173,7 +173,7 @@ def _get_price_aggregate(session: DbSession) -> dict:
     )
 
     if not aggregate:
-        return DEFAULT_PRICE
+        return DEFAULT_PRICE_AGGREGATE
 
     return aggregate.content
 

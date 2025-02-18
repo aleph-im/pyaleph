@@ -3,7 +3,7 @@ from typing import List
 from pydantic import BaseModel
 
 from aleph.db.models import AggregateDb
-from aleph.toolkit.constants import DEFAULT_SETTINGS
+from aleph.toolkit.constants import DEFAULT_SETTINGS_AGGREGATE
 
 
 class CompatibleGPU(BaseModel):
@@ -36,11 +36,11 @@ class Settings(BaseModel):
 
     @classmethod
     def default(cls):
-        community_wallet_address = DEFAULT_SETTINGS.get("community_wallet_address", "")
-        community_wallet_timestamp = DEFAULT_SETTINGS.get(
+        community_wallet_address = DEFAULT_SETTINGS_AGGREGATE.get("community_wallet_address", "")
+        community_wallet_timestamp = DEFAULT_SETTINGS_AGGREGATE.get(
             "community_wallet_timestamp", 0
         )
-        compatible_gpus = DEFAULT_SETTINGS.get("compatible_gpus", [])
+        compatible_gpus = DEFAULT_SETTINGS_AGGREGATE.get("compatible_gpus", [])
 
         settings = Settings(
             community_wallet_address=community_wallet_address,
