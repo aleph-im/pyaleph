@@ -163,7 +163,7 @@ class SizedVolume(VolumeCost):
     def __init__(
         self,
         cost_type: CostType,
-        size_mib: int,
+        size_mib: Decimal,
         ref: Optional[str] = None,
         *args,
     ):
