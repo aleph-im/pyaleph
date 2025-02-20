@@ -58,8 +58,10 @@ RUN pip install hatch
 
 FROM base
 
-COPY --from=builder /opt/venv /opt/venv
-COPY --from=builder /opt/pyaleph /opt/pyaleph
+RUN useradd -s /bin/bash aleph
+
+COPY --from=builder --chown=aleph /opt/venv /opt/venv
+COPY --from=builder --chown=aleph /opt/pyaleph /opt/pyaleph
 
 RUN apt-get update && apt-get install -y \
     libsodium23 \
@@ -72,9 +74,13 @@ COPY ./deployment/docker-build/openssl.cnf.patch /etc/ssl/openssl.cnf.patch
 RUN patch /etc/ssl/openssl.cnf /etc/ssl/openssl.cnf.patch
 
 RUN mkdir /var/lib/pyaleph
+RUN chown -R aleph:aleph /var/lib/pyaleph
+RUN mkdir /home/aleph
+RUN chown -R aleph:aleph /home/aleph
 
 ENV PATH="/opt/venv/bin:${PATH}"
 WORKDIR /opt/pyaleph
+USER aleph
 
 RUN hatch build
 ENTRYPOINT ["bash", "deployment/scripts/run_aleph_ccn.sh"]
