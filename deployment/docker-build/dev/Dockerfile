@@ -53,7 +53,7 @@ COPY deployment/scripts ./deployment/scripts
 COPY .git ./.git
 COPY src ./src
 
-RUN pip install -e .[linting]
+RUN pip install -e .
 RUN pip install hatch
 
 FROM base
@@ -72,6 +72,8 @@ COPY ./deployment/docker-build/openssl.cnf.patch /etc/ssl/openssl.cnf.patch
 RUN patch /etc/ssl/openssl.cnf /etc/ssl/openssl.cnf.patch
 
 RUN mkdir /var/lib/pyaleph
+
+RUN git config --global --add safe.directory /opt/pyaleph
 
 ENV PATH="/opt/venv/bin:${PATH}"
 WORKDIR /opt/pyaleph
