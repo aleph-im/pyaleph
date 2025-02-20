@@ -68,7 +68,7 @@ hatch run testing:test
 
 ### Run test locally
 
-We do not recommed that you run tests directly on your machine because of the
+We do not recommend that you run tests directly on your machine because of the
 complexity of doing so but if you want to do it you need to:
 
 - install [hatch](https://github.com/pypa/hatch), you can use pipx for that (`pipx install hatch`) or install it in a virtualenv
