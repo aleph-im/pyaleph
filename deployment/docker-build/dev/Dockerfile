@@ -53,7 +53,7 @@ COPY deployment/scripts ./deployment/scripts
 COPY .git ./.git
 COPY src ./src
 
-RUN pip install -e .[linting]
+RUN pip install -e .
 RUN pip install hatch
 
 FROM base
