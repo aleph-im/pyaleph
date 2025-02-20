@@ -73,6 +73,8 @@ RUN patch /etc/ssl/openssl.cnf /etc/ssl/openssl.cnf.patch
 
 RUN mkdir /var/lib/pyaleph
 
+RUN git config --global --add safe.directory /opt/pyaleph
+
 ENV PATH="/opt/venv/bin:${PATH}"
 WORKDIR /opt/pyaleph
 
