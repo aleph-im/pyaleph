@@ -154,3 +154,110 @@ async def test_handle_new_storage_directory(
     assert stored_file.type == FileType.DIRECTORY
 
     assert not storage_engine.called
+
+
+@pytest.mark.asyncio
+async def test_store_files_is_false(
+    mocker,
+    session_factory: DbSessionFactory,
+    mock_config: Config,
+    fixture_message_directory: MessageDb,
+):
+    mock_ipfs_client = mocker.MagicMock()
+    ipfs_stats = {
+        "Hash": "QmPZrod87ceK4yVvXQzRexDcuDgmLxBiNJ1ajLjLoMx9sU",
+        "Size": 42,
+        "CumulativeSize": 4560,
+        "Blocks": 2,
+        "Type": "file",
+    }
+    mock_ipfs_client.files.stat = mocker.AsyncMock(return_value=ipfs_stats)
+
+    mock_config.storage.store_files.value = False
+
+    message = fixture_message_directory
+    storage_engine = mocker.AsyncMock()
+
+    storage_service = StorageService(
+        storage_engine=storage_engine,
+        ipfs_service=IpfsService(ipfs_client=mock_ipfs_client),
+        node_cache=mocker.AsyncMock(),
+    )
+    get_hash_content_mock = mocker.patch.object(storage_service, "get_hash_content")
+    store_message_handler = StoreMessageHandler(
+        storage_service=storage_service, grace_period=24
+    )
+
+    with session_factory() as session:
+        await store_message_handler.fetch_related_content(
+            session=session, message=message
+        )
+        session.commit()
+
+    with session_factory() as session:
+        stored_files = list((session.execute(select(StoredFileDb))).scalars())
+
+    assert len(stored_files) == 1
+    stored_file = stored_files[0]
+
+    # Check the updates to the message content
+    assert stored_file.hash == ipfs_stats["Hash"]
+    assert stored_file.size == -1
+    assert stored_file.type == FileType.FILE
+
+    storage_engine.assert_not_called()
+    get_hash_content_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_store_files_is_false_ipfs_is_disabled(
+    mocker,
+    session_factory: DbSessionFactory,
+    mock_config: Config,
+    fixture_message_directory: MessageDb,
+):
+    mock_ipfs_client = mocker.MagicMock()
+    ipfs_stats = {
+        "Hash": "QmPZrod87ceK4yVvXQzRexDcuDgmLxBiNJ1ajLjLoMx9sU",
+        "Size": 42,
+        "CumulativeSize": 4560,
+        "Blocks": 2,
+        "Type": "file",
+    }
+    mock_ipfs_client.files.stat = mocker.AsyncMock(return_value=ipfs_stats)
+
+    mock_config.storage.store_files.value = False
+    mock_config.ipfs.enabled.value = False
+
+    message = fixture_message_directory
+    storage_engine = mocker.AsyncMock()
+
+    storage_service = StorageService(
+        storage_engine=storage_engine,
+        ipfs_service=IpfsService(ipfs_client=mock_ipfs_client),
+        node_cache=mocker.AsyncMock(),
+    )
+    get_hash_content_mock = mocker.patch.object(storage_service, "get_hash_content")
+    store_message_handler = StoreMessageHandler(
+        storage_service=storage_service, grace_period=24
+    )
+
+    with session_factory() as session:
+        await store_message_handler.fetch_related_content(
+            session=session, message=message
+        )
+        session.commit()
+
+    with session_factory() as session:
+        stored_files = list((session.execute(select(StoredFileDb))).scalars())
+
+    assert len(stored_files) == 1
+    stored_file = stored_files[0]
+
+    # Check the updates to the message content
+    assert stored_file.hash == ipfs_stats["Hash"]
+    assert stored_file.size == -1
+    assert stored_file.type == FileType.FILE
+
+    storage_engine.assert_not_called()
+    get_hash_content_mock.assert_not_called()
