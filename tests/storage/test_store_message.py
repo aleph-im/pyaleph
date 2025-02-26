@@ -153,4 +153,4 @@ async def test_handle_new_storage_directory(
     assert stored_file.size == ipfs_stats["CumulativeSize"]
     assert stored_file.type == FileType.DIRECTORY
 
-    assert not storage_engine.called
+    storage_engine.assert_not_called()
