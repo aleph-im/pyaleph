@@ -33,8 +33,8 @@ async def test_api_servers_cache(node_cache: NodeCache):
 
     assert await node_cache.get_api_servers() == set()
 
-    api_server_1 = "https://api1.aleph.im"
-    api_server_2 = "https://api2.aleph.im"
+    api_server_1 = "https://api2.aleph.im"
+    api_server_2 = "https://api3.aleph.im"
 
     await node_cache.add_api_server(api_server_2)
     assert await node_cache.get_api_servers() == {api_server_2}
