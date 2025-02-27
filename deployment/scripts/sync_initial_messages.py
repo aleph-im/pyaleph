@@ -17,7 +17,7 @@ initial_messages_list = [
     "bd79839bf96e595a06da5ac0b6ba51dea6f7e2591bb913deccded04d831d29f4",  # Legacy Diag VM runtime volume
 ]
 
-FROM_CCN = "http://api1.aleph.im"
+FROM_CCN = "http://api3.aleph.im"
 TO_CCN = "http://api2.aleph.im"
 PUB_SUB_TOPIC = "ALEPH-TEST"
 item_hashes_to_sync = ",".join(initial_messages_list)
