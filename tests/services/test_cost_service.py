@@ -3,6 +3,7 @@ from unittest.mock import Mock
 
 import pytest
 from aleph_message.models import ExecutableContent, InstanceContent, PaymentType
+from aleph.schemas.cost_estimation_messages import CostEstimationProgramContent
 
 from aleph.db.models import AggregateDb
 from aleph.services.cost import (
@@ -211,6 +212,74 @@ def fixture_flow_instance_message_complete() -> ExecutableContent:
 
     return InstanceContent.parse_obj(content)
 
+@pytest.fixture
+def fixture_hold_program_message_complete() -> ExecutableContent:
+    content = {
+        "on": {
+            "http": True,
+            "persistent": False
+        },
+        "code": {
+            "ref": "cafecafecafecafecafecafecafecafecafecafecafecafecafecafecafecafe",
+            "encoding": "zip",
+            "entrypoint": "main:app",
+            "use_latest": True,
+            "estimated_size_mib": 2048
+        },
+        "time": 1740986893.735,
+        "type": "vm-function",
+        "address": "0xAD8ac12Ae5bC9f6D902cBDd2f0Dd70F43e522BC2",
+        "payment": {
+            "type": "hold",
+            "chain": "ETH"
+        },
+        "runtime": {
+            "ref": "cafecafecafecafecafecafecafecafecafecafecafecafecafecafecafecafe",
+            "comment": "Aleph Alpine Linux with Python 3.8",
+            "use_latest": True,
+            "estimated_size_mib": 1024
+        },
+        "data": {
+            "ref": "cafecafecafecafecafecafecafecafecafecafecafecafecafecafecafecafe",
+            "mount": "/data",
+            "encoding": "zip",
+            "use_latest": True,
+            "estimated_size_mib": 2048
+        },
+        "volumes": [
+            {
+                "mount": "/mount1",
+                "ref": "cafecafecafecafecafecafecafecafecafecafecafecafecafecafecafecafe",
+                "use_latest": True,
+                "estimated_size_mib": 512
+            },
+            {
+                "mount": "/mount2",
+                "persistence": "host",
+                "name": "pers1",
+                "size_mib": 1024
+            },
+        ],
+        "metadata": {
+            "name": "My program",
+            "description": "My program description"
+        },
+        "resources": {
+            "vcpus": 1,
+            "memory": 128,
+            "seconds": 30
+        },
+        "variables": {},
+        "allow_amend": False,
+        "environment": {
+            "internet": True,
+            "aleph_api": True,
+            "reproducible": False,
+            "shared_cache": False
+        }
+    }
+
+    return CostEstimationProgramContent.parse_obj(content)
 
 def test_compute_cost(
     session_factory: DbSessionFactory,
@@ -290,7 +359,7 @@ def test_get_additional_storage_price(
         assert additional_cost == 0
 
 
-def test_compute_cost_complete(
+def test_compute_cost_instance_complete(
     session_factory: DbSessionFactory,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
@@ -307,6 +376,24 @@ def test_compute_cost_complete(
             item_hash="abab",
         )
         assert cost == 1017.50
+
+def test_compute_cost_program_complete(
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+    fixture_hold_program_message_complete,
+):
+    file_db = StoredFileDb()
+    mock = Mock()
+    mock.patch("_get_file_from_ref", return_value=file_db)
+
+    with session_factory() as session:
+        cost, _ = get_total_and_detailed_costs(
+            session=session,
+            content=fixture_hold_program_message_complete,
+            item_hash="asdf",
+        )
+        assert cost == Decimal("630.400000000000000000") 
 
 
 def test_compute_flow_cost(
