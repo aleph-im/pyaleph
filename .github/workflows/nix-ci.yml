@@ -5,14 +5,17 @@ name: Test nix-shell
 on:
   push:
     branches:
-      - 'doesnt_exist'
+      - '*'
 
 
 jobs:
   nix-shell:
+    continue-on-error: true
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        os: [ubuntu-latest]
+        # os: [ubuntu-latest, macos-latest]
+      fail-fast: false
     runs-on: ${{ matrix.os }}
 
     steps:
