@@ -173,25 +173,26 @@ class StoreMessageHandler(ContentHandler):
                 )
                 do_standard_lookup = True
 
-        if config.storage.store_files.value and do_standard_lookup:
-            try:
-                file_content = await self.storage_service.get_hash_content(
-                    item_hash,
-                    engine=engine,
-                    tries=4,
-                    timeout=15,  # We only end up here for files < 1MB, a short timeout is okay
-                    use_network=True,
-                    use_ipfs=True,
-                    store_value=True,
-                )
-            except AlephStorageException:
-                raise FileUnavailable(
-                    "Could not retrieve file from storage at this time"
-                )
+        if do_standard_lookup:
+            if config.storage.store_files.value:
+                try:
+                    file_content = await self.storage_service.get_hash_content(
+                        item_hash,
+                        engine=engine,
+                        tries=4,
+                        timeout=15,  # We only end up here for files < 1MB, a short timeout is okay
+                        use_network=True,
+                        use_ipfs=True,
+                        store_value=True,
+                    )
+                except AlephStorageException:
+                    raise FileUnavailable(
+                        "Could not retrieve file from storage at this time"
+                    )
 
-            size = len(file_content)
-        elif not config.storage.store_files.value and do_standard_lookup:
-            size = -1
+                size = len(file_content)
+            else:
+                size = -1
 
         upsert_file(
             session=session,
