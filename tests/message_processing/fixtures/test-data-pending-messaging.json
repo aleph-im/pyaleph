@@ -1,0 +1,12 @@
+{
+  "chain": "ETH",
+  "sender": "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
+  "type": "POST",
+  "channel": "INTEGRATION_TESTS",
+  "signature": "0x271939ae35918d0e90877f2319dd0d9737f8334d52539125743caf2460b3896423ca69b1fc85662443cc0bd4ce91e2fb247d7d8291284d8c431e6962c611c4c31c",
+  "time": 1665758931.005458,
+  "item_type": "inline",
+  "item_content": "{\"address\":\"0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106\",\"time\":1665758931.0054002,\"content\":{\"title\":\"My first blog post\",\"body\":\"Ermahgerd, a bleug!\"},\"type\":\"test-post\"}",
+  "item_hash": "9f02e3b5efdbdc0b487359117ae3af40db654892487feae452689a0b84dc1025"
+}
+

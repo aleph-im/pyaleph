@@ -12,6 +12,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
@@ -20,6 +21,7 @@ from sqlalchemy_utils.types.choice import ChoiceType
 from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.channel import Channel
+from aleph.types.message_status import MessageOrigin
 
 from .base import Base
 from .chains import ChainTxDb
@@ -65,12 +67,14 @@ class PendingMessageDb(Base):
     retries: int = Column(Integer, nullable=False)
     tx_hash: Optional[str] = Column(ForeignKey("chain_txs.hash"), nullable=True)
     fetched: bool = Column(Boolean, nullable=False)
+    origin: Optional[str] = Column(String, nullable=True, default=MessageOrigin.P2P)
 
     __table_args__ = (
         CheckConstraint(
             "signature is not null or not check_message",
             name="signature_not_null_if_check_message",
         ),
+        UniqueConstraint("sender", "item_hash", "signature", name="uq_pending_message"),
     )
 
     tx: Optional[ChainTxDb] = relationship("ChainTxDb")
@@ -83,6 +87,7 @@ class PendingMessageDb(Base):
         tx_hash: Optional[str] = None,
         check_message: bool = True,
         fetched: bool = False,
+        origin: Optional[MessageOrigin] = MessageOrigin.P2P,
     ) -> "PendingMessageDb":
 
         return cls(
@@ -101,6 +106,7 @@ class PendingMessageDb(Base):
             tx_hash=tx_hash,
             reception_time=reception_time,
             fetched=fetched,
+            origin=origin,
         )
 
     @classmethod
@@ -111,6 +117,7 @@ class PendingMessageDb(Base):
         fetched: bool,
         tx_hash: Optional[str] = None,
         check_message: bool = True,
+        origin: Optional[MessageOrigin] = MessageOrigin.P2P,
     ) -> "PendingMessageDb":
         """
         Utility function to translate Aleph message dictionaries, such as those returned by the API,
@@ -137,6 +144,7 @@ class PendingMessageDb(Base):
             retries=0,
             tx_hash=tx_hash,
             reception_time=reception_time,
+            origin=origin,
         )
 
 

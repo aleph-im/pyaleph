@@ -1,6 +1,6 @@
 import datetime as dt
 import logging
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 import aio_pika.abc
 import psycopg2
@@ -8,11 +8,13 @@ import sqlalchemy.exc
 from aleph_message.models import ItemHash, ItemType, MessageType
 from configmanager import Config
 from pydantic import ValidationError
-from sqlalchemy import insert
+from sqlalchemy.dialects.postgresql import insert
 
 from aleph.chains.signature_verifier import SignatureVerifier
+from aleph.db.accessors.cost import make_costs_upsert_query
 from aleph.db.accessors.files import insert_content_file_pin, upsert_file
 from aleph.db.accessors.messages import (
+    get_forgotten_message,
     get_message_by_item_hash,
     make_confirmation_upsert_query,
     make_message_status_upsert_query,
@@ -21,6 +23,8 @@ from aleph.db.accessors.messages import (
 )
 from aleph.db.accessors.pending_messages import delete_pending_message
 from aleph.db.models import MessageDb, MessageStatusDb, PendingMessageDb
+from aleph.db.models.account_costs import AccountCostsDb
+from aleph.db.models.messages import ForgottenMessageDb
 from aleph.exceptions import (
     ContentCurrentlyUnavailable,
     InvalidContent,
@@ -37,12 +41,14 @@ from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.files import FileType
-from aleph.types.message_processing_result import ProcessedMessage
+from aleph.types.message_processing_result import ProcessedMessage, RejectedMessage
 from aleph.types.message_status import (
+    ErrorCode,
     InvalidMessageException,
     InvalidMessageFormat,
     InvalidSignature,
     MessageContentUnavailable,
+    MessageOrigin,
     MessageStatus,
 )
 
@@ -128,23 +134,6 @@ class BaseMessageHandler:
                 f"Invalid IPFS hash for message {message.item_hash}"
             ) from e
 
-    @staticmethod
-    async def confirm_existing_message(
-        session: DbSession,
-        existing_message: MessageDb,
-        pending_message: PendingMessageDb,
-    ):
-        if pending_message.signature != existing_message.signature:
-            raise InvalidSignature(f"Invalid signature for {pending_message.item_hash}")
-
-        delete_pending_message(session=session, pending_message=pending_message)
-        if tx_hash := pending_message.tx_hash:
-            session.execute(
-                make_confirmation_upsert_query(
-                    item_hash=pending_message.item_hash, tx_hash=tx_hash
-                )
-            )
-
     async def load_fetched_content(
         self, session: DbSession, pending_message: PendingMessageDb
     ) -> PendingMessageDb:
@@ -187,9 +176,11 @@ class MessagePublisher(BaseMessageHandler):
     async def _publish_pending_message(self, pending_message: PendingMessageDb) -> None:
         mq_message = aio_pika.Message(body=f"{pending_message.id}".encode("utf-8"))
         process_or_fetch = "process" if pending_message.fetched else "fetch"
-        await self.pending_message_exchange.publish(
-            mq_message, routing_key=f"{process_or_fetch}.{pending_message.item_hash}"
-        )
+        if pending_message.origin != MessageOrigin.ONCHAIN:
+            await self.pending_message_exchange.publish(
+                mq_message,
+                routing_key=f"{process_or_fetch}.{pending_message.item_hash}",
+            )
 
     async def add_pending_message(
         self,
@@ -197,6 +188,7 @@ class MessagePublisher(BaseMessageHandler):
         reception_time: dt.datetime,
         tx_hash: Optional[str] = None,
         check_message: bool = True,
+        origin: Optional[MessageOrigin] = MessageOrigin.P2P,
     ) -> Optional[PendingMessageDb]:
         # TODO: this implementation is just messy, improve it.
         with self.session_factory() as session:
@@ -219,6 +211,7 @@ class MessagePublisher(BaseMessageHandler):
                 reception_time=reception_time,
                 tx_hash=tx_hash,
                 check_message=check_message,
+                origin=origin,
             )
 
             try:
@@ -236,20 +229,39 @@ class MessagePublisher(BaseMessageHandler):
                 session.commit()
                 return None
 
+            # Check if there are an already existing record
+            existing_message = (
+                session.query(PendingMessageDb)
+                .filter_by(
+                    sender=pending_message.sender,
+                    item_hash=pending_message.item_hash,
+                    signature=pending_message.signature,
+                )
+                .one_or_none()
+            )
+            if existing_message:
+                return existing_message
+
             upsert_message_status_stmt = make_message_status_upsert_query(
                 item_hash=pending_message.item_hash,
                 new_status=MessageStatus.PENDING,
                 reception_time=reception_time,
                 where=MessageStatusDb.status == MessageStatus.REJECTED,
             )
-            insert_pending_message_stmt = insert(PendingMessageDb).values(
-                pending_message.to_dict(exclude={"id"})
+            insert_pending_message_stmt = (
+                insert(PendingMessageDb)
+                .values(pending_message.to_dict(exclude={"id"}))
+                .on_conflict_do_nothing("uq_pending_message")
             )
 
             try:
                 session.execute(upsert_message_status_stmt)
                 session.execute(insert_pending_message_stmt)
                 session.commit()
+            except sqlalchemy.exc.IntegrityError:
+                # Handle the unique constraint violation.
+                LOGGER.warning("Duplicate pending message detected trying to save it.")
+                return None
 
             except (psycopg2.Error, sqlalchemy.exc.SQLAlchemyError) as e:
                 LOGGER.warning(
@@ -310,6 +322,17 @@ class MessageHandler(BaseMessageHandler):
                 )
             )
 
+    @staticmethod
+    async def confirm_existing_forgotten_message(
+        session: DbSession,
+        forgotten_message: ForgottenMessageDb,
+        pending_message: PendingMessageDb,
+    ):
+        if pending_message.signature != forgotten_message.signature:
+            raise InvalidSignature(f"Invalid signature for {pending_message.item_hash}")
+
+        delete_pending_message(session=session, pending_message=pending_message)
+
     async def insert_message(
         self, session: DbSession, pending_message: PendingMessageDb, message: MessageDb
     ):
@@ -346,6 +369,13 @@ class MessageHandler(BaseMessageHandler):
                 )
             )
 
+    async def insert_costs(
+        self, session: DbSession, costs: List[AccountCostsDb], message: MessageDb
+    ):
+        if len(costs) > 0:
+            insert_stmt = make_costs_upsert_query(costs)
+            session.execute(insert_stmt)
+
     async def verify_and_fetch(
         self, session: DbSession, pending_message: PendingMessageDb
     ) -> MessageDb:
@@ -358,7 +388,7 @@ class MessageHandler(BaseMessageHandler):
 
     async def process(
         self, session: DbSession, pending_message: PendingMessageDb
-    ) -> ProcessedMessage:
+    ) -> ProcessedMessage | RejectedMessage:
         """
         Process a pending message.
 
@@ -372,6 +402,7 @@ class MessageHandler(BaseMessageHandler):
                  is a new one or a confirmation.
         """
 
+        # Note: Check if message already exists (and confirm it)
         existing_message = get_message_by_item_hash(
             session=session, item_hash=ItemHash(pending_message.item_hash)
         )
@@ -383,19 +414,46 @@ class MessageHandler(BaseMessageHandler):
             )
             return ProcessedMessage(message=existing_message, is_confirmation=True)
 
+        # Note: Check if message is already forgotten (and confirm it)
+        # this is to avoid race conditions when a confirmation arrives after the FORGET message has been preocessed
+        forgotten_message = get_forgotten_message(
+            session=session, item_hash=ItemHash(pending_message.item_hash)
+        )
+        if forgotten_message:
+            await self.confirm_existing_forgotten_message(
+                session=session,
+                forgotten_message=forgotten_message,
+                pending_message=pending_message,
+            )
+            return RejectedMessage(
+                pending_message=pending_message,
+                error_code=ErrorCode.FORGOTTEN_DUPLICATE,
+            )
+
         message = await self.verify_and_fetch(
             session=session, pending_message=pending_message
         )
+
         content_handler = self.get_content_handler(message.type)
         await content_handler.check_dependencies(session=session, message=message)
-        await self.check_permissions(session=session, message=message)
-        await content_handler.check_balance(session=session, message=message)
+        await content_handler.check_permissions(session=session, message=message)
+        costs = await content_handler.check_balance(session=session, message=message)
+
         await self.insert_message(
             session=session, pending_message=pending_message, message=message
         )
-        await content_handler.process(session=session, messages=[message])
-        return ProcessedMessage(message=message, is_confirmation=False)
 
-    async def check_permissions(self, session: DbSession, message: MessageDb):
-        content_handler = self.get_content_handler(message.type)
-        await content_handler.check_permissions(session=session, message=message)
+        if costs:
+            await self.insert_costs(session=session, costs=costs, message=message)
+
+        await content_handler.process(session=session, messages=[message])
+
+        return ProcessedMessage(
+            message=message,
+            origin=(
+                MessageOrigin(pending_message.origin)
+                if pending_message.origin
+                else None
+            ),
+            is_confirmation=False,
+        )

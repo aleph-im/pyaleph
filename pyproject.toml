@@ -20,19 +20,19 @@ classifiers = [
 ]
 dynamic = [ "version" ]
 dependencies = [
-  "aio-pika==9.1.3",
+  "aio-pika==9.5",
   "aiocache==0.12.2",
   "aiofiles==23.2.1",
-  "aiohttp==3.9.5",
+  "aiohttp==3.11.11",
   "aiohttp-cors==0.7",
   "aiohttp-jinja2==1.5",
-  "aioipfs @ git+https://github.com/aleph-im/aioipfs.git@d671c79b2871bb4d6c8877ba1e7f3ffbe7d20b71",
+  "aioipfs~=0.7.1",
   "alembic==1.12.1",
-  "aleph-message==0.4.9",
+  "aleph-message==0.6.1",
   "aleph-nuls2==0.1",
-  "aleph-p2p-client @ git+https://github.com/aleph-im/p2p-service-client-python@2c04af39c566217f629fd89505ffc3270fba8676",
+  "aleph-p2p-client @ git+https://github.com/aleph-im/p2p-service-client-python@cbfebb871db94b2ca580e66104a67cd730c5020c",
   "aleph-pytezos==3.13.4",
-  "asyncpg==0.28",
+  "asyncpg==0.30",
   "base58>=1.0.3",
   "coincurve==20",
   "configmanager==1.35.1",
@@ -41,30 +41,31 @@ dependencies = [
   "dataclasses-json==0.5.6",
   "eth-account==0.10",
   "eth-typing~=4.0",
-  "gunicorn==21.2",
+  "gunicorn==22",
   "hexbytes==0.2.2",
   "msgpack==1.0.3",                                                                                                        # required by aiocache
   "multiaddr==0.0.9",                                                                                                      # for libp2p-stubs
   "orjson>=3.7.7",                                                                                                         # Minimum version for Python 3.11
   "psycopg2-binary==2.9.5",                                                                                                # Note: psycopg3 is not yet supported by SQLAlchemy
-  "pycryptodome==3.17",                                                                                                    # for libp2p-stubs
+  "pycryptodome==3.19.1",                                                                                                  # for libp2p-stubs
   "pymultihash==0.8.2",                                                                                                    # for libp2p-stubs
   "pynacl==1.5",
   "python-dateutil==2.8.2",
   "pytz==2023.3",
   "pyyaml==6.0.1",
   "redis[hiredis]==5.0.1",
-  "requests==2.31",
   "sentry-sdk==2.8.0",
+  "requests==2.32.3",
+  "sentry-sdk==2.28.0",
   "setproctitle==1.3.3",
   "setuptools>=70.3",
   "sqlalchemy[mypy]==1.4.52",
   "sqlalchemy-utils==0.38.3",
   "substrate-interface==1.7.4",
   "types-aiofiles==23.2.0.20240403",
-  "ujson==5.1",                                                                                                            # required by aiocache
-  "urllib3==2.0.7",
-  "uvloop==0.19",
+  "ujson==5.4",                                                                                                            # required by aiocache
+  "urllib3==2.3",
+  "uvloop==0.21",
   "web3==6.11.2",
 ]
 optional-dependencies.cosmos = [
@@ -85,7 +86,6 @@ urls.Homepage = "https://github.com/aleph-im/pyaleph"
 scripts.pyaleph = "aleph.commands:run"
 dependency_links = [
   "https://github.com/aleph-im/py-libp2p/tarball/0.1.4-1-use-set#egg=libp2p",
-  "https://github.com/aleph-im/aioipfs/tarball/hoh-more-exceptions#egg=aioipfs",
 ]
 
 [tool.hatch.metadata]
@@ -203,8 +203,13 @@ git-only = [
   ".coveragerc",
   ".dockerignore",
   "shell.nix",
+  "mypy.ini",
 ]
 default-ignore = true
+
+[tool.pyproject-fmt]
+# if false will remove unnecessary trailing ``.0``'s from version specifiers
+keep_full_version = true
 
 [tool.pytest.ini_options]
 minversion = "6.0"
@@ -335,3 +340,5 @@ allow_redefinition = true
 [tool.yamlfix]
 sequence_style = "keep_style"
 preserve_quotes = true
+whitelines = 1
+section_whitelines = 2

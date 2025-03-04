@@ -39,6 +39,13 @@ def get_defaults():
                     "max_concurrency": 20,
                 },
             },
+            "cache": {
+                "ttl": {
+                    "total_aleph_messages": 120,
+                    "eth_height": 600,
+                    "metrics": 10,
+                },
+            },
         },
         "p2p": {
             # Port used for HTTP communication between nodes.
@@ -59,8 +66,8 @@ def get_defaults():
             "clients": ["http"],
             # Bootstrap peers for the P2P service.
             "peers": [
-                "/dns/api1.aleph.im/tcp/4025/p2p/Qmaxufiqdyt5uVWcy1Xh2nh3Rs3382ArnSP2umjCiNG2Vs",
                 "/dns/api2.aleph.im/tcp/4025/p2p/QmZkurbY2G2hWay59yiTgQNaQxHSNzKZFt2jbnwJhQcKgV",
+                "/dns/api3.aleph.im/tcp/4025/p2p/Qmb5b2ZwJm9pVWrppf3D3iMF1bXbjZhbJTwGvKEBMZNxa2",
             ],
             # Topics to listen to by default on the P2P service.
             "topics": ["ALIVE", "ALEPH-TEST"],
@@ -122,6 +129,12 @@ def get_defaults():
             "max_gas_price": 150000000000,
             # Authorized publishers for sync events.
             "authorized_emitters": ["0x23eC28598DCeB2f7082Cc3a9D670592DfEd6e0dC"],
+            # Delay in seconds between archive checks.
+            "archive_delay": 30,
+            # Delay in seconds between blockchain message checks.
+            "message_delay": 30,
+            # http client timeout, default 60s
+            "client_timeout": 60,
         },
         "tezos": {
             # Whether to fetch transactions from Tezos.
@@ -158,7 +171,6 @@ def get_defaults():
             "reconnect_delay": 60,
             # Bootstrap peers for IPFS.
             "peers": [
-                "/dnsaddr/api1.aleph.im/ipfs/12D3KooWNgogVS6o8fVsPdzh2FJpCdJJLVSgJT38XGE1BJoCerHx",
                 "/ip4/51.159.57.71/tcp/4001/p2p/12D3KooWBH3JVSBwHLNzxv7EzniBP3tDmjJaoa3EJBF9wyhZtHt2",
                 "/ip4/62.210.93.220/tcp/4001/p2p/12D3KooWLcmvqojHzUnR7rr8YhFKGDD8z7fmsPyBfAm2rT3sFGAF",
             ],

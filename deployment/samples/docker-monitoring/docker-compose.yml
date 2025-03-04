@@ -1,15 +1,19 @@
 ---
 version: '2.2'
+
+
 volumes:
   pyaleph-ipfs:
   pyaleph-local-storage:
   pyaleph-postgres:
   pyaleph-caddy-data:
   pyaleph-caddy-config:
+
+
 services:
   pyaleph:
     restart: always
-    image: alephim/pyaleph-node:0.5.4
+    image: alephim/pyaleph-node:0.5.7
     command: --config /opt/pyaleph/config.yml --key-dir /opt/pyaleph/keys -v
     volumes:
       - ./config.yml:/opt/pyaleph/config.yml
@@ -25,9 +29,10 @@ services:
     logging:
       options:
         max-size: 50m
+
   pyaleph-api:
     restart: always
-    image: alephim/pyaleph-node:0.5.4
+    image: alephim/pyaleph-node:0.5.7
     command: --config /opt/pyaleph/config.yml --key-dir /opt/pyaleph/keys -v
     entrypoint: ["bash", "deployment/scripts/run_aleph_ccn_api.sh"]
     ports:
@@ -45,6 +50,7 @@ services:
     logging:
       options:
         max-size: 50m
+
   p2p-service:
     restart: always
     image: alephim/p2p-service:0.1.3
@@ -65,6 +71,7 @@ services:
       - "/etc/p2p-service/config.yml"
       - "--private-key-file"
       - "/etc/p2p-service/node-secret.pkcs8.der"
+
   postgres:
     restart: always
     image: postgres:15.1
@@ -79,6 +86,7 @@ services:
     networks:
       - pyaleph
     shm_size: "2gb"
+
   rabbitmq:
     restart: always
     image: rabbitmq:3.11.15-management
@@ -90,11 +98,13 @@ services:
     ports:
       - "127.0.0.1:5672:5672"
       - "127.0.0.1:15672:15672"
+
   redis:
     restart: always
     image: redis:7.0.10
     networks:
       - pyaleph
+
   ipfs:
     restart: always
     image: ipfs/kubo:v0.15.0
@@ -109,6 +119,7 @@ services:
     networks:
       - pyaleph
     command: ["daemon", "--enable-pubsub-experiment", "--migrate"]
+
   prometheus:
     restart: always
     image: prom/prometheus
@@ -120,6 +131,7 @@ services:
     networks:
       - pyaleph
       - grafana
+
   grafana:
     restart: always
     image: grafana/grafana
@@ -134,11 +146,13 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=a440fc1aa53b6b313b85b004605b7647  # Warning, change this !
     networks:
       - grafana
+
   caddy:
     restart: always
     image: caddy:latest
     command: caddy reverse-proxy --from :80 --to grafana:3000
     # Use the following command with your own domain name to enable HTTPS instead
+
 #    command: caddy reverse-proxy --from grafana.aleph-node.example.org --to grafana:3000
     ports:
       - "80:80"
@@ -149,6 +163,8 @@ services:
     networks:
       - pyaleph
       - grafana
+
+
 networks:
   pyaleph:
   grafana:

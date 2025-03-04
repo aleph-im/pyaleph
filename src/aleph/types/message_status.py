@@ -3,6 +3,12 @@ from enum import Enum, IntEnum
 from typing import Any, Dict, Optional, Sequence, Union
 
 
+class MessageOrigin(str, Enum):
+    ONCHAIN = "onchain"
+    P2P = "p2p"
+    IPFS = "ipfs"
+
+
 class MessageStatus(str, Enum):
     PENDING = "pending"
     PROCESSED = "processed"
@@ -46,6 +52,8 @@ class ErrorCode(IntEnum):
     FORGET_NO_TARGET = 500
     FORGET_TARGET_NOT_FOUND = 501
     FORGET_FORGET = 502
+    FORGET_NOT_ALLOWED = 503
+    FORGOTTEN_DUPLICATE = 504
 
 
 class MessageProcessingException(Exception):
@@ -194,6 +202,17 @@ class StoreCannotUpdateStoreWithRef(InvalidMessageException):
     """
 
     error_code = ErrorCode.STORE_UPDATE_UPDATE
+
+
+class ForgetNotAllowed(InvalidMessageException):
+    """
+    The store message targeted by the `ref` field has a value in the `ref` field of a dependent volume.
+    """
+
+    def __init__(self, file_hash: str, vm_hash: str):
+        super().__init__(f"File {file_hash} used on vm {vm_hash}")
+
+    error_code = ErrorCode.FORGET_NOT_ALLOWED
 
 
 class VmRefNotFound(RetryMessageException):

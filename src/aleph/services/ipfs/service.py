@@ -170,16 +170,20 @@ class IpfsService:
     async def sub(self, topic: str):
         ipfs_client = self.ipfs_client
 
-        async for mvalue in ipfs_client.pubsub.sub(topic):
-            try:
-                LOGGER.debug("New message received %r" % mvalue)
+        try:
+            async for mvalue in ipfs_client.pubsub.sub(topic):
+                try:
+                    LOGGER.debug("New message received %r" % mvalue)
 
-                # we should check the sender here to avoid spam
-                # and such things...
-                yield mvalue
+                    # we should check the sender here to avoid spam
+                    # and such things...
+                    yield mvalue
 
-            except Exception:
-                LOGGER.exception("Error handling message")
+                except Exception:
+                    LOGGER.exception("Error handling message")
+        except Exception:
+            LOGGER.exception("Error handling IPFS subscription")
+            await self.close()
 
     async def pub(self, topic: str, message: Union[str, bytes]):
         # aioipfs only accepts strings

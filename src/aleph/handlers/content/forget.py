@@ -14,11 +14,13 @@ from aleph.db.accessors.messages import (
     get_message_status,
     message_exists,
 )
+from aleph.db.accessors.vms import get_vms_dependent_volumes
 from aleph.db.models import AggregateElementDb, MessageDb
 from aleph.handlers.content.content_handler import ContentHandler
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import (
     CannotForgetForgetMessage,
+    ForgetNotAllowed,
     ForgetTargetNotFound,
     InternalError,
     MessageStatus,
@@ -57,6 +59,17 @@ class ForgetMessageHandler(ContentHandler):
         for item_hash in content.hashes:
             if not message_exists(session=session, item_hash=item_hash):
                 raise ForgetTargetNotFound(item_hash)
+
+            # Check file references, on VM volumes, as data volume and as code volume
+            # to block the deletion if we found ones
+            dependent_volumes = get_vms_dependent_volumes(
+                session=session, volume_hash=item_hash
+            )
+            print(dependent_volumes, item_hash)
+            if dependent_volumes is not None:
+                raise ForgetNotAllowed(
+                    file_hash=item_hash, vm_hash=dependent_volumes.item_hash
+                )
 
         for aggregate_key in content.aggregates:
             if not aggregate_exists(

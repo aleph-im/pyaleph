@@ -6,15 +6,23 @@ from aiohttp import web
 from aleph_message.models import MessageType
 from pydantic import ValidationError, parse_obj_as
 
-from aleph.db.accessors.balances import get_total_balance
+import aleph.toolkit.json as aleph_json
+from aleph.db.accessors.balances import (
+    count_balances_by_chain,
+    get_balances_by_chain,
+    get_total_detailed_balance,
+)
 from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import get_address_files_for_api, get_address_files_stats
 from aleph.db.accessors.messages import get_message_stats_by_address
 from aleph.schemas.api.accounts import (
+    AddressBalanceResponse,
     GetAccountBalanceResponse,
     GetAccountFilesQueryParams,
     GetAccountFilesResponse,
     GetAccountFilesResponseItem,
+    GetAccountQueryParams,
+    GetBalancesChainsQueryParams,
 )
 from aleph.types.db_session import DbSessionFactory
 from aleph.web.controllers.app_state_getters import get_session_factory_from_request
@@ -59,24 +67,61 @@ def _get_address_from_request(request: web.Request) -> str:
     return address
 
 
+def _get_chain_from_request(request: web.Request) -> str:
+    chain = request.match_info.get("chain")
+    if chain is None:
+        raise web.HTTPUnprocessableEntity(text="Chain must be specified.")
+    return chain
+
+
 async def get_account_balance(request: web.Request):
     address = _get_address_from_request(request)
 
+    try:
+        query_params = GetAccountQueryParams.parse_obj(request.query)
+    except ValidationError as e:
+        raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
+
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
     with session_factory() as session:
-        balance = get_total_balance(
-            session=session, address=address, include_dapps=False
+        balance, details = get_total_detailed_balance(
+            session=session, address=address, chain=query_params.chain
         )
         total_cost = get_total_cost_for_address(session=session, address=address)
-
-    if balance is None:
-        raise web.HTTPNotFound()
-
     return web.json_response(
         text=GetAccountBalanceResponse(
-            address=address, balance=balance, locked_amount=total_cost
+            address=address, balance=balance, locked_amount=total_cost, details=details
         ).json()
     )
+
+
+async def get_chain_balances(request: web.Request) -> web.Response:
+    try:
+        query_params = GetBalancesChainsQueryParams.parse_obj(request.query)
+    except ValidationError as e:
+        raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
+
+    find_filters = query_params.dict(exclude_none=True)
+
+    session_factory: DbSessionFactory = get_session_factory_from_request(request)
+    with session_factory() as session:
+        balances = get_balances_by_chain(session, **find_filters)
+
+        formatted_balances = [AddressBalanceResponse.from_orm(b) for b in balances]
+
+        total_balances = count_balances_by_chain(session, **find_filters)
+
+        pagination_page = query_params.page
+        pagination_per_page = query_params.pagination
+        response = {
+            "balances": formatted_balances,
+            "pagination_per_page": pagination_per_page,
+            "pagination_page": pagination_page,
+            "pagination_total": total_balances,
+            "pagination_item": "balances",
+        }
+
+        return web.json_response(text=aleph_json.dumps(response).decode("utf-8"))
 
 
 async def get_account_files(request: web.Request) -> web.Response:

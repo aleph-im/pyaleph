@@ -26,8 +26,10 @@ from aleph.db.accessors.files import (
     upsert_file_tag,
 )
 from aleph.db.models import MessageDb
+from aleph.db.models.account_costs import AccountCostsDb
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.handlers.content.content_handler import ContentHandler
+from aleph.services.cost import get_detailed_costs
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.db_session import DbSession
@@ -102,10 +104,11 @@ class StoreMessageHandler(ContentHandler):
     ) -> None:
         # TODO: simplify this function, it's overly complicated for no good reason.
 
-        # TODO: this check is useless, remove it
+        # This check is essential to ensure that files are not added to the system
+        # or the current node when the configuration disables storing of files.
         config = get_config()
         if not config.storage.store_files.value:
-            return  # Ignore
+            return  # Ignore if files are not to be stored.
 
         content = message.parsed_content
         assert isinstance(content, StoreContent)
@@ -196,6 +199,15 @@ class StoreMessageHandler(ContentHandler):
             file_type=FileType.DIRECTORY if is_folder else FileType.FILE,
             size=size,
         )
+
+    async def check_balance(
+        self, session: DbSession, message: MessageDb
+    ) -> List[AccountCostsDb]:
+        content = _get_store_content(message)
+        costs = get_detailed_costs(session, content, message.item_hash)
+
+        # NOTE: For now allow to create volumes for free, but generate a HOLD token cost
+        return costs
 
     async def check_dependencies(self, session: DbSession, message: MessageDb) -> None:
         content = _get_store_content(message)

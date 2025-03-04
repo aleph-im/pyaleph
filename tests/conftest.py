@@ -35,10 +35,19 @@ from aleph.db.models import (
     PendingMessageDb,
     StoredFileDb,
 )
+from aleph.db.models.aggregates import AggregateDb, AggregateElementDb
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
+from aleph.toolkit.constants import (
+    DEFAULT_PRICE_AGGREGATE,
+    DEFAULT_SETTINGS_AGGREGATE,
+    PRICE_AGGREGATE_KEY,
+    PRICE_AGGREGATE_OWNER,
+    SETTINGS_AGGREGATE_KEY,
+    SETTINGS_AGGREGATE_OWNER,
+)
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.files import FileTag, FileType
@@ -94,7 +103,7 @@ def session_factory(mock_config):
 
 
 @pytest.fixture
-def mock_config(mocker) -> Config:
+def mock_config() -> Config:
     config: Config = Config(aleph.config.get_defaults())
 
     config_file_path: Path = Path.cwd() / "config.yml"
@@ -244,7 +253,7 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessag
 
     pending_message = PendingMessageDb(
         item_hash="734a1287a2b7b5be060312ff5b05ad1bcf838950492e3428f2ac6437a1acad26",
-        type=MessageType.instance,
+        type=MessageType.instance.value,
         chain=Chain.ETH,
         sender="0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
         signature=None,
@@ -352,3 +361,86 @@ def user_balance(session_factory: DbSessionFactory) -> AlephBalanceDb:
         session.add(balance)
         session.commit()
     return balance
+
+
+@pytest.fixture
+def user_balance_eth_avax(session_factory: DbSessionFactory) -> AlephBalanceDb:
+    balance_eth = AlephBalanceDb(
+        address="0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
+        chain=Chain.ETH,
+        balance=Decimal(22_192),
+        eth_height=0,
+    )
+
+    balance_avax = AlephBalanceDb(
+        address="0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
+        chain=Chain.AVAX,
+        balance=Decimal(22_192),
+        eth_height=0,
+    )
+
+    with session_factory() as session:
+        session.add(balance_eth)
+        session.add(balance_avax)
+
+        session.commit()
+    return balance_avax
+
+
+@pytest.fixture
+def fixture_product_prices_aggregate_in_db(session_factory: DbSessionFactory) -> None:
+    with session_factory() as session:
+        item_hash = "7b74b9c5f73e7a0713dbe83a377b1d321ffb4a5411ea3df49790a9720b93a5bF"
+        content = DEFAULT_PRICE_AGGREGATE
+        session.add(
+            AggregateElementDb(
+                item_hash=item_hash,
+                key=PRICE_AGGREGATE_KEY,
+                owner=PRICE_AGGREGATE_OWNER,
+                content=content,
+                creation_datetime=dt.datetime(2025, 1, 31),
+            )
+        )
+
+        session.add(
+            AggregateDb(
+                key=PRICE_AGGREGATE_KEY,
+                owner=PRICE_AGGREGATE_OWNER,
+                content=content,
+                creation_datetime=dt.datetime(2025, 1, 31),
+                last_revision_hash=item_hash,
+                dirty=False,
+            )
+        )
+
+        session.commit()
+
+
+@pytest.fixture
+def fixture_settings_aggregate_in_db(session_factory: DbSessionFactory) -> None:
+    with session_factory() as session:
+        item_hash = "a319a7216d39032212c2f11028a21efaac4e5f78254baa34001483c7af22b7a4"
+        content = DEFAULT_SETTINGS_AGGREGATE
+
+        session.add(
+            AggregateElementDb(
+                item_hash=item_hash,
+                key=SETTINGS_AGGREGATE_KEY,
+                owner=SETTINGS_AGGREGATE_OWNER,
+                content=content,
+                creation_datetime=dt.datetime(2025, 1, 31),
+            )
+        )
+
+        session.add(
+            AggregateDb(
+                key=SETTINGS_AGGREGATE_KEY,
+                owner=SETTINGS_AGGREGATE_OWNER,
+                content=content,
+                creation_datetime=dt.datetime(2025, 1, 31),
+                last_revision_hash=item_hash,
+                dirty=False,
+            )
+        )
+
+        session.commit()
