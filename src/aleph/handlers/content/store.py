@@ -107,9 +107,6 @@ class StoreMessageHandler(ContentHandler):
         # This check is essential to ensure that files are not added to the system
         # or the current node when the configuration disables storing of files.
         config = get_config()
-        if not config.storage.store_files.value:
-            return  # Ignore if files are not to be stored.
-
         content = message.parsed_content
         assert isinstance(content, StoreContent)
 
@@ -122,6 +119,7 @@ class StoreMessageHandler(ContentHandler):
         do_standard_lookup = True
 
         # Sentinel value, the code below always sets a value but mypy does not see it.
+        # otherwise if config.storage.store_files is False, this will be the database value
         size: int = -1
 
         if engine == ItemType.ipfs and ipfs_enabled:
@@ -176,22 +174,25 @@ class StoreMessageHandler(ContentHandler):
                 do_standard_lookup = True
 
         if do_standard_lookup:
-            try:
-                file_content = await self.storage_service.get_hash_content(
-                    item_hash,
-                    engine=engine,
-                    tries=4,
-                    timeout=15,  # We only end up here for files < 1MB, a short timeout is okay
-                    use_network=True,
-                    use_ipfs=True,
-                    store_value=True,
-                )
-            except AlephStorageException:
-                raise FileUnavailable(
-                    "Could not retrieve file from storage at this time"
-                )
+            if config.storage.store_files.value:
+                try:
+                    file_content = await self.storage_service.get_hash_content(
+                        item_hash,
+                        engine=engine,
+                        tries=4,
+                        timeout=15,  # We only end up here for files < 1MB, a short timeout is okay
+                        use_network=True,
+                        use_ipfs=True,
+                        store_value=True,
+                    )
+                except AlephStorageException:
+                    raise FileUnavailable(
+                        "Could not retrieve file from storage at this time"
+                    )
 
-            size = len(file_content)
+                size = len(file_content)
+            else:
+                size = -1
 
         upsert_file(
             session=session,

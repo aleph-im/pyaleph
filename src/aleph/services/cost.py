@@ -247,7 +247,6 @@ def _get_volumes_costs(
     for volume in volumes:
         if isinstance(volume, SizedVolume):
             storage_mib = Decimal(volume.size_mib)
-
         elif isinstance(volume, RefVolume):
             file = _get_file_from_ref(
                 session=session, ref=volume.ref, use_latest=volume.use_latest
@@ -294,7 +293,7 @@ def _get_execution_volumes_costs(
         volumes.append(
             SizedVolume(
                 CostType.EXECUTION_INSTANCE_VOLUME_ROOTFS,
-                content.rootfs.size_mib,
+                Decimal(content.rootfs.size_mib),
                 content.rootfs.parent.ref,
             )
         )
@@ -339,7 +338,7 @@ def _get_execution_volumes_costs(
                 volumes.append(
                     SizedVolume(
                         CostType.EXECUTION_VOLUME_INMUTABLE,
-                        volume.estimated_size_mib,
+                        Decimal(volume.estimated_size_mib),
                         volume.ref,
                         name,
                     ),
@@ -361,7 +360,7 @@ def _get_execution_volumes_costs(
             volumes.append(
                 SizedVolume(
                     CostType.EXECUTION_VOLUME_PERSISTENT,
-                    volume.size_mib,
+                    Decimal(volume.size_mib),
                     None,
                     name,
                 ),
@@ -498,12 +497,12 @@ def _calculate_storage_costs(
     payment_type = get_payment_type(content)
 
     if isinstance(content, CostEstimationStoreContent) and content.estimated_size_mib:
-        storage_mib = content.estimated_size_mib
+        storage_mib = Decimal(content.estimated_size_mib)
     else:
         file = get_file(session, content.item_hash)
         if not file:
             return []
-        storage_mib = int(file.size / MiB)
+        storage_mib = Decimal(file.size / MiB)
 
     volume = SizedVolume(CostType.STORAGE, storage_mib, item_hash)
 
