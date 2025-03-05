@@ -6,9 +6,9 @@ from typing import List
 
 import aiohttp
 from aleph_message.models import Chain
-from aleph_pytezos.crypto.key import Key
 from configmanager import Config
 from nacl.exceptions import BadSignatureError
+from pytezos_crypto.key import Key
 
 import aleph.toolkit.json as aleph_json
 from aleph.chains.abc import ChainReader, Verifier
