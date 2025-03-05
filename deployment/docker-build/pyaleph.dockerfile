@@ -1,4 +1,4 @@
-FROM ubuntu:22.04 as base
+FROM ubuntu:24.04 as base
 
 ENV DEBIAN_FRONTEND noninteractive
 
@@ -45,6 +45,7 @@ ENV PIP_NO_CACHE_DIR yes
 RUN /opt/venv/bin/python3.12 -m pip install --upgrade pip wheel
 ENV PATH="/opt/venv/bin:${PATH}"
 
+RUN mkdir --parents /opt/pyaleph
 WORKDIR /opt/pyaleph
 COPY alembic.ini pyproject.toml ./
 COPY LICENSE.txt README.md ./
@@ -76,6 +77,7 @@ RUN mkdir /var/lib/pyaleph
 RUN chown -R aleph:aleph /var/lib/pyaleph
 
 ENV PATH="/opt/venv/bin:${PATH}"
+RUN mkdir --parents /opt/pyaleph
 WORKDIR /opt/pyaleph
 USER aleph
 ENTRYPOINT ["bash", "deployment/scripts/run_aleph_ccn.sh"]

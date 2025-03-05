@@ -14,7 +14,7 @@ on:
 
 jobs:
   tests:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:15.1
@@ -70,7 +70,6 @@ jobs:
           export OPENSSL_CONF=/etc/ssl/openssl.cnf
           touch config.yml  # Fake config file for alembic
           # TODO: determine why ResourceWarning warnings occur in some tests.
-          hatch run testing:test
 
       - run: |
           hatch run testing:cov
