@@ -181,7 +181,7 @@ style = [
 sdist = "check-sdist --inject-junk"
 fmt = [
   "black {args:} ./src/ ./tests/",
-  # "ruff check --fix {args:.} ./src/ ./tests/",
+  "ruff check --fix {args:.} ./src/ ./tests/",
   "isort --profile black {args:} ./src/ ./tests/",
   "yamlfix .",
   "pyproject-fmt pyproject.toml",
