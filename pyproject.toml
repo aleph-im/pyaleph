@@ -25,7 +25,7 @@ dependencies = [
   "aiofiles==23.2.1",
   "aiohttp==3.11.11",
   "aiohttp-cors==0.7",
-  "aiohttp-jinja2==1.5",
+  "aiohttp-jinja2==1.6",
   "aioipfs~=0.7.1",
   "alembic==1.15.1",
   "aleph-message==0.6.1",
