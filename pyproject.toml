@@ -82,7 +82,7 @@ optional-dependencies.polkadot = [
 ]
 optional-dependencies.testing = [
   "ipfshttpclient==0.8.0a2", # eth/web3 test dependency, for some reason"
-  "more-itertools==8.14.0",
+  "more-itertools==10.6.0",
   "pytest==8.0.1",
   "pytest-aiohttp==1.0.5",
   "pytest-asyncio==0.23.5",
