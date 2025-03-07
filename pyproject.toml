@@ -37,7 +37,7 @@ dependencies = [
   "configmanager==1.35.1",
   "configparser==6",
   "cosmospy==6",
-  "dataclasses-json==0.5.6",
+  "dataclasses-json==0.6.7",
   "eth-account==0.10",
   "eth-typing~=4.0",
   "gunicorn==23.0.0",
