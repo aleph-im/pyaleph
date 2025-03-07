@@ -39,7 +39,7 @@ dependencies = [
   "cosmospy==6",
   "dataclasses-json==0.6.7",
   "eth-account==0.10",
-  "eth-typing~=4.0",
+  "eth-typing~=5.2",
   "gunicorn==23.0.0",
   "hexbytes==0.2.2",
   "msgpack==1.0.8",                                                                                                        # required by aiocache
