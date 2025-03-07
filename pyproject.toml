@@ -42,7 +42,7 @@ dependencies = [
   "eth-typing~=4.0",
   "gunicorn==23.0.0",
   "hexbytes==0.2.2",
-  "msgpack==1.0.3",                                                                                                        # required by aiocache
+  "msgpack==1.0.8",                                                                                                        # required by aiocache
   "multiaddr==0.0.9",                                                                                                      # for libp2p-stubs
   "orjson>=3.7.7",                                                                                                         # Minimum version for Python 3.11
   "psycopg2-binary==2.9.5",                                                                                                # Note: psycopg3 is not yet supported by SQLAlchemy
