@@ -35,7 +35,7 @@ dependencies = [
   "base58>=1.0.3",
   "coincurve==20",
   "configmanager==1.35.1",
-  "configparser==6",
+  "configparser==7.2.0",
   "cosmospy==6",
   "dataclasses-json==0.6.7",
   "eth-account==0.10",
