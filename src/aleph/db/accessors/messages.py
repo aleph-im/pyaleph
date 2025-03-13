@@ -272,8 +272,13 @@ def get_unconfirmed_messages(
             )
         )
 
-    select_stmt = select(MessageDb).where(
-        MessageDb.signature.isnot(None) & (~select_message_confirmations.exists())
+    select_stmt = (
+        select(MessageDb)
+        .join(MessageStatusDb, MessageStatusDb.item_hash == MessageDb.item_hash)
+        .where(
+            MessageDb.signature.isnot(None) & (~select_message_confirmations.exists())
+        )
+        .order_by(MessageStatusDb.reception_time.asc())
     )
 
     return (session.execute(select_stmt.limit(limit))).scalars()
