@@ -257,6 +257,13 @@ async def test_get_unconfirmed_messages(
 ):
     with session_factory() as session:
         session.add(fixture_message)
+        session.add(
+            MessageStatusDb(
+                item_hash=fixture_message.item_hash,
+                status=MessageStatus.PROCESSED,
+                reception_time=fixture_message.time,
+            )
+        )
         session.commit()
 
     with session_factory() as session:
