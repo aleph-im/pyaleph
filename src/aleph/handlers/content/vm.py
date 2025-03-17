@@ -1,5 +1,4 @@
 import logging
-from decimal import Decimal
 from typing import List, Protocol, Set, Union, overload
 
 from aleph_message.models import (
@@ -53,6 +52,7 @@ from aleph.db.models import (
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.handlers.content.content_handler import ContentHandler
 from aleph.services.cost import get_total_and_detailed_costs
+from aleph.toolkit.costs import are_store_and_program_free
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag
@@ -341,14 +341,16 @@ class VmMessageHandler(ContentHandler):
     ) -> List[AccountCostsDb]:
         content = _get_vm_content(message)
 
-        required_tokens, costs = get_total_and_detailed_costs(
+        message_cost, costs = get_total_and_detailed_costs(
             session, content, message.item_hash
         )
 
-        # NOTE: For now allow to create ephimeral programs for free, but generate a cost depending on the content.payment prop (HOLD / STREAM)
-        if isinstance(content, ProgramContent):
-            if not content.on.persistent:
-                return costs
+        if (
+            isinstance(content, ProgramContent)
+            and not content.on.persistent
+            and are_store_and_program_free(message)
+        ):
+            return costs
 
         # NOTE: For now allow to create anything that is being paid with STREAM for free, but generate a cost depending on the content.payment prop (HOLD / STREAM)
         if content.payment and content.payment.is_stream:
@@ -356,14 +358,16 @@ class VmMessageHandler(ContentHandler):
 
         # NOTE: Instances and persistent Programs being paid by HOLD are the only ones being checked for now
         current_balance = get_total_balance(address=content.address, session=session)
-        current_instance_costs = get_total_cost_for_address(
+        current_cost = get_total_cost_for_address(
             session=session, address=content.address
         )
 
-        if current_balance < current_instance_costs + required_tokens:
+        required_balance = current_cost + message_cost
+
+        if current_balance < required_balance:
             raise InsufficientBalanceException(
-                balance=Decimal(current_balance),
-                required_balance=current_instance_costs + required_tokens,
+                balance=current_balance,
+                required_balance=required_balance,
             )
 
         return costs

@@ -14,6 +14,8 @@ import aioipfs
 from aleph_message.models import ItemHash, ItemType, StoreContent
 
 from aleph.config import get_config
+from aleph.db.accessors.balances import get_total_balance
+from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import (
     delete_file_pin,
     get_file_tag,
@@ -29,13 +31,15 @@ from aleph.db.models import MessageDb
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.handlers.content.content_handler import ContentHandler
-from aleph.services.cost import get_detailed_costs
+from aleph.services.cost import get_total_and_detailed_costs
 from aleph.storage import StorageService
+from aleph.toolkit.costs import are_store_and_program_free
 from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag, FileType
 from aleph.types.message_status import (
     FileUnavailable,
+    InsufficientBalanceException,
     InvalidMessageFormat,
     PermissionDenied,
     StoreCannotUpdateStoreWithRef,
@@ -205,9 +209,27 @@ class StoreMessageHandler(ContentHandler):
         self, session: DbSession, message: MessageDb
     ) -> List[AccountCostsDb]:
         content = _get_store_content(message)
-        costs = get_detailed_costs(session, content, message.item_hash)
 
-        # NOTE: For now allow to create volumes for free, but generate a HOLD token cost
+        message_cost, costs = get_total_and_detailed_costs(
+            session, content, message.item_hash
+        )
+
+        if are_store_and_program_free(message):
+            return costs
+
+        current_balance = get_total_balance(address=content.address, session=session)
+        current_cost = get_total_cost_for_address(
+            session=session, address=content.address
+        )
+
+        required_balance = current_cost + message_cost
+
+        if current_balance < required_balance:
+            raise InsufficientBalanceException(
+                balance=current_balance,
+                required_balance=required_balance,
+            )
+
         return costs
 
     async def check_dependencies(self, session: DbSession, message: MessageDb) -> None:
