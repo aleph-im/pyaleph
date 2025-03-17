@@ -33,7 +33,7 @@ dependencies = [
   "aleph-p2p-client @ git+https://github.com/aleph-im/p2p-service-client-python@cbfebb871db94b2ca580e66104a67cd730c5020c",
   "asyncpg==0.30",
   "base58>=1.0.3",
-  "coincurve==20",
+  "coincurve==21.0.0",
   "configmanager==1.35.1",
   "configparser==7.2.0",
   "cosmospy==6",
