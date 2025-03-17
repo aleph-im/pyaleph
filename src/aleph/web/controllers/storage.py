@@ -111,12 +111,12 @@ async def _verify_user_balance(
 ) -> None:
     if content.estimated_size_mib and content.estimated_size_mib > 25 * MiB:
         current_balance = get_total_balance(session=session, address=content.address)
-        current_cost_for_user = get_total_cost_for_address(
+        current_cost = get_total_cost_for_address(
             session=session, address=content.address
         )
-        required_storage_cost, _ = get_total_and_detailed_costs(session, content, "")
+        message_cost, _ = get_total_and_detailed_costs(session, content, "")
 
-        required_balance = current_cost_for_user + required_storage_cost
+        required_balance = current_cost + message_cost
 
         if current_balance < required_balance:
             raise web.HTTPPaymentRequired()

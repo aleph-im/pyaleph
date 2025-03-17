@@ -16,8 +16,14 @@ def get_total_cost_for_address(
     address: str,
     payment_type: Optional[PaymentType] = PaymentType.hold,
 ) -> Decimal:
+    total_prop = (
+        AccountCostsDb.cost_hold
+        if payment_type == PaymentType.hold
+        else AccountCostsDb.cost_stream
+    )
+
     select_stmt = (
-        select(func.sum(AccountCostsDb.cost_hold))
+        select(func.sum(total_prop))
         .select_from(AccountCostsDb)
         .where(
             (AccountCostsDb.owner == address)
