@@ -1,3 +1,4 @@
+import datetime as dt
 from decimal import Decimal
 from io import StringIO
 from typing import Dict, Mapping, Optional, Sequence
@@ -174,3 +175,10 @@ def update_balances(
     # tends to reuse connections. Dropping the table here guarantees it will not be present
     # on the next run.
     session.execute("DROP TABLE temp_balances")  # type: ignore[arg-type]
+
+
+def get_updated_balances(session: DbSession, last_update: dt.datetime):
+    select_stmt = select(AlephBalanceDb.address, AlephBalanceDb.balance).filter(
+        AlephBalanceDb.last_update >= last_update
+    )
+    return (session.execute(select_stmt)).all()

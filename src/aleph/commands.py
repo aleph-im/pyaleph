@@ -29,6 +29,8 @@ from aleph.cli.args import parse_args
 from aleph.db.connection import make_db_url, make_engine, make_session_factory
 from aleph.exceptions import InvalidConfigException, KeyNotFoundException
 from aleph.jobs import start_jobs
+from aleph.jobs.cron.balance_job import BalanceCronJob
+from aleph.jobs.cron.cron_job import CronJob, cron_job_task
 from aleph.network import listener_tasks
 from aleph.services import p2p
 from aleph.services.cache.materialized_views import refresh_cache_materialized_views
@@ -147,6 +149,10 @@ async def main(args: List[str]) -> None:
         garbage_collector = GarbageCollector(
             session_factory=session_factory, storage_service=storage_service
         )
+        cron_job = CronJob(
+            session_factory=session_factory,
+            jobs={"balance": BalanceCronJob(session_factory=session_factory)},
+        )
         chain_data_service = ChainDataService(
             session_factory=session_factory,
             storage_service=storage_service,
@@ -202,6 +208,10 @@ async def main(args: List[str]) -> None:
             garbage_collector_task(config=config, garbage_collector=garbage_collector)
         )
         LOGGER.debug("Initialized garbage collector task")
+
+        LOGGER.debug("Initializing cron job task")
+        tasks.append(cron_job_task(config=config, cron_job=cron_job))
+        LOGGER.debug("Initialized cron job task")
 
         LOGGER.debug("Running event loop")
         await asyncio.gather(*tasks)
