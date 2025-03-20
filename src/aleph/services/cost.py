@@ -306,7 +306,7 @@ def _get_execution_volumes_costs(
             volumes.append(
                 SizedVolume(
                     CostType.EXECUTION_PROGRAM_VOLUME_CODE,
-                    content.code.estimated_size_mib,
+                    Decimal(content.code.estimated_size_mib),
                     content.code.ref,
                 )
             )
@@ -326,7 +326,7 @@ def _get_execution_volumes_costs(
             volumes.append(
                 SizedVolume(
                     CostType.EXECUTION_PROGRAM_VOLUME_RUNTIME,
-                    content.runtime.estimated_size_mib,
+                    Decimal(content.runtime.estimated_size_mib),
                     content.runtime.ref,
                 )
             )
@@ -347,7 +347,7 @@ def _get_execution_volumes_costs(
                 volumes.append(
                     SizedVolume(
                         CostType.EXECUTION_PROGRAM_VOLUME_DATA,
-                        content.data.estimated_size_mib,
+                        Decimal(content.data.estimated_size_mib),
                         content.data.ref,
                     )
                 )
