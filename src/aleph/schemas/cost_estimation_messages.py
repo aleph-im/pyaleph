@@ -7,6 +7,11 @@ from aleph_message.models import (
     ProgramContent,
     StoreContent,
 )
+from aleph_message.models.execution.program import (
+    CodeContent,
+    DataContent,
+    FunctionRuntime,
+)
 from aleph_message.models.execution.volume import (
     EphemeralVolume,
     ImmutableVolume,
@@ -37,7 +42,26 @@ class CostEstimationInstanceContent(InstanceContent):
     )
 
 
+class CostEstimationCodeContent(CodeContent):
+    estimated_size_mib: Optional[int] = None
+
+
+class CostEstimationFunctionRuntime(FunctionRuntime):
+    estimated_size_mib: Optional[int] = None
+
+
+class CostEstimationDataContent(DataContent):
+    estimated_size_mib: Optional[int] = None
+
+
 class CostEstimationProgramContent(ProgramContent):
+    code: CostEstimationCodeContent = Field(description="Code to execute")
+    runtime: CostEstimationFunctionRuntime = Field(
+        description="Execution runtime (rootfs with Python interpreter)"
+    )
+    data: Optional[CostEstimationDataContent] = Field(
+        default=None, description="Data to use during computation"
+    )
     volumes: List[CostEstimationMachineVolume] = Field(
         default=[], description="Volumes to mount on the filesystem"
     )
