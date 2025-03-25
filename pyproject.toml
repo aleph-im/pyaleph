@@ -51,7 +51,7 @@ dependencies = [
   "pynacl==1.5",
   "pytezos-crypto==3.13.4.1",
   "python-dateutil==2.9.0",
-  "pytz==2025.1",
+  "pytz==2025.2",
   "pyyaml==6.0.1",
   "redis[hiredis]==5.2.1",
   "requests==2.32.3",
