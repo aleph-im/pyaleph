@@ -118,16 +118,17 @@ def make_matching_messages_query(
     if channels:
         select_stmt = select_stmt.where(MessageDb.channel.in_(channels))
 
-    order_by_columns: Tuple  # For mypy to leave us alone until SQLA2
+    order_by_columns: Tuple = ()  # For mypy to leave us alone until SQLA2
 
     if sort_by == SortBy.TX_TIME or start_block or end_block:
         select_earliest_confirmation = (
             select(
                 message_confirmations.c.item_hash,
                 func.min(ChainTxDb.datetime).label("earliest_confirmation"),
+                ChainTxDb.height,
             )
             .join(ChainTxDb, message_confirmations.c.tx_hash == ChainTxDb.hash)
-            .group_by(message_confirmations.c.item_hash)
+            .group_by(message_confirmations.c.item_hash, ChainTxDb.height)
         ).subquery()
         select_stmt = select_stmt.join(
             select_earliest_confirmation,
@@ -137,8 +138,7 @@ def make_matching_messages_query(
         if start_block:
             select_stmt = select_stmt.where(
                 select_earliest_confirmation.c.height.is_(None)
-                | select_earliest_confirmation.c.height
-                >= start_block
+                | (select_earliest_confirmation.c.height >= start_block)
             )
         if end_block:
             select_stmt = select_stmt.where(
@@ -623,3 +623,58 @@ def get_programs_triggered_by_messages(session: DbSession, sort_order: SortOrder
     )
 
     return session.execute(select_stmt).all()
+
+
+def make_matching_hashes_query(
+    start_date: Optional[Union[float, dt.datetime]] = None,
+    end_date: Optional[Union[float, dt.datetime]] = None,
+    status: Optional[MessageStatus] = None,
+    sort_order: SortOrder = SortOrder.DESCENDING,
+    page: int = 1,
+    pagination: int = 20,
+    hash_only: bool = True,
+) -> Select:
+    select_stmt = select(MessageStatusDb.item_hash if hash_only else MessageStatusDb)
+
+    start_datetime = coerce_to_datetime(start_date)
+    end_datetime = coerce_to_datetime(end_date)
+
+    if start_datetime:
+        select_stmt = select_stmt.where(
+            MessageStatusDb.reception_time >= start_datetime
+        )
+    if end_datetime:
+        select_stmt = select_stmt.where(MessageStatusDb.reception_time < end_datetime)
+    if status:
+        select_stmt = select_stmt.where(MessageStatusDb.status == status)
+
+    if sort_order == SortOrder.ASCENDING:
+        select_stmt = select_stmt.order_by(MessageStatusDb.reception_time.asc())
+    else:
+        select_stmt = select_stmt.order_by(MessageStatusDb.reception_time.desc())
+
+    select_stmt = select_stmt.offset((page - 1) * pagination)
+
+    # If pagination == 0, return all matching results
+    if pagination:
+        select_stmt = select_stmt.limit(pagination)
+
+    return select_stmt
+
+
+def get_matching_hashes(
+    session: DbSession,
+    **kwargs,  # Same as make_matching_hashes_query
+):
+    select_stmt = make_matching_hashes_query(**kwargs)
+    return (session.execute(select_stmt)).scalars()
+
+
+def count_matching_hashes(
+    session: DbSession,
+    pagination: int = 0,
+    **kwargs,
+) -> Select:
+    select_stmt = make_matching_hashes_query(pagination=0, **kwargs).subquery()
+    select_count_stmt = select(func.count()).select_from(select_stmt)
+    return session.execute(select_count_stmt).scalar_one()

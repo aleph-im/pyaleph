@@ -20,14 +20,10 @@ from aleph_message.models.execution.program import (
 )
 from aleph_message.models.execution.volume import ImmutableVolume, ParentVolume
 
-from aleph.db.accessors.cost import get_total_cost_for_address
+from aleph.db.accessors.cost import get_total_cost_for_address, make_costs_upsert_query
 from aleph.db.accessors.files import insert_message_file_pin, upsert_file_tag
-from aleph.db.models import (
-    AlephBalanceDb,
-    MessageStatusDb,
-    PendingMessageDb,
-    StoredFileDb,
-)
+from aleph.db.models import AlephBalanceDb, MessageDb, MessageStatusDb, StoredFileDb
+from aleph.services.cost import get_total_and_detailed_costs
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.files import FileTag, FileType
@@ -59,7 +55,7 @@ def get_volume_refs(
     return volumes
 
 
-def insert_volume_refs(session: DbSession, message: PendingMessageDb):
+def insert_volume_refs(session: DbSession, message: MessageDb):
     """
     Insert volume references in the DB to make the program processable.
     """
@@ -96,8 +92,23 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
             )
 
 
+async def insert_costs(session: DbSession, message: MessageDb):
+    """
+    Insert volume references in the DB to make the program processable.
+    """
+
+    if message.item_content:
+        content = InstanceContent.parse_raw(message.item_content)
+
+        _, costs = get_total_and_detailed_costs(session, content, message.item_hash)
+
+        if costs:
+            insert_stmt = make_costs_upsert_query(costs)
+            session.execute(insert_stmt)
+
+
 @pytest.fixture
-def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessageDb:
+def fixture_instance_message(session_factory: DbSessionFactory) -> MessageDb:
     content = {
         "address": "0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
         "allow_amend": False,
@@ -158,6 +169,7 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessag
             {
                 "comment": "Raw drive to use by a process, do not mount it",
                 "name": "raw-data",
+                "mount": "/var/raw",
                 "persistence": "host",
                 "size_mib": 10,
             },
@@ -165,7 +177,8 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessag
         "time": 1619017773.8950517,
     }
 
-    pending_message = PendingMessageDb(
+    reception_time = timestamp_to_datetime(1619017774)
+    message = MessageDb(
         item_hash="734a1287a2b7b5be060312ff5b05ad1bcf838950492e3428f2ac6437a1acad26",
         type=MessageType.instance,
         chain=Chain.ETH,
@@ -173,35 +186,36 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessag
         signature=None,
         item_type=ItemType.inline,
         item_content=json.dumps(content),
+        content=content,
         time=timestamp_to_datetime(1619017773.8950577),
         channel=None,
-        reception_time=timestamp_to_datetime(1619017774),
-        fetched=True,
-        check_message=False,
-        retries=0,
-        next_attempt=dt.datetime(2023, 1, 1),
+        size=2000,
     )
     with session_factory() as session:
-        session.add(pending_message)
+        session.add(message)
         session.add(
             MessageStatusDb(
-                item_hash=pending_message.item_hash,
-                status=MessageStatus.PENDING,
-                reception_time=pending_message.reception_time,
+                item_hash=message.item_hash,
+                status=MessageStatus.PROCESSED,
+                reception_time=reception_time,
             )
         )
         session.commit()
 
-    return pending_message
+    return message
 
 
-def test_get_total_cost_for_address(
-    session_factory: DbSessionFactory, fixture_instance_message
+@pytest.mark.asyncio
+async def test_get_total_cost_for_address(
+    session_factory: DbSessionFactory,
+    fixture_instance_message,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
 ):
     with session_factory() as session:
         session.add(
             AlephBalanceDb(
-                address="0xB68B9D4f3771c246233823ed1D3Add451055F9Ef",
+                address=fixture_instance_message.sender,
                 chain=Chain.ETH,
                 dapp=None,
                 balance=Decimal(100_000),
@@ -209,11 +223,11 @@ def test_get_total_cost_for_address(
             )
         )
         insert_volume_refs(session, fixture_instance_message)
+        await insert_costs(session, fixture_instance_message)
         session.commit()
 
         total_cost: Decimal = get_total_cost_for_address(
             session=session, address=fixture_instance_message.sender
         )
-        assert total_cost == Decimal(
-            0.66666666666666662965923251249478198587894439697265625
-        )
+
+        assert total_cost == Decimal("1001.8")

@@ -1,5 +1,4 @@
 import asyncio
-import functools
 import importlib.resources
 import json
 import logging
@@ -8,7 +7,6 @@ from typing import AsyncIterator, Dict, Tuple
 from aleph_message.models import Chain
 from configmanager import Config
 from eth_account import Account
-from eth_account.messages import encode_defunct
 from hexbytes import HexBytes
 from web3 import Web3
 from web3._utils.events import get_event_data
@@ -17,21 +15,20 @@ from web3.gas_strategies.rpc import rpc_gas_price_strategy
 from web3.middleware.filter import local_filter_middleware
 from web3.middleware.geth_poa import geth_poa_middleware
 
-from aleph.chains.common import get_verification_buffer
 from aleph.db.accessors.chains import get_last_height, upsert_chain_sync_status
 from aleph.db.accessors.messages import get_unconfirmed_messages
 from aleph.db.accessors.pending_messages import count_pending_messages
 from aleph.db.accessors.pending_txs import count_pending_txs
 from aleph.db.models.chains import ChainTxDb
 from aleph.schemas.chains.tx_context import TxContext
-from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainEventType
 from aleph.types.db_session import DbSessionFactory
 from aleph.utils import run_in_executor
 
-from .abc import ChainWriter, Verifier
+from .abc import ChainWriter
 from .chain_data_service import ChainDataService, PendingTxPublisher
+from .evm import EVMVerifier
 from .indexer_reader import AlephIndexerReader
 
 LOGGER = logging.getLogger("chains.ethereum")
@@ -39,7 +36,12 @@ CHAIN_NAME = "ETH"
 
 
 def get_web3(config) -> Web3:
-    web3 = Web3(Web3.HTTPProvider(config.ethereum.api_url.value))
+    web3 = Web3(
+        Web3.HTTPProvider(
+            config.ethereum.api_url.value,
+            request_kwargs={"timeout": config.ethereum.client_timeout.value},
+        )
+    )
     if config.ethereum.chain_id.value == 4:  # rinkeby
         web3.middleware_onion.inject(geth_poa_middleware, layer=0)
     web3.middleware_onion.add(local_filter_middleware)
@@ -68,38 +70,8 @@ def get_logs_query(web3: Web3, contract, start_height, end_height):
     )
 
 
-class EthereumVerifier(Verifier):
-    async def verify_signature(self, message: BasePendingMessage) -> bool:
-        """Verifies a signature of a message, return True if verified, false if not"""
-
-        verification = get_verification_buffer(message)
-
-        message_hash = await run_in_executor(
-            None, functools.partial(encode_defunct, text=verification.decode("utf-8"))
-        )
-
-        verified = False
-        try:
-            # we assume the signature is a valid string
-            address = await run_in_executor(
-                None,
-                functools.partial(
-                    Account.recover_message, message_hash, signature=message.signature
-                ),
-            )
-            if address == message.sender:
-                verified = True
-            else:
-                LOGGER.warning(
-                    "Received bad signature from %s for %s" % (address, message.sender)
-                )
-                return False
-
-        except Exception:
-            LOGGER.exception("Error processing signature for %s" % message.sender)
-            verified = False
-
-        return verified
+class EthereumVerifier(EVMVerifier):
+    pass
 
 
 class EthereumConnector(ChainWriter):
@@ -139,8 +111,10 @@ class EthereumConnector(ChainWriter):
                 yield log
 
             if not logs:
-                LOGGER.info("No recent transactions, waiting 10 seconds.")
-                await asyncio.sleep(10)
+                LOGGER.info(
+                    f"No recent transaction, waiting {config.ethereum.archive_delay.value} seconds."
+                )
+                await asyncio.sleep(config.ethereum.archive_delay.value)
 
         except ValueError as e:
             # we got an error, let's try the pagination aware version.
@@ -163,8 +137,10 @@ class EthereumConnector(ChainWriter):
                         yield log
 
                     if not logs:
-                        LOGGER.info("Processed all transactions, waiting 10 seconds.")
-                        await asyncio.sleep(10)
+                        LOGGER.info(
+                            f"Processed all transactions, waiting {config.ethereum.archive_delay.value} seconds."
+                        )
+                        await asyncio.sleep(config.ethereum.archive_delay.value)
 
                     start_height = end_height + 1
                     end_height = start_height + 1000
@@ -276,8 +252,10 @@ class EthereumConnector(ChainWriter):
                     "relaunching Ethereum message sync in 10 seconds"
                 )
             else:
-                LOGGER.info("Processed all transactions, waiting 10 seconds.")
-            await asyncio.sleep(10)
+                LOGGER.info(
+                    f"Processed all transactions, waiting {config.ethereum.message_delay.value} seconds."
+                )
+            await asyncio.sleep(config.ethereum.message_delay.value)
 
     async def fetcher(self, config: Config):
         message_event_task = self.indexer_reader.fetcher(

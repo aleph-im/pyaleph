@@ -26,5 +26,5 @@ async def incoming_channel(
                 except InvalidMessageException:
                     LOGGER.warning(f"Invalid message {mvalue}")
         except Exception:
-            LOGGER.exception("Exception in IPFS pubsub, reconnecting in 2 seconds...")
-            await asyncio.sleep(2)
+            LOGGER.exception("Exception in IPFS pubsub, reconnecting in 100 ms...")
+            await asyncio.sleep(0.1)

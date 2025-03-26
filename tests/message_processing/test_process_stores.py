@@ -1,5 +1,6 @@
 import datetime as dt
 import json
+from decimal import Decimal
 from typing import Mapping, Optional
 
 import pytest
@@ -12,6 +13,7 @@ from aleph.db.models import MessageStatusDb, PendingMessageDb
 from aleph.handlers.content.store import StoreMessageHandler
 from aleph.handlers.message_handler import MessageHandler
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
+from aleph.services.cost import get_total_and_detailed_costs_from_db
 from aleph.services.storage.engine import StorageEngine
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
@@ -63,6 +65,8 @@ async def test_process_store(
     mocker,
     mock_config: Config,
     session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
     fixture_store_message: PendingMessageDb,
 ):
     storage_service = StorageService(
@@ -88,6 +92,14 @@ async def test_process_store(
         )
         session.commit()
 
+        cost, _ = get_total_and_detailed_costs_from_db(
+            session=session,
+            content=fixture_store_message.content,
+            item_hash=fixture_store_message.item_hash,
+        )
+
+        assert cost == Decimal("0.000004450480138778")
+
 
 @pytest.mark.asyncio
 async def test_process_store_no_signature(
@@ -95,6 +107,8 @@ async def test_process_store_no_signature(
     session_factory: DbSessionFactory,
     message_processor: PendingMessageProcessor,
     fixture_store_message: PendingMessageDb,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
 ):
     """
     Test that a STORE message with no signature (i.e., coming from a smart contract)

@@ -26,8 +26,10 @@ from aleph.db.accessors.files import (
     upsert_file_tag,
 )
 from aleph.db.models import MessageDb
+from aleph.db.models.account_costs import AccountCostsDb
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.handlers.content.content_handler import ContentHandler
+from aleph.services.cost import get_detailed_costs
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.db_session import DbSession
@@ -102,11 +104,9 @@ class StoreMessageHandler(ContentHandler):
     ) -> None:
         # TODO: simplify this function, it's overly complicated for no good reason.
 
-        # TODO: this check is useless, remove it
+        # This check is essential to ensure that files are not added to the system
+        # or the current node when the configuration disables storing of files.
         config = get_config()
-        if not config.storage.store_files.value:
-            return  # Ignore
-
         content = message.parsed_content
         assert isinstance(content, StoreContent)
 
@@ -119,6 +119,7 @@ class StoreMessageHandler(ContentHandler):
         do_standard_lookup = True
 
         # Sentinel value, the code below always sets a value but mypy does not see it.
+        # otherwise if config.storage.store_files is False, this will be the database value
         size: int = -1
 
         if engine == ItemType.ipfs and ipfs_enabled:
@@ -173,22 +174,25 @@ class StoreMessageHandler(ContentHandler):
                 do_standard_lookup = True
 
         if do_standard_lookup:
-            try:
-                file_content = await self.storage_service.get_hash_content(
-                    item_hash,
-                    engine=engine,
-                    tries=4,
-                    timeout=15,  # We only end up here for files < 1MB, a short timeout is okay
-                    use_network=True,
-                    use_ipfs=True,
-                    store_value=True,
-                )
-            except AlephStorageException:
-                raise FileUnavailable(
-                    "Could not retrieve file from storage at this time"
-                )
+            if config.storage.store_files.value:
+                try:
+                    file_content = await self.storage_service.get_hash_content(
+                        item_hash,
+                        engine=engine,
+                        tries=4,
+                        timeout=15,  # We only end up here for files < 1MB, a short timeout is okay
+                        use_network=True,
+                        use_ipfs=True,
+                        store_value=True,
+                    )
+                except AlephStorageException:
+                    raise FileUnavailable(
+                        "Could not retrieve file from storage at this time"
+                    )
 
-            size = len(file_content)
+                size = len(file_content)
+            else:
+                size = -1
 
         upsert_file(
             session=session,
@@ -196,6 +200,15 @@ class StoreMessageHandler(ContentHandler):
             file_type=FileType.DIRECTORY if is_folder else FileType.FILE,
             size=size,
         )
+
+    async def check_balance(
+        self, session: DbSession, message: MessageDb
+    ) -> List[AccountCostsDb]:
+        content = _get_store_content(message)
+        costs = get_detailed_costs(session, content, message.item_hash)
+
+        # NOTE: For now allow to create volumes for free, but generate a HOLD token cost
+        return costs
 
     async def check_dependencies(self, session: DbSession, message: MessageDb) -> None:
         content = _get_store_content(message)

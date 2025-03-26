@@ -1,6 +1,6 @@
-{ pkgs ? import <nixpkgs> {} }:
+{ }:
 let
-  unstable = import (fetchTarball https://nixos.org/channels/nixos-unstable/nixexprs.tar.xz) {};
+  pkgs = import (fetchTarball "https://nixos.org/channels/nixos-24.11/nixexprs.tar.xz") {};
 in
 pkgs.mkShell {
   buildInputs = [
@@ -8,21 +8,23 @@ pkgs.mkShell {
     pkgs.libiconv  # for macos
 
     pkgs.ps
-    unstable.libsodium
 
     pkgs.postgresql
+    pkgs.postgresql.lib
     pkgs.redis
     pkgs.kubo
-    unstable.hatch
+    pkgs.hatch
     pkgs.rustup
 
-    unstable.python312
-    unstable.python312Packages.virtualenv
-    unstable.python312Packages.pip
-    unstable.python312Packages.setuptools
+    pkgs.python312
+    pkgs.python312Packages.virtualenv
+    pkgs.python312Packages.pip
+    pkgs.python312Packages.setuptools
+    pkgs.python312Packages.distutils
 
-    unstable.python312Packages.fastecdsa
-    unstable.python312Packages.greenlet
+    pkgs.python312Packages.fastecdsa
+    pkgs.python312Packages.libnacl
+    pkgs.python312Packages.greenlet
   ];
 
   shellHook = ''
@@ -65,13 +67,13 @@ pkgs.mkShell {
     fi
 
     # Install the required Python packages
-    ./venv/bin/pip install -e .\[testing\]
+    ./venv/bin/pip install -e ".[testing]"
 
     # PyO3 requires a nightly or dev version of Rust.
     rustup default nightly
 
     # If config.yml does not exist, create it with the port specified in this shell. 
-    [ -e config.yml ] || echo -e "postgres:\n  port: $PG_PORT" > config.yml
+    echo -e "postgres:\n  host: "localhost"\n  port: $PG_PORT" > config.yml
 
     # bold
     echo -e "\e[1m"
@@ -88,5 +90,8 @@ pkgs.mkShell {
 
     # Activate the virtual environment
     source venv/bin/activate
+
+    # Ensure libpq.so.5 can be found. 
+    export LD_LIBRARY_PATH=${pkgs.postgresql.lib}/lib:$LD_LIBRARY_PATH
   '';
 }
