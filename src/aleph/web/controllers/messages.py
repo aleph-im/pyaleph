@@ -245,7 +245,7 @@ class MessageHashesQueryParams(BaseModel):
         "Set this to false to include metadata alongside the hashes in the response.",
     )
 
-    @root_validator
+    @model_validator(mode="after")
     def validate_field_dependencies(cls, values):
         start_date = values.get("start_date")
         end_date = values.get("end_date")
@@ -253,8 +253,7 @@ class MessageHashesQueryParams(BaseModel):
             raise ValueError("end date cannot be lower than start date.")
         return values
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 def message_to_dict(message: MessageDb) -> Dict[str, Any]:
@@ -516,7 +515,7 @@ def _get_message_with_status(
     if status == MessageStatus.PENDING:
         # There may be several instances of the same pending message, return the first.
         pending_messages_db = get_pending_messages(session=session, item_hash=item_hash)
-        pending_messages = [PendingMessage.from_orm(m) for m in pending_messages_db]
+        pending_messages = [PendingMessage.model_validate(m) for m in pending_messages_db]
         return PendingMessageStatus(
             status=MessageStatus.PENDING,
             item_hash=item_hash,
@@ -548,7 +547,7 @@ def _get_message_with_status(
         return ForgottenMessageStatus(
             item_hash=item_hash,
             reception_time=reception_time,
-            message=ForgottenMessage.from_orm(forgotten_message_db),
+            message=ForgottenMessage.model_validate(forgotten_message_db),
             forgotten_by=forgotten_message_db.forgotten_by,
         )
 
@@ -645,8 +644,8 @@ async def view_message_status(request: web.Request):
         if message_status is None:
             raise web.HTTPNotFound()
 
-    status_info = MessageStatusInfo.from_orm(message_status)
-    return web.json_response(text=status_info.json())
+    status_info = MessageStatusInfo.model_validate(message_status)
+    return web.json_response(text=status_info.model_dump_json(exclude={'item_hash'}))
 
 
 async def view_message_hashes(request: web.Request):
@@ -655,7 +654,7 @@ async def view_message_hashes(request: web.Request):
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 
-    find_filters = query_params.dict(exclude_none=True)
+    find_filters = query_params.model_dump(exclude_none=True)
 
     pagination_page = query_params.page
     pagination_per_page = query_params.pagination
@@ -667,7 +666,7 @@ async def view_message_hashes(request: web.Request):
         if find_filters["hash_only"]:
             formatted_hashes = [h for h in hashes]
         else:
-            formatted_hashes = [MessageHashes.from_orm(h) for h in hashes]
+            formatted_hashes = [MessageHashes.model_validate(h) for h in hashes]
 
         total_hashes = count_matching_hashes(session, **find_filters)
         response = {

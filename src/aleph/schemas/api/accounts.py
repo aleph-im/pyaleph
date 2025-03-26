@@ -2,7 +2,7 @@ import datetime as dt
 from decimal import Decimal
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from aleph_message.models import Chain
 
 from aleph.types.files import FileType
@@ -53,7 +53,7 @@ class GetBalancesChainsQueryParams(BaseModel):
     )
     min_balance: int = Field(default=0, ge=1, description="Minimum Balance needed")
 
-    @validator("chains", pre=True)
+    @field_validator("chains", mode="before")
     def split_str(cls, v):
         if isinstance(v, str):
             return v.split(LIST_FIELD_SEPARATOR)
@@ -61,8 +61,7 @@ class GetBalancesChainsQueryParams(BaseModel):
 
 
 class AddressBalanceResponse(BaseModel):
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
     address: str
     balance: str

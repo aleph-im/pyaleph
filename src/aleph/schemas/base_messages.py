@@ -4,7 +4,7 @@ Base (abstract) class for messages.
 
 import datetime as dt
 from hashlib import sha256
-from typing import Any, Generic, Optional, TypeVar, cast
+from typing import Any, Generic, Mapping, Optional, TypeVar, cast
 
 from aleph_message.models import BaseContent, Chain, ItemType, MessageType
 from pydantic import BaseModel, ValidationInfo, field_validator, model_validator
@@ -70,7 +70,7 @@ def base_message_validator_check_item_hash(v: Any, values: Mapping[str, Any]):
     return v
 
 
-class AlephBaseMessage(GenericModel, Generic[MType, ContentType]):
+class AlephBaseMessage(BaseModel, Generic[MType, ContentType]):
     """
     The base structure of an Aleph message.
     All the fields of this class appear in all the representations

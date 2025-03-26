@@ -38,7 +38,8 @@ class MessageConfirmation(BaseModel):
     """Format of the result when a message has been confirmed on a blockchain"""
 
     model_config = ConfigDict(
-        from_attributes=True, json_encoders={dt.datetime: lambda d: d.timestamp()}
+        from_attributes=True,
+        serialization={dt.datetime: lambda d: d.timestamp()},
     )
 
     chain: Chain
@@ -49,7 +50,7 @@ class MessageConfirmation(BaseModel):
 class BaseMessage(BaseModel, Generic[MType, ContentType]):
     model_config = ConfigDict(
         from_attributes=True,
-        json_encoders={dt.datetime: lambda d: d.timestamp()},
+        serialization={dt.datetime: lambda d: d.timestamp()},
     )
 
     sender: str
@@ -125,7 +126,7 @@ def format_message(message: MessageDb) -> AlephMessage:
     message_type = message.type
 
     message_cls = MESSAGE_CLS_DICT[message_type]
-    return message_cls.from_orm(message)
+    return message_cls.model_validate(message)
 
 
 def format_message_dict(message: Dict[str, Any]) -> AlephMessage:
@@ -199,14 +200,11 @@ class RejectedMessageStatus(BaseMessageStatus):
 
 
 class MessageStatusInfo(BaseMessageStatus):
-    class Config:
-        orm_mode = True
-        fields = {"item_hash": {"exclude": True}}
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MessageHashes(BaseMessageStatus):
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 MessageWithStatus = Union[
@@ -219,7 +217,7 @@ MessageWithStatus = Union[
 
 class MessageListResponse(BaseModel):
     model_config = ConfigDict(
-        json_encoders={dt.datetime: lambda d: d.timestamp()},
+        serialization={dt.datetime: lambda d: d.timestamp()},
     )
 
     messages: List[AlephMessage]

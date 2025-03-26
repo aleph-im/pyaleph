@@ -3,7 +3,7 @@ from hashlib import sha256
 from urllib.parse import unquote
 
 import pytest
-from pydantic.tools import parse_obj_as
+from pydantic import TypeAdapter
 
 from aleph.chains.cosmos import CosmosConnector
 from aleph.schemas.pending_messages import PendingPostMessage
@@ -16,7 +16,7 @@ def cosmos_message() -> PendingPostMessage:
     message = json.loads(unquote(TEST_MESSAGE))
     message["signature"] = json.dumps(message["signature"])
     message["item_content"] = json.dumps(message["item_content"], separators=(",", ":"))
-    return parse_obj_as(PendingPostMessage, message)
+    return TypeAdapter.validate_python(PendingPostMessage, message)
 
 
 @pytest.mark.asyncio
@@ -28,7 +28,7 @@ async def test_verify_signature_real(cosmos_message: PendingPostMessage):
 @pytest.mark.asyncio
 async def test_verify_signature_bad_json():
     connector = CosmosConnector()
-    message = parse_obj_as(
+    message = TypeAdapter.validate_python(
         PendingPostMessage,
         {
             "chain": "CSDK",

@@ -31,7 +31,7 @@ from aleph_message.models import (
     ProgramContent,
     StoreContent,
 )
-from pydantic import ValidationError, model_validator
+from pydantic import ValidationError, model_validator, field_validator
 
 import aleph.toolkit.json as aleph_json
 from aleph.exceptions import UnknownHashError
@@ -110,9 +110,10 @@ class BasePendingMessage(AlephBaseMessage, Generic[MType, ContentType]):
     def load_content(cls, values: Any):
         """
         Preload inline content. We let the CCN populate this field later
-        on for ipfs and storage item types.
+        on for ipfs and storage item types."
+        """
 
-    @validator("time", pre=True)
+    @field_validator("time", mode="before")
     def check_time(cls, v, values):
         return base_pending_message_validator_check_time(v, values)
 

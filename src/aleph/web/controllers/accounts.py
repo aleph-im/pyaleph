@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 
 from aiohttp import web
 from aleph_message.models import MessageType
-from pydantic import ValidationError, parse_obj_as
+from pydantic import ValidationError, TypeAdapter
 
 import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.balances import (
@@ -107,7 +107,7 @@ async def get_chain_balances(request: web.Request) -> web.Response:
     with session_factory() as session:
         balances = get_balances_by_chain(session, **find_filters)
 
-        formatted_balances = [AddressBalanceResponse.from_orm(b) for b in balances]
+        formatted_balances = [AddressBalanceResponse.model_validate(b) for b in balances]
 
         total_balances = count_balances_by_chain(session, **find_filters)
 
@@ -152,7 +152,7 @@ async def get_account_files(request: web.Request) -> web.Response:
         response = GetAccountFilesResponse(
             address=address,
             total_size=total_size,
-            files=parse_obj_as(List[GetAccountFilesResponseItem], file_pins),
+            files=TypeAdapter.validate_python(List[GetAccountFilesResponseItem], file_pins),
             pagination_page=query_params.page,
             pagination_total=nb_files,
             pagination_per_page=query_params.pagination,
