@@ -105,13 +105,15 @@ class BasePendingMessage(AlephBaseMessage, Generic[MType, ContentType]):
     A raw Aleph message, as sent by users to the Aleph network.
     """
 
+    sender: str
+    chain: Chain
+    type: MType
+    time: dt.datetime
+
     @model_validator(mode="before")
     @classmethod
     def load_content(cls, values: Any):
-        """
-        Preload inline content. We let the CCN populate this field later
-        on for ipfs and storage item types."
-        """
+       return base_pending_message_load_content(values)
 
     @field_validator("time", mode="before")
     def check_time(cls, v, values):
