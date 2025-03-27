@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 
 from aiohttp import web
 from aleph_message.models import MessageType
-from pydantic import ValidationError, parse_obj_as
+from pydantic import ValidationError, TypeAdapter
 
 import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.balances import (
@@ -78,7 +78,7 @@ async def get_account_balance(request: web.Request):
     address = _get_address_from_request(request)
 
     try:
-        query_params = GetAccountQueryParams.parse_obj(request.query)
+        query_params = GetAccountQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 
@@ -90,24 +90,24 @@ async def get_account_balance(request: web.Request):
         total_cost = get_total_cost_for_address(session=session, address=address)
     return web.json_response(
         text=GetAccountBalanceResponse(
-            address=address, balance=balance, locked_amount=total_cost, details=details
-        ).json()
+            address=address, balance=balance, locked_amount=total_cost
+        ).model_dump_json()
     )
 
 
 async def get_chain_balances(request: web.Request) -> web.Response:
     try:
-        query_params = GetBalancesChainsQueryParams.parse_obj(request.query)
+        query_params = GetBalancesChainsQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 
-    find_filters = query_params.dict(exclude_none=True)
+    find_filters = query_params.model_dump(exclude_none=True)
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
     with session_factory() as session:
         balances = get_balances_by_chain(session, **find_filters)
 
-        formatted_balances = [AddressBalanceResponse.from_orm(b) for b in balances]
+        formatted_balances = [AddressBalanceResponse.model_validate(b) for b in balances]
 
         total_balances = count_balances_by_chain(session, **find_filters)
 
@@ -128,7 +128,7 @@ async def get_account_files(request: web.Request) -> web.Response:
     address = _get_address_from_request(request)
 
     try:
-        query_params = GetAccountFilesQueryParams.parse_obj(request.query)
+        query_params = GetAccountFilesQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 
@@ -152,9 +152,9 @@ async def get_account_files(request: web.Request) -> web.Response:
         response = GetAccountFilesResponse(
             address=address,
             total_size=total_size,
-            files=parse_obj_as(List[GetAccountFilesResponseItem], file_pins),
+            files=TypeAdapter.validate_python(List[GetAccountFilesResponseItem], file_pins),
             pagination_page=query_params.page,
             pagination_total=nb_files,
             pagination_per_page=query_params.pagination,
         )
-        return web.json_response(text=response.json())
+        return web.json_response(text=response.model_dump_json())

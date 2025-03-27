@@ -6,7 +6,14 @@ import aio_pika.abc
 import aiohttp.web_ws
 from aiohttp import WSMsgType, web
 from aleph_message.models import Chain, ItemHash, MessageType
-from pydantic import BaseModel, Field, ValidationError, root_validator, validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.messages import (
@@ -114,19 +121,20 @@ class BaseMessageQueryParams(BaseModel):
         default=None, description="Accepted values for the 'item_hash' field."
     )
 
-    @root_validator
-    def validate_field_dependencies(cls, values):
-        start_date = values.get("start_date")
-        end_date = values.get("end_date")
+    @model_validator(mode="after")
+    def validate_field_dependencies(self):
+        start_date = self.start_date
+        end_date = self.end_date
         if start_date and end_date and (end_date < start_date):
             raise ValueError("end date cannot be lower than start date.")
-        start_block = values.get("start_block")
-        end_block = values.get("end_block")
+        start_block = self.start_block
+        end_block = self.end_block
         if start_block and end_block and (end_block < start_block):
             raise ValueError("end block cannot be lower than start block.")
-        return values
 
-    @validator(
+        return self
+
+    @field_validator(
         "hashes",
         "addresses",
         "refs",
@@ -137,15 +145,15 @@ class BaseMessageQueryParams(BaseModel):
         "channels",
         "message_types",
         "tags",
-        pre=True,
+        mode="before",
     )
+    @classmethod
     def split_str(cls, v):
         if isinstance(v, str):
             return v.split(LIST_FIELD_SEPARATOR)
         return v
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class MessageQueryParams(BaseMessageQueryParams):
@@ -237,7 +245,7 @@ class MessageHashesQueryParams(BaseModel):
         "Set this to false to include metadata alongside the hashes in the response.",
     )
 
-    @root_validator
+    @model_validator(mode="after")
     def validate_field_dependencies(cls, values):
         start_date = values.get("start_date")
         end_date = values.get("end_date")
@@ -245,8 +253,7 @@ class MessageHashesQueryParams(BaseModel):
             raise ValueError("end date cannot be lower than start date.")
         return values
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 def message_to_dict(message: MessageDb) -> Dict[str, Any]:
@@ -292,7 +299,7 @@ async def view_messages_list(request: web.Request) -> web.Response:
     """Messages list view with filters"""
 
     try:
-        query_params = MessageQueryParams.parse_obj(request.query)
+        query_params = MessageQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 
@@ -301,7 +308,7 @@ async def view_messages_list(request: web.Request) -> web.Response:
     if url_page_param := request.match_info.get("page"):
         query_params.page = int(url_page_param)
 
-    find_filters = query_params.dict(exclude_none=True)
+    find_filters = query_params.model_dump(exclude_none=True)
 
     pagination_page = query_params.page
     pagination_per_page = query_params.pagination
@@ -332,10 +339,10 @@ async def _send_history_to_ws(
             session=session,
             pagination=history,
             include_confirmations=True,
-            **query_params.dict(exclude_none=True),
+            **query_params.model_dump(exclude_none=True),
         )
         for message in messages:
-            await ws.send_str(format_message(message).json())
+            await ws.send_str(format_message(message).model_dump_json())
 
 
 def message_matches_filters(
@@ -412,7 +419,7 @@ async def _start_mq_consumer(
 
         if message_matches_filters(message=message, query_params=query_params):
             try:
-                await ws.send_str(message.json())
+                await ws.send_str(message.model_dump_json())
             except ConnectionResetError:
                 # We can detect the WS closing in this task in addition to the main one.
                 # The main task will also detect the close event.
@@ -437,7 +444,7 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
     mq_channel = await get_mq_ws_channel_from_request(request=request, logger=LOGGER)
 
     try:
-        query_params = WsMessageQueryParams.parse_obj(request.query)
+        query_params = WsMessageQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 
@@ -508,7 +515,7 @@ def _get_message_with_status(
     if status == MessageStatus.PENDING:
         # There may be several instances of the same pending message, return the first.
         pending_messages_db = get_pending_messages(session=session, item_hash=item_hash)
-        pending_messages = [PendingMessage.from_orm(m) for m in pending_messages_db]
+        pending_messages = [PendingMessage.model_validate(m) for m in pending_messages_db]
         return PendingMessageStatus(
             status=MessageStatus.PENDING,
             item_hash=item_hash,
@@ -540,7 +547,7 @@ def _get_message_with_status(
         return ForgottenMessageStatus(
             item_hash=item_hash,
             reception_time=reception_time,
-            message=ForgottenMessage.from_orm(forgotten_message_db),
+            message=ForgottenMessage.model_validate(forgotten_message_db),
             forgotten_by=forgotten_message_db.forgotten_by,
         )
 
@@ -579,7 +586,7 @@ async def view_message(request: web.Request):
             session=session, status_db=message_status_db
         )
 
-    return web.json_response(text=message_with_status.json())
+    return web.json_response(text=message_with_status.model_dump_json())
 
 
 async def view_message_content(request: web.Request):
@@ -637,17 +644,17 @@ async def view_message_status(request: web.Request):
         if message_status is None:
             raise web.HTTPNotFound()
 
-    status_info = MessageStatusInfo.from_orm(message_status)
-    return web.json_response(text=status_info.json())
+    status_info = MessageStatusInfo.model_validate(message_status)
+    return web.json_response(text=status_info.model_dump_json(exclude={'item_hash'}))
 
 
 async def view_message_hashes(request: web.Request):
     try:
-        query_params = MessageHashesQueryParams.parse_obj(request.query)
+        query_params = MessageHashesQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 
-    find_filters = query_params.dict(exclude_none=True)
+    find_filters = query_params.model_dump(exclude_none=True)
 
     pagination_page = query_params.page
     pagination_per_page = query_params.pagination
@@ -659,7 +666,7 @@ async def view_message_hashes(request: web.Request):
         if find_filters["hash_only"]:
             formatted_hashes = [h for h in hashes]
         else:
-            formatted_hashes = [MessageHashes.from_orm(h) for h in hashes]
+            formatted_hashes = [MessageHashes.model_validate(h) for h in hashes]
 
         total_hashes = count_matching_hashes(session, **find_filters)
         response = {

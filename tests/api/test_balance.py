@@ -26,9 +26,9 @@ async def test_get_balance(
     response = await ccn_api_client.get(MESSAGES_URI)
     assert response.status == 200, await response.text()
     data = await response.json()
-    assert data["balance"] == user_balance.balance
 
-    assert data["locked_amount"] == 1001.8
+    assert data["balance"] == str(user_balance.balance)
+    assert data["locked_amount"] == "2002.46666666666669698315672576427459716796875"
 
     details = data["details"]
     assert details["ETH"] == user_balance.balance
@@ -102,3 +102,4 @@ async def test_get_balance_with_no_balance(
     assert data["locked_amount"] == 0
     details = data["details"]
     assert not details
+

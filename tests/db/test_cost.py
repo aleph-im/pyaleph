@@ -61,7 +61,7 @@ def insert_volume_refs(session: DbSession, message: MessageDb):
     """
 
     if message.item_content:
-        content = InstanceContent.parse_raw(message.item_content)
+        content = InstanceContent.model_validate_json(message.item_content)
         volumes = get_volume_refs(content)
 
         created = pytz.utc.localize(dt.datetime(2023, 1, 1))
@@ -98,7 +98,7 @@ async def insert_costs(session: DbSession, message: MessageDb):
     """
 
     if message.item_content:
-        content = InstanceContent.parse_raw(message.item_content)
+        content = InstanceContent.model_validate_json(message.item_content)
 
         _, costs = get_total_and_detailed_costs(session, content, message.item_hash)
 

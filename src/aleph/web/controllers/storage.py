@@ -232,9 +232,8 @@ async def _check_and_add_file(
             raise web.HTTPUnprocessableEntity(reason="Store message content needed")
 
         try:
-            message_content = CostEstimationStoreContent.parse_raw(message.item_content)
-            message_content.estimated_size_mib = uploaded_file.size
-
+            message_content = StoreContent.model_validate_json(message.item_content)
+  
             if message_content.item_hash != file_hash:
                 raise web.HTTPUnprocessableEntity(
                     reason=f"File hash does not match ({file_hash} != {message_content.item_hash})"
@@ -334,7 +333,7 @@ async def storage_add_file(request: web.Request):
                 metadata.file.read() if isinstance(metadata, FileField) else metadata
             )
             try:
-                storage_metadata = StorageMetadata.parse_raw(metadata_bytes)
+                storage_metadata = StorageMetadata.model_validate_json(metadata_bytes)
             except ValidationError as e:
                 raise web.HTTPUnprocessableEntity(
                     reason=f"Could not decode metadata: {e.json()}"
