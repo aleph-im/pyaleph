@@ -650,7 +650,7 @@ async def view_message_status(request: web.Request):
 
 async def view_message_hashes(request: web.Request):
     try:
-        query_params = MessageHashesQueryParams.parse_obj(request.query)
+        query_params = MessageHashesQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 

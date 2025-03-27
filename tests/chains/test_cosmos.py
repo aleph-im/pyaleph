@@ -16,7 +16,7 @@ def cosmos_message() -> PendingPostMessage:
     message = json.loads(unquote(TEST_MESSAGE))
     message["signature"] = json.dumps(message["signature"])
     message["item_content"] = json.dumps(message["item_content"], separators=(",", ":"))
-    return TypeAdapter.validate_python(PendingPostMessage, message)
+    return PendingPostMessage.model_validate(message)
 
 
 @pytest.mark.asyncio
@@ -28,8 +28,7 @@ async def test_verify_signature_real(cosmos_message: PendingPostMessage):
 @pytest.mark.asyncio
 async def test_verify_signature_bad_json():
     connector = CosmosConnector()
-    message = TypeAdapter.validate_python(
-        PendingPostMessage,
+    message = PendingPostMessage.model_validate(
         {
             "chain": "CSDK",
             "time": 1737558660.737648,
@@ -37,7 +36,7 @@ async def test_verify_signature_bad_json():
             "type": "POST",
             "item_hash": sha256("ITEM_HASH".encode()).hexdigest(),
             "signature": "baba",
-        },
+        }
     )
     result = await connector.verify_signature(message)
     assert result is False

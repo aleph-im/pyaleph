@@ -294,7 +294,7 @@ def fixture_forget_instance_message(
         sender=fixture_instance_message.sender,
         signature=None,
         item_type=ItemType.inline,
-        item_content=content.json(),
+        item_content=content.model_dump_json(),
         time=fixture_instance_message.time + dt.timedelta(seconds=1),
         channel=None,
         reception_time=fixture_instance_message.reception_time
@@ -779,7 +779,7 @@ async def test_compare_account_cost_with_cost_function_without_volume(
     _ = [message async for message in pipeline]
 
     assert fixture_instance_message_only_rootfs.item_content
-    content = InstanceContent.parse_raw(
+    content = InstanceContent.model_validate_json(
         fixture_instance_message_only_rootfs.item_content
     )
     with session_factory() as session:

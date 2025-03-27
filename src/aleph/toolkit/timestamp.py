@@ -6,11 +6,10 @@ import pytz
 
 def timestamp_to_datetime(timestamp: float) -> dt.datetime:
     """
-    Utility function that transforms a UNIX timestamp into a UTC-localized datetime
-    object.
+    Utility function that transforms a UNIX timestamp into a timezone-aware datetime object in UTC.
     """
 
-    return dt.datetime.fromtimestamp(timestamp, tz=dt.timezone.utc)
+    return dt.datetime.fromtimestamp(timestamp, tz=pytz.utc)
 
 
 def coerce_to_datetime(
@@ -28,7 +27,9 @@ def coerce_to_datetime(
 
 def utc_now() -> dt.datetime:
     """
-    Returns the current time as a UTC-localized datetime object.
-    This differs from datetime.utcnow() because `utcnow()` is not localized.
+    Returns the current time as a timezone-aware datetime object in UTC.
+    This differs from datetime.now() because `now()` returns a naive datetime object without timezone information.
+    The returned object is timezone-aware, using UTC as the timezone.
     """
-    return dt.datetime.now(dt.timezone.utc)
+
+    return dt.datetime.now(tz=pytz.utc)

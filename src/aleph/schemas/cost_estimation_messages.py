@@ -169,4 +169,4 @@ async def validate_cost_estimation_message_content(
 ) -> CostEstimationContent:
     content = await storage_service.get_message_content(message)
     content_type = COST_MESSAGE_TYPE_TO_CONTENT[message.type]
-    return content_type.parse_obj(content.value)
+    return content_type.model_validate(content.value)

@@ -78,7 +78,7 @@ async def get_account_balance(request: web.Request):
     address = _get_address_from_request(request)
 
     try:
-        query_params = GetAccountQueryParams.parse_obj(request.query)
+        query_params = GetAccountQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 
@@ -97,11 +97,11 @@ async def get_account_balance(request: web.Request):
 
 async def get_chain_balances(request: web.Request) -> web.Response:
     try:
-        query_params = GetBalancesChainsQueryParams.parse_obj(request.query)
+        query_params = GetBalancesChainsQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json(indent=4))
 
-    find_filters = query_params.dict(exclude_none=True)
+    find_filters = query_params.model_dump(exclude_none=True)
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
     with session_factory() as session:
