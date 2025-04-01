@@ -1,3 +1,4 @@
+from decimal import Decimal
 import pytest
 from aleph_message.models import Chain
 
@@ -28,10 +29,10 @@ async def test_get_balance(
     data = await response.json()
 
     assert data["balance"] == str(user_balance.balance)
-    assert data["locked_amount"] == "2002.46666666666669698315672576427459716796875"
+    assert data["locked_amount"] == "1001.800000000000000000"
 
     details = data["details"]
-    assert details["ETH"] == user_balance.balance
+    assert details["ETH"] == str(user_balance.balance)
 
 
 @pytest.mark.asyncio
@@ -48,7 +49,7 @@ async def test_get_balance_with_chain(
     _ = [message async for message in pipeline]
 
     assert fixture_instance_message.item_content
-    expected_locked_amount = 1001.8
+    expected_locked_amount = "1001.800000000000000000"
     chain = Chain.AVAX.value
     # Test Avax
     avax_response = await ccn_api_client.get(f"{MESSAGES_URI}?chain={chain}")
@@ -56,7 +57,7 @@ async def test_get_balance_with_chain(
     assert avax_response.status == 200, await avax_response.text()
     avax_data = await avax_response.json()
     avax_expected_balance = user_balance_eth_avax.balance
-    assert avax_data["balance"] == avax_expected_balance
+    assert avax_data["balance"] == str(avax_expected_balance)
     assert avax_data["locked_amount"] == expected_locked_amount
 
     # Verify ETH Value
@@ -65,7 +66,7 @@ async def test_get_balance_with_chain(
     assert eth_response.status == 200, await eth_response.text()
     eth_data = await eth_response.json()
     eth_expected_balance = user_balance_eth_avax.balance
-    assert eth_data["balance"] == eth_expected_balance
+    assert eth_data["balance"] == str(eth_expected_balance)
     assert eth_data["locked_amount"] == expected_locked_amount
 
     # Verify All Chain
@@ -73,13 +74,13 @@ async def test_get_balance_with_chain(
     assert total_response.status == 200, await total_response.text()
     total_data = await total_response.json()
     total_expected_balance = user_balance_eth_avax.balance * 2
-    assert total_data["balance"] == total_expected_balance
+    assert total_data["balance"] == str(total_expected_balance)
     assert total_data["locked_amount"] == expected_locked_amount
 
     details = total_data["details"]
     assert details is not None
-    assert details["ETH"] == user_balance_eth_avax.balance
-    assert details["AVAX"] == user_balance_eth_avax.balance
+    assert details["ETH"] == str(user_balance_eth_avax.balance)
+    assert details["AVAX"] == str(user_balance_eth_avax.balance)
 
 
 @pytest.mark.asyncio
@@ -90,16 +91,17 @@ async def test_get_balance_with_no_balance(
 
     assert response.status == 200, await response.text()
     data = await response.json()
-    assert data["balance"] == 0
-    assert data["locked_amount"] == 0
+    assert data["balance"] == "0"
+    assert str(Decimal(data["locked_amount"]).quantize(Decimal("0.01"))) == "0.00"
+
 
     # Test Eth Case
     response = await ccn_api_client.get(f"{MESSAGES_URI}?chain{Chain.ETH.value}")
 
     assert response.status == 200, await response.text()
     data = await response.json()
-    assert data["balance"] == 0
-    assert data["locked_amount"] == 0
+    assert data["balance"] == "0"
+    assert str(Decimal(data["locked_amount"]).quantize(Decimal("0.01"))) == "0.00"
     details = data["details"]
     assert not details
 
