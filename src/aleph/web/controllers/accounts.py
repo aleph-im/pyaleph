@@ -90,7 +90,7 @@ async def get_account_balance(request: web.Request):
         total_cost = get_total_cost_for_address(session=session, address=address)
     return web.json_response(
         text=GetAccountBalanceResponse(
-            address=address, balance=balance, locked_amount=total_cost
+            address=address, balance=balance, locked_amount=total_cost, details=details
         ).model_dump_json()
     )
 
