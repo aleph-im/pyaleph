@@ -25,7 +25,7 @@ from aleph_message.models import (
     ProgramContent,
     StoreContent,
 )
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from aleph.db.models import MessageDb
 from aleph.types.message_status import ErrorCode, MessageStatus
@@ -37,21 +37,20 @@ ContentType = TypeVar("ContentType", bound=BaseContent)
 class MessageConfirmation(BaseModel):
     """Format of the result when a message has been confirmed on a blockchain"""
 
-    model_config = ConfigDict(
-        from_attributes=True,
-        serialization={dt.datetime: lambda d: d.timestamp()},
-    )
+    model_config = ConfigDict(from_attributes=True)
 
     chain: Chain
     height: int
     hash: str
+    time: dt.datetime
+
+    @field_serializer("time")
+    def serialize_time(self, dt: dt.datetime, _info) -> float:
+        return dt.timestamp()
 
 
 class BaseMessage(BaseModel, Generic[MType, ContentType]):
-    model_config = ConfigDict(
-        from_attributes=True,
-        serialization={dt.datetime: lambda d: d.timestamp()},
-    )
+    model_config = ConfigDict(from_attributes=True)
 
     sender: str
     chain: Chain
@@ -65,6 +64,10 @@ class BaseMessage(BaseModel, Generic[MType, ContentType]):
     content: ContentType
     confirmed: bool
     confirmations: List[MessageConfirmation]
+
+    @field_serializer("time")
+    def serialize_time(self, dt: dt.datetime, _info) -> float:
+        return dt.timestamp()
 
 
 class AggregateMessage(
@@ -216,12 +219,13 @@ MessageWithStatus = Union[
 
 
 class MessageListResponse(BaseModel):
-    model_config = ConfigDict(
-        serialization={dt.datetime: lambda d: d.timestamp()},
-    )
-
     messages: List[AlephMessage]
     pagination_page: int
     pagination_total: int
     pagination_per_page: int
     pagination_item: Literal["messages"] = "messages"
+    time: dt.datetime
+
+    @field_serializer("time")
+    def serialize_time(self, dt: dt.datetime, _info) -> float:
+        return dt.timestamp()
