@@ -674,8 +674,8 @@ async def test_compare_account_cost_with_cost_payg_funct(
     # Exhaust the iterator
     _ = [message async for message in pipeline]
 
-    assert fixture_instance_message.item_content
-    content = InstanceContent.model_validate_json(fixture_instance_message.item_content)
+    assert fixture_instance_message_payg.item_content
+    content = InstanceContent.model_validate_json(fixture_instance_message_payg.item_content)
     with session_factory() as session:
         assert content.payment.type == PaymentType.superfluid
         cost, details = get_total_and_detailed_costs(
