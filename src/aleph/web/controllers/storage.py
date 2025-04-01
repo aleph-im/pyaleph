@@ -232,8 +232,8 @@ async def _check_and_add_file(
             raise web.HTTPUnprocessableEntity(reason="Store message content needed")
 
         try:
-            message_content = StoreContent.model_validate_json(message.item_content)
-  
+            message_content = CostEstimationStoreContent.model_validate_json(message.item_content)
+
             if message_content.item_hash != file_hash:
                 raise web.HTTPUnprocessableEntity(
                     reason=f"File hash does not match ({file_hash} != {message_content.item_hash})"
