@@ -46,7 +46,7 @@ def fixture_message() -> MessageDb:
         },
         item_type=ItemType.inline,
         size=2000,
-        time=pytz.utc.localize(dt.datetime.utcfromtimestamp(1664999872)),
+        time = dt.datetime.fromtimestamp(1664999872, tz=dt.timezone.utc),
         channel=Channel("CHANEL-N5"),
     )
 
