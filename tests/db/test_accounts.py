@@ -2,7 +2,6 @@ import datetime as dt
 from typing import List
 
 import pytest
-import pytz
 from aleph_message.models import Chain, ItemType, MessageType
 
 from aleph.db.accessors.messages import (
@@ -52,7 +51,7 @@ def fixture_messages():
             },
             item_type=ItemType.inline,
             size=2000,
-            time = dt.datetime.fromtimestamp(1664999872, tz=dt.timezone.utc),
+            time=dt.datetime.fromtimestamp(1664999872, tz=dt.timezone.utc),
             channel=Channel("CHANEL-N5"),
         ),
     ]

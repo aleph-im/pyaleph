@@ -1,4 +1,5 @@
 from decimal import Decimal
+
 import pytest
 from aleph_message.models import Chain
 
@@ -94,7 +95,6 @@ async def test_get_balance_with_no_balance(
     assert data["balance"] == "0"
     assert str(Decimal(data["locked_amount"]).quantize(Decimal("0.01"))) == "0.00"
 
-
     # Test Eth Case
     response = await ccn_api_client.get(f"{MESSAGES_URI}?chain{Chain.ETH.value}")
 
@@ -104,4 +104,3 @@ async def test_get_balance_with_no_balance(
     assert str(Decimal(data["locked_amount"]).quantize(Decimal("0.01"))) == "0.00"
     details = data["details"]
     assert not details
-

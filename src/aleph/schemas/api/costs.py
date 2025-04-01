@@ -1,6 +1,6 @@
 from typing import List
 
-from pydantic import BaseModel, field_validator, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from aleph.toolkit.costs import format_cost_str
 

@@ -67,7 +67,9 @@ class ChainDataService:
             protocol=ChainSyncProtocol.ON_CHAIN_SYNC,
             version=1,
             content=OnChainContent(
-                messages = [OnChainMessage.model_validate(message) for message in messages]
+                messages=[
+                    OnChainMessage.model_validate(message) for message in messages
+                ]
             ),
         )
         archive_content: bytes = archive.model_dump_json().encode("utf-8")

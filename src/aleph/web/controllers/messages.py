@@ -515,7 +515,9 @@ def _get_message_with_status(
     if status == MessageStatus.PENDING:
         # There may be several instances of the same pending message, return the first.
         pending_messages_db = get_pending_messages(session=session, item_hash=item_hash)
-        pending_messages = [PendingMessage.model_validate(m) for m in pending_messages_db]
+        pending_messages = [
+            PendingMessage.model_validate(m) for m in pending_messages_db
+        ]
         return PendingMessageStatus(
             status=MessageStatus.PENDING,
             item_hash=item_hash,
@@ -645,7 +647,7 @@ async def view_message_status(request: web.Request):
             raise web.HTTPNotFound()
 
     status_info = MessageStatusInfo.model_validate(message_status)
-    return web.json_response(text=status_info.model_dump_json(exclude={'item_hash'}))
+    return web.json_response(text=status_info.model_dump_json(exclude={"item_hash"}))
 
 
 async def view_message_hashes(request: web.Request):

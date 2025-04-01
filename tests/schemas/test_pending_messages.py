@@ -3,7 +3,6 @@ import json
 from typing import Dict
 
 import pytest
-import pytz
 from aleph_message.models import ItemType
 
 from aleph.schemas.pending_messages import (

@@ -2,8 +2,8 @@ import datetime as dt
 from decimal import Decimal
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
 from aleph_message.models import Chain
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from aleph.types.files import FileType
 from aleph.types.sort_order import SortOrder

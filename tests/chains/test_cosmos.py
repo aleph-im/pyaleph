@@ -3,7 +3,6 @@ from hashlib import sha256
 from urllib.parse import unquote
 
 import pytest
-from pydantic import TypeAdapter
 
 from aleph.chains.cosmos import CosmosConnector
 from aleph.schemas.pending_messages import PendingPostMessage
