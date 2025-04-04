@@ -657,7 +657,6 @@ async def test_compare_account_cost_with_cost_function_hold(
     assert db_cost == cost
 
 
-
 @pytest.mark.asyncio
 async def test_compare_account_cost_with_cost_payg_funct(
     session_factory: DbSessionFactory,

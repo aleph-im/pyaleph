@@ -89,8 +89,6 @@ class AlephBaseMessage(BaseModel, Generic[MType, ContentType]):
     channel: Optional[str] = None
     content: Optional[ContentType] = None
 
-
-
     @field_validator("item_hash", mode="after")
     def check_item_type(cls, values):
         return base_message_validator_check_item_type(values)

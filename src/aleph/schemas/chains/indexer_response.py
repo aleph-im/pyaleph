@@ -49,6 +49,7 @@ class AccountEntityState(BaseModel):
             lambda value: value.split("/") if isinstance(value, str) else value, values
         )
 
+
 class IndexerAccountStateResponseData(BaseModel):
     state: List[AccountEntityState]
 
