@@ -7,9 +7,9 @@ from hashlib import sha256
 from typing import Any, Generic, Mapping, Optional, TypeVar, cast
 
 from aleph_message.models import BaseContent, Chain, ItemType, MessageType
-from pydantic import root_validator, validator
-from pydantic.generics import GenericModel
+from pydantic import BaseModel, ValidationInfo, field_validator
 
+from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.utils import item_type_from_hash
 
 MType = TypeVar("MType", bound=MessageType)
@@ -71,7 +71,7 @@ def base_message_validator_check_item_hash(v: Any, values: Mapping[str, Any]):
     return v
 
 
-class AlephBaseMessage(GenericModel, Generic[MType, ContentType]):
+class AlephBaseMessage(BaseModel, Generic[MType, ContentType]):
     """
     The base structure of an Aleph message.
     All the fields of this class appear in all the representations
@@ -89,10 +89,25 @@ class AlephBaseMessage(GenericModel, Generic[MType, ContentType]):
     channel: Optional[str] = None
     content: Optional[ContentType] = None
 
-    @root_validator()
-    def check_item_type(cls, values):
-        return base_message_validator_check_item_type(values)
+    @field_validator("item_hash", mode="after")
+    @classmethod
+    def check_item_type(cls, values: Any, info: ValidationInfo) -> Any:
+        return base_message_validator_check_item_type(info.data)
 
-    @validator("item_hash")
-    def check_item_hash(cls, v: Any, values: Mapping[str, Any]):
-        return base_message_validator_check_item_hash(v, values)
+    @field_validator("item_hash", mode="before")
+    @classmethod
+    def check_item_hash(cls, v: Any, info: ValidationInfo) -> Any:
+        return base_message_validator_check_item_hash(v, info.data)
+
+    @field_validator("time")
+    @classmethod
+    def check_time(cls, v: Any) -> Any:
+        """
+        Parses the time field as a UTC datetime. Contrary to the default datetime
+        validator, this implementation raises an exception if the time field is
+        too far in the future.
+        """
+        if isinstance(v, dt.datetime):
+            return v
+
+        return timestamp_to_datetime(v)

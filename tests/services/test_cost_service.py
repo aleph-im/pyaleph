@@ -49,7 +49,7 @@ def fixture_hold_instance_message() -> ExecutableContent:
         ],
     }
 
-    return InstanceContent.parse_obj(content)
+    return InstanceContent.model_validate(content)
 
 
 @pytest.fixture
@@ -109,7 +109,7 @@ def fixture_hold_instance_message_complete() -> ExecutableContent:
         ],
     }
 
-    return InstanceContent.parse_obj(content)
+    return InstanceContent.model_validate(content)
 
 
 @pytest.fixture
@@ -145,7 +145,7 @@ def fixture_flow_instance_message() -> ExecutableContent:
         ],
     }
 
-    return InstanceContent.parse_obj(content)
+    return InstanceContent.model_validate(content)
 
 
 @pytest.fixture
@@ -210,7 +210,7 @@ def fixture_flow_instance_message_complete() -> ExecutableContent:
         ],
     }
 
-    return InstanceContent.parse_obj(content)
+    return InstanceContent.model_validate(content)
 
 
 @pytest.fixture
@@ -267,7 +267,7 @@ def fixture_hold_program_message_complete() -> ExecutableContent:
         },
     }
 
-    return CostEstimationProgramContent.parse_obj(content)
+    return CostEstimationProgramContent.model_validate(content)
 
 
 def test_compute_cost(
@@ -293,7 +293,7 @@ def test_compute_cost_conf(
     fixture_settings_aggregate_in_db,
     fixture_hold_instance_message,
 ):
-    message_dict = fixture_hold_instance_message.dict()
+    message_dict = fixture_hold_instance_message.model_dump()
 
     # Convert the message to conf
     message_dict["environment"].update(
@@ -306,7 +306,7 @@ def test_compute_cost_conf(
         }
     )
 
-    rebuilt_message = InstanceContent.parse_obj(message_dict)
+    rebuilt_message = InstanceContent.model_validate(message_dict)
 
     file_db = StoredFileDb()
     mock = Mock()
@@ -410,7 +410,7 @@ def test_compute_flow_cost_conf(
     fixture_settings_aggregate_in_db,
     fixture_flow_instance_message,
 ):
-    message_dict = fixture_flow_instance_message.dict()
+    message_dict = fixture_flow_instance_message.model_dump()
 
     # Convert the message to conf
     message_dict["environment"].update(
@@ -423,7 +423,7 @@ def test_compute_flow_cost_conf(
         }
     )
 
-    rebuilt_message = InstanceContent.parse_obj(message_dict)
+    rebuilt_message = InstanceContent.model_validate(message_dict)
 
     # Proceed with the test
     file_db = StoredFileDb()
