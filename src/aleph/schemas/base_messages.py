@@ -90,22 +90,23 @@ class AlephBaseMessage(BaseModel, Generic[MType, ContentType]):
     content: Optional[ContentType] = None
 
     @field_validator("item_hash", mode="after")
-    def check_item_type(cls, values):
-        return base_message_validator_check_item_type(values)
+    @classmethod
+    def check_item_type(cls, values: Any, info: ValidationInfo) -> Any:
+        return base_message_validator_check_item_type(info.data)
 
     @field_validator("item_hash", mode="before")
-    def check_item_hash(cls, v: Any, values: Mapping[str, Any]):
-        return base_message_validator_check_item_hash(v, values)
-
-    @field_validator("time", mode="before")
     @classmethod
-    def check_time(cls, v: Any, info: ValidationInfo):
+    def check_item_hash(cls, v: Any, info: ValidationInfo) -> Any:
+        return base_message_validator_check_item_hash(v, info.data)
+
+    @field_validator("time")
+    @classmethod
+    def check_time(cls, v: Any) -> Any:
         """
         Parses the time field as a UTC datetime. Contrary to the default datetime
         validator, this implementation raises an exception if the time field is
         too far in the future.
         """
-
         if isinstance(v, dt.datetime):
             return v
 
