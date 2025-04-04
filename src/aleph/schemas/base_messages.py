@@ -95,7 +95,7 @@ class AlephBaseMessage(BaseModel, Generic[MType, ContentType]):
     def check_item_type(cls, values):
         return base_message_validator_check_item_type(values)
 
-    @validator("item_hash")
+    @field_validator("item_hash", mode="before")
     def check_item_hash(cls, v: Any, values: Mapping[str, Any]):
         return base_message_validator_check_item_hash(v, values)
 
