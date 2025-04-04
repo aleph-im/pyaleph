@@ -27,7 +27,6 @@ from aleph_message.models import (
 )
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
-import aleph.toolkit.json as aleph_json
 from aleph.db.models import MessageDb
 from aleph.types.message_status import ErrorCode, MessageStatus
 

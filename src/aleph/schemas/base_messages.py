@@ -7,7 +7,7 @@ from hashlib import sha256
 from typing import Any, Generic, Mapping, Optional, TypeVar, cast
 
 from aleph_message.models import BaseContent, Chain, ItemType, MessageType
-from pydantic import BaseModel, ValidationInfo, field_validator, model_validator
+from pydantic import BaseModel, ValidationInfo, field_validator
 
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.utils import item_type_from_hash
