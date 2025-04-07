@@ -121,17 +121,18 @@ class BaseMessageQueryParams(BaseModel):
         default=None, description="Accepted values for the 'item_hash' field."
     )
 
-    @model_validator(mode="before")
-    def validate_field_dependencies(cls, values):
-        start_date = values.get("start_date")
-        end_date = values.get("end_date")
+    @model_validator(mode="after")
+    def validate_field_dependencies(self):
+        start_date = self.start_date
+        end_date = self.end_date
         if start_date and end_date and (end_date < start_date):
             raise ValueError("end date cannot be lower than start date.")
-        start_block = values.get("start_block")
-        end_block = values.get("end_block")
+        start_block = self.start_block
+        end_block = self.end_block
         if start_block and end_block and (end_block < start_block):
             raise ValueError("end block cannot be lower than start block.")
-        return values
+
+        return self
 
     @field_validator(
         "hashes",
