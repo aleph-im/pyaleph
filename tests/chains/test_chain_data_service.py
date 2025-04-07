@@ -86,7 +86,7 @@ async def test_smart_contract_protocol_ipfs_store(
         publisher="KT1BfL57oZfptdtMFZ9LNakEPvuPPA2urdSW",
         protocol=ChainSyncProtocol.SMART_CONTRACT,
         protocol_version=1,
-        content=payload.dict(),
+        content=payload.model_dump(),
     )
 
     chain_data_service = ChainDataService(
@@ -146,7 +146,7 @@ async def test_smart_contract_protocol_regular_message(
         publisher="KT1BfL57oZfptdtMFZ9LNakEPvuPPA2urdSW",
         protocol=ChainSyncProtocol.SMART_CONTRACT,
         protocol_version=1,
-        content=payload.dict(),
+        content=payload.model_dump(mode="json"),
     )
 
     chain_data_service = ChainDataService(

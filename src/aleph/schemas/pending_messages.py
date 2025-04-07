@@ -31,7 +31,7 @@ from aleph_message.models import (
     ProgramContent,
     StoreContent,
 )
-from pydantic import ValidationError, root_validator, validator
+from pydantic import ValidationError, field_validator, model_validator
 
 import aleph.toolkit.json as aleph_json
 from aleph.exceptions import UnknownHashError
@@ -110,13 +110,13 @@ class BasePendingMessage(AlephBaseMessage, Generic[MType, ContentType]):
     type: MType
     time: dt.datetime
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
     def load_content(cls, values):
         return base_pending_message_load_content(values)
 
-    @validator("time", pre=True)
-    def check_time(cls, v, values):
-        return base_pending_message_validator_check_time(v, values)
+    @field_validator("time", mode="before")
+    def check_time(cls, v, info):
+        return base_pending_message_validator_check_time(v, info.data)
 
 
 class PendingAggregateMessage(

@@ -79,7 +79,7 @@ class Metrics(DataClassJsonMixin):
     pyaleph_status_sync_pending_messages_total: int
     pyaleph_status_sync_pending_txs_total: int
 
-    pyaleph_status_chain_eth_last_committed_height: Optional[int]
+    pyaleph_status_chain_eth_last_committed_height: Optional[int] = None
 
     pyaleph_processing_pending_messages_seen_ids_total: Optional[int] = None
     pyaleph_processing_pending_messages_tasks_total: Optional[int] = None

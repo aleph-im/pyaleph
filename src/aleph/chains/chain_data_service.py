@@ -66,10 +66,12 @@ class ChainDataService:
             protocol=ChainSyncProtocol.ON_CHAIN_SYNC,
             version=1,
             content=OnChainContent(
-                messages=[OnChainMessage.from_orm(message) for message in messages]
+                messages=[
+                    OnChainMessage.model_validate(message) for message in messages
+                ]
             ),
         )
-        archive_content: bytes = archive.json().encode("utf-8")
+        archive_content: bytes = archive.model_dump_json().encode("utf-8")
 
         ipfs_cid = await self.storage_service.add_file(
             session=session, file_content=archive_content, engine=ItemType.ipfs
@@ -166,7 +168,9 @@ class ChainDataService:
         )
 
         try:
-            payload = cast(GenericMessageEvent, payload_model.parse_obj(tx.content))
+            payload = cast(
+                GenericMessageEvent, payload_model.model_validate(tx.content)
+            )
         except ValidationError:
             raise InvalidContent(f"Incompatible tx content for {tx.chain}/{tx.hash}")
 
@@ -189,7 +193,7 @@ class ChainDataService:
                 item_hash=ItemHash(payload.content),
                 metadata=None,
             )
-            item_content = content.json(exclude_none=True)
+            item_content = content.model_dump_json(exclude_none=True)
         else:
             item_content = payload.content
 

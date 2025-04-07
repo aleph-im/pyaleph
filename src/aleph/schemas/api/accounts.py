@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Dict, List, Optional
 
 from aleph_message.models import Chain
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from aleph.types.files import FileType
 from aleph.types.sort_order import SortOrder
@@ -19,7 +19,7 @@ class GetAccountQueryParams(BaseModel):
 class GetAccountBalanceResponse(BaseModel):
     address: str
     balance: Decimal
-    details: Optional[Dict[str, Decimal]]
+    details: Optional[Dict[str, Decimal]] = None
     locked_amount: Decimal
 
 
@@ -53,7 +53,7 @@ class GetBalancesChainsQueryParams(BaseModel):
     )
     min_balance: int = Field(default=0, ge=1, description="Minimum Balance needed")
 
-    @validator("chains", pre=True)
+    @field_validator("chains", mode="before")
     def split_str(cls, v):
         if isinstance(v, str):
             return v.split(LIST_FIELD_SEPARATOR)
@@ -61,8 +61,7 @@ class GetBalancesChainsQueryParams(BaseModel):
 
 
 class AddressBalanceResponse(BaseModel):
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
     address: str
     balance: str
@@ -78,8 +77,7 @@ class GetAccountFilesResponseItem(BaseModel):
 
 
 class GetAccountFilesResponse(BaseModel):
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
     address: str
     total_size: int

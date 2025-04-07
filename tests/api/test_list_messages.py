@@ -527,7 +527,7 @@ def instance_message_fixture() -> MessageDb:
                     use_latest=True,
                 )
             ],
-        ).dict(),
+        ).model_dump(),
         size=3000,
         time=timestamp_to_datetime(1686572207.89381),
         channel=Channel("TEST"),

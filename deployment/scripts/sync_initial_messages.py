@@ -8,11 +8,14 @@ logger = logging.getLogger(__name__)
 initial_messages_list = [
     # Diagnostic VMs
     "cad11970efe9b7478300fd04d7cc91c646ca0a792b9cc718650f86e1ccfac73e",  # Initial program
-    "3fc0aa9569da840c43e7bd2033c3c580abb46b007527d6d20f2d4e98e867f7af",  # DiagVM
+    "3fc0aa9569da840c43e7bd2033c3c580abb46b007527d6d20f2d4e98e867f7af",  # Old DiagVM Debian 12
+    "63faf8b5db1cf8d965e6a464a0cb8062af8e7df131729e48738342d956f29ace",  # Current Debian 12 DiagVM
     "67705389842a0a1b95eaa408b009741027964edc805997475e95c505d642edd8",  # Legacy Diag VM
     # Volumes like runtimes, data, code, etc
-    "6b8618f5b8913c0f582f1a771a154a556ee3fa3437ef3cf91097819910cf383b",  # Diag VM code volume
-    "f873715dc2feec3833074bd4b8745363a0e0093746b987b4c8191268883b2463",  # Diag VM runtime volume
+    "6b8618f5b8913c0f582f1a771a154a556ee3fa3437ef3cf91097819910cf383b",  # Old Diag VM code volume
+    "f873715dc2feec3833074bd4b8745363a0e0093746b987b4c8191268883b2463",  # Old Diag VM runtime volume
+    "79f19811f8e843f37ff7535f634b89504da3d8f03e1f0af109d1791cf6add7af",  # Diag VM code volume
+    "63f07193e6ee9d207b7d1fcf8286f9aee34e6f12f101d2ec77c1229f92964696",  # Diag VM runtime volume
     "a92c81992e885d7a554fa78e255a5802404b7fdde5fbff20a443ccd13020d139",  # Legacy Diag VM code volume
     "bd79839bf96e595a06da5ac0b6ba51dea6f7e2591bb913deccded04d831d29f4",  # Legacy Diag VM runtime volume
 ]

@@ -7,8 +7,8 @@ from hashlib import sha256
 from typing import Any, Generic, Mapping, Optional, TypeVar, cast
 
 from aleph_message.models import BaseContent, Chain, ItemType, MessageType
-from pydantic import root_validator, validator
-from pydantic.generics import GenericModel
+from pydantic import BaseModel, field_validator, model_validator
+from pydantic_core.core_schema import ValidationInfo
 
 from aleph.utils import item_type_from_hash
 
@@ -71,7 +71,7 @@ def base_message_validator_check_item_hash(v: Any, values: Mapping[str, Any]):
     return v
 
 
-class AlephBaseMessage(GenericModel, Generic[MType, ContentType]):
+class AlephBaseMessage(BaseModel, Generic[MType, ContentType]):
     """
     The base structure of an Aleph message.
     All the fields of this class appear in all the representations
@@ -89,10 +89,12 @@ class AlephBaseMessage(GenericModel, Generic[MType, ContentType]):
     channel: Optional[str] = None
     content: Optional[ContentType] = None
 
-    @root_validator()
-    def check_item_type(cls, values):
-        return base_message_validator_check_item_type(values)
+    @model_validator(mode="after")
+    def check_item_type(self) -> "AlephBaseMessage":
+        values = self.model_dump()
+        base_message_validator_check_item_type(values)
+        return self
 
-    @validator("item_hash")
-    def check_item_hash(cls, v: Any, values: Mapping[str, Any]):
-        return base_message_validator_check_item_hash(v, values)
+    @field_validator("item_hash")
+    def check_item_hash(cls, v: Any, info: ValidationInfo):
+        return base_message_validator_check_item_hash(v, info.data)
