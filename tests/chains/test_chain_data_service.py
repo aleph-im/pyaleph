@@ -1,4 +1,5 @@
 import datetime as dt
+import json
 
 import pytest
 from aleph_message.models import (
@@ -86,7 +87,7 @@ async def test_smart_contract_protocol_ipfs_store(
         publisher="KT1BfL57oZfptdtMFZ9LNakEPvuPPA2urdSW",
         protocol=ChainSyncProtocol.SMART_CONTRACT,
         protocol_version=1,
-        content=payload.model_dump(),
+        content=payload.model_dump(mode="json"),
     )
 
     chain_data_service = ChainDataService(
@@ -135,7 +136,7 @@ async def test_smart_contract_protocol_regular_message(
         timestamp=1668611900,
         addr="KT1VBeLD7hzKpj17aRJ3Kc6QQFeikCEXi7W6",
         msgtype="POST",
-        msgcontent=content.json(),
+        msgcontent=json.dumps(content.model_dump()),
     )
 
     tx = ChainTxDb(

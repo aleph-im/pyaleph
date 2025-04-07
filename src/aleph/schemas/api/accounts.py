@@ -1,9 +1,9 @@
 import datetime as dt
 from decimal import Decimal
-from typing import Dict, List, Optional
+from typing import Annotated, Dict, List, Optional
 
 from aleph_message.models import Chain
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, field_validator
 
 from aleph.types.files import FileType
 from aleph.types.sort_order import SortOrder
@@ -16,11 +16,16 @@ class GetAccountQueryParams(BaseModel):
     )
 
 
+FloatDecimal = Annotated[
+    Decimal, PlainSerializer(lambda x: float(x), return_type=float, when_used="json")
+]
+
+
 class GetAccountBalanceResponse(BaseModel):
     address: str
-    balance: Decimal
-    details: Optional[Dict[str, Decimal]] = None
-    locked_amount: Decimal
+    balance: FloatDecimal
+    details: Optional[Dict[str, FloatDecimal]] = None
+    locked_amount: FloatDecimal
 
 
 class GetAccountFilesQueryParams(BaseModel):

@@ -243,7 +243,7 @@ class MessageHashesQueryParams(BaseModel):
         "Set this to false to include metadata alongside the hashes in the response.",
     )
 
-    @model_validator(mode="before")
+    @model_validator(mode="after")
     def validate_field_dependencies(cls, values):
         start_date = values.get("start_date")
         end_date = values.get("end_date")

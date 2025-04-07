@@ -1,4 +1,5 @@
 import asyncio
+import json
 from typing import Any, Dict, List, Mapping, Optional, Self, Set, Type, Union, cast
 
 import aio_pika.abc
@@ -193,7 +194,7 @@ class ChainDataService:
                 item_hash=ItemHash(payload.content),
                 metadata=None,
             )
-            item_content = content.model_dump_json(exclude_none=True)
+            item_content = json.dumps(content.model_dump(exclude_none=True))
         else:
             item_content = payload.content
 
