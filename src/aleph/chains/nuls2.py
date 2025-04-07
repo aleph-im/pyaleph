@@ -248,7 +248,7 @@ async def get_transactions(
             "pagination": 500,
         },
     ) as resp:
-        jres = await resp.model_dump_json()
+        jres = await resp.json()
         for tx in sorted(jres["transactions"], key=itemgetter("height")):
             if remark is not None and tx["remark"] != remark:
                 continue
