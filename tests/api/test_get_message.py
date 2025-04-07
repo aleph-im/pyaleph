@@ -197,7 +197,7 @@ async def test_get_processed_message_status(
         )
         assert response.status == 200, await response.text()
         response_json = await response.json()
-        parsed_response = ProcessedMessageStatus.parse_obj(response_json)
+        parsed_response = ProcessedMessageStatus.model_validate(response_json)
         assert parsed_response.status == MessageStatus.PROCESSED
         assert parsed_response.item_hash == processed_message.item_hash
         assert parsed_response.reception_time == RECEPTION_DATETIME
@@ -236,7 +236,7 @@ async def test_get_rejected_message_status(
         )
         assert response.status == 200, await response.text()
         response_json = await response.json()
-        parsed_response = RejectedMessageStatus.parse_obj(response_json)
+        parsed_response = RejectedMessageStatus.model_validate(response_json)
         assert parsed_response.status == MessageStatus.REJECTED
         assert parsed_response.item_hash == rejected_message.item_hash
         assert parsed_response.reception_time == RECEPTION_DATETIME
@@ -260,7 +260,7 @@ async def test_get_forgotten_message_status(
         )
         assert response.status == 200, await response.text()
         response_json = await response.json()
-        parsed_response = ForgottenMessageStatus.parse_obj(response_json)
+        parsed_response = ForgottenMessageStatus.model_validate(response_json)
         assert parsed_response.status == MessageStatus.FORGOTTEN
         assert parsed_response.item_hash == forgotten_message.item_hash
         assert parsed_response.reception_time == RECEPTION_DATETIME
@@ -289,7 +289,7 @@ async def test_get_pending_message_status(
         )
         assert response.status == 200, await response.text()
         response_json = await response.json()
-        parsed_response = PendingMessageStatus.parse_obj(response_json)
+        parsed_response = PendingMessageStatus.model_validate(response_json)
         assert parsed_response.status == MessageStatus.PENDING
         assert parsed_response.item_hash == processed_message.item_hash
         assert parsed_response.reception_time == RECEPTION_DATETIME

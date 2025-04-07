@@ -3,7 +3,6 @@ import json
 from typing import Dict
 
 import pytest
-import pytz
 from aleph_message.models import ItemType
 
 from aleph.schemas.pending_messages import (
@@ -26,8 +25,8 @@ def check_basic_message_fields(pending_message: BasePendingMessage, message_dict
     assert pending_message.channel == message_dict["channel"]
     assert pending_message.signature == message_dict["signature"]
     assert pending_message.channel == message_dict["channel"]
-    assert pending_message.time == pytz.utc.localize(
-        dt.datetime.utcfromtimestamp(message_dict["time"])
+    assert pending_message.time == dt.datetime.fromtimestamp(
+        message_dict["time"], tz=dt.timezone.utc
     )
 
 
@@ -170,7 +169,7 @@ def test_parse_program_message():
     content = json.loads(message_dict["item_content"])
     assert message.content.address == content["address"]
     assert message.content.time == content["time"]
-    assert message.content.code.dict(exclude_none=True) == content["code"]
+    assert message.content.code.model_dump(exclude_none=True) == content["code"]
     assert message.content.type == content["type"]
 
 
