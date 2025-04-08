@@ -42,9 +42,9 @@ class MessageConfirmation(BaseModel):
     chain: Chain
     height: int
     hash: str
-    time: dt.datetime
+    datetime: dt.datetime
 
-    @field_serializer("time")
+    @field_serializer("datetime")
     def serialize_time(self, dt: dt.datetime, _info) -> float:
         return dt.timestamp()
 
@@ -128,7 +128,13 @@ AlephMessage = Annotated[
 def format_message(message: MessageDb) -> AlephMessage:
     message_type = message.type
 
+    print(f'message_type: {message_type}')
+    print(f'message: {message.to_dict()}')
+
     message_cls = MESSAGE_CLS_DICT[message_type]
+
+    print(f'message_cls: {message_cls}')
+
     return message_cls.model_validate(message)
 
 
