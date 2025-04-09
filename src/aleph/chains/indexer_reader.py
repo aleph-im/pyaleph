@@ -93,7 +93,9 @@ def make_events_query(
         model = SyncEvent
         event_type_str = "syncEvents"
 
-    fields = "\n".join(model.model_fields.keys())
+    # Create an instance to access fields for Pydantic v2
+    model_instance = model.model_construct()
+    fields = "\n".join(model_instance.model_fields.keys())
     params: Dict[str, Any] = {
         "blockchain": f'"{blockchain.value}"',
         "limit": limit,
