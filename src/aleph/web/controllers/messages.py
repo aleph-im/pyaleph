@@ -121,6 +121,36 @@ class BaseMessageQueryParams(BaseModel):
         default=None, description="Accepted values for the 'item_hash' field."
     )
 
+    start_date: float = Field(
+        default=0,
+        ge=0,
+        alias="startDate",
+        description="Start date timestamp. If specified, only messages with "
+        "a time field greater or equal to this value will be returned.",
+    )
+    end_date: float = Field(
+        default=0,
+        ge=0,
+        alias="endDate",
+        description="End date timestamp. If specified, only messages with "
+        "a time field lower than this value will be returned.",
+    )
+
+    start_block: int = Field(
+        default=0,
+        ge=0,
+        alias="startBlock",
+        description="Start block number. If specified, only messages with "
+        "a block number greater or equal to this value will be returned.",
+    )
+    end_block: int = Field(
+        default=0,
+        ge=0,
+        alias="endBlock",
+        description="End block number. If specified, only messages with "
+        "a block number lower than this value will be returned.",
+    )
+
     @model_validator(mode="after")
     def validate_field_dependencies(self):
         start_date = self.start_date
