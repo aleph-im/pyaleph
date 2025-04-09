@@ -128,12 +128,7 @@ AlephMessage = Annotated[
 def format_message(message: MessageDb) -> AlephMessage:
     message_type = message.type
 
-    print(f"message_type: {message_type}")
-    print(f"message: {message.to_dict()}")
-
     message_cls = MESSAGE_CLS_DICT[message_type]
-
-    print(f"message_cls: {message_cls}")
 
     return message_cls.model_validate(message)
 
