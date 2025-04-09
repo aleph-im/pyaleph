@@ -4,9 +4,9 @@ Schemas for the generic Aleph message indexer.
 
 import datetime as dt
 from enum import Enum
-from typing import List, Protocol, Tuple
+from typing import Annotated, List, Protocol, Tuple
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, BeforeValidator, Field
 
 
 class GenericMessageEvent(Protocol):
@@ -33,6 +33,17 @@ class EntityType(str, Enum):
     STATE = "state"
 
 
+def split_datetime_ranges(v):
+    if isinstance(v, str):
+        return v.split("/")
+    return v
+
+
+DateTimeRange = Annotated[
+    Tuple[dt.datetime, dt.datetime], BeforeValidator(split_datetime_ranges)
+]
+
+
 class AccountEntityState(BaseModel):
     blockchain: IndexerBlockchain
     type: EntityType
@@ -40,14 +51,8 @@ class AccountEntityState(BaseModel):
     account: str
     completeHistory: bool
     progress: float
-    pending: List[Tuple[dt.datetime, dt.datetime]]
-    processed: List[Tuple[dt.datetime, dt.datetime]]
-
-    @field_validator("pending", "processed", mode="before")
-    def split_datetime_ranges(cls, v):
-        if isinstance(v, str):
-            return v.split("/")
-        return v
+    pending: List[DateTimeRange]
+    processed: List[DateTimeRange]
 
 
 class IndexerAccountStateResponseData(BaseModel):
