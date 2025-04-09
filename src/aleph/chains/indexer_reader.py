@@ -84,18 +84,16 @@ def make_events_query(
     if not datetime_range and not block_range:
         raise ValueError("A range of datetimes or blocks must be specified.")
 
-    model: Union[Type[MessageEvent], Type[SyncEvent]]
+    model_fields: List[str]
 
     if event_type == ChainEventType.MESSAGE:
-        model = MessageEvent
         event_type_str = "messageEvents"
+        model_fields = list(MessageEvent.model_fields.keys())
     else:
-        model = SyncEvent
         event_type_str = "syncEvents"
+        model_fields = list(SyncEvent.model_fields.keys())
 
-    # Create an instance to access fields for Pydantic v2
-    model_instance = model.model_construct()
-    fields = "\n".join(model_instance.model_fields.keys())
+    fields = "\n".join(model_fields)
     params: Dict[str, Any] = {
         "blockchain": f'"{blockchain.value}"',
         "limit": limit,
