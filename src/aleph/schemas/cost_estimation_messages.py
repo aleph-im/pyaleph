@@ -17,7 +17,7 @@ from aleph_message.models.execution.volume import (
     ImmutableVolume,
     PersistentVolume,
 )
-from pydantic import Field, ValidationError, root_validator
+from pydantic import Field, ValidationError, model_validator
 
 from aleph.schemas.base_messages import AlephBaseMessage, ContentType, MType
 from aleph.schemas.pending_messages import base_pending_message_load_content
@@ -79,7 +79,7 @@ class BaseCostEstimationMessage(AlephBaseMessage, Generic[MType, ContentType]):
     type: MType
     item_hash: str
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
     def load_content(cls, values):
         return base_pending_message_load_content(values)
 
@@ -169,4 +169,4 @@ async def validate_cost_estimation_message_content(
 ) -> CostEstimationContent:
     content = await storage_service.get_message_content(message)
     content_type = COST_MESSAGE_TYPE_TO_CONTENT[message.type]
-    return content_type.parse_obj(content.value)
+    return content_type.model_validate(content.value)

@@ -136,7 +136,7 @@ async def _process_smart_contract_tx(
         publisher="KT1BfL57oZfptdtMFZ9LNakEPvuPPA2urdSW",
         protocol=ChainSyncProtocol.SMART_CONTRACT,
         protocol_version=1,
-        content=payload.dict(),
+        content=payload.model_dump(),
     )
 
     pending_tx = PendingTxDb(tx=tx)

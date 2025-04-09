@@ -2,6 +2,14 @@
 Changelog
 =========
 
+Version 0.5.0
+=============
+
+* Feature: Migrated from Pydantic v1 to Pydantic v2
+* Removed dependency on dataclasses-json in favor of Pydantic models
+* Updated the JSON serialization to work with Pydantic v2
+* Updated schema validation to use the new Pydantic v2 API
+
 Version 0.4.7
 =============
 

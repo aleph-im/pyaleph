@@ -8,7 +8,7 @@ from datetime import date, datetime, time
 from typing import IO, Any, Union
 
 import orjson
-from pydantic.json import pydantic_encoder
+import pydantic
 
 # The actual type of serialized JSON as returned by the JSON serializer.
 SerializedJson = bytes
@@ -49,8 +49,10 @@ def extended_json_encoder(obj: Any) -> Any:
         return obj.toordinal()
     elif isinstance(obj, time):
         return obj.hour * 3600 + obj.minute * 60 + obj.second + obj.microsecond / 1e6
+    elif isinstance(obj, pydantic.BaseModel):
+        return obj.model_dump()
     else:
-        return pydantic_encoder(obj)
+        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 
 def dumps(obj: Any) -> bytes:

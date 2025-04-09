@@ -101,7 +101,7 @@ def test_datetime_to_iso_8601():
                 type="my-type",
                 address="KT1VBeLD7hzKpj17aRJ3Kc6QQFeikCEXi7W6",
                 time=1000,
-            ).json(),
+            ).model_dump_json(),
         ),
         (
             MessageType.aggregate.value,
@@ -110,7 +110,7 @@ def test_datetime_to_iso_8601():
                 content={"body": "My first post on Tezos"},
                 address="KT1VBeLD7hzKpj17aRJ3Kc6QQFeikCEXi7W6",
                 time=1000,
-            ).json(),
+            ).model_dump_json(),
         ),
     ],
 )
@@ -139,4 +139,4 @@ def test_indexer_event_to_aleph_message(message_type: str, message_content: str)
 
     assert tx.protocol == ChainSyncProtocol.SMART_CONTRACT
     assert tx.protocol_version == 1
-    assert tx.content == indexer_event.payload.dict()
+    assert tx.content == indexer_event.payload.model_dump()

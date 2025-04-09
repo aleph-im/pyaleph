@@ -76,7 +76,9 @@ async def metrics_json(request: web.Request) -> web.Response:
 
     with session_factory() as session:
         return web.Response(
-            text=(await get_metrics(session=session, node_cache=node_cache)).to_json(),
+            text=(
+                await get_metrics(session=session, node_cache=node_cache)
+            ).model_dump_json(),
             content_type="application/json",
         )
 
@@ -98,7 +100,7 @@ async def ccn_metric(request: web.Request) -> web.Response:
     """Fetch metrics for CCN node id"""
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
-    query_params = Metrics.parse_obj(request.query)
+    query_params = Metrics.model_validate(request.query)
 
     node_id = _get_node_id_from_request(request)
 
@@ -124,7 +126,7 @@ async def crn_metric(request: web.Request) -> web.Response:
     """Fetch Metric for crn."""
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
-    query_params = Metrics.parse_obj(request.query)
+    query_params = Metrics.model_validate(request.query)
 
     node_id = _get_node_id_from_request(request)
 

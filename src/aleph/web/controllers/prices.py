@@ -118,7 +118,7 @@ async def message_price(request: web.Request):
         "detail": costs,
     }
 
-    response = EstimatedCostsResponse.parse_obj(model)
+    response = EstimatedCostsResponse.model_validate(model)
 
     return web.json_response(text=aleph_json.dumps(response).decode("utf-8"))
 
@@ -134,7 +134,7 @@ async def message_price_estimate(request: web.Request):
     storage_service = get_storage_service_from_request(request)
 
     with session_factory() as session:
-        parsed_body = PubMessageRequest.parse_obj(await request.json())
+        parsed_body = PubMessageRequest.model_validate(await request.json())
         message = validate_cost_estimation_message_dict(parsed_body.message_dict)
         content = await validate_cost_estimation_message_content(
             message, storage_service
@@ -157,6 +157,6 @@ async def message_price_estimate(request: web.Request):
         "detail": costs,
     }
 
-    response = EstimatedCostsResponse.parse_obj(model)
+    response = EstimatedCostsResponse.model_validate(model)
 
     return web.json_response(text=aleph_json.dumps(response).decode("utf-8"))
