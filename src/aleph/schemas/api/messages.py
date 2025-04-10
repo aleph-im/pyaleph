@@ -42,11 +42,13 @@ class MessageConfirmation(BaseModel):
     chain: Chain
     height: int
     hash: str
-    datetime: dt.datetime
 
-    @field_serializer("datetime")
-    def serialize_time(self, dt: dt.datetime, _info) -> float:
-        return dt.timestamp()
+    # Omit this field for now as are not exported with previous Pydantic version. TODO: Review if has to be added
+    # datetime: dt.datetime
+    #
+    # @field_serializer("datetime")
+    # def serialize_time(self, dt: dt.datetime, _info) -> float:
+    #     return dt.timestamp()
 
 
 class BaseMessage(BaseModel, Generic[MType, ContentType]):
