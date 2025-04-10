@@ -13,7 +13,7 @@ class EstimatedCostDetailResponse(BaseModel):
     cost_hold: str
     cost_stream: str
 
-    @field_validator("cost_hold", "cost_stream")
+    @field_validator("cost_hold", "cost_stream", mode="before")
     def check_format_price(cls, v):
         return format_cost_str(v)
 
