@@ -395,6 +395,20 @@ async def fetch_messages_with_pagination_expect_success(
 
 @pytest.mark.asyncio()
 async def test_pagination(fixture_messages, ccn_api_client):
+    """
+    forgotten_messages = list(
+        filter(lambda msg: msg["type"] == "FORGET", fixture_messages)
+    )
+    forgotten_hashes = list(
+        itertools.chain.from_iterable(
+            [msg["content"]["hashes"] for msg in forgotten_messages]
+        )
+    )
+
+    messages_without_forgotten = list(
+        filter(lambda msg: msg["item_hash"] not in forgotten_hashes, fixture_messages)
+    )
+    """
     sorted_messages_by_time = sorted(fixture_messages, key=lambda msg: msg["time"])
 
     # More messages than available
@@ -427,7 +441,7 @@ async def test_pagination(fixture_messages, ccn_api_client):
     )
     assert_messages_equal(messages, sorted_messages_by_time[-1:])
 
-    # Some messages, reverse sort order
+    # Some messages, ascending sort order
     messages = await fetch_messages_with_pagination_expect_success(
         ccn_api_client, page=1, pagination=3, sort_order=1
     )

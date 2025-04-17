@@ -170,15 +170,17 @@ def get_address_files_for_api(
     if pagination:
         select_stmt = select_stmt.limit(pagination).offset((page - 1) * pagination)
 
-    order_by_columns = (
-        MessageFilePinDb.created.desc(),
-        (
-            MessageFilePinDb.item_hash.asc()
-            if sort_order == SortOrder.DESCENDING
-            else MessageFilePinDb.created.asc()
-        ),
-        MessageFilePinDb.item_hash.asc(),
-    )
+    if sort_order == SortOrder.DESCENDING:
+        order_by_columns = (
+            MessageFilePinDb.created.desc(),
+            MessageFilePinDb.item_hash.asc(),
+        )
+    else:  # ASCENDING
+        order_by_columns = (
+            MessageFilePinDb.item_hash.asc(),
+            MessageFilePinDb.item_hash.asc(),
+        )
+
     select_stmt = select_stmt.order_by(*order_by_columns)
 
     return session.execute(select_stmt).all()
