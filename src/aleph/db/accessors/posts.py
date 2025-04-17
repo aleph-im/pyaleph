@@ -256,35 +256,33 @@ def filter_post_select_stmt(
                 isouter=True,
             )
 
-            order_by_columns = (
-                (
+            if sort_order == SortOrder.DESCENDING:
+                order_by_columns = (
                     nullsfirst(
                         select_earliest_confirmation.c.earliest_confirmation.desc()
                     ),
                     select_merged_post_subquery.c.created.desc(),
                     select_merged_post_subquery.c.item_hash.asc(),
                 )
-                if sort_order == SortOrder.DESCENDING
-                else (
+            else:  # ASCENDING
+                order_by_columns = (
                     nullslast(
                         select_earliest_confirmation.c.earliest_confirmation.asc()
                     ),
                     select_merged_post_subquery.c.created.asc(),
                     select_merged_post_subquery.c.item_hash.asc(),
                 )
-            )
         else:
-            order_by_columns = (
-                (
+            if sort_order == SortOrder.DESCENDING:
+                order_by_columns = (
                     last_updated_column.desc(),
                     select_merged_post_subquery.c.original_item_hash.asc(),
                 )
-                if sort_order == SortOrder.DESCENDING
-                else (
+            else:  # ASCENDING
+                order_by_columns = (
                     last_updated_column.asc(),
                     select_merged_post_subquery.c.original_item_hash.asc(),
                 )
-            )
         select_stmt = select_stmt.order_by(*order_by_columns)
 
     # If pagination == 0, return all matching results

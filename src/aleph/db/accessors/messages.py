@@ -165,15 +165,16 @@ def make_matching_messages_query(
                 )
             )
     else:
-        order_by_columns = (
-            MessageDb.time.desc(),
-            (
-                MessageDb.item_hash.asc()
-                if sort_order == SortOrder.DESCENDING
-                else MessageDb.time.asc()
-            ),
-            MessageDb.item_hash.asc(),
-        )
+        if sort_order == SortOrder.DESCENDING:
+            order_by_columns = (
+                MessageDb.time.desc(),
+                MessageDb.item_hash.asc(),
+            )
+        else:  # ASCENDING
+            order_by_columns = (
+                MessageDb.time.asc(),
+                MessageDb.item_hash.asc(),
+            )
 
     select_stmt = select_stmt.order_by(*order_by_columns).offset(
         (page - 1) * pagination
@@ -661,15 +662,16 @@ def make_matching_hashes_query(
 
     order_by_columns: Tuple = ()
 
-    order_by_columns = (
-        MessageStatusDb.reception_time.asc(),
-        (
-            MessageStatusDb.item_hash.asc()
-            if sort_order == SortOrder.ASCENDING
-            else MessageStatusDb.reception_time.desc()
-        ),
-        MessageStatusDb.item_hash.asc(),
-    )
+    if sort_order == SortOrder.DESCENDING:
+        order_by_columns = (
+            MessageStatusDb.reception_time.desc(),
+            MessageStatusDb.item_hash.asc(),
+        )
+    else:  # ASCENDING
+        order_by_columns = (
+            MessageStatusDb.reception_time.asc(),
+            MessageStatusDb.item_hash.asc(),
+        )
 
     select_stmt = select_stmt.order_by(*order_by_columns)
 
