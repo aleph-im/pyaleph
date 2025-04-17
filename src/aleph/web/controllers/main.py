@@ -76,9 +76,7 @@ async def metrics_json(request: web.Request) -> web.Response:
 
     with session_factory() as session:
         return web.Response(
-            text=(
-                await get_metrics(session=session, node_cache=node_cache)
-            ).model_dump_json(),
+            text=(await get_metrics(session=session, node_cache=node_cache)).to_json(),
             content_type="application/json",
         )
 
