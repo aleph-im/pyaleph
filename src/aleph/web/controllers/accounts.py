@@ -155,7 +155,7 @@ async def get_account_files(request: web.Request) -> web.Response:
             address=address,
             total_size=total_size,
             files=[
-                GetAccountFilesResponseItem.model_validate(file_pin)
+                GetAccountFilesResponseItem.model_validate(dict(file_pin))
                 for file_pin in file_pins
             ],
             pagination_page=query_params.page,

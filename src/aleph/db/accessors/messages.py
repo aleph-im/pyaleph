@@ -144,6 +144,8 @@ def make_matching_messages_query(
             select_stmt = select_stmt.where(
                 select_earliest_confirmation.c.height < end_block
             )
+
+        sort_by = SortBy.TX_TIME
         if sort_by == SortBy.TX_TIME:
             order_by_columns = (
                 (
@@ -151,6 +153,7 @@ def make_matching_messages_query(
                         select_earliest_confirmation.c.earliest_confirmation.desc()
                     ),
                     MessageDb.time.desc(),
+                    MessageDb.item_hash.asc(),
                 )
                 if sort_order == SortOrder.DESCENDING
                 else (
@@ -158,16 +161,20 @@ def make_matching_messages_query(
                         select_earliest_confirmation.c.earliest_confirmation.asc()
                     ),
                     MessageDb.time.asc(),
+                    MessageDb.item_hash.asc(),
                 )
             )
     else:
-        order_by_columns = (
-            (
-                MessageDb.time.desc()
-                if sort_order == SortOrder.DESCENDING
-                else MessageDb.time.asc()
-            ),
-        )
+        if sort_order == SortOrder.DESCENDING:
+            order_by_columns = (
+                MessageDb.time.desc(),
+                MessageDb.item_hash.asc(),
+            )
+        else:  # ASCENDING
+            order_by_columns = (
+                MessageDb.time.asc(),
+                MessageDb.item_hash.asc(),
+            )
 
     select_stmt = select_stmt.order_by(*order_by_columns).offset(
         (page - 1) * pagination
@@ -653,10 +660,20 @@ def make_matching_hashes_query(
     if status:
         select_stmt = select_stmt.where(MessageStatusDb.status == status)
 
-    if sort_order == SortOrder.ASCENDING:
-        select_stmt = select_stmt.order_by(MessageStatusDb.reception_time.asc())
-    else:
-        select_stmt = select_stmt.order_by(MessageStatusDb.reception_time.desc())
+    order_by_columns: Tuple = ()
+
+    if sort_order == SortOrder.DESCENDING:
+        order_by_columns = (
+            MessageStatusDb.reception_time.desc(),
+            MessageStatusDb.item_hash.asc(),
+        )
+    else:  # ASCENDING
+        order_by_columns = (
+            MessageStatusDb.reception_time.asc(),
+            MessageStatusDb.item_hash.asc(),
+        )
+
+    select_stmt = select_stmt.order_by(*order_by_columns)
 
     select_stmt = select_stmt.offset((page - 1) * pagination)
 
