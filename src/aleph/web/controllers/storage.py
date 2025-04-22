@@ -11,7 +11,6 @@ import pydantic
 from aiohttp import BodyPartReader, web
 from aiohttp.web_request import FileField
 from aleph_message.models import ItemType
-from mypy.dmypy_server import MiB
 from pydantic import ValidationError
 
 from aleph.chains.signature_verifier import SignatureVerifier
@@ -27,6 +26,11 @@ from aleph.schemas.pending_messages import (
 )
 from aleph.services.cost import get_total_and_detailed_costs
 from aleph.storage import StorageService
+from aleph.toolkit.constants import (
+    MAX_FILE_SIZE,
+    MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+    MiB,
+)
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import InvalidSignature
 from aleph.utils import item_type_from_hash, run_in_executor
@@ -45,10 +49,6 @@ from aleph.web.controllers.utils import (
 )
 
 logger = logging.getLogger(__name__)
-
-MAX_FILE_SIZE = 100 * MiB
-MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE = 25 * MiB
-MAX_UPLOAD_FILE_SIZE = 1000 * MiB
 
 
 async def add_ipfs_json_controller(request: web.Request):
@@ -109,14 +109,16 @@ async def _verify_message_signature(
 async def _verify_user_balance(
     session: DbSession, content: CostEstimationStoreContent
 ) -> None:
-    if content.estimated_size_mib and content.estimated_size_mib > 25 * MiB:
+    if content.estimated_size_mib and content.estimated_size_mib > (
+        MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE / MiB
+    ):
         current_balance = get_total_balance(session=session, address=content.address)
-        current_cost_for_user = get_total_cost_for_address(
+        current_cost = get_total_cost_for_address(
             session=session, address=content.address
         )
-        required_storage_cost, _ = get_total_and_detailed_costs(session, content, "")
+        message_cost, _ = get_total_and_detailed_costs(session, content, "")
 
-        required_balance = current_cost_for_user + required_storage_cost
+        required_balance = current_cost + message_cost
 
         if current_balance < required_balance:
             raise web.HTTPPaymentRequired()
@@ -233,7 +235,7 @@ async def _check_and_add_file(
 
         try:
             message_content = CostEstimationStoreContent.parse_raw(message.item_content)
-            message_content.estimated_size_mib = uploaded_file.size
+            message_content.estimated_size_mib = uploaded_file.size / MiB
 
             if message_content.item_hash != file_hash:
                 raise web.HTTPUnprocessableEntity(

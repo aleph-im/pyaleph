@@ -16,10 +16,11 @@ from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.services.cost import get_total_and_detailed_costs_from_db
 from aleph.services.storage.engine import StorageEngine
 from aleph.storage import StorageService
+from aleph.toolkit.constants import STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
-from aleph.types.message_status import MessageStatus
+from aleph.types.message_status import InsufficientBalanceException, MessageStatus
 
 
 @pytest.fixture()
@@ -39,6 +40,28 @@ def fixture_store_message() -> PendingMessageDb:
         next_attempt=dt.datetime(2023, 1, 1),
         fetched=False,
         reception_time=timestamp_to_datetime(1665478677),
+    )
+
+
+@pytest.fixture()
+def fixture_store_message_with_cost() -> PendingMessageDb:
+    return PendingMessageDb(
+        item_hash="af2e19894099d954f3d1fa274547f62484bc2d93964658547deecc70316acc72",
+        type=MessageType.store,
+        chain=Chain.ETH,
+        sender="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
+        signature="0xb9d164e6e43a8fcd341abc01eda47bed0333eaf480e888f2ed2ae0017048939d18850a33352e7281645e95e8673bad733499b6a8ce4069b9da9b9a79ddc1a0b31b",
+        item_type=ItemType.inline,
+        item_content='{"address": "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106", "time": 1665478676.6585264, "item_type": "storage", "item_hash": "c25b0525bc308797d3e35763faf5c560f2974dab802cb4a734ae4e9d1040319e", "mime_type": "text/plain"}',
+        time=timestamp_to_datetime(STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1),
+        channel=Channel("TEST"),
+        check_message=True,
+        retries=0,
+        next_attempt=dt.datetime(2023, 1, 1),
+        fetched=False,
+        reception_time=timestamp_to_datetime(
+            STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1
+        ),
     )
 
 
@@ -166,3 +189,95 @@ async def test_process_store_no_signature(
         )
         assert file_pin is not None
         assert file_pin.file_hash == content["item_hash"]
+
+
+@pytest.mark.asyncio
+async def test_process_store_with_not_enough_balance(
+    mocker,
+    mock_config: Config,
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+    fixture_store_message_with_cost: PendingMessageDb,
+):
+    # Create a large file (> 25 MiB)
+    large_file_content = b"X" * (26 * 1024 * 1024)  # 26 MiB
+
+    storage_service = StorageService(
+        storage_engine=MockStorageEngine(
+            files={
+                "c25b0525bc308797d3e35763faf5c560f2974dab802cb4a734ae4e9d1040319e": large_file_content
+            }
+        ),
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
+    )
+    # Disable signature verification
+    signature_verifier = mocker.AsyncMock()
+    message_handler = MessageHandler(
+        signature_verifier=signature_verifier,
+        storage_service=storage_service,
+        config=mock_config,
+    )
+
+    with session_factory() as session:
+        # NOTE: Account balance is 0 at this point
+        with pytest.raises(InsufficientBalanceException):
+            await message_handler.process(
+                session=session, pending_message=fixture_store_message_with_cost
+            )
+
+
+@pytest.mark.asyncio
+async def test_process_store_small_file_no_balance_required(
+    mocker,
+    mock_config: Config,
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+    fixture_store_message_with_cost: PendingMessageDb,
+):
+    """
+    Test that a STORE message with a small file (<=25MiB) can be processed
+    even with insufficient balance.
+    """
+    # Create a small file (<= 25 MiB)
+    small_file_content = b"X" * (25 * 1024 * 1024)  # 25 MiB
+
+    storage_service = StorageService(
+        storage_engine=MockStorageEngine(
+            files={
+                "c25b0525bc308797d3e35763faf5c560f2974dab802cb4a734ae4e9d1040319e": small_file_content
+            }
+        ),
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
+    )
+    # Disable signature verification
+    signature_verifier = mocker.AsyncMock()
+    message_handler = MessageHandler(
+        signature_verifier=signature_verifier,
+        storage_service=storage_service,
+        config=mock_config,
+    )
+
+    with session_factory() as session:
+        # NOTE: Account balance is 0 at this point, but since the file is small
+        # it should still be processed
+        await message_handler.process(
+            session=session, pending_message=fixture_store_message_with_cost
+        )
+        session.commit()
+
+        # Verify that the message was processed successfully
+        message_db = get_message_by_item_hash(
+            session=session,
+            item_hash=ItemHash(fixture_store_message_with_cost.item_hash),
+        )
+        assert message_db is not None
+
+        file_pin = get_message_file_pin(
+            session=session,
+            item_hash=ItemHash(fixture_store_message_with_cost.item_hash),
+        )
+        assert file_pin is not None
