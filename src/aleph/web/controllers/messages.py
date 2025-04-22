@@ -245,12 +245,12 @@ class MessageHashesQueryParams(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_field_dependencies(cls, values):
-        start_date = values.get("start_date")
-        end_date = values.get("end_date")
+    def validate_field_dependencies(self):
+        start_date = self.start_date
+        end_date = self.end_date
         if start_date and end_date and (end_date < start_date):
             raise ValueError("end date cannot be lower than start date.")
-        return values
+        return self
 
     model_config = ConfigDict(populate_by_name=True)
 
