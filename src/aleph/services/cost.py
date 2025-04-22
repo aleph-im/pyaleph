@@ -535,13 +535,10 @@ def _calculate_storage_costs(
 ) -> List[AccountCostsDb]:
     payment_type = get_payment_type(content)
 
-    if isinstance(content, CostEstimationStoreContent) and content.estimated_size_mib:
-        storage_mib = Decimal(content.estimated_size_mib)
-    else:
-        file = get_file(session, content.item_hash)
-        if not file:
-            return []
-        storage_mib = Decimal(file.size / MiB)
+    storage_mib = calculate_storage_size(session, content)
+
+    if not storage_mib:
+        return []
 
     volume = SizedVolume(CostType.STORAGE, storage_mib, item_hash)
 
@@ -557,6 +554,22 @@ def _calculate_storage_costs(
         content.address,
         item_hash,
     )
+
+
+def calculate_storage_size(
+    session: DbSession,
+    content: CostEstimationStoreContent | StoreContent,
+) -> Optional[Decimal]:
+
+    if isinstance(content, CostEstimationStoreContent) and content.estimated_size_mib:
+        storage_mib = Decimal(content.estimated_size_mib)
+    else:
+        file = get_file(session, content.item_hash)
+        if not file:
+            return None
+        storage_mib = Decimal(file.size / MiB)
+
+    return storage_mib
 
 
 def get_detailed_costs(
