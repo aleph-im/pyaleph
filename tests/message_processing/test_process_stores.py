@@ -200,10 +200,13 @@ async def test_process_store_with_not_enough_balance(
     fixture_settings_aggregate_in_db,
     fixture_store_message_with_cost: PendingMessageDb,
 ):
+    # Create a large file (> 25 MiB)
+    large_file_content = b"X" * (26 * 1024 * 1024)  # 26 MiB
+
     storage_service = StorageService(
         storage_engine=MockStorageEngine(
             files={
-                "c25b0525bc308797d3e35763faf5c560f2974dab802cb4a734ae4e9d1040319e": b"Hello Aleph.im"
+                "c25b0525bc308797d3e35763faf5c560f2974dab802cb4a734ae4e9d1040319e": large_file_content
             }
         ),
         ipfs_service=mocker.AsyncMock(),
@@ -223,4 +226,58 @@ async def test_process_store_with_not_enough_balance(
             await message_handler.process(
                 session=session, pending_message=fixture_store_message_with_cost
             )
-            session.commit()
+
+
+@pytest.mark.asyncio
+async def test_process_store_small_file_no_balance_required(
+    mocker,
+    mock_config: Config,
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+    fixture_store_message_with_cost: PendingMessageDb,
+):
+    """
+    Test that a STORE message with a small file (<=25MiB) can be processed
+    even with insufficient balance.
+    """
+    # Create a small file (<= 25 MiB)
+    small_file_content = b"X" * (25 * 1024 * 1024)  # 25 MiB
+
+    storage_service = StorageService(
+        storage_engine=MockStorageEngine(
+            files={
+                "c25b0525bc308797d3e35763faf5c560f2974dab802cb4a734ae4e9d1040319e": small_file_content
+            }
+        ),
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
+    )
+    # Disable signature verification
+    signature_verifier = mocker.AsyncMock()
+    message_handler = MessageHandler(
+        signature_verifier=signature_verifier,
+        storage_service=storage_service,
+        config=mock_config,
+    )
+
+    with session_factory() as session:
+        # NOTE: Account balance is 0 at this point, but since the file is small
+        # it should still be processed
+        await message_handler.process(
+            session=session, pending_message=fixture_store_message_with_cost
+        )
+        session.commit()
+
+        # Verify that the message was processed successfully
+        message_db = get_message_by_item_hash(
+            session=session,
+            item_hash=ItemHash(fixture_store_message_with_cost.item_hash),
+        )
+        assert message_db is not None
+
+        file_pin = get_message_file_pin(
+            session=session,
+            item_hash=ItemHash(fixture_store_message_with_cost.item_hash),
+        )
+        assert file_pin is not None

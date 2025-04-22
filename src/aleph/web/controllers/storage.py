@@ -26,7 +26,11 @@ from aleph.schemas.pending_messages import (
 )
 from aleph.services.cost import get_total_and_detailed_costs
 from aleph.storage import StorageService
-from aleph.toolkit.constants import MAX_FILE_SIZE, MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE
+from aleph.toolkit.constants import (
+    MAX_FILE_SIZE,
+    MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+    MiB,
+)
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import InvalidSignature
 from aleph.utils import item_type_from_hash, run_in_executor
@@ -105,9 +109,8 @@ async def _verify_message_signature(
 async def _verify_user_balance(
     session: DbSession, content: CostEstimationStoreContent
 ) -> None:
-    if (
-        content.estimated_size_mib
-        and content.estimated_size_mib > MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE
+    if content.estimated_size_mib and content.estimated_size_mib > (
+        MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE / MiB
     ):
         current_balance = get_total_balance(session=session, address=content.address)
         current_cost = get_total_cost_for_address(
@@ -232,7 +235,7 @@ async def _check_and_add_file(
 
         try:
             message_content = CostEstimationStoreContent.parse_raw(message.item_content)
-            message_content.estimated_size_mib = uploaded_file.size
+            message_content.estimated_size_mib = uploaded_file.size / MiB
 
             if message_content.item_hash != file_hash:
                 raise web.HTTPUnprocessableEntity(

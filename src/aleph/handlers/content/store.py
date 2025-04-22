@@ -33,7 +33,7 @@ from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.handlers.content.content_handler import ContentHandler
 from aleph.services.cost import calculate_storage_size, get_total_and_detailed_costs
 from aleph.storage import StorageService
-from aleph.toolkit.constants import MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE
+from aleph.toolkit.constants import MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE, MiB
 from aleph.toolkit.costs import are_store_and_program_free
 from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.db_session import DbSession
@@ -218,9 +218,11 @@ class StoreMessageHandler(ContentHandler):
         if are_store_and_program_free(message):
             return costs
 
-        storage_size = calculate_storage_size(session, content)
+        storage_size_mib = calculate_storage_size(session, content)
 
-        if storage_size and storage_size <= MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE:
+        if storage_size_mib and storage_size_mib <= (
+            MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE / MiB
+        ):
             return costs
 
         current_balance = get_total_balance(address=content.address, session=session)
