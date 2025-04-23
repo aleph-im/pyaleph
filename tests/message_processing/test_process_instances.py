@@ -338,7 +338,7 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
     """
 
     assert message.item_content
-    content = InstanceContent.parse_raw(message.item_content)
+    content = InstanceContent.model_validate_json(message.item_content)
     volumes = get_volume_refs(content)
 
     created = pytz.utc.localize(dt.datetime(2023, 1, 1))
@@ -488,7 +488,9 @@ async def test_process_instance_missing_volumes(
         assert rejected_message.error_code == ErrorCode.VM_VOLUME_NOT_FOUND
 
         if fixture_instance_message.item_content:
-            content = InstanceContent.parse_raw(fixture_instance_message.item_content)
+            content = InstanceContent.model_validate_json(
+                fixture_instance_message.item_content
+            )
             volume_refs = set(volume.ref for volume in get_volume_refs(content))
             assert isinstance(rejected_message.details, dict)
             assert set(rejected_message.details["errors"]) == volume_refs
@@ -570,7 +572,9 @@ async def test_get_additional_storage_price(
         session.commit()
 
     if fixture_instance_message.item_content:
-        content = InstanceContent.parse_raw(fixture_instance_message.item_content)
+        content = InstanceContent.model_validate_json(
+            fixture_instance_message.item_content
+        )
         with session_factory() as session:
             settings = _get_settings(session)
             pricing = _get_product_price(session, content, settings)
@@ -605,7 +609,9 @@ async def test_get_total_and_detailed_costs_from_db(
     _ = [message async for message in pipeline]
 
     if fixture_instance_message.item_content:
-        content = InstanceContent.parse_raw(fixture_instance_message.item_content)
+        content = InstanceContent.model_validate_json(
+            fixture_instance_message.item_content
+        )
         with session_factory() as session:
             cost, _ = get_total_and_detailed_costs(
                 session=session,
@@ -634,7 +640,7 @@ async def test_compare_account_cost_with_cost_function_hold(
     _ = [message async for message in pipeline]
 
     assert fixture_instance_message.item_content
-    content = InstanceContent.parse_raw(fixture_instance_message.item_content)
+    content = InstanceContent.model_validate_json(fixture_instance_message.item_content)
     with session_factory() as session:
         db_cost, _ = get_total_and_detailed_costs_from_db(
             session=session,
@@ -670,7 +676,7 @@ async def test_compare_account_cost_with_cost_payg_funct(
 
     assert fixture_instance_message_payg.item_content
 
-    content = InstanceContent.parse_raw(
+    content = InstanceContent.model_validate_json(
         fixture_instance_message_payg.item_content
     )  # Parse again
 
@@ -777,7 +783,7 @@ async def test_compare_account_cost_with_cost_function_without_volume(
     _ = [message async for message in pipeline]
 
     assert fixture_instance_message_only_rootfs.item_content
-    content = InstanceContent.parse_raw(
+    content = InstanceContent.model_validate_json(
         fixture_instance_message_only_rootfs.item_content
     )
     with session_factory() as session:
