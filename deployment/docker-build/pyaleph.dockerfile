@@ -58,7 +58,8 @@ RUN pip install -e .
 
 FROM base
 
-RUN useradd -s /bin/bash aleph
+RUN groupadd -g 1000 -o aleph
+RUN useradd -s /bin/bash -u 1000 -g 1000 -o aleph
 
 COPY --from=builder --chown=aleph /opt/venv /opt/venv
 COPY --from=builder --chown=aleph /opt/pyaleph /opt/pyaleph
