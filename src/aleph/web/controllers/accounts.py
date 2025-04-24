@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 
 from aiohttp import web
 from aleph_message.models import MessageType
-from pydantic import ValidationError
+from pydantic import ValidationError, TypeAdapter
 
 import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.balances import (
@@ -151,13 +151,11 @@ async def get_account_files(request: web.Request) -> web.Response:
         if not file_pins:
             raise web.HTTPNotFound()
 
+        adapter = TypeAdapter(list[GetAccountFilesResponseItem])
         response = GetAccountFilesResponse(
             address=address,
             total_size=total_size,
-            files=[
-                GetAccountFilesResponseItem.model_validate(dict(file_pin))
-                for file_pin in file_pins
-            ],
+            files=adapter.validate_python(file_pins),
             pagination_page=query_params.page,
             pagination_total=nb_files,
             pagination_per_page=query_params.pagination,
