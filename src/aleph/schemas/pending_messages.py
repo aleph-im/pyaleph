@@ -112,8 +112,7 @@ class BasePendingMessage(AlephBaseMessage, Generic[MType, ContentType]):
 
     @model_validator(mode="before")
     def load_content(cls, values):
-        values_copy = values.copy()
-        return base_pending_message_load_content(values_copy)
+        return base_pending_message_load_content(values)
 
     @field_validator("time", mode="before")
     def check_time(cls, v, info):

@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 
 from aiohttp import web
 from aleph_message.models import MessageType
-from pydantic import ValidationError, TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
 import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.balances import (
