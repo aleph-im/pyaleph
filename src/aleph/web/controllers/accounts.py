@@ -151,11 +151,13 @@ async def get_account_files(request: web.Request) -> web.Response:
         if not file_pins:
             raise web.HTTPNotFound()
 
-        adapter = TypeAdapter(list[GetAccountFilesResponseItem])
+        files_adapter = TypeAdapter(list[GetAccountFilesResponseItem])
+        file_pins_list = [dict(row) for row in file_pins]
+
         response = GetAccountFilesResponse(
             address=address,
             total_size=total_size,
-            files=adapter.validate_python(file_pins),
+            files=files_adapter.validate_python(file_pins_list),
             pagination_page=query_params.page,
             pagination_total=nb_files,
             pagination_per_page=query_params.pagination,
