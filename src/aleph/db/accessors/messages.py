@@ -468,6 +468,19 @@ def mark_pending_message_as_rejected(
         error_code = exception.error_code
         details = exception.details()
         exc_traceback = None
+
+        # Fix for ValueError in details - ensure all values are JSON serializable
+        if details and "errors" in details:
+            for error in details["errors"]:
+                if (
+                    isinstance(error, dict)
+                    and "ctx" in error
+                    and isinstance(error["ctx"], dict)
+                ):
+                    for key, value in list(error["ctx"].items()):
+                        # Convert any ValueError or other exceptions to strings
+                        if isinstance(value, Exception):
+                            error["ctx"][key] = str(value)
     else:
         error_code = ErrorCode.INTERNAL_ERROR
         details = None
