@@ -55,7 +55,7 @@ class GarbageCollector:
 
             # Delete files without pins
             files_to_delete = list(get_unpinned_files(session))
-            LOGGER.info("Found %d files to delete")
+            LOGGER.info("Found %d files to delete", len(files_to_delete))
 
             for file_to_delete in files_to_delete:
                 file_hash = ItemHash(file_to_delete.hash)
