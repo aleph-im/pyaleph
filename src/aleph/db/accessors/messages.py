@@ -437,11 +437,36 @@ def make_upsert_rejected_message_statement(
     exc_traceback: Optional[str] = None,
     tx_hash: Optional[str] = None,
 ) -> Insert:
+    # Convert details to a dictionary that is JSON serializable
+    serializable_details = None
+    if details is not None:
+        try:
+            # First try a simple dict conversion
+            serializable_details = dict(details)
+
+            # Now recursively ensure all values within the dictionary are JSON serializable
+            def ensure_serializable(obj):
+                if isinstance(obj, dict):
+                    return {k: ensure_serializable(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [ensure_serializable(item) for item in obj]
+                elif isinstance(obj, (str, int, float, bool, type(None))):
+                    return obj
+                else:
+                    # For non-serializable types, convert to string
+                    return str(obj)
+
+            serializable_details = ensure_serializable(serializable_details)
+
+        except Exception:
+            # If any conversion fails, create a new dict with a message
+            serializable_details = {"error": "Details contained non-serializable values"}
+
     insert_rejected_message_stmt = insert(RejectedMessageDb).values(
         item_hash=item_hash,
         message=pending_message_dict,
         error_code=error_code,
-        details=details,
+        details=serializable_details,
         traceback=exc_traceback,
         tx_hash=tx_hash,
     )
@@ -449,7 +474,7 @@ def make_upsert_rejected_message_statement(
         constraint="rejected_messages_pkey",
         set_={
             "error_code": insert_rejected_message_stmt.excluded.error_code,
-            "details": details,
+            "details": serializable_details,
             "traceback": insert_rejected_message_stmt.excluded.traceback,
             "tx_hash": tx_hash,
         },
