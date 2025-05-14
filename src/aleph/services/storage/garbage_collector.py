@@ -29,10 +29,6 @@ class GarbageCollector:
             result = await ipfs_client.pin.rm(file_hash)
             print(result)
 
-            # Launch the IPFS garbage collector (`ipfs repo gc`)
-            async for _ in RepoAPI(driver=ipfs_client).gc():
-                pass
-
         except NotPinnedError:
             LOGGER.warning("File not pinned: %s", file_hash)
         except Exception as err:
@@ -73,6 +69,12 @@ class GarbageCollector:
 
                 LOGGER.info("Deleted %s", file_hash)
 
+            # After unpinned all files call the ipfs garbage collector
+            ipfs_client = self.storage_service.ipfs_service.ipfs_client
+            # Launch the IPFS garbage collector (`ipfs repo gc`)
+            async for _ in RepoAPI(driver=ipfs_client).gc():
+                pass
+
 
 async def garbage_collector_task(
     config: Config, garbage_collector: GarbageCollector
@@ -93,5 +95,5 @@ async def garbage_collector_task(
             LOGGER.info("Starting garbage collection...")
             await garbage_collector.collect(datetime=utc_now())
             LOGGER.info("Garbage collector ran successfully.")
-        except Exception:
-            LOGGER.exception("An unexpected error occurred during garbage collection.")
+        except Exception as err:
+            LOGGER.exception("An unexpected error occurred during garbage collection.", exc_info=err)
