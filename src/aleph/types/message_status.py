@@ -90,7 +90,7 @@ class MessageProcessingException(Exception):
                 try:
                     # Test if the error is JSON serializable by attempting to convert to dict
                     # This will fail for custom objects
-                    if hasattr(err, '__dict__'):
+                    if hasattr(err, "__dict__"):
                         serializable_errors.append(str(err))
                     else:
                         serializable_errors.append(err)

@@ -460,7 +460,9 @@ def make_upsert_rejected_message_statement(
 
         except Exception:
             # If any conversion fails, create a new dict with a message
-            serializable_details = {"error": "Details contained non-serializable values"}
+            serializable_details = {
+                "error": "Details contained non-serializable values"
+            }
 
     insert_rejected_message_stmt = insert(RejectedMessageDb).values(
         item_hash=item_hash,

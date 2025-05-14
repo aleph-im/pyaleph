@@ -115,7 +115,7 @@ services:
 
   ipfs:
     restart: always
-    image: ipfs/kubo:v0.15.0
+    image: ipfs/kubo:v0.34.1
     ports:
       - "4001:4001"
       - "4001:4001/udp"
@@ -126,7 +126,7 @@ services:
       - IPFS_PROFILE=server
     networks:
       - pyaleph
-    command: ["daemon", "--enable-pubsub-experiment", "--migrate"]
+    command: ["daemon", "--enable-pubsub-experiment", "--enable-gc", "--migrate"]
 
 
 networks:
