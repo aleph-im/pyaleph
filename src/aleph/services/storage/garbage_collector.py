@@ -35,6 +35,8 @@ class GarbageCollector:
 
         except NotPinnedError:
             LOGGER.warning("File not pinned: %s", file_hash)
+        except Exception as err:
+            LOGGER.error("Failed to unpin file %s: %s", file_hash, str(err))
 
         # Smaller IPFS files are cached in local storage
         LOGGER.debug("Deleting %s from local storage", file_hash)
