@@ -61,6 +61,23 @@ def run_db_migrations(config: Config):
     alembic.command.upgrade(alembic_cfg, "head", tag=db_url)
 
 
+def run_coroutine_in_new_thread_loop(coro: Coroutine):
+    """
+    Executes a given coroutine in a new event loop in the current thread.
+    This thread is typically one managed by an executor.
+    """
+    new_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(new_loop)
+    try:
+        LOGGER.debug(f"Running coroutine {getattr(coro, '__name__', str(coro))} in thread event loop: {new_loop}")
+        result = new_loop.run_until_complete(coro)
+        LOGGER.debug(f"Coroutine {getattr(coro, '__name__', str(coro))} completed in thread event loop: {new_loop}")
+        return result
+    finally:
+        LOGGER.debug(f"Closing thread event loop: {new_loop}")
+        new_loop.close()
+
+
 async def init_node_cache(config: Config) -> NodeCache:
     node_cache = NodeCache(
         redis_host=config.redis.host.value, redis_port=config.redis.port.value
@@ -197,11 +214,24 @@ async def main(args: List[str]) -> None:
         tasks.append(refresh_cache_materialized_views(session_factory))
         LOGGER.debug("Initialized cache tasks")
 
-        LOGGER.debug("Initializing garbage collector task")
-        tasks.append(
-            garbage_collector_task(config=config, garbage_collector=garbage_collector)
+        LOGGER.debug("Preparing garbage collector task to run in a separate thread")
+        # 1. Create the coroutine object as you normally would
+        gc_coroutine_object = garbage_collector_task(
+            config=config, garbage_collector=garbage_collector
         )
-        LOGGER.debug("Initialized garbage collector task")
+
+        # 2. Get the current event loop to use run_in_executor
+        current_loop = asyncio.get_running_loop()
+
+        # 3. Schedule the execution of `run_coroutine_in_new_thread_loop` with your coroutine in the executor
+        # This will return a Future that `asyncio.gather` can await.
+        gc_future = current_loop.run_in_executor(
+            None,  # Use the default ThreadPoolExecutor
+            run_coroutine_in_new_thread_loop,
+            gc_coroutine_object  # The coroutine to execute
+        )
+        tasks.append(gc_future) # Add the Future to the list of tasks
+        LOGGER.debug("Garbage collector task submitted to run in its own thread event loop.")
 
         LOGGER.debug("Running event loop")
         await asyncio.gather(*tasks)
