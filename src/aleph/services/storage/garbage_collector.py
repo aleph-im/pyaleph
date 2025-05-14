@@ -37,7 +37,7 @@ class GarbageCollector:
             LOGGER.warning("File not pinned: %s", file_hash)
 
         # Smaller IPFS files are cached in local storage
-        LOGGER.debug("Deleting %s from local storage")
+        LOGGER.debug("Deleting %s from local storage", file_hash)
         await self._delete_from_local_storage(file_hash)
 
         LOGGER.debug("Removed from IPFS: %s", file_hash)
