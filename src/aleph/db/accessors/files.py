@@ -29,8 +29,11 @@ def get_unpinned_files(session: DbSession) -> Iterable[StoredFileDb]:
     """
     Returns the list of files that are not pinned by a message or an on-chain transaction.
     """
-    select_pins = select(FilePinDb).where(FilePinDb.file_hash == StoredFileDb.hash)
-    select_stmt = select(StoredFileDb).where(~select_pins.exists())
+    select_stmt = (
+        select(StoredFileDb)
+        .join(FilePinDb, StoredFileDb.hash == FilePinDb.file_hash, isouter=True)
+        .where(FilePinDb.id.is_(None))
+    )
     return session.execute(select_stmt).scalars()
 
 

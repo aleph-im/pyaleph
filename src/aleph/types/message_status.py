@@ -74,8 +74,32 @@ class MessageProcessingException(Exception):
         return self.__class__.__name__
 
     def details(self) -> Optional[Dict[str, Any]]:
+        """
+        Return error details in a JSON serializable format.
+
+        Returns:
+            Dictionary with error details or None if no errors.
+        """
         errors = self.args[0]
-        return {"errors": errors} if errors else None
+
+        # Ensure errors are JSON serializable
+        if errors:
+            # Convert non-serializable objects to strings if needed
+            serializable_errors = []
+            for err in errors:
+                try:
+                    # Test if the error is JSON serializable by attempting to convert to dict
+                    # This will fail for custom objects
+                    if hasattr(err, "__dict__"):
+                        serializable_errors.append(str(err))
+                    else:
+                        serializable_errors.append(err)
+                except (TypeError, ValueError):
+                    # If conversion fails, use string representation
+                    serializable_errors.append(str(err))
+
+            return {"errors": serializable_errors}
+        return None
 
 
 class InvalidMessageException(MessageProcessingException):
@@ -272,14 +296,21 @@ class VmVolumeTooSmall(InvalidMessageException):
         self.parent_size = parent_size
 
     def details(self) -> Optional[Dict[str, Any]]:
+        """
+        Return error details in a JSON serializable format.
+
+        Returns:
+            Dictionary with error details.
+        """
+        # Ensure all values are JSON serializable
         return {
             "errors": [
                 {
-                    "volume_name": self.volume_name,
-                    "parent_ref": self.parent_ref,
-                    "parent_file": self.parent_file,
-                    "parent_size": self.parent_size,
-                    "volume_size": self.volume_size,
+                    "volume_name": str(self.volume_name),
+                    "parent_ref": str(self.parent_ref),
+                    "parent_file": str(self.parent_file),
+                    "parent_size": int(self.parent_size),
+                    "volume_size": int(self.volume_size),
                 }
             ]
         }
@@ -299,11 +330,17 @@ class ForgetTargetNotFound(RetryMessageException):
         self.aggregate_key = aggregate_key
 
     def details(self) -> Optional[Dict[str, Any]]:
+        """
+        Return error details in a JSON serializable format.
+
+        Returns:
+            Dictionary with error details.
+        """
         errors = []
         if self.target_hash is not None:
-            errors.append({"message": self.target_hash})
+            errors.append({"message": str(self.target_hash)})
         if self.aggregate_key is not None:
-            errors.append({"aggregate": self.aggregate_key})
+            errors.append({"aggregate": str(self.aggregate_key)})
 
         return {"errors": errors}
 
@@ -319,7 +356,13 @@ class CannotForgetForgetMessage(InvalidMessageException):
         self.target_hash = target_hash
 
     def details(self) -> Optional[Dict[str, Any]]:
-        return {"errors": [{"message": self.target_hash}]}
+        """
+        Return error details in a JSON serializable format.
+
+        Returns:
+            Dictionary with error details.
+        """
+        return {"errors": [{"message": str(self.target_hash)}]}
 
 
 class InsufficientBalanceException(InvalidMessageException):
@@ -338,7 +381,13 @@ class InsufficientBalanceException(InvalidMessageException):
         self.required_balance = required_balance
 
     def details(self) -> Optional[Dict[str, Any]]:
-        # Note: cast to string to keep the precision
+        """
+        Return error details in a JSON serializable format.
+
+        Returns:
+            Dictionary with error details.
+        """
+        # Note: cast to string to keep the precision and ensure it's JSON serializable
         return {
             "errors": [
                 {
