@@ -25,13 +25,11 @@ class GarbageCollector:
     async def _delete_from_ipfs(self, file_hash: ItemHash):
         ipfs_client = self.storage_service.ipfs_service.ipfs_client
         try:
-            result = await ipfs_client.pin.rm(file_hash)
-            print(result)
-
+            await ipfs_client.pin.rm(file_hash)
         except NotPinnedError:
             LOGGER.warning("File not pinned: %s", file_hash)
         except Exception as err:
-            LOGGER.error("Failed to unpin file %s: %s", file_hash, str(err))
+            LOGGER.warning("Failed to unpin file %s: %s", file_hash, str(err))
 
         # Smaller IPFS files are cached in local storage
         LOGGER.debug("Deleting %s from local storage", file_hash)
@@ -55,18 +53,21 @@ class GarbageCollector:
             LOGGER.info("Found %d files to delete", len(files_to_delete))
 
             for file_to_delete in files_to_delete:
-                file_hash = ItemHash(file_to_delete.hash)
-                LOGGER.info("Deleting %s...", file_hash)
+                try:
+                    file_hash = ItemHash(file_to_delete.hash)
+                    LOGGER.info("Deleting %s...", file_hash)
 
-                delete_file_db(session=session, file_hash=file_hash)
-                session.commit()
+                    delete_file_db(session=session, file_hash=file_hash)
+                    session.commit()
 
-                if file_hash.item_type == ItemType.ipfs:
-                    await self._delete_from_ipfs(file_hash)
-                elif file_hash.item_type == ItemType.storage:
-                    await self._delete_from_local_storage(file_hash)
+                    if file_hash.item_type == ItemType.ipfs:
+                        await self._delete_from_ipfs(file_hash)
+                    elif file_hash.item_type == ItemType.storage:
+                        await self._delete_from_local_storage(file_hash)
 
-                LOGGER.info("Deleted %s", file_hash)
+                    LOGGER.info("Deleted %s", file_hash)
+                except Exception as err:
+                    LOGGER.error("Failed to delete file %s: %s", file_hash, str(err))
 
 
 async def garbage_collector_task(
