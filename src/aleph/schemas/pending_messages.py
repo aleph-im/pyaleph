@@ -20,6 +20,7 @@ TODO: this module should reasonably be part of aleph message, if only
 import datetime as dt
 from typing import Any, Dict, Generic, Literal, Type
 
+import pydantic_core
 from aleph_message.models import (
     AggregateContent,
     Chain,
@@ -190,5 +191,5 @@ def parse_message(message_dict: Any) -> BasePendingMessage:
 
     try:
         return msg_cls(**message_dict)
-    except ValidationError as e:
+    except (ValidationError, pydantic_core.ValidationError) as e:
         raise InvalidMessageFormat(e.errors()) from e
