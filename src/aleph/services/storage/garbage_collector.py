@@ -52,7 +52,8 @@ class GarbageCollector:
             files_to_delete = list(get_unpinned_files(session))
             LOGGER.info("Found %d files to delete", len(files_to_delete))
 
-            for file_to_delete in files_to_delete:
+        for file_to_delete in files_to_delete:
+            with self.session_factory() as session:
                 try:
                     file_hash = ItemHash(file_to_delete.hash)
                     LOGGER.info("Deleting %s...", file_hash)
@@ -68,6 +69,7 @@ class GarbageCollector:
                     LOGGER.info("Deleted %s", file_hash)
                 except Exception as err:
                     LOGGER.error("Failed to delete file %s: %s", file_hash, str(err))
+                    session.rollback()
 
 
 async def garbage_collector_task(
