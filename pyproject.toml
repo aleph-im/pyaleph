@@ -62,7 +62,7 @@ dependencies = [
   "sqlalchemy[mypy]==1.4.52",
   "sqlalchemy-utils==0.41.2",
   "substrate-interface==1.7.11",
-  "types-aiofiles==24.1.0.20241221",
+  "types-aiofiles==24.1.0.20250516",
   "typing-extensions>=4.6.1",
   "ujson==5.10.0",                                                                                                         # required by aiocache
   "urllib3==2.3",
