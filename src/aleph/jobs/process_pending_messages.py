@@ -152,7 +152,9 @@ class PendingMessageProcessor(MessageJob):
     async def process_messages(
         self,
     ) -> AsyncIterator[Sequence[MessageProcessingResult]]:
-        while True:
+        no_messages_found = False
+        
+        while not no_messages_found or self._tasks or not self.queue.empty():
             # Check for completed tasks and start new ones in a non-blocking way
             done_tasks = []
             for address, task in self._tasks.items():
@@ -169,6 +171,7 @@ class PendingMessageProcessor(MessageJob):
                 del self._tasks[address]
                 LOGGER.debug(f"Task for address {address} completed and removed")
 
+            no_messages_found = True
             if len(self._tasks) < self.max_parallel:
                 with self.session_factory() as session:
                     current_running_addresses = set(self._tasks.keys())
@@ -183,6 +186,7 @@ class PendingMessageProcessor(MessageJob):
                     )
 
                     if pending_messages:
+                        no_messages_found = False
                         msg_address: str = ""
                         if pending_messages[0].content and isinstance(
                             pending_messages[0].content, dict
@@ -213,8 +217,8 @@ class PendingMessageProcessor(MessageJob):
 
                 # Yield each individual result as soon as it's available
                 yield [status]
-            else:
-                # No results ready yet, yield control to allow other tasks to run
+            elif self._tasks:
+                # No results ready yet but tasks are still running, yield control to allow other tasks to run
                 await asyncio.sleep(0.01)
 
     async def publish_to_mq(
