@@ -3,7 +3,6 @@ import datetime as dt
 import logging
 
 from aioipfs import NotPinnedError
-from aioipfs.api import RepoAPI
 from aleph_message.models import ItemHash, ItemType
 from configmanager import Config
 
@@ -26,18 +25,14 @@ class GarbageCollector:
     async def _delete_from_ipfs(self, file_hash: ItemHash):
         ipfs_client = self.storage_service.ipfs_service.ipfs_client
         try:
-            result = await ipfs_client.pin.rm(file_hash)
-            print(result)
-
-            # Launch the IPFS garbage collector (`ipfs repo gc`)
-            async for _ in RepoAPI(driver=ipfs_client).gc():
-                pass
-
+            await ipfs_client.pin.rm(file_hash)
         except NotPinnedError:
             LOGGER.warning("File not pinned: %s", file_hash)
+        except Exception as err:
+            LOGGER.warning("Failed to unpin file %s: %s", file_hash, str(err))
 
         # Smaller IPFS files are cached in local storage
-        LOGGER.debug("Deleting %s from local storage")
+        LOGGER.debug("Deleting %s from local storage", file_hash)
         await self._delete_from_local_storage(file_hash)
 
         LOGGER.debug("Removed from IPFS: %s", file_hash)
@@ -55,21 +50,26 @@ class GarbageCollector:
 
             # Delete files without pins
             files_to_delete = list(get_unpinned_files(session))
-            LOGGER.info("Found %d files to delete")
+            LOGGER.info("Found %d files to delete", len(files_to_delete))
 
-            for file_to_delete in files_to_delete:
-                file_hash = ItemHash(file_to_delete.hash)
-                LOGGER.info("Deleting %s...", file_hash)
+        for file_to_delete in files_to_delete:
+            with self.session_factory() as session:
+                try:
+                    file_hash = ItemHash(file_to_delete.hash)
+                    LOGGER.info("Deleting %s...", file_hash)
 
-                delete_file_db(session=session, file_hash=file_hash)
-                session.commit()
+                    delete_file_db(session=session, file_hash=file_hash)
+                    session.commit()
 
-                if file_hash.item_type == ItemType.ipfs:
-                    await self._delete_from_ipfs(file_hash)
-                elif file_hash.item_type == ItemType.storage:
-                    await self._delete_from_local_storage(file_hash)
+                    if file_hash.item_type == ItemType.ipfs:
+                        await self._delete_from_ipfs(file_hash)
+                    elif file_hash.item_type == ItemType.storage:
+                        await self._delete_from_local_storage(file_hash)
 
-                LOGGER.info("Deleted %s", file_hash)
+                    LOGGER.info("Deleted %s", file_hash)
+                except Exception as err:
+                    LOGGER.error("Failed to delete file %s: %s", file_hash, str(err))
+                    session.rollback()
 
 
 async def garbage_collector_task(
@@ -91,5 +91,7 @@ async def garbage_collector_task(
             LOGGER.info("Starting garbage collection...")
             await garbage_collector.collect(datetime=utc_now())
             LOGGER.info("Garbage collector ran successfully.")
-        except Exception:
-            LOGGER.exception("An unexpected error occurred during garbage collection.")
+        except Exception as err:
+            LOGGER.exception(
+                "An unexpected error occurred during garbage collection.", exc_info=err
+            )
