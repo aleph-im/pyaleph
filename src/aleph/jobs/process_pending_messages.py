@@ -153,7 +153,7 @@ class PendingMessageProcessor(MessageJob):
         self,
     ) -> AsyncIterator[Sequence[MessageProcessingResult]]:
         no_messages_found = False
-        
+
         while not no_messages_found or self._tasks or not self.queue.empty():
             # Check for completed tasks and start new ones in a non-blocking way
             done_tasks = []
