@@ -12,10 +12,7 @@ from setproctitle import setproctitle
 
 import aleph.toolkit.json as aleph_json
 from aleph.chains.signature_verifier import SignatureVerifier
-from aleph.db.accessors.pending_messages import (
-    get_next_pending_message,
-    get_next_pending_messages_by_address,
-)
+from aleph.db.accessors.pending_messages import get_next_pending_messages_by_address
 from aleph.db.connection import make_engine, make_session_factory
 from aleph.db.models.pending_messages import PendingMessageDb
 from aleph.handlers.message_handler import MessageHandler
@@ -112,7 +109,7 @@ class PendingMessageProcessor(MessageJob):
     async def process_message(
         self,
         session: DbSession,
-        pending_message: get_next_pending_message,
+        pending_message: PendingMessageDb,
         out: asyncio.Queue,
     ) -> None:
         try:
@@ -186,24 +183,26 @@ class PendingMessageProcessor(MessageJob):
                     )
 
                     if pending_messages:
-                        address = None
+                        msg_address: str = ""
                         if pending_messages[0].content and isinstance(
                             pending_messages[0].content, dict
                         ):
-                            address = pending_messages[0].content.get("address")
+                            addr = pending_messages[0].content.get("address")
+                            if isinstance(addr, str):
+                                msg_address = addr
 
-                        if address:
+                        if msg_address:
                             LOGGER.info(
-                                f"Processing address : {address} with {len(pending_messages)} messages"
+                                f"Processing address : {msg_address} with {len(pending_messages)} messages"
                             )
                             task = asyncio.create_task(
                                 self.process_message_batch(
                                     messages=pending_messages,
                                     out=self.queue,
-                                    address=address,
+                                    address=msg_address,
                                 )
                             )
-                            self._tasks[address] = task
+                            self._tasks[msg_address] = task
 
             if not self.queue.empty():
                 status = await self.queue.get()
