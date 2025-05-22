@@ -53,7 +53,7 @@ class PendingMessageProcessor(MessageJob):
         self.mq_message_exchange = mq_message_exchange
 
         # TODO: Add Config option for max_parallel
-        self.max_parallel = 10
+        self.max_parallel = 5
         self._sem = asyncio.Semaphore(self.max_parallel)
         self._tasks: Dict[str, asyncio.Task] = {}
 
@@ -135,19 +135,31 @@ class PendingMessageProcessor(MessageJob):
         self, messages: List[PendingMessageDb], out: asyncio.Queue, address: str
     ) -> None:
         try:
-            with self.session_factory() as session:
-                for message in messages:
-                    LOGGER.debug(f"Processing message: {message.item_hash}")
-                    await self.process_message(
-                        session=session,
-                        pending_message=message,
-                        out=out,
-                    )
+
+            LOGGER.info(f"Processing {len(messages)} messages for address {address} in order")
+            
+            for index, message in enumerate(messages):
+                LOGGER.debug(f"Processing message {index+1}/{len(messages)} for address {address}")
+                await self._process_single_message(message, out)
         finally:
             # Clean up the task when it's done
             if address in self._tasks:
                 del self._tasks[address]
                 LOGGER.info(f"Finished processing address: {address}")
+                
+    async def _process_single_message(
+        self, message: PendingMessageDb, out: asyncio.Queue
+    ) -> None:
+        """
+        Process a single message with proper async session handling.
+        """
+        with self.session_factory() as session:
+            LOGGER.debug(f"Processing message: {message.item_hash}")
+            await self.process_message(
+                session=session,
+                pending_message=message,
+                out=out,
+            )
 
     async def process_messages(
         self,
@@ -182,7 +194,7 @@ class PendingMessageProcessor(MessageJob):
                         fetched=True,
                         exclude_item_hashes=self.processed_hashes,
                         exclude_addresses=current_running_addresses,
-                        batch_size=100,
+                        batch_size=25,
                     )
 
                     if pending_messages:
