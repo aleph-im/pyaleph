@@ -16,7 +16,7 @@ from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.services.cost import get_total_and_detailed_costs_from_db
 from aleph.services.storage.engine import StorageEngine
 from aleph.storage import StorageService
-from aleph.toolkit.constants import STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP
+from aleph.toolkit.constants import STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
@@ -53,14 +53,14 @@ def fixture_store_message_with_cost() -> PendingMessageDb:
         signature="0xb9d164e6e43a8fcd341abc01eda47bed0333eaf480e888f2ed2ae0017048939d18850a33352e7281645e95e8673bad733499b6a8ce4069b9da9b9a79ddc1a0b31b",
         item_type=ItemType.inline,
         item_content='{"address": "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106", "time": 1665478676.6585264, "item_type": "storage", "item_hash": "c25b0525bc308797d3e35763faf5c560f2974dab802cb4a734ae4e9d1040319e", "mime_type": "text/plain"}',
-        time=timestamp_to_datetime(STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1),
+        time=timestamp_to_datetime(STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1),
         channel=Channel("TEST"),
         check_message=True,
         retries=0,
         next_attempt=dt.datetime(2023, 1, 1),
         fetched=False,
         reception_time=timestamp_to_datetime(
-            STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1
+            STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
         ),
     )
 

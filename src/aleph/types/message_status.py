@@ -14,6 +14,8 @@ class MessageStatus(str, Enum):
     PROCESSED = "processed"
     REJECTED = "rejected"
     FORGOTTEN = "forgotten"
+    REMOVING = "removing"
+    REMOVED = "removed"
 
 
 class MessageProcessingStatus(str, Enum):
@@ -54,6 +56,10 @@ class ErrorCode(IntEnum):
     FORGET_FORGET = 502
     FORGET_NOT_ALLOWED = 503
     FORGOTTEN_DUPLICATE = 504
+
+
+class RemovedMessageReason(str, Enum):
+    BALANCE_INSUFFICIENT = "balance_insufficient"
 
 
 class MessageProcessingException(Exception):
