@@ -28,7 +28,7 @@ from aleph_message.models import (
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from aleph.db.models import MessageDb
-from aleph.types.message_status import ErrorCode, MessageStatus
+from aleph.types.message_status import ErrorCode, MessageStatus, RemovedMessageReason
 
 MType = TypeVar("MType", bound=MessageType)
 ContentType = TypeVar("ContentType", bound=BaseContent)
@@ -82,16 +82,24 @@ class ForgetMessage(
 ): ...
 
 
-class InstanceMessage(BaseMessage[Literal[MessageType.instance], InstanceContent]): ...  # type: ignore
+class InstanceMessage(
+    BaseMessage[Literal[MessageType.instance], InstanceContent]  # type: ignore
+): ...
 
 
-class PostMessage(BaseMessage[Literal[MessageType.post], PostContent]): ...  # type: ignore
+class PostMessage(
+    BaseMessage[Literal[MessageType.post], PostContent]  # type: ignore
+): ...
 
 
-class ProgramMessage(BaseMessage[Literal[MessageType.program], ProgramContent]): ...  # type: ignore
+class ProgramMessage(
+    BaseMessage[Literal[MessageType.program], ProgramContent]  # type: ignore
+): ...
 
 
-class StoreMessage(BaseMessage[Literal[MessageType.store], StoreContent]): ...  # type: ignore
+class StoreMessage(
+    BaseMessage[Literal[MessageType.store], StoreContent]  # type: ignore
+): ...
 
 
 MESSAGE_CLS_DICT: Dict[
@@ -179,6 +187,22 @@ class ProcessedMessageStatus(BaseMessageStatus):
     message: AlephMessage
 
 
+class RemovingMessageStatus(BaseMessageStatus):
+    model_config = ConfigDict(from_attributes=True)
+
+    status: MessageStatus = MessageStatus.REMOVING
+    message: AlephMessage
+    reason: RemovedMessageReason
+
+
+class RemovedMessageStatus(BaseMessageStatus):
+    model_config = ConfigDict(from_attributes=True)
+
+    status: MessageStatus = MessageStatus.REMOVED
+    message: AlephMessage
+    reason: RemovedMessageReason
+
+
 class ForgottenMessage(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -218,6 +242,8 @@ MessageWithStatus = Union[
     ProcessedMessageStatus,
     ForgottenMessageStatus,
     RejectedMessageStatus,
+    RemovingMessageStatus,
+    RemovedMessageStatus,
 ]
 
 
