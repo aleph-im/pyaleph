@@ -34,7 +34,7 @@ def upgrade() -> None:
 
     op.execute(
         """
-        INSERT INTO cron_jobs(id, interval, last_run) VALUES ('balance', 6, '2025-01-01 00:00:00')
+        INSERT INTO cron_jobs(id, interval, last_run) VALUES ('balance', 3600, '2025-01-01 00:00:00')
         """
     )
 

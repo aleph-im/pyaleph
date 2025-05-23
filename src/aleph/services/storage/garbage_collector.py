@@ -139,15 +139,6 @@ class GarbageCollector:
 
                     delete_file_db(session=session, file_hash=file_hash)
 
-                    # session.execute(
-                    #     make_message_status_upsert_query(
-                    #         item_hash=item_hash,
-                    #         new_status=MessageStatus.REMOVED,
-                    #         reception_time=now,
-                    #         where=(MessageStatusDb.status == MessageStatus.REMOVING),
-                    #     )
-                    # )
-
                     if file_hash.item_type == ItemType.ipfs:
                         await self._delete_from_ipfs(file_hash)
                     elif file_hash.item_type == ItemType.storage:

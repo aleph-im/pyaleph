@@ -40,8 +40,8 @@ def get_defaults():
                 },
                 "cron": {
                     # Interval between cron job trackers runs, expressed in hours.
-                    # "period": 2,
-                    "period": 0.002,  # 10 seconds
+                    "period": 0.5,  # 30 mins
+                    # "period": 0.002,  # 10 seconds
                 },
             },
             "cache": {
