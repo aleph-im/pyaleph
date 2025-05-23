@@ -12,8 +12,8 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
 )
-from sqlalchemy_utils.types.choice import ChoiceType
 from sqlalchemy.sql import func
+from sqlalchemy_utils.types.choice import ChoiceType
 
 from .base import Base
 
@@ -28,7 +28,12 @@ class AlephBalanceDb(Base):
     dapp: Optional[str] = Column(String, nullable=True)
     eth_height: int = Column(Integer, nullable=False)
     balance: Decimal = Column(DECIMAL, nullable=False)
-    last_update: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    last_update: dt.datetime = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
 
     __table_args__ = (
         UniqueConstraint(

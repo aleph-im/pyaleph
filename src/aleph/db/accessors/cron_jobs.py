@@ -2,7 +2,6 @@ import datetime as dt
 from typing import List, Optional
 
 from sqlalchemy import delete, select, update
-from sqlalchemy.dialects.postgresql import insert
 
 from aleph.db.models.cron_jobs import CronJobDb
 from aleph.types.db_session import DbSession
@@ -21,11 +20,7 @@ def get_cron_job(session: DbSession, id: str) -> Optional[CronJobDb]:
 
 
 def update_cron_job(session: DbSession, id: str, last_run: dt.datetime) -> None:
-    update_stmt = (
-        update(CronJobDb)
-        .values(last_run=last_run)
-        .where(CronJobDb.id == id)
-    )
+    update_stmt = update(CronJobDb).values(last_run=last_run).where(CronJobDb.id == id)
 
     session.execute(update_stmt)
 

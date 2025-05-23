@@ -40,12 +40,14 @@ from aleph.schemas.api.messages import (
     PostMessage,
     ProcessedMessageStatus,
     RejectedMessageStatus,
+    RemovedMessageStatus,
+    RemovingMessageStatus,
     format_message,
     format_message_dict,
 )
 from aleph.toolkit.shield import shielded
 from aleph.types.db_session import DbSession, DbSessionFactory
-from aleph.types.message_status import MessageStatus
+from aleph.types.message_status import MessageStatus, RemovedMessageReason
 from aleph.types.sort_order import SortBy, SortOrder
 from aleph.web.controllers.app_state_getters import (
     get_config_from_request,
@@ -563,6 +565,36 @@ def _get_message_with_status(
             error_code=rejected_message_db.error_code,
             details=rejected_message_db.details,
             message=rejected_message_db.message,
+        )
+
+    if status == MessageStatus.REMOVING:
+        message_db = get_message_by_item_hash(
+            session=session, item_hash=ItemHash(item_hash)
+        )
+        if not message_db:
+            raise web.HTTPNotFound()
+
+        message = format_message(message_db)
+        return RemovingMessageStatus(
+            item_hash=item_hash,
+            reception_time=reception_time,
+            message=message,
+            reason=RemovedMessageReason.BALANCE_INSUFFICIENT,
+        )
+
+    if status == MessageStatus.REMOVED:
+        message_db = get_message_by_item_hash(
+            session=session, item_hash=ItemHash(item_hash)
+        )
+        if not message_db:
+            raise web.HTTPNotFound()
+
+        message = format_message(message_db)
+        return RemovedMessageStatus(
+            item_hash=item_hash,
+            reception_time=reception_time,
+            message=message,
+            reason=RemovedMessageReason.BALANCE_INSUFFICIENT,
         )
 
     raise NotImplementedError(f"Unknown message status: {status}")

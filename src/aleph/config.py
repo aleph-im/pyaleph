@@ -39,9 +39,9 @@ def get_defaults():
                     "max_concurrency": 20,
                 },
                 "cron": {
-                    # Interval between cron job watcher runs, expressed in hours.
+                    # Interval between cron job trackers runs, expressed in hours.
                     # "period": 2,
-                    "period": 0.002, # 10 seconds
+                    "period": 0.002,  # 10 seconds
                 },
             },
             "cache": {

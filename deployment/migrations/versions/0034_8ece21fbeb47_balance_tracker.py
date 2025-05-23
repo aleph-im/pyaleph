@@ -19,12 +19,14 @@ depends_on = None
 
 def upgrade() -> None:
     op.add_column(
-        "balances", sa.Column("last_update", sa.TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+        "balances", sa.Column("last_update", sa.TIMESTAMP(
+            timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
     )
 
     op.create_table(
         "cron_jobs",
         sa.Column("id", sa.String(), nullable=False),
+        # Interval is specified in seconds
         sa.Column("interval", sa.Integer(), nullable=False, default=24),
         sa.Column("last_run", sa.TIMESTAMP(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id"),

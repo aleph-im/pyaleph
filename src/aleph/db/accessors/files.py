@@ -1,5 +1,5 @@
 import datetime as dt
-from typing import Collection, Iterable, Optional, Tuple
+from typing import Collection, Iterable, Optional, Tuple, Union
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -120,6 +120,28 @@ def insert_grace_period_file_pin(
         delete_by=delete_by,
     )
     session.execute(insert_stmt)
+
+
+def upsert_grace_period_file_pin(
+    session: DbSession,
+    file_hash: str,
+    created: dt.datetime,
+    delete_by: Union[dt.datetime, None],
+) -> None:
+    insert_stmt = insert(GracePeriodFilePinDb).values(
+        file_hash=file_hash,
+        created=created,
+        type=FilePinType.GRACE_PERIOD,
+        delete_by=delete_by,
+    )
+    upsert_stmt = insert_stmt.on_conflict_do_update(
+        constraint="file_pins_item_hash_type_key",
+        set_={
+            "created": created,
+            "delete_by": delete_by,
+        },
+    )
+    session.execute(upsert_stmt)
 
 
 def delete_grace_period_file_pins(session: DbSession, datetime: dt.datetime) -> None:

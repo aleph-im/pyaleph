@@ -25,15 +25,21 @@ class CronJob:
         self.session_factory = session_factory
         self.jobs = jobs
 
-    async def __run_job(self, session: DbSession, cron_job: BaseCronJob, now: dt.datetime, job: CronJobDb):
+    async def __run_job(
+        self,
+        session: DbSession,
+        cron_job: BaseCronJob,
+        now: dt.datetime,
+        job: CronJobDb,
+    ):
         try:
             LOGGER.info(f"Starting '{job.id}' cron job check...")
             await cron_job.run(now, job)
 
             update_cron_job(session, job.id, now)
-            
+
             LOGGER.info(f"'{job.id}' cron job ran successfully.")
-            
+
         except Exception:
             LOGGER.exception(
                 f"An unexpected error occurred during '{job.id}' cron job execution."
@@ -45,12 +51,12 @@ class CronJob:
             jobs_to_run: List[Coroutine] = []
 
             for job in jobs:
-                interval = dt.timedelta(milliseconds=job.interval)
+                interval = dt.timedelta(seconds=job.interval)
                 run_datetime = job.last_run + interval
 
                 if now >= run_datetime:
                     cron_job = self.jobs.get(job.id)
-                    
+
                     if cron_job:
                         jobs_to_run.append(self.__run_job(session, cron_job, now, job))
                         LOGGER.info(
@@ -69,7 +75,7 @@ async def cron_job_task(config: Config, cron_job: CronJob) -> None:
     # messages that could pin files.
     LOGGER.info("Warming up cron job runner")
     # await asyncio.sleep(60)
-    
+
     while True:
         try:
             now = utc_now()
