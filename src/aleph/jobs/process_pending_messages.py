@@ -12,8 +12,16 @@ from setproctitle import setproctitle
 
 import aleph.toolkit.json as aleph_json
 from aleph.chains.signature_verifier import SignatureVerifier
-from aleph.db.accessors.pending_messages import get_next_pending_messages_by_address
-from aleph.db.connection import make_engine, make_session_factory
+from aleph.db.accessors.pending_messages import (
+    get_next_pending_messages_by_address,
+    async_get_next_pending_messages_by_address,
+)
+from aleph.db.connection import (
+    make_engine,
+    make_session_factory,
+    make_async_engine,
+    make_async_session_factory,
+)
 from aleph.db.models.pending_messages import PendingMessageDb
 from aleph.handlers.message_handler import MessageHandler
 from aleph.services.cache.node_cache import NodeCache
@@ -23,7 +31,7 @@ from aleph.storage import StorageService
 from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
 from aleph.toolkit.timestamp import utc_now
-from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.db_session import DbSession, DbSessionFactory, AsyncDbSessionFactory
 from aleph.types.message_processing_result import MessageProcessingResult
 
 from ..types.message_status import MessageOrigin
@@ -36,6 +44,7 @@ class PendingMessageProcessor(MessageJob):
     def __init__(
         self,
         session_factory: DbSessionFactory,
+        async_session_factory: AsyncDbSessionFactory,
         message_handler: MessageHandler,
         max_retries: int,
         mq_conn: aio_pika.abc.AbstractConnection,
@@ -51,6 +60,7 @@ class PendingMessageProcessor(MessageJob):
 
         self.mq_conn = mq_conn
         self.mq_message_exchange = mq_message_exchange
+        self.async_session_factory = async_session_factory
 
         # TODO: Add Config option for max_parallel
         self.max_parallel = 5
@@ -64,6 +74,7 @@ class PendingMessageProcessor(MessageJob):
     async def new(
         cls,
         session_factory: DbSessionFactory,
+        async_session_factory: AsyncDbSessionFactory,
         message_handler: MessageHandler,
         max_retries: int,
         mq_host: str,
@@ -96,6 +107,7 @@ class PendingMessageProcessor(MessageJob):
 
         return cls(
             session_factory=session_factory,
+            async_session_factory=async_session_factory,
             message_handler=message_handler,
             max_retries=max_retries,
             mq_conn=mq_conn,
@@ -258,6 +270,9 @@ async def fetch_and_process_messages_task(config: Config):
     engine = make_engine(config=config, application_name="aleph-process")
     session_factory = make_session_factory(engine)
 
+    async_engine = make_async_engine(config=config, application_name="aleph-process")
+    async_session_factory = make_async_session_factory(async_engine)
+
     async with (
         NodeCache(
             redis_host=config.redis.host.value, redis_port=config.redis.port.value
@@ -277,6 +292,7 @@ async def fetch_and_process_messages_task(config: Config):
         )
         pending_message_processor = await PendingMessageProcessor.new(
             session_factory=session_factory,
+            async_session_factory=async_session_factory,
             message_handler=message_handler,
             max_retries=config.aleph.jobs.pending_messages.max_retries.value,
             mq_host=config.p2p.mq_host.value,
