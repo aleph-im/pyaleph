@@ -13,14 +13,14 @@ from setproctitle import setproctitle
 import aleph.toolkit.json as aleph_json
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.pending_messages import (
-    get_next_pending_messages_by_address,
     async_get_next_pending_messages_by_address,
+    get_next_pending_messages_by_address,
 )
 from aleph.db.connection import (
-    make_engine,
-    make_session_factory,
     make_async_engine,
     make_async_session_factory,
+    make_engine,
+    make_session_factory,
 )
 from aleph.db.models.pending_messages import PendingMessageDb
 from aleph.handlers.message_handler import MessageHandler
@@ -31,7 +31,7 @@ from aleph.storage import StorageService
 from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
 from aleph.toolkit.timestamp import utc_now
-from aleph.types.db_session import DbSession, DbSessionFactory, AsyncDbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory, DbSession, DbSessionFactory
 from aleph.types.message_processing_result import MessageProcessingResult
 
 from ..types.message_status import MessageOrigin, RetryMessageException

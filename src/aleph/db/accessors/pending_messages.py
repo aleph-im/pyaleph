@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import Update
 
 from aleph.db.models import ChainTxDb, PendingMessageDb
-from aleph.types.db_session import DbSession, AsyncDbSession
+from aleph.types.db_session import AsyncDbSession, DbSession
 
 
 def get_next_pending_message(
