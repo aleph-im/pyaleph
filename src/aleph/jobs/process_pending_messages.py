@@ -201,20 +201,6 @@ class PendingMessageProcessor(MessageJob):
     async def process_messages(
         self,
     ) -> AsyncIterator[Sequence[MessageProcessingResult]]:
-        no_messages_found = False
-
-        while not no_messages_found or self._tasks or not self.queue.empty():
-            # Check for completed tasks and start new ones in a non-blocking way
-            done_tasks = []
-            for address, task in self._tasks.items():
-                if task.done():
-                    # Handle exceptions without blocking
-                    if task.exception():
-                        LOGGER.error(
-                            f"Error processing messages for address {address}: {task.exception()}"
-                        )
-                    done_tasks.append(address)
-
         while True:
             if len(self._tasks) < self.max_parallel:
                 async with self.async_session_factory() as session:
@@ -229,7 +215,6 @@ class PendingMessageProcessor(MessageJob):
                     )
 
                     if pending_messages:
-                        no_messages_found = False
                         msg_address: str = ""
                         if pending_messages[0].content and isinstance(
                             pending_messages[0].content, dict
