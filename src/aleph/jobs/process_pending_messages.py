@@ -190,17 +190,11 @@ class PendingMessageProcessor(MessageJob):
                         )
                     done_tasks.append(address)
 
-            # Remove completed tasks
-            for address in done_tasks:
-                del self._tasks[address]
-                LOGGER.debug(f"Task for address {address} completed and removed")
-
-            no_messages_found = True
+        while True:
             if len(self._tasks) < self.max_parallel:
-                with self.session_factory() as session:
+                async with self.async_session_factory() as session:
                     current_running_addresses = set(self._tasks.keys())
-
-                    pending_messages = get_next_pending_messages_by_address(
+                    pending_messages = await async_get_next_pending_messages_by_address(
                         session=session,
                         current_time=utc_now(),
                         fetched=True,
