@@ -123,6 +123,7 @@ class PendingMessageProcessor(MessageJob):
         session: DbSession,
         pending_message: PendingMessageDb,
         out: asyncio.Queue,
+        address: str,
     ) -> None:
         try:
             # Track this hash as being processed
@@ -148,30 +149,45 @@ class PendingMessageProcessor(MessageJob):
     ) -> None:
         try:
 
-            LOGGER.info(f"Processing {len(messages)} messages for address {address} in order")
-            
+            LOGGER.info(
+                f"Processing {len(messages)} messages for address {address} in order"
+            )
+
             for index, message in enumerate(messages):
-                LOGGER.debug(f"Processing message {index+1}/{len(messages)} for address {address}")
-                await self._process_single_message(message, out)
-        finally:
-            # Clean up the task when it's done
-            if address in self._tasks:
-                del self._tasks[address]
-                LOGGER.info(f"Finished processing address: {address}")
-                
+                LOGGER.info(
+                    f"Processing message {index+1}/{len(messages)} for address {address}"
+                )
+                await self._process_single_message(message, out, address)
+        except Exception as e:
+            LOGGER.error(f"Failed process {address}")
+
+        del self._tasks[address]
+
     async def _process_single_message(
-        self, message: PendingMessageDb, out: asyncio.Queue
+        self, message: PendingMessageDb, out: asyncio.Queue, address: str
     ) -> None:
         """
         Process a single message with proper async session handling.
         """
         with self.session_factory() as session:
-            LOGGER.debug(f"Processing message: {message.item_hash}")
+            LOGGER.info(f"Processing message: {message.item_hash}")
             await self.process_message(
-                session=session,
-                pending_message=message,
-                out=out,
+                session=session, pending_message=message, out=out, address=address
             )
+
+    async def fetch_pending_messages_async(
+        self, session, processed_hashes, current_running_addresses
+    ):
+        pending_messages = await asyncio.to_thread(
+            get_next_pending_messages_by_address,
+            session=session,
+            current_time=utc_now(),
+            fetched=True,
+            exclude_item_hashes=processed_hashes,
+            exclude_addresses=current_running_addresses,
+            batch_size=25,
+        )
+        return pending_messages
 
     async def process_messages(
         self,
