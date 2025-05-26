@@ -34,7 +34,7 @@ from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession, DbSessionFactory, AsyncDbSessionFactory
 from aleph.types.message_processing_result import MessageProcessingResult
 
-from ..types.message_status import MessageOrigin
+from ..types.message_status import MessageOrigin, RetryMessageException
 from .job_utils import MessageJob, prepare_loop
 
 LOGGER = getLogger(__name__)
@@ -142,6 +142,15 @@ class PendingMessageProcessor(MessageJob):
                 exception=e,
             )
             session.commit()
+
+            # We Check the exception type if it instances of RetryMessageException
+            # If the case we will cancel the task to avoid waiting for retry
+
+            if isinstance(e, RetryMessageException):
+                if address in self._tasks:
+                    LOGGER.info(f"Task of {address} canceled until retry is possible")
+                    raise RetryMessageException()
+
         out.put_nowait(result)
 
     async def process_message_batch(
@@ -158,7 +167,7 @@ class PendingMessageProcessor(MessageJob):
                     f"Processing message {index+1}/{len(messages)} for address {address}"
                 )
                 await self._process_single_message(message, out, address)
-        except Exception as e:
+        except Exception:
             LOGGER.error(f"Failed process {address}")
 
         del self._tasks[address]
