@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import Update
 
 from aleph.db.models import ChainTxDb, PendingMessageDb
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import DbSession, AsyncDbSession
 
 
 def get_next_pending_message(
@@ -137,6 +137,71 @@ def get_next_pending_messages_by_address(
         )
 
     return session.execute(match_stmt).scalars().all()
+
+
+async def async_get_next_pending_messages_by_address(
+    session: AsyncDbSession,
+    current_time: dt.datetime,
+    fetched: Optional[bool] = None,
+    exclude_item_hashes: Optional[Set[str]] = None,
+    exclude_addresses: Optional[Set[str]] = None,
+    batch_size: int = 100,
+) -> List[PendingMessageDb]:
+    # Step 1: Get the earliest pending message
+    base_stmt = (
+        select(PendingMessageDb)
+        .where(PendingMessageDb.next_attempt <= current_time)
+        .order_by(PendingMessageDb.next_attempt.asc())
+        .options(selectinload(PendingMessageDb.tx))
+        .limit(1)
+    )
+
+    if fetched is not None:
+        base_stmt = base_stmt.where(PendingMessageDb.fetched == fetched)
+
+    if exclude_item_hashes:
+        base_stmt = base_stmt.where(
+            PendingMessageDb.item_hash.not_in(exclude_item_hashes)
+        )
+
+    if exclude_addresses:
+        base_stmt = base_stmt.where(
+            PendingMessageDb.content["address"].astext.not_in(list(exclude_addresses))
+        )
+
+    result = await session.execute(base_stmt)
+    first_message = result.scalar_one_or_none()
+
+    if (
+        not first_message
+        or not first_message.content
+        or "address" not in first_message.content
+    ):
+        return []
+
+    address = first_message.content["address"]
+
+    # Step 2: Get a batch of messages with that same address in content
+    match_stmt = (
+        select(PendingMessageDb)
+        .where(
+            PendingMessageDb.next_attempt <= current_time,
+            PendingMessageDb.content["address"].astext == address,
+        )
+        .order_by(PendingMessageDb.next_attempt.asc())
+        .limit(batch_size)
+    )
+
+    if fetched is not None:
+        match_stmt = match_stmt.where(PendingMessageDb.fetched == fetched)
+
+    if exclude_item_hashes:
+        match_stmt = match_stmt.where(
+            PendingMessageDb.item_hash.not_in(exclude_item_hashes)
+        )
+
+    result = await session.execute(match_stmt)
+    return result.scalars().all()
 
 
 def get_pending_message(
