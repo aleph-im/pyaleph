@@ -27,7 +27,7 @@ from aleph.db.accessors.files import (
     upsert_file,
     upsert_file_tag,
 )
-from aleph.db.models import MessageDb
+from aleph.db.models import MessageDb, PendingMessageDb
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.handlers.content.content_handler import ContentHandler
@@ -205,6 +205,43 @@ class StoreMessageHandler(ContentHandler):
             file_type=FileType.DIRECTORY if is_folder else FileType.FILE,
             size=size,
         )
+
+    async def pre_check_balance(
+            self, session: DbSession, message: PendingMessageDb
+    ):
+        content = _get_store_content(message)
+        assert isinstance(content, StoreContent)
+
+        # TODO: Improve the way to retrieve that state
+        if are_store_and_program_free(message):
+            return True
+
+        # This check is essential to ensure that files are not added to the system
+        # or the current node when the configuration disables storing of files.
+        config = get_config()
+        ipfs_enabled = config.ipfs.enabled.value
+
+        current_balance = get_total_balance(session=session, address=content.address)
+        current_cost = get_total_cost_for_address(
+            session=session, address=content.address
+        )
+
+        engine = content.item_type
+        # Initially only do that balance pre-check for ipfs files.
+        if engine == ItemType.ipfs and ipfs_enabled:
+            message_cost = await self.storage_service.ipfs_service.get_ipfs_size(content.item_hash)
+        else:
+            message_cost = 0
+
+        required_balance = current_cost + message_cost
+
+        if current_balance < required_balance:
+            raise InsufficientBalanceException(
+                balance=current_balance,
+                required_balance=required_balance,
+            )
+
+        return True
 
     async def check_balance(
         self, session: DbSession, message: MessageDb

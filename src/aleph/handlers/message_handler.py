@@ -430,11 +430,16 @@ class MessageHandler(BaseMessageHandler):
                 error_code=ErrorCode.FORGOTTEN_DUPLICATE,
             )
 
+        # Before starting the real process of the message, do a balance pre-check to avoid saving un-needed files
+        # specially for IPFS service
+        pending_content_handler = self.get_content_handler(pending_message.type)
+        await pending_content_handler.pre_check_balance(session=session, message=pending_message)
+
         message = await self.verify_and_fetch(
             session=session, pending_message=pending_message
         )
 
-        content_handler = self.get_content_handler(message.type)
+        content_handler = self.get_content_handler(pending_message.type)
         await content_handler.check_dependencies(session=session, message=message)
         await content_handler.check_permissions(session=session, message=message)
         costs = await content_handler.check_balance(session=session, message=message)

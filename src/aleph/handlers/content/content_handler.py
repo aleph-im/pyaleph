@@ -1,7 +1,7 @@
 import abc
 from typing import List, Set
 
-from aleph.db.models import MessageDb
+from aleph.db.models import MessageDb, PendingMessageDb
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.permissions import check_sender_authorization
 from aleph.types.db_session import DbSession
@@ -45,6 +45,19 @@ class ContentHandler(abc.ABC):
         This function is in charge of:
         * checking permissions
         * applying DB updates.
+        """
+        pass
+
+    async def pre_check_balance(
+            self, session: DbSession, message: PendingMessageDb
+    ) -> None:
+        """
+        Checks whether the user has enough Aleph tokens before processing the message.
+
+        Raises InsufficientBalanceException if the balance of the user is too low.
+
+        :param session: DB session.
+        :param message: Pending Message being processed.
         """
         pass
 
