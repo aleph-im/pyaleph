@@ -238,6 +238,9 @@ class StoreMessageHandler(ContentHandler):
                 if storage_mib and storage_mib <= (
                     MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE / MiB
                 ):
+                    LOGGER.debug(
+                        f"Cost for {message.item_hash} supposed to be free as size is {storage_mib}"
+                    )
                     return True
 
                 computable_content_data = {
