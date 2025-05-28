@@ -233,6 +233,13 @@ class StoreMessageHandler(ContentHandler):
             )
             if ipfs_byte_size:
                 storage_mib = Decimal(ipfs_byte_size / MiB)
+
+                # Allow users to pin small files
+                if storage_mib and storage_mib <= (
+                    MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE / MiB
+                ):
+                    return True
+
                 computable_content_data = {
                     **content.model_dump(),
                     "estimated_size_mib": int(storage_mib),
