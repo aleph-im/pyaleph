@@ -207,17 +207,16 @@ class StoreMessageHandler(ContentHandler):
         )
 
     async def pre_check_balance(
-            self, session: DbSession, message: PendingMessageDb
+            self, session: DbSession, message: MessageDb
     ):
         content = _get_store_content(message)
         assert isinstance(content, StoreContent)
 
-        # TODO: Improve the way to retrieve that state
         if are_store_and_program_free(message):
             return True
 
         # This check is essential to ensure that files are not added to the system
-        # or the current node when the configuration disables storing of files.
+        # on the current node when the configuration disables storing of files.
         config = get_config()
         ipfs_enabled = config.ipfs.enabled.value
 
