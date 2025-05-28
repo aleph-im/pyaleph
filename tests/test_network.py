@@ -121,7 +121,5 @@ async def test_incoming_inline_content(
         fetched=True,
     )
 
-    message = await message_handler.verify_message(
-        pending_message=pending_message
-    )
+    message = await message_handler.verify_message(pending_message=pending_message)
     assert message is not None

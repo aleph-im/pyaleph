@@ -8,11 +8,11 @@ TODO:
 import asyncio
 import datetime as dt
 import logging
+from decimal import Decimal
 from typing import List, Optional, Set
 
 import aioipfs
 from aleph_message.models import ItemHash, ItemType, StoreContent
-from decimal import Decimal
 
 from aleph.config import get_config
 from aleph.db.accessors.balances import get_total_balance
@@ -28,10 +28,11 @@ from aleph.db.accessors.files import (
     upsert_file,
     upsert_file_tag,
 )
-from aleph.db.models import MessageDb, PendingMessageDb
+from aleph.db.models import MessageDb
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.handlers.content.content_handler import ContentHandler
+from aleph.schemas.cost_estimation_messages import CostEstimationStoreContent
 from aleph.services.cost import calculate_storage_size, get_total_and_detailed_costs
 from aleph.storage import StorageService
 from aleph.toolkit.constants import MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE, MiB
@@ -207,9 +208,7 @@ class StoreMessageHandler(ContentHandler):
             size=size,
         )
 
-    async def pre_check_balance(
-            self, session: DbSession, message: MessageDb
-    ):
+    async def pre_check_balance(self, session: DbSession, message: MessageDb):
         content = _get_store_content(message)
         assert isinstance(content, StoreContent)
 
@@ -229,15 +228,23 @@ class StoreMessageHandler(ContentHandler):
         engine = content.item_type
         # Initially only do that balance pre-check for ipfs files.
         if engine == ItemType.ipfs and ipfs_enabled:
-            ipfs_byte_size = await self.storage_service.ipfs_service.get_ipfs_size(content.item_hash)
-            storage_mib = Decimal(ipfs_byte_size / MiB)
-            message.content.estimated_size_mib = int(storage_mib)
-
-            message_cost, _ = get_total_and_detailed_costs(
-                session, content, message.item_hash
+            ipfs_byte_size = await self.storage_service.ipfs_service.get_ipfs_size(
+                content.item_hash
             )
+            if ipfs_byte_size:
+                storage_mib = Decimal(ipfs_byte_size / MiB)
+                computable_content = CostEstimationStoreContent.model_validate(
+                    **message.content
+                )
+                computable_content.estimated_size_mib = int(storage_mib)
+
+                message_cost, _ = get_total_and_detailed_costs(
+                    session, computable_content, message.item_hash
+                )
+            else:
+                message_cost = Decimal(0)
         else:
-            message_cost = 0
+            message_cost = Decimal(0)
 
         required_balance = current_cost + message_cost
 

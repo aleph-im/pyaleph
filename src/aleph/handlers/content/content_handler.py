@@ -1,7 +1,7 @@
 import abc
 from typing import List, Set
 
-from aleph.db.models import MessageDb, PendingMessageDb
+from aleph.db.models import MessageDb
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.permissions import check_sender_authorization
 from aleph.types.db_session import DbSession
@@ -48,9 +48,7 @@ class ContentHandler(abc.ABC):
         """
         pass
 
-    async def pre_check_balance(
-            self, session: DbSession, message: PendingMessageDb
-    ) -> None:
+    async def pre_check_balance(self, session: DbSession, message: MessageDb) -> None:
         """
         Checks whether the user has enough Aleph tokens before processing the message.
 

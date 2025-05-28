@@ -376,9 +376,7 @@ class MessageHandler(BaseMessageHandler):
             insert_stmt = make_costs_upsert_query(costs)
             session.execute(insert_stmt)
 
-    async def verify_message(
-        self, pending_message: PendingMessageDb
-    ) -> MessageDb:
+    async def verify_message(self, pending_message: PendingMessageDb) -> MessageDb:
         await self.verify_signature(pending_message=pending_message)
         validated_message = await self.fetch_pending_message(
             pending_message=pending_message
@@ -431,9 +429,7 @@ class MessageHandler(BaseMessageHandler):
             )
 
         # First check the message content and verify it
-        message = await self.verify_message(
-            pending_message=pending_message
-        )
+        message = await self.verify_message(pending_message=pending_message)
 
         # Do a balance pre-check to avoid saving related data
         content_handler = self.get_content_handler(message.type)
