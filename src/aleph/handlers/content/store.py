@@ -233,10 +233,13 @@ class StoreMessageHandler(ContentHandler):
             )
             if ipfs_byte_size:
                 storage_mib = Decimal(ipfs_byte_size / MiB)
+                computable_content_data = {
+                    **content.model_dump(),
+                    "estimated_size_mib": int(storage_mib),
+                }
                 computable_content = CostEstimationStoreContent.model_validate(
-                    **message.content
+                    computable_content_data
                 )
-                computable_content.estimated_size_mib = int(storage_mib)
 
                 message_cost, _ = get_total_and_detailed_costs(
                     session, computable_content, message.item_hash
