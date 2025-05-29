@@ -213,7 +213,7 @@ class StoreMessageHandler(ContentHandler):
         assert isinstance(content, StoreContent)
 
         if are_store_and_program_free(message):
-            return True
+            return None
 
         # This check is essential to ensure that files are not added to the system
         # on the current node when the configuration disables storing of files.
@@ -241,7 +241,7 @@ class StoreMessageHandler(ContentHandler):
                     LOGGER.debug(
                         f"Cost for {message.item_hash} supposed to be free as size is {storage_mib}"
                     )
-                    return True
+                    return None
 
                 computable_content_data = {
                     **content.model_dump(),
@@ -267,7 +267,7 @@ class StoreMessageHandler(ContentHandler):
                 required_balance=required_balance,
             )
 
-        return True
+        return None
 
     async def check_balance(
         self, session: DbSession, message: MessageDb
