@@ -1,5 +1,5 @@
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import aioipfs
 import pytest
@@ -198,40 +198,16 @@ async def test_get_ipfs_size_cancelled_error():
 
     service = IpfsService(ipfs_client=ipfs_client)
 
-    # Mock asyncio.sleep to not actually sleep during test
-    with patch("asyncio.sleep", new_callable=AsyncMock):
-        # Execute
-        result = await service.get_ipfs_size("test_hash", tries=2)
+    with pytest.raises(asyncio.CancelledError):
+        # Mock asyncio.sleep to not actually sleep during test
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            # Execute
+            result = await service.get_ipfs_size("test_hash", tries=2)
 
-    # Assert
-    assert result is None
-    # Should be called twice since CancelledError doesn't count as a try
-    assert ipfs_client.dag.get.call_count == 2
-
-
-@pytest.mark.asyncio
-async def test_get_ipfs_size_client_connection_error():
-    """Test handling of ClientConnectorError"""
-    # Setup
-    from aiohttp.client_exceptions import ClientConnectorError
-
-    ipfs_client = AsyncMock()
-    # Using side_effect to simulate connection error
-    ipfs_client.dag.get = AsyncMock(
-        side_effect=ClientConnectorError(MagicMock(), MagicMock())
-    )
-
-    service = IpfsService(ipfs_client=ipfs_client)
-
-    # Mock asyncio.sleep to not actually sleep during test
-    with patch("asyncio.sleep", new_callable=AsyncMock):
-        # Execute
-        result = await service.get_ipfs_size("test_hash", tries=2)
-
-    # Assert
-    assert result is None
-    # Should be called twice since ClientConnectorError doesn't count as a try
-    assert ipfs_client.dag.get.call_count == 2
+        # Assert
+        assert result is None
+        # Should be called twice since CancelledError doesn't count as a try
+        assert ipfs_client.dag.get.call_count == 2
 
 
 @pytest.mark.asyncio

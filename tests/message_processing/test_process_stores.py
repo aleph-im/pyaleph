@@ -11,7 +11,6 @@ from configmanager import Config
 from aleph.db.accessors.files import get_message_file_pin
 from aleph.db.accessors.messages import get_message_by_item_hash
 from aleph.db.models import AlephBalanceDb, MessageDb, MessageStatusDb, PendingMessageDb
-from aleph.db.models.account_costs import AccountCostsDb
 from aleph.handlers.content.store import StoreMessageHandler
 from aleph.handlers.message_handler import MessageHandler
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
@@ -49,6 +48,28 @@ def fixture_store_message() -> PendingMessageDb:
 
 
 @pytest.fixture()
+def fixture_ipfs_store_message() -> PendingMessageDb:
+    return PendingMessageDb(
+        item_hash="af2e19894099d954f3d1fa274547f62484bc2d93964658547deecc70316acc72",
+        type=MessageType.store,
+        chain=Chain.ETH,
+        sender="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
+        signature="0xb9d164e6e43a8fcd341abc01eda47bed0333eaf480e888f2ed2ae0017048939d18850a33352e7281645e95e8673bad733499b6a8ce4069b9da9b9a79ddc1a0b31b",
+        item_type=ItemType.inline,
+        item_content='{"address": "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106", "time": 1665478676.6585264, "item_type": "ipfs", "item_hash": "QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ", "mime_type": "text/plain"}',
+        time=timestamp_to_datetime(STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1),
+        channel=Channel("TEST"),
+        check_message=True,
+        retries=0,
+        next_attempt=dt.datetime(2023, 1, 1),
+        fetched=False,
+        reception_time=timestamp_to_datetime(
+            STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1
+        ),
+    )
+
+
+@pytest.fixture()
 def fixture_store_message_with_cost() -> PendingMessageDb:
     return PendingMessageDb(
         item_hash="af2e19894099d954f3d1fa274547f62484bc2d93964658547deecc70316acc72",
@@ -74,10 +95,10 @@ def fixture_store_message_with_cost() -> PendingMessageDb:
 def create_message_db(mocker):
     def _create_message(
         item_hash="test-hash",
-        address="0xABCD1234",
+        address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
         time=STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1,
         item_type=ItemType.ipfs,
-        item_content_hash="ipfs-content-hash",
+        item_content_hash="QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ",
     ):
         content = StoreContent(
             address=address,
@@ -343,11 +364,14 @@ async def test_pre_check_balance_free_store_message(
     with session_factory() as session:
         # Create a message with timestamp before the deadline
         message = mocker.MagicMock(spec=MessageDb)
+        message.time = timestamp_to_datetime(
+            STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP - 1
+        )
         content = StoreContent(
-            address="0xABCD1234",
+            address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
             time=STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP - 1,
             item_type=ItemType.ipfs,
-            item_hash="ipfs-content-hash",
+            item_hash="QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ",
         )
         message.parsed_content = content
 
@@ -382,11 +406,14 @@ async def test_pre_check_balance_small_ipfs_file(mocker, session_factory, mock_c
 
     with session_factory() as session:
         message = mocker.MagicMock(spec=MessageDb)
+        message.time = timestamp_to_datetime(
+            STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1
+        )
         content = StoreContent(
-            address="0xABCD1234",
+            address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
             time=STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1,
             item_type=ItemType.ipfs,
-            item_hash="ipfs-content-hash",
+            item_hash="QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ",
         )
         message.parsed_content = content
 
@@ -395,7 +422,9 @@ async def test_pre_check_balance_small_ipfs_file(mocker, session_factory, mock_c
         assert result is None
 
         # Verify that get_ipfs_size was called with correct hash
-        ipfs_service.get_ipfs_size.assert_called_once_with("ipfs-content-hash")
+        ipfs_service.get_ipfs_size.assert_called_once_with(
+            "QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ"
+        )
 
 
 @pytest.mark.asyncio
@@ -425,11 +454,14 @@ async def test_pre_check_balance_large_ipfs_file_insufficient_balance(
 
     with session_factory() as session:
         message = mocker.MagicMock(spec=MessageDb)
+        message.time = timestamp_to_datetime(
+            STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1
+        )
         content = StoreContent(
-            address="0xABCD1234",
+            address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
             time=STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1,
             item_type=ItemType.ipfs,
-            item_hash="ipfs-content-hash",
+            item_hash="QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ",
         )
         message.parsed_content = content
 
@@ -442,7 +474,9 @@ async def test_pre_check_balance_large_ipfs_file_insufficient_balance(
         assert exc_info.value.required_balance > Decimal(0)
 
         # Verify that get_ipfs_size was called with correct hash
-        ipfs_service.get_ipfs_size.assert_called_once_with("ipfs-content-hash")
+        ipfs_service.get_ipfs_size.assert_called_once_with(
+            "QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ"
+        )
 
 
 @pytest.mark.asyncio
@@ -472,13 +506,16 @@ async def test_pre_check_balance_large_ipfs_file_sufficient_balance(
 
     with session_factory() as session:
         # Create a message with a large file
-        address = "0xABCD1234"
+        address = "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106"
         message = mocker.MagicMock(spec=MessageDb)
+        message.time = timestamp_to_datetime(
+            STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1
+        )
         content = StoreContent(
             address=address,
             time=STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1,
             item_type=ItemType.ipfs,
-            item_hash="ipfs-content-hash",
+            item_hash="QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ",
         )
         message.parsed_content = content
 
@@ -498,7 +535,9 @@ async def test_pre_check_balance_large_ipfs_file_sufficient_balance(
         assert result is None
 
         # Verify that get_ipfs_size was called with correct hash
-        ipfs_service.get_ipfs_size.assert_called_once_with("ipfs-content-hash")
+        ipfs_service.get_ipfs_size.assert_called_once_with(
+            "QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ"
+        )
 
 
 @pytest.mark.asyncio
@@ -521,11 +560,14 @@ async def test_pre_check_balance_non_ipfs_file(mocker, session_factory, mock_con
     with session_factory() as session:
         # Create a message with a non-IPFS file type
         message = mocker.MagicMock(spec=MessageDb)
+        message.time = timestamp_to_datetime(
+            STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1
+        )
         content = StoreContent(
-            address="0xABCD1234",
+            address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
             time=STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1,
             item_type=ItemType.storage,  # Not IPFS
-            item_hash="storage-content-hash",
+            item_hash="af2e19894099d954f3d1fa274547f62484bc2d93964658547deecc70316acc72",
         )
         message.parsed_content = content
 
@@ -564,11 +606,14 @@ async def test_pre_check_balance_ipfs_disabled(mocker, session_factory):
     with patch("aleph.handlers.content.store.get_config", return_value=mock_config):
         with session_factory() as session:
             message = mocker.MagicMock(spec=MessageDb)
+            message.time = timestamp_to_datetime(
+                STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1
+            )
             content = StoreContent(
-                address="0xABCD1234",
+                address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
                 time=STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1,
                 item_type=ItemType.ipfs,
-                item_hash="ipfs-content-hash",
+                item_hash="QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ",
             )
             message.parsed_content = content
 
@@ -599,11 +644,14 @@ async def test_pre_check_balance_ipfs_size_none(mocker, session_factory, mock_co
 
     with session_factory() as session:
         message = mocker.MagicMock(spec=MessageDb)
+        message.time = timestamp_to_datetime(
+            STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1
+        )
         content = StoreContent(
-            address="0xABCD1234",
+            address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
             time=STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1,
             item_type=ItemType.ipfs,
-            item_hash="ipfs-content-hash",
+            item_hash="QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ",
         )
         message.parsed_content = content
 
@@ -612,22 +660,30 @@ async def test_pre_check_balance_ipfs_size_none(mocker, session_factory, mock_co
         assert result is None
 
         # Verify that get_ipfs_size was called with correct hash
-        ipfs_service.get_ipfs_size.assert_called_once_with("ipfs-content-hash")
+        ipfs_service.get_ipfs_size.assert_called_once_with(
+            "QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ"
+        )
 
 
 @pytest.mark.asyncio
 async def test_pre_check_balance_with_existing_costs(
     mocker,
-    session_factory,
-    mock_config,
+    mock_config: Config,
+    session_factory: DbSessionFactory,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
+    fixture_ipfs_store_message: PendingMessageDb,
 ):
     """Test that existing costs for an address are considered."""
+    small_file_size = int(MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE)  # max free size
+    small_file_content = b"X" * small_file_size  # 25 MiB
     large_file_size = int(MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 2)  # 2x max free size
 
     ipfs_service = mocker.AsyncMock()
-    ipfs_service.get_ipfs_size = AsyncMock(return_value=large_file_size)
+    ipfs_service.get_ipfs_size = AsyncMock(return_value=small_file_size)
+    ipfs_service.ipfs_client.files.stat = AsyncMock(
+        return_value={"Type": "file", "Size": len(small_file_content)}
+    )
 
     storage_service = StorageService(
         storage_engine=mocker.AsyncMock(),
@@ -642,28 +698,20 @@ async def test_pre_check_balance_with_existing_costs(
 
     with session_factory() as session:
         # Create a message with a large file
-        address = "0xABCD1234"
+        address = "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106"
         message = mocker.MagicMock(spec=MessageDb)
+        message.time = timestamp_to_datetime(
+            STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1
+        )
         content = StoreContent(
             address=address,
             time=STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1,
             item_type=ItemType.ipfs,
-            item_hash="ipfs-content-hash",
+            item_hash="QmacDVDroxPVY1enhckVco1rTBziwC8hjf731apEKr3QoG",
         )
         message.parsed_content = content
-        message.item_hash = "test-message-hash"
-
-        # Add some existing costs for the address
-        session.add(
-            AccountCostsDb(
-                address=address,
-                message_type=MessageType.store,
-                cost=Decimal("10.0"),
-                file_size=1024,
-                volume_size=0,
-                vm_cost=Decimal("0"),
-                message_hash="previous-message-hash",
-            )
+        message.item_hash = (
+            "e70e5e5d3f080393c6274180f49b649980fda63215a0d1492e728b5472f9405e"
         )
 
         # Add balance that's enough for the new file but not for both
@@ -677,13 +725,37 @@ async def test_pre_check_balance_with_existing_costs(
         )
         session.commit()
 
-        # Should fail the balance check
-        with pytest.raises(InsufficientBalanceException) as exc_info:
-            await store_handler.pre_check_balance(session, message)
+        # Disable signature verification
+        signature_verifier = mocker.AsyncMock()
+        message_handler = MessageHandler(
+            signature_verifier=signature_verifier,
+            storage_service=storage_service,
+            config=mock_config,
+        )
 
-        # Verify exception contains correct balance information
-        assert exc_info.value.balance == Decimal("15.0")
-        assert exc_info.value.required_balance > Decimal("15.0")
+        # Patch the get_hash_content function to return our expected result and be able to process the message
+        with patch(
+            "aleph.storage.StorageService.get_hash_content",
+            return_value=small_file_content,
+        ):
 
-        # Verify that get_ipfs_size was called with correct hash
-        ipfs_service.get_ipfs_size.assert_called_once_with("ipfs-content-hash")
+            # Process first message to add existing costs
+            await message_handler.process(
+                session=session, pending_message=fixture_ipfs_store_message
+            )
+            session.commit()
+
+            ipfs_service.get_ipfs_size = AsyncMock(return_value=large_file_size)
+
+            # Should fail the balance check
+            with pytest.raises(InsufficientBalanceException) as exc_info:
+                await store_handler.pre_check_balance(session, message)
+
+            # Verify exception contains correct balance information
+            assert exc_info.value.balance == Decimal("15.0")
+            assert exc_info.value.required_balance > Decimal("15.0")
+
+            # Verify that get_ipfs_size was called with correct hash
+            ipfs_service.get_ipfs_size.assert_called_once_with(
+                "QmacDVDroxPVY1enhckVco1rTBziwC8hjf731apEKr3QoG"
+            )

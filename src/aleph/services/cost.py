@@ -299,7 +299,10 @@ def _get_execution_volumes_costs(
         )
 
     elif isinstance(content, (ProgramContent, CostEstimationProgramContent)):
-        if content.code.estimated_size_mib:
+        if (
+            isinstance(content, CostEstimationProgramContent)
+            and content.code.estimated_size_mib
+        ):
             volumes.append(
                 SizedVolume(
                     CostType.EXECUTION_PROGRAM_VOLUME_CODE,
@@ -316,7 +319,10 @@ def _get_execution_volumes_costs(
                 )
             )
 
-        if content.runtime.estimated_size_mib:
+        if (
+            isinstance(content, CostEstimationProgramContent)
+            and content.runtime.estimated_size_mib
+        ):
             volumes.append(
                 SizedVolume(
                     CostType.EXECUTION_PROGRAM_VOLUME_RUNTIME,
@@ -334,22 +340,26 @@ def _get_execution_volumes_costs(
             )
 
         if content.data:
-            if content.data.estimated_size_mib:
-                volumes.append(
-                    SizedVolume(
-                        CostType.EXECUTION_PROGRAM_VOLUME_DATA,
-                        Decimal(content.data.estimated_size_mib),
-                        content.data.ref,
+            if (
+                isinstance(content, CostEstimationProgramContent)
+                and content.data.estimated_size_mib
+            ):
+                if content.data.estimated_size_mib:
+                    volumes.append(
+                        SizedVolume(
+                            CostType.EXECUTION_PROGRAM_VOLUME_DATA,
+                            Decimal(content.data.estimated_size_mib),
+                            content.data.ref,
+                        )
                     )
-                )
-            else:
-                volumes.append(
-                    RefVolume(
-                        CostType.EXECUTION_PROGRAM_VOLUME_DATA,
-                        content.data.ref,
-                        content.data.use_latest,
-                    ),
-                )
+                else:
+                    volumes.append(
+                        RefVolume(
+                            CostType.EXECUTION_PROGRAM_VOLUME_DATA,
+                            content.data.ref,
+                            content.data.use_latest,
+                        ),
+                    )
 
     for i, volume in enumerate(content.volumes):
         # NOTE: There are legacy volumes with no "mount" property set
@@ -361,7 +371,10 @@ def _get_execution_volumes_costs(
                 f"{name_prefix}:{volume.mount or CostType.EXECUTION_VOLUME_INMUTABLE}"
             )
 
-            if volume.estimated_size_mib:
+            if (
+                isinstance(volume, CostEstimationImmutableVolume)
+                and volume.estimated_size_mib
+            ):
                 volumes.append(
                     SizedVolume(
                         CostType.EXECUTION_VOLUME_INMUTABLE,
