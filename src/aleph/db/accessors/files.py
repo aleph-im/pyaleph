@@ -8,6 +8,7 @@ from sqlalchemy.engine import Row
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag, FileType
 from aleph.types.sort_order import SortOrder
+from aleph.utils import make_file_tag
 
 from ..models.files import (
     ContentFilePinDb,
@@ -112,9 +113,15 @@ def insert_grace_period_file_pin(
     file_hash: str,
     created: dt.datetime,
     delete_by: dt.datetime,
+    item_hash: Optional[str] = None,
+    owner: Optional[str] = None,
+    ref: Optional[str] = None,
 ) -> None:
     insert_stmt = insert(GracePeriodFilePinDb).values(
+        item_hash=item_hash,
         file_hash=file_hash,
+        owner=owner,
+        ref=ref,
         created=created,
         type=FilePinType.GRACE_PERIOD,
         delete_by=delete_by,
@@ -122,26 +129,74 @@ def insert_grace_period_file_pin(
     session.execute(insert_stmt)
 
 
-def upsert_grace_period_file_pin(
+# TODO: Improve performance
+def update_file_pin_grace_period(
     session: DbSession,
-    file_hash: str,
-    created: dt.datetime,
+    item_hash: str,
     delete_by: Union[dt.datetime, None],
 ) -> None:
-    insert_stmt = insert(GracePeriodFilePinDb).values(
-        file_hash=file_hash,
-        created=created,
-        type=FilePinType.GRACE_PERIOD,
-        delete_by=delete_by,
+    if delete_by is None:
+        delete_stmt = (
+            delete(GracePeriodFilePinDb)
+            .where(GracePeriodFilePinDb.item_hash == item_hash)
+            .returning(
+                GracePeriodFilePinDb.file_hash,
+                GracePeriodFilePinDb.owner,
+                GracePeriodFilePinDb.ref,
+                GracePeriodFilePinDb.created,
+            )
+        )
+
+        grace_period = session.execute(delete_stmt).first()
+        if grace_period is None:
+            return
+
+        file_hash, owner, ref, created = grace_period
+
+        insert_message_file_pin(
+            session=session,
+            item_hash=item_hash,
+            file_hash=file_hash,
+            owner=owner,
+            ref=ref,
+            created=created,
+        )
+    else:
+        delete_stmt = (
+            delete(MessageFilePinDb)
+            .where(MessageFilePinDb.item_hash == item_hash)
+            .returning(
+                MessageFilePinDb.file_hash,
+                MessageFilePinDb.owner,
+                MessageFilePinDb.ref,
+                MessageFilePinDb.created,
+            )
+        )
+
+        message_pin = session.execute(delete_stmt).first()
+        if message_pin is None:
+            return
+
+        file_hash, owner, ref, created = message_pin
+
+        insert_grace_period_file_pin(
+            session=session,
+            item_hash=item_hash,
+            file_hash=file_hash,
+            owner=owner,
+            ref=ref,
+            created=created,
+            delete_by=delete_by,
+        )
+
+    refresh_file_tag(
+        session=session,
+        tag=make_file_tag(
+            owner=owner,
+            ref=ref,
+            item_hash=item_hash,
+        ),
     )
-    upsert_stmt = insert_stmt.on_conflict_do_update(
-        constraint="file_pins_item_hash_type_key",
-        set_={
-            "created": created,
-            "delete_by": delete_by,
-        },
-    )
-    session.execute(upsert_stmt)
 
 
 def delete_grace_period_file_pins(session: DbSession, datetime: dt.datetime) -> None:
@@ -233,6 +288,10 @@ def delete_file(session: DbSession, file_hash: str) -> None:
 def get_file_tag(session: DbSession, tag: FileTag) -> Optional[FileTagDb]:
     select_stmt = select(FileTagDb).where(FileTagDb.tag == tag)
     return session.execute(select_stmt).scalar()
+
+
+def file_pin_exists(session: DbSession, item_hash: str) -> bool:
+    return FilePinDb.exists(session=session, where=FilePinDb.item_hash == item_hash)
 
 
 def file_tag_exists(session: DbSession, tag: FileTag) -> bool:

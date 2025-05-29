@@ -9,7 +9,7 @@ import asyncio
 import datetime as dt
 import logging
 from decimal import Decimal
-from typing import List, Optional, Set
+from typing import List, Set
 
 import aioipfs
 from aleph_message.models import ItemHash, ItemType, StoreContent
@@ -39,7 +39,7 @@ from aleph.toolkit.constants import MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE, MiB
 from aleph.toolkit.costs import are_store_and_program_free
 from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.db_session import DbSession
-from aleph.types.files import FileTag, FileType
+from aleph.types.files import FileType
 from aleph.types.message_status import (
     FileUnavailable,
     InsufficientBalanceException,
@@ -48,7 +48,7 @@ from aleph.types.message_status import (
     StoreCannotUpdateStoreWithRef,
     StoreRefNotFound,
 )
-from aleph.utils import item_type_from_hash
+from aleph.utils import item_type_from_hash, make_file_tag
 
 LOGGER = logging.getLogger(__name__)
 
@@ -60,36 +60,6 @@ def _get_store_content(message: MessageDb) -> StoreContent:
             f"Unexpected content type for store message: {message.item_hash}"
         )
     return content
-
-
-def make_file_tag(owner: str, ref: Optional[str], item_hash: str) -> FileTag:
-    """
-    Builds the file tag corresponding to a STORE message.
-
-    The file tag can be set to two different values:
-    * if the `ref` field is not set, the tag will be set to <item_hash>.
-    * if the `ref` field is set, two cases: if `ref` is an item hash, the tag is
-      the value of the ref field. If it is a user-defined value, the tag is
-      <owner>/<ref>.
-
-    :param owner: Owner of the file.
-    :param ref: Value of the `ref` field of the message content.
-    :param item_hash: Item hash of the message.
-    :return: The computed file tag.
-    """
-
-    # When the user does not specify a ref, we use the item hash.
-    if ref is None:
-        return FileTag(item_hash)
-
-    # If ref is an item hash, return it as is
-    try:
-        _item_hash = ItemHash(ref)
-        return FileTag(ref)
-    except ValueError:
-        pass
-
-    return FileTag(f"{owner}/{ref}")
 
 
 class StoreMessageHandler(ContentHandler):

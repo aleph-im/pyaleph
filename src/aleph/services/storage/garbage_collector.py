@@ -5,19 +5,20 @@ import logging
 from aioipfs import NotPinnedError
 from aleph_message.models import ItemHash, ItemType, MessageType
 from configmanager import Config
-from sqlalchemy import select
 
+from aleph.db.accessors.cost import delete_costs_for_forgotten_and_deleted_messages
 from aleph.db.accessors.files import delete_file as delete_file_db
 from aleph.db.accessors.files import (
     delete_grace_period_file_pins,
+    file_pin_exists,
     get_unpinned_files,
-    is_pinned_file,
 )
 from aleph.db.accessors.messages import (
     get_matching_hashes,
+    get_one_message_by_item_hash,
     make_message_status_upsert_query,
 )
-from aleph.db.models.messages import MessageDb, MessageStatusDb
+from aleph.db.models.messages import MessageStatusDb
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSessionFactory
@@ -80,20 +81,15 @@ class GarbageCollector:
                 try:
                     # For STORE messages, check if the file is still pinned
                     # We need to get message details to check its type
-                    message = session.execute(
-                        select(MessageDb).where(MessageDb.item_hash == item_hash)
-                    ).scalar_one_or_none()
+                    message = get_one_message_by_item_hash(
+                        session=session, item_hash=item_hash
+                    )
 
                     resources_deleted = True
 
-                    if (
-                        message
-                        and message.type == MessageType.store
-                        and "item_hash" in message.content
-                    ):
-                        file_hash = message.content["item_hash"]
-                        # Check if the file is still pinned
-                        if is_pinned_file(session=session, file_hash=file_hash):
+                    if message and message.type == MessageType.store:
+                        # Check if the file is still pinned (by item_hash cause there could be other messages pinning the same file_hash)
+                        if file_pin_exists(session=session, item_hash=item_hash):
                             resources_deleted = False
 
                     # If all resources have been deleted, update status to REMOVED
@@ -109,15 +105,15 @@ class GarbageCollector:
                                 ),
                             )
                         )
-                        LOGGER.info(
-                            "Updated message %s from REMOVING to REMOVED", item_hash
-                        )
+
                 except Exception as err:
                     LOGGER.error(
                         "Failed to check or update message status %s: %s",
                         item_hash,
                         str(err),
                     )
+
+            delete_costs_for_forgotten_and_deleted_messages(session=session)
 
             session.commit()
 

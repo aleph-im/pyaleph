@@ -179,6 +179,8 @@ class ForgetMessageHandler(ContentHandler):
 
         if message_status.status == MessageStatus.REJECTED:
             logger.info("Message %s was rejected, nothing to do.", item_hash)
+        if message_status.status == MessageStatus.REMOVED:
+            logger.info("Message %s was removed, nothing to do.", item_hash)
         if message_status.status == MessageStatus.FORGOTTEN:
             logger.info("Message %s is already forgotten, nothing to do.", item_hash)
             append_to_forgotten_by(

@@ -10,10 +10,10 @@ from aleph.db.models.account_costs import AccountCostsDb
 from aleph.db.models.balances import AlephBalanceDb
 from aleph.db.models.chains import ChainTxDb
 from aleph.db.models.cron_jobs import CronJobDb
-from aleph.db.models.files import FilePinDb, GracePeriodFilePinDb, StoredFileDb
+from aleph.db.models.files import FilePinDb, FilePinType, GracePeriodFilePinDb, MessageFilePinDb, StoredFileDb
 from aleph.db.models.messages import MessageDb, MessageStatusDb
 from aleph.jobs.cron.balance_job import BalanceCronJob
-from aleph.toolkit.constants import STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT
+from aleph.toolkit.constants import STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT, MiB
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.cost import CostType
@@ -57,7 +57,7 @@ def create_store_message(
     sender,
     file_hash,
     now,
-    size=30 * 1024 * 1024,
+    size=30 * MiB,
     status=MessageStatus.PROCESSED,
 ):
     """Create a store message with associated file and status."""
@@ -87,13 +87,23 @@ def create_store_message(
         type=FileType.FILE,
     )
 
-    file_pin = FilePinDb(
-        file_hash=file_hash,
-        type="MESSAGE",
-        item_hash=item_hash,
-        owner=sender,
-        created=now,
-    )
+    if status == MessageStatus.PROCESSED:
+        file_pin = MessageFilePinDb(
+            item_hash=item_hash,
+            file_hash=file_hash,
+            type=FilePinType.MESSAGE,
+            owner=sender,
+            created=now,
+        )
+    elif status == MessageStatus.REMOVING:
+        file_pin = GracePeriodFilePinDb(
+            item_hash=item_hash,
+            file_hash=file_hash,
+            type=FilePinType.GRACE_PERIOD,
+            owner=sender,
+            created=now,
+            delete_by=now + dt.timedelta(hours=24),
+        )
 
     message_status = MessageStatusDb(
         item_hash=item_hash,
@@ -131,19 +141,6 @@ def add_chain_confirmation(message, height, now):
     )
     message.confirmations = [chain_confirm]
     return message
-
-
-def create_grace_period_pin(file_hash, now, delete_by=None):
-    """Create a grace period file pin."""
-    if delete_by is None:
-        delete_by = now + dt.timedelta(hours=24)
-
-    return GracePeriodFilePinDb(
-        file_hash=file_hash,
-        type="GRACE_PERIOD",
-        created=now,
-        delete_by=delete_by,
-    )
 
 
 @pytest_asyncio.fixture
@@ -194,7 +191,6 @@ async def fixture_message_for_removal(session_factory, now, fixture_base_data):
     return {
         "wallet_address": wallet_address,
         "message_hash": message_hash,
-        "file_hash": file_hash,
     }
 
 
@@ -234,7 +230,6 @@ async def fixture_message_below_cutoff(session_factory, now, fixture_base_data):
     return {
         "wallet_address": wallet_address,
         "message_hash": message_hash,
-        "file_hash": file_hash,
     }
 
 
@@ -275,22 +270,18 @@ async def fixture_message_for_recovery(session_factory, now, fixture_base_data):
         message, STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT + 2000, now
     )
 
-    # Add grace period pin that should be cleared during recovery
-    grace_period_pin = create_grace_period_pin(file_hash, now)
-
     with session_factory() as session:
         session.add_all([message])
         session.commit()
 
         session.add_all(
-            [wallet, file, file_pin, message_status, message_cost, grace_period_pin]
+            [wallet, file, file_pin, message_status, message_cost]
         )
         session.commit()
 
     return {
         "wallet_address": wallet_address,
         "message_hash": message_hash,
-        "file_hash": file_hash,
     }
 
 
@@ -318,7 +309,7 @@ async def test_balance_job_marks_messages_for_removal(
         # Check if a grace period was added to the file pin
         grace_period_pins = (
             session.query(GracePeriodFilePinDb)
-            .filter_by(file_hash=fixture_message_for_removal["file_hash"])
+            .filter_by(item_hash=fixture_message_for_removal["message_hash"])
             .all()
         )
 
@@ -356,7 +347,7 @@ async def test_balance_job_ignores_messages_below_cutoff_height(
         # Check no grace period was added
         grace_period_pins = (
             session.query(GracePeriodFilePinDb)
-            .filter_by(file_hash=fixture_message_below_cutoff["file_hash"])
+            .filter_by(item_hash=fixture_message_below_cutoff["message_hash"])
             .all()
         )
 
@@ -386,9 +377,8 @@ async def test_balance_job_recovers_messages_with_sufficient_balance(
         # Check grace period was updated to null (no deletion date)
         grace_period_pins = (
             session.query(GracePeriodFilePinDb)
-            .filter_by(file_hash=fixture_message_for_recovery["file_hash"])
+            .filter_by(item_hash=fixture_message_for_recovery["message_hash"])
             .all()
         )
 
-        assert len(grace_period_pins) == 1
-        assert grace_period_pins[0].delete_by is None
+        assert len(grace_period_pins) == 0

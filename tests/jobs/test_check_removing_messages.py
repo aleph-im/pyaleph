@@ -3,7 +3,7 @@ import pytest_asyncio
 from aleph_message.models import Chain, ItemType, MessageType
 
 from aleph.db.accessors.messages import get_message_status
-from aleph.db.models.files import MessageFilePinDb, StoredFileDb
+from aleph.db.models.files import FilePinType, MessageFilePinDb, StoredFileDb
 from aleph.db.models.messages import MessageDb, MessageStatusDb
 from aleph.services.storage.garbage_collector import GarbageCollector
 from aleph.storage import StorageService
@@ -88,13 +88,15 @@ async def fixture_removing_messages(session_factory: DbSessionFactory):
         hash=pinned_file_hash,
         size=2000,
         type=FileType.FILE,
-        pins=[
-            MessageFilePinDb(
-                created=now,
-                owner="0xowner1",
-                item_hash="other_message_hash",
-            )
-        ],
+    )
+
+    # Create a separate pin for the file
+    pinned_file_pin = MessageFilePinDb(
+        item_hash=pinned_message_hash,
+        file_hash=pinned_file_hash,
+        type=FilePinType.MESSAGE,
+        created=now,
+        owner="0xowner1",
     )
 
     # Message status with REMOVING
@@ -112,6 +114,7 @@ async def fixture_removing_messages(session_factory: DbSessionFactory):
                 store_message_status,
                 pinned_message,
                 pinned_file,
+                pinned_file_pin,
                 pinned_message_status,
             ]
         )

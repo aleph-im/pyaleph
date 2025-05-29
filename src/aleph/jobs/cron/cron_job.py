@@ -73,8 +73,8 @@ async def cron_job_task(config: Config, cron_job: CronJob) -> None:
 
     # Start by waiting, this gives the node time to start up and process potential pending
     # messages that could pin files.
-    LOGGER.info("Warming up cron job runner")
-    # await asyncio.sleep(60)
+    LOGGER.info("Warming up cron job runner... next run: %s.", utc_now() + interval)
+    await asyncio.sleep(interval.total_seconds())
 
     while True:
         try:

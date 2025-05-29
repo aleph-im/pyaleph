@@ -2,14 +2,16 @@ from decimal import Decimal
 from typing import Iterable, List, Optional
 
 from aleph_message.models import PaymentType
-from sqlalchemy import asc, func, select
+from sqlalchemy import asc, delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.sql import Insert
 
 from aleph.db.models import ChainTxDb, message_confirmations
 from aleph.db.models.account_costs import AccountCostsDb
+from aleph.db.models.messages import MessageStatusDb
 from aleph.toolkit.costs import format_cost
 from aleph.types.db_session import DbSession
+from aleph.types.message_status import MessageStatus
 
 
 def get_total_cost_for_address(
@@ -94,3 +96,21 @@ def make_costs_upsert_query(costs: List[AccountCostsDb]) -> Insert:
             "cost_stream": upsert_stmt.excluded.cost_stream,
         },
     )
+
+
+def delete_costs_for_message(session: DbSession, item_hash: str) -> None:
+    delete_stmt = delete(AccountCostsDb).where(AccountCostsDb.item_hash == item_hash)
+    session.execute(delete_stmt)
+
+
+def delete_costs_for_forgotten_and_deleted_messages(session: DbSession) -> None:
+    delete_stmt = (
+        delete(AccountCostsDb)
+        .where(AccountCostsDb.item_hash == MessageStatusDb.item_hash)
+        .where(
+            (MessageStatusDb.status == MessageStatus.FORGOTTEN)
+            | (MessageStatusDb.status == MessageStatus.REMOVED)
+        )
+        .execution_options(synchronize_session=False)
+    )
+    session.execute(delete_stmt)

@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.sql import Select
 
 from aleph.db.models import AlephBalanceDb
+from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession
 
 
@@ -141,6 +142,8 @@ def update_balances(
     table from the temporary one.
     """
 
+    last_update = utc_now()
+
     session.execute(
         "CREATE TEMPORARY TABLE temp_balances AS SELECT * FROM balances WITH NO DATA"  # type: ignore[arg-type]
     )
@@ -152,21 +155,21 @@ def update_balances(
     csv_balances = StringIO(
         "\n".join(
             [
-                f"{address};{chain.value};{dapp or ''};{balance};{eth_height}"
+                f"{address};{chain.value};{dapp or ''};{balance};{eth_height};{last_update}"
                 for address, balance in balances.items()
             ]
         )
     )
     cursor.copy_expert(
-        "COPY temp_balances(address, chain, dapp, balance, eth_height) FROM STDIN WITH CSV DELIMITER ';'",
+        "COPY temp_balances(address, chain, dapp, balance, eth_height, last_update) FROM STDIN WITH CSV DELIMITER ';'",
         csv_balances,
     )
     session.execute(
         """
-        INSERT INTO balances(address, chain, dapp, balance, eth_height)
-            (SELECT address, chain, dapp, balance, eth_height FROM temp_balances)
+        INSERT INTO balances(address, chain, dapp, balance, eth_height, last_update)
+            (SELECT address, chain, dapp, balance, eth_height, last_update FROM temp_balances)
             ON CONFLICT ON CONSTRAINT balances_address_chain_dapp_uindex DO UPDATE
-            SET balance = excluded.balance, eth_height = excluded.eth_height
+            SET balance = excluded.balance, eth_height = excluded.eth_height, last_update = (CASE WHEN excluded.balance <> balances.balance THEN excluded.last_update ELSE balances.last_update END)
             WHERE excluded.eth_height > balances.eth_height
         """  # type: ignore[arg-type]
     )
@@ -177,8 +180,10 @@ def update_balances(
     session.execute("DROP TABLE temp_balances")  # type: ignore[arg-type]
 
 
-def get_updated_balances(session: DbSession, last_update: dt.datetime):
-    select_stmt = select(AlephBalanceDb.address, AlephBalanceDb.balance).filter(
-        AlephBalanceDb.last_update >= last_update
+def get_updated_balance_accounts(session: DbSession, last_update: dt.datetime):
+    select_stmt = (
+        select(AlephBalanceDb.address)
+        .where(AlephBalanceDb.last_update >= last_update)
+        .distinct()
     )
-    return (session.execute(select_stmt)).all()
+    return (session.execute(select_stmt)).scalars().all()

@@ -4,17 +4,23 @@ from typing import List
 
 from aleph_message.models import MessageType, PaymentType
 
-from aleph.db.accessors.balances import get_updated_balances
+from aleph.db.accessors.balances import get_total_balance, get_updated_balance_accounts
 from aleph.db.accessors.cost import get_total_costs_for_address_grouped_by_message
-from aleph.db.accessors.files import upsert_grace_period_file_pin
+from aleph.db.accessors.files import update_file_pin_grace_period
 from aleph.db.accessors.messages import (
     get_message_by_item_hash,
+    get_message_status,
     make_message_status_upsert_query,
 )
 from aleph.db.models.cron_jobs import CronJobDb
 from aleph.db.models.messages import MessageStatusDb
 from aleph.jobs.cron.cron_job import BaseCronJob
-from aleph.toolkit.constants import STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT
+from aleph.services.cost import calculate_storage_size
+from aleph.toolkit.constants import (
+    MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+    STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT,
+    MiB,
+)
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_status import MessageStatus
@@ -28,35 +34,46 @@ class BalanceCronJob(BaseCronJob):
 
     async def run(self, now: dt.datetime, job: CronJobDb):
         with self.session_factory() as session:
-            balances = get_updated_balances(session, job.last_run)
+            accounts = get_updated_balance_accounts(session, job.last_run)
 
-            LOGGER.info(f"Checking '{len(balances)}' updated balances...")
+            LOGGER.info(f"Checking '{len(accounts)}' updated account balances...")
 
-            for address, balance in balances:
+            for address in accounts:
+                remaining_balance = get_total_balance(session, address)
+
                 to_delete = []
                 to_recover = []
 
                 hold_costs = get_total_costs_for_address_grouped_by_message(
                     session, address, PaymentType.hold
                 )
-                remaining_balance = balance
 
                 for item_hash, height, cost, _ in hold_costs:
+                    status = get_message_status(session, item_hash)
+
                     LOGGER.info(
                         f"Checking {item_hash} message, with height {height} and cost {cost}"
                     )
 
-                    if remaining_balance < cost:
+                    should_remove = remaining_balance < cost and (
+                        height is not None
+                        and height >= STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT
+                    )
+                    remaining_balance = max(0, remaining_balance - cost)
+
+                    status = get_message_status(session, item_hash)
+                    if status is None:
+                        continue
+
+                    if should_remove:
                         if (
-                            height is not None
-                            and height >= STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT
+                            status.status != MessageStatus.REMOVING
+                            and status.status != MessageStatus.REMOVED
                         ):
-                            # Check if it is STORE message and the size is greater than 25 MiB
                             to_delete.append(item_hash)
                     else:
-                        to_recover.append(item_hash)
-
-                    remaining_balance = max(0, remaining_balance - cost)
+                        if status.status == MessageStatus.REMOVING:
+                            to_recover.append(item_hash)
 
                 if len(to_delete) > 0:
                     LOGGER.info(
@@ -76,48 +93,56 @@ class BalanceCronJob(BaseCronJob):
         for item_hash in messages:
             message = get_message_by_item_hash(session, item_hash)
 
-            if message is not None:
-                now = utc_now()
-                delete_by = now + dt.timedelta(hours=24 + 1)
+            if message is None:
+                continue
 
-                if message.type == MessageType.store:
-                    upsert_grace_period_file_pin(
-                        session=session,
-                        file_hash=message.parsed_content.item_hash,
-                        created=now,
-                        delete_by=delete_by,
-                    )
-
-                session.execute(
-                    make_message_status_upsert_query(
-                        item_hash=item_hash,
-                        new_status=MessageStatus.REMOVING,
-                        reception_time=now,
-                        where=(MessageStatusDb.status == MessageStatus.PROCESSED),
-                    )
+            if message.type == MessageType.store:
+                storage_size_mib = calculate_storage_size(
+                    session, message.parsed_content
                 )
+
+                if storage_size_mib and storage_size_mib <= (
+                    MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE / MiB
+                ):
+                    continue
+
+            now = utc_now()
+            delete_by = now + dt.timedelta(hours=24 + 1)
+
+            if message.type == MessageType.store:
+                update_file_pin_grace_period(
+                    session=session,
+                    item_hash=item_hash,
+                    delete_by=delete_by,
+                )
+
+            session.execute(
+                make_message_status_upsert_query(
+                    item_hash=item_hash,
+                    new_status=MessageStatus.REMOVING,
+                    reception_time=now,
+                    where=(MessageStatusDb.status == MessageStatus.PROCESSED),
+                )
+            )
 
     async def recover_messages(self, session: DbSession, messages: List[str]):
         for item_hash in messages:
             message = get_message_by_item_hash(session, item_hash)
+            if message is None:
+                continue
 
-            if message is not None:
-                now = utc_now()
-                delete_by = None
-
-                if message.type == MessageType.store:
-                    upsert_grace_period_file_pin(
-                        session=session,
-                        file_hash=message.parsed_content.item_hash,
-                        created=now,
-                        delete_by=delete_by,
-                    )
-
-                session.execute(
-                    make_message_status_upsert_query(
-                        item_hash=item_hash,
-                        new_status=MessageStatus.PROCESSED,
-                        reception_time=utc_now(),
-                        where=(MessageStatusDb.status == MessageStatus.REMOVING),
-                    )
+            if message.type == MessageType.store:
+                update_file_pin_grace_period(
+                    session=session,
+                    item_hash=item_hash,
+                    delete_by=None,
                 )
+
+            session.execute(
+                make_message_status_upsert_query(
+                    item_hash=item_hash,
+                    new_status=MessageStatus.PROCESSED,
+                    reception_time=utc_now(),
+                    where=(MessageStatusDb.status == MessageStatus.REMOVING),
+                )
+            )
