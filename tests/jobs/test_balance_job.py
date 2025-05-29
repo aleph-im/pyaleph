@@ -10,7 +10,12 @@ from aleph.db.models.account_costs import AccountCostsDb
 from aleph.db.models.balances import AlephBalanceDb
 from aleph.db.models.chains import ChainTxDb
 from aleph.db.models.cron_jobs import CronJobDb
-from aleph.db.models.files import FilePinDb, FilePinType, GracePeriodFilePinDb, MessageFilePinDb, StoredFileDb
+from aleph.db.models.files import (
+    FilePinType,
+    GracePeriodFilePinDb,
+    MessageFilePinDb,
+    StoredFileDb,
+)
 from aleph.db.models.messages import MessageDb, MessageStatusDb
 from aleph.jobs.cron.balance_job import BalanceCronJob
 from aleph.toolkit.constants import STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT, MiB
@@ -274,9 +279,7 @@ async def fixture_message_for_recovery(session_factory, now, fixture_base_data):
         session.add_all([message])
         session.commit()
 
-        session.add_all(
-            [wallet, file, file_pin, message_status, message_cost]
-        )
+        session.add_all([wallet, file, file_pin, message_status, message_cost])
         session.commit()
 
     return {

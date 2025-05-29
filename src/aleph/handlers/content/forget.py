@@ -113,10 +113,15 @@ class ForgetMessageHandler(ContentHandler):
             if target_status.status in (
                 MessageStatus.FORGOTTEN,
                 MessageStatus.REJECTED,
+                MessageStatus.REMOVED,
             ):
                 continue
 
-            if target_status.status != MessageStatus.PROCESSED:
+            # Note: Only allow to forget messages that are processed or marked for removing
+            if (
+                target_status.status != MessageStatus.PROCESSED
+                and target_status.status != MessageStatus.REMOVING
+            ):
                 raise ForgetTargetNotFound(target_hash=target_hash)
 
             target_message = get_message_by_item_hash(
@@ -190,7 +195,11 @@ class ForgetMessageHandler(ContentHandler):
             )
             return
 
-        if message_status.status != MessageStatus.PROCESSED:
+        # Note: Only allow to forget messages that are processed or marked for removing
+        if (
+            message_status.status != MessageStatus.PROCESSED
+            and message_status.status != MessageStatus.REMOVING
+        ):
             logger.error(
                 "FORGET message %s targets message %s which is not processed yet. This should not happen.",
                 forgotten_by.item_hash,
