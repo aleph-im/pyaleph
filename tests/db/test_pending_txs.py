@@ -7,7 +7,7 @@ from aleph_message.models import Chain
 from aleph.db.accessors.pending_txs import count_pending_txs, get_pending_txs
 from aleph.db.models import ChainTxDb, PendingTxDb
 from aleph.types.chain_sync import ChainSyncProtocol
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 
 @pytest.fixture
@@ -58,21 +58,21 @@ def assert_pending_txs_equal(expected: PendingTxDb, actual: PendingTxDb):
 
 @pytest.mark.asyncio
 async def test_get_pending_txs(
-    session_factory: DbSessionFactory, fixture_txs: Sequence[PendingTxDb]
+    session_factory: AsyncDbSessionFactory, fixture_txs: Sequence[PendingTxDb]
 ):
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add_all(fixture_txs)
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        pending_txs = list(get_pending_txs(session=session))
+    async with session_factory() as session:
+        pending_txs = list(await get_pending_txs(session=session))
 
     for expected_tx, actual_tx in zip(pending_txs, fixture_txs):
         assert_pending_txs_equal(expected_tx, actual_tx)
 
     # Test the limit parameter
-    with session_factory() as session:
-        pending_txs = list(get_pending_txs(session=session, limit=1))
+    async with session_factory() as session:
+        pending_txs = list(await get_pending_txs(session=session, limit=1))
 
     assert pending_txs
     assert len(pending_txs) == 1
@@ -81,13 +81,13 @@ async def test_get_pending_txs(
 
 @pytest.mark.asyncio
 async def test_count_pending_txs(
-    session_factory: DbSessionFactory, fixture_txs: Sequence[PendingTxDb]
+    session_factory: AsyncDbSessionFactory, fixture_txs: Sequence[PendingTxDb]
 ):
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add_all(fixture_txs)
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        nb_txs = count_pending_txs(session=session)
+    async with session_factory() as session:
+        nb_txs = await count_pending_txs(session=session)
 
     assert nb_txs == len(fixture_txs)

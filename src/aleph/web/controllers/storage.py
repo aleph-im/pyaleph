@@ -31,7 +31,7 @@ from aleph.toolkit.constants import (
     MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     MiB,
 )
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 from aleph.types.message_status import InvalidSignature
 from aleph.utils import item_type_from_hash, run_in_executor
 from aleph.web.controllers.app_state_getters import (
@@ -59,17 +59,17 @@ async def add_ipfs_json_controller(request: web.Request):
     grace_period = config.storage.grace_period.value
 
     data = await request.json()
-    with session_factory() as session:
+    async with session_factory() as session:
         output = {
             "status": "success",
             "hash": await storage_service.add_json(
                 session=session, value=data, engine=ItemType.ipfs
             ),
         }
-        add_grace_period_for_file(
+        await add_grace_period_for_file(
             session=session, file_hash=output["hash"], hours=grace_period
         )
-        session.commit()
+        await session.commit()
 
     return web.json_response(output)
 
@@ -82,17 +82,17 @@ async def add_storage_json_controller(request: web.Request):
     grace_period = config.storage.grace_period.value
 
     data = await request.json()
-    with session_factory() as session:
+    async with session_factory() as session:
         output = {
             "status": "success",
             "hash": await storage_service.add_json(
                 session=session, value=data, engine=ItemType.storage
             ),
         }
-        add_grace_period_for_file(
+        await add_grace_period_for_file(
             session=session, file_hash=output["hash"], hours=grace_period
         )
-        session.commit()
+        await session.commit()
 
     return web.json_response(output)
 
@@ -107,16 +107,18 @@ async def _verify_message_signature(
 
 
 async def _verify_user_balance(
-    session: DbSession, content: CostEstimationStoreContent
+    session: AsyncDbSession, content: CostEstimationStoreContent
 ) -> None:
     if content.estimated_size_mib and content.estimated_size_mib > (
         MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE / MiB
     ):
-        current_balance = get_total_balance(session=session, address=content.address)
-        current_cost = get_total_cost_for_address(
+        current_balance = await get_total_balance(
             session=session, address=content.address
         )
-        message_cost, _ = get_total_and_detailed_costs(session, content, "")
+        current_cost = await get_total_cost_for_address(
+            session=session, address=content.address
+        )
+        message_cost, _ = await get_total_and_detailed_costs(session, content, "")
 
         required_balance = current_cost + message_cost
 
@@ -217,7 +219,7 @@ class RawUploadedFile(UploadedFile):
 
 
 async def _check_and_add_file(
-    session: DbSession,
+    session: AsyncDbSession,
     signature_verifier: SignatureVerifier,
     storage_service: StorageService,
     message: Optional[PendingStoreMessage],
@@ -271,7 +273,7 @@ async def _check_and_add_file(
 
     # For files uploaded without authenticated upload, add a grace period of 1 day.
     if message_content is None:
-        add_grace_period_for_file(
+        await add_grace_period_for_file(
             session=session, file_hash=file_hash, hours=grace_period
         )
     return file_hash
@@ -350,7 +352,7 @@ async def storage_add_file(request: web.Request):
             message = None
             sync = False
 
-        with session_factory() as session:
+        async with session_factory() as session:
             file_hash = await _check_and_add_file(
                 session=session,
                 signature_verifier=signature_verifier,
@@ -359,7 +361,7 @@ async def storage_add_file(request: web.Request):
                 uploaded_file=uploaded_file,
                 grace_period=grace_period,
             )
-            session.commit()
+            await session.commit()
         if message:
             broadcast_status = await broadcast_and_process_message(
                 pending_message=message, sync=sync, request=request, logger=logger
@@ -374,12 +376,12 @@ async def storage_add_file(request: web.Request):
             await uploaded_file.cleanup()
 
 
-def assert_file_is_downloadable(session: DbSession, file_hash: str) -> None:
+async def assert_file_is_downloadable(session: AsyncDbSession, file_hash: str) -> None:
     """
     Check if the file is on the aleph.im network and can be downloaded from the API.
     This filters out requests for files outside the network / nonexistent files.
     """
-    file_metadata = get_file(session=session, file_hash=file_hash)
+    file_metadata = await get_file(session=session, file_hash=file_hash)
     if not file_metadata:
         raise web.HTTPNotFound(text="Not found")
 
@@ -404,8 +406,8 @@ async def get_hash(request):
         return web.HTTPBadRequest(text="Invalid hash provided")
 
     session_factory = get_session_factory_from_request(request)
-    with session_factory() as session:
-        assert_file_is_downloadable(session=session, file_hash=item_hash)
+    async with session_factory() as session:
+        await assert_file_is_downloadable(session=session, file_hash=item_hash)
 
     storage_service = get_storage_service_from_request(request)
 
@@ -446,8 +448,8 @@ async def get_raw_hash(request):
         raise web.HTTPBadRequest(text="Invalid hash")
 
     session_factory = get_session_factory_from_request(request)
-    with session_factory() as session:
-        assert_file_is_downloadable(session=session, file_hash=item_hash)
+    async with session_factory() as session:
+        await assert_file_is_downloadable(session=session, file_hash=item_hash)
 
     storage_service = get_storage_service_from_request(request)
 
@@ -475,6 +477,6 @@ async def get_file_pins_count(request: web.Request) -> web.Response:
         raise web.HTTPBadRequest(text="No hash provided")
 
     session_factory = get_session_factory_from_request(request)
-    with session_factory() as session:
-        count = count_file_pins(session=session, file_hash=item_hash)
+    async with session_factory() as session:
+        count = await count_file_pins(session=session, file_hash=item_hash)
     return web.json_response(data=count)

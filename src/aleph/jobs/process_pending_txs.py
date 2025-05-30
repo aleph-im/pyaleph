@@ -12,7 +12,7 @@ from setproctitle import setproctitle
 
 from aleph.chains.chain_data_service import ChainDataService
 from aleph.db.accessors.pending_txs import delete_pending_tx, get_pending_txs
-from aleph.db.connection import make_engine, make_session_factory
+from aleph.db.connection import make_async_engine, make_async_session_factory
 from aleph.db.models import PendingTxDb
 from aleph.handlers.message_handler import MessagePublisher
 from aleph.services.cache.node_cache import NodeCache
@@ -24,7 +24,7 @@ from aleph.toolkit.monitoring import setup_sentry
 from aleph.toolkit.rabbitmq import make_mq_conn
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainSyncProtocol
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 from ..types.message_status import MessageOrigin
 from .job_utils import MqWatcher, make_pending_tx_queue, prepare_loop
@@ -35,7 +35,7 @@ LOGGER = logging.getLogger(__name__)
 class PendingTxProcessor(MqWatcher):
     def __init__(
         self,
-        session_factory: DbSessionFactory,
+        session_factory: AsyncDbSessionFactory,
         message_publisher: MessagePublisher,
         chain_data_service: ChainDataService,
         pending_tx_queue: aio_pika.abc.AbstractQueue,
@@ -73,9 +73,9 @@ class PendingTxProcessor(MqWatcher):
                 )
 
             # bogus or handled, we remove it.
-            with self.session_factory() as session:
-                delete_pending_tx(session=session, tx_hash=tx.hash)
-                session.commit()
+            async with self.session_factory() as session:
+                await delete_pending_tx(session=session, tx_hash=tx.hash)
+                await session.commit()
 
         else:
             LOGGER.debug("TX contains no message")
@@ -90,8 +90,8 @@ class PendingTxProcessor(MqWatcher):
         seen_offchain_hashes = set()
         seen_ids: Set[str] = set()
         LOGGER.info("handling TXs")
-        with self.session_factory() as session:
-            for pending_tx in get_pending_txs(session):
+        async with self.session_factory() as session:
+            for pending_tx in await get_pending_txs(session):
                 # TODO: remove this feature? It doesn't seem necessary.
                 if pending_tx.tx.protocol == ChainSyncProtocol.OFF_CHAIN_SYNC:
                     if pending_tx.tx.content in seen_offchain_hashes:
@@ -118,8 +118,8 @@ class PendingTxProcessor(MqWatcher):
 async def handle_txs_task(config: Config):
     max_concurrent_tasks = config.aleph.jobs.pending_txs.max_concurrency.value
 
-    engine = make_engine(config=config, application_name="aleph-txs")
-    session_factory = make_session_factory(engine)
+    async_engine = make_async_engine(config=config, application_name="aleph-txs")
+    async_session_factory = make_async_session_factory(engine=async_engine)
 
     mq_conn = await make_mq_conn(config=config)
     mq_channel = await mq_conn.channel()
@@ -142,17 +142,18 @@ async def handle_txs_task(config: Config):
             ipfs_service=ipfs_service,
             node_cache=node_cache,
         )
+
         message_publisher = MessagePublisher(
-            session_factory=session_factory,
+            session_factory=async_session_factory,
             storage_service=storage_service,
             config=config,
             pending_message_exchange=pending_message_exchange,
         )
         chain_data_service = ChainDataService(
-            session_factory=session_factory, storage_service=storage_service
+            session_factory=async_session_factory, storage_service=storage_service
         )
         pending_tx_processor = PendingTxProcessor(
-            session_factory=session_factory,
+            session_factory=async_session_factory,
             message_publisher=message_publisher,
             chain_data_service=chain_data_service,
             pending_tx_queue=pending_tx_queue,

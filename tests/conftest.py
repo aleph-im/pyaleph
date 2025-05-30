@@ -25,10 +25,15 @@ from aleph_message.models import (
 )
 from aleph_message.models.execution.volume import ImmutableVolume
 from configmanager import Config
+from sqlalchemy import text
 
 import aleph.config
 from aleph.db.accessors.files import insert_message_file_pin, upsert_file_tag
-from aleph.db.connection import make_db_url, make_engine, make_session_factory
+from aleph.db.connection import (
+    make_async_engine,
+    make_async_session_factory,
+    make_db_url,
+)
 from aleph.db.models import (
     AlephBalanceDb,
     MessageStatusDb,
@@ -49,7 +54,7 @@ from aleph.toolkit.constants import (
     SETTINGS_AGGREGATE_OWNER,
 )
 from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.db_session import AsyncDbSession, AsyncDbSessionFactory
 from aleph.types.files import FileTag, FileType
 from aleph.types.message_status import MessageStatus
 from aleph.web import create_aiohttp_app
@@ -90,16 +95,18 @@ def run_db_migrations(config: Config):
         alembic.command.upgrade(alembic_cfg, "head", tag=db_url)
 
 
-@pytest.fixture
-def session_factory(mock_config):
-    engine = make_engine(config=mock_config, echo=False, application_name="aleph-tests")
+@pytest_asyncio.fixture
+async def session_factory(mock_config):
+    engine = make_async_engine(
+        config=mock_config, echo=False, application_name="aleph-tests"
+    )
 
-    with engine.begin() as conn:
-        conn.execute("drop schema public cascade")
-        conn.execute("create schema public")
+    async with engine.begin() as conn:
+        await conn.execute(text("drop schema public cascade"))
+        await conn.execute(text("create schema public"))
 
     run_db_migrations(config=mock_config)
-    return make_session_factory(engine)
+    return make_async_session_factory(engine)
 
 
 @pytest.fixture
@@ -182,8 +189,10 @@ async def ccn_api_client(
     return client
 
 
-@pytest.fixture
-def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessageDb:
+@pytest_asyncio.fixture
+async def fixture_instance_message(
+    session_factory: AsyncDbSessionFactory,
+) -> PendingMessageDb:
     content = {
         "address": "0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
         "allow_amend": False,
@@ -267,7 +276,7 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessag
         retries=0,
         next_attempt=dt.datetime(2023, 1, 1),
     )
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(pending_message)
         session.add(
             MessageStatusDb(
@@ -276,18 +285,18 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessag
                 reception_time=pending_message.reception_time,
             )
         )
-        session.commit()
+        await session.commit()
 
     return pending_message
 
 
-@pytest.fixture
-def instance_message_with_volumes_in_db(
-    session_factory: DbSessionFactory, fixture_instance_message: PendingMessageDb
+@pytest_asyncio.fixture
+async def instance_message_with_volumes_in_db(
+    session_factory: AsyncDbSessionFactory, fixture_instance_message: PendingMessageDb
 ) -> None:
-    with session_factory() as session:
+    async with session_factory() as session:
         insert_volume_refs(session, fixture_instance_message)
-        session.commit()
+        await session.commit()
 
 
 class Volume(Protocol):
@@ -314,7 +323,7 @@ def get_volume_refs(content: ExecutableContent) -> List[Volume]:
     return volumes
 
 
-def insert_volume_refs(session: DbSession, message: PendingMessageDb):
+async def insert_volume_refs(session: AsyncDbSession, message: PendingMessageDb):
     """
     Insert volume references in the DB to make the program processable.
     """
@@ -330,8 +339,8 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
         file_hash = volume.ref[::-1]
 
         session.add(StoredFileDb(hash=file_hash, size=1024 * 1024, type=FileType.FILE))
-        session.flush()
-        insert_message_file_pin(
+        await session.flush()
+        await insert_message_file_pin(
             session=session,
             file_hash=volume.ref[::-1],
             owner=content.address,
@@ -339,7 +348,7 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
             ref=None,
             created=created,
         )
-        upsert_file_tag(
+        await upsert_file_tag(
             session=session,
             tag=FileTag(volume.ref),
             owner=content.address,
@@ -348,8 +357,8 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
         )
 
 
-@pytest.fixture
-def user_balance(session_factory: DbSessionFactory) -> AlephBalanceDb:
+@pytest_asyncio.fixture
+async def user_balance(session_factory: AsyncDbSessionFactory) -> AlephBalanceDb:
     balance = AlephBalanceDb(
         address="0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
         chain=Chain.ETH,
@@ -357,14 +366,16 @@ def user_balance(session_factory: DbSessionFactory) -> AlephBalanceDb:
         eth_height=0,
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(balance)
-        session.commit()
+        await session.commit()
     return balance
 
 
-@pytest.fixture
-def user_balance_eth_avax(session_factory: DbSessionFactory) -> AlephBalanceDb:
+@pytest_asyncio.fixture
+async def user_balance_eth_avax(
+    session_factory: AsyncDbSessionFactory,
+) -> AlephBalanceDb:
     balance_eth = AlephBalanceDb(
         address="0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
         chain=Chain.ETH,
@@ -383,13 +394,15 @@ def user_balance_eth_avax(session_factory: DbSessionFactory) -> AlephBalanceDb:
         session.add(balance_eth)
         session.add(balance_avax)
 
-        session.commit()
+        await session.commit()
     return balance_avax
 
 
-@pytest.fixture
-def fixture_product_prices_aggregate_in_db(session_factory: DbSessionFactory) -> None:
-    with session_factory() as session:
+@pytest_asyncio.fixture
+async def fixture_product_prices_aggregate_in_db(
+    session_factory: AsyncDbSessionFactory,
+) -> None:
+    async with session_factory() as session:
         item_hash = "7b74b9c5f73e7a0713dbe83a377b1d321ffb4a5411ea3df49790a9720b93a5bF"
         content = DEFAULT_PRICE_AGGREGATE
         session.add(
@@ -413,12 +426,14 @@ def fixture_product_prices_aggregate_in_db(session_factory: DbSessionFactory) ->
             )
         )
 
-        session.commit()
+        await session.commit()
 
 
-@pytest.fixture
-def fixture_settings_aggregate_in_db(session_factory: DbSessionFactory) -> None:
-    with session_factory() as session:
+@pytest_asyncio.fixture
+async def fixture_settings_aggregate_in_db(
+    session_factory: AsyncDbSessionFactory,
+) -> None:
+    async with session_factory() as session:
         item_hash = "a319a7216d39032212c2f11028a21efaac4e5f78254baa34001483c7af22b7a4"
         content = DEFAULT_SETTINGS_AGGREGATE
 
@@ -443,4 +458,4 @@ def fixture_settings_aggregate_in_db(session_factory: DbSessionFactory) -> None:
             )
         )
 
-        session.commit()
+        await session.commit()

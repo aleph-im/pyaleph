@@ -21,7 +21,7 @@ from aleph_message.models.execution.volume import (
 from aleph.db.models import MessageDb, PostDb
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 from .utils import get_messages_by_keys
 
@@ -170,7 +170,7 @@ async def test_get_messages_multiple_hashes(fixture_messages, ccn_api_client):
 async def test_get_messages_filter_by_tags(
     fixture_messages,
     ccn_api_client,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     post_with_refs_and_tags: Tuple[MessageDb, PostDb],
     amended_post_with_refs_and_tags: Tuple[MessageDb, PostDb],
 ):
@@ -182,9 +182,9 @@ async def test_get_messages_filter_by_tags(
     message_db, _ = post_with_refs_and_tags
     amend_message_db, _ = amended_post_with_refs_and_tags
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add_all([message_db, amend_message_db])
-        session.commit()
+        await session.commit()
 
     # Matching tag for both messages
     response = await ccn_api_client.get(MESSAGES_URI, params={"tags": "mainnet"})
@@ -552,11 +552,11 @@ def instance_message_fixture() -> MessageDb:
 async def test_get_instance(
     ccn_api_client,
     instance_message_fixture: MessageDb,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
 ):
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(instance_message_fixture)
-        session.commit()
+        await session.commit()
 
     response = await ccn_api_client.get(
         MESSAGES_URI, params={"hashes": instance_message_fixture.item_hash}

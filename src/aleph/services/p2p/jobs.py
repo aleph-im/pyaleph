@@ -8,7 +8,7 @@ from configmanager import Config
 
 from aleph.db.accessors.peers import get_all_addresses_by_peer_type
 from aleph.db.models import PeerType
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 from ..cache.node_cache import NodeCache
 from .http import api_get_request
@@ -26,7 +26,9 @@ LOGGER = logging.getLogger("P2P.jobs")
 
 
 async def reconnect_p2p_job(
-    config: Config, session_factory: DbSessionFactory, p2p_client: AlephP2PServiceClient
+    config: Config,
+    session_factory: AsyncDbSessionFactory,
+    p2p_client: AlephP2PServiceClient,
 ) -> None:
     await asyncio.sleep(2)
 
@@ -34,9 +36,9 @@ async def reconnect_p2p_job(
         try:
             peers = set(config.p2p.peers.value)
 
-            with session_factory() as session:
+            async with session_factory() as session:
                 peers |= set(
-                    get_all_addresses_by_peer_type(
+                    await get_all_addresses_by_peer_type(
                         session=session, peer_type=PeerType.P2P
                     )
                 )
@@ -66,7 +68,7 @@ async def check_peer(peer_uri: str, timeout: int = 1) -> PeerStatus:
 
 
 async def tidy_http_peers_job(
-    config: Config, session_factory: DbSessionFactory, node_cache: NodeCache
+    config: Config, session_factory: AsyncDbSessionFactory, node_cache: NodeCache
 ) -> None:
     """Check that HTTP peers are reachable, else remove them from the list"""
     from aleph.services.utils import get_IP
@@ -78,8 +80,8 @@ async def tidy_http_peers_job(
         jobs = []
 
         try:
-            with session_factory() as session:
-                peers = get_all_addresses_by_peer_type(
+            async with session_factory() as session:
+                peers = await get_all_addresses_by_peer_type(
                     session=session, peer_type=PeerType.HTTP
                 )
 

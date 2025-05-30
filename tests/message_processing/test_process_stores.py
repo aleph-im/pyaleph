@@ -19,7 +19,7 @@ from aleph.storage import StorageService
 from aleph.toolkit.constants import STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 from aleph.types.message_status import InsufficientBalanceException, MessageStatus
 
 
@@ -87,7 +87,7 @@ class MockStorageEngine(StorageEngine):
 async def test_process_store(
     mocker,
     mock_config: Config,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
     fixture_store_message: PendingMessageDb,
@@ -109,13 +109,13 @@ async def test_process_store(
         config=mock_config,
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         await message_handler.process(
             session=session, pending_message=fixture_store_message
         )
-        session.commit()
+        await session.commit()
 
-        cost, _ = get_total_and_detailed_costs_from_db(
+        cost, _ = await get_total_and_detailed_costs_from_db(
             session=session,
             content=fixture_store_message.content,
             item_hash=fixture_store_message.item_hash,
@@ -127,7 +127,7 @@ async def test_process_store(
 @pytest.mark.asyncio
 async def test_process_store_no_signature(
     mocker,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     message_processor: PendingMessageProcessor,
     fixture_store_message: PendingMessageDb,
     fixture_product_prices_aggregate_in_db,
@@ -145,7 +145,7 @@ async def test_process_store_no_signature(
     content = json.loads(fixture_store_message.item_content)
     fixture_store_message.content = content
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(fixture_store_message)
         session.add(
             MessageStatusDb(
@@ -154,7 +154,7 @@ async def test_process_store_no_signature(
                 reception_time=fixture_store_message.reception_time,
             )
         )
-        session.commit()
+        await session.commit()
 
     storage_service = StorageService(
         storage_engine=MockStorageEngine(
@@ -176,15 +176,15 @@ async def test_process_store_no_signature(
     # Exhaust the iterator
     _ = [message async for message in pipeline]
 
-    with session_factory() as session:
-        message_db = get_message_by_item_hash(
+    async with session_factory() as session:
+        message_db = await get_message_by_item_hash(
             session=session, item_hash=ItemHash(fixture_store_message.item_hash)
         )
 
         assert message_db is not None
         assert message_db.signature is None
 
-        file_pin = get_message_file_pin(
+        file_pin = await get_message_file_pin(
             session=session, item_hash=ItemHash(fixture_store_message.item_hash)
         )
         assert file_pin is not None
@@ -195,7 +195,7 @@ async def test_process_store_no_signature(
 async def test_process_store_with_not_enough_balance(
     mocker,
     mock_config: Config,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
     fixture_store_message_with_cost: PendingMessageDb,
@@ -220,7 +220,7 @@ async def test_process_store_with_not_enough_balance(
         config=mock_config,
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         # NOTE: Account balance is 0 at this point
         with pytest.raises(InsufficientBalanceException):
             await message_handler.process(
@@ -232,7 +232,7 @@ async def test_process_store_with_not_enough_balance(
 async def test_process_store_small_file_no_balance_required(
     mocker,
     mock_config: Config,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
     fixture_store_message_with_cost: PendingMessageDb,
@@ -261,22 +261,22 @@ async def test_process_store_small_file_no_balance_required(
         config=mock_config,
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         # NOTE: Account balance is 0 at this point, but since the file is small
         # it should still be processed
         await message_handler.process(
             session=session, pending_message=fixture_store_message_with_cost
         )
-        session.commit()
+        await session.commit()
 
         # Verify that the message was processed successfully
-        message_db = get_message_by_item_hash(
+        message_db = await get_message_by_item_hash(
             session=session,
             item_hash=ItemHash(fixture_store_message_with_cost.item_hash),
         )
         assert message_db is not None
 
-        file_pin = get_message_file_pin(
+        file_pin = await get_message_file_pin(
             session=session,
             item_hash=ItemHash(fixture_store_message_with_cost.item_hash),
         )

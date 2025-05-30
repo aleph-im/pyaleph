@@ -7,7 +7,7 @@ from aleph_message.models import Chain
 from aleph.db.accessors.balances import get_balance_by_chain, get_total_balance
 from aleph.db.models import AlephBalanceDb
 from aleph.handlers.content.post import update_balances
-from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.db_session import AsyncDbSession, AsyncDbSessionFactory
 
 BALANCES_CONTENT_SOL: Mapping[str, Any] = {
     "tags": ["SOL", "SPL", "CsZ5LZkDS7h9TDKjrbL7VAwQZ9nsRu8vJLhRYfmGaN8K", "mainnet"],
@@ -63,62 +63,67 @@ BALANCES_CONTENT_SABLIER: Mapping[str, Any] = {
 }
 
 
-def compare_balances(
-    session: DbSession, balances: Mapping[str, float], chain: Chain, dapp: Optional[str]
+async def compare_balances(
+    session: AsyncDbSession,
+    balances: Mapping[str, float],
+    chain: Chain,
+    dapp: Optional[str],
 ):
     for address, expected_balance in balances.items():
-        balance_db = get_balance_by_chain(
+        balance_db = await get_balance_by_chain(
             session, address=address, chain=chain, dapp=dapp
         )
         assert balance_db is not None
         # Easier to compare decimals and floats as strings
         assert str(balance_db) == str(expected_balance)
 
-    nb_balances_db = AlephBalanceDb.count(session)
+    nb_balances_db = await AlephBalanceDb.count(session)
     assert nb_balances_db == len(balances)
 
 
 @pytest.mark.asyncio
-async def test_process_balances_solana(session_factory: DbSessionFactory):
+async def test_process_balances_solana(session_factory: AsyncDbSessionFactory):
     content = BALANCES_CONTENT_SOL
 
-    with session_factory() as session:
-        update_balances(session=session, content=content)
-        session.commit()
+    async with session_factory() as session:
+        await update_balances(session=session, content=content)
+        await session.commit()
 
         balances = content["balances"]
-        compare_balances(session=session, balances=balances, chain=Chain.SOL, dapp=None)
+        await compare_balances(
+            session=session, balances=balances, chain=Chain.SOL, dapp=None
+        )
 
 
 @pytest.mark.asyncio
-async def test_process_balances_sablier(session_factory: DbSessionFactory):
+async def test_process_balances_sablier(session_factory: AsyncDbSessionFactory):
     content = BALANCES_CONTENT_SABLIER
 
-    with session_factory() as session:
-        update_balances(session=session, content=content)
-        session.commit()
+    async with session_factory() as session:
+        await update_balances(session=session, content=content)
+        await session.commit()
 
         balances = content["balances"]
-        compare_balances(
+        await compare_balances(
             session=session, balances=balances, chain=Chain.ETH, dapp="SABLIER"
         )
 
 
 @pytest.mark.asyncio
-async def test_update_balances(session_factory: DbSessionFactory):
+async def test_update_balances(session_factory: AsyncDbSessionFactory):
     content = BALANCES_CONTENT_SOL
 
-    with session_factory() as session:
-        update_balances(session=session, content=content)
-        session.commit()
+    async with session_factory() as session:
+        await update_balances(session=session, content=content)
+        await session.commit()
 
     new_content = BALANCES_CONTENT_SOL_UPDATE
-    with session_factory() as session:
-        update_balances(session=session, content=new_content)
-        session.commit()
+    async with session_factory() as session:
+        await update_balances(session=session, content=new_content)
+        await session.commit()
         session.expire_all()
 
-        compare_balances(
+        await compare_balances(
             session=session,
             balances=new_content["balances"],
             chain=Chain.SOL,
@@ -126,11 +131,12 @@ async def test_update_balances(session_factory: DbSessionFactory):
         )
 
 
-def test_get_total_balance(session_factory: DbSessionFactory):
+@pytest.mark.asyncio
+async def test_get_total_balance(session_factory: AsyncDbSessionFactory):
     address_1 = "my-address"
     address_2 = "your-address"
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(
             AlephBalanceDb(
                 address=address_1,
@@ -167,25 +173,25 @@ def test_get_total_balance(session_factory: DbSessionFactory):
                 eth_height=0,
             )
         )
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        balance_with_dapps = get_total_balance(
+    async with session_factory() as session:
+        balance_with_dapps = await get_total_balance(
             session=session, address=address_1, include_dapps=True
         )
         assert balance_with_dapps == 1_001_100_000
 
-        balance_no_dapps = get_total_balance(
+        balance_no_dapps = await get_total_balance(
             session=session, address=address_1, include_dapps=False
         )
         assert balance_no_dapps == 1_100_000
 
-        balance_address_2 = get_total_balance(
+        balance_address_2 = await get_total_balance(
             session=session, address=address_2, include_dapps=False
         )
         assert balance_address_2 == 3
 
-        balance_unknown_address = get_total_balance(
+        balance_unknown_address = await get_total_balance(
             session=session, address="unknown-address", include_dapps=False
         )
         assert balance_unknown_address == Decimal(0)

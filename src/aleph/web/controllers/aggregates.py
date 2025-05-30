@@ -43,21 +43,23 @@ async def address_aggregate(request: web.Request) -> web.Response:
             text=e.json(), content_type="application/json"
         )
     session_factory = request.app["session_factory"]
-    with session_factory() as session:
-        dirty_aggregates = session.execute(
-            select(AggregateDb.key).where(
-                (AggregateDb.owner == address)
-                & (AggregateDb.owner == address)
-                & AggregateDb.dirty
+    async with session_factory() as session:
+        dirty_aggregates = (
+            await session.execute(
+                select(AggregateDb.key).where(
+                    (AggregateDb.owner == address)
+                    & (AggregateDb.owner == address)
+                    & AggregateDb.dirty
+                )
             )
         ).scalars()
         for key in dirty_aggregates:
             LOGGER.info("Refreshing dirty aggregate %s/%s", address, key)
-            refresh_aggregate(session=session, owner=address, key=key)
-            session.commit()
+            await refresh_aggregate(session=session, owner=address, key=key)
+            await session.commit()
 
         aggregates = list(
-            get_aggregates_by_owner(
+            await get_aggregates_by_owner(
                 session=session,
                 owner=address,
                 with_info=query_params.with_info,

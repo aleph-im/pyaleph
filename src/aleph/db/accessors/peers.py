@@ -5,22 +5,22 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from aleph.toolkit.timestamp import utc_now
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 
 from ..models.peers import PeerDb, PeerType
 
 
-def get_all_addresses_by_peer_type(
-    session: DbSession, peer_type: PeerType
+async def get_all_addresses_by_peer_type(
+    session: AsyncDbSession, peer_type: PeerType
 ) -> Sequence[str]:
     select_peers_stmt = select(PeerDb.address).where(PeerDb.peer_type == peer_type)
 
-    addresses = session.execute(select_peers_stmt)
+    addresses = await session.execute(select_peers_stmt)
     return addresses.scalars().all()
 
 
-def upsert_peer(
-    session: DbSession,
+async def upsert_peer(
+    session: AsyncDbSession,
     peer_id: str,
     peer_type: PeerType,
     address: str,
@@ -43,4 +43,4 @@ def upsert_peer(
             set_={"address": address, "source": source, "last_seen": last_seen},
         )
     )
-    session.execute(upsert_stmt)
+    await session.execute(upsert_stmt)

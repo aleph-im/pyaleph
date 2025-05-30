@@ -5,7 +5,7 @@ from typing import Dict, Union
 from aleph_message.models import Chain
 from configmanager import Config
 
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 from .abc import ChainReader, ChainWriter
 from .bsc import BscConnector
@@ -29,7 +29,7 @@ class ChainConnector:
 
     def __init__(
         self,
-        session_factory: DbSessionFactory,
+        session_factory: AsyncDbSessionFactory,
         pending_tx_publisher: PendingTxPublisher,
         chain_data_service: ChainDataService,
     ):

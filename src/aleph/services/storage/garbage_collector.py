@@ -10,14 +10,14 @@ from aleph.db.accessors.files import delete_file as delete_file_db
 from aleph.db.accessors.files import delete_grace_period_file_pins, get_unpinned_files
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import utc_now
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 LOGGER = logging.getLogger(__name__)
 
 
 class GarbageCollector:
     def __init__(
-        self, session_factory: DbSessionFactory, storage_service: StorageService
+        self, session_factory: AsyncDbSessionFactory, storage_service: StorageService
     ):
         self.session_factory = session_factory
         self.storage_service = storage_service
@@ -43,23 +43,23 @@ class GarbageCollector:
         LOGGER.debug(f"Removed from local storage: {file_hash}")
 
     async def collect(self, datetime: dt.datetime):
-        with self.session_factory() as session:
+        async with self.session_factory() as session:
             # Delete outdated grace period file pins
-            delete_grace_period_file_pins(session=session, datetime=datetime)
-            session.commit()
+            await delete_grace_period_file_pins(session=session, datetime=datetime)
+            await session.commit()
 
             # Delete files without pins
-            files_to_delete = list(get_unpinned_files(session))
+            files_to_delete = list(await get_unpinned_files(session))
             LOGGER.info("Found %d files to delete", len(files_to_delete))
 
         for file_to_delete in files_to_delete:
-            with self.session_factory() as session:
+            async with self.session_factory() as session:
                 try:
                     file_hash = ItemHash(file_to_delete.hash)
                     LOGGER.info("Deleting %s...", file_hash)
 
-                    delete_file_db(session=session, file_hash=file_hash)
-                    session.commit()
+                    await delete_file_db(session=session, file_hash=file_hash)
+                    await session.commit()
 
                     if file_hash.item_type == ItemType.ipfs:
                         await self._delete_from_ipfs(file_hash)
@@ -69,7 +69,7 @@ class GarbageCollector:
                     LOGGER.info("Deleted %s", file_hash)
                 except Exception as err:
                     LOGGER.error("Failed to delete file %s: %s", file_hash, str(err))
-                    session.rollback()
+                    await session.rollback()
 
 
 async def garbage_collector_task(

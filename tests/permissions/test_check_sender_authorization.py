@@ -7,7 +7,7 @@ from message_test_helpers import make_validated_message_from_dict
 from aleph.db.models import AggregateDb, AggregateElementDb
 from aleph.permissions import check_sender_authorization
 from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 
 @pytest.mark.asyncio
@@ -101,7 +101,7 @@ async def test_authorized(mocker):
 
 
 @pytest.mark.asyncio
-async def test_authorized_with_db(session_factory: DbSessionFactory):
+async def test_authorized_with_db(session_factory: AsyncDbSessionFactory):
     aggregate_content = {
         "authorizations": [{"address": "0x86F39e17910E3E6d9F38412EB7F24Bf0Ba31eb2E"}]
     }
@@ -125,9 +125,9 @@ async def test_authorized_with_db(session_factory: DbSessionFactory):
         AUTHORIZED_MESSAGE, AUTHORIZED_MESSAGE["item_content"]
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(aggregate)
-        session.commit()
+        await session.commit()
 
         is_authorized = await check_sender_authorization(
             session=session, message=message

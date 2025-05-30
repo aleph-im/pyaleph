@@ -24,7 +24,7 @@ from aleph.schemas.chains.tezos_indexer_response import (
 from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainEventType, ChainSyncProtocol
-from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.db_session import AsyncDbSession, AsyncDbSessionFactory
 
 LOGGER = logging.getLogger(__name__)
 
@@ -249,7 +249,7 @@ class TezosVerifier(Verifier):
 class TezosConnector(ChainReader):
     def __init__(
         self,
-        session_factory: DbSessionFactory,
+        session_factory: AsyncDbSessionFactory,
         pending_tx_publisher: PendingTxPublisher,
     ):
         self.session_factory = session_factory
@@ -257,8 +257,8 @@ class TezosConnector(ChainReader):
 
     async def get_last_height(self, sync_type: ChainEventType) -> int:
         """Returns the last height for which we already have the ethereum data."""
-        with self.session_factory() as session:
-            last_height = get_last_height(
+        async with self.session_factory() as session:
+            last_height = await get_last_height(
                 session=session, chain=Chain.TEZOS, sync_type=sync_type
             )
 
@@ -269,7 +269,7 @@ class TezosConnector(ChainReader):
         return last_height
 
     async def fetch_incoming_messages(
-        self, session: DbSession, indexer_url: str, sync_contract_address: str
+        self, session: AsyncDbSession, indexer_url: str, sync_contract_address: str
     ) -> None:
         """
         Fetch the latest message events from the Aleph sync smart contract.
@@ -324,7 +324,7 @@ class TezosConnector(ChainReader):
                         break
 
             finally:
-                upsert_chain_sync_status(
+                await upsert_chain_sync_status(
                     session=session,
                     chain=Chain.TEZOS,
                     sync_type=ChainEventType.MESSAGE,
@@ -335,13 +335,13 @@ class TezosConnector(ChainReader):
     async def fetcher(self, config: Config):
         while True:
             try:
-                with self.session_factory() as session:
+                async with self.session_factory() as session:
                     await self.fetch_incoming_messages(
                         session=session,
                         indexer_url=config.tezos.indexer_url.value,
                         sync_contract_address=config.tezos.sync_contract.value,
                     )
-                    session.commit()
+                    await session.commit()
             except Exception:
                 LOGGER.exception(
                     "An unexpected exception occurred, "

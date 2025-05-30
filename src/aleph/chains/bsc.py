@@ -5,13 +5,13 @@ from aleph.chains.abc import ChainReader
 from aleph.chains.chain_data_service import PendingTxPublisher
 from aleph.chains.indexer_reader import AlephIndexerReader
 from aleph.types.chain_sync import ChainEventType
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 
 class BscConnector(ChainReader):
     def __init__(
         self,
-        session_factory: DbSessionFactory,
+        session_factory: AsyncDbSessionFactory,
         pending_tx_publisher: PendingTxPublisher,
     ):
         self.indexer_reader = AlephIndexerReader(

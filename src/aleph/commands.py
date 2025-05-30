@@ -26,7 +26,11 @@ import aleph.config
 from aleph.chains.chain_data_service import ChainDataService, PendingTxPublisher
 from aleph.chains.connector import ChainConnector
 from aleph.cli.args import parse_args
-from aleph.db.connection import make_db_url, make_engine, make_session_factory
+from aleph.db.connection import (
+    make_async_engine,
+    make_async_session_factory,
+    make_db_url,
+)
 from aleph.exceptions import InvalidConfigException, KeyNotFoundException
 from aleph.jobs import start_jobs
 from aleph.network import listener_tasks
@@ -122,13 +126,12 @@ async def main(args: List[str]) -> None:
         run_db_migrations(config)
     LOGGER.info("Database initialized.")
 
-    engine = make_engine(
+    engine = make_async_engine(
         config,
         echo=args.loglevel == logging.DEBUG,
         application_name="aleph-conn-manager",
     )
-    session_factory = make_session_factory(engine)
-
+    session_factory = make_async_session_factory(engine)
     setup_logging(args.loglevel)
 
     mq_conn = await make_mq_conn(config)

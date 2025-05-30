@@ -19,7 +19,7 @@ from aleph.db.accessors.chains import get_last_height
 from aleph.db.models import FilePinDb, MessageDb, PeerDb, PendingMessageDb, PendingTxDb
 from aleph.services.cache.node_cache import NodeCache
 from aleph.types.chain_sync import ChainEventType
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 
 LOGGER = getLogger("WEB.metrics")
 
@@ -147,16 +147,16 @@ async def fetch_eth_height() -> Optional[int]:
 
 # Cache metrics for 10 seconds by default
 @cached(ttl=config.aleph.cache.ttl.metrics.value)
-async def get_metrics(session: DbSession, node_cache: NodeCache) -> Metrics:
+async def get_metrics(session: AsyncDbSession, node_cache: NodeCache) -> Metrics:
     sync_messages_reference_total = await fetch_reference_total_messages()
     eth_reference_height = await fetch_eth_height()
 
     # select count(*) can be slow but estimates are not refreshed often enough to give
     # a meaningful sense of progress for the node main page on /.
-    sync_messages_total: int = MessageDb.count(session=session)
-    peers_count = PeerDb.count(session=session)
+    sync_messages_total: int = await MessageDb.count(session=session)
+    peers_count = await PeerDb.count(session=session)
 
-    eth_last_committed_height = get_last_height(
+    eth_last_committed_height = await get_last_height(
         session=session, chain=Chain.ETH, sync_type=ChainEventType.SYNC
     )
 
@@ -182,13 +182,15 @@ async def get_metrics(session: DbSession, node_cache: NodeCache) -> Metrics:
         pyaleph_status_peers_total=peers_count,
         pyaleph_processing_pending_messages_tasks_total=nb_message_jobs,
         pyaleph_status_sync_messages_total=sync_messages_total,
-        pyaleph_status_sync_permanent_files_total=FilePinDb.count(session=session),
-        pyaleph_status_sync_messages_reference_total=sync_messages_reference_total,
-        pyaleph_status_sync_messages_remaining_total=sync_messages_remaining_total,
-        pyaleph_status_sync_pending_messages_total=PendingMessageDb.count(
+        pyaleph_status_sync_permanent_files_total=await FilePinDb.count(
             session=session
         ),
-        pyaleph_status_sync_pending_txs_total=PendingTxDb.count(session=session),
+        pyaleph_status_sync_messages_reference_total=sync_messages_reference_total,
+        pyaleph_status_sync_messages_remaining_total=sync_messages_remaining_total,
+        pyaleph_status_sync_pending_messages_total=await PendingMessageDb.count(
+            session=session
+        ),
+        pyaleph_status_sync_pending_txs_total=await PendingTxDb.count(session=session),
         pyaleph_status_chain_eth_last_committed_height=eth_last_committed_height,
         pyaleph_status_chain_eth_height_reference_total=eth_reference_height,
         pyaleph_status_chain_eth_height_remaining_total=eth_remaining_height,

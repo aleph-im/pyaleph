@@ -23,7 +23,7 @@ from aleph.db.models.chains import ChainTxDb
 from aleph.schemas.chains.tx_context import TxContext
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainEventType
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 from aleph.utils import run_in_executor
 
 from .abc import ChainWriter
@@ -77,7 +77,7 @@ class EthereumVerifier(EVMVerifier):
 class EthereumConnector(ChainWriter):
     def __init__(
         self,
-        session_factory: DbSessionFactory,
+        session_factory: AsyncDbSessionFactory,
         pending_tx_publisher: PendingTxPublisher,
         chain_data_service: ChainDataService,
     ):
@@ -93,8 +93,8 @@ class EthereumConnector(ChainWriter):
 
     async def get_last_height(self, sync_type: ChainEventType) -> int:
         """Returns the last height for which we already have the ethereum data."""
-        with self.session_factory() as session:
-            last_height = get_last_height(
+        async with self.session_factory() as session:
+            last_height = await get_last_height(
                 session=session, chain=Chain.ETH, sync_type=sync_type
             )
 
@@ -209,15 +209,15 @@ class EthereumConnector(ChainWriter):
             # block height to do next requests from there.
             last_height = event_data.blockNumber
             if last_height:
-                with self.session_factory() as session:
-                    upsert_chain_sync_status(
+                async with self.session_factory() as session:
+                    await upsert_chain_sync_status(
                         session=session,
                         chain=Chain.ETH,
                         sync_type=ChainEventType.SYNC,
                         height=last_height,
                         update_datetime=utc_now(),
                     )
-                    session.commit()
+                    await session.commit()
 
     async def fetch_ethereum_sync_events(self, config: Config):
         last_stored_height = await self.get_last_height(sync_type=ChainEventType.SYNC)
@@ -236,11 +236,11 @@ class EthereumConnector(ChainWriter):
                 config, web3, contract, abi, last_stored_height
             ):
                 tx = ChainTxDb.from_sync_tx_context(tx_context=context, tx_data=jdata)
-                with self.session_factory() as session:
+                async with self.session_factory() as session:
                     await self.pending_tx_publisher.add_and_publish_pending_tx(
                         session=session, tx=tx
                     )
-                    session.commit()
+                    await session.commit()
 
     async def fetch_sync_events_task(self, config: Config):
         while True:
@@ -295,10 +295,10 @@ class EthereumConnector(ChainWriter):
         i = 0
         gas_price = web3.eth.generate_gas_price()
         while True:
-            with self.session_factory() as session:
+            async with self.session_factory() as session:
                 # Wait for sync operations to complete
-                if (count_pending_txs(session=session, chain=Chain.ETH)) or (
-                    count_pending_messages(session=session, chain=Chain.ETH)
+                if (await count_pending_txs(session=session, chain=Chain.ETH)) or (
+                    await count_pending_messages(session=session, chain=Chain.ETH)
                 ) > 1000:
                     await asyncio.sleep(30)
                     continue
@@ -317,7 +317,7 @@ class EthereumConnector(ChainWriter):
                 nonce = web3.eth.get_transaction_count(account.address)
 
                 messages = list(
-                    get_unconfirmed_messages(
+                    await get_unconfirmed_messages(
                         session=session, limit=10000, chain=Chain.ETH
                     )
                 )
@@ -332,7 +332,7 @@ class EthereumConnector(ChainWriter):
                     )
                 )
                 # Required to apply update to the files table in get_chaindata
-                session.commit()
+                await session.commit()
                 response = await run_in_executor(
                     None,
                     self._broadcast_content,

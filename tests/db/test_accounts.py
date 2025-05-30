@@ -12,7 +12,7 @@ from aleph.db.accessors.messages import (
 from aleph.db.models import MessageDb
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 
 @pytest.fixture
@@ -60,21 +60,21 @@ def fixture_messages():
 
 @pytest.mark.asyncio
 async def test_get_message_stats_by_address(
-    session_factory: DbSessionFactory, fixture_messages: List[MessageDb]
+    session_factory: AsyncDbSessionFactory, fixture_messages: List[MessageDb]
 ):
     # No data test
-    with session_factory() as session:
-        stats_no_data = get_message_stats_by_address(session)
+    async with session_factory() as session:
+        stats_no_data = await get_message_stats_by_address(session)
         assert stats_no_data == []
 
         # Refresh the materialized view
         session.add_all(fixture_messages)
-        session.commit()
+        await session.commit()
 
-        refresh_address_stats_mat_view(session)
-        session.commit()
+        await refresh_address_stats_mat_view(session)
+        await session.commit()
 
-        stats = get_message_stats_by_address(session)
+        stats = await get_message_stats_by_address(session)
         assert len(stats) == 2
 
         stats_by_address = {row.address: row for row in stats}
@@ -90,7 +90,7 @@ async def test_get_message_stats_by_address(
         assert stats_by_address["0x1234"].nb_messages == 1
 
         # Filter by address
-        stats = get_message_stats_by_address(session, addresses=("0x1234",))
+        stats = await get_message_stats_by_address(session, addresses=("0x1234",))
         assert len(stats) == 1
         row = stats[0]
         assert row.address == "0x1234"

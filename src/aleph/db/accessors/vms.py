@@ -15,54 +15,60 @@ from aleph.db.models.vms import (
     VmInstanceDb,
     VmVersionDb,
 )
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 from aleph.types.vms import VmVersion
 
 
-def get_instance(session: DbSession, item_hash: str) -> Optional[VmInstanceDb]:
+async def get_instance(
+    session: AsyncDbSession, item_hash: str
+) -> Optional[VmInstanceDb]:
     select_stmt = select(VmInstanceDb).where(VmInstanceDb.item_hash == item_hash)
-    return session.execute(select_stmt).scalar_one_or_none()
+    return (await session.execute(select_stmt)).scalar_one_or_none()
 
 
-def get_program(session: DbSession, item_hash: str) -> Optional[ProgramDb]:
+async def get_program(session: AsyncDbSession, item_hash: str) -> Optional[ProgramDb]:
     select_stmt = select(ProgramDb).where(ProgramDb.item_hash == item_hash)
-    return session.execute(select_stmt).scalar_one_or_none()
+    return (await session.execute(select_stmt)).scalar_one_or_none()
 
 
-def is_vm_amend_allowed(session: DbSession, vm_hash: str) -> Optional[bool]:
+async def is_vm_amend_allowed(session: AsyncDbSession, vm_hash: str) -> Optional[bool]:
     select_stmt = (
         select(VmBaseDb.allow_amend)
         .select_from(VmVersionDb)
         .join(VmBaseDb, VmVersionDb.current_version == VmBaseDb.item_hash)
         .where(VmVersionDb.vm_hash == vm_hash)
     )
-    return session.execute(select_stmt).scalar_one_or_none()
+    return (await session.execute(select_stmt)).scalar_one_or_none()
 
 
-def _delete_vm(session: DbSession, where) -> Iterable[str]:
+async def _delete_vm(session: AsyncDbSession, where) -> Iterable[str]:
     # Deletion of volumes is managed automatically by the DB
     # using an "on delete cascade" foreign key.
-    return session.execute(
-        delete(VmBaseDb).where(where).returning(VmBaseDb.item_hash)
+    return (
+        await session.execute(
+            delete(VmBaseDb).where(where).returning(VmBaseDb.item_hash)
+        )
     ).scalars()
 
 
-def delete_vm(session: DbSession, vm_hash: str) -> None:
-    _ = _delete_vm(session=session, where=VmBaseDb.item_hash == vm_hash)
+async def delete_vm(session: AsyncDbSession, vm_hash: str) -> None:
+    _ = await _delete_vm(session=session, where=VmBaseDb.item_hash == vm_hash)
 
 
-def delete_vm_updates(session: DbSession, vm_hash: str) -> Iterable[str]:
-    return _delete_vm(session=session, where=VmBaseDb.replaces == vm_hash)
+async def delete_vm_updates(session: AsyncDbSession, vm_hash: str) -> Iterable[str]:
+    return await _delete_vm(session=session, where=VmBaseDb.replaces == vm_hash)
 
 
-def get_vm_version(session: DbSession, vm_hash: str) -> Optional[VmVersionDb]:
-    return session.execute(
-        select(VmVersionDb).where(VmVersionDb.vm_hash == vm_hash)
+async def get_vm_version(
+    session: AsyncDbSession, vm_hash: str
+) -> Optional[VmVersionDb]:
+    return (
+        await session.execute(select(VmVersionDb).where(VmVersionDb.vm_hash == vm_hash))
     ).scalar_one_or_none()
 
 
-def get_vms_dependent_volumes(
-    session: DbSession, volume_hash: str
+async def get_vms_dependent_volumes(
+    session: AsyncDbSession, volume_hash: str
 ) -> Optional[VmBaseDb]:
     statement = (
         select(VmBaseDb)
@@ -93,11 +99,11 @@ def get_vms_dependent_volumes(
             )
         )
     )
-    return session.execute(statement).scalar_one_or_none()
+    return (await session.execute(statement)).scalar_one_or_none()
 
 
-def upsert_vm_version(
-    session: DbSession,
+async def upsert_vm_version(
+    session: AsyncDbSession,
     vm_hash: str,
     owner: str,
     current_version: VmVersion,
@@ -114,10 +120,10 @@ def upsert_vm_version(
         set_={"current_version": current_version, "last_updated": last_updated},
         where=VmVersionDb.last_updated < last_updated,
     )
-    session.execute(upsert_stmt)
+    await session.execute(upsert_stmt)
 
 
-def refresh_vm_version(session: DbSession, vm_hash: str) -> None:
+async def refresh_vm_version(session: AsyncDbSession, vm_hash: str) -> None:
     coalesced_ref = func.coalesce(VmBaseDb.replaces, VmBaseDb.item_hash)
     select_latest_revision_stmt = (
         select(
@@ -151,5 +157,5 @@ def refresh_vm_version(session: DbSession, vm_hash: str) -> None:
             "last_updated": insert_stmt.excluded.last_updated,
         },
     )
-    session.execute(delete(VmVersionDb).where(VmVersionDb.vm_hash == vm_hash))
-    session.execute(upsert_stmt)
+    await session.execute(delete(VmVersionDb).where(VmVersionDb.vm_hash == vm_hash))
+    await session.execute(upsert_stmt)

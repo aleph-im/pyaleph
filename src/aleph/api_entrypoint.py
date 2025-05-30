@@ -7,7 +7,7 @@ from configmanager import Config
 
 import aleph.config
 from aleph.chains.signature_verifier import SignatureVerifier
-from aleph.db.connection import make_engine, make_session_factory
+from aleph.db.connection import make_async_engine, make_async_session_factory
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.p2p import init_p2p_client
@@ -34,12 +34,12 @@ async def configure_aiohttp_app(
     with sentry_sdk.start_transaction(name="init-api-server"):
         p2p_client = await init_p2p_client(config, service_name="api-server-aiohttp")
 
-        engine = make_engine(
+        engine = make_async_engine(
             config,
             echo=config.logging.level.value == logging.DEBUG,
             application_name="aleph-api",
         )
-        session_factory = make_session_factory(engine)
+        session_factory = make_async_session_factory(engine)
 
         node_cache = NodeCache(
             redis_host=config.redis.host.value, redis_port=config.redis.port.value

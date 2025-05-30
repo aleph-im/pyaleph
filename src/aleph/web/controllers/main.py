@@ -8,7 +8,7 @@ from aiohttp import web
 from pydantic import BaseModel
 
 from aleph.db.accessors.metrics import query_metric_ccn, query_metric_crn
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 from aleph.web.controllers.app_state_getters import (
     get_node_cache_from_request,
     get_session_factory_from_request,
@@ -22,9 +22,9 @@ logger = logging.getLogger(__name__)
 async def index(request: web.Request) -> Dict:
     """Index of aleph."""
 
-    session_factory: DbSessionFactory = get_session_factory_from_request(request)
+    session_factory: AsyncDbSessionFactory = get_session_factory_from_request(request)
     node_cache = get_node_cache_from_request(request)
-    with session_factory() as session:
+    async with session_factory() as session:
         return asdict(await get_metrics(session=session, node_cache=node_cache))
 
 
@@ -32,12 +32,12 @@ async def status_ws(request: web.Request) -> web.WebSocketResponse:
     ws = web.WebSocketResponse()
     await ws.prepare(request)
 
-    session_factory: DbSessionFactory = get_session_factory_from_request(request)
+    session_factory: AsyncDbSessionFactory = get_session_factory_from_request(request)
     node_cache = get_node_cache_from_request(request)
 
     previous_status = None
     while True:
-        with session_factory() as session:
+        async with session_factory() as session:
             status = await get_metrics(session=session, node_cache=node_cache)
 
         if status != previous_status:
@@ -58,10 +58,10 @@ async def metrics(request: web.Request) -> web.Response:
     Naming convention:
     https://prometheus.io/docs/practices/naming/
     """
-    session_factory = get_session_factory_from_request(request)
+    session_factory: AsyncDbSessionFactory = get_session_factory_from_request(request)
     node_cache = get_node_cache_from_request(request)
 
-    with session_factory() as session:
+    async with session_factory() as session:
         return web.Response(
             text=format_dataclass_for_prometheus(
                 await get_metrics(session=session, node_cache=node_cache)
@@ -71,10 +71,10 @@ async def metrics(request: web.Request) -> web.Response:
 
 async def metrics_json(request: web.Request) -> web.Response:
     """JSON version of the Prometheus metrics."""
-    session_factory: DbSessionFactory = get_session_factory_from_request(request)
+    session_factory: AsyncDbSessionFactory = get_session_factory_from_request(request)
     node_cache = get_node_cache_from_request(request)
 
-    with session_factory() as session:
+    async with session_factory() as session:
         return web.Response(
             text=(await get_metrics(session=session, node_cache=node_cache)).to_json(),
             content_type="application/json",
@@ -97,13 +97,13 @@ def _get_node_id_from_request(request: web.Request) -> str:
 async def ccn_metric(request: web.Request) -> web.Response:
     """Fetch metrics for CCN node id"""
 
-    session_factory: DbSessionFactory = get_session_factory_from_request(request)
+    session_factory: AsyncDbSessionFactory = get_session_factory_from_request(request)
     query_params = Metrics.model_validate(request.query)
 
     node_id = _get_node_id_from_request(request)
 
-    with session_factory() as session:
-        ccn = query_metric_ccn(
+    async with session_factory() as session:
+        ccn = await query_metric_ccn(
             session,
             node_id=node_id,
             start_date=query_params.start_date,
@@ -123,13 +123,13 @@ async def ccn_metric(request: web.Request) -> web.Response:
 async def crn_metric(request: web.Request) -> web.Response:
     """Fetch Metric for crn."""
 
-    session_factory: DbSessionFactory = get_session_factory_from_request(request)
+    session_factory: AsyncDbSessionFactory = get_session_factory_from_request(request)
     query_params = Metrics.model_validate(request.query)
 
     node_id = _get_node_id_from_request(request)
 
-    with session_factory() as session:
-        crn = query_metric_crn(
+    async with session_factory() as session:
+        crn = await query_metric_crn(
             session,
             node_id=node_id,
             start_date=query_params.start_date,

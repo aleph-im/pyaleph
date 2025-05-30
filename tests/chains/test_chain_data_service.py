@@ -18,7 +18,7 @@ from aleph.schemas.chains.tezos_indexer_response import MessageEventPayload
 from aleph.schemas.pending_messages import parse_message
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.chain_sync import ChainSyncProtocol
-from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.db_session import AsyncDbSession, AsyncDbSessionFactory
 
 
 @pytest.mark.asyncio
@@ -42,7 +42,7 @@ async def test_prepare_sync_event_payload(mocker):
     ]
 
     async def mock_add_file(
-        session: DbSession, file_content: bytes, engine: ItemType = ItemType.ipfs
+        session: AsyncDbSession, file_content: bytes, engine: ItemType = ItemType.ipfs
     ) -> str:
         content = file_content
         archive = OnChainSyncEventPayload.model_validate_json(content)
@@ -70,7 +70,7 @@ async def test_prepare_sync_event_payload(mocker):
 
 @pytest.mark.asyncio
 async def test_smart_contract_protocol_ipfs_store(
-    mocker, session_factory: DbSessionFactory
+    mocker, session_factory: AsyncDbSessionFactory
 ):
     payload = MessageEventPayload(
         timestamp=1668611900,
@@ -122,7 +122,7 @@ async def test_smart_contract_protocol_ipfs_store(
 
 @pytest.mark.asyncio
 async def test_smart_contract_protocol_regular_message(
-    mocker, session_factory: DbSessionFactory
+    mocker, session_factory: AsyncDbSessionFactory
 ):
     content = PostContent(
         content={"body": "My first post on Tezos"},

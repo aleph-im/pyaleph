@@ -14,7 +14,7 @@ from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.files import get_file
 from aleph.db.models import AlephBalanceDb
 from aleph.storage import StorageService
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 from aleph.types.files import FileType
 from aleph.types.message_status import MessageStatus
 from aleph.web.controllers.app_state_getters import (
@@ -97,7 +97,7 @@ async def api_client(ccn_test_aiohttp_app, mocker, aiohttp_client):
 
 async def add_file_raw_upload(
     api_client,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     uri: str,
     file_content: bytes,
     expected_file_hash: str,
@@ -118,8 +118,8 @@ async def add_file_raw_upload(
     response_data = await get_file_response.read()
 
     # Check that the file appears in the DB
-    with session_factory() as session:
-        file = get_file(session=session, file_hash=file_hash)
+    async with session_factory() as session:
+        file = await get_file(session=session, file_hash=file_hash)
         assert file is not None
         assert file.hash == file_hash
         assert file.type == FileType.FILE
@@ -130,7 +130,7 @@ async def add_file_raw_upload(
 
 async def add_file(
     api_client,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     uri: str,
     file_content: bytes,
     expected_file_hash: str,
@@ -152,8 +152,8 @@ async def add_file(
     response_data = await get_file_response.read()
 
     # Check that the file appears in the DB
-    with session_factory() as session:
-        file = get_file(session=session, file_hash=file_hash)
+    async with session_factory() as session:
+        file = await get_file(session=session, file_hash=file_hash)
         assert file is not None
         assert file.hash == file_hash
         assert file.type == FileType.FILE
@@ -164,7 +164,7 @@ async def add_file(
 
 async def add_file_with_message(
     api_client,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     uri: str,
     file_content: bytes,
     error_code: int,
@@ -179,7 +179,7 @@ async def add_file_with_message(
         ),
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(
             AlephBalanceDb(
                 address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
@@ -188,7 +188,7 @@ async def add_file_with_message(
                 eth_height=0,
             )
         )
-        session.commit()
+        await session.commit()
 
     form_data = aiohttp.FormData()
 
@@ -206,7 +206,7 @@ async def add_file_with_message(
 
 async def add_file_with_message_202(
     api_client,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     uri: str,
     file_content: bytes,
     size: str,
@@ -221,7 +221,7 @@ async def add_file_with_message_202(
             message_status=MessageStatus.PENDING,
         ),
     )
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(
             AlephBalanceDb(
                 address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
@@ -230,7 +230,7 @@ async def add_file_with_message_202(
                 eth_height=0,
             )
         )
-        session.commit()
+        await session.commit()
 
     form_data = aiohttp.FormData()
 
@@ -247,7 +247,7 @@ async def add_file_with_message_202(
 
 
 @pytest.mark.asyncio
-async def test_storage_add_file(api_client, session_factory: DbSessionFactory):
+async def test_storage_add_file(api_client, session_factory: AsyncDbSessionFactory):
     await add_file(
         api_client,
         session_factory,
@@ -259,7 +259,7 @@ async def test_storage_add_file(api_client, session_factory: DbSessionFactory):
 
 @pytest.mark.asyncio
 async def test_storage_add_file_raw_upload(
-    api_client, session_factory: DbSessionFactory
+    api_client, session_factory: AsyncDbSessionFactory
 ):
     await add_file_raw_upload(
         api_client,
@@ -294,7 +294,7 @@ async def test_storage_add_file_with_message(
     api_client,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     file_content,
     expected_hash,
     size: Optional[int],
@@ -328,7 +328,7 @@ async def test_storage_add_file_with_message(
 @pytest.mark.asyncio
 async def test_storage_add_file_with_message_202(
     api_client,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     file_content,
     expected_hash,
     size,
@@ -351,7 +351,7 @@ async def test_storage_add_file_with_message_202(
 
 
 @pytest.mark.asyncio
-async def test_ipfs_add_file(api_client, session_factory: DbSessionFactory):
+async def test_ipfs_add_file(api_client, session_factory: AsyncDbSessionFactory):
     await add_file(
         api_client,
         session_factory,
@@ -363,7 +363,7 @@ async def test_ipfs_add_file(api_client, session_factory: DbSessionFactory):
 
 async def add_json(
     api_client,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     uri: str,
     json: Any,
     expected_file_hash: ItemHash,
@@ -393,8 +393,8 @@ async def add_json(
     assert await get_file_response.read() == serialized_json
 
     # Check that the file appears in the DB
-    with session_factory() as session:
-        file = get_file(session=session, file_hash=file_hash)
+    async with session_factory() as session:
+        file = await get_file(session=session, file_hash=file_hash)
         assert file is not None
         assert file.hash == file_hash
         assert file.type == FileType.FILE
@@ -403,7 +403,7 @@ async def add_json(
 
 
 @pytest.mark.asyncio
-async def test_storage_add_json(api_client, session_factory: DbSessionFactory):
+async def test_storage_add_json(api_client, session_factory: AsyncDbSessionFactory):
     await add_json(
         api_client,
         session_factory,
@@ -414,7 +414,7 @@ async def test_storage_add_json(api_client, session_factory: DbSessionFactory):
 
 
 @pytest.mark.asyncio
-async def test_ipfs_add_json(api_client, session_factory: DbSessionFactory):
+async def test_ipfs_add_json(api_client, session_factory: AsyncDbSessionFactory):
     await add_json(
         api_client,
         session_factory,
