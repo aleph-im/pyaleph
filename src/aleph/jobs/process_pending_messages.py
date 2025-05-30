@@ -13,16 +13,9 @@ from setproctitle import setproctitle
 import aleph.toolkit.json as aleph_json
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.pending_messages import (
-    async_get_next_pending_messages_by_address,
-    get_next_pending_messages_by_address,
+    async_get_next_pending_messages_from_different_senders,
 )
-from aleph.db.connection import (
-    make_async_engine,
-    make_async_session_factory,
-    make_engine,
-    make_session_factory,
-)
-from aleph.db.models.pending_messages import PendingMessageDb
+from aleph.db.connection import make_async_engine, make_async_session_factory
 from aleph.handlers.message_handler import MessageHandler
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
@@ -31,10 +24,11 @@ from aleph.storage import StorageService
 from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
 from aleph.toolkit.timestamp import utc_now
-from aleph.types.db_session import AsyncDbSessionFactory, DbSession, DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 from aleph.types.message_processing_result import MessageProcessingResult
 
-from ..types.message_status import MessageOrigin, RetryMessageException
+from ..db.models import PendingMessageDb
+from ..types.message_status import MessageOrigin
 from .job_utils import MessageJob, prepare_loop
 
 LOGGER = getLogger(__name__)
@@ -43,8 +37,7 @@ LOGGER = getLogger(__name__)
 class PendingMessageProcessor(MessageJob):
     def __init__(
         self,
-        session_factory: DbSessionFactory,
-        async_session_factory: AsyncDbSessionFactory,
+        session_factory: AsyncDbSessionFactory,
         message_handler: MessageHandler,
         max_retries: int,
         mq_conn: aio_pika.abc.AbstractConnection,
@@ -60,21 +53,18 @@ class PendingMessageProcessor(MessageJob):
 
         self.mq_conn = mq_conn
         self.mq_message_exchange = mq_message_exchange
-        self.async_session_factory = async_session_factory
 
-        # TODO: Add Config option for max_parallel
-        self.max_parallel = 5
-        self._sem = asyncio.Semaphore(self.max_parallel)
-        self._tasks: Dict[str, asyncio.Task] = {}
-
+        # Reduced from 100 to 30 to prevent overwhelming the event loop
+        self.max_parallel = 50
         self.processed_hashes: Set[str] = set()
-        self.queue: asyncio.Queue = asyncio.Queue()
+        self.current_address: Set[str] = set()
+        self._task: Dict[str, asyncio.Task] = {}
+        self.processing_count: int = 0  # Debug Value to know current speed
 
     @classmethod
     async def new(
         cls,
-        session_factory: DbSessionFactory,
-        async_session_factory: AsyncDbSessionFactory,
+        session_factory: AsyncDbSessionFactory,
         message_handler: MessageHandler,
         max_retries: int,
         mq_host: str,
@@ -107,7 +97,6 @@ class PendingMessageProcessor(MessageJob):
 
         return cls(
             session_factory=session_factory,
-            async_session_factory=async_session_factory,
             message_handler=message_handler,
             max_retries=max_retries,
             mq_conn=mq_conn,
@@ -119,135 +108,134 @@ class PendingMessageProcessor(MessageJob):
         await self.mq_conn.close()
 
     async def process_message(
-        self,
-        session: DbSession,
-        pending_message: PendingMessageDb,
-        out: asyncio.Queue,
-        address: str,
-    ) -> None:
-        try:
-            # Track this hash as being processed
-            if pending_message.item_hash:
-                self.processed_hashes.add(pending_message.item_hash)
-
-            result: MessageProcessingResult = await self.message_handler.process(
-                session=session, pending_message=pending_message
-            )
-            session.commit()
-        except Exception as e:
-            session.rollback()
-            result = await self.handle_processing_error(
-                session=session,
-                pending_message=pending_message,
-                exception=e,
-            )
-            session.commit()
-
-            # We Check the exception type if it instances of RetryMessageException
-            # If the case we will cancel the task to avoid waiting for retry
-
-            if isinstance(e, RetryMessageException):
-                if address in self._tasks:
-                    LOGGER.info(f"Task of {address} canceled until retry is possible")
-                    raise RetryMessageException()
-
-        out.put_nowait(result)
-
-    async def process_message_batch(
-        self, messages: List[PendingMessageDb], out: asyncio.Queue, address: str
-    ) -> None:
-        try:
-
-            LOGGER.info(
-                f"Processing {len(messages)} messages for address {address} in order"
-            )
-
-            for index, message in enumerate(messages):
-                LOGGER.info(
-                    f"Processing message {index+1}/{len(messages)} for address {address}"
+        self, pending_message: PendingMessageDb
+    ) -> MessageProcessingResult:
+        async with self.session_factory() as session:
+            try:
+                LOGGER.info(f"Processing {pending_message.item_hash}")
+                result: MessageProcessingResult = await self.message_handler.process(
+                    session=session, pending_message=pending_message
                 )
-                await self._process_single_message(message, out, address)
-        except Exception:
-            LOGGER.error(f"Failed process {address}")
+                await session.commit()
+            except Exception as e:
+                await session.rollback()
+                result = await self.handle_processing_error(
+                    session=session,
+                    pending_message=pending_message,
+                    exception=e,
+                )
+                await session.commit()
 
-        del self._tasks[address]
+            # Clean up tracking after processing is complete
+            address = pending_message.content.get("address")
+            if address in self.current_address:
+                self.current_address.remove(address)
 
-    async def _process_single_message(
-        self, message: PendingMessageDb, out: asyncio.Queue, address: str
-    ) -> None:
-        """
-        Process a single message with proper async session handling.
-        """
-        with self.session_factory() as session:
-            LOGGER.info(f"Processing message: {message.item_hash}")
-            await self.process_message(
-                session=session, pending_message=message, out=out, address=address
-            )
+            if pending_message.item_hash in self.processed_hashes:
+                self.processed_hashes.remove(pending_message.item_hash)
 
-    async def fetch_pending_messages_async(
-        self, session, processed_hashes, current_running_addresses
-    ):
-        pending_messages = await asyncio.to_thread(
-            get_next_pending_messages_by_address,
-            session=session,
-            current_time=utc_now(),
-            fetched=True,
-            exclude_item_hashes=processed_hashes,
-            exclude_addresses=current_running_addresses,
-            batch_size=25,
-        )
-        return pending_messages
+            self.processing_count -= 1
+
+            return result
 
     async def process_messages(
         self,
     ) -> AsyncIterator[Sequence[MessageProcessingResult]]:
+        # Keep track of active tasks and results
+        completed_results: List[MessageProcessingResult] = []
+        # Track the last time we yielded results
+        last_yield_time = asyncio.get_event_loop().time()
+
+        # Define a callback function when a task completes
+        def task_done_callback(task: asyncio.Task):
+            try:
+                # The callback just ensures exceptions are logged
+                # Actual result processing is done in the main loop
+                task.result()
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                LOGGER.exception(f"Task failed with exception: {e}")
+
         while True:
-            if len(self._tasks) < self.max_parallel:
-                async with self.async_session_factory() as session:
-                    current_running_addresses = set(self._tasks.keys())
-                    pending_messages = await async_get_next_pending_messages_by_address(
-                        session=session,
-                        current_time=utc_now(),
-                        fetched=True,
-                        exclude_item_hashes=self.processed_hashes,
-                        exclude_addresses=current_running_addresses,
-                        batch_size=25,
+            # Yield control back to the event loop to prevent blocking
+            await asyncio.sleep(0.1)
+
+            current_time = asyncio.get_event_loop().time()
+            # Only log periodically to reduce spam
+            if (len(self._task) > 0 or self.processing_count > 0) and (
+                current_time - last_yield_time > 1.0
+            ):
+                LOGGER.info(
+                    f"Currently processing: {self.processing_count} (active tasks: {len(self._task)})"
+                )
+
+            # Only fetch new messages if we're below max_parallel
+            if len(self._task) < self.max_parallel:
+                available_slots = self.max_parallel - len(self._task)
+                LOGGER.info(f"Available processing slots: {available_slots}")
+
+                async with self.session_factory() as session:
+                    messages: List[PendingMessageDb] = (
+                        await async_get_next_pending_messages_from_different_senders(
+                            session=session,
+                            current_time=utc_now(),
+                            fetched=True,
+                            exclude_item_hashes=self.processed_hashes,
+                            exclude_addresses=self.current_address,
+                            limit=available_slots,
+                        )
                     )
 
-                    if pending_messages:
-                        msg_address: str = ""
-                        if pending_messages[0].content and isinstance(
-                            pending_messages[0].content, dict
+                    # Create tasks for new messages
+                    for message in messages:
+                        if (
+                            not message.content
+                            or not isinstance(message.content, dict)
+                            or "address" not in message.content
                         ):
-                            addr = pending_messages[0].content.get("address")
-                            if isinstance(addr, str):
-                                msg_address = addr
+                            continue
 
-                        if msg_address:
-                            LOGGER.info(
-                                f"Processing address : {msg_address} with {len(pending_messages)} messages"
-                            )
-                            task = asyncio.create_task(
-                                self.process_message_batch(
-                                    messages=pending_messages,
-                                    out=self.queue,
-                                    address=msg_address,
+                        # Track processed hashes and addresses
+                        item_hash = message.item_hash
+                        address = message.content.get("address")
+
+                        self.processed_hashes.add(item_hash)
+                        self.current_address.add(address)
+
+                        LOGGER.info(f"Processing {item_hash}, {address}")
+                        # Create task and add callback
+                        task = asyncio.create_task(self.process_message(message))
+                        task.add_done_callback(task_done_callback)
+
+                        # Store in active tasks dictionary
+                        self._task[item_hash] = task
+
+                    # Clean up completed tasks
+                for item_hash, task in list(self._task.items()):
+                    if task.done():
+                        try:
+                            result = task.result()
+
+                            if result is not None:
+                                LOGGER.info(
+                                    f"Message {item_hash} processed with status: {result.status}"
                                 )
+                                completed_results.append(result)
+                        except asyncio.CancelledError:
+                            LOGGER.debug(f"Task for {item_hash} was cancelled")
+                        except Exception as e:
+                            LOGGER.exception(
+                                f"Error getting task result for {item_hash}: {e}"
                             )
-                            self._tasks[msg_address] = task
 
-            if not self.queue.empty():
-                status = await self.queue.get()
+                        self._task.pop(item_hash)
 
-                # Remove from processed_hashes since we're done with it
-                if status.item_hash in self.processed_hashes:
-                    self.processed_hashes.remove(status.item_hash)
-
-                # Yield each individual result as soon as it's available
-                yield [status]
-            elif self._tasks:
-                # No results ready yet but tasks are still running, yield control to allow other tasks to run
-                await asyncio.sleep(0.01)
+                if completed_results:
+                    LOGGER.info(f"Yielding {len(completed_results)} completed results")
+                    yield completed_results
+                    completed_results = []
+                    last_yield_time = current_time
 
     async def publish_to_mq(
         self, message_iterator: AsyncIterator[Sequence[MessageProcessingResult]]
@@ -271,11 +259,8 @@ class PendingMessageProcessor(MessageJob):
 
 
 async def fetch_and_process_messages_task(config: Config):
-    engine = make_engine(config=config, application_name="aleph-process")
-    session_factory = make_session_factory(engine)
-
-    async_engine = make_async_engine(config=config, application_name="aleph-process")
-    async_session_factory = make_async_session_factory(async_engine)
+    engine = make_async_engine(config=config, application_name="aleph-process")
+    session_factory = make_async_session_factory(engine)
 
     async with (
         NodeCache(
@@ -296,7 +281,6 @@ async def fetch_and_process_messages_task(config: Config):
         )
         pending_message_processor = await PendingMessageProcessor.new(
             session_factory=session_factory,
-            async_session_factory=async_session_factory,
             message_handler=message_handler,
             max_retries=config.aleph.jobs.pending_messages.max_retries.value,
             mq_host=config.p2p.mq_host.value,
@@ -309,7 +293,7 @@ async def fetch_and_process_messages_task(config: Config):
 
         async with pending_message_processor:
             while True:
-                with session_factory() as session:
+                async with session_factory() as session:
                     try:
                         message_processing_pipeline = (
                             pending_message_processor.make_pipeline()
@@ -322,7 +306,7 @@ async def fetch_and_process_messages_task(config: Config):
 
                     except Exception:
                         LOGGER.exception("Error in pending messages job")
-                        session.rollback()
+                        await session.rollback()
 
                 LOGGER.info("Waiting for new pending messages...")
                 # We still loop periodically for retried messages as we do not bother sending a message
