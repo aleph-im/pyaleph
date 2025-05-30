@@ -77,7 +77,7 @@ def make_async_engine(
         echo=echo,
         pool_size=40,
         max_overflow=20,
-        pool_recycle=3600
+        pool_recycle=3600,
     )
 
 
