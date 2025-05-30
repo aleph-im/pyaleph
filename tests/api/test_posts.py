@@ -5,7 +5,7 @@ import pytest
 
 from aleph.db.models import MessageDb
 from aleph.db.models.posts import PostDb
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 POSTS_URI = "/api/v1/posts.json"
 
@@ -56,17 +56,17 @@ async def test_get_posts(ccn_api_client, fixture_posts: Sequence[PostDb]):
 @pytest.mark.asyncio
 async def test_get_posts_refs(
     ccn_api_client,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     fixture_posts: Sequence[PostDb],
     post_with_refs_and_tags: Tuple[MessageDb, PostDb],
 ):
     message_db, post_db = post_with_refs_and_tags
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add_all(fixture_posts)
         session.add(message_db)
         session.add(post_db)
-        session.commit()
+        await session.commit()
 
     # Match the ref
     response = await ccn_api_client.get(
@@ -111,7 +111,7 @@ async def test_get_posts_refs(
 @pytest.mark.asyncio
 async def test_get_amended_posts_refs(
     ccn_api_client,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     fixture_posts: Sequence[PostDb],
     post_with_refs_and_tags: Tuple[MessageDb, PostDb],
     amended_post_with_refs_and_tags: Tuple[MessageDb, PostDb],
@@ -121,13 +121,13 @@ async def test_get_amended_posts_refs(
 
     original_post_db.latest_amend = amend_post_db.item_hash
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add_all(fixture_posts)
         session.add(original_message_db)
         session.add(original_post_db)
         session.add(amend_message_db)
         session.add(amend_post_db)
-        session.commit()
+        await session.commit()
 
     # Match the ref
     response = await ccn_api_client.get(
@@ -172,17 +172,17 @@ async def test_get_amended_posts_refs(
 @pytest.mark.asyncio
 async def test_get_posts_tags(
     ccn_api_client,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     fixture_posts: Sequence[PostDb],
     post_with_refs_and_tags: Tuple[MessageDb, PostDb],
 ):
     message_db, post_db = post_with_refs_and_tags
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add_all(fixture_posts)
         session.add(message_db)
         session.add(post_db)
-        session.commit()
+        await session.commit()
 
     # Match one tag
     response = await ccn_api_client.get(
@@ -242,7 +242,7 @@ async def test_get_posts_tags(
 @pytest.mark.asyncio
 async def test_get_amended_posts_tags(
     ccn_api_client,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     fixture_posts: Sequence[PostDb],
     post_with_refs_and_tags: Tuple[MessageDb, PostDb],
     amended_post_with_refs_and_tags: Tuple[MessageDb, PostDb],
@@ -252,13 +252,13 @@ async def test_get_amended_posts_tags(
 
     original_post_db.latest_amend = amend_post_db.item_hash
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add_all(fixture_posts)
         session.add(original_message_db)
         session.add(original_post_db)
         session.add(amend_message_db)
         session.add(amend_post_db)
-        session.commit()
+        await session.commit()
 
     # Match one tag
     response = await ccn_api_client.get("/api/v0/posts.json", params={"tags": "amend"})

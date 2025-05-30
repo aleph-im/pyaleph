@@ -11,7 +11,7 @@ from aleph.handlers.content.store import StoreMessageHandler
 from aleph.schemas.message_content import ContentSource, RawContent
 from aleph.services.ipfs import IpfsService
 from aleph.storage import StorageService
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 from aleph.types.files import FileType
 
 
@@ -56,7 +56,7 @@ def fixture_message_directory() -> MessageDb:
 @pytest.mark.asyncio
 async def test_handle_new_storage_file(
     mocker,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     mock_config: Config,
     fixture_message_file: MessageDb,
 ):
@@ -88,14 +88,14 @@ async def test_handle_new_storage_file(
     store_message_handler = StoreMessageHandler(
         storage_service=storage_service, grace_period=24
     )
-    with session_factory() as session:
+    async with session_factory() as session:
         await store_message_handler.fetch_related_content(
             session=session, message=message
         )
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        stored_files = list((session.execute(select(StoredFileDb))).scalars())
+    async with session_factory() as session:
+        stored_files = list((await session.execute(select(StoredFileDb))).scalars())
 
     assert len(stored_files) == 1
     stored_file: StoredFileDb = stored_files[0]
@@ -110,7 +110,7 @@ async def test_handle_new_storage_file(
 @pytest.mark.asyncio
 async def test_handle_new_storage_directory(
     mocker,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     mock_config: Config,
     fixture_message_directory: MessageDb,
 ):
@@ -136,14 +136,14 @@ async def test_handle_new_storage_directory(
         storage_service=storage_service, grace_period=24
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         await store_message_handler.fetch_related_content(
             session=session, message=message
         )
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        stored_files = list((session.execute(select(StoredFileDb))).scalars())
+    async with session_factory() as session:
+        stored_files = list((await session.execute(select(StoredFileDb))).scalars())
 
     assert len(stored_files) == 1
     stored_file = stored_files[0]
@@ -159,7 +159,7 @@ async def test_handle_new_storage_directory(
 @pytest.mark.asyncio
 async def test_store_files_is_false(
     mocker,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     mock_config: Config,
     fixture_message_directory: MessageDb,
 ):
@@ -188,14 +188,14 @@ async def test_store_files_is_false(
         storage_service=storage_service, grace_period=24
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         await store_message_handler.fetch_related_content(
             session=session, message=message
         )
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        stored_files = list((session.execute(select(StoredFileDb))).scalars())
+    async with session_factory() as session:
+        stored_files = list((await session.execute(select(StoredFileDb))).scalars())
 
     assert len(stored_files) == 1
     stored_file = stored_files[0]
@@ -212,7 +212,7 @@ async def test_store_files_is_false(
 @pytest.mark.asyncio
 async def test_store_files_is_false_ipfs_is_disabled(
     mocker,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     mock_config: Config,
     fixture_message_directory: MessageDb,
 ):
@@ -242,14 +242,14 @@ async def test_store_files_is_false_ipfs_is_disabled(
         storage_service=storage_service, grace_period=24
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         await store_message_handler.fetch_related_content(
             session=session, message=message
         )
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        stored_files = list((session.execute(select(StoredFileDb))).scalars())
+    async with session_factory() as session:
+        stored_files = list((await session.execute(select(StoredFileDb))).scalars())
 
     assert len(stored_files) == 1
     stored_file = stored_files[0]

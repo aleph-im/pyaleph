@@ -16,11 +16,11 @@ from aleph.db.accessors.chains import (
 from aleph.db.models.chains import ChainSyncStatusDb, IndexerSyncStatusDb
 from aleph.toolkit.range import MultiRange, Range
 from aleph.types.chain_sync import ChainEventType
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 
 @pytest.mark.asyncio
-async def test_get_last_height(session_factory: DbSessionFactory):
+async def test_get_last_height(session_factory: AsyncDbSessionFactory):
     sync_type = ChainEventType.SYNC
     eth_sync_status = ChainSyncStatusDb(
         chain=Chain.ETH,
@@ -29,20 +29,22 @@ async def test_get_last_height(session_factory: DbSessionFactory):
         last_update=pytz.utc.localize(dt.datetime(2022, 10, 1)),
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(eth_sync_status)
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        height = get_last_height(session=session, chain=Chain.ETH, sync_type=sync_type)
+    async with session_factory() as session:
+        height = await get_last_height(
+            session=session, chain=Chain.ETH, sync_type=sync_type
+        )
 
     assert height == eth_sync_status.height
 
 
 @pytest.mark.asyncio
-async def test_get_last_height_no_data(session_factory: DbSessionFactory):
-    with session_factory() as session:
-        height = get_last_height(
+async def test_get_last_height_no_data(session_factory: AsyncDbSessionFactory):
+    async with session_factory() as session:
+        height = await get_last_height(
             session=session, chain=Chain.NULS2, sync_type=ChainEventType.SYNC
         )
 
@@ -50,26 +52,26 @@ async def test_get_last_height_no_data(session_factory: DbSessionFactory):
 
 
 @pytest.mark.asyncio
-async def test_upsert_chain_sync_status_insert(session_factory: DbSessionFactory):
+async def test_upsert_chain_sync_status_insert(session_factory: AsyncDbSessionFactory):
     chain = Chain.ETH
     sync_type = ChainEventType.SYNC
     update_datetime = pytz.utc.localize(dt.datetime(2022, 11, 1))
     height = 10
 
-    with session_factory() as session:
-        upsert_chain_sync_status(
+    async with session_factory() as session:
+        await upsert_chain_sync_status(
             session=session,
             chain=chain,
             sync_type=sync_type,
             height=height,
             update_datetime=update_datetime,
         )
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
+    async with session_factory() as session:
 
         chain_sync_status = (
-            session.execute(
+            await session.execute(
                 select(ChainSyncStatusDb).where(ChainSyncStatusDb.chain == chain)
             )
         ).scalar_one()
@@ -81,7 +83,7 @@ async def test_upsert_chain_sync_status_insert(session_factory: DbSessionFactory
 
 
 @pytest.mark.asyncio
-async def test_upsert_peer_replace(session_factory: DbSessionFactory):
+async def test_upsert_peer_replace(session_factory: AsyncDbSessionFactory):
     existing_entry = ChainSyncStatusDb(
         chain=Chain.TEZOS,
         type=ChainEventType.SYNC,
@@ -89,26 +91,26 @@ async def test_upsert_peer_replace(session_factory: DbSessionFactory):
         last_update=pytz.utc.localize(dt.datetime(2023, 2, 6)),
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(existing_entry)
-        session.commit()
+        await session.commit()
 
     new_height = 1001
     new_update_datetime = pytz.utc.localize(dt.datetime(2023, 2, 7))
 
-    with session_factory() as session:
-        upsert_chain_sync_status(
+    async with session_factory() as session:
+        await upsert_chain_sync_status(
             session=session,
             chain=existing_entry.chain,
             sync_type=ChainEventType.SYNC,
             height=new_height,
             update_datetime=new_update_datetime,
         )
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
+    async with session_factory() as session:
         chain_sync_status = (
-            session.execute(
+            await session.execute(
                 select(ChainSyncStatusDb).where(
                     ChainSyncStatusDb.chain == existing_entry.chain
                 )
@@ -141,7 +143,8 @@ def indexer_multirange():
     )
 
 
-def test_get_indexer_multirange(session_factory: DbSessionFactory):
+@pytest.mark.asyncio
+async def test_get_indexer_multirange(session_factory: AsyncDbSessionFactory):
     chain = Chain.ETH
     event_type = ChainEventType.SYNC
 
@@ -175,12 +178,12 @@ def test_get_indexer_multirange(session_factory: DbSessionFactory):
         ),
     ]
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add_all(ranges)
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        db_multirange = get_indexer_multirange(
+    async with session_factory() as session:
+        db_multirange = await get_indexer_multirange(
             session=session, chain=chain, event_type=event_type
         )
 
@@ -191,17 +194,17 @@ def test_get_indexer_multirange(session_factory: DbSessionFactory):
     )
 
 
-def test_update_indexer_multirange(
-    indexer_multirange: IndexerMultiRange, session_factory: DbSessionFactory
+async def test_update_indexer_multirange(
+    indexer_multirange: IndexerMultiRange, session_factory: AsyncDbSessionFactory
 ):
-    with session_factory() as session:
-        update_indexer_multirange(
+    async with session_factory() as session:
+        await update_indexer_multirange(
             session=session, indexer_multirange=indexer_multirange
         )
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        indexer_multirange_db = get_indexer_multirange(
+    async with session_factory() as session:
+        indexer_multirange_db = await get_indexer_multirange(
             session=session,
             chain=indexer_multirange.chain,
             event_type=indexer_multirange.event_type,
@@ -210,16 +213,16 @@ def test_update_indexer_multirange(
         assert indexer_multirange_db == indexer_multirange
 
 
-def test_get_missing_indexer_datetime_multirange(
-    indexer_multirange: IndexerMultiRange, session_factory: DbSessionFactory
+async def test_get_missing_indexer_datetime_multirange(
+    indexer_multirange: IndexerMultiRange, session_factory: AsyncDbSessionFactory
 ):
-    with session_factory() as session:
-        update_indexer_multirange(
+    async with session_factory() as session:
+        await update_indexer_multirange(
             session=session, indexer_multirange=indexer_multirange
         )
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
+    async with session_factory() as session:
         new_multirange = MultiRange(
             Range(
                 dt.datetime(2019, 1, 1, tzinfo=dt.timezone.utc),
@@ -227,7 +230,7 @@ def test_get_missing_indexer_datetime_multirange(
                 upper_inc=True,
             )
         )
-        dt_multirange = get_missing_indexer_datetime_multirange(
+        dt_multirange = await get_missing_indexer_datetime_multirange(
             session=session,
             chain=indexer_multirange.chain,
             event_type=indexer_multirange.event_type,

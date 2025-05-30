@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import List
 
 import pytest
+import pytest_asyncio
 import pytz
 from aleph_message.models import Chain, ItemHash, ItemType, MessageType
 from aleph_message.models.execution import MachineType
@@ -28,13 +29,15 @@ from aleph.db.models import (
 )
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.db_session import AsyncDbSession, AsyncDbSessionFactory
 from aleph.types.files import FileTag, FileType
 from aleph.types.message_status import ErrorCode, MessageStatus
 
 
-@pytest.fixture
-def fixture_program_message(session_factory: DbSessionFactory) -> PendingMessageDb:
+@pytest_asyncio.fixture
+async def fixture_program_message(
+    session_factory: AsyncDbSessionFactory,
+) -> PendingMessageDb:
     pending_message = PendingMessageDb(
         item_hash="734a1287a2b7b5be060312ff5b05ad1bcf838950492e3428f2ac6437a1acad26",
         type=MessageType.program,
@@ -51,7 +54,7 @@ def fixture_program_message(session_factory: DbSessionFactory) -> PendingMessage
         retries=0,
         next_attempt=dt.datetime(2023, 1, 1),
     )
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(pending_message)
         session.add(
             MessageStatusDb(
@@ -60,14 +63,14 @@ def fixture_program_message(session_factory: DbSessionFactory) -> PendingMessage
                 reception_time=pending_message.reception_time,
             )
         )
-        session.commit()
+        await session.commit()
 
     return pending_message
 
 
-@pytest.fixture
-def fixture_program_message_with_subscriptions(
-    session_factory: DbSessionFactory,
+@pytest_asyncio.fixture
+async def fixture_program_message_with_subscriptions(
+    session_factory: AsyncDbSessionFactory,
 ) -> PendingMessageDb:
     pending_message = PendingMessageDb(
         item_hash="cad11970efe9b7478300fd04d7cc91c646ca0a792b9cc718650f86e1ccfac73e",
@@ -85,7 +88,7 @@ def fixture_program_message_with_subscriptions(
         retries=0,
         next_attempt=dt.datetime(2023, 1, 1),
     )
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(pending_message)
         session.add(
             MessageStatusDb(
@@ -94,7 +97,7 @@ def fixture_program_message_with_subscriptions(
                 reception_time=pending_message.reception_time,
             )
         )
-        session.commit()
+        await session.commit()
 
     return pending_message
 
@@ -111,7 +114,7 @@ def get_volumes_with_ref(content: ProgramContent) -> List:
     return volumes
 
 
-def insert_volume_refs(session: DbSession, message: PendingMessageDb):
+async def insert_volume_refs(session: AsyncDbSession, message: PendingMessageDb):
     """
     Insert volume references in the DB to make the program processable.
     """
@@ -128,8 +131,8 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
         file_hash = volume.ref[::-1]
 
         session.add(StoredFileDb(hash=file_hash, size=1024 * 1024, type=FileType.FILE))
-        session.flush()
-        insert_message_file_pin(
+        await session.flush()
+        await insert_message_file_pin(
             session=session,
             file_hash=volume.ref[::-1],
             owner=content.address,
@@ -138,7 +141,7 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
             created=created,
         )
         if volume.use_latest:
-            upsert_file_tag(
+            await upsert_file_tag(
                 session=session,
                 tag=FileTag(volume.ref),
                 owner=content.address,
@@ -147,8 +150,8 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
             )
 
 
-@pytest.fixture
-def user_balance(session_factory: DbSessionFactory) -> AlephBalanceDb:
+@pytest.mark.asyncio
+async def user_balance(session_factory: AsyncDbSessionFactory) -> AlephBalanceDb:
     balance = AlephBalanceDb(
         address="0x7083b90eBA420832A03C6ac7e6328d37c72e0260",
         chain=Chain.ETH,
@@ -156,24 +159,24 @@ def user_balance(session_factory: DbSessionFactory) -> AlephBalanceDb:
         eth_height=0,
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(balance)
-        session.commit()
+        await session.commit()
     return balance
 
 
 @pytest.mark.asyncio
 async def test_process_program(
     user_balance: AlephBalanceDb,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     message_processor: PendingMessageProcessor,
     fixture_program_message: PendingMessageDb,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
 ):
-    with session_factory() as session:
-        insert_volume_refs(session, fixture_program_message)
-        session.commit()
+    async with session_factory() as session:
+        await insert_volume_refs(session, fixture_program_message)
+        await session.commit()
 
     pipeline = message_processor.make_pipeline()
     # Exhaust the iterator
@@ -182,8 +185,8 @@ async def test_process_program(
     assert fixture_program_message.item_content
     content_dict = json.loads(fixture_program_message.item_content)
 
-    with session_factory() as session:
-        program = get_program(
+    async with session_factory() as session:
+        program = await get_program(
             session=session, item_hash=fixture_program_message.item_hash
         )
         assert program is not None
@@ -239,16 +242,16 @@ async def test_process_program(
 
 @pytest.mark.asyncio
 async def test_program_with_subscriptions(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     message_processor: PendingMessageProcessor,
     fixture_program_message_with_subscriptions: PendingMessageDb,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
 ):
     program_message = fixture_program_message_with_subscriptions
-    with session_factory() as session:
-        insert_volume_refs(session, program_message)
-        session.commit()
+    async with session_factory() as session:
+        await insert_volume_refs(session, program_message)
+        await session.commit()
 
     pipeline = message_processor.make_pipeline()
     # Exhaust the iterator
@@ -257,8 +260,8 @@ async def test_program_with_subscriptions(
     assert program_message.item_content
     json.loads(program_message.item_content)
 
-    with session_factory() as session:
-        program: VmBaseDb = session.execute(select(VmBaseDb)).scalar_one()
+    async with session_factory() as session:
+        program: VmBaseDb = (await session.execute(select(VmBaseDb))).scalar_one()
         message_triggers = program.message_triggers
         assert message_triggers
         assert len(message_triggers) == 1
@@ -270,7 +273,7 @@ async def test_program_with_subscriptions(
 
 @pytest.mark.asyncio
 async def test_process_program_missing_volumes(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     message_processor: PendingMessageProcessor,
     fixture_program_message_with_subscriptions: PendingMessageDb,
 ):
@@ -285,17 +288,19 @@ async def test_process_program_missing_volumes(
     # Exhaust the iterator
     _ = [message async for message in pipeline]
 
-    with session_factory() as session:
-        program_db = get_program(session=session, item_hash=ItemHash(program_hash))
+    async with session_factory() as session:
+        program_db = await get_program(
+            session=session, item_hash=ItemHash(program_hash)
+        )
         assert program_db is None
 
-        message_status = get_message_status(
+        message_status = await get_message_status(
             session=session, item_hash=ItemHash(program_hash)
         )
         assert message_status is not None
         assert message_status.status == MessageStatus.REJECTED
 
-        rejected_message = get_rejected_message(
+        rejected_message = await get_rejected_message(
             session=session, item_hash=ItemHash(program_hash)
         )
         assert rejected_message is not None

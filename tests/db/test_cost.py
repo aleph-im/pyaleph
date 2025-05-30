@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import List, Union
 
 import pytest
+import pytest_asyncio
 import pytz
 from aleph_message.models import (
     Chain,
@@ -25,7 +26,7 @@ from aleph.db.accessors.files import insert_message_file_pin, upsert_file_tag
 from aleph.db.models import AlephBalanceDb, MessageDb, MessageStatusDb, StoredFileDb
 from aleph.services.cost import get_total_and_detailed_costs
 from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.db_session import AsyncDbSession, AsyncDbSessionFactory
 from aleph.types.files import FileTag, FileType
 from aleph.types.message_status import MessageStatus
 
@@ -55,7 +56,7 @@ def get_volume_refs(
     return volumes
 
 
-def insert_volume_refs(session: DbSession, message: MessageDb):
+async def insert_volume_refs(session: AsyncDbSession, message: MessageDb):
     """
     Insert volume references in the DB to make the program processable.
     """
@@ -74,8 +75,8 @@ def insert_volume_refs(session: DbSession, message: MessageDb):
             session.add(
                 StoredFileDb(hash=file_hash, size=1024 * 1024, type=FileType.FILE)
             )
-            session.flush()
-            insert_message_file_pin(
+            await session.flush()
+            await insert_message_file_pin(
                 session=session,
                 file_hash=volume.ref[::-1],
                 owner=content.address,
@@ -83,7 +84,7 @@ def insert_volume_refs(session: DbSession, message: MessageDb):
                 ref=None,
                 created=created,
             )
-            upsert_file_tag(
+            await upsert_file_tag(
                 session=session,
                 tag=FileTag(volume.ref),
                 owner=content.address,
@@ -92,7 +93,7 @@ def insert_volume_refs(session: DbSession, message: MessageDb):
             )
 
 
-async def insert_costs(session: DbSession, message: MessageDb):
+async def insert_costs(session: AsyncDbSession, message: MessageDb):
     """
     Insert volume references in the DB to make the program processable.
     """
@@ -100,15 +101,17 @@ async def insert_costs(session: DbSession, message: MessageDb):
     if message.item_content:
         content = InstanceContent.model_validate_json(message.item_content)
 
-        _, costs = get_total_and_detailed_costs(session, content, message.item_hash)
+        _, costs = await get_total_and_detailed_costs(
+            session, content, message.item_hash
+        )
 
         if costs:
             insert_stmt = make_costs_upsert_query(costs)
-            session.execute(insert_stmt)
+            await session.execute(insert_stmt)
 
 
-@pytest.fixture
-def fixture_instance_message(session_factory: DbSessionFactory) -> MessageDb:
+@pytest_asyncio.fixture
+async def fixture_instance_message(session_factory: AsyncDbSessionFactory) -> MessageDb:
     content = {
         "address": "0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
         "allow_amend": False,
@@ -191,7 +194,7 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> MessageDb:
         channel=None,
         size=2000,
     )
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(message)
         session.add(
             MessageStatusDb(
@@ -200,19 +203,19 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> MessageDb:
                 reception_time=reception_time,
             )
         )
-        session.commit()
+        await session.commit()
 
     return message
 
 
 @pytest.mark.asyncio
 async def test_get_total_cost_for_address(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     fixture_instance_message,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
 ):
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(
             AlephBalanceDb(
                 address=fixture_instance_message.sender,
@@ -222,11 +225,11 @@ async def test_get_total_cost_for_address(
                 eth_height=0,
             )
         )
-        insert_volume_refs(session, fixture_instance_message)
+        await insert_volume_refs(session, fixture_instance_message)
         await insert_costs(session, fixture_instance_message)
-        session.commit()
+        await session.commit()
 
-        total_cost: Decimal = get_total_cost_for_address(
+        total_cost: Decimal = await get_total_cost_for_address(
             session=session, address=fixture_instance_message.sender
         )
 

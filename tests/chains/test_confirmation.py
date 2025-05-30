@@ -13,7 +13,7 @@ from aleph.db.models import ChainTxDb, PendingMessageDb
 from aleph.handlers.message_handler import MessageHandler
 from aleph.storage import StorageService
 from aleph.types.chain_sync import ChainSyncProtocol
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 MESSAGE_DICT: Mapping = {
     "chain": "ETH",
@@ -53,7 +53,7 @@ def compare_chain_txs(expected: ChainTxDb, actual: ChainTxDb):
 @pytest.mark.asyncio
 async def test_confirm_message(
     mock_config: Config,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     test_storage_service: StorageService,
     chain_tx: ChainTxDb,
 ):
@@ -83,12 +83,14 @@ async def test_confirm_message(
         reception_time=dt.datetime(2022, 1, 1),
         fetched=True,
     )
-    with session_factory() as session:
+    async with session_factory() as session:
         await message_handler.process(session=session, pending_message=pending_message)
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        message_in_db = get_message_by_item_hash(session=session, item_hash=item_hash)
+    async with session_factory() as session:
+        message_in_db = await get_message_by_item_hash(
+            session=session, item_hash=item_hash
+        )
 
     assert message_in_db is not None
     assert message_in_db.content == content
@@ -97,17 +99,19 @@ async def test_confirm_message(
     # Now, confirm the message
 
     # Insert a transaction in the DB to validate the foreign key constraint
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(chain_tx)
 
         pending_message.tx = chain_tx
         pending_message.tx_hash = chain_tx.hash
 
         await message_handler.process(session=session, pending_message=pending_message)
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        message_in_db = get_message_by_item_hash(session=session, item_hash=item_hash)
+    async with session_factory() as session:
+        message_in_db = await get_message_by_item_hash(
+            session=session, item_hash=item_hash
+        )
 
     assert message_in_db is not None
     assert message_in_db.confirmed
@@ -119,7 +123,7 @@ async def test_confirm_message(
 @pytest.mark.asyncio
 async def test_process_confirmed_message(
     mock_config: Config,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     test_storage_service: StorageService,
     chain_tx: ChainTxDb,
 ):
@@ -139,7 +143,7 @@ async def test_process_confirmed_message(
     )
 
     # Insert a transaction in the DB to validate the foreign key constraint
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(chain_tx)
 
         pending_message = PendingMessageDb.from_message_dict(
@@ -150,10 +154,12 @@ async def test_process_confirmed_message(
         pending_message.tx_hash = chain_tx.hash
         pending_message.tx = chain_tx
         await message_handler.process(session=session, pending_message=pending_message)
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        message_in_db = get_message_by_item_hash(session=session, item_hash=item_hash)
+    async with session_factory() as session:
+        message_in_db = await get_message_by_item_hash(
+            session=session, item_hash=item_hash
+        )
 
     assert message_in_db is not None
     assert message_in_db.confirmed

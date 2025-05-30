@@ -1,14 +1,14 @@
 import datetime as dt
-from typing import cast
 
 import pytest
+from aleph_message.models import ItemHash
 from configmanager import Config
 
+from aleph.db.accessors.messages import get_message_by_item_hash
 from aleph.db.models import PendingMessageDb
-from aleph.db.models.messages import ForgottenMessageDb, MessageDb
 from aleph.handlers.message_handler import MessageHandler
 from aleph.storage import StorageService
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 from aleph.types.message_processing_result import ProcessedMessage, RejectedMessage
 from aleph.types.message_status import ErrorCode
 
@@ -19,7 +19,7 @@ from .load_fixtures import load_fixture_message_list
 async def test_duplicated_forgotten_message(
     mocker,
     mock_config: Config,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     test_storage_service: StorageService,
 ):
     signature_verifier = mocker.AsyncMock()
@@ -43,7 +43,7 @@ async def test_duplicated_forgotten_message(
         config=mock_config,
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         # 1) process post message
         test1 = await message_handler.process(
             session=session,
@@ -51,10 +51,10 @@ async def test_duplicated_forgotten_message(
         )
         assert isinstance(test1, ProcessedMessage)
 
-        res1 = cast(
-            MessageDb,
-            session.query(MessageDb).where(MessageDb.item_hash == post_hash).first(),
+        res1 = await get_message_by_item_hash(
+            session=session, item_hash=ItemHash(post_hash)
         )
+        assert res1
         assert res1.item_hash == post_hash
 
         # 2) process forget message
@@ -63,10 +63,8 @@ async def test_duplicated_forgotten_message(
             pending_message=m2,
         )
         assert isinstance(test2, ProcessedMessage)
-
-        res2 = cast(
-            MessageDb,
-            session.query(MessageDb).where(MessageDb.item_hash == post_hash).first(),
+        res2 = await get_message_by_item_hash(
+            session=session, item_hash=ItemHash(post_hash)
         )
         assert res2 is None
 
@@ -78,16 +76,13 @@ async def test_duplicated_forgotten_message(
         assert isinstance(test3, RejectedMessage)
         assert test3.error_code == ErrorCode.FORGOTTEN_DUPLICATE
 
-        res3 = cast(
-            MessageDb,
-            session.query(MessageDb).where(MessageDb.item_hash == post_hash).first(),
+        res3 = await get_message_by_item_hash(
+            session=session, item_hash=ItemHash(post_hash)
         )
+
         assert res3 is None
 
-        res4 = cast(
-            ForgottenMessageDb,
-            session.query(ForgottenMessageDb)
-            .where(ForgottenMessageDb.item_hash == post_hash)
-            .first(),
+        res4 = await get_message_by_item_hash(
+            session=session, item_hash=ItemHash(post_hash)
         )
         assert res4

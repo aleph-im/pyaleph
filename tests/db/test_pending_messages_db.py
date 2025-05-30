@@ -1,5 +1,5 @@
 import datetime as dt
-from typing import List
+from typing import List, Set
 
 import pytest
 from aleph_message.models import Chain, ItemType, MessageType
@@ -7,10 +7,11 @@ from aleph_message.models import Chain, ItemType, MessageType
 from aleph.db.accessors.pending_messages import (
     count_pending_messages,
     get_next_pending_messages,
+    get_next_pending_messages_by_address,
 )
 from aleph.db.models import ChainTxDb, PendingMessageDb
 from aleph.types.chain_sync import ChainSyncProtocol
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 
 @pytest.fixture
@@ -87,58 +88,95 @@ def fixture_pending_messages():
             reception_time=dt.datetime(2022, 10, 7, 21, 53, 10),
             fetched=True,
         ),
+        # Add additional messages with the same address as the first message
+        PendingMessageDb(
+            id=405,
+            item_hash="548b3c6f6455e6f4216b01b43522bddc3564a14c04799ed0ce8af4857c7ba15g",
+            type=MessageType.forget,
+            chain=Chain.ETH,
+            sender="0xaC033C1cA5C49Eff98A1D9a56BeDBC4840010BA4",
+            signature="0x3619c016987c4221c85842ce250f3e50a9b8e42c04d4f9fbdfdfad9941d6c5195a502a4f63289429513bf152d24d0a7bb0533701ec3c7bbca91b18ce7eaa7dee1b",
+            item_type=ItemType.inline,
+            item_content='{"address":"0xaC033C1cA5C49Eff98A1D9a56BeDBC4840010BA4","time":1648215809.0270267,"hashes":["fea0e00f73102aa951794a3ea85f6f1bbfd3decb804fb73232f2a645a379ae55"],"reason":"Another message"}',
+            channel="INTEGRATION_TESTS",
+            time=dt.datetime(2022, 10, 7, 17, 6),
+            next_attempt=dt.datetime(2022, 10, 7, 17, 6),
+            retries=0,
+            check_message=True,
+            reception_time=dt.datetime(2022, 10, 7, 17, 6, 10),
+            fetched=True,
+        ),
+        PendingMessageDb(
+            id=406,
+            item_hash="648b3c6f6455e6f4216b01b43522bddc3564a14c04799ed0ce8af4857c7ba15h",
+            type=MessageType.forget,
+            chain=Chain.ETH,
+            sender="0xaC033C1cA5C49Eff98A1D9a56BeDBC4840010BA4",
+            signature="0x3619c016987c4221c85842ce250f3e50a9b8e42c04d4f9fbdfdfad9941d6c5195a502a4f63289429513bf152d24d0a7bb0533701ec3c7bbca91b18ce7eaa7dee1b",
+            item_type=ItemType.inline,
+            item_content='{"address":"0xaC033C1cA5C49Eff98A1D9a56BeDBC4840010BA4","time":1648215809.0270267,"hashes":["fea0e00f73102aa951794a3ea85f6f1bbfd3decb804fb73232f2a645a379ae56"],"reason":"Yet another message"}',
+            channel="INTEGRATION_TESTS",
+            time=dt.datetime(2022, 10, 7, 17, 7),
+            next_attempt=dt.datetime(2022, 10, 7, 17, 7),
+            retries=0,
+            check_message=True,
+            reception_time=dt.datetime(2022, 10, 7, 17, 7, 10),
+            fetched=True,
+        ),
     ]
 
 
 @pytest.mark.asyncio
 async def test_count_pending_messages(
-    session_factory: DbSessionFactory, fixture_pending_messages: List[PendingMessageDb]
+    session_factory: AsyncDbSessionFactory,
+    fixture_pending_messages: List[PendingMessageDb],
 ):
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add_all(fixture_pending_messages)
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        count_all = count_pending_messages(session=session)
-        assert count_all == 3
+    async with session_factory() as session:
+        count_all = await count_pending_messages(session=session)
+        assert count_all == 5
 
         # Only one message is linked to an ETH transaction
-        count_eth = count_pending_messages(session=session, chain=Chain.ETH)
+        count_eth = await count_pending_messages(session=session, chain=Chain.ETH)
         assert count_eth == 1
 
         # Only one message is linked to a TEZOS transaction
-        count_tezos = count_pending_messages(session=session, chain=Chain.TEZOS)
+        count_tezos = await count_pending_messages(session=session, chain=Chain.TEZOS)
         assert count_tezos == 1
 
         # No message should be linked to any Solana transaction
-        count_sol = count_pending_messages(session=session, chain=Chain.SOL)
+        count_sol = await count_pending_messages(session=session, chain=Chain.SOL)
         assert count_sol == 0
 
 
 @pytest.mark.asyncio
 async def test_get_pending_messages(
-    session_factory: DbSessionFactory, fixture_pending_messages: List[PendingMessageDb]
+    session_factory: AsyncDbSessionFactory,
+    fixture_pending_messages: List[PendingMessageDb],
 ):
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add_all(fixture_pending_messages)
-        session.commit()
+        await session.commit()
 
     current_time = max(
         pending_message.next_attempt for pending_message in fixture_pending_messages
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         pending_messages = list(
-            get_next_pending_messages(session=session, current_time=current_time)
+            await get_next_pending_messages(session=session, current_time=current_time)
         )
 
-        assert len(pending_messages) == 3
-        # Check the order of messages
-        assert [m.id for m in pending_messages] == [404, 42, 27]
+        assert len(pending_messages) == 5
+        # Check the order of messages (by next_attempt ascending)
+        assert [m.id for m in pending_messages] == [404, 42, 27, 405, 406]
 
         # Exclude hashes
         pending_messages = list(
-            get_next_pending_messages(
+            await get_next_pending_messages(
                 session=session,
                 current_time=current_time,
                 exclude_item_hashes={
@@ -146,5 +184,78 @@ async def test_get_pending_messages(
                 },
             )
         )
-        assert len(pending_messages) == 2
-        assert [m.id for m in pending_messages] == [404, 27]
+        assert len(pending_messages) == 4
+        assert [m.id for m in pending_messages] == [404, 27, 405, 406]
+
+
+@pytest.mark.asyncio
+async def test_get_next_pending_messages_by_address(
+    session_factory: AsyncDbSessionFactory,
+    fixture_pending_messages: List[PendingMessageDb],
+):
+    async with session_factory() as session:
+        session.add_all(fixture_pending_messages)
+        await session.commit()
+
+    current_time = max(
+        pending_message.next_attempt for pending_message in fixture_pending_messages
+    )
+
+    async with session_factory() as session:
+        # Test fetching messages by address
+        pending_messages = await get_next_pending_messages_by_address(
+            session=session, current_time=current_time, batch_size=10
+        )
+
+        # Should get all messages with address "0xaC033C1cA5C49Eff98A1D9a56BeDBC4840010BA4"
+        assert len(pending_messages) == 3
+        addresses = [
+            msg.content.get("address")
+            for msg in pending_messages
+            if msg.content and isinstance(msg.content, dict)
+        ]
+        assert all(
+            addr == "0xaC033C1cA5C49Eff98A1D9a56BeDBC4840010BA4" for addr in addresses
+        )
+
+        # Check sorting by next_attempt
+        assert [m.id for m in pending_messages] == [404, 405, 406]
+
+        # Test with exclude_item_hashes
+        exclude_hashes: Set[str] = {
+            "448b3c6f6455e6f4216b01b43522bddc3564a14c04799ed0ce8af4857c7ba15f"
+        }
+        pending_messages = await get_next_pending_messages_by_address(
+            session=session,
+            current_time=current_time,
+            exclude_item_hashes=exclude_hashes,
+            batch_size=10,
+        )
+        assert len(pending_messages) == 3  # Should fetch messages with another address
+        assert (
+            pending_messages[0].content is not None
+            and pending_messages[0].content.get("address")
+            == "0x720F319A9c3226dCDd7D8C49163D79EDa1084E98"
+        )
+
+        # Test with exclude_addresses
+        exclude_addresses: Set[str] = {"0xaC033C1cA5C49Eff98A1D9a56BeDBC4840010BA4"}
+        pending_messages = await get_next_pending_messages_by_address(
+            session=session,
+            current_time=current_time,
+            exclude_addresses=exclude_addresses,
+            batch_size=10,
+        )
+        assert len(pending_messages) == 2  # Should fetch messages with another address
+        assert (
+            pending_messages[0].content is not None
+            and pending_messages[0].content.get("address")
+            == "0x720F319A9c3226dCDd7D8C49163D79EDa1084E98"
+        )
+
+        # Test batch size limit
+        pending_messages = await get_next_pending_messages_by_address(
+            session=session, current_time=current_time, batch_size=2
+        )
+        assert len(pending_messages) == 2  # Should limit to 2 messages
+        assert [m.id for m in pending_messages] == [404, 405]
