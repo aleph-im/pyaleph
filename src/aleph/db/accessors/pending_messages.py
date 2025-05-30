@@ -2,7 +2,7 @@ import datetime as dt
 from typing import Any, Collection, Dict, Iterable, List, Optional, Sequence, Set
 
 from aleph_message.models import Chain
-from sqlalchemy import and_, delete, func, not_, select, update
+from sqlalchemy import and_, delete, func, not_, select, text, update
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import Update
 
@@ -270,13 +270,14 @@ async def async_get_next_pending_messages_from_different_senders(
     fetched: bool = True,
     exclude_item_hashes: Optional[Set[str]] = None,
     exclude_addresses: Optional[Set[str]] = None,
-    limit: int = 40,  # Increased default limit to process more messages in parallel
+    limit: int = 40,  # Maximum number of distinct senders to process in parallel
 ) -> List[PendingMessageDb]:
     """
     Get pending messages from different senders to process in parallel.
 
-    This optimized function maximizes parallelism by fetching more candidates
-    in a single query and processing them efficiently.
+    This optimized function maximizes parallelism by fetching messages with distinct
+    sender addresses directly from the database using JSONB operators, avoiding
+    additional processing in Python.
 
     Args:
         session: Database session
@@ -284,63 +285,49 @@ async def async_get_next_pending_messages_from_different_senders(
         fetched: Whether to only return messages that have been fetched
         exclude_item_hashes: Item hashes to exclude (already being processed)
         exclude_addresses: Sender addresses to exclude (already being processed)
-        limit: Maximum number of messages to return
+        limit: Maximum number of messages to return (one per unique sender)
 
     Returns:
-        List of pending messages from different senders
+        List of pending messages from different senders, one per unique sender
     """
-    # Use a more efficient query that fetches more potential candidates at once
-    # to reduce database roundtrips
-    query = (
-        select(PendingMessageDb)
-        .where(
-            and_(
-                PendingMessageDb.next_attempt <= current_time,
-                PendingMessageDb.fetched == fetched,
-            )
-        )
-        .order_by(
-            PendingMessageDb.next_attempt
-        )  # Order by next_attempt to prioritize oldest messages
-        .limit(
-            limit * 5
-        )  # Get a much larger batch to ensure we find enough unique senders
-    )
-
-    if exclude_item_hashes:
-        query = query.where(not_(PendingMessageDb.item_hash.in_(exclude_item_hashes)))
-
-    # Execute query once and process in memory (more efficient)
-    result = await session.execute(query)
-    candidates = result.scalars().all()
-
-    # Process all candidates in a single pass
-    by_sender = {}
-    for message in candidates:
-        if (
-            not message.content
-            or not isinstance(message.content, dict)
-            or "address" not in message.content
-        ):
-            continue
-
-        address = message.content["address"]
-        if not address:
-            continue
-
-        if exclude_addresses and address in exclude_addresses:
-            continue
-
-        # Only keep the first message per sender (oldest by next_attempt)
-        if address not in by_sender:
-            by_sender[address] = message
-
-        # Break early if we've found enough unique senders
-        if len(by_sender) >= limit:
-            break
-
-    # Return all found messages from different senders
-    return list(by_sender.values())
+    # In PostgreSQL, DISTINCT ON requires the first ORDER BY expression to match exactly
+    # Let's use a text-based SQL approach to ensure identical expressions
+    
+    # Build the SQL query directly for more precise control
+    sql_query = """
+    SELECT DISTINCT ON (jsonb_extract_path_text(content, 'address')) * 
+    FROM pending_messages 
+    WHERE next_attempt <= :current_time
+      AND fetched = :fetched
+      AND content IS NOT NULL
+      AND jsonb_extract_path_text(content, 'address') IS NOT NULL
+    """
+    
+    # Add exclusions if needed
+    params = {"current_time": current_time, "fetched": fetched}
+    
+    if exclude_item_hashes and len(exclude_item_hashes) > 0:
+        placeholder_names = [f":exclude_hash_{i}" for i in range(len(exclude_item_hashes))]
+        sql_query += f" AND item_hash NOT IN ({', '.join(placeholder_names)})"
+        for i, hash_value in enumerate(exclude_item_hashes):
+            params[f"exclude_hash_{i}"] = hash_value
+    
+    if exclude_addresses and len(exclude_addresses) > 0:
+        placeholder_names = [f":exclude_addr_{i}" for i in range(len(exclude_addresses))]
+        sql_query += f" AND jsonb_extract_path_text(content, 'address') NOT IN ({', '.join(placeholder_names)})"
+        for i, addr in enumerate(exclude_addresses):
+            params[f"exclude_addr_{i}"] = addr
+    
+    # Add the ORDER BY clause - the first expression MUST match the DISTINCT ON expression exactly
+    sql_query += """
+    ORDER BY jsonb_extract_path_text(content, 'address'), next_attempt
+    LIMIT :limit
+    """
+    params["limit"] = limit
+    
+    # Execute the raw SQL query
+    result = await session.execute(select(PendingMessageDb).from_statement(text(sql_query)).params(**params))
+    return result.scalars().all()
 
 
 async def async_get_next_pending_message(
