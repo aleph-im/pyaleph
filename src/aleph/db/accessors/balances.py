@@ -2,28 +2,31 @@ from decimal import Decimal
 from io import StringIO
 from typing import Dict, Mapping, Optional, Sequence
 
+import asyncpg
 from aleph_message.models import Chain
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.sql import Select
 
 from aleph.db.models import AlephBalanceDb
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 
 
-def get_balance_by_chain(
-    session: DbSession, address: str, chain: Chain, dapp: Optional[str] = None
+async def get_balance_by_chain(
+    session: AsyncDbSession, address: str, chain: Chain, dapp: Optional[str] = None
 ) -> Optional[Decimal]:
-    return session.execute(
-        select(AlephBalanceDb.balance).where(
-            (AlephBalanceDb.address == address)
-            & (AlephBalanceDb.chain == chain.value)
-            & (AlephBalanceDb.dapp == dapp)
+    return (
+        await session.execute(
+            select(AlephBalanceDb.balance).where(
+                (AlephBalanceDb.address == address)
+                & (AlephBalanceDb.chain == chain.value)
+                & (AlephBalanceDb.dapp == dapp)
+            )
         )
     ).scalar()
 
 
 def make_balances_by_chain_query(
-    session: DbSession,
     chains: Optional[Sequence[Chain]] = None,
     page: int = 1,
     pagination: int = 100,
@@ -46,21 +49,23 @@ def make_balances_by_chain_query(
     return query
 
 
-def get_balances_by_chain(session: DbSession, **kwargs):
-    select_stmt = make_balances_by_chain_query(session=session, **kwargs)
-    return (session.execute(select_stmt)).all()
+async def get_balances_by_chain(session: AsyncDbSession, **kwargs):
+    select_stmt = make_balances_by_chain_query(**kwargs)
+    return (await session.execute(select_stmt)).all()
 
 
-def count_balances_by_chain(session: DbSession, pagination: int = 0, **kwargs):
+async def count_balances_by_chain(
+    session: AsyncDbSession, pagination: int = 0, **kwargs
+):
     select_stmt = make_balances_by_chain_query(
-        session=session, pagination=0, **kwargs
+        pagination=pagination, **kwargs
     ).subquery()
     select_count_stmt = select(func.count()).select_from(select_stmt)
-    return session.execute(select_count_stmt).scalar_one()
+    return (await session.execute(select_count_stmt)).scalar_one()
 
 
-def get_total_balance(
-    session: DbSession, address: str, include_dapps: bool = False
+async def get_total_balance(
+    session: AsyncDbSession, address: str, include_dapps: bool = False
 ) -> Decimal:
     where_clause = AlephBalanceDb.address == address
     if not include_dapps:
@@ -73,12 +78,12 @@ def get_total_balance(
         .group_by(AlephBalanceDb.address)
     )
 
-    result = session.execute(select_stmt).one_or_none()
+    result = (await session.execute(select_stmt)).one_or_none()
     return Decimal(0) if result is None else result.balance or Decimal(0)
 
 
-def get_total_detailed_balance(
-    session: DbSession,
+async def get_total_detailed_balance(
+    session: AsyncDbSession,
     address: str,
     chain: Optional[str] = None,
     include_dapps: bool = False,
@@ -94,7 +99,7 @@ def get_total_detailed_balance(
             .group_by(AlephBalanceDb.address)
         )
 
-        result = session.execute(query).first()
+        result = (await session.execute(query)).first()
         return result[0] if result is not None else Decimal(0), {}
 
     query = (
@@ -108,7 +113,7 @@ def get_total_detailed_balance(
 
     balances_by_chain = {
         row.chain: row.balance or Decimal(0)
-        for row in session.execute(query).fetchall()
+        for row in (await session.execute(query)).fetchall()
     }
 
     query = (
@@ -120,12 +125,12 @@ def get_total_detailed_balance(
         .group_by(AlephBalanceDb.address)
     )
 
-    result = session.execute(query).first()
+    result = (await session.execute(query)).first()
     return result[0] if result is not None else Decimal(0), balances_by_chain
 
 
-def update_balances(
-    session: DbSession,
+async def update_balances(
+    session: AsyncDbSession,
     chain: Chain,
     dapp: Optional[str],
     eth_height: int,
@@ -140,12 +145,14 @@ def update_balances(
     table from the temporary one.
     """
 
-    session.execute(
+    await session.execute(
         "CREATE TEMPORARY TABLE temp_balances AS SELECT * FROM balances WITH NO DATA"  # type: ignore[arg-type]
     )
 
-    conn = session.connection().connection
-    cursor = conn.cursor()
+    # Get the raw asyncpg connection from SQLAlchemy
+    raw_conn: AsyncConnection = await session.connection()
+    # Get the underlying asyncpg connection
+    asyncpg_conn: asyncpg.Connection = await raw_conn.get_raw_connection()
 
     # Prepare an in-memory CSV file for use with the COPY operator
     csv_balances = StringIO(
@@ -156,11 +163,11 @@ def update_balances(
             ]
         )
     )
-    cursor.copy_expert(
-        "COPY temp_balances(address, chain, dapp, balance, eth_height) FROM STDIN WITH CSV DELIMITER ';'",
-        csv_balances,
+    await asyncpg_conn.execute(
+        "COPY temp_balances(address, chain, dapp, balance, eth_height) FROM STDIN CSV DELIMITER ';'",
+        csv_balances.getvalue(),
     )
-    session.execute(
+    await session.execute(
         """
         INSERT INTO balances(address, chain, dapp, balance, eth_height)
             (SELECT address, chain, dapp, balance, eth_height FROM temp_balances)
@@ -173,4 +180,4 @@ def update_balances(
     # Temporary tables are dropped at the same time as the connection, but SQLAlchemy
     # tends to reuse connections. Dropping the table here guarantees it will not be present
     # on the next run.
-    session.execute("DROP TABLE temp_balances")  # type: ignore[arg-type]
+    await session.execute("DROP TABLE temp_balances")  # type: ignore[arg-type]

@@ -8,7 +8,7 @@ from aleph_message.models import ItemType, MessageConfirmation
 from aleph.db.models import MessageDb, MessageStatusDb, PendingMessageDb
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.toolkit.timestamp import utc_now
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 from aleph.types.message_processing_result import MessageProcessingResult
 from aleph.types.message_status import MessageStatus
 
@@ -45,7 +45,7 @@ def make_validated_message_from_dict(
 async def process_pending_messages(
     message_processor: PendingMessageProcessor,
     pending_messages: Sequence[PendingMessageDb],
-    session: DbSession,
+    session: AsyncDbSession,
 ) -> Iterable[MessageProcessingResult]:
 
     for pending_message in pending_messages:
@@ -58,7 +58,7 @@ async def process_pending_messages(
             )
         )
     session.add_all(pending_messages)
-    session.commit()
+    await session.commit()
 
     pipeline = message_processor.make_pipeline()
 

@@ -8,6 +8,7 @@ import sqlalchemy.exc
 from aleph_message.models import ItemHash, ItemType, MessageType
 from configmanager import Config
 from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from aleph.chains.signature_verifier import SignatureVerifier
@@ -39,7 +40,7 @@ from aleph.handlers.content.vm import VmMessageHandler
 from aleph.schemas.pending_messages import parse_message
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.db_session import AsyncDbSession, AsyncDbSessionFactory
 from aleph.types.files import FileType
 from aleph.types.message_processing_result import ProcessedMessage, RejectedMessage
 from aleph.types.message_status import (
@@ -122,7 +123,7 @@ class BaseMessageHandler:
 
         return validated_message
 
-    async def fetch_related_content(self, session: DbSession, message: MessageDb):
+    async def fetch_related_content(self, session: AsyncDbSession, message: MessageDb):
         content_handler = self.get_content_handler(message.type)
 
         try:
@@ -135,7 +136,7 @@ class BaseMessageHandler:
             ) from e
 
     async def load_fetched_content(
-        self, session: DbSession, pending_message: PendingMessageDb
+        self, session: AsyncDbSession, pending_message: PendingMessageDb
     ) -> PendingMessageDb:
         if pending_message.item_type != ItemType.inline:
             pending_message.fetched = False
@@ -161,7 +162,7 @@ class MessagePublisher(BaseMessageHandler):
 
     def __init__(
         self,
-        session_factory: DbSessionFactory,
+        session_factory: AsyncDbSessionFactory,
         storage_service: StorageService,
         config: Config,
         pending_message_exchange: aio_pika.abc.AbstractExchange,
@@ -191,19 +192,19 @@ class MessagePublisher(BaseMessageHandler):
         origin: Optional[MessageOrigin] = MessageOrigin.P2P,
     ) -> Optional[PendingMessageDb]:
         # TODO: this implementation is just messy, improve it.
-        with self.session_factory() as session:
+        async with self.session_factory() as session:
             try:
                 # we don't check signatures yet.
                 message = parse_message(message_dict)
             except InvalidMessageException as e:
                 LOGGER.warning(e)
-                reject_new_pending_message(
+                await reject_new_pending_message(
                     session=session,
                     pending_message=message_dict,
                     exception=e,
                     tx_hash=tx_hash,
                 )
-                session.commit()
+                await session.commit()
                 return None
 
             pending_message = PendingMessageDb.from_obj(
@@ -220,25 +221,24 @@ class MessagePublisher(BaseMessageHandler):
                 )
             except InvalidMessageException as e:
                 LOGGER.warning("Invalid message: %s - %s", message.item_hash, str(e))
-                reject_new_pending_message(
+                await reject_new_pending_message(
                     session=session,
                     pending_message=message_dict,
                     exception=e,
                     tx_hash=tx_hash,
                 )
-                session.commit()
+                await session.commit()
                 return None
 
             # Check if there are an already existing record
-            existing_message = (
-                session.query(PendingMessageDb)
-                .filter_by(
-                    sender=pending_message.sender,
-                    item_hash=pending_message.item_hash,
-                    signature=pending_message.signature,
-                )
-                .one_or_none()
+            stmt = select(PendingMessageDb).where(
+                (PendingMessageDb.sender == pending_message.sender)
+                & (PendingMessageDb.item_hash == pending_message.item_hash)
+                & (PendingMessageDb.signature == pending_message.signature)
             )
+            result = await session.execute(stmt)
+            existing_message = result.scalar_one_or_none()
+
             if existing_message:
                 return existing_message
 
@@ -255,9 +255,9 @@ class MessagePublisher(BaseMessageHandler):
             )
 
             try:
-                session.execute(upsert_message_status_stmt)
-                session.execute(insert_pending_message_stmt)
-                session.commit()
+                await session.execute(upsert_message_status_stmt)
+                await session.execute(insert_pending_message_stmt)
+                await session.commit()
             except sqlalchemy.exc.IntegrityError:
                 # Handle the unique constraint violation.
                 LOGGER.warning("Duplicate pending message detected trying to save it.")
@@ -269,14 +269,14 @@ class MessagePublisher(BaseMessageHandler):
                     pending_message.item_hash,
                     str(e),
                 )
-                session.rollback()
-                reject_new_pending_message(
+                await session.rollback()
+                await reject_new_pending_message(
                     session=session,
                     pending_message=message_dict,
                     exception=e,
                     tx_hash=tx_hash,
                 )
-                session.commit()
+                await session.commit()
                 return None
 
             await self._publish_pending_message(pending_message)
@@ -307,16 +307,16 @@ class MessageHandler(BaseMessageHandler):
 
     @staticmethod
     async def confirm_existing_message(
-        session: DbSession,
+        session: AsyncDbSession,
         existing_message: MessageDb,
         pending_message: PendingMessageDb,
     ):
         if pending_message.signature != existing_message.signature:
             raise InvalidSignature(f"Invalid signature for {pending_message.item_hash}")
 
-        delete_pending_message(session=session, pending_message=pending_message)
+        await delete_pending_message(session=session, pending_message=pending_message)
         if tx_hash := pending_message.tx_hash:
-            session.execute(
+            await session.execute(
                 make_confirmation_upsert_query(
                     item_hash=pending_message.item_hash, tx_hash=tx_hash
                 )
@@ -324,27 +324,30 @@ class MessageHandler(BaseMessageHandler):
 
     @staticmethod
     async def confirm_existing_forgotten_message(
-        session: DbSession,
+        session: AsyncDbSession,
         forgotten_message: ForgottenMessageDb,
         pending_message: PendingMessageDb,
     ):
         if pending_message.signature != forgotten_message.signature:
             raise InvalidSignature(f"Invalid signature for {pending_message.item_hash}")
 
-        delete_pending_message(session=session, pending_message=pending_message)
+        await delete_pending_message(session=session, pending_message=pending_message)
 
     async def insert_message(
-        self, session: DbSession, pending_message: PendingMessageDb, message: MessageDb
+        self,
+        session: AsyncDbSession,
+        pending_message: PendingMessageDb,
+        message: MessageDb,
     ):
-        session.execute(make_message_upsert_query(message))
+        await session.execute(make_message_upsert_query(message))
         if message.item_type != ItemType.inline:
-            upsert_file(
+            await upsert_file(
                 session=session,
                 file_hash=message.item_hash,
                 size=message.size,
                 file_type=FileType.FILE,
             )
-            insert_content_file_pin(
+            await insert_content_file_pin(
                 session=session,
                 file_hash=message.item_hash,
                 owner=message.sender,
@@ -352,8 +355,8 @@ class MessageHandler(BaseMessageHandler):
                 created=timestamp_to_datetime(message.content["time"]),
             )
 
-        delete_pending_message(session=session, pending_message=pending_message)
-        session.execute(
+        await delete_pending_message(session=session, pending_message=pending_message)
+        await session.execute(
             make_message_status_upsert_query(
                 item_hash=message.item_hash,
                 new_status=MessageStatus.PROCESSED,
@@ -363,21 +366,21 @@ class MessageHandler(BaseMessageHandler):
         )
 
         if tx_hash := pending_message.tx_hash:
-            session.execute(
+            await session.execute(
                 make_confirmation_upsert_query(
                     item_hash=message.item_hash, tx_hash=tx_hash
                 )
             )
 
     async def insert_costs(
-        self, session: DbSession, costs: List[AccountCostsDb], message: MessageDb
+        self, session: AsyncDbSession, costs: List[AccountCostsDb], message: MessageDb
     ):
         if len(costs) > 0:
             insert_stmt = make_costs_upsert_query(costs)
-            session.execute(insert_stmt)
+            await session.execute(insert_stmt)
 
     async def verify_and_fetch(
-        self, session: DbSession, pending_message: PendingMessageDb
+        self, session: AsyncDbSession, pending_message: PendingMessageDb
     ) -> MessageDb:
         await self.verify_signature(pending_message=pending_message)
         validated_message = await self.fetch_pending_message(
@@ -387,7 +390,7 @@ class MessageHandler(BaseMessageHandler):
         return validated_message
 
     async def process(
-        self, session: DbSession, pending_message: PendingMessageDb
+        self, session: AsyncDbSession, pending_message: PendingMessageDb
     ) -> ProcessedMessage | RejectedMessage:
         """
         Process a pending message.
@@ -403,7 +406,7 @@ class MessageHandler(BaseMessageHandler):
         """
 
         # Note: Check if message already exists (and confirm it)
-        existing_message = get_message_by_item_hash(
+        existing_message = await get_message_by_item_hash(
             session=session, item_hash=ItemHash(pending_message.item_hash)
         )
         if existing_message:
@@ -416,7 +419,7 @@ class MessageHandler(BaseMessageHandler):
 
         # Note: Check if message is already forgotten (and confirm it)
         # this is to avoid race conditions when a confirmation arrives after the FORGET message has been preocessed
-        forgotten_message = get_forgotten_message(
+        forgotten_message = await get_forgotten_message(
             session=session, item_hash=ItemHash(pending_message.item_hash)
         )
         if forgotten_message:
@@ -433,7 +436,6 @@ class MessageHandler(BaseMessageHandler):
         message = await self.verify_and_fetch(
             session=session, pending_message=pending_message
         )
-
         content_handler = self.get_content_handler(message.type)
         await content_handler.check_dependencies(session=session, message=message)
         await content_handler.check_permissions(session=session, message=message)

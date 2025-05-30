@@ -207,14 +207,21 @@ def insert_aggregate_element(
         content=content,
         creation_datetime=creation_datetime,
     )
-    session.execute(insert_stmt)
+    # Use on_conflict_do_nothing to handle duplicate item_hash values
+    upsert_stmt = insert_stmt.on_conflict_do_nothing(
+        constraint="aggregate_elements_pkey"
+    )
+    await session.execute(upsert_stmt)
 
 
-def count_aggregate_elements(session: DbSession, owner: str, key: str) -> int:
+async def count_aggregate_elements(
+    session: AsyncDbSession, owner: str, key: str
+) -> int:
     select_stmt = select(AggregateElementDb).where(
         (AggregateElementDb.key == key) & (AggregateElementDb.owner == owner)
     )
-    return session.execute(select(func.count()).select_from(select_stmt)).scalar_one()
+    result = await session.execute(select(func.count()).select_from(select_stmt))
+    return result.scalar_one()
 
 
 def merge_aggregate_elements(elements: Iterable[AggregateElementDb]) -> Dict:
@@ -224,16 +231,19 @@ def merge_aggregate_elements(elements: Iterable[AggregateElementDb]) -> Dict:
     return content
 
 
-def mark_aggregate_as_dirty(session: DbSession, owner: str, key: str) -> None:
+
+async def mark_aggregate_as_dirty(
+    session: AsyncDbSession, owner: str, key: str
+) -> None:
     update_stmt = (
         update(AggregateDb)
         .values(dirty=True)
         .where((AggregateDb.key == key) & (AggregateDb.owner == owner))
     )
-    session.execute(update_stmt)
+    await session.execute(update_stmt)
 
 
-def refresh_aggregate(session: DbSession, owner: str, key: str) -> None:
+async def refresh_aggregate(session: AsyncDbSession, owner: str, key: str) -> None:
     # Step 1: use a group by to retrieve the aggregate content. This uses a custom
     # aggregate function (see 78dd67881db4_jsonb_merge_aggregate.py).
     select_merged_aggregate_subquery = (
@@ -291,18 +301,18 @@ def refresh_aggregate(session: DbSession, owner: str, key: str) -> None:
         },
     )
 
-    session.execute(upsert_aggregate_stmt)
+    await session.execute(upsert_aggregate_stmt)
 
 
-def delete_aggregate(session: DbSession, owner: str, key: str) -> None:
+async def delete_aggregate(session: AsyncDbSession, owner: str, key: str) -> None:
     delete_aggregate_stmt = delete(AggregateDb).where(
         (AggregateDb.key == key) & (AggregateDb.owner == owner)
     )
-    session.execute(delete_aggregate_stmt)
+    await session.execute(delete_aggregate_stmt)
 
 
-def delete_aggregate_element(session: DbSession, item_hash: str) -> None:
+async def delete_aggregate_element(session: AsyncDbSession, item_hash: str) -> None:
     delete_element_stmt = delete(AggregateElementDb).where(
         AggregateElementDb.item_hash == item_hash
     )
-    session.execute(delete_element_stmt)
+    await session.execute(delete_element_stmt)

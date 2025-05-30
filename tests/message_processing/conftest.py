@@ -13,7 +13,7 @@ from aleph.db.models import ChainTxDb, PendingMessageDb
 from aleph.handlers.message_handler import MessageHandler
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.storage import StorageService
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 from .load_fixtures import load_fixture_messages
 
@@ -27,7 +27,7 @@ def fixture_messages():
 #       it could make sense to have some general fixtures available to all the test cases
 #       to reduce duplication between DB tests, API tests, etc.
 async def _load_fixtures(
-    session_factory: DbSessionFactory, filename: str
+    session_factory: AsyncDbSessionFactory, filename: str
 ) -> Sequence[Dict[str, Any]]:
     fixtures_dir = Path(__file__).parent / "fixtures"
     fixtures_file = fixtures_dir / filename
@@ -51,30 +51,32 @@ async def _load_fixtures(
                 chain_txs.append(ChainTxDb.from_dict(confirmation))
                 tx_hashes.add(tx_hash)
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add_all(pending_messages)
         session.add_all(chain_txs)
-        session.commit()
+        await session.commit()
 
     return messages_json
 
 
 @pytest_asyncio.fixture
 async def fixture_aggregate_messages(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
 ) -> Sequence[Dict[str, Any]]:
     return await _load_fixtures(session_factory, "test-data-aggregates.json")
 
 
 @pytest_asyncio.fixture
 async def fixture_post_messages(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
 ) -> Sequence[Dict[str, Any]]:
     return await _load_fixtures(session_factory, "test-data-posts.json")
 
 
-@pytest.fixture
-def message_processor(mocker, mock_config: Config, session_factory: DbSessionFactory):
+@pytest_asyncio.fixture
+async def message_processor(
+    mocker, mock_config: Config, session_factory: AsyncDbSessionFactory
+):
     storage_engine = InMemoryStorageEngine(files={})
     storage_service = StorageService(
         storage_engine=storage_engine,

@@ -23,7 +23,7 @@ from aleph.services.cost import (
     get_total_and_detailed_costs_from_db,
 )
 from aleph.toolkit.costs import format_cost_str
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 from aleph.types.message_status import MessageStatus
 from aleph.web.controllers.app_state_getters import (
     get_session_factory_from_request,
@@ -56,7 +56,9 @@ class MessagePrice(DataClassJsonMixin):
     required_tokens: Optional[Decimal] = None
 
 
-async def get_executable_message(session: DbSession, item_hash_str: str) -> MessageDb:
+async def get_executable_message(
+    session: AsyncDbSession, item_hash_str: str
+) -> MessageDb:
     """Attempt to get an executable message from the database.
     Raises an HTTP exception if the message is not found, not processed or is not an executable message.
     """
@@ -68,7 +70,7 @@ async def get_executable_message(session: DbSession, item_hash_str: str) -> Mess
         raise web.HTTPBadRequest(body=f"Invalid message hash: {item_hash_str}")
 
     # Get the message status from the database
-    message_status_db = get_message_status(session=session, item_hash=item_hash)
+    message_status_db = await get_message_status(session=session, item_hash=item_hash)
     if not message_status_db:
         raise web.HTTPNotFound(body=f"Message not found with hash: {item_hash}")
     # Loop through the status_exceptions to find a match and raise the corresponding exception
@@ -78,7 +80,7 @@ async def get_executable_message(session: DbSession, item_hash_str: str) -> Mess
     assert message_status_db.status == MessageStatus.PROCESSED
 
     # Get the message from the database
-    message: Optional[MessageDb] = get_message_by_item_hash(session, item_hash)
+    message: Optional[MessageDb] = await get_message_by_item_hash(session, item_hash)
     if not message:
         raise web.HTTPNotFound(body="Message not found, despite appearing as processed")
     if message.type not in (
@@ -97,14 +99,14 @@ async def message_price(request: web.Request):
     """Returns the price of an executable message."""
 
     session_factory = get_session_factory_from_request(request)
-    with session_factory() as session:
+    async with session_factory() as session:
         item_hash = request.match_info["item_hash"]
         message = await get_executable_message(session, item_hash)
         content: ExecutableContent = message.parsed_content
 
         try:
             payment_type = get_payment_type(content)
-            required_tokens, costs = get_total_and_detailed_costs_from_db(
+            required_tokens, costs = await get_total_and_detailed_costs_from_db(
                 session, content, item_hash
             )
 
@@ -133,7 +135,7 @@ async def message_price_estimate(request: web.Request):
     session_factory = get_session_factory_from_request(request)
     storage_service = get_storage_service_from_request(request)
 
-    with session_factory() as session:
+    async with session_factory() as session:
         parsed_body = PubMessageRequest.model_validate(await request.json())
         message = validate_cost_estimation_message_dict(parsed_body.message_dict)
         content = await validate_cost_estimation_message_content(
@@ -143,7 +145,7 @@ async def message_price_estimate(request: web.Request):
 
         try:
             payment_type = get_payment_type(content)
-            required_tokens, costs = get_total_and_detailed_costs(
+            required_tokens, costs = await get_total_and_detailed_costs(
                 session, content, item_hash
             )
 

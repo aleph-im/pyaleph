@@ -9,13 +9,13 @@ from aleph.db.accessors.peers import upsert_peer
 from aleph.db.models import PeerType
 from aleph.services.ipfs import IpfsService
 from aleph.toolkit.timestamp import utc_now
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 LOGGER = logging.getLogger(__name__)
 
 
 async def handle_incoming_host(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     data: bytes,
     sender: str,
     source: PeerType,
@@ -34,8 +34,8 @@ async def handle_incoming_host(
 
         # TODO: handle interests and save it
 
-        with session_factory() as session:
-            upsert_peer(
+        async with session_factory() as session:
+            await upsert_peer(
                 session=session,
                 peer_id=sender,
                 peer_type=peer_type,
@@ -43,7 +43,7 @@ async def handle_incoming_host(
                 source=source,
                 last_seen=utc_now(),
             )
-            session.commit()
+            await session.commit()
 
     except Exception as e:
         if isinstance(e, ValueError):
@@ -54,7 +54,7 @@ async def handle_incoming_host(
 
 async def monitor_hosts_p2p(
     p2p_client: AlephP2PServiceClient,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     alive_topic: str,
 ) -> None:
     while True:
@@ -76,7 +76,7 @@ async def monitor_hosts_p2p(
 
 
 async def monitor_hosts_ipfs(
-    ipfs_service: IpfsService, session_factory: DbSessionFactory, alive_topic: str
+    ipfs_service: IpfsService, session_factory: AsyncDbSessionFactory, alive_topic: str
 ):
     while True:
         try:

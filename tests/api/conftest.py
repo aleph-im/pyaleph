@@ -23,23 +23,23 @@ from aleph.handlers.message_handler import MessageHandler
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 
 # TODO: remove the raw parameter, it's just to avoid larger refactorings
 async def _load_fixtures(
-    session_factory: DbSessionFactory, filename: str, raw: bool = True
+    session_factory: AsyncDbSessionFactory, filename: str, raw: bool = True
 ) -> Sequence[Dict[str, Any]]:
     fixtures_dir = Path(__file__).parent / "fixtures"
     fixtures_file = fixtures_dir / filename
 
-    with fixtures_file.open() as f:
+    async with fixtures_file.open() as f:
         messages_json = json.load(f)
 
     messages = []
     tx_hashes = set()
 
-    with session_factory() as session:
+    async with session_factory() as session:
         for message_dict in messages_json:
             message_db = MessageDb.from_message_dict(message_dict)
             messages.append(message_db)
@@ -50,20 +50,20 @@ async def _load_fixtures(
                     tx_hashes.add(tx_hash)
                     session.add(chain_tx_db)
 
-                session.flush()
-                session.execute(
+                await session.flush()
+                await session.execute(
                     insert(message_confirmations).values(
                         item_hash=message_db.item_hash, tx_hash=tx_hash
                     )
                 )
-        session.commit()
+        await session.commit()
 
     return messages_json if raw else messages
 
 
 @pytest_asyncio.fixture
 async def fixture_messages(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
 ) -> Sequence[Dict[str, Any]]:
     return await _load_fixtures(session_factory, "fixture_messages.json")
 
@@ -83,23 +83,23 @@ def make_aggregate_element(message: MessageDb) -> AggregateElementDb:
 
 @pytest_asyncio.fixture
 async def fixture_aggregate_messages(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
 ) -> Sequence[MessageDb]:
     messages = await _load_fixtures(
         session_factory, "fixture_aggregates.json", raw=False
     )
     aggregate_keys = set()
-    with session_factory() as session:
+    async with session_factory() as session:
         for message in messages:
             aggregate_element = make_aggregate_element(message)  # type: ignore
             session.add(aggregate_element)
             aggregate_keys.add((aggregate_element.owner, aggregate_element.key))
-        session.commit()
+        await session.commit()
 
         for owner, key in aggregate_keys:
-            refresh_aggregate(session=session, owner=owner, key=key)
+            await refresh_aggregate(session=session, owner=owner, key=key)
 
-        session.commit()
+        await session.commit()
 
     return messages  # type: ignore
 
@@ -120,14 +120,14 @@ def make_post_db(message: MessageDb) -> PostDb:
 
 @pytest_asyncio.fixture
 async def fixture_posts(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
 ) -> Sequence[PostDb]:
     messages = await _load_fixtures(session_factory, "fixture_posts.json", raw=False)
     posts = [make_post_db(message) for message in messages]  # type: ignore
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add_all(posts)
-        session.commit()
+        await session.commit()
 
     return posts
 
@@ -197,7 +197,9 @@ def amended_post_with_refs_and_tags(post_with_refs_and_tags: Tuple[MessageDb, Po
 
 
 @pytest.fixture
-def message_processor(mocker, mock_config: Config, session_factory: DbSessionFactory):
+def message_processor(
+    mocker, mock_config: Config, session_factory: AsyncDbSessionFactory
+):
     storage_engine = InMemoryStorageEngine(files={})
     storage_service = StorageService(
         storage_engine=storage_engine,

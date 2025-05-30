@@ -68,10 +68,16 @@ def make_async_engine(
     echo: bool = False,
     application_name: Optional[str] = None,
 ) -> AsyncEngine:
+    if config is None:
+        config = get_config()
+
     return create_async_engine(
         make_db_url(driver="asyncpg", config=config),
         future=True,
         echo=echo,
+        pool_size=40,
+        max_overflow=20,
+        pool_recycle=3600
     )
 
 

@@ -8,11 +8,11 @@ from sqlalchemy.sql import Insert
 
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.toolkit.costs import format_cost
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 
 
-def get_total_cost_for_address(
-    session: DbSession,
+async def get_total_cost_for_address(
+    session: AsyncDbSession,
     address: str,
     payment_type: Optional[PaymentType] = PaymentType.hold,
 ) -> Decimal:
@@ -31,13 +31,15 @@ def get_total_cost_for_address(
         )
     )
 
-    total_cost = session.execute(select_stmt).scalar()
+    total_cost = (await session.execute(select_stmt)).scalar()
     return format_cost(Decimal(total_cost or 0))
 
 
-def get_message_costs(session: DbSession, item_hash: str) -> Iterable[AccountCostsDb]:
+async def get_message_costs(
+    session: AsyncDbSession, item_hash: str
+) -> Iterable[AccountCostsDb]:
     select_stmt = select(AccountCostsDb).where(AccountCostsDb.item_hash == item_hash)
-    return (session.execute(select_stmt)).scalars().all()
+    return (await session.execute(select_stmt)).scalars().all()
 
 
 def make_costs_upsert_query(costs: List[AccountCostsDb]) -> Insert:
