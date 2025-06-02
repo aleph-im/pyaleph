@@ -19,7 +19,7 @@ from aleph.services.storage.engine import StorageEngine
 from aleph.storage import StorageService
 from aleph.toolkit.constants import (
     MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
-    STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP,
+    STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP,
 )
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
@@ -57,14 +57,14 @@ def fixture_ipfs_store_message() -> PendingMessageDb:
         signature="0xb9d164e6e43a8fcd341abc01eda47bed0333eaf480e888f2ed2ae0017048939d18850a33352e7281645e95e8673bad733499b6a8ce4069b9da9b9a79ddc1a0b31b",
         item_type=ItemType.inline,
         item_content='{"address": "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106", "time": 1665478676.6585264, "item_type": "ipfs", "item_hash": "QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ", "mime_type": "text/plain"}',
-        time=timestamp_to_datetime(STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1),
+        time=timestamp_to_datetime(STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1),
         channel=Channel("TEST"),
         check_message=True,
         retries=0,
         next_attempt=dt.datetime(2023, 1, 1),
         fetched=False,
         reception_time=timestamp_to_datetime(
-            STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1
+            STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
         ),
     )
 
@@ -79,14 +79,14 @@ def fixture_store_message_with_cost() -> PendingMessageDb:
         signature="0xb9d164e6e43a8fcd341abc01eda47bed0333eaf480e888f2ed2ae0017048939d18850a33352e7281645e95e8673bad733499b6a8ce4069b9da9b9a79ddc1a0b31b",
         item_type=ItemType.inline,
         item_content='{"address": "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106", "time": 1665478676.6585264, "item_type": "storage", "item_hash": "c25b0525bc308797d3e35763faf5c560f2974dab802cb4a734ae4e9d1040319e", "mime_type": "text/plain"}',
-        time=timestamp_to_datetime(STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1),
+        time=timestamp_to_datetime(STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1),
         channel=Channel("TEST"),
         check_message=True,
         retries=0,
         next_attempt=dt.datetime(2023, 1, 1),
         fetched=False,
         reception_time=timestamp_to_datetime(
-            STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1
+            STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
         ),
     )
 
@@ -96,7 +96,7 @@ def create_message_db(mocker):
     def _create_message(
         item_hash="test-hash",
         address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
-        time=STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1,
+        time=STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1,
         item_type=ItemType.ipfs,
         item_content_hash="QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ",
     ):
@@ -365,11 +365,11 @@ async def test_pre_check_balance_free_store_message(
         # Create a message with timestamp before the deadline
         message = mocker.MagicMock(spec=MessageDb)
         message.time = timestamp_to_datetime(
-            STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP - 1
+            STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP - 1
         )
         content = StoreContent(
             address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
-            time=STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP - 1,
+            time=STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP - 1,
             item_type=ItemType.ipfs,
             item_hash="QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ",
         )
@@ -407,11 +407,11 @@ async def test_pre_check_balance_small_ipfs_file(mocker, session_factory, mock_c
     with session_factory() as session:
         message = mocker.MagicMock(spec=MessageDb)
         message.time = timestamp_to_datetime(
-            STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1
+            STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
         )
         content = StoreContent(
             address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
-            time=STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1,
+            time=STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1,
             item_type=ItemType.ipfs,
             item_hash="QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ",
         )
@@ -455,11 +455,11 @@ async def test_pre_check_balance_large_ipfs_file_insufficient_balance(
     with session_factory() as session:
         message = mocker.MagicMock(spec=MessageDb)
         message.time = timestamp_to_datetime(
-            STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1
+            STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
         )
         content = StoreContent(
             address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
-            time=STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1,
+            time=STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1,
             item_type=ItemType.ipfs,
             item_hash="QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ",
         )
@@ -509,11 +509,11 @@ async def test_pre_check_balance_large_ipfs_file_sufficient_balance(
         address = "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106"
         message = mocker.MagicMock(spec=MessageDb)
         message.time = timestamp_to_datetime(
-            STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1
+            STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
         )
         content = StoreContent(
             address=address,
-            time=STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1,
+            time=STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1,
             item_type=ItemType.ipfs,
             item_hash="QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ",
         )
@@ -561,11 +561,11 @@ async def test_pre_check_balance_non_ipfs_file(mocker, session_factory, mock_con
         # Create a message with a non-IPFS file type
         message = mocker.MagicMock(spec=MessageDb)
         message.time = timestamp_to_datetime(
-            STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1
+            STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
         )
         content = StoreContent(
             address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
-            time=STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1,
+            time=STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1,
             item_type=ItemType.storage,  # Not IPFS
             item_hash="af2e19894099d954f3d1fa274547f62484bc2d93964658547deecc70316acc72",
         )
@@ -607,11 +607,11 @@ async def test_pre_check_balance_ipfs_disabled(mocker, session_factory):
         with session_factory() as session:
             message = mocker.MagicMock(spec=MessageDb)
             message.time = timestamp_to_datetime(
-                STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1
+                STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
             )
             content = StoreContent(
                 address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
-                time=STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1,
+                time=STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1,
                 item_type=ItemType.ipfs,
                 item_hash="QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ",
             )
@@ -645,11 +645,11 @@ async def test_pre_check_balance_ipfs_size_none(mocker, session_factory, mock_co
     with session_factory() as session:
         message = mocker.MagicMock(spec=MessageDb)
         message.time = timestamp_to_datetime(
-            STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1
+            STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
         )
         content = StoreContent(
             address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
-            time=STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1,
+            time=STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1,
             item_type=ItemType.ipfs,
             item_hash="QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ",
         )
@@ -701,11 +701,11 @@ async def test_pre_check_balance_with_existing_costs(
         address = "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106"
         message = mocker.MagicMock(spec=MessageDb)
         message.time = timestamp_to_datetime(
-            STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1
+            STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
         )
         content = StoreContent(
             address=address,
-            time=STORE_AND_PROGRAM_COST_DEADLINE_TIMESTAMP + 1,
+            time=STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1,
             item_type=ItemType.ipfs,
             item_hash="QmacDVDroxPVY1enhckVco1rTBziwC8hjf731apEKr3QoG",
         )

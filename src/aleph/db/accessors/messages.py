@@ -9,6 +9,7 @@ from sqlalchemy.orm import load_only, selectinload
 from sqlalchemy.sql import Insert, Select
 from sqlalchemy.sql.elements import literal
 
+from aleph.db.accessors.cost import delete_costs_for_message
 from aleph.toolkit.timestamp import coerce_to_datetime, utc_now
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSession
@@ -47,6 +48,13 @@ def message_exists(session: DbSession, item_hash: str) -> bool:
         session=session,
         where=MessageDb.item_hash == item_hash,
     )
+
+
+def get_one_message_by_item_hash(
+    session: DbSession, item_hash: str
+) -> Optional[RejectedMessageDb]:
+    select_stmt = select(MessageDb).where(MessageDb.item_hash == item_hash)
+    return session.execute(select_stmt).scalar_one_or_none()
 
 
 def make_matching_messages_query(
@@ -412,6 +420,11 @@ def forget_message(
         )
     )
     session.execute(delete(MessageDb).where(MessageDb.item_hash == item_hash))
+
+    delete_costs_for_message(
+        session=session,
+        item_hash=item_hash,
+    )
 
 
 def append_to_forgotten_by(

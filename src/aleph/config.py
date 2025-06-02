@@ -38,6 +38,10 @@ def get_defaults():
                     # Maximum number of chain/sync events processed at the same time.
                     "max_concurrency": 20,
                 },
+                "cron": {
+                    # Interval between cron job trackers runs, expressed in hours.
+                    "period": 0.5,  # 30 mins
+                },
             },
             "cache": {
                 "ttl": {

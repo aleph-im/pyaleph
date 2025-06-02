@@ -77,6 +77,9 @@ class FilePinDb(Base):
     owner = Column(String, nullable=True, index=True)
     item_hash = Column(String, nullable=True)
 
+    # Allow to recover MESSAGE pins refs marked for removing from grace period entries
+    ref = Column(String, nullable=True)
+
     file: StoredFileDb = relationship(StoredFileDb, back_populates="pins")
 
     __mapper_args__: Dict[str, Any] = {
@@ -94,7 +97,7 @@ class TxFilePinDb(FilePinDb):
 
 
 class MessageFilePinDb(FilePinDb):
-    ref = Column(String, nullable=True)
+    # ref = Column(String, nullable=True)
 
     __mapper_args__ = {
         "polymorphic_identity": FilePinType.MESSAGE.value,
