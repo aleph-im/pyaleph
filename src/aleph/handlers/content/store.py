@@ -8,6 +8,7 @@ TODO:
 import asyncio
 import datetime as dt
 import logging
+from decimal import Decimal
 from typing import List, Optional, Set
 
 import aioipfs
@@ -31,6 +32,7 @@ from aleph.db.models import MessageDb
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.handlers.content.content_handler import ContentHandler
+from aleph.schemas.cost_estimation_messages import CostEstimationStoreContent
 from aleph.services.cost import calculate_storage_size, get_total_and_detailed_costs
 from aleph.storage import StorageService
 from aleph.toolkit.constants import MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE, MiB
@@ -205,6 +207,67 @@ class StoreMessageHandler(ContentHandler):
             file_type=FileType.DIRECTORY if is_folder else FileType.FILE,
             size=size,
         )
+
+    async def pre_check_balance(self, session: DbSession, message: MessageDb):
+        content = _get_store_content(message)
+        assert isinstance(content, StoreContent)
+
+        if are_store_and_program_free(message):
+            return None
+
+        # This check is essential to ensure that files are not added to the system
+        # on the current node when the configuration disables storing of files.
+        config = get_config()
+        ipfs_enabled = config.ipfs.enabled.value
+
+        current_balance = get_total_balance(session=session, address=content.address)
+        current_cost = get_total_cost_for_address(
+            session=session, address=content.address
+        )
+
+        engine = content.item_type
+        # Initially only do that balance pre-check for ipfs files.
+        if engine == ItemType.ipfs and ipfs_enabled:
+            ipfs_byte_size = await self.storage_service.ipfs_service.get_ipfs_size(
+                content.item_hash
+            )
+            if ipfs_byte_size:
+                storage_mib = Decimal(ipfs_byte_size / MiB)
+
+                # Allow users to pin small files
+                if storage_mib and storage_mib <= (
+                    MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE / MiB
+                ):
+                    LOGGER.debug(
+                        f"Cost for {message.item_hash} supposed to be free as size is {storage_mib}"
+                    )
+                    return None
+
+                computable_content_data = {
+                    **content.model_dump(),
+                    "estimated_size_mib": int(storage_mib),
+                }
+                computable_content = CostEstimationStoreContent.model_validate(
+                    computable_content_data
+                )
+
+                message_cost, _ = get_total_and_detailed_costs(
+                    session, computable_content, message.item_hash
+                )
+            else:
+                message_cost = Decimal(0)
+        else:
+            message_cost = Decimal(0)
+
+        required_balance = current_cost + message_cost
+
+        if current_balance < required_balance:
+            raise InsufficientBalanceException(
+                balance=current_balance,
+                required_balance=required_balance,
+            )
+
+        return None
 
     async def check_balance(
         self, session: DbSession, message: MessageDb

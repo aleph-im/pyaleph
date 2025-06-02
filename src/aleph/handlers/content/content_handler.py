@@ -48,6 +48,17 @@ class ContentHandler(abc.ABC):
         """
         pass
 
+    async def pre_check_balance(self, session: DbSession, message: MessageDb) -> None:
+        """
+        Checks whether the user has enough Aleph tokens before processing the message.
+
+        Raises InsufficientBalanceException if the balance of the user is too low.
+
+        :param session: DB session.
+        :param message: Pending Message being processed.
+        """
+        pass
+
     async def check_balance(
         self, session: DbSession, message: MessageDb
     ) -> List[AccountCostsDb] | None:

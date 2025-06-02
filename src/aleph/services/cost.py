@@ -152,10 +152,10 @@ def _get_product_price_type(
     settings: Settings,
     price_aggregate: Union[AggregateDb, dict],
 ) -> ProductPriceType:
-    if isinstance(content, StoreContent):
+    if isinstance(content, (StoreContent, CostEstimationStoreContent)):
         return ProductPriceType.STORAGE
 
-    if isinstance(content, ProgramContent):
+    if isinstance(content, (ProgramContent, CostEstimationProgramContent)):
         is_on_demand = not content.on.persistent
         return (
             ProductPriceType.PROGRAM
@@ -225,7 +225,7 @@ def _get_nb_compute_units(
 def _get_compute_unit_multiplier(content: CostComputableContent) -> int:
     compute_unit_multiplier = 1
     if (
-        isinstance(content, ProgramContent)
+        isinstance(content, (ProgramContent, CostEstimationProgramContent))
         and not content.on.persistent
         and content.environment.internet
     ):
@@ -289,7 +289,7 @@ def _get_execution_volumes_costs(
 ) -> List[AccountCostsDb]:
     volumes: List[RefVolume | SizedVolume] = []
 
-    if isinstance(content, InstanceContent):
+    if isinstance(content, (InstanceContent, CostEstimationInstanceContent)):
         volumes.append(
             SizedVolume(
                 CostType.EXECUTION_INSTANCE_VOLUME_ROOTFS,
@@ -298,7 +298,7 @@ def _get_execution_volumes_costs(
             )
         )
 
-    elif isinstance(content, ProgramContent):
+    elif isinstance(content, (ProgramContent, CostEstimationProgramContent)):
         if (
             isinstance(content, CostEstimationProgramContent)
             and content.code.estimated_size_mib
@@ -365,7 +365,7 @@ def _get_execution_volumes_costs(
         # or with same values for different volumes causing unique key constraint errors
         name_prefix = f"#{i}"
 
-        if isinstance(volume, ImmutableVolume):
+        if isinstance(volume, (ImmutableVolume, CostEstimationImmutableVolume)):
             name = (
                 f"{name_prefix}:{volume.mount or CostType.EXECUTION_VOLUME_INMUTABLE}"
             )
@@ -582,7 +582,7 @@ def get_detailed_costs(
     settings = settings or _get_settings(session)
     pricing = pricing or _get_product_price(session, content, settings)
 
-    if isinstance(content, StoreContent):
+    if isinstance(content, (StoreContent, CostEstimationStoreContent)):
         return _calculate_storage_costs(session, content, pricing, item_hash)
     else:
         return _calculate_executable_costs(session, content, pricing, item_hash)

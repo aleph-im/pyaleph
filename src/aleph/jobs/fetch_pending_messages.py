@@ -55,8 +55,8 @@ class PendingMessageFetcher(MessageJob):
     async def fetch_pending_message(self, pending_message: PendingMessageDb):
         with self.session_factory() as session:
             try:
-                message = await self.message_handler.verify_and_fetch(
-                    session=session, pending_message=pending_message
+                message = await self.message_handler.verify_message(
+                    pending_message=pending_message
                 )
                 session.execute(
                     make_pending_message_fetched_statement(

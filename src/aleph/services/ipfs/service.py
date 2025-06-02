@@ -57,6 +57,73 @@ class IpfsService:
             if "127.0.0.1" in address and "/tcp" in address and "/p2p" in address:
                 return address.replace("127.0.0.1", public_ip)
 
+    async def get_ipfs_size(
+        self, hash: str, timeout: int = 1, tries: int = 1
+    ) -> Optional[int]:
+        try_count = 0
+        result = None
+        while (result is None) and (try_count < tries):
+            try_count += 1
+            try:
+                dag_node = await asyncio.wait_for(
+                    self.ipfs_client.dag.get(hash), timeout=timeout
+                )
+                if isinstance(dag_node, dict):
+                    if "Data" in dag_node and isinstance(dag_node["Data"], dict):
+                        # This is the common structure for UnixFS nodes after aioipfs parsing
+                        if "filesize" in dag_node["Data"]:
+                            result = dag_node["Data"]["filesize"]
+                        elif (
+                            "Tsize" in dag_node["Data"]
+                        ):  # Less common, but good to check
+                            result = dag_node["Data"]["Tsize"]
+                        elif (
+                            "Tsize" in dag_node
+                        ):  # Sometimes it might be at the top level directly
+                            result = dag_node["Tsize"]
+                    elif "Links" in dag_node and isinstance(dag_node["Links"], list):
+                        total_size = 0
+                        for link in dag_node["Links"]:
+                            # In case it's a link list, get the Tsize property if exists
+                            if "Tsize" in link and isinstance(link["Tsize"], int):
+                                total_size += link["Tsize"]
+                            else:
+                                LOGGER.error(
+                                    f"Error: CID {hash} did not return a list structure. Type: {type(link)}"
+                                )
+                        result = total_size
+
+                    elif (
+                        "Size" in dag_node
+                    ):  # Occasionally, 'Size' might refer to total size, but often it's block
+                        # size
+                        result = dag_node["Size"]
+                else:
+                    # For raw blocks, dag_node might be bytes. block.stat is better for those.
+                    # For other codecs, the structure will vary.
+                    LOGGER.info(
+                        f"Warning: CID {hash} did not return a dictionary structure. Type: {type(dag_node)}"
+                    )
+                    block_stat = await asyncio.wait_for(
+                        self.ipfs_client.block.stat(hash), timeout=timeout
+                    )
+                    result = block_stat["Size"]
+            except aioipfs.APIError:
+                result = None
+                await asyncio.sleep(0.5)
+                continue
+            except asyncio.TimeoutError:
+                result = None
+                await asyncio.sleep(0.5)
+            except (
+                concurrent.futures.CancelledError,
+                aiohttp.client_exceptions.ClientConnectorError,
+            ):
+                try_count -= 1  # do not count as a try.
+                await asyncio.sleep(0.1)
+
+        return result
+
     async def get_ipfs_content(
         self, hash: str, timeout: int = 1, tries: int = 1
     ) -> Optional[bytes]:
