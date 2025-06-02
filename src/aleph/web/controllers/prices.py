@@ -46,10 +46,6 @@ MESSAGE_STATUS_EXCEPTIONS = {
         web.HTTPGone,
         "This message has been forgotten",
     ),
-    MessageStatus.REMOVING: (
-        web.HTTPGone,
-        "This message is marked for removing",
-    ),
     MessageStatus.REMOVED: (
         web.HTTPGone,
         "This message has been removed",
