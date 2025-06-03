@@ -38,6 +38,16 @@ def upgrade() -> None:
         """
     )
 
+    op.execute(
+        """
+        INSERT INTO balances(address, chain, balance, eth_height)
+        SELECT distinct m.sender, 'ETH', 0, 22196000 FROM messages m
+        INNER JOIN message_status ms ON m.item_hash = ms.item_hash
+        LEFT JOIN balances b ON m.sender = b.address
+        WHERE m."type" = 'STORE' AND ms.status = 'processed' AND b.address is null AND m."time" > '2025-04-04T0:0:0.000Z'
+        """
+    )
+
     pass
 
 
@@ -45,5 +55,11 @@ def downgrade() -> None:
     op.drop_column("balances", "last_update")
 
     op.drop_table("cron_jobs")
+
+    op.execute(
+        """
+        DELETE FROM balances b WHERE b.eth_height = 22196000
+        """
+    )
 
     pass
