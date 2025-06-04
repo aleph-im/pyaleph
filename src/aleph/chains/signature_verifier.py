@@ -45,6 +45,7 @@ class SignatureVerifier:
             Chain.POL: EVMVerifier(),
             Chain.SOL: SolanaConnector(),
             Chain.SONIC: EVMVerifier(),
+            Chain.UNICHAIN: EVMVerifier(),
             Chain.TEZOS: TezosVerifier(),
             Chain.WORLDCHAIN: EVMVerifier(),
             Chain.ZORA: EVMVerifier(),
