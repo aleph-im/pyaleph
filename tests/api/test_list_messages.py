@@ -19,9 +19,11 @@ from aleph_message.models.execution.volume import (
 )
 
 from aleph.db.models import MessageDb, PostDb
-from aleph.toolkit.timestamp import timestamp_to_datetime
+from aleph.db.models.messages import MessageStatusDb
+from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
+from aleph.types.message_status import MessageStatus
 
 from .utils import get_messages_by_keys
 
@@ -171,19 +173,21 @@ async def test_get_messages_filter_by_tags(
     fixture_messages,
     ccn_api_client,
     session_factory: DbSessionFactory,
-    post_with_refs_and_tags: Tuple[MessageDb, PostDb],
-    amended_post_with_refs_and_tags: Tuple[MessageDb, PostDb],
+    post_with_refs_and_tags: Tuple[MessageDb, PostDb, MessageStatusDb],
+    amended_post_with_refs_and_tags: Tuple[MessageDb, PostDb, MessageStatusDb],
 ):
     """
     Tests getting messages by tags.
     There's no example in the fixtures, we just test that the endpoint returns a 200.
     """
 
-    message_db, _ = post_with_refs_and_tags
-    amend_message_db, _ = amended_post_with_refs_and_tags
+    message_db, _, message_status_db = post_with_refs_and_tags
+    amend_message_db, _, amend_message_status_db = amended_post_with_refs_and_tags
 
     with session_factory() as session:
-        session.add_all([message_db, amend_message_db])
+        session.add_all(
+            [message_db, message_status_db, amend_message_db, amend_message_status_db]
+        )
         session.commit()
 
     # Matching tag for both messages
@@ -499,8 +503,8 @@ async def test_sort_by_tx_time(fixture_messages, ccn_api_client, sort_order: int
 
 
 @pytest.fixture
-def instance_message_fixture() -> MessageDb:
-    return MessageDb(
+def instance_message_fixture() -> Tuple[MessageDb, MessageStatusDb]:
+    message = MessageDb(
         item_hash="9f29cdb6579d94be1053b1e1400ee3440958da4cf4feb9b44b674746fdb17c9c",
         chain=Chain.ETH,
         sender="0xB68B9D4f3771c246233823ed1D3Add451055F9Ef",
@@ -547,19 +551,29 @@ def instance_message_fixture() -> MessageDb:
         channel=Channel("TEST"),
     )
 
+    message_status = MessageStatusDb(
+        item_hash=message.item_hash,
+        status=MessageStatus.PROCESSED,
+        reception_time=utc_now(),
+    )
+
+    return message, message_status
+
 
 @pytest.mark.asyncio
 async def test_get_instance(
     ccn_api_client,
-    instance_message_fixture: MessageDb,
+    instance_message_fixture: Tuple[MessageDb, MessageStatusDb],
     session_factory: DbSessionFactory,
 ):
+
+    message_db, status_db = instance_message_fixture
     with session_factory() as session:
-        session.add(instance_message_fixture)
+        session.add_all([message_db, status_db])
         session.commit()
 
     response = await ccn_api_client.get(
-        MESSAGES_URI, params={"hashes": instance_message_fixture.item_hash}
+        MESSAGES_URI, params={"hashes": message_db.item_hash}
     )
     assert response.status == 200, await response.text()
 
@@ -567,4 +581,4 @@ async def test_get_instance(
     assert len(messages) == 1
 
     message = messages[0]
-    assert message["item_hash"] == instance_message_fixture.item_hash
+    assert message["item_hash"] == message_db.item_hash

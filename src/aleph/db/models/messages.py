@@ -104,6 +104,13 @@ class MessageDb(Base):
         "ChainTxDb", secondary=message_confirmations
     )
 
+    status: Optional["MessageStatusDb"] = relationship(
+        "MessageStatusDb",
+        primaryjoin="MessageDb.item_hash == MessageStatusDb.item_hash",
+        foreign_keys=MessageStatusDb.item_hash,
+        uselist=False,  # Critical: Makes it one-to-one
+    )
+
     _parsed_content: Optional[BaseContent] = None
 
     @property

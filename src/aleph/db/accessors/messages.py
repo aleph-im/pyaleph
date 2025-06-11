@@ -5,7 +5,7 @@ from typing import Any, Iterable, Mapping, Optional, Sequence, Tuple, Union, ove
 from aleph_message.models import Chain, ItemHash, MessageType
 from sqlalchemy import delete, func, nullsfirst, nullslast, select, text, update
 from sqlalchemy.dialects.postgresql import array, insert
-from sqlalchemy.orm import load_only, selectinload
+from sqlalchemy.orm import contains_eager, load_only, selectinload
 from sqlalchemy.sql import Insert, Select
 from sqlalchemy.sql.elements import literal
 
@@ -64,6 +64,7 @@ def make_matching_messages_query(
     chains: Optional[Sequence[Chain]] = None,
     message_type: Optional[MessageType] = None,
     message_types: Optional[Sequence[MessageType]] = None,
+    message_statuses: Optional[Sequence[MessageStatus]] = None,
     start_date: Optional[Union[float, dt.datetime]] = None,
     end_date: Optional[Union[float, dt.datetime]] = None,
     start_block: Optional[int] = None,
@@ -81,6 +82,19 @@ def make_matching_messages_query(
     **kwargs,
 ) -> Select:
     select_stmt = select(MessageDb)
+
+    if message_statuses:
+        select_stmt = (
+            select_stmt.join(
+                MessageStatusDb, MessageDb.item_hash == MessageStatusDb.item_hash
+            )
+            .where(MessageStatusDb.status.in_(message_statuses))
+            .options(
+                contains_eager(MessageDb.status).options(
+                    load_only(MessageStatusDb.status)
+                )
+            )
+        )
 
     if include_confirmations:
         # Note: we assume this is only used for the API, so we only load the fields

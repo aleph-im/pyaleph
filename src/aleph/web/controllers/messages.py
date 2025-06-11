@@ -89,6 +89,11 @@ class BaseMessageQueryParams(BaseModel):
     message_types: Optional[List[MessageType]] = Field(
         default=None, alias="msgTypes", description="Accepted message types."
     )
+    message_statuses: Optional[List[MessageStatus]] = Field(
+        default=[MessageStatus.PROCESSED, MessageStatus.REMOVING],
+        alias="msgStatuses",
+        description="Accepted values for the 'status' field.",
+    )
     addresses: Optional[List[str]] = Field(
         default=None, description="Accepted values for the 'sender' field."
     )
@@ -176,6 +181,7 @@ class BaseMessageQueryParams(BaseModel):
         "chains",
         "channels",
         "message_types",
+        "message_statuses",
         "tags",
         mode="before",
     )
@@ -266,6 +272,10 @@ def message_to_dict(message: MessageDb) -> Dict[str, Any]:
     ]
     message_dict["confirmations"] = confirmations
     message_dict["confirmed"] = bool(confirmations)
+
+    # TODO: Add this field in the response when we make sure it won't break any sdk schema checking
+    # message_dict["status"] = message.status.status
+
     return message_dict
 
 
