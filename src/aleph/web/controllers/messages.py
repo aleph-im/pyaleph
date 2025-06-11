@@ -272,7 +272,9 @@ def message_to_dict(message: MessageDb) -> Dict[str, Any]:
     ]
     message_dict["confirmations"] = confirmations
     message_dict["confirmed"] = bool(confirmations)
-    message_dict["status"] = message.status.status
+    
+    # TODO: Add this field in the response when we make sure it won't break any sdk schema checking
+    # message_dict["status"] = message.status.status
 
     return message_dict
 
