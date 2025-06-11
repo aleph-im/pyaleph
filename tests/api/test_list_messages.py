@@ -173,8 +173,8 @@ async def test_get_messages_filter_by_tags(
     fixture_messages,
     ccn_api_client,
     session_factory: DbSessionFactory,
-    post_with_refs_and_tags: Tuple[MessageDb, PostDb],
-    amended_post_with_refs_and_tags: Tuple[MessageDb, PostDb],
+    post_with_refs_and_tags: Tuple[MessageDb, PostDb, MessageStatusDb],
+    amended_post_with_refs_and_tags: Tuple[MessageDb, PostDb, MessageStatusDb],
 ):
     """
     Tests getting messages by tags.
@@ -563,7 +563,7 @@ def instance_message_fixture() -> Tuple[MessageDb, MessageStatusDb]:
 @pytest.mark.asyncio
 async def test_get_instance(
     ccn_api_client,
-    instance_message_fixture: MessageDb,
+    instance_message_fixture: Tuple[MessageDb, MessageStatusDb],
     session_factory: DbSessionFactory,
 ):
 
