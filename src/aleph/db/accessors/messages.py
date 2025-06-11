@@ -5,7 +5,7 @@ from typing import Any, Iterable, Mapping, Optional, Sequence, Tuple, Union, ove
 from aleph_message.models import Chain, ItemHash, MessageType
 from sqlalchemy import delete, func, nullsfirst, nullslast, select, text, update
 from sqlalchemy.dialects.postgresql import array, insert
-from sqlalchemy.orm import load_only, selectinload, contains_eager
+from sqlalchemy.orm import contains_eager, load_only, selectinload
 from sqlalchemy.sql import Insert, Select
 from sqlalchemy.sql.elements import literal
 
@@ -84,13 +84,15 @@ def make_matching_messages_query(
     select_stmt = select(MessageDb)
 
     if message_statuses:
-        select_stmt = select_stmt.join(
-            MessageStatusDb, MessageDb.item_hash == MessageStatusDb.item_hash
-        ).where(
-            MessageStatusDb.status.in_(message_statuses)
-        ).options(
-            contains_eager(MessageDb.status).options(
-                load_only(MessageStatusDb.status)
+        select_stmt = (
+            select_stmt.join(
+                MessageStatusDb, MessageDb.item_hash == MessageStatusDb.item_hash
+            )
+            .where(MessageStatusDb.status.in_(message_statuses))
+            .options(
+                contains_eager(MessageDb.status).options(
+                    load_only(MessageStatusDb.status)
+                )
             )
         )
 
