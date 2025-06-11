@@ -18,12 +18,14 @@ from aleph.db.models import (
     MessageDb,
     message_confirmations,
 )
+from aleph.db.models.messages import MessageStatusDb
 from aleph.db.models.posts import PostDb
 from aleph.handlers.message_handler import MessageHandler
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.storage import StorageService
-from aleph.toolkit.timestamp import timestamp_to_datetime
+from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.db_session import DbSessionFactory
+from aleph.types.message_status import MessageStatus
 
 
 # TODO: remove the raw parameter, it's just to avoid larger refactorings
@@ -44,6 +46,7 @@ async def _load_fixtures(
             message_db = MessageDb.from_message_dict(message_dict)
             messages.append(message_db)
             session.add(message_db)
+
             for confirmation in message_dict.get("confirmations", []):
                 if (tx_hash := confirmation["hash"]) not in tx_hashes:
                     chain_tx_db = ChainTxDb.from_dict(confirmation)
@@ -56,6 +59,14 @@ async def _load_fixtures(
                         item_hash=message_db.item_hash, tx_hash=tx_hash
                     )
                 )
+
+            message_status = MessageStatusDb(
+                item_hash=message_dict["item_hash"],
+                status=MessageStatus.PROCESSED,
+                reception_time=utc_now(),
+            )
+            session.add(message_status)
+
         session.commit()
 
     return messages_json if raw else messages
@@ -133,7 +144,7 @@ async def fixture_posts(
 
 
 @pytest.fixture
-def post_with_refs_and_tags() -> Tuple[MessageDb, PostDb]:
+def post_with_refs_and_tags() -> Tuple[MessageDb, PostDb, MessageStatusDb]:
     message = MessageDb(
         item_hash="1234",
         sender="0xdeadbeef",
@@ -160,12 +171,20 @@ def post_with_refs_and_tags() -> Tuple[MessageDb, PostDb]:
         latest_amend=None,
     )
 
-    return message, post
+    message_status = MessageStatusDb(
+        item_hash=message.item_hash,
+        status=MessageStatus.PROCESSED,
+        reception_time=utc_now(),
+    )
+
+    return message, post, message_status
 
 
 @pytest.fixture
-def amended_post_with_refs_and_tags(post_with_refs_and_tags: Tuple[MessageDb, PostDb]):
-    original_message, original_post = post_with_refs_and_tags
+def amended_post_with_refs_and_tags(
+    post_with_refs_and_tags: Tuple[MessageDb, PostDb, MessageStatusDb]
+):
+    original_message, original_post, _ = post_with_refs_and_tags
 
     amend_message = MessageDb(
         item_hash="5678",
@@ -193,7 +212,13 @@ def amended_post_with_refs_and_tags(post_with_refs_and_tags: Tuple[MessageDb, Po
         latest_amend=None,
     )
 
-    return amend_message, amend_post
+    message_status = MessageStatusDb(
+        item_hash=amend_message.item_hash,
+        status=MessageStatus.PROCESSED,
+        reception_time=utc_now(),
+    )
+
+    return amend_message, amend_post, message_status
 
 
 @pytest.fixture

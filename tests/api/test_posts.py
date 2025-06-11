@@ -60,12 +60,11 @@ async def test_get_posts_refs(
     fixture_posts: Sequence[PostDb],
     post_with_refs_and_tags: Tuple[MessageDb, PostDb],
 ):
-    message_db, post_db = post_with_refs_and_tags
+    message_db, post_db, message_status_db = post_with_refs_and_tags
 
     with session_factory() as session:
         session.add_all(fixture_posts)
-        session.add(message_db)
-        session.add(post_db)
+        session.add_all([message_db, post_db, message_status_db])
         session.commit()
 
     # Match the ref
@@ -116,17 +115,21 @@ async def test_get_amended_posts_refs(
     post_with_refs_and_tags: Tuple[MessageDb, PostDb],
     amended_post_with_refs_and_tags: Tuple[MessageDb, PostDb],
 ):
-    original_message_db, original_post_db = post_with_refs_and_tags
-    amend_message_db, amend_post_db = amended_post_with_refs_and_tags
+    original_message_db, original_post_db, original_message_status_db = (
+        post_with_refs_and_tags
+    )
+    amend_message_db, amend_post_db, amend_message_status_db = (
+        amended_post_with_refs_and_tags
+    )
 
     original_post_db.latest_amend = amend_post_db.item_hash
 
     with session_factory() as session:
         session.add_all(fixture_posts)
-        session.add(original_message_db)
-        session.add(original_post_db)
-        session.add(amend_message_db)
-        session.add(amend_post_db)
+        session.add_all(
+            [original_message_db, original_post_db, original_message_status_db]
+        )
+        session.add_all([amend_message_db, amend_post_db, amend_message_status_db])
         session.commit()
 
     # Match the ref
@@ -176,12 +179,11 @@ async def test_get_posts_tags(
     fixture_posts: Sequence[PostDb],
     post_with_refs_and_tags: Tuple[MessageDb, PostDb],
 ):
-    message_db, post_db = post_with_refs_and_tags
+    message_db, post_db, message_status_db = post_with_refs_and_tags
 
     with session_factory() as session:
         session.add_all(fixture_posts)
-        session.add(message_db)
-        session.add(post_db)
+        session.add_all([message_db, post_db, message_status_db])
         session.commit()
 
     # Match one tag
@@ -247,17 +249,21 @@ async def test_get_amended_posts_tags(
     post_with_refs_and_tags: Tuple[MessageDb, PostDb],
     amended_post_with_refs_and_tags: Tuple[MessageDb, PostDb],
 ):
-    original_message_db, original_post_db = post_with_refs_and_tags
-    amend_message_db, amend_post_db = amended_post_with_refs_and_tags
+    original_message_db, original_post_db, original_message_status_db = (
+        post_with_refs_and_tags
+    )
+    amend_message_db, amend_post_db, amend_message_status_db = (
+        amended_post_with_refs_and_tags
+    )
 
     original_post_db.latest_amend = amend_post_db.item_hash
 
     with session_factory() as session:
         session.add_all(fixture_posts)
-        session.add(original_message_db)
-        session.add(original_post_db)
-        session.add(amend_message_db)
-        session.add(amend_post_db)
+        session.add_all(
+            [original_message_db, original_post_db, original_message_status_db]
+        )
+        session.add_all([amend_message_db, amend_post_db, amend_message_status_db])
         session.commit()
 
     # Match one tag
