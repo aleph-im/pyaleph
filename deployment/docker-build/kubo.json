@@ -1,0 +1,21 @@
+{
+  "AutoNAT": {
+    "ServiceMode": "enabled"
+  },
+  "Reprovider": {
+    "Strategy": "pinned"
+  },
+  "Routing": {
+    "Type": "dhtclient",
+    "AcceleratedDHTClient": true
+  },
+  "Datastore": {
+    "GCPeriod": "12h"
+  },
+  "Swarm": {
+    "EnableHolePunching":true,
+    "RelayService": {
+      "Enabled": false
+    }
+  }
+}

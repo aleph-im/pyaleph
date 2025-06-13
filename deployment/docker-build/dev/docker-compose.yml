@@ -115,18 +115,20 @@ services:
 
   ipfs:
     restart: always
-    image: ipfs/kubo:v0.34.1
+    image: ipfs/kubo:v0.35.0
     ports:
       - "4001:4001"
       - "4001:4001/udp"
       - "127.0.0.1:5001:5001"
     volumes:
       - "pyaleph-ipfs:/data/ipfs"
+      - "./kubo.json:/etc/kubo.json:ro"
     environment:
       - IPFS_PROFILE=server
     networks:
       - pyaleph
-    command: ["daemon", "--enable-pubsub-experiment", "--enable-gc", "--migrate"]
+    command: ["daemon", "--enable-pubsub-experiment", "--enable-gc", "--migrate",
+      "--config-file", "/etc/kubo.json"]
 
 
 networks:
