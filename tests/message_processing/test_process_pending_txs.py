@@ -214,7 +214,7 @@ async def test_process_pending_smart_contract_tx_post(
             type="my-type",
             address="KT1VBeLD7hzKpj17aRJ3Kc6QQFeikCEXi7W6",
             time=1000,
-        ).json(),
+        ).model_dump_json(),
     )
 
     await _process_smart_contract_tx(
