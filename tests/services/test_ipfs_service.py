@@ -5,6 +5,7 @@ import aioipfs
 import pytest
 
 from aleph.services.ipfs.service import IpfsService
+from aleph.types.message_status import FileContentUnavailable
 
 
 @pytest.mark.asyncio
@@ -178,14 +179,15 @@ async def test_get_ipfs_size_timeout_error():
 
     service = IpfsService(ipfs_client=ipfs_client)
 
-    # Mock asyncio.sleep to not actually sleep during test
-    with patch("asyncio.sleep", new_callable=AsyncMock):
-        # Execute
-        result = await service.get_ipfs_size("test_hash")
+    with pytest.raises(FileContentUnavailable):
+        # Mock asyncio.sleep to not actually sleep during test
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            # Execute
+            result = await service.get_ipfs_size("test_hash")
 
-    # Assert
-    assert result is None
-    ipfs_client.dag.get.assert_called_once_with("test_hash")
+        # Assert
+        assert result is None
+        ipfs_client.dag.get.assert_called_once_with("test_hash")
 
 
 @pytest.mark.asyncio
