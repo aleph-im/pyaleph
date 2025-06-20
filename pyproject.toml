@@ -65,7 +65,7 @@ dependencies = [
   "types-aiofiles==24.1.0.20241221",
   "typing-extensions>=4.6.1",
   "ujson==5.10.0",                                                                                                         # required by aiocache
-  "urllib3==2.3",
+  "urllib3==2.5.0",
   "uvloop==0.21",
   "web3==6.11.2",
 ]
