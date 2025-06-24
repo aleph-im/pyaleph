@@ -7,7 +7,6 @@ Create Date: 2025-02-05 10:19:24.814606
 """
 
 from decimal import Decimal
-from typing import Dict
 from alembic import op
 import sqlalchemy as sa
 import logging
@@ -18,7 +17,7 @@ from aleph.db.accessors.cost import make_costs_upsert_query
 from aleph.db.accessors.messages import get_message_by_item_hash
 from aleph.services.cost import _is_confidential_vm, get_detailed_costs, CostComputableContent
 from aleph.services.pricing_utils import build_default_pricing_model
-from aleph.types.cost import ProductPriceType, ProductPricing
+from aleph.types.cost import ProductPriceType
 from aleph.types.db_session import DbSession
 
 logger = logging.getLogger("alembic")

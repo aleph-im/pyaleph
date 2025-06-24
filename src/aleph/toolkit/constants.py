@@ -1,3 +1,7 @@
+from typing import Dict, Union
+
+from aleph.types.cost import ProductPriceType
+
 KiB = 1024
 MiB = 1024 * 1024
 GiB = 1024 * 1024 * 1024
@@ -5,12 +9,10 @@ GiB = 1024 * 1024 * 1024
 MINUTE = 60
 HOUR = 60 * MINUTE
 
-from aleph.types.cost import ProductPriceType
-
 PRICE_AGGREGATE_OWNER = "0xFba561a84A537fCaa567bb7A2257e7142701ae2A"
 PRICE_AGGREGATE_KEY = "pricing"
 PRICE_PRECISION = 18
-DEFAULT_PRICE_AGGREGATE = {
+DEFAULT_PRICE_AGGREGATE: Dict[Union[ProductPriceType, str], dict] = {
     ProductPriceType.PROGRAM: {
         "price": {
             "storage": {"payg": "0.000000977", "holding": "0.05"},
@@ -50,7 +52,9 @@ DEFAULT_PRICE_AGGREGATE = {
             "memory_mib": 2048,
         },
     },
-    ProductPriceType.WEB3_HOSTING: {"price": {"fixed": 50, "storage": {"holding": "0.333333333"}}},
+    ProductPriceType.WEB3_HOSTING: {
+        "price": {"fixed": 50, "storage": {"holding": "0.333333333"}}
+    },
     ProductPriceType.PROGRAM_PERSISTENT: {
         "price": {
             "storage": {"payg": "0.000000977", "holding": "0.05"},
