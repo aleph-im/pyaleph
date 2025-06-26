@@ -6,16 +6,25 @@
     "Strategy": "pinned"
   },
   "Routing": {
-    "Type": "dhtclient",
-    "AcceleratedDHTClient": true
+    "Type": "dhtserver"
   },
+  "Bootstrap": [
+    "/ip4/51.159.57.71/tcp/4001/p2p/12D3KooWSdcuGvLfXgc6BPgDEqWYQirGpBWUmyXRwK5RmyM1T7Di",
+    "/ip4/46.255.204.209/tcp/4001/p2p/12D3KooWHWNCn8t9NKQPBPZU61Fq6BoVw9XV37YsWTuMLwZXrEtj",
+    "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
+    "/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ"
+  ],
   "Datastore": {
+    "StorageMax": "1500GB",
     "GCPeriod": "12h"
   },
   "Swarm": {
     "EnableHolePunching":true,
     "RelayService": {
       "Enabled": false
-    }
+    },
+    "AddrFilters": [
+      "/ip4/86.84.0.0/ipcidr/16"
+    ]
   }
 }
