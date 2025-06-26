@@ -116,10 +116,10 @@ To check that the generation of the keys succeeded, check the content of your ke
 3. Run the node with Docker Compose
 ===================================
 
-Download the Docker Compose file that defines how to run PyAleph and IPFS together.
+Download the Kubo config file and Docker Compose file that defines how to run PyAleph and IPFS together.
 
 .. parsed-literal::
-
+    wget "https://raw.githubusercontent.com/aleph-im/pyaleph/|pyaleph_version|/deployment/samples/docker-compose/kubo.json"
     wget "https://raw.githubusercontent.com/aleph-im/pyaleph/|pyaleph_version|/deployment/samples/docker-compose/docker-compose.yml"
 
 At this stage, you will need your configuration file and your keys.
