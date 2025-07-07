@@ -15,7 +15,7 @@ from aleph.db.accessors.posts import (
 from aleph.db.models.messages import MessageDb
 from aleph.db.models.posts import PostDb
 from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 from aleph.types.message_status import (
     AmendTargetNotFound,
     CannotAmendAmend,
@@ -38,7 +38,7 @@ def get_post_content(message: MessageDb) -> PostContent:
     return content
 
 
-def update_balances(session: DbSession, content: Mapping[str, Any]) -> None:
+async def update_balances(session: AsyncDbSession, content: Mapping[str, Any]) -> None:
     try:
         chain = Chain(content["chain"])
         height = content["main_height"]
@@ -49,9 +49,14 @@ def update_balances(session: DbSession, content: Mapping[str, Any]) -> None:
     dapp = content.get("dapp")
 
     LOGGER.info("Updating balances for %s (dapp: %s)", chain, dapp)
+    print(f"Chain type: {type(chain)}, Chain value: {chain.value}, Full chain: {chain}")
 
     balances: Dict[str, float] = content["balances"]
-    update_balances_db(
+    print(f"Number of balances to update: {len(balances)}")
+    for addr, bal in list(balances.items())[:3]:  # Print first 3 for debug
+        print(f"  {addr}: {bal} bal type {type(bal)}")
+
+    await update_balances_db(
         session=session,
         chain=chain,
         dapp=dapp,
@@ -85,7 +90,7 @@ class PostMessageHandler(ContentHandler):
         self.balances_addresses = balances_addresses
         self.balances_post_type = balances_post_type
 
-    async def check_dependencies(self, session: DbSession, message: MessageDb):
+    async def check_dependencies(self, session: AsyncDbSession, message: MessageDb):
         content = get_post_content(message)
 
         # For amends, ensure that the original message exists
@@ -95,14 +100,14 @@ class PostMessageHandler(ContentHandler):
             if ref is None:
                 raise NoAmendTarget()
 
-            original_post = get_original_post(session=session, item_hash=ref)
+            original_post = await get_original_post(session=session, item_hash=ref)
             if not original_post:
                 raise AmendTargetNotFound()
 
             if original_post.type == "amend":
                 raise CannotAmendAmend()
 
-    async def process_post(self, session: DbSession, message: MessageDb):
+    async def process_post(self, session: AsyncDbSession, message: MessageDb):
         content = get_post_content(message)
 
         creation_datetime = timestamp_to_datetime(content.time)
@@ -121,10 +126,10 @@ class PostMessageHandler(ContentHandler):
         session.add(post)
 
         if content.type == "amend":
-            [amended_post] = get_matching_posts(session=session, hashes=[ref])
+            [amended_post] = await get_matching_posts(session=session, hashes=[ref])
 
             if amended_post.last_updated < creation_datetime:
-                session.execute(
+                await session.execute(
                     update(PostDb)
                     .where(PostDb.item_hash == ref)
                     .values(latest_amend=message.item_hash)
@@ -136,29 +141,31 @@ class PostMessageHandler(ContentHandler):
             and content.content
         ):
             LOGGER.info("Updating balances...")
-            update_balances(session=session, content=content.content)
+            await update_balances(session=session, content=content.content)
             LOGGER.info("Done updating balances")
 
-    async def process(self, session: DbSession, messages: List[MessageDb]) -> None:
+    async def process(self, session: AsyncDbSession, messages: List[MessageDb]) -> None:
 
         for message in messages:
             await self.process_post(session=session, message=message)
 
-    async def forget_message(self, session: DbSession, message: MessageDb) -> Set[str]:
+    async def forget_message(
+        self, session: AsyncDbSession, message: MessageDb
+    ) -> Set[str]:
         content = get_post_content(message)
 
         LOGGER.debug("Deleting post %s...", message.item_hash)
-        amend_hashes = delete_amends(session=session, item_hash=message.item_hash)
-        delete_post(session=session, item_hash=message.item_hash)
+        amend_hashes = await delete_amends(session=session, item_hash=message.item_hash)
+        await delete_post(session=session, item_hash=message.item_hash)
 
         if content.type == "amend":
-            original_post = get_original_post(session, str(content.ref))
+            original_post = await get_original_post(session, str(content.ref))
             if original_post is None:
                 raise InternalError(
                     f"Could not find original post ({content.ref} for amend ({message.item_hash})."
                 )
 
             if original_post.latest_amend == message.item_hash:
-                refresh_latest_amend(session, original_post.item_hash)
+                await refresh_latest_amend(session, original_post.item_hash)
 
         return set(amend_hashes)

@@ -38,7 +38,7 @@ from aleph.storage import StorageService
 from aleph.toolkit.constants import MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE, MiB
 from aleph.toolkit.costs import are_store_and_program_free
 from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 from aleph.types.files import FileType
 from aleph.types.message_status import (
     FileUnavailable,
@@ -68,7 +68,7 @@ class StoreMessageHandler(ContentHandler):
         self.grace_period = grace_period
 
     async def is_related_content_fetched(
-        self, session: DbSession, message: MessageDb
+        self, session: AsyncDbSession, message: MessageDb
     ) -> bool:
         content = message.parsed_content
         assert isinstance(content, StoreContent)
@@ -77,7 +77,7 @@ class StoreMessageHandler(ContentHandler):
         return await self.storage_service.storage_engine.exists(file_hash)
 
     async def fetch_related_content(
-        self, session: DbSession, message: MessageDb
+        self, session: AsyncDbSession, message: MessageDb
     ) -> None:
         # TODO: simplify this function, it's overly complicated for no good reason.
 
@@ -171,14 +171,14 @@ class StoreMessageHandler(ContentHandler):
             else:
                 size = -1
 
-        upsert_file(
+        await upsert_file(
             session=session,
             file_hash=item_hash,
             file_type=FileType.DIRECTORY if is_folder else FileType.FILE,
             size=size,
         )
 
-    async def pre_check_balance(self, session: DbSession, message: MessageDb):
+    async def pre_check_balance(self, session: AsyncDbSession, message: MessageDb):
         content = _get_store_content(message)
         assert isinstance(content, StoreContent)
 
@@ -190,8 +190,10 @@ class StoreMessageHandler(ContentHandler):
         config = get_config()
         ipfs_enabled = config.ipfs.enabled.value
 
-        current_balance = get_total_balance(session=session, address=content.address)
-        current_cost = get_total_cost_for_address(
+        current_balance = await get_total_balance(
+            session=session, address=content.address
+        )
+        current_cost = await get_total_cost_for_address(
             session=session, address=content.address
         )
 
@@ -221,7 +223,7 @@ class StoreMessageHandler(ContentHandler):
                     computable_content_data
                 )
 
-                message_cost, _ = get_total_and_detailed_costs(
+                message_cost, _ = await get_total_and_detailed_costs(
                     session, computable_content, message.item_hash
                 )
             else:
@@ -240,26 +242,28 @@ class StoreMessageHandler(ContentHandler):
         return None
 
     async def check_balance(
-        self, session: DbSession, message: MessageDb
+        self, session: AsyncDbSession, message: MessageDb
     ) -> List[AccountCostsDb]:
         content = _get_store_content(message)
 
-        message_cost, costs = get_total_and_detailed_costs(
+        message_cost, costs = await get_total_and_detailed_costs(
             session, content, message.item_hash
         )
 
         if are_store_and_program_free(message):
             return costs
 
-        storage_size_mib = calculate_storage_size(session, content)
+        storage_size_mib = await calculate_storage_size(session, content)
 
         if storage_size_mib and storage_size_mib <= (
             MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE / MiB
         ):
             return costs
 
-        current_balance = get_total_balance(address=content.address, session=session)
-        current_cost = get_total_cost_for_address(
+        current_balance = await get_total_balance(
+            address=content.address, session=session
+        )
+        current_cost = await get_total_cost_for_address(
             session=session, address=content.address
         )
 
@@ -273,7 +277,9 @@ class StoreMessageHandler(ContentHandler):
 
         return costs
 
-    async def check_dependencies(self, session: DbSession, message: MessageDb) -> None:
+    async def check_dependencies(
+        self, session: AsyncDbSession, message: MessageDb
+    ) -> None:
         content = _get_store_content(message)
         if content.ref is None:
             return
@@ -294,7 +300,9 @@ class StoreMessageHandler(ContentHandler):
         if not ref_is_hash:
             return
 
-        ref_file_pin_db = get_message_file_pin(session=session, item_hash=content.ref)
+        ref_file_pin_db = await get_message_file_pin(
+            session=session, item_hash=content.ref
+        )
 
         if ref_file_pin_db is None:
             raise StoreRefNotFound(content.ref)
@@ -302,7 +310,7 @@ class StoreMessageHandler(ContentHandler):
         if ref_file_pin_db.ref is not None:
             raise StoreCannotUpdateStoreWithRef()
 
-    async def check_permissions(self, session: DbSession, message: MessageDb):
+    async def check_permissions(self, session: AsyncDbSession, message: MessageDb):
         await super().check_permissions(session=session, message=message)
         content = _get_store_content(message)
         if content.ref is None:
@@ -312,7 +320,7 @@ class StoreMessageHandler(ContentHandler):
         file_tag = make_file_tag(
             owner=owner, ref=content.ref, item_hash=message.item_hash
         )
-        file_tag_db = get_file_tag(session=session, tag=file_tag)
+        file_tag_db = await get_file_tag(session=session, tag=file_tag)
 
         if not file_tag_db:
             return
@@ -322,13 +330,13 @@ class StoreMessageHandler(ContentHandler):
                 f"{message.item_hash} attempts to update a file tag belonging to another user"
             )
 
-    async def _pin_and_tag_file(self, session: DbSession, message: MessageDb):
+    async def _pin_and_tag_file(self, session: AsyncDbSession, message: MessageDb):
         content = _get_store_content(message)
 
         file_hash = content.item_hash
         owner = content.address
 
-        insert_message_file_pin(
+        await insert_message_file_pin(
             session=session,
             file_hash=file_hash,
             owner=owner,
@@ -340,7 +348,7 @@ class StoreMessageHandler(ContentHandler):
         file_tag = make_file_tag(
             owner=content.address, ref=content.ref, item_hash=message.item_hash
         )
-        upsert_file_tag(
+        await upsert_file_tag(
             session=session,
             tag=file_tag,
             owner=owner,
@@ -348,12 +356,12 @@ class StoreMessageHandler(ContentHandler):
             last_updated=timestamp_to_datetime(content.time),
         )
 
-    async def process(self, session: DbSession, messages: List[MessageDb]) -> None:
+    async def process(self, session: AsyncDbSession, messages: List[MessageDb]) -> None:
         for message in messages:
             await self._pin_and_tag_file(session=session, message=message)
 
     async def _check_remaining_pins(
-        self, session: DbSession, storage_hash: str, storage_type: ItemType
+        self, session: AsyncDbSession, storage_hash: str, storage_type: ItemType
     ):
         """
         If a file is not pinned anymore, mark it as pickable by the garbage collector.
@@ -366,7 +374,7 @@ class StoreMessageHandler(ContentHandler):
         """
         LOGGER.debug(f"Garbage collecting {storage_hash}")
 
-        if is_pinned_file(session=session, file_hash=storage_hash):
+        if await is_pinned_file(session=session, file_hash=storage_hash):
             LOGGER.debug(f"File {storage_hash} has at least one reference left")
             return
 
@@ -383,18 +391,20 @@ class StoreMessageHandler(ContentHandler):
 
         current_datetime = utc_now()
         delete_by = current_datetime + dt.timedelta(hours=self.grace_period)
-        insert_grace_period_file_pin(
+        await insert_grace_period_file_pin(
             session=session,
             file_hash=storage_hash,
             created=utc_now(),
             delete_by=delete_by,
         )
 
-    async def forget_message(self, session: DbSession, message: MessageDb) -> Set[str]:
+    async def forget_message(
+        self, session: AsyncDbSession, message: MessageDb
+    ) -> Set[str]:
         content = _get_store_content(message)
 
-        delete_file_pin(session=session, item_hash=message.item_hash)
-        refresh_file_tag(
+        await delete_file_pin(session=session, item_hash=message.item_hash)
+        await refresh_file_tag(
             session=session,
             tag=make_file_tag(
                 owner=content.address,

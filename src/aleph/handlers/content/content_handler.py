@@ -4,12 +4,12 @@ from typing import List, Set
 from aleph.db.models import MessageDb
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.permissions import check_sender_authorization
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 
 
 class ContentHandler(abc.ABC):
     async def fetch_related_content(
-        self, session: DbSession, message: MessageDb
+        self, session: AsyncDbSession, message: MessageDb
     ) -> None:
         """
         Fetch additional content from the network based on the content of a message.
@@ -24,7 +24,7 @@ class ContentHandler(abc.ABC):
         pass
 
     async def is_related_content_fetched(
-        self, session: DbSession, message: MessageDb
+        self, session: AsyncDbSession, message: MessageDb
     ) -> bool:
         """
         Check whether the additional network content mentioned in the message
@@ -38,7 +38,7 @@ class ContentHandler(abc.ABC):
         return True
 
     @abc.abstractmethod
-    async def process(self, session: DbSession, messages: List[MessageDb]) -> None:
+    async def process(self, session: AsyncDbSession, messages: List[MessageDb]) -> None:
         """
         Process several messages of the same type and applies the resulting changes.
 
@@ -48,7 +48,9 @@ class ContentHandler(abc.ABC):
         """
         pass
 
-    async def pre_check_balance(self, session: DbSession, message: MessageDb) -> None:
+    async def pre_check_balance(
+        self, session: AsyncDbSession, message: MessageDb
+    ) -> None:
         """
         Checks whether the user has enough Aleph tokens before processing the message.
 
@@ -60,7 +62,7 @@ class ContentHandler(abc.ABC):
         pass
 
     async def check_balance(
-        self, session: DbSession, message: MessageDb
+        self, session: AsyncDbSession, message: MessageDb
     ) -> List[AccountCostsDb] | None:
         """
         Checks whether the user has enough Aleph tokens to process the message.
@@ -73,7 +75,9 @@ class ContentHandler(abc.ABC):
         """
         pass
 
-    async def check_dependencies(self, session: DbSession, message: MessageDb) -> None:
+    async def check_dependencies(
+        self, session: AsyncDbSession, message: MessageDb
+    ) -> None:
         """
         Check dependencies of a message.
 
@@ -87,7 +91,9 @@ class ContentHandler(abc.ABC):
         """
         pass
 
-    async def check_permissions(self, session: DbSession, message: MessageDb) -> None:
+    async def check_permissions(
+        self, session: AsyncDbSession, message: MessageDb
+    ) -> None:
         """
         Check user permissions.
 
@@ -102,7 +108,9 @@ class ContentHandler(abc.ABC):
         await check_sender_authorization(session=session, message=message)
 
     @abc.abstractmethod
-    async def forget_message(self, session: DbSession, message: MessageDb) -> Set[str]:
+    async def forget_message(
+        self, session: AsyncDbSession, message: MessageDb
+    ) -> Set[str]:
         """
         Clean up message-type specific objects when forgetting a message.
 
