@@ -10,14 +10,14 @@ from aleph.services.ipfs import IpfsService
 from aleph.services.peers.monitor import monitor_hosts_ipfs, monitor_hosts_p2p
 from aleph.services.peers.publish import publish_host
 from aleph.services.utils import get_IP
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 LOGGER = logging.getLogger(__name__)
 
 
 async def initialize_host(
     config: Config,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     node_cache: NodeCache,
     p2p_client: AlephP2PServiceClient,
     ipfs_service: IpfsService,
@@ -87,7 +87,7 @@ async def initialize_host(
 
         if config.ipfs.enabled.value:
             tasks.append(
-                monitor_hosts_ipfs(
+                await monitor_hosts_ipfs(
                     ipfs_service=ipfs_service,
                     session_factory=session_factory,
                     alive_topic=config.ipfs.alive_topic.value,

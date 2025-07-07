@@ -48,7 +48,7 @@ from aleph.types.cost import (
     RefVolume,
     SizedVolume,
 )
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 from aleph.types.files import FileTag
 from aleph.types.settings import Settings
 
@@ -67,8 +67,8 @@ CostComputableExecutableContent: TypeAlias = (
 
 
 # TODO: Cache aggregate for 5 min
-def _get_settings_aggregate(session: DbSession) -> Union[AggregateDb, dict]:
-    aggregate = get_aggregate_by_key(
+async def _get_settings_aggregate(session: AsyncDbSession) -> Union[AggregateDb, dict]:
+    aggregate = await get_aggregate_by_key(
         session=session, owner=SETTINGS_AGGREGATE_OWNER, key=SETTINGS_AGGREGATE_KEY
     )
 
@@ -78,8 +78,8 @@ def _get_settings_aggregate(session: DbSession) -> Union[AggregateDb, dict]:
     return aggregate
 
 
-def _get_settings(session: DbSession) -> Settings:
-    aggregate = _get_settings_aggregate(session)
+async def _get_settings(session: AsyncDbSession) -> Settings:
+    aggregate = await _get_settings_aggregate(session)
 
     return Settings.from_aggregate(aggregate)
 
@@ -167,8 +167,8 @@ def _get_product_price_type(
 
 
 # TODO: Cache aggregate for 5 min
-def _get_price_aggregate(session: DbSession) -> Union[AggregateDb, dict]:
-    aggregate = get_aggregate_by_key(
+async def _get_price_aggregate(session: AsyncDbSession) -> Union[AggregateDb, dict]:
+    aggregate = await get_aggregate_by_key(
         session=session, owner=PRICE_AGGREGATE_OWNER, key=PRICE_AGGREGATE_KEY
     )
 
@@ -178,24 +178,24 @@ def _get_price_aggregate(session: DbSession) -> Union[AggregateDb, dict]:
     return aggregate
 
 
-def _get_product_price(
-    session: DbSession, content: CostComputableContent, settings: Settings
+async def _get_product_price(
+    session: AsyncDbSession, content: CostComputableContent, settings: Settings
 ) -> ProductPricing:
-    price_aggregate = _get_price_aggregate(session)
+    price_aggregate = await _get_price_aggregate(session)
     price_type = _get_product_price_type(content, settings, price_aggregate)
 
     return ProductPricing.from_aggregate(price_type, price_aggregate)
 
 
-def _get_file_from_ref(
-    session: DbSession, ref: str, use_latest: bool
+async def _get_file_from_ref(
+    session: AsyncDbSession, ref: str, use_latest: bool
 ) -> Optional[StoredFileDb]:
     tag_or_pin: Optional[Union[MessageFilePinDb, FileTagDb]]
 
     if use_latest:
-        tag_or_pin = get_file_tag(session=session, tag=FileTag(ref))
+        tag_or_pin = await get_file_tag(session=session, tag=FileTag(ref))
     else:
-        tag_or_pin = get_message_file_pin(session=session, item_hash=ref)
+        tag_or_pin = await get_message_file_pin(session=session, item_hash=ref)
 
     if tag_or_pin:
         return tag_or_pin.file
@@ -233,8 +233,8 @@ def _get_compute_unit_multiplier(content: CostComputableContent) -> int:
     return compute_unit_multiplier
 
 
-def _get_volumes_costs(
-    session: DbSession,
+async def _get_volumes_costs(
+    session: AsyncDbSession,
     volumes: List[RefVolume | SizedVolume],
     payment_type: PaymentType,
     price_per_mib: Decimal,
@@ -248,7 +248,7 @@ def _get_volumes_costs(
         if isinstance(volume, SizedVolume):
             storage_mib = Decimal(volume.size_mib)
         elif isinstance(volume, RefVolume):
-            file = _get_file_from_ref(
+            file = await _get_file_from_ref(
                 session=session, ref=volume.ref, use_latest=volume.use_latest
             )
 
@@ -280,8 +280,8 @@ def _get_volumes_costs(
     return costs
 
 
-def _get_execution_volumes_costs(
-    session: DbSession,
+async def _get_execution_volumes_costs(
+    session: AsyncDbSession,
     content: CostComputableExecutableContent,
     pricing: ProductPricing,
     payment_type: PaymentType,
@@ -408,7 +408,7 @@ def _get_execution_volumes_costs(
     price_per_mib = pricing.price.storage.holding
     price_per_mib_second = pricing.price.storage.payg / HOUR
 
-    return _get_volumes_costs(
+    return await _get_volumes_costs(
         session,
         volumes,
         payment_type,
@@ -419,15 +419,15 @@ def _get_execution_volumes_costs(
     )
 
 
-def _get_additional_storage_price(
-    session: DbSession,
+async def _get_additional_storage_price(
+    session: AsyncDbSession,
     content: CostComputableExecutableContent,
     pricing: ProductPricing,
     payment_type: PaymentType,
     item_hash: str,
 ) -> List[AccountCostsDb]:
     # EXECUTION VOLUMES COSTS
-    costs = _get_execution_volumes_costs(
+    costs = await _get_execution_volumes_costs(
         session, content, pricing, payment_type, item_hash
     )
 
@@ -470,8 +470,8 @@ def _get_additional_storage_price(
     return costs
 
 
-def _calculate_executable_costs(
-    session: DbSession,
+async def _calculate_executable_costs(
+    session: AsyncDbSession,
     content: CostComputableExecutableContent,
     pricing: ProductPricing,
     item_hash: str,
@@ -520,22 +520,22 @@ def _calculate_executable_costs(
     )
 
     costs: List[AccountCostsDb] = [execution_cost]
-    costs += _get_additional_storage_price(
+    costs += await _get_additional_storage_price(
         session, content, pricing, payment_type, item_hash
     )
 
     return costs
 
 
-def _calculate_storage_costs(
-    session: DbSession,
+async def _calculate_storage_costs(
+    session: AsyncDbSession,
     content: CostEstimationStoreContent | StoreContent,
     pricing: ProductPricing,
     item_hash: str,
 ) -> List[AccountCostsDb]:
     payment_type = get_payment_type(content)
 
-    storage_mib = calculate_storage_size(session, content)
+    storage_mib = await calculate_storage_size(session, content)
 
     if not storage_mib:
         return []
@@ -545,7 +545,7 @@ def _calculate_storage_costs(
     price_per_mib = pricing.price.storage.holding
     price_per_mib_second = pricing.price.storage.payg / HOUR
 
-    return _get_volumes_costs(
+    return await _get_volumes_costs(
         session,
         [volume],
         payment_type,
@@ -556,15 +556,15 @@ def _calculate_storage_costs(
     )
 
 
-def calculate_storage_size(
-    session: DbSession,
+async def calculate_storage_size(
+    session: AsyncDbSession,
     content: CostEstimationStoreContent | StoreContent,
 ) -> Optional[Decimal]:
 
     if isinstance(content, CostEstimationStoreContent) and content.estimated_size_mib:
         storage_mib = Decimal(content.estimated_size_mib)
     else:
-        file = get_file(session, content.item_hash)
+        file = await get_file(session, content.item_hash)
         if not file:
             return None
         storage_mib = Decimal(file.size / MiB)
@@ -572,30 +572,30 @@ def calculate_storage_size(
     return storage_mib
 
 
-def get_detailed_costs(
-    session: DbSession,
+async def get_detailed_costs(
+    session: AsyncDbSession,
     content: CostComputableContent,
     item_hash: str,
     pricing: Optional[ProductPricing] = None,
     settings: Optional[Settings] = None,
 ) -> List[AccountCostsDb]:
-    settings = settings or _get_settings(session)
-    pricing = pricing or _get_product_price(session, content, settings)
+    settings = settings or await _get_settings(session)
+    pricing = pricing or await _get_product_price(session, content, settings)
 
     if isinstance(content, (StoreContent, CostEstimationStoreContent)):
-        return _calculate_storage_costs(session, content, pricing, item_hash)
+        return await _calculate_storage_costs(session, content, pricing, item_hash)
     else:
-        return _calculate_executable_costs(session, content, pricing, item_hash)
+        return await _calculate_executable_costs(session, content, pricing, item_hash)
 
 
-def get_total_and_detailed_costs(
-    session: DbSession,
+async def get_total_and_detailed_costs(
+    session: AsyncDbSession,
     content: CostComputableContent,
     item_hash: str,
 ) -> Tuple[Decimal, List[AccountCostsDb]]:
     payment_type = get_payment_type(content)
 
-    costs = get_detailed_costs(session, content, item_hash)
+    costs = await get_detailed_costs(session, content, item_hash)
     cost = format_cost(
         reduce(lambda x, y: x + y.cost_stream, costs, Decimal(0))
         if payment_type == PaymentType.superfluid
@@ -605,14 +605,14 @@ def get_total_and_detailed_costs(
     return Decimal(cost), list(costs)
 
 
-def get_total_and_detailed_costs_from_db(
-    session: DbSession,
+async def get_total_and_detailed_costs_from_db(
+    session: AsyncDbSession,
     content: CostComputableContent,
     item_hash: str,
 ) -> Tuple[Decimal, List[AccountCostsDb]]:
     payment_type = get_payment_type(content)
 
-    costs = get_message_costs(session, item_hash)
+    costs = await get_message_costs(session, item_hash)
     cost = format_cost(
         reduce(lambda x, y: x + y.cost_stream, costs, Decimal(0))
         if payment_type == PaymentType.superfluid
