@@ -8,12 +8,12 @@ import pytest_asyncio
 from message_test_helpers import make_validated_message_from_dict
 
 from aleph.db.models import MessageDb
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 
 @pytest_asyncio.fixture
 async def fixture_program_messages(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
 ) -> List[MessageDb]:
     fixtures_file = Path(__file__).parent / "fixtures/messages/program.json"
 
@@ -37,9 +37,9 @@ async def fixture_program_messages(
             )
         )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add_all(messages)
-        session.commit()
+        await session.commit()
 
     return messages
 

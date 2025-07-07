@@ -4,11 +4,11 @@ import pytest
 
 from aleph.jobs.cron.balance_job import BalanceCronJob
 from aleph.jobs.cron.cron_job import CronJob
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 
 @pytest.fixture
-def cron_job(session_factory: DbSessionFactory) -> CronJob:
+def cron_job(session_factory: AsyncDbSessionFactory) -> CronJob:
     return CronJob(
         session_factory=session_factory,
         jobs={"balance": BalanceCronJob(session_factory=session_factory)},
@@ -25,10 +25,10 @@ def cron_job(session_factory: DbSessionFactory) -> CronJob:
     ],
 )
 async def test_balance_job_run(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     cron_job: CronJob,
     cron_run_datetime: dt.datetime,
 ):
-    with session_factory() as session:
+    async with session_factory() as session:
         await cron_job.run(now=cron_run_datetime)
-        session.commit()
+        await session.commit()

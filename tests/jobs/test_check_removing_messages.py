@@ -8,14 +8,14 @@ from aleph.db.models.messages import MessageDb, MessageStatusDb
 from aleph.services.storage.garbage_collector import GarbageCollector
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import utc_now
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 from aleph.types.files import FileType
 from aleph.types.message_status import MessageStatus
 
 
 @pytest.fixture
 def gc(
-    session_factory: DbSessionFactory, test_storage_service: StorageService
+    session_factory: AsyncDbSessionFactory, test_storage_service: StorageService
 ) -> GarbageCollector:
     return GarbageCollector(
         session_factory=session_factory, storage_service=test_storage_service
@@ -23,7 +23,7 @@ def gc(
 
 
 @pytest_asyncio.fixture
-async def fixture_removing_messages(session_factory: DbSessionFactory):
+async def fixture_removing_messages(session_factory: AsyncDbSessionFactory):
     # Set up test data with messages in REMOVING status
     now = utc_now()
 
@@ -106,7 +106,7 @@ async def fixture_removing_messages(session_factory: DbSessionFactory):
         reception_time=now,
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add_all(
             [
                 store_message,
@@ -118,7 +118,7 @@ async def fixture_removing_messages(session_factory: DbSessionFactory):
                 pinned_message_status,
             ]
         )
-        session.commit()
+        await session.commit()
 
         yield {
             "removable_message": store_message_hash,
@@ -128,21 +128,23 @@ async def fixture_removing_messages(session_factory: DbSessionFactory):
 
 @pytest.mark.asyncio
 async def test_check_and_update_removing_messages(
-    session_factory: DbSessionFactory, gc: GarbageCollector, fixture_removing_messages
+    session_factory: AsyncDbSessionFactory,
+    gc: GarbageCollector,
+    fixture_removing_messages,
 ):
     # Run the function that checks and updates message status
     await gc._check_and_update_removing_messages()
 
-    with session_factory() as session:
+    async with session_factory() as session:
         # The message with no pinned files should now have REMOVED status
-        removable_status = get_message_status(
+        removable_status = await get_message_status(
             session=session, item_hash=fixture_removing_messages["removable_message"]
         )
         assert removable_status is not None
         assert removable_status.status == MessageStatus.REMOVED
 
         # The message with a pinned file should still have REMOVING status
-        pinned_status = get_message_status(
+        pinned_status = await get_message_status(
             session=session, item_hash=fixture_removing_messages["pinned_message"]
         )
         assert pinned_status is not None

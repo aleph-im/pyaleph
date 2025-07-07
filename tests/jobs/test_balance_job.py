@@ -4,6 +4,7 @@ from decimal import Decimal
 import pytest
 import pytest_asyncio
 from aleph_message.models import Chain, ItemType, MessageType, PaymentType
+from sqlalchemy import select
 
 from aleph.db.accessors.messages import get_message_status
 from aleph.db.models.account_costs import AccountCostsDb
@@ -22,13 +23,13 @@ from aleph.toolkit.constants import STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT, MiB
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.cost import CostType
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 from aleph.types.files import FileType
 from aleph.types.message_status import MessageStatus
 
 
 @pytest.fixture
-def balance_job(session_factory: DbSessionFactory) -> BalanceCronJob:
+def balance_job(session_factory: AsyncDbSessionFactory) -> BalanceCronJob:
     return BalanceCronJob(session_factory=session_factory)
 
 
@@ -154,9 +155,9 @@ async def fixture_base_data(session_factory, now):
     # Create cron job
     cron_job = create_cron_job("balance_check_base", now)
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(cron_job)
-        session.commit()
+        await session.commit()
 
     return {"cron_job_name": "balance_check_base"}
 
@@ -167,7 +168,7 @@ async def fixture_message_for_removal(session_factory, now, fixture_base_data):
     Setup for testing a message that should be marked for removal due to insufficient balance.
     """
     wallet_address = "0xtestaddress1"
-    message_hash = "abcd1234" * 4
+    message_hash = "abcd1234" * 8
     file_hash = "1234" * 16
 
     # Create wallet with low balance
@@ -186,12 +187,12 @@ async def fixture_message_for_removal(session_factory, now, fixture_base_data):
         message, STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT + 1000, now
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add_all([message])
-        session.commit()
+        await session.commit()
 
         session.add_all([wallet, file, file_pin, message_status, message_cost])
-        session.commit()
+        await session.commit()
 
     return {
         "wallet_address": wallet_address,
@@ -206,7 +207,7 @@ async def fixture_message_below_cutoff(session_factory, now, fixture_base_data):
     because its height is below the cutoff.
     """
     wallet_address = "0xtestaddress2"
-    message_hash = "bcde2345" * 4
+    message_hash = "bcde2345" * 8
     file_hash = "1234" * 16
 
     # Create wallet with low balance
@@ -225,12 +226,12 @@ async def fixture_message_below_cutoff(session_factory, now, fixture_base_data):
         message, STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT - 1000, now
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add_all([message])
-        session.commit()
+        await session.commit()
 
         session.add_all([wallet, file, file_pin, message_status, message_cost])
-        session.commit()
+        await session.commit()
 
     return {
         "wallet_address": wallet_address,
@@ -245,7 +246,7 @@ async def fixture_message_for_recovery(session_factory, now, fixture_base_data):
     because the wallet balance is now sufficient.
     """
     wallet_address = "0xtestaddress3"
-    message_hash = "cdef3456" * 4
+    message_hash = "cdef3456" * 8
     file_hash = "1234" * 16
 
     # Create wallet with sufficient balance
@@ -275,12 +276,12 @@ async def fixture_message_for_recovery(session_factory, now, fixture_base_data):
         message, STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT + 2000, now
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add_all([message])
-        session.commit()
+        await session.commit()
 
         session.add_all([wallet, file, file_pin, message_status, message_cost])
-        session.commit()
+        await session.commit()
 
     return {
         "wallet_address": wallet_address,
@@ -294,27 +295,30 @@ async def test_balance_job_marks_messages_for_removal(
 ):
     """Test that the balance job marks messages for removal when balance is insufficient."""
     # Get the cron job
-    with session_factory() as session:
-        cron_job = session.query(CronJobDb).filter_by(id="balance_check_base").one()
+    async with session_factory() as session:
+        cron_job = (
+            await session.execute(select(CronJobDb).filter_by(id="balance_check_base"))
+        ).scalar_one()
 
     # Run the balance job
     await balance_job.run(now, cron_job)
 
     # Check if the message was marked for removal
-    with session_factory() as session:
+    async with session_factory() as session:
         # Check message status changed to REMOVING
-        message_status = get_message_status(
+        message_status = await get_message_status(
             session=session, item_hash=fixture_message_for_removal["message_hash"]
         )
         assert message_status is not None
         assert message_status.status == MessageStatus.REMOVING
 
         # Check if a grace period was added to the file pin
-        grace_period_pins = (
-            session.query(GracePeriodFilePinDb)
-            .filter_by(item_hash=fixture_message_for_removal["message_hash"])
-            .all()
+        result = await session.execute(
+            select(GracePeriodFilePinDb).filter_by(
+                item_hash=fixture_message_for_removal["message_hash"]
+            )
         )
+        grace_period_pins = result.scalars().all()
 
         assert len(grace_period_pins) == 1
         assert grace_period_pins[0].delete_by is not None
@@ -333,26 +337,29 @@ async def test_balance_job_ignores_messages_below_cutoff_height(
 ):
     """Test that the balance job ignores messages with height below the cutoff."""
     # Get the cron job
-    with session_factory() as session:
-        cron_job = session.query(CronJobDb).filter_by(id="balance_check_base").one()
+    async with session_factory() as session:
+        cron_job = (
+            await session.execute(select(CronJobDb).filter_by(id="balance_check_base"))
+        ).scalar_one()
 
     # Run the balance job
     await balance_job.run(now, cron_job)
 
     # Check that the message was NOT marked for removal (still PROCESSED)
-    with session_factory() as session:
-        message_status = get_message_status(
+    async with session_factory() as session:
+        message_status = await get_message_status(
             session=session, item_hash=fixture_message_below_cutoff["message_hash"]
         )
         assert message_status is not None
         assert message_status.status == MessageStatus.PROCESSED
 
         # Check no grace period was added
-        grace_period_pins = (
-            session.query(GracePeriodFilePinDb)
-            .filter_by(item_hash=fixture_message_below_cutoff["message_hash"])
-            .all()
+        result = await session.execute(
+            select(GracePeriodFilePinDb).filter_by(
+                item_hash=fixture_message_below_cutoff["message_hash"]
+            )
         )
+        grace_period_pins = result.scalars().all()
 
         assert len(grace_period_pins) == 0
 
@@ -363,25 +370,28 @@ async def test_balance_job_recovers_messages_with_sufficient_balance(
 ):
     """Test that the balance job recovers messages with REMOVING status when balance is sufficient."""
     # Get the cron job
-    with session_factory() as session:
-        cron_job = session.query(CronJobDb).filter_by(id="balance_check_base").one()
+    async with session_factory() as session:
+        cron_job = (
+            await session.execute(select(CronJobDb).filter_by(id="balance_check_base"))
+        ).scalar_one()
 
     # Run the balance job
     await balance_job.run(now, cron_job)
 
     # Check that the message was recovered (marked as PROCESSED again)
-    with session_factory() as session:
-        message_status = get_message_status(
+    async with session_factory() as session:
+        message_status = await get_message_status(
             session=session, item_hash=fixture_message_for_recovery["message_hash"]
         )
         assert message_status is not None
         assert message_status.status == MessageStatus.PROCESSED
 
         # Check grace period was updated to null (no deletion date)
-        grace_period_pins = (
-            session.query(GracePeriodFilePinDb)
-            .filter_by(item_hash=fixture_message_for_recovery["message_hash"])
-            .all()
+        result = await session.execute(
+            select(GracePeriodFilePinDb).filter_by(
+                item_hash=fixture_message_for_recovery["message_hash"]
+            )
         )
+        grace_period_pins = result.scalars().all()
 
         assert len(grace_period_pins) == 0

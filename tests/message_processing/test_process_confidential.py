@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import List, Protocol, cast
 
 import pytest
+import pytest_asyncio
 import pytz
 from aleph_message.models import (
     Chain,
@@ -16,6 +17,7 @@ from aleph_message.models import (
 from aleph_message.models.execution.program import ProgramContent
 from aleph_message.models.execution.volume import ImmutableVolume
 from more_itertools import one
+from sqlalchemy import select
 
 from aleph.db.accessors.files import insert_message_file_pin, upsert_file_tag
 from aleph.db.accessors.vms import get_instance, get_vm_version
@@ -31,7 +33,7 @@ from aleph.db.models import (
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
-from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.db_session import AsyncDbSession, AsyncDbSessionFactory
 from aleph.types.files import FileTag, FileType
 from aleph.types.message_status import MessageStatus
 
@@ -41,9 +43,9 @@ class Volume(Protocol):
     use_latest: bool
 
 
-@pytest.fixture
-def fixture_confidential_vm_message(
-    session_factory: DbSessionFactory,
+@pytest_asyncio.fixture
+async def fixture_confidential_vm_message(
+    session_factory: AsyncDbSessionFactory,
 ) -> PendingMessageDb:
     content = {
         "address": "0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
@@ -143,7 +145,7 @@ def fixture_confidential_vm_message(
         retries=1,
         next_attempt=dt.datetime(2023, 1, 1),
     )
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(pending_message)
         session.add(
             MessageStatusDb(
@@ -152,13 +154,13 @@ def fixture_confidential_vm_message(
                 reception_time=pending_message.reception_time,
             )
         )
-        session.commit()
+        await session.commit()
 
     return pending_message
 
 
-@pytest.fixture
-def user_balance(session_factory: DbSessionFactory) -> AlephBalanceDb:
+@pytest.mark.asyncio
+async def user_balance(session_factory: AsyncDbSessionFactory) -> AlephBalanceDb:
     balance = AlephBalanceDb(
         address="0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
         chain=Chain.ETH,
@@ -166,9 +168,9 @@ def user_balance(session_factory: DbSessionFactory) -> AlephBalanceDb:
         eth_height=0,
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(balance)
-        session.commit()
+        await session.commit()
     return balance
 
 
@@ -192,7 +194,7 @@ def get_volume_refs(content: ExecutableContent) -> List[ImmutableVolume]:
     return volumes
 
 
-def insert_volume_refs(session: DbSession, message: PendingMessageDb):
+async def insert_volume_refs(session: AsyncDbSession, message: PendingMessageDb):
     item_content = message.item_content if message.item_content is not None else ""
     content = InstanceContent.model_validate_json(item_content)
     volumes = get_volume_refs(content)
@@ -200,13 +202,14 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
 
     for volume in volumes:
         file_hash = volume.ref[::-1]
-        existing_file = session.query(StoredFileDb).filter_by(hash=file_hash).first()
+        result = await session.execute(select(StoredFileDb).filter_by(hash=file_hash))
+        existing_file = result.scalars().first()
         if not existing_file:
             session.add(
                 StoredFileDb(hash=file_hash, size=1024 * 1024, type=FileType.FILE)
             )
-            session.flush()
-            insert_message_file_pin(
+            await session.flush()
+            await insert_message_file_pin(
                 session=session,
                 file_hash=volume.ref[::-1],
                 owner=content.address,
@@ -214,7 +217,7 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
                 ref=None,
                 created=created,
             )
-            upsert_file_tag(
+            await upsert_file_tag(
                 session=session,
                 tag=FileTag(volume.ref),
                 owner=content.address,
@@ -225,16 +228,16 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
 
 @pytest.mark.asyncio
 async def test_process_confidential_vm(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     message_processor: PendingMessageProcessor,
     fixture_confidential_vm_message: PendingMessageDb,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
     user_balance: AlephBalanceDb,
 ):
-    with session_factory() as session:
-        insert_volume_refs(session, fixture_confidential_vm_message)
-        session.commit()
+    async with session_factory() as session:
+        await insert_volume_refs(session, fixture_confidential_vm_message)
+        await session.commit()
 
     pipeline = message_processor.make_pipeline()
     _ = [message async for message in pipeline]
@@ -242,8 +245,8 @@ async def test_process_confidential_vm(
     assert fixture_confidential_vm_message.item_content
     content_dict = json.loads(fixture_confidential_vm_message.item_content)
 
-    with session_factory() as session:
-        instance = get_instance(
+    async with session_factory() as session:
+        instance = await get_instance(
             session=session, item_hash=fixture_confidential_vm_message.item_hash
         )
         assert instance is not None
@@ -298,7 +301,7 @@ async def test_process_confidential_vm(
         assert ephemeral_volume.mount == "/var/cache"
         assert ephemeral_volume.size_mib == 5
 
-        instance_version = get_vm_version(
+        instance_version = await get_vm_version(
             session=session, vm_hash=fixture_confidential_vm_message.item_hash
         )
         assert instance_version

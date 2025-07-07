@@ -21,7 +21,7 @@ from aleph.db.accessors.posts import (
 from aleph.db.models import MessageDb
 from aleph.db.models.posts import PostDb
 from aleph.types.channel import Channel
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 from aleph.types.sort_order import SortOrder
 
 
@@ -195,43 +195,47 @@ def assert_posts_v0_equal(
 
 @pytest.mark.asyncio
 async def test_get_post_no_amend(
-    original_post: PostDb, session_factory: DbSessionFactory
+    original_post: PostDb, session_factory: AsyncDbSessionFactory
 ):
     """
     Checks that getting a post without amends works.
     """
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(original_post)
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        post = get_post(session=session, item_hash=original_post.item_hash)
+    async with session_factory() as session:
+        post = await get_post(session=session, item_hash=original_post.item_hash)
         assert post
         assert_posts_equal(merged_post=post, original=original_post)
 
 
 @pytest.mark.asyncio
 async def test_get_post_with_one_amend(
-    original_post: PostDb, first_amend_post: PostDb, session_factory: DbSessionFactory
+    original_post: PostDb,
+    first_amend_post: PostDb,
+    session_factory: AsyncDbSessionFactory,
 ):
     """
     Checks that getting an amended post will return the amend and not the original.
     """
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(original_post)
         session.add(first_amend_post)
         original_post.latest_amend = first_amend_post.item_hash
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        post = get_post(session=session, item_hash=original_post.item_hash)
+    async with session_factory() as session:
+        post = await get_post(session=session, item_hash=original_post.item_hash)
         assert post
         assert_posts_equal(
             merged_post=post, original=original_post, last_amend=first_amend_post
         )
 
         # Check that the query will not return a result when addressing the amend hash
-        amend_post = get_post(session=session, item_hash=first_amend_post.item_hash)
+        amend_post = await get_post(
+            session=session, item_hash=first_amend_post.item_hash
+        )
         assert amend_post is None
 
 
@@ -240,20 +244,20 @@ async def test_get_post_with_two_amends(
     original_post: PostDb,
     first_amend_post: PostDb,
     second_amend_post,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
 ):
     """
     Checks that getting a post amended twice will return the latest amend.
     """
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(original_post)
         session.add(first_amend_post)
         session.add(second_amend_post)
         original_post.latest_amend = second_amend_post.item_hash
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        post = get_post(session=session, item_hash=original_post.item_hash)
+    async with session_factory() as session:
+        post = await get_post(session=session, item_hash=original_post.item_hash)
         assert post
         assert_posts_equal(
             merged_post=post, original=original_post, last_amend=second_amend_post
@@ -265,28 +269,28 @@ async def test_get_matching_posts(
     original_post: PostDb,
     first_amend_post: PostDb,
     post_from_second_user: PostDb,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
 ):
     """
     Tests that the list getter works.
     """
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(original_post)
         session.add(first_amend_post)
         original_post.latest_amend = first_amend_post.item_hash
         session.add(post_from_second_user)
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
+    async with session_factory() as session:
         # Get all posts, no filter
-        matching_posts = get_matching_posts(session=session)
+        matching_posts = await get_matching_posts(session=session)
         assert len(matching_posts) == 2
-        nb_posts = count_matching_posts(session=session)
+        nb_posts = await count_matching_posts(session=session)
         assert nb_posts == 2
 
         # Get by hash
-        matching_hash_posts = get_matching_posts(
+        matching_hash_posts = await get_matching_posts(
             session=session, hashes=[original_post.item_hash]
         )
         assert matching_hash_posts
@@ -295,33 +299,33 @@ async def test_get_matching_posts(
             original=original_post,
             last_amend=first_amend_post,
         )
-        nb_matching_hash_posts = count_matching_posts(
+        nb_matching_hash_posts = await count_matching_posts(
             session=session, hashes=[original_post.item_hash]
         )
         assert nb_matching_hash_posts == 1
 
         # Get by owner address
-        matching_address_posts = get_matching_posts(
+        matching_address_posts = await get_matching_posts(
             session=session, addresses=[post_from_second_user.owner]
         )
         assert matching_address_posts
         assert_posts_equal(
             merged_post=one(matching_address_posts), original=post_from_second_user
         )
-        nb_matching_address_posts = count_matching_posts(
+        nb_matching_address_posts = await count_matching_posts(
             session=session, addresses=[post_from_second_user.owner]
         )
         assert nb_matching_address_posts == 1
 
         # Get by channel
-        matching_channel_posts = get_matching_posts(
+        matching_channel_posts = await get_matching_posts(
             session=session, channels=[post_from_second_user.channel]
         )
         assert matching_channel_posts
         assert_posts_equal(
             merged_post=one(matching_channel_posts), original=post_from_second_user
         )
-        nb_matching_channel_posts = count_matching_posts(
+        nb_matching_channel_posts = await count_matching_posts(
             session=session, channels=[post_from_second_user.channel]
         )
         assert nb_matching_channel_posts == 1
@@ -335,13 +339,13 @@ async def test_get_matching_posts_legacy(
     first_amend_message: MessageDb,
     post_from_second_user: PostDb,
     message_from_second_user: MessageDb,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
 ):
     """
     Tests that the list getter works with the legacy format. Same test logic as the test above.
     """
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add_all(
             [original_message, first_amend_message, message_from_second_user]
         )
@@ -349,17 +353,17 @@ async def test_get_matching_posts_legacy(
         session.add(first_amend_post)
         original_post.latest_amend = first_amend_post.item_hash
         session.add(post_from_second_user)
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
+    async with session_factory() as session:
         # Get all posts, no filter
-        matching_posts = get_matching_posts_legacy(session=session)
+        matching_posts = await get_matching_posts_legacy(session=session)
         assert len(matching_posts) == 2
-        nb_posts = count_matching_posts(session=session)
+        nb_posts = await count_matching_posts(session=session)
         assert nb_posts == 2
 
         # Get by hash
-        matching_hash_posts = get_matching_posts_legacy(
+        matching_hash_posts = await get_matching_posts_legacy(
             session=session, hashes=[original_post.item_hash]
         )
         assert matching_hash_posts
@@ -370,13 +374,13 @@ async def test_get_matching_posts_legacy(
             last_amend=first_amend_post,
             amend_message=first_amend_message,
         )
-        nb_matching_hash_posts = count_matching_posts(
+        nb_matching_hash_posts = await count_matching_posts(
             session=session, hashes=[original_post.item_hash]
         )
         assert nb_matching_hash_posts == 1
 
         # Get by owner address
-        matching_address_posts = get_matching_posts_legacy(
+        matching_address_posts = await get_matching_posts_legacy(
             session=session, addresses=[post_from_second_user.owner]
         )
         assert matching_address_posts
@@ -385,13 +389,13 @@ async def test_get_matching_posts_legacy(
             original=post_from_second_user,
             original_message=message_from_second_user,
         )
-        nb_matching_address_posts = count_matching_posts(
+        nb_matching_address_posts = await count_matching_posts(
             session=session, addresses=[post_from_second_user.owner]
         )
         assert nb_matching_address_posts == 1
 
         # Get by channel
-        matching_channel_posts = get_matching_posts_legacy(
+        matching_channel_posts = await get_matching_posts_legacy(
             session=session, channels=[post_from_second_user.channel]
         )
         assert matching_channel_posts
@@ -400,7 +404,7 @@ async def test_get_matching_posts_legacy(
             original=post_from_second_user,
             original_message=message_from_second_user,
         )
-        nb_matching_channel_posts = count_matching_posts(
+        nb_matching_channel_posts = await count_matching_posts(
             session=session, channels=[post_from_second_user.channel]
         )
         assert nb_matching_channel_posts == 1
@@ -411,25 +415,25 @@ async def test_get_matching_posts_time_filters(
     original_post: PostDb,
     first_amend_post: PostDb,
     post_from_second_user: PostDb,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
 ):
     """
     Tests that the time filters for the list getter work.
     """
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(original_post)
         session.add(first_amend_post)
         original_post.latest_amend = first_amend_post.item_hash
         session.add(post_from_second_user)
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
+    async with session_factory() as session:
         start_datetime = first_amend_post.creation_datetime
         end_datetime = start_datetime + dt.timedelta(days=1)
         # Sanity check, the amend is supposed to be the latest entry
         assert start_datetime > post_from_second_user.creation_datetime
-        matching_posts = get_matching_posts(
+        matching_posts = await get_matching_posts(
             session=session, start_date=start_datetime, end_date=end_datetime
         )
         assert matching_posts
@@ -445,22 +449,24 @@ async def test_get_matching_posts_sort_order(
     original_post: PostDb,
     first_amend_post: PostDb,
     post_from_second_user: PostDb,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
 ):
     """
     Tests that the sort order specifier for the list getter work.
     """
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(original_post)
         session.add(first_amend_post)
         original_post.latest_amend = first_amend_post.item_hash
         session.add(post_from_second_user)
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
+    async with session_factory() as session:
         # Ascending order first
-        asc_posts = get_matching_posts(session=session, sort_order=SortOrder.ASCENDING)
+        asc_posts = await get_matching_posts(
+            session=session, sort_order=SortOrder.ASCENDING
+        )
         assert asc_posts
         assert_posts_equal(merged_post=asc_posts[0], original=post_from_second_user)
         assert_posts_equal(
@@ -470,7 +476,9 @@ async def test_get_matching_posts_sort_order(
         )
 
         # Descending order first
-        asc_posts = get_matching_posts(session=session, sort_order=SortOrder.DESCENDING)
+        asc_posts = await get_matching_posts(
+            session=session, sort_order=SortOrder.DESCENDING
+        )
         assert asc_posts
         assert_posts_equal(
             merged_post=asc_posts[0],
@@ -482,54 +490,60 @@ async def test_get_matching_posts_sort_order(
 
 @pytest.mark.asyncio
 async def test_get_matching_posts_no_data(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
 ):
     """
     Tests that the list getter works when a node starts syncing.
     """
 
-    with session_factory() as session:
-        posts = list(get_matching_posts(session=session))
+    async with session_factory() as session:
+        posts = list(await get_matching_posts(session=session))
     assert posts == []
 
 
 @pytest.mark.asyncio
 async def test_refresh_latest_amend(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     original_post: PostDb,
     first_amend_post: PostDb,
     second_amend_post: PostDb,
 ):
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(original_post)
         session.add(first_amend_post)
         session.add(second_amend_post)
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        refresh_latest_amend(session, original_post.item_hash)
-        session.commit()
+    async with session_factory() as session:
+        await refresh_latest_amend(session, original_post.item_hash)
+        await session.commit()
 
-        original_post_db = get_original_post(session, item_hash=original_post.item_hash)
+        original_post_db = await get_original_post(
+            session, item_hash=original_post.item_hash
+        )
         assert original_post_db
         assert original_post_db.latest_amend == second_amend_post.item_hash
 
     # Now, delete the second post and check that refreshing the latest amend works
-    with session_factory() as session:
-        delete_post(session, item_hash=second_amend_post.item_hash)
-        refresh_latest_amend(session=session, item_hash=original_post.item_hash)
-        session.commit()
+    async with session_factory() as session:
+        await delete_post(session, item_hash=second_amend_post.item_hash)
+        await refresh_latest_amend(session=session, item_hash=original_post.item_hash)
+        await session.commit()
 
-        original_post_db = get_original_post(session, item_hash=original_post.item_hash)
+        original_post_db = await get_original_post(
+            session, item_hash=original_post.item_hash
+        )
         assert original_post_db
         assert original_post_db.latest_amend == first_amend_post.item_hash
 
     # Delete the last amend, check that latest_amend is now null
-    with session_factory() as session:
-        delete_post(session, item_hash=first_amend_post.item_hash)
-        refresh_latest_amend(session=session, item_hash=original_post.item_hash)
-        session.commit()
+    async with session_factory() as session:
+        await delete_post(session, item_hash=first_amend_post.item_hash)
+        await refresh_latest_amend(session=session, item_hash=original_post.item_hash)
+        await session.commit()
 
-        original_post_db = get_original_post(session, item_hash=original_post.item_hash)
+        original_post_db = await get_original_post(
+            session, item_hash=original_post.item_hash
+        )
         assert original_post_db
         assert original_post_db.latest_amend is None
