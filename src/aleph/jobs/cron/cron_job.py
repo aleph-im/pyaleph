@@ -9,7 +9,7 @@ from configmanager import Config
 from aleph.db.accessors.cron_jobs import get_cron_jobs, update_cron_job
 from aleph.db.models.cron_jobs import CronJobDb
 from aleph.toolkit.timestamp import utc_now
-from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.db_session import AsyncDbSession, AsyncDbSessionFactory
 
 LOGGER = logging.getLogger(__name__)
 
@@ -21,13 +21,15 @@ class BaseCronJob(abc.ABC):
 
 
 class CronJob:
-    def __init__(self, session_factory: DbSessionFactory, jobs: Dict[str, BaseCronJob]):
+    def __init__(
+        self, session_factory: AsyncDbSessionFactory, jobs: Dict[str, BaseCronJob]
+    ):
         self.session_factory = session_factory
         self.jobs = jobs
 
     async def __run_job(
         self,
-        session: DbSession,
+        session: AsyncDbSession,
         cron_job: BaseCronJob,
         now: dt.datetime,
         job: CronJobDb,
@@ -36,7 +38,7 @@ class CronJob:
             LOGGER.info(f"Starting '{job.id}' cron job check...")
             await cron_job.run(now, job)
 
-            update_cron_job(session, job.id, now)
+            await update_cron_job(session, job.id, now)
 
             LOGGER.info(f"'{job.id}' cron job ran successfully.")
 
@@ -46,8 +48,8 @@ class CronJob:
             )
 
     async def run(self, now: dt.datetime):
-        with self.session_factory() as session:
-            jobs = get_cron_jobs(session)
+        async with self.session_factory() as session:
+            jobs = await get_cron_jobs(session)
             jobs_to_run: List[Coroutine] = []
 
             for job in jobs:
@@ -65,7 +67,7 @@ class CronJob:
 
             await asyncio.gather(*jobs_to_run)
 
-            session.commit()
+            await session.commit()
 
 
 async def cron_job_task(config: Config, cron_job: CronJob) -> None:
