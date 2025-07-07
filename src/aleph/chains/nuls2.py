@@ -29,7 +29,7 @@ from aleph.db.accessors.pending_txs import count_pending_txs
 from aleph.schemas.chains.tx_context import TxContext
 from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.toolkit.timestamp import utc_now
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 from aleph.utils import run_in_executor
 
 from ..db.models import ChainTxDb
@@ -80,7 +80,7 @@ class Nuls2Verifier(Verifier):
 class Nuls2Connector(ChainWriter):
     def __init__(
         self,
-        session_factory: DbSessionFactory,
+        session_factory: AsyncDbSessionFactory,
         pending_tx_publisher: PendingTxPublisher,
         chain_data_service: ChainDataService,
     ):
@@ -90,8 +90,8 @@ class Nuls2Connector(ChainWriter):
 
     async def get_last_height(self, sync_type: ChainEventType) -> int:
         """Returns the last height for which we already have the nuls data."""
-        with self.session_factory() as session:
-            last_height = get_last_height(
+        async with self.session_factory() as session:
+            last_height = await get_last_height(
                 session=session, chain=Chain.NULS2, sync_type=sync_type
             )
 
@@ -133,15 +133,15 @@ class Nuls2Connector(ChainWriter):
                 LOGGER.info("Incoming logic data is not JSON, ignoring. %r" % ldata)
 
         if last_height:
-            with self.session_factory() as session:
-                upsert_chain_sync_status(
+            async with self.session_factory() as session:
+                await upsert_chain_sync_status(
                     session=session,
                     chain=Chain.NULS2,
                     sync_type=ChainEventType.SYNC,
                     height=last_height,
                     update_datetime=utc_now(),
                 )
-                session.commit()
+                await session.commit()
 
     async def fetcher(self, config: Config):
         last_stored_height = await self.get_last_height(sync_type=ChainEventType.SYNC)
@@ -158,11 +158,11 @@ class Nuls2Connector(ChainWriter):
                     tx = ChainTxDb.from_sync_tx_context(
                         tx_context=context, tx_data=jdata
                     )
-                    with self.session_factory() as db_session:
+                    async with self.session_factory() as db_session:
                         await self.pending_tx_publisher.add_and_publish_pending_tx(
                             session=db_session, tx=tx
                         )
-                        db_session.commit()
+                        await db_session.commit()
 
                 await asyncio.sleep(10)
 
@@ -182,9 +182,9 @@ class Nuls2Connector(ChainWriter):
         nonce = await get_nonce(server, address, chain_id)
 
         while True:
-            with self.session_factory() as session:
-                if (count_pending_txs(session=session, chain=Chain.NULS2)) or (
-                    count_pending_messages(session=session, chain=Chain.NULS2)
+            async with self.session_factory() as session:
+                if (await count_pending_txs(session=session, chain=Chain.NULS2)) or (
+                    await count_pending_messages(session=session, chain=Chain.NULS2)
                 ):
                     await asyncio.sleep(30)
                     continue
@@ -195,7 +195,7 @@ class Nuls2Connector(ChainWriter):
                     i = 0
 
                 messages = list(
-                    get_unconfirmed_messages(
+                    await get_unconfirmed_messages(
                         session=session, limit=10000, chain=Chain.ETH
                     )
                 )
@@ -208,7 +208,7 @@ class Nuls2Connector(ChainWriter):
                     )
                 )
                 # Required to apply update to the files table in get_chaindata
-                session.commit()
+                await session.commit()
 
                 content = sync_event_payload.json()
                 tx = await prepare_transfer_tx(
