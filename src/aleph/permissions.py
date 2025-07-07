@@ -2,10 +2,12 @@ from aleph_message.models import MessageType
 
 from aleph.db.accessors.aggregates import get_aggregate_by_key
 from aleph.db.models import MessageDb
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 
 
-async def check_sender_authorization(session: DbSession, message: MessageDb) -> bool:
+async def check_sender_authorization(
+    session: AsyncDbSession, message: MessageDb
+) -> bool:
     """Checks a content against a message to verify if sender is authorized.
 
     TODO: implement "security" aggregate key check.
@@ -20,7 +22,7 @@ async def check_sender_authorization(session: DbSession, message: MessageDb) -> 
     if sender == address:
         return True
 
-    aggregate = get_aggregate_by_key(
+    aggregate = await get_aggregate_by_key(
         session=session, key="security", owner=address
     )  # do we need anything else here?
 
