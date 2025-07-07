@@ -31,7 +31,7 @@ from aleph.schemas.chains.tezos_indexer_response import (
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainSyncProtocol
-from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.db_session import AsyncDbSession, AsyncDbSessionFactory
 from aleph.types.files import FileType
 from aleph.utils import get_sha256
 
@@ -39,14 +39,14 @@ from aleph.utils import get_sha256
 class ChainDataService:
     def __init__(
         self,
-        session_factory: DbSessionFactory,
+        session_factory: AsyncDbSessionFactory,
         storage_service: StorageService,
     ):
         self.session_factory = session_factory
         self.storage_service = storage_service
 
     async def prepare_sync_event_payload(
-        self, session: DbSession, messages: List[MessageDb]
+        self, session: AsyncDbSession, messages: List[MessageDb]
     ) -> OffChainSyncEventPayload:
         """
         Returns the payload of a sync event to be published on chain.
@@ -129,22 +129,22 @@ class ChainDataService:
         LOGGER.info("Got bulk data with %d items" % len(messages))
         if config.ipfs.enabled.value:
             try:
-                with self.session_factory() as session:
+                async with self.session_factory() as session:
                     # Some chain data files are duplicated, and can be treated in parallel,
                     # hence the upsert.
-                    upsert_file(
+                    await upsert_file(
                         session=session,
                         file_hash=sync_file_content.hash,
                         file_type=FileType.FILE,
                         size=len(sync_file_content.raw_value),
                     )
-                    upsert_tx_file_pin(
+                    await upsert_tx_file_pin(
                         session=session,
                         file_hash=file_hash,
                         tx_hash=tx.hash,
                         created=utc_now(),
                     )
-                    session.commit()
+                    await session.commit()
 
                 # Some IPFS fetches can take a while, hence the large timeout.
                 await asyncio.wait_for(
@@ -246,9 +246,9 @@ class PendingTxPublisher:
         self.pending_tx_exchange = pending_tx_exchange
 
     @staticmethod
-    def add_pending_tx(session: DbSession, tx: ChainTxDb):
-        upsert_chain_tx(session=session, tx=tx)
-        upsert_pending_tx(session=session, tx_hash=tx.hash)
+    async def add_pending_tx(session: AsyncDbSession, tx: ChainTxDb):
+        await upsert_chain_tx(session=session, tx=tx)
+        await upsert_pending_tx(session=session, tx_hash=tx.hash)
 
     async def publish_pending_tx(self, tx: ChainTxDb):
         message = aio_pika.Message(body=tx.hash.encode("utf-8"))
@@ -256,7 +256,7 @@ class PendingTxPublisher:
             message=message, routing_key=f"{tx.chain.value}.{tx.publisher}.{tx.hash}"
         )
 
-    async def add_and_publish_pending_tx(self, session: DbSession, tx: ChainTxDb):
+    async def add_and_publish_pending_tx(self, session: AsyncDbSession, tx: ChainTxDb):
         """
         Add an event published on one of the supported chains.
         Adds the tx to the database, creates a pending tx entry in the pending tx table
@@ -265,8 +265,8 @@ class PendingTxPublisher:
         Note that this function commits changes to the database for consistency
         between the DB and the message queue.
         """
-        self.add_pending_tx(session=session, tx=tx)
-        session.commit()
+        await self.add_pending_tx(session=session, tx=tx)
+        await session.commit()
         await self.publish_pending_tx(tx)
 
     @classmethod
