@@ -46,7 +46,7 @@ from aleph.schemas.api.messages import (
     format_message_dict,
 )
 from aleph.toolkit.shield import shielded
-from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.db_session import AsyncDbSession, AsyncDbSessionFactory
 from aleph.types.message_status import MessageStatus, RemovedMessageReason
 from aleph.types.sort_order import SortBy, SortOrder
 from aleph.web.controllers.app_state_getters import (
@@ -325,11 +325,11 @@ async def view_messages_list(request: web.Request) -> web.Response:
     pagination_per_page = query_params.pagination
 
     session_factory = get_session_factory_from_request(request)
-    with session_factory() as session:
-        messages = get_matching_messages(
+    async with session_factory() as session:
+        messages = await get_matching_messages(
             session, include_confirmations=True, **find_filters
         )
-        total_msgs = count_matching_messages(session, **find_filters)
+        total_msgs = await count_matching_messages(session, **find_filters)
 
         return format_response(
             messages,
@@ -341,12 +341,12 @@ async def view_messages_list(request: web.Request) -> web.Response:
 
 async def _send_history_to_ws(
     ws: aiohttp.web_ws.WebSocketResponse,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     history: int,
     query_params: WsMessageQueryParams,
 ) -> None:
-    with session_factory() as session:
-        messages = get_matching_messages(
+    async with session_factory() as session:
+        messages = await get_matching_messages(
             session=session,
             pagination=history,
             include_confirmations=True,
@@ -517,15 +517,17 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
     return ws
 
 
-def _get_message_with_status(
-    session: DbSession, status_db: MessageStatusDb
+async def _get_message_with_status(
+    session: AsyncDbSession, status_db: MessageStatusDb
 ) -> MessageWithStatus:
     status = status_db.status
     item_hash = status_db.item_hash
     reception_time = status_db.reception_time
     if status == MessageStatus.PENDING:
         # There may be several instances of the same pending message, return the first.
-        pending_messages_db = get_pending_messages(session=session, item_hash=item_hash)
+        pending_messages_db = await get_pending_messages(
+            session=session, item_hash=item_hash
+        )
         pending_messages = [
             PendingMessage.model_validate(m) for m in pending_messages_db
         ]
@@ -537,7 +539,7 @@ def _get_message_with_status(
         )
 
     if status == MessageStatus.PROCESSED:
-        message_db = get_message_by_item_hash(
+        message_db = await get_message_by_item_hash(
             session=session, item_hash=ItemHash(item_hash)
         )
         if not message_db:
@@ -551,7 +553,7 @@ def _get_message_with_status(
         )
 
     if status == MessageStatus.FORGOTTEN:
-        forgotten_message_db = get_forgotten_message(
+        forgotten_message_db = await get_forgotten_message(
             session=session, item_hash=item_hash
         )
         if not forgotten_message_db:
@@ -565,7 +567,9 @@ def _get_message_with_status(
         )
 
     if status == MessageStatus.REJECTED:
-        rejected_message_db = get_rejected_message(session=session, item_hash=item_hash)
+        rejected_message_db = await get_rejected_message(
+            session=session, item_hash=item_hash
+        )
         if not rejected_message_db:
             raise web.HTTPNotFound()
 
@@ -578,7 +582,7 @@ def _get_message_with_status(
         )
 
     if status == MessageStatus.REMOVING:
-        message_db = get_message_by_item_hash(
+        message_db = await get_message_by_item_hash(
             session=session, item_hash=ItemHash(item_hash)
         )
         if not message_db:
@@ -593,7 +597,7 @@ def _get_message_with_status(
         )
 
     if status == MessageStatus.REMOVED:
-        message_db = get_message_by_item_hash(
+        message_db = await get_message_by_item_hash(
             session=session, item_hash=ItemHash(item_hash)
         )
         if not message_db:
@@ -620,12 +624,14 @@ async def view_message(request: web.Request):
     except ValueError:
         raise web.HTTPBadRequest(body=f"Invalid message hash: {item_hash_str}")
 
-    session_factory: DbSessionFactory = request.app["session_factory"]
-    with session_factory() as session:
-        message_status_db = get_message_status(session=session, item_hash=item_hash)
+    session_factory: AsyncDbSessionFactory = request.app["session_factory"]
+    async with session_factory() as session:
+        message_status_db = await get_message_status(
+            session=session, item_hash=item_hash
+        )
         if message_status_db is None:
             raise web.HTTPNotFound()
-        message_with_status = _get_message_with_status(
+        message_with_status = await _get_message_with_status(
             session=session, status_db=message_status_db
         )
 
@@ -642,12 +648,14 @@ async def view_message_content(request: web.Request):
     except ValueError:
         raise web.HTTPBadRequest(body=f"Invalid message hash: {item_hash_str}")
 
-    session_factory: DbSessionFactory = request.app["session_factory"]
-    with session_factory() as session:
-        message_status_db = get_message_status(session=session, item_hash=item_hash)
+    session_factory: AsyncDbSessionFactory = request.app["session_factory"]
+    async with session_factory() as session:
+        message_status_db = await get_message_status(
+            session=session, item_hash=item_hash
+        )
         if message_status_db is None:
             raise web.HTTPNotFound()
-        message_with_status = _get_message_with_status(
+        message_with_status = await _get_message_with_status(
             session=session, status_db=message_status_db
         )
 
@@ -681,9 +689,9 @@ async def view_message_status(request: web.Request):
     except ValueError:
         raise web.HTTPBadRequest(body=f"Invalid message hash: {item_hash_str}")
 
-    session_factory: DbSessionFactory = request.app["session_factory"]
-    with session_factory() as session:
-        message_status = get_message_status(session=session, item_hash=item_hash)
+    session_factory: AsyncDbSessionFactory = request.app["session_factory"]
+    async with session_factory() as session:
+        message_status = await get_message_status(session=session, item_hash=item_hash)
         if message_status is None:
             raise web.HTTPNotFound()
 
@@ -703,15 +711,15 @@ async def view_message_hashes(request: web.Request):
     pagination_per_page = query_params.pagination
 
     session_factory = get_session_factory_from_request(request)
-    with session_factory() as session:
-        hashes = get_matching_hashes(session, **find_filters)
+    async with session_factory() as session:
+        hashes = await get_matching_hashes(session, **find_filters)
 
         if find_filters["hash_only"]:
             formatted_hashes = [h for h in hashes]
         else:
             formatted_hashes = [MessageHashes.model_validate(h) for h in hashes]
 
-        total_hashes = count_matching_hashes(session, **find_filters)
+        total_hashes = await count_matching_hashes(session, **find_filters)
         response = {
             "hashes": formatted_hashes,
             "pagination_per_page": pagination_per_page,

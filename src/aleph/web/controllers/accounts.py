@@ -24,7 +24,7 @@ from aleph.schemas.api.accounts import (
     GetAccountQueryParams,
     GetBalancesChainsQueryParams,
 )
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 from aleph.web.controllers.app_state_getters import get_session_factory_from_request
 
 
@@ -49,10 +49,10 @@ async def addresses_stats_view(request: web.Request):
     """Returns the stats of some addresses."""
 
     addresses: List[str] = request.query.getall("addresses[]", [])
-    session_factory: DbSessionFactory = request.app["session_factory"]
+    session_factory: AsyncDbSessionFactory = request.app["session_factory"]
 
-    with session_factory() as session:
-        stats = get_message_stats_by_address(session=session, addresses=addresses)
+    async with session_factory() as session:
+        stats = await get_message_stats_by_address(session=session, addresses=addresses)
 
     stats_dict = make_stats_dict(stats)
 
@@ -82,12 +82,12 @@ async def get_account_balance(request: web.Request):
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json())
 
-    session_factory: DbSessionFactory = get_session_factory_from_request(request)
-    with session_factory() as session:
-        balance, details = get_total_detailed_balance(
+    session_factory: AsyncDbSessionFactory = get_session_factory_from_request(request)
+    async with session_factory() as session:
+        balance, details = await get_total_detailed_balance(
             session=session, address=address, chain=query_params.chain
         )
-        total_cost = get_total_cost_for_address(session=session, address=address)
+        total_cost = await get_total_cost_for_address(session=session, address=address)
     return web.json_response(
         text=GetAccountBalanceResponse(
             address=address, balance=balance, locked_amount=total_cost, details=details
@@ -103,15 +103,15 @@ async def get_chain_balances(request: web.Request) -> web.Response:
 
     find_filters = query_params.model_dump(exclude_none=True)
 
-    session_factory: DbSessionFactory = get_session_factory_from_request(request)
-    with session_factory() as session:
-        balances = get_balances_by_chain(session, **find_filters)
+    session_factory: AsyncDbSessionFactory = get_session_factory_from_request(request)
+    async with session_factory() as session:
+        balances = await get_balances_by_chain(session, **find_filters)
 
         formatted_balances = [
             AddressBalanceResponse.model_validate(b) for b in balances
         ]
 
-        total_balances = count_balances_by_chain(session, **find_filters)
+        total_balances = await count_balances_by_chain(session, **find_filters)
 
         pagination_page = query_params.page
         pagination_per_page = query_params.pagination
@@ -134,11 +134,11 @@ async def get_account_files(request: web.Request) -> web.Response:
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json())
 
-    session_factory: DbSessionFactory = get_session_factory_from_request(request)
+    session_factory: AsyncDbSessionFactory = get_session_factory_from_request(request)
 
-    with session_factory() as session:
+    async with session_factory() as session:
         file_pins = list(
-            get_address_files_for_api(
+            await get_address_files_for_api(
                 session=session,
                 owner=address,
                 pagination=query_params.pagination,
@@ -146,7 +146,9 @@ async def get_account_files(request: web.Request) -> web.Response:
                 sort_order=query_params.sort_order,
             )
         )
-        nb_files, total_size = get_address_files_stats(session=session, owner=address)
+        nb_files, total_size = await get_address_files_stats(
+            session=session, owner=address
+        )
 
         if not file_pins:
             raise web.HTTPNotFound()
