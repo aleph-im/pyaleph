@@ -15,7 +15,7 @@ from aleph.db.accessors.pending_messages import (
     get_next_pending_messages,
     make_pending_message_fetched_statement,
 )
-from aleph.db.connection import make_engine, make_session_factory
+from aleph.db.connection import make_async_engine, make_async_session_factory
 from aleph.db.models import MessageDb, PendingMessageDb
 from aleph.handlers.message_handler import MessageHandler
 from aleph.services.cache.node_cache import NodeCache
@@ -25,7 +25,7 @@ from aleph.storage import StorageService
 from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
 from aleph.toolkit.timestamp import utc_now
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 from ..toolkit.rabbitmq import make_mq_conn
 from .job_utils import MessageJob, make_pending_message_queue, prepare_loop
@@ -39,7 +39,7 @@ MessageId = NewType("MessageId", str)
 class PendingMessageFetcher(MessageJob):
     def __init__(
         self,
-        session_factory: DbSessionFactory,
+        session_factory: AsyncDbSessionFactory,
         message_handler: MessageHandler,
         max_retries: int,
         pending_message_queue: aio_pika.abc.AbstractQueue,
@@ -53,27 +53,28 @@ class PendingMessageFetcher(MessageJob):
         self.pending_message_queue = pending_message_queue
 
     async def fetch_pending_message(self, pending_message: PendingMessageDb):
-        with self.session_factory() as session:
+        async with self.session_factory() as session:
             try:
                 message = await self.message_handler.verify_message(
                     pending_message=pending_message
                 )
-                session.execute(
+                await session.execute(
                     make_pending_message_fetched_statement(
                         pending_message, message.content
                     )
                 )
-                session.commit()
+                await session.commit()
                 return message
 
             except Exception as e:
-                session.rollback()
+                await session.rollback()
+
                 _ = await self.handle_processing_error(
                     session=session,
                     pending_message=pending_message,
                     exception=e,
                 )
-                session.commit()
+                await session.commit()
                 return None
 
     async def fetch_pending_messages(
@@ -91,7 +92,7 @@ class PendingMessageFetcher(MessageJob):
         fetched_messages: List[MessageDb] = []
 
         while True:
-            with self.session_factory() as session:
+            async with self.session_factory() as session:
                 if fetch_tasks:
                     finished_tasks, fetch_tasks = await asyncio.wait(
                         fetch_tasks, return_when=asyncio.FIRST_COMPLETED
@@ -102,7 +103,7 @@ class PendingMessageFetcher(MessageJob):
                         await node_cache.decr(retry_messages_cache_key)
 
                 if len(fetch_tasks) < max_concurrent_tasks:
-                    pending_messages = get_next_pending_messages(
+                    pending_messages = await get_next_pending_messages(
                         session=session,
                         current_time=utc_now(),
                         limit=max_concurrent_tasks - len(fetch_tasks),
@@ -158,8 +159,8 @@ class PendingMessageFetcher(MessageJob):
 
 
 async def fetch_messages_task(config: Config):
-    engine = make_engine(config=config, application_name="aleph-fetch")
-    session_factory = make_session_factory(engine)
+    engine = make_async_engine(config=config, application_name="aleph-fetch")
+    session_factory = make_async_session_factory(engine)
 
     mq_conn = await make_mq_conn(config=config)
     mq_channel = await mq_conn.channel()

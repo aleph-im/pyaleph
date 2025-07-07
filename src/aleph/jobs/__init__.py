@@ -10,14 +10,14 @@ from aleph.jobs.process_pending_messages import (
 from aleph.jobs.process_pending_txs import handle_txs_task, pending_txs_subprocess
 from aleph.jobs.reconnect_ipfs import reconnect_ipfs_job
 from aleph.services.ipfs import IpfsService
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 LOGGER = logging.getLogger("jobs")
 
 
 def start_jobs(
     config,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     ipfs_service: IpfsService,
     use_processes=True,
 ) -> List[Coroutine]:

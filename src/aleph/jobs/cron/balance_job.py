@@ -2,7 +2,7 @@ import datetime as dt
 import logging
 from typing import List
 
-from aleph_message.models import MessageType, PaymentType
+from aleph_message.models import ItemHash, MessageType, PaymentType
 
 from aleph.db.accessors.balances import get_total_balance, get_updated_balance_accounts
 from aleph.db.accessors.cost import get_total_costs_for_address_grouped_by_message
@@ -22,34 +22,34 @@ from aleph.toolkit.constants import (
     MiB,
 )
 from aleph.toolkit.timestamp import utc_now
-from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.db_session import AsyncDbSession, AsyncDbSessionFactory
 from aleph.types.message_status import MessageStatus
 
 LOGGER = logging.getLogger(__name__)
 
 
 class BalanceCronJob(BaseCronJob):
-    def __init__(self, session_factory: DbSessionFactory):
+    def __init__(self, session_factory: AsyncDbSessionFactory):
         self.session_factory = session_factory
 
     async def run(self, now: dt.datetime, job: CronJobDb):
-        with self.session_factory() as session:
-            accounts = get_updated_balance_accounts(session, job.last_run)
+        async with self.session_factory() as session:
+            accounts = await get_updated_balance_accounts(session, job.last_run)
 
             LOGGER.info(f"Checking '{len(accounts)}' updated account balances...")
 
             for address in accounts:
-                remaining_balance = get_total_balance(session, address)
+                remaining_balance = await get_total_balance(session, address)
 
                 to_delete = []
                 to_recover = []
 
-                hold_costs = get_total_costs_for_address_grouped_by_message(
+                hold_costs = await get_total_costs_for_address_grouped_by_message(
                     session, address, PaymentType.hold
                 )
 
                 for item_hash, height, cost, _ in hold_costs:
-                    status = get_message_status(session, item_hash)
+                    status = await get_message_status(session, item_hash)
 
                     LOGGER.info(
                         f"Checking {item_hash} message, with height {height} and cost {cost}"
@@ -61,7 +61,7 @@ class BalanceCronJob(BaseCronJob):
                     )
                     remaining_balance = max(0, remaining_balance - cost)
 
-                    status = get_message_status(session, item_hash)
+                    status = await get_message_status(session, item_hash)
                     if status is None:
                         continue
 
@@ -87,17 +87,17 @@ class BalanceCronJob(BaseCronJob):
                     )
                     await self.recover_messages(session, to_recover)
 
-                session.commit()
+                await session.commit()
 
-    async def delete_messages(self, session: DbSession, messages: List[str]):
+    async def delete_messages(self, session: AsyncDbSession, messages: List[str]):
         for item_hash in messages:
-            message = get_message_by_item_hash(session, item_hash)
+            message = await get_message_by_item_hash(session, item_hash)
 
             if message is None:
                 continue
 
             if message.type == MessageType.store:
-                storage_size_mib = calculate_storage_size(
+                storage_size_mib = await calculate_storage_size(
                     session, message.parsed_content
                 )
 
@@ -110,13 +110,13 @@ class BalanceCronJob(BaseCronJob):
             delete_by = now + dt.timedelta(hours=24 + 1)
 
             if message.type == MessageType.store:
-                update_file_pin_grace_period(
+                await update_file_pin_grace_period(
                     session=session,
                     item_hash=item_hash,
                     delete_by=delete_by,
                 )
 
-            session.execute(
+            await session.execute(
                 make_message_status_upsert_query(
                     item_hash=item_hash,
                     new_status=MessageStatus.REMOVING,
@@ -125,20 +125,20 @@ class BalanceCronJob(BaseCronJob):
                 )
             )
 
-    async def recover_messages(self, session: DbSession, messages: List[str]):
+    async def recover_messages(self, session: AsyncDbSession, messages: List[str]):
         for item_hash in messages:
-            message = get_message_by_item_hash(session, item_hash)
+            message = await get_message_by_item_hash(session, ItemHash(item_hash))
             if message is None:
                 continue
 
             if message.type == MessageType.store:
-                update_file_pin_grace_period(
+                await update_file_pin_grace_period(
                     session=session,
                     item_hash=item_hash,
                     delete_by=None,
                 )
 
-            session.execute(
+            await session.execute(
                 make_message_status_upsert_query(
                     item_hash=item_hash,
                     new_status=MessageStatus.PROCESSED,
