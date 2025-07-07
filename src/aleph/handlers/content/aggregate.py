@@ -20,7 +20,7 @@ from aleph.db.accessors.aggregates import (
 from aleph.db.models import AggregateDb, AggregateElementDb, MessageDb
 from aleph.handlers.content.content_handler import ContentHandler
 from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 from aleph.types.message_status import InvalidMessageFormat
 
 LOGGER = logging.getLogger(__name__)
@@ -37,13 +37,13 @@ def _get_aggregate_content(message: MessageDb) -> AggregateContent:
 
 class AggregateMessageHandler(ContentHandler):
     async def fetch_related_content(
-        self, session: DbSession, message: MessageDb
+        self, session: AsyncDbSession, message: MessageDb
     ) -> None:
         # Nothing to do, aggregates are independent of one another
         return
 
     @staticmethod
-    async def _insert_aggregate_element(session: DbSession, message: MessageDb):
+    async def _insert_aggregate_element(session: AsyncDbSession, message: MessageDb):
         content = cast(AggregateContent, message.parsed_content)
         aggregate_element = AggregateElementDb(
             item_hash=message.item_hash,
@@ -53,7 +53,7 @@ class AggregateMessageHandler(ContentHandler):
             creation_datetime=timestamp_to_datetime(message.parsed_content.time),
         )
 
-        insert_aggregate_element(
+        await insert_aggregate_element(
             session=session,
             item_hash=aggregate_element.item_hash,
             key=aggregate_element.key,
@@ -66,13 +66,13 @@ class AggregateMessageHandler(ContentHandler):
 
     @staticmethod
     async def _append_to_aggregate(
-        session: DbSession,
+        session: AsyncDbSession,
         aggregate: AggregateDb,
         elements: Sequence[AggregateElementDb],
     ):
         new_content = merge_aggregate_elements(elements)
 
-        update_aggregate(
+        await update_aggregate(
             session=session,
             key=aggregate.key,
             owner=aggregate.owner,
@@ -83,13 +83,14 @@ class AggregateMessageHandler(ContentHandler):
 
     @staticmethod
     async def _prepend_to_aggregate(
-        session: DbSession,
+        session: AsyncDbSession,
         aggregate: AggregateDb,
         elements: Sequence[AggregateElementDb],
     ):
+        # That will need to run in no IO blocking way
         new_content = merge_aggregate_elements(elements)
 
-        update_aggregate(
+        await update_aggregate(
             session=session,
             key=aggregate.key,
             owner=aggregate.owner,
@@ -101,7 +102,7 @@ class AggregateMessageHandler(ContentHandler):
 
     async def _update_aggregate(
         self,
-        session: DbSession,
+        session: AsyncDbSession,
         key: str,
         owner: str,
         elements: Sequence[AggregateElementDb],
@@ -122,7 +123,7 @@ class AggregateMessageHandler(ContentHandler):
 
         dirty_threshold = 1000
 
-        aggregate_metadata = get_aggregate_by_key(
+        aggregate_metadata = await get_aggregate_by_key(
             session=session, owner=owner, key=key, with_content=False
         )
 
@@ -130,7 +131,7 @@ class AggregateMessageHandler(ContentHandler):
             LOGGER.info("%s/%s does not exist, creating it", key, owner)
 
             content = merge_aggregate_elements(elements)
-            insert_aggregate(
+            await insert_aggregate(
                 session=session,
                 key=key,
                 owner=owner,
@@ -168,7 +169,9 @@ class AggregateMessageHandler(ContentHandler):
 
         # Last chance before a full refresh, check the keys of the aggregate
         # and determine if there's a conflict.
-        keys = set(get_aggregate_content_keys(session=session, key=key, owner=owner))
+        keys = set(
+            await get_aggregate_content_keys(session=session, key=key, owner=owner)
+        )
         new_keys = set(itertools.chain(element.content.keys for element in elements))
         conflicting_keys = keys & new_keys
 
@@ -189,11 +192,11 @@ class AggregateMessageHandler(ContentHandler):
             return
 
         if (
-            count_aggregate_elements(session=session, owner=owner, key=key)
+            await count_aggregate_elements(session=session, owner=owner, key=key)
             > dirty_threshold
         ):
             LOGGER.info("%s/%s: too many elements, marking as dirty")
-            mark_aggregate_as_dirty(session=session, owner=owner, key=key)
+            await mark_aggregate_as_dirty(session=session, owner=owner, key=key)
             return
 
         # Out of order insertions. Here, we need to get all the elements in the database
@@ -201,10 +204,10 @@ class AggregateMessageHandler(ContentHandler):
         # large aggregates, so we do it as a last resort.
         # Expect the new elements to already be added to the current session.
         # We flush it to make them accessible from the current transaction.
-        session.flush()
-        refresh_aggregate(session=session, owner=owner, key=key)
+        await session.flush()
+        await refresh_aggregate(session=session, owner=owner, key=key)
 
-    async def process(self, session: DbSession, messages: List[MessageDb]) -> None:
+    async def process(self, session: AsyncDbSession, messages: List[MessageDb]) -> None:
         sorted_messages = sorted(
             messages,
             key=lambda m: (m.parsed_content.key, m.parsed_content.address, m.time),
@@ -223,16 +226,18 @@ class AggregateMessageHandler(ContentHandler):
                 session=session, key=key, owner=owner, elements=aggregate_elements
             )
 
-    async def forget_message(self, session: DbSession, message: MessageDb) -> Set[str]:
+    async def forget_message(
+        self, session: AsyncDbSession, message: MessageDb
+    ) -> Set[str]:
         content = _get_aggregate_content(message)
         owner = content.address
         key = content.key
 
         LOGGER.debug("Deleting aggregate element %s...", message.item_hash)
-        delete_aggregate(session=session, owner=owner, key=str(key))
-        delete_aggregate_element(session=session, item_hash=message.item_hash)
+        await delete_aggregate(session=session, owner=owner, key=str(key))
+        await delete_aggregate_element(session=session, item_hash=message.item_hash)
 
         LOGGER.debug("Refreshing aggregate %s/%s...", owner, key)
-        refresh_aggregate(session=session, owner=owner, key=str(key))
+        await refresh_aggregate(session=session, owner=owner, key=str(key))
 
         return set()
