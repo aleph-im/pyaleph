@@ -17,7 +17,7 @@ from aleph.schemas.chains.tezos_indexer_response import MessageEventPayload
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.chain_sync import ChainSyncProtocol
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 from aleph.types.message_status import MessageStatus
 
 from .load_fixtures import load_fixture_messages
@@ -35,7 +35,7 @@ async def get_fixture_chaindata_messages(
 async def test_process_pending_tx_on_chain_protocol(
     mocker,
     mock_config: Config,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     test_storage_service: StorageService,
 ):
     chain_data_service = mocker.AsyncMock()
@@ -66,9 +66,9 @@ async def test_process_pending_tx_on_chain_protocol(
 
     pending_tx = PendingTxDb(tx=chain_tx)
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(pending_tx)
-        session.commit()
+        await session.commit()
 
     seen_ids: Set[str] = set()
     await pending_tx_processor.handle_pending_tx(
@@ -77,14 +77,14 @@ async def test_process_pending_tx_on_chain_protocol(
 
     fixture_messages = load_fixture_messages(f"{pending_tx.tx.content}.json")
 
-    with session_factory() as session:
-        pending_txs = session.execute(select(PendingTxDb)).scalars().all()
+    async with session_factory() as session:
+        pending_txs = (await session.execute(select(PendingTxDb))).scalars().all()
         assert not pending_txs
 
         for fixture_message in fixture_messages:
             item_hash = fixture_message["item_hash"]
             message_status_db = (
-                session.execute(
+                await session.execute(
                     select(MessageStatusDb).where(
                         MessageStatusDb.item_hash == item_hash
                     )
@@ -93,7 +93,7 @@ async def test_process_pending_tx_on_chain_protocol(
             assert message_status_db.status == MessageStatus.PENDING
 
             pending_message_db = (
-                session.execute(
+                await session.execute(
                     select(PendingMessageDb).where(
                         PendingMessageDb.item_hash == item_hash
                     )
@@ -108,7 +108,7 @@ async def test_process_pending_tx_on_chain_protocol(
 async def _process_smart_contract_tx(
     mocker,
     mock_config: Config,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     test_storage_service: StorageService,
     payload: MessageEventPayload,
 ):
@@ -141,17 +141,19 @@ async def _process_smart_contract_tx(
 
     pending_tx = PendingTxDb(tx=tx)
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(pending_tx)
-        session.commit()
+        await session.commit()
 
     await pending_tx_processor.handle_pending_tx(pending_tx=pending_tx)
 
-    with session_factory() as session:
-        pending_txs = session.execute(select(PendingTxDb)).scalars().all()
+    async with session_factory() as session:
+        pending_txs = (await session.execute(select(PendingTxDb))).scalars().all()
         assert not pending_txs
 
-        pending_messages = list(session.execute(select(PendingMessageDb)).scalars())
+        pending_messages = list(
+            (await session.execute(select(PendingMessageDb))).scalars()
+        )
         assert len(pending_messages) == 1
         pending_message_db = pending_messages[0]
 
@@ -165,7 +167,7 @@ async def _process_smart_contract_tx(
             assert pending_message_db.type == MessageType(payload.message_type)
 
         message_status_db = (
-            session.execute(
+            await session.execute(
                 select(MessageStatusDb).where(
                     MessageStatusDb.item_hash == pending_message_db.item_hash
                 )
@@ -178,7 +180,7 @@ async def _process_smart_contract_tx(
 async def test_process_pending_smart_contract_tx_store_ipfs(
     mocker,
     mock_config: Config,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     test_storage_service: StorageService,
 ):
     payload = MessageEventPayload(
@@ -201,7 +203,7 @@ async def test_process_pending_smart_contract_tx_store_ipfs(
 async def test_process_pending_smart_contract_tx_post(
     mocker,
     mock_config: Config,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     test_storage_service: StorageService,
 ):
     payload = MessageEventPayload(

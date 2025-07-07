@@ -2,6 +2,7 @@ import datetime as dt
 from typing import Any, Mapping, Sequence
 
 import pytest
+import pytest_asyncio
 import pytz
 from aleph_message.models import Chain, ItemType, MessageType
 
@@ -20,7 +21,7 @@ from aleph.schemas.api.messages import (
 )
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 from aleph.types.message_status import ErrorCode, MessageStatus
 
 MESSAGE_URI = "/api/v0/messages/{}"
@@ -30,9 +31,9 @@ MESSAGE_CONTENT_URI = "/api/v0/messages/{}/content"
 RECEPTION_DATETIME = pytz.utc.localize(dt.datetime(2023, 1, 1))
 
 
-@pytest.fixture
-def fixture_messages_with_status(
-    session_factory: DbSessionFactory,
+@pytest_asyncio.fixture
+async def fixture_messages_with_status(
+    session_factory: AsyncDbSessionFactory,
 ) -> Mapping[MessageStatus, Sequence[Any]]:
 
     pending_messages = [
@@ -171,7 +172,7 @@ def fixture_messages_with_status(
         MessageStatus.REJECTED: rejected_messages,
     }
 
-    with session_factory() as session:
+    async with session_factory() as session:
         for status, messages in messages_dict.items():
             for message in messages:
                 session.add(message)
@@ -182,7 +183,7 @@ def fixture_messages_with_status(
                         reception_time=RECEPTION_DATETIME,
                     )
                 )
-        session.commit()
+        await session.commit()
 
     return messages_dict
 

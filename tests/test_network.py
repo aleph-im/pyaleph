@@ -8,7 +8,7 @@ from aleph.db.models import PendingMessageDb
 from aleph.handlers.message_handler import MessageHandler
 from aleph.schemas.pending_messages import parse_message
 from aleph.storage import StorageService
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 from aleph.types.message_status import InvalidMessageException
 
 
@@ -91,7 +91,7 @@ async def test_invalid_signature_message_2(mocker):
 @pytest.mark.asyncio
 async def test_incoming_inline_content(
     mock_config: Config,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     test_storage_service: StorageService,
 ):
     message_dict = {

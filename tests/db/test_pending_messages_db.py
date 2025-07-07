@@ -10,7 +10,7 @@ from aleph.db.accessors.pending_messages import (
 )
 from aleph.db.models import ChainTxDb, PendingMessageDb
 from aleph.types.chain_sync import ChainSyncProtocol
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 
 @pytest.fixture
@@ -92,44 +92,46 @@ def fixture_pending_messages():
 
 @pytest.mark.asyncio
 async def test_count_pending_messages(
-    session_factory: DbSessionFactory, fixture_pending_messages: List[PendingMessageDb]
+    session_factory: AsyncDbSessionFactory,
+    fixture_pending_messages: List[PendingMessageDb],
 ):
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add_all(fixture_pending_messages)
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        count_all = count_pending_messages(session=session)
+    async with session_factory() as session:
+        count_all = await count_pending_messages(session=session)
         assert count_all == 3
 
         # Only one message is linked to an ETH transaction
-        count_eth = count_pending_messages(session=session, chain=Chain.ETH)
+        count_eth = await count_pending_messages(session=session, chain=Chain.ETH)
         assert count_eth == 1
 
         # Only one message is linked to a TEZOS transaction
-        count_tezos = count_pending_messages(session=session, chain=Chain.TEZOS)
+        count_tezos = await count_pending_messages(session=session, chain=Chain.TEZOS)
         assert count_tezos == 1
 
         # No message should be linked to any Solana transaction
-        count_sol = count_pending_messages(session=session, chain=Chain.SOL)
+        count_sol = await count_pending_messages(session=session, chain=Chain.SOL)
         assert count_sol == 0
 
 
 @pytest.mark.asyncio
 async def test_get_pending_messages(
-    session_factory: DbSessionFactory, fixture_pending_messages: List[PendingMessageDb]
+    session_factory: AsyncDbSessionFactory,
+    fixture_pending_messages: List[PendingMessageDb],
 ):
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add_all(fixture_pending_messages)
-        session.commit()
+        await session.commit()
 
     current_time = max(
         pending_message.next_attempt for pending_message in fixture_pending_messages
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         pending_messages = list(
-            get_next_pending_messages(session=session, current_time=current_time)
+            await get_next_pending_messages(session=session, current_time=current_time)
         )
 
         assert len(pending_messages) == 3
@@ -138,7 +140,7 @@ async def test_get_pending_messages(
 
         # Exclude hashes
         pending_messages = list(
-            get_next_pending_messages(
+            await get_next_pending_messages(
                 session=session,
                 current_time=current_time,
                 exclude_item_hashes={

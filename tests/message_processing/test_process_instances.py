@@ -2,9 +2,10 @@ import datetime as dt
 import itertools
 import json
 from decimal import Decimal
-from typing import List, Union
+from typing import List, Union, cast
 
 import pytest
+import pytest_asyncio
 import pytz
 from aleph_message.models import (
     Chain,
@@ -46,13 +47,15 @@ from aleph.services.cost import (
     get_total_and_detailed_costs_from_db,
 )
 from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.db_session import AsyncDbSession, AsyncDbSessionFactory
 from aleph.types.files import FileTag, FileType
 from aleph.types.message_status import ErrorCode, MessageStatus
 
 
-@pytest.fixture
-def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessageDb:
+@pytest_asyncio.fixture
+async def fixture_instance_message(
+    session_factory: AsyncDbSessionFactory,
+) -> PendingMessageDb:
     content = {
         "address": "0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
         "allow_amend": False,
@@ -137,7 +140,7 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessag
         retries=0,
         next_attempt=dt.datetime(2023, 1, 1),
     )
-    with session_factory() as session:
+    async with session_factory() as session:
 
         session.add(pending_message)
         session.add(
@@ -147,14 +150,14 @@ def fixture_instance_message(session_factory: DbSessionFactory) -> PendingMessag
                 reception_time=pending_message.reception_time,
             )
         )
-        session.commit()
+        await session.commit()
 
     return pending_message
 
 
-@pytest.fixture
-def fixture_instance_message_payg(
-    session_factory: DbSessionFactory,
+@pytest_asyncio.fixture()
+async def fixture_instance_message_payg(
+    session_factory: AsyncDbSessionFactory,
 ) -> PendingMessageDb:
     content = {
         "address": "0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
@@ -245,7 +248,7 @@ def fixture_instance_message_payg(
         retries=0,
         next_attempt=dt.datetime(2023, 1, 1),
     )
-    with session_factory() as session:
+    async with session_factory() as session:
 
         session.add(pending_message)
         session.add(
@@ -255,13 +258,13 @@ def fixture_instance_message_payg(
                 reception_time=pending_message.reception_time,
             )
         )
-        session.commit()
+        await session.commit()
 
     return pending_message
 
 
-@pytest.fixture
-def user_balance(session_factory: DbSessionFactory) -> AlephBalanceDb:
+@pytest_asyncio.fixture()
+async def user_balance(session_factory: AsyncDbSessionFactory) -> AlephBalanceDb:
     balance = AlephBalanceDb(
         address="0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
         chain=Chain.ETH,
@@ -269,9 +272,9 @@ def user_balance(session_factory: DbSessionFactory) -> AlephBalanceDb:
         eth_height=0,
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(balance)
-        session.commit()
+        await session.commit()
     return balance
 
 
@@ -332,7 +335,7 @@ def get_volume_refs(
     return volumes
 
 
-def insert_volume_refs(session: DbSession, message: PendingMessageDb):
+async def insert_volume_refs(session: AsyncDbSession, message: PendingMessageDb):
     """
     Insert volume references in the DB to make the program processable.
     """
@@ -349,8 +352,8 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
         file_hash = volume.ref[::-1]
 
         session.add(StoredFileDb(hash=file_hash, size=1024 * 1024, type=FileType.FILE))
-        session.flush()
-        insert_message_file_pin(
+        await session.flush()
+        await insert_message_file_pin(
             session=session,
             file_hash=volume.ref[::-1],
             owner=content.address,
@@ -358,7 +361,7 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
             ref=None,
             created=created,
         )
-        upsert_file_tag(
+        await upsert_file_tag(
             session=session,
             tag=FileTag(volume.ref),
             owner=content.address,
@@ -369,16 +372,16 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
 
 @pytest.mark.asyncio
 async def test_process_instance(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     message_processor: PendingMessageProcessor,
     fixture_instance_message: PendingMessageDb,
     user_balance: AlephBalanceDb,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
 ):
-    with session_factory() as session:
-        insert_volume_refs(session, fixture_instance_message)
-        session.commit()
+    async with session_factory() as session:
+        await insert_volume_refs(session, fixture_instance_message)
+        await session.commit()
 
     pipeline = message_processor.make_pipeline()
     # Exhaust the iterator
@@ -387,8 +390,8 @@ async def test_process_instance(
     assert fixture_instance_message.item_content
     content_dict = json.loads(fixture_instance_message.item_content)
 
-    with session_factory() as session:
-        instance = get_instance(
+    async with session_factory() as session:
+        instance = await get_instance(
             session=session, item_hash=fixture_instance_message.item_hash
         )
         assert instance is not None
@@ -441,11 +444,13 @@ async def test_process_instance(
         assert len(volumes_by_type[PersistentVolumeDb]) == 3
         assert len(volumes_by_type[ImmutableVolumeDb]) == 1
 
-        ephemeral_volume: EphemeralVolumeDb = one(volumes_by_type[EphemeralVolumeDb])
+        ephemeral_volume: EphemeralVolumeDb = cast(
+            EphemeralVolumeDb, one(volumes_by_type[EphemeralVolumeDb])
+        )
         assert ephemeral_volume.mount == "/var/cache"
         assert ephemeral_volume.size_mib == 5
 
-        instance_version = get_vm_version(
+        instance_version = await get_vm_version(
             session=session, vm_hash=fixture_instance_message.item_hash
         )
         assert instance_version
@@ -456,7 +461,7 @@ async def test_process_instance(
 
 @pytest.mark.asyncio
 async def test_process_instance_missing_volumes(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     message_processor: PendingMessageProcessor,
     fixture_instance_message: PendingMessageDb,
     user_balance: AlephBalanceDb,
@@ -471,17 +476,17 @@ async def test_process_instance_missing_volumes(
     # Exhaust the iterator
     _ = [message async for message in pipeline]
 
-    with session_factory() as session:
-        instance = get_instance(session=session, item_hash=vm_hash)
+    async with session_factory() as session:
+        instance = await get_instance(session=session, item_hash=vm_hash)
         assert instance is None
 
-        message_status = get_message_status(
+        message_status = await get_message_status(
             session=session, item_hash=ItemHash(vm_hash)
         )
         assert message_status is not None
         assert message_status.status == MessageStatus.REJECTED
 
-        rejected_message = get_rejected_message(
+        rejected_message = await get_rejected_message(
             session=session, item_hash=ItemHash(vm_hash)
         )
         assert rejected_message is not None
@@ -499,7 +504,7 @@ async def test_process_instance_missing_volumes(
 
 @pytest.mark.asyncio
 async def test_forget_instance_message(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     message_processor: PendingMessageProcessor,
     fixture_instance_message: PendingMessageDb,
     user_balance: AlephBalanceDb,
@@ -510,51 +515,51 @@ async def test_forget_instance_message(
     vm_hash = fixture_instance_message.item_hash
 
     # Process the instance message
-    with session_factory() as session:
-        insert_volume_refs(session, fixture_instance_message)
-        session.commit()
+    async with session_factory() as session:
+        await insert_volume_refs(session, fixture_instance_message)
+        await session.commit()
 
     pipeline = message_processor.make_pipeline()
     # Exhaust the iterator
     _ = [message async for message in pipeline]
 
     # Sanity check
-    with session_factory() as session:
-        instance = get_instance(session=session, item_hash=vm_hash)
+    async with session_factory() as session:
+        instance = await get_instance(session=session, item_hash=vm_hash)
         assert instance is not None
 
         # Insert the FORGET message and process it
         session.add(fixture_forget_instance_message)
-        session.commit()
+        await session.commit()
 
     pipeline = message_processor.make_pipeline()
     # Exhaust the iterator
     _ = [message async for message in pipeline]
 
-    with session_factory() as session:
-        instance = get_instance(session=session, item_hash=vm_hash)
+    async with session_factory() as session:
+        instance = await get_instance(session=session, item_hash=vm_hash)
         assert instance is None, "The instance is still present despite being forgotten"
 
-        instance_version = get_vm_version(session=session, vm_hash=vm_hash)
+        instance_version = await get_vm_version(session=session, vm_hash=vm_hash)
         assert instance_version is None
 
 
 @pytest.mark.asyncio
 async def test_process_instance_balance(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     message_processor: PendingMessageProcessor,
     fixture_instance_message: PendingMessageDb,
 ):
-    with session_factory() as session:
-        insert_volume_refs(session, fixture_instance_message)
-        session.commit()
+    async with session_factory() as session:
+        await insert_volume_refs(session, fixture_instance_message)
+        await session.commit()
 
     pipeline = message_processor.make_pipeline()
     # Exhaust the iterator
     _ = [message async for message in pipeline]
 
-    with session_factory() as session:
-        rejected_message = get_rejected_message(
+    async with session_factory() as session:
+        rejected_message = await get_rejected_message(
             session=session, item_hash=fixture_instance_message.item_hash
         )
         assert rejected_message is not None
@@ -562,24 +567,24 @@ async def test_process_instance_balance(
 
 @pytest.mark.asyncio
 async def test_get_additional_storage_price(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     fixture_instance_message: PendingMessageDb,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
 ):
-    with session_factory() as session:
-        insert_volume_refs(session, fixture_instance_message)
-        session.commit()
+    async with session_factory() as session:
+        await insert_volume_refs(session, fixture_instance_message)
+        await session.commit()
 
     if fixture_instance_message.item_content:
         content = InstanceContent.model_validate_json(
             fixture_instance_message.item_content
         )
-        with session_factory() as session:
-            settings = _get_settings(session)
-            pricing = _get_product_price(session, content, settings)
+        async with session_factory() as session:
+            settings = await _get_settings(session)
+            pricing = await _get_product_price(session, content, settings)
 
-            additional_price = _get_additional_storage_price(
+            additional_price = await _get_additional_storage_price(
                 content=content,
                 pricing=pricing,
                 session=session,
@@ -594,15 +599,15 @@ async def test_get_additional_storage_price(
 
 @pytest.mark.asyncio
 async def test_get_total_and_detailed_costs_from_db(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     message_processor: PendingMessageProcessor,
     fixture_instance_message: PendingMessageDb,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
 ):
-    with session_factory() as session:
-        insert_volume_refs(session, fixture_instance_message)
-        session.commit()
+    async with session_factory() as session:
+        await insert_volume_refs(session, fixture_instance_message)
+        await session.commit()
 
     pipeline = message_processor.make_pipeline()
     # Exhaust the iterator
@@ -612,8 +617,8 @@ async def test_get_total_and_detailed_costs_from_db(
         content = InstanceContent.model_validate_json(
             fixture_instance_message.item_content
         )
-        with session_factory() as session:
-            cost, _ = get_total_and_detailed_costs(
+        async with session_factory() as session:
+            cost, _ = await get_total_and_detailed_costs(
                 session=session,
                 content=content,
                 item_hash=fixture_instance_message.item_hash,
@@ -624,16 +629,16 @@ async def test_get_total_and_detailed_costs_from_db(
 
 @pytest.mark.asyncio
 async def test_compare_account_cost_with_cost_function_hold(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     message_processor: PendingMessageProcessor,
     fixture_instance_message: PendingMessageDb,
     user_balance: AlephBalanceDb,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
 ):
-    with session_factory() as session:
-        insert_volume_refs(session, fixture_instance_message)
-        session.commit()
+    async with session_factory() as session:
+        await insert_volume_refs(session, fixture_instance_message)
+        await session.commit()
 
     pipeline = message_processor.make_pipeline()
     # Exhaust the iterator
@@ -641,14 +646,14 @@ async def test_compare_account_cost_with_cost_function_hold(
 
     assert fixture_instance_message.item_content
     content = InstanceContent.model_validate_json(fixture_instance_message.item_content)
-    with session_factory() as session:
-        db_cost, _ = get_total_and_detailed_costs_from_db(
+    async with session_factory() as session:
+        db_cost, _ = await get_total_and_detailed_costs_from_db(
             session=session,
             content=content,
             item_hash=fixture_instance_message.item_hash,
         )
 
-        cost, _ = get_total_and_detailed_costs(
+        cost, _ = await get_total_and_detailed_costs(
             session=session,
             content=content,
             item_hash=fixture_instance_message.item_hash,
@@ -659,16 +664,16 @@ async def test_compare_account_cost_with_cost_function_hold(
 
 @pytest.mark.asyncio
 async def test_compare_account_cost_with_cost_payg_funct(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     message_processor: PendingMessageProcessor,
     fixture_instance_message_payg: PendingMessageDb,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
     user_balance: AlephBalanceDb,
 ):
-    with session_factory() as session:
-        insert_volume_refs(session, fixture_instance_message_payg)
-        session.commit()
+    async with session_factory() as session:
+        await insert_volume_refs(session, fixture_instance_message_payg)
+        await session.commit()
 
     pipeline = message_processor.make_pipeline()
     # Exhaust the iterator
@@ -680,15 +685,15 @@ async def test_compare_account_cost_with_cost_payg_funct(
         fixture_instance_message_payg.item_content
     )  # Parse again
 
-    with session_factory() as session:
+    async with session_factory() as session:
         assert content.payment.type == PaymentType.superfluid
-        cost, details = get_total_and_detailed_costs(
+        cost, details = await get_total_and_detailed_costs(
             session=session,
             content=content,
             item_hash=fixture_instance_message_payg.item_hash,
         )
 
-        db_cost, details = get_total_and_detailed_costs_from_db(
+        db_cost, details = await get_total_and_detailed_costs_from_db(
             session=session,
             content=content,
             item_hash=fixture_instance_message_payg.item_hash,
@@ -698,9 +703,9 @@ async def test_compare_account_cost_with_cost_payg_funct(
     assert cost == db_cost
 
 
-@pytest.fixture
-def fixture_instance_message_only_rootfs(
-    session_factory: DbSessionFactory,
+@pytest_asyncio.fixture()
+async def fixture_instance_message_only_rootfs(
+    session_factory: AsyncDbSessionFactory,
 ) -> PendingMessageDb:
     content = {
         "address": "0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
@@ -750,7 +755,7 @@ def fixture_instance_message_only_rootfs(
         retries=0,
         next_attempt=dt.datetime(2023, 1, 1),
     )
-    with session_factory() as session:
+    async with session_factory() as session:
 
         session.add(pending_message)
         session.add(
@@ -760,23 +765,23 @@ def fixture_instance_message_only_rootfs(
                 reception_time=pending_message.reception_time,
             )
         )
-        session.commit()
+        await session.commit()
 
     return pending_message
 
 
 @pytest.mark.asyncio
 async def test_compare_account_cost_with_cost_function_without_volume(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     message_processor: PendingMessageProcessor,
     fixture_instance_message_only_rootfs: PendingMessageDb,
     user_balance: AlephBalanceDb,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
 ):
-    with session_factory() as session:
-        insert_volume_refs(session, fixture_instance_message_only_rootfs)
-        session.commit()
+    async with session_factory() as session:
+        await insert_volume_refs(session, fixture_instance_message_only_rootfs)
+        await session.commit()
 
     pipeline = message_processor.make_pipeline()
     # Exhaust the iterator
@@ -786,12 +791,12 @@ async def test_compare_account_cost_with_cost_function_without_volume(
     content = InstanceContent.model_validate_json(
         fixture_instance_message_only_rootfs.item_content
     )
-    with session_factory() as session:
-        cost, details = get_total_and_detailed_costs(
+    async with session_factory() as session:
+        cost, details = await get_total_and_detailed_costs(
             session=session, content=content, item_hash="abab"
         )
 
-        db_cost, details = get_total_and_detailed_costs_from_db(
+        db_cost, details = await get_total_and_detailed_costs_from_db(
             session=session,
             content=content,
             item_hash=fixture_instance_message_only_rootfs.item_hash,

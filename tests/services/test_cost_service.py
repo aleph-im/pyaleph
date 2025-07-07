@@ -14,7 +14,7 @@ from aleph.services.cost import (
     _get_settings_aggregate,
     get_total_and_detailed_costs,
 )
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 
 class StoredFileDb:
@@ -270,8 +270,9 @@ def fixture_hold_program_message_complete() -> ExecutableContent:
     return CostEstimationProgramContent.model_validate(content)
 
 
-def test_compute_cost(
-    session_factory: DbSessionFactory,
+@pytest.mark.asyncio
+async def test_compute_cost(
+    session_factory: AsyncDbSessionFactory,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
     fixture_hold_instance_message,
@@ -280,15 +281,16 @@ def test_compute_cost(
     mock = Mock()
     mock.patch("_get_file_from_ref", return_value=file_db)
 
-    with session_factory() as session:
-        cost, details = get_total_and_detailed_costs(
+    async with session_factory() as session:
+        cost, details = await get_total_and_detailed_costs(
             session=session, content=fixture_hold_instance_message, item_hash="abab"
         )
         assert cost == Decimal("1000")
 
 
-def test_compute_cost_conf(
-    session_factory: DbSessionFactory,
+@pytest.mark.asyncio
+async def test_compute_cost_conf(
+    session_factory: AsyncDbSessionFactory,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
     fixture_hold_instance_message,
@@ -312,15 +314,16 @@ def test_compute_cost_conf(
     mock = Mock()
     mock.patch("_get_file_from_ref", return_value=file_db)
 
-    with session_factory() as session:
-        cost, _ = get_total_and_detailed_costs(
+    async with session_factory() as session:
+        cost, _ = await get_total_and_detailed_costs(
             session=session, content=rebuilt_message, item_hash="abab"
         )
         assert cost == 2000
 
 
-def test_get_additional_storage_price(
-    session_factory: DbSessionFactory,
+@pytest.mark.asyncio
+async def test_get_additional_storage_price(
+    session_factory: AsyncDbSessionFactory,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
     fixture_hold_instance_message,
@@ -329,14 +332,14 @@ def test_get_additional_storage_price(
     mock = Mock()
     mock.patch("_get_file_from_ref", return_value=file_db)
 
-    with session_factory() as session:
+    async with session_factory() as session:
         content = fixture_hold_instance_message
-        settings = _get_settings(session)
-        pricing = _get_product_price(
+        settings = await _get_settings(session)
+        pricing = await _get_product_price(
             session=session, content=content, settings=settings
         )
 
-        cost = _get_additional_storage_price(
+        cost = await _get_additional_storage_price(
             session=session,
             content=content,
             item_hash="abab",
@@ -348,8 +351,9 @@ def test_get_additional_storage_price(
         assert additional_cost == 0
 
 
-def test_compute_cost_instance_complete(
-    session_factory: DbSessionFactory,
+@pytest.mark.asyncio
+async def test_compute_cost_instance_complete(
+    session_factory: AsyncDbSessionFactory,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
     fixture_hold_instance_message_complete,
@@ -358,8 +362,8 @@ def test_compute_cost_instance_complete(
     mock = Mock()
     mock.patch("_get_file_from_ref", return_value=file_db)
 
-    with session_factory() as session:
-        cost, _ = get_total_and_detailed_costs(
+    async with session_factory() as session:
+        cost, _ = await get_total_and_detailed_costs(
             session=session,
             content=fixture_hold_instance_message_complete,
             item_hash="abab",
@@ -367,8 +371,9 @@ def test_compute_cost_instance_complete(
         assert cost == 1017.50
 
 
-def test_compute_cost_program_complete(
-    session_factory: DbSessionFactory,
+@pytest.mark.asyncio
+async def test_compute_cost_program_complete(
+    session_factory: AsyncDbSessionFactory,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
     fixture_hold_program_message_complete,
@@ -377,8 +382,8 @@ def test_compute_cost_program_complete(
     mock = Mock()
     mock.patch("_get_file_from_ref", return_value=file_db)
 
-    with session_factory() as session:
-        cost, _ = get_total_and_detailed_costs(
+    async with session_factory() as session:
+        cost, _ = await get_total_and_detailed_costs(
             session=session,
             content=fixture_hold_program_message_complete,
             item_hash="asdf",
@@ -386,8 +391,9 @@ def test_compute_cost_program_complete(
         assert cost == Decimal("630.400000000000000000")
 
 
-def test_compute_flow_cost(
-    session_factory: DbSessionFactory,
+@pytest.mark.asyncio
+async def test_compute_flow_cost(
+    session_factory: AsyncDbSessionFactory,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
     fixture_flow_instance_message,
@@ -396,16 +402,16 @@ def test_compute_flow_cost(
     mock = Mock()
     mock.patch("_get_file_from_ref", return_value=file_db)
 
-    with session_factory() as session:
-        cost, _ = get_total_and_detailed_costs(
+    async with session_factory() as session:
+        cost, _ = await get_total_and_detailed_costs(
             session=session, content=fixture_flow_instance_message, item_hash="abab"
         )
 
         assert cost == Decimal("0.000015277777777777")
 
 
-def test_compute_flow_cost_conf(
-    session_factory: DbSessionFactory,
+async def test_compute_flow_cost_conf(
+    session_factory: AsyncDbSessionFactory,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
     fixture_flow_instance_message,
@@ -430,16 +436,17 @@ def test_compute_flow_cost_conf(
     mock = Mock()
     mock.patch("_get_file_from_ref", return_value=file_db)
 
-    with session_factory() as session:
-        cost, _ = get_total_and_detailed_costs(
+    async with session_factory() as session:
+        cost, _ = await get_total_and_detailed_costs(
             session=session, content=rebuilt_message, item_hash="abab"
         )
 
         assert cost == Decimal("0.000030555555555555")
 
 
-def test_compute_flow_cost_complete(
-    session_factory: DbSessionFactory,
+@pytest.mark.asyncio
+async def test_compute_flow_cost_complete(
+    session_factory: AsyncDbSessionFactory,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
     fixture_flow_instance_message_complete,
@@ -448,8 +455,8 @@ def test_compute_flow_cost_complete(
     mock = Mock()
     mock.patch("_get_file_from_ref", return_value=file_db)
 
-    with session_factory() as session:
-        cost, _ = get_total_and_detailed_costs(
+    async with session_factory() as session:
+        cost, _ = await get_total_and_detailed_costs(
             session=session,
             content=fixture_flow_instance_message_complete,
             item_hash="abab",
@@ -458,33 +465,37 @@ def test_compute_flow_cost_complete(
         assert cost == Decimal("0.000032243382777775")
 
 
-def test_default_settings_aggregates(
-    session_factory: DbSessionFactory,
+@pytest.mark.asyncio
+async def test_default_settings_aggregates(
+    session_factory: AsyncDbSessionFactory,
 ):
-    with session_factory() as session:
-        aggregate = _get_settings_aggregate(session)
+    async with session_factory() as session:
+        aggregate = await _get_settings_aggregate(session)
         assert isinstance(aggregate, dict)
 
 
-def test_default_price_aggregates(
-    session_factory: DbSessionFactory,
+@pytest.mark.asyncio
+async def test_default_price_aggregates(
+    session_factory: AsyncDbSessionFactory,
 ):
-    with session_factory() as session:
-        price_aggregate = _get_price_aggregate(session=session)
+    async with session_factory() as session:
+        price_aggregate = await _get_price_aggregate(session=session)
         assert isinstance(price_aggregate, dict)
 
 
-def test_default_settings_aggregates_db(
-    session_factory: DbSessionFactory, fixture_settings_aggregate_in_db
+@pytest.mark.asyncio
+async def test_default_settings_aggregates_db(
+    session_factory: AsyncDbSessionFactory, fixture_settings_aggregate_in_db
 ):
-    with session_factory() as session:
-        aggregate = _get_settings_aggregate(session)
+    async with session_factory() as session:
+        aggregate = await _get_settings_aggregate(session)
         assert isinstance(aggregate, AggregateDb)
 
 
-def test_default_price_aggregates_db(
-    session_factory: DbSessionFactory, fixture_product_prices_aggregate_in_db
+@pytest.mark.asyncio
+async def test_default_price_aggregates_db(
+    session_factory: AsyncDbSessionFactory, fixture_product_prices_aggregate_in_db
 ):
-    with session_factory() as session:
-        price_aggregate = _get_price_aggregate(session=session)
+    async with session_factory() as session:
+        price_aggregate = await _get_price_aggregate(session=session)
         assert isinstance(price_aggregate, AggregateDb)
