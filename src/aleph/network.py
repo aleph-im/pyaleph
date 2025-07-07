@@ -13,7 +13,7 @@ from aleph.services.ipfs.common import make_ipfs_client
 from aleph.services.ipfs.pubsub import incoming_channel as incoming_ipfs_channel
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 from aleph.types.message_status import InvalidMessageFormat
 
 LOGGER = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ async def decode_pubsub_message(message_data: bytes) -> Dict[str, Any]:
 
 async def listener_tasks(
     config,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     node_cache: NodeCache,
     p2p_client: AlephP2PServiceClient,
     mq_channel: aio_pika.abc.AbstractChannel,
