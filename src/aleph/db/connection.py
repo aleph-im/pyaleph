@@ -71,7 +71,6 @@ def make_async_engine(
     return create_async_engine(
         make_db_url(driver="asyncpg", config=config),
         connect_args={"server_settings": {"application_name": application_name}},
-
         future=True,
         echo=echo,
     )
