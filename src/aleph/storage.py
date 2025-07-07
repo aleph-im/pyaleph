@@ -22,7 +22,7 @@ from aleph.services.ipfs import IpfsService
 from aleph.services.ipfs.common import get_cid_version
 from aleph.services.p2p.http import request_hash as p2p_http_request_hash
 from aleph.services.storage.engine import StorageEngine
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 from aleph.types.files import FileType
 from aleph.utils import get_sha256
 
@@ -251,7 +251,7 @@ class StorageService:
         await self.ipfs_service.pin_add(cid=chash, timeout=timeout, tries=tries)
 
     async def add_json(
-        self, session: DbSession, value: Any, engine: ItemType = ItemType.ipfs
+        self, session: AsyncDbSession, value: Any, engine: ItemType = ItemType.ipfs
     ) -> str:
         content = aleph_json.dumps(value)
 
@@ -263,7 +263,7 @@ class StorageService:
             raise NotImplementedError("storage engine %s not supported" % engine)
 
         await self.storage_engine.write(filename=chash, content=content)
-        upsert_file(
+        await upsert_file(
             session=session,
             file_hash=chash,
             size=len(content),
@@ -273,10 +273,10 @@ class StorageService:
         return chash
 
     async def add_file_content_to_local_storage(
-        self, session: DbSession, file_content: bytes, file_hash: str
+        self, session: AsyncDbSession, file_content: bytes, file_hash: str
     ) -> None:
         await self.storage_engine.write(filename=file_hash, content=file_content)
-        upsert_file(
+        await upsert_file(
             session=session,
             file_hash=file_hash,
             size=len(file_content),
@@ -284,7 +284,10 @@ class StorageService:
         )
 
     async def add_file(
-        self, session: DbSession, file_content: bytes, engine: ItemType = ItemType.ipfs
+        self,
+        session: AsyncDbSession,
+        file_content: bytes,
+        engine: ItemType = ItemType.ipfs,
     ) -> str:
         if engine == ItemType.ipfs:
             output = await self.ipfs_service.add_file(file_content)
