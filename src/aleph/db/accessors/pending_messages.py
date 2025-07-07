@@ -7,11 +7,11 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import Update
 
 from aleph.db.models import ChainTxDb, PendingMessageDb
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 
 
-def get_next_pending_message(
-    session: DbSession,
+async def get_next_pending_message(
+    session: AsyncDbSession,
     current_time: dt.datetime,
     offset: int = 0,
     fetched: Optional[bool] = None,
@@ -34,11 +34,11 @@ def get_next_pending_message(
         )
 
     select_stmt = select_stmt.limit(1)
-    return (session.execute(select_stmt)).scalar_one_or_none()
+    return (await session.execute(select_stmt)).scalar_one_or_none()
 
 
-def get_next_pending_messages(
-    session: DbSession,
+async def get_next_pending_messages(
+    session: AsyncDbSession,
     current_time: dt.datetime,
     limit: int = 10000,
     offset: int = 0,
@@ -62,30 +62,32 @@ def get_next_pending_messages(
         )
 
     select_stmt = select_stmt.limit(limit)
-    return (session.execute(select_stmt)).scalars()
+    return (await session.execute(select_stmt)).scalars()
 
 
-def get_pending_messages(
-    session: DbSession, item_hash: str
+async def get_pending_messages(
+    session: AsyncDbSession, item_hash: str
 ) -> Iterable[PendingMessageDb]:
     select_stmt = (
         select(PendingMessageDb)
         .order_by(PendingMessageDb.time)
         .where(PendingMessageDb.item_hash == item_hash)
     )
-    return session.execute(select_stmt).scalars()
+    return (await session.execute(select_stmt)).scalars()
 
 
-def get_pending_message(
-    session: DbSession, pending_message_id: int
+async def get_pending_message(
+    session: AsyncDbSession, pending_message_id: int
 ) -> Optional[PendingMessageDb]:
     select_stmt = select(PendingMessageDb).where(
         PendingMessageDb.id == pending_message_id
     )
-    return session.execute(select_stmt).scalar_one_or_none()
+    return (await session.execute(select_stmt)).scalar_one_or_none()
 
 
-def count_pending_messages(session: DbSession, chain: Optional[Chain] = None) -> int:
+async def count_pending_messages(
+    session: AsyncDbSession, chain: Optional[Chain] = None
+) -> int:
     """
     Counts pending messages.
 
@@ -99,7 +101,7 @@ def count_pending_messages(session: DbSession, chain: Optional[Chain] = None) ->
             ChainTxDb, PendingMessageDb.tx_hash == ChainTxDb.hash
         )
 
-    return (session.execute(select_stmt)).scalar_one()
+    return (await session.execute(select_stmt)).scalar_one()
 
 
 def make_pending_message_fetched_statement(
@@ -113,20 +115,22 @@ def make_pending_message_fetched_statement(
     return update_stmt
 
 
-def set_next_retry(
-    session: DbSession, pending_message: PendingMessageDb, next_attempt: dt.datetime
+async def set_next_retry(
+    session: AsyncDbSession,
+    pending_message: PendingMessageDb,
+    next_attempt: dt.datetime,
 ) -> None:
     update_stmt = (
         update(PendingMessageDb)
         .where(PendingMessageDb.id == pending_message.id)
         .values(retries=PendingMessageDb.retries + 1, next_attempt=next_attempt)
     )
-    session.execute(update_stmt)
+    await session.execute(update_stmt)
 
 
-def delete_pending_message(
-    session: DbSession, pending_message: PendingMessageDb
+async def delete_pending_message(
+    session: AsyncDbSession, pending_message: PendingMessageDb
 ) -> None:
-    session.execute(
+    await session.execute(
         delete(PendingMessageDb).where(PendingMessageDb.id == pending_message.id)
     )

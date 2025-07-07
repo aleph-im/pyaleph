@@ -33,7 +33,7 @@ from aleph.db.models import ChainTxDb, MessageDb, message_confirmations
 from aleph.db.models.posts import PostDb
 from aleph.toolkit.timestamp import coerce_to_datetime
 from aleph.types.channel import Channel
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 from aleph.types.sort_order import SortBy, SortOrder
 
 
@@ -154,18 +154,20 @@ def make_select_merged_post_with_message_info_stmt() -> Select:
     return select_merged_post_stmt
 
 
-def get_post(session: DbSession, item_hash: str) -> Optional[MergedPost]:
+async def get_post(session: AsyncDbSession, item_hash: str) -> Optional[MergedPost]:
     select_stmt = make_select_merged_post_stmt()
     select_stmt = select_stmt.where(Original.item_hash == str(item_hash))
-    return session.execute(select_stmt).one_or_none()
+    return (await session.execute(select_stmt)).one_or_none()
 
 
-def get_original_post(session: DbSession, item_hash: str) -> Optional[PostDb]:
+async def get_original_post(
+    session: AsyncDbSession, item_hash: str
+) -> Optional[PostDb]:
     select_stmt = select(PostDb).where(PostDb.item_hash == item_hash)
-    return session.execute(select_stmt).scalar()
+    return (await session.execute(select_stmt)).scalar()
 
 
-def refresh_latest_amend(session: DbSession, item_hash: str) -> None:
+async def refresh_latest_amend(session: AsyncDbSession, item_hash: str) -> None:
     select_latest_amend = (
         select(
             PostDb.amends, func.max(PostDb.creation_datetime).label("creation_datetime")
@@ -181,7 +183,7 @@ def refresh_latest_amend(session: DbSession, item_hash: str) -> None:
         & (PostDb.creation_datetime == select_latest_amend.c.creation_datetime),
     )
 
-    latest_amend_hash = session.execute(select_stmt).scalar()
+    latest_amend_hash = (await session.execute(select_stmt)).scalar()
 
     update_stmt = (
         update(PostDb)
@@ -189,7 +191,7 @@ def refresh_latest_amend(session: DbSession, item_hash: str) -> None:
         .values(latest_amend=latest_amend_hash)
     )
 
-    session.execute(update_stmt)
+    await session.execute(update_stmt)
 
 
 def filter_post_select_stmt(
@@ -294,8 +296,8 @@ def filter_post_select_stmt(
     return select_stmt
 
 
-def count_matching_posts(
-    session: DbSession,
+async def count_matching_posts(
+    session: AsyncDbSession,
     page: int = 1,
     pagination: int = 0,
     sort_by: SortBy = SortBy.TIME,
@@ -322,34 +324,36 @@ def count_matching_posts(
         select_stmt = select(PostDb).where(PostDb.amends.is_(None)).subquery()
 
     select_count_stmt = select(func.count()).select_from(select_stmt)
-    return session.execute(select_count_stmt).scalar_one()
+    return (await session.execute(select_count_stmt)).scalar_one()
 
 
-def get_matching_posts_legacy(
-    session: DbSession,
+async def get_matching_posts_legacy(
+    session: AsyncDbSession,
     # Same as make_matching_posts_query
     **kwargs,
 ) -> List[MergedPostV0]:
     select_stmt = make_select_merged_post_with_message_info_stmt()
     filtered_select_stmt = filter_post_select_stmt(select_stmt, **kwargs)
-    return cast(List[MergedPostV0], session.execute(filtered_select_stmt).all())
+    return cast(List[MergedPostV0], (await session.execute(filtered_select_stmt)).all())
 
 
-def get_matching_posts(
-    session: DbSession,
+async def get_matching_posts(
+    session: AsyncDbSession,
     # Same as make_matching_posts_query
     **kwargs,
 ) -> List[MergedPost]:
     select_stmt = make_select_merged_post_stmt()
     filtered_select_stmt = filter_post_select_stmt(select_stmt, **kwargs)
-    return cast(List[MergedPost], session.execute(filtered_select_stmt).all())
+    return cast(List[MergedPost], (await session.execute(filtered_select_stmt)).all())
 
 
-def delete_amends(session: DbSession, item_hash: str) -> Iterable[str]:
-    return session.execute(
-        delete(PostDb).where(PostDb.amends == item_hash).returning(PostDb.item_hash)
+async def delete_amends(session: AsyncDbSession, item_hash: str) -> Iterable[str]:
+    return (
+        await session.execute(
+            delete(PostDb).where(PostDb.amends == item_hash).returning(PostDb.item_hash)
+        )
     ).scalars()
 
 
-def delete_post(session: DbSession, item_hash: str) -> None:
-    session.execute(delete(PostDb).where(PostDb.item_hash == item_hash))
+async def delete_post(session: AsyncDbSession, item_hash: str) -> None:
+    await session.execute(delete(PostDb).where(PostDb.item_hash == item_hash))

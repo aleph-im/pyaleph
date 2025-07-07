@@ -10,12 +10,12 @@ from aleph.db.models import ChainTxDb, message_confirmations
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.db.models.messages import MessageStatusDb
 from aleph.toolkit.costs import format_cost
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 from aleph.types.message_status import MessageStatus
 
 
-def get_total_cost_for_address(
-    session: DbSession,
+async def get_total_cost_for_address(
+    session: AsyncDbSession,
     address: str,
     payment_type: Optional[PaymentType] = PaymentType.hold,
 ) -> Decimal:
@@ -34,12 +34,12 @@ def get_total_cost_for_address(
         )
     )
 
-    total_cost = session.execute(select_stmt).scalar()
+    total_cost = (await session.execute(select_stmt)).scalar()
     return format_cost(Decimal(total_cost or 0))
 
 
-def get_total_costs_for_address_grouped_by_message(
-    session: DbSession,
+async def get_total_costs_for_address_grouped_by_message(
+    session: AsyncDbSession,
     address: str,
     payment_type: Optional[PaymentType] = PaymentType.hold,
 ):
@@ -69,12 +69,14 @@ def get_total_costs_for_address_grouped_by_message(
         .order_by(asc(id_field))
     )
 
-    return (session.execute(select_stmt)).all()
+    return (await session.execute(select_stmt)).all()
 
 
-def get_message_costs(session: DbSession, item_hash: str) -> Iterable[AccountCostsDb]:
+async def get_message_costs(
+    session: AsyncDbSession, item_hash: str
+) -> Iterable[AccountCostsDb]:
     select_stmt = select(AccountCostsDb).where(AccountCostsDb.item_hash == item_hash)
-    return (session.execute(select_stmt)).scalars().all()
+    return (await session.execute(select_stmt)).scalars().all()
 
 
 def make_costs_upsert_query(costs: List[AccountCostsDb]) -> Insert:
@@ -98,12 +100,14 @@ def make_costs_upsert_query(costs: List[AccountCostsDb]) -> Insert:
     )
 
 
-def delete_costs_for_message(session: DbSession, item_hash: str) -> None:
+async def delete_costs_for_message(session: AsyncDbSession, item_hash: str) -> None:
     delete_stmt = delete(AccountCostsDb).where(AccountCostsDb.item_hash == item_hash)
-    session.execute(delete_stmt)
+    await session.execute(delete_stmt)
 
 
-def delete_costs_for_forgotten_and_deleted_messages(session: DbSession) -> None:
+async def delete_costs_for_forgotten_and_deleted_messages(
+    session: AsyncDbSession,
+) -> None:
     delete_stmt = (
         delete(AccountCostsDb)
         .where(AccountCostsDb.item_hash == MessageStatusDb.item_hash)
@@ -113,4 +117,4 @@ def delete_costs_for_forgotten_and_deleted_messages(session: DbSession) -> None:
         )
         .execution_options(synchronize_session=False)
     )
-    session.execute(delete_stmt)
+    await session.execute(delete_stmt)
