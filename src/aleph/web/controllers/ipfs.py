@@ -58,15 +58,17 @@ async def ipfs_add_file(request: web.Request):
     )
     size = stats["Size"]
 
-    with session_factory() as session:
-        upsert_file(
+    async with session_factory() as session:
+        await upsert_file(
             session=session,
             file_hash=cid,
             size=size,
             file_type=FileType.FILE,
         )
-        add_grace_period_for_file(session=session, file_hash=cid, hours=grace_period)
-        session.commit()
+        await add_grace_period_for_file(
+            session=session, file_hash=cid, hours=grace_period
+        )
+        await session.commit()
 
     output = {
         "status": "success",
