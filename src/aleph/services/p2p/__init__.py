@@ -4,7 +4,7 @@ from aleph_p2p_client import AlephP2PServiceClient, make_p2p_service_client
 from configmanager import Config
 
 from aleph.services.ipfs import IpfsService
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 from ..cache.node_cache import NodeCache
 from .manager import initialize_host
@@ -28,7 +28,7 @@ async def init_p2p_client(config: Config, service_name: str) -> AlephP2PServiceC
 
 async def init_p2p(
     config: Config,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     service_name: str,
     ipfs_service: IpfsService,
     node_cache: NodeCache,
