@@ -134,7 +134,7 @@ class PendingMessageFetcher(MessageJob):
                     yield fetched_messages
                     fetched_messages = []
 
-                if not PendingMessageDb.count(session):
+                if not await PendingMessageDb.count(session):
                     # If not in loop mode, stop if there are no more pending messages
                     if not loop:
                         break
