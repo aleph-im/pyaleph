@@ -154,7 +154,6 @@ async def update_balances(
     )
 
     # Convert floats to str to avoid having issue with float to decimal conversion
-
     records = [
         (address, chain.value, dapp or "", str(balance), eth_height, last_update)
         for address, balance in balances.items()
