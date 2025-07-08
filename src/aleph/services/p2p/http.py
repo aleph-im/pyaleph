@@ -12,23 +12,14 @@ import aiohttp
 
 LOGGER = logging.getLogger("P2P.HTTP")
 
-SESSIONS = dict()
 
-
-async def api_get_request(base_uri, method, timeout=1):
-    if timeout not in SESSIONS:
-        connector = aiohttp.TCPConnector(limit_per_host=5)
-        SESSIONS[timeout] = aiohttp.ClientSession(
-            read_timeout=timeout, connector=connector
-        )
-
+async def api_get_request(session: aiohttp.ClientSession, base_uri, method, timeout=1):
     uri = f"{base_uri}/api/v0/{method}"
     try:
-        async with SESSIONS[timeout].get(uri) as resp:
+        async with session.get(uri) as resp:
             if resp.status != 200:
-                result = None
-            else:
-                result = await resp.json()
+                return None
+            return await resp.json()
     except (
         TimeoutError,
         asyncio.TimeoutError,
@@ -44,17 +35,32 @@ async def api_get_request(base_uri, method, timeout=1):
 
 
 async def get_peer_hash_content(
-    base_uri: str, item_hash: str, timeout: int = 1
+    session: aiohttp.ClientSession,
+    base_uri: str,
+    item_hash: str,
+    semaphore,
+    timeout: int = 1,
 ) -> Optional[bytes]:
-    result = None
-    item = await api_get_request(base_uri, f"storage/{item_hash}", timeout=timeout)
-    if item is not None and item["status"] == "success" and item["content"] is not None:
-        # TODO: IMPORTANT /!\ verify the hash of received data!
-        return base64.decodebytes(item["content"].encode("utf-8"))
-    else:
-        LOGGER.debug(f"can't get hash {item_hash}")
-
-    return result
+    async with (
+        semaphore
+    ):  # We use semaphore to avoid having too much call at the same time
+        result = None
+        item = await api_get_request(
+            session=session,
+            base_uri=base_uri,
+            method=f"storage/{item_hash}",
+            timeout=timeout,
+        )
+        if (
+            item is not None
+            and item["status"] == "success"
+            and item["content"] is not None
+        ):
+            # TODO: IMPORTANT /!\ verify the hash of received data!
+            return base64.decodebytes(item["content"].encode("utf-8"))
+        else:
+            LOGGER.debug(f"can't get hash {item_hash}")
+        return result
 
 
 async def request_hash(
@@ -62,9 +68,38 @@ async def request_hash(
 ) -> Optional[bytes]:
     uris: List[str] = sample(api_servers, k=len(api_servers))
 
-    for uri in uris:
-        content = await get_peer_hash_content(uri, item_hash, timeout=timeout)
-        if content is not None:
-            return content
+    # Avoid too  much request at the same time
+    semaphore = asyncio.Semaphore(5)
+
+    connector = aiohttp.TCPConnector(limit_per_host=5)
+    timeout_conf = aiohttp.ClientTimeout(total=timeout)
+
+    async with aiohttp.ClientSession(
+        connector=connector, timeout=timeout_conf
+    ) as session:
+        # Use Task instead of
+        tasks = [
+            asyncio.create_task(
+                get_peer_hash_content(
+                    session=session,
+                    base_uri=url,
+                    item_hash=item_hash,
+                    semaphore=semaphore,
+                )
+            )
+            for url in uris
+        ]
+
+        for completed_task in asyncio.as_completed(tasks):
+            try:
+                result = await completed_task
+                if result:
+                    # We cancel other Task
+                    for task in tasks:
+                        if not task.done():
+                            task.cancel()
+                    return result
+            except Exception:
+                continue
 
     return None  # Nothing found...
