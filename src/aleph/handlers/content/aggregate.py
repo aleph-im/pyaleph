@@ -1,3 +1,4 @@
+import asyncio
 import itertools
 import logging
 from typing import List, Sequence, Set, cast
@@ -87,8 +88,8 @@ class AggregateMessageHandler(ContentHandler):
         aggregate: AggregateDb,
         elements: Sequence[AggregateElementDb],
     ):
-        # That will need to run in no IO blocking way
-        new_content = merge_aggregate_elements(elements)
+        # We run in to thread to avoid IO blocking if huge aggregate pass
+        new_content = await asyncio.to_thread(merge_aggregate_elements, elements)
 
         await update_aggregate(
             session=session,
@@ -130,7 +131,7 @@ class AggregateMessageHandler(ContentHandler):
         if not aggregate_metadata:
             LOGGER.info("%s/%s does not exist, creating it", key, owner)
 
-            content = merge_aggregate_elements(elements)
+            content = await asyncio.to_thread(merge_aggregate_elements, elements)
             await insert_aggregate(
                 session=session,
                 key=key,
@@ -239,5 +240,4 @@ class AggregateMessageHandler(ContentHandler):
 
         LOGGER.debug("Refreshing aggregate %s/%s...", owner, key)
         await refresh_aggregate(session=session, owner=owner, key=str(key))
-
         return set()
