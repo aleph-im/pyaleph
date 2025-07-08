@@ -33,9 +33,9 @@ class FileSystemStorageEngine(StorageEngine):
         file_path = self.folder / filename
         async_unlink = aiofiles.ospath.wrap(
             Path.unlink
-        )  # We manually warp unlink (not handle by aiofiles)
+        )  # We manually wrap unlink (not handled by aiofiles)
 
-        await async_unlink(async_unlink(file_path, missing_ok=True))
+        await async_unlink(file_path, missing_ok=True)
 
     async def exists(self, filename: str) -> bool:
         file_path = self.folder / filename
