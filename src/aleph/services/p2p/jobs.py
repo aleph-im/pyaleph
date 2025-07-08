@@ -1,8 +1,9 @@
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Sequence
 
+import aiohttp
 from aleph_p2p_client import AlephP2PServiceClient
 from configmanager import Config
 
@@ -55,9 +56,13 @@ async def reconnect_p2p_job(
         await asyncio.sleep(config.p2p.reconnect_delay.value)
 
 
-async def check_peer(peer_uri: str, timeout: int = 1) -> PeerStatus:
+async def check_peer(
+    session: aiohttp.ClientSession, peer_uri: str, timeout: int = 1
+) -> PeerStatus:
     try:
-        version_info = await api_get_request(peer_uri, "version", timeout=timeout)
+        version_info = await api_get_request(
+            session, peer_uri, "version", timeout=timeout
+        )
         if version_info is not None:
             return PeerStatus(peer_uri=peer_uri, is_online=True, version=version_info)
 
@@ -65,6 +70,23 @@ async def check_peer(peer_uri: str, timeout: int = 1) -> PeerStatus:
         LOGGER.exception("Can't contact peer %r" % peer_uri)
 
     return PeerStatus(peer_uri=peer_uri, is_online=False, version=None)
+
+
+async def request_version(peers: Sequence[str], my_ip: str, timeout: int = 1):
+    jobs = []
+    connector = aiohttp.TCPConnector(limit_per_host=5)
+    timeout_conf = aiohttp.ClientTimeout(total=timeout)
+
+    async with aiohttp.ClientSession(
+        connector=connector, timeout=timeout_conf
+    ) as session:
+        for peer in peers:
+            if my_ip in peer:
+                continue
+
+            jobs.append(check_peer(session, peer))
+
+    return await asyncio.gather(*jobs)
 
 
 async def tidy_http_peers_job(
@@ -77,7 +99,6 @@ async def tidy_http_peers_job(
     await asyncio.sleep(2)
 
     while True:
-        jobs = []
 
         try:
             async with session_factory() as session:
@@ -85,12 +106,7 @@ async def tidy_http_peers_job(
                     session=session, peer_type=PeerType.HTTP
                 )
 
-            for peer in peers:
-                if my_ip in peer:
-                    continue
-
-                jobs.append(check_peer(peer))
-            peer_statuses = await asyncio.gather(*jobs)
+            peer_statuses = await request_version(peers=peers, my_ip=my_ip)
 
             for peer_status in peer_statuses:
                 peer_in_api_servers = await node_cache.has_api_server(
