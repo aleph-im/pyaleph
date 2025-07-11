@@ -87,7 +87,7 @@ async def initialize_host(
 
         if config.ipfs.enabled.value:
             tasks.append(
-               monitor_hosts_ipfs(
+                monitor_hosts_ipfs(
                     ipfs_service=ipfs_service,
                     session_factory=session_factory,
                     alive_topic=config.ipfs.alive_topic.value,
