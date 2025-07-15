@@ -66,40 +66,65 @@ async def get_peer_hash_content(
 async def request_hash(
     api_servers: Sequence[str], item_hash: str, timeout: int = 1
 ) -> Optional[bytes]:
+    """
+    Request a hash from available API servers Concurrently over the network.
+    We take the first valid respond and close other task
+    """
     uris: List[str] = sample(api_servers, k=len(api_servers))
-
-    # Avoid too  much request at the same time
     semaphore = asyncio.Semaphore(5)
-
     connector = aiohttp.TCPConnector(limit_per_host=5)
     timeout_conf = aiohttp.ClientTimeout(total=timeout)
 
-    async with aiohttp.ClientSession(
-        connector=connector, timeout=timeout_conf
-    ) as session:
-        # Use Task instead of
-        tasks = [
+    # Use a dedicated session for each get_peer_hash_content call
+    tasks = []
+    for url in uris:
+        session = aiohttp.ClientSession(connector=connector, timeout=timeout_conf)
+        tasks.append(
             asyncio.create_task(
-                get_peer_hash_content(
+                get_peer_hash_content_with_session(
                     session=session,
                     base_uri=url,
                     item_hash=item_hash,
                     semaphore=semaphore,
                 )
             )
-            for url in uris
-        ]
+        )
 
-        for completed_task in asyncio.as_completed(tasks):
-            try:
-                result = await completed_task
-                if result:
-                    # We cancel other Task
-                    for task in tasks:
-                        if not task.done():
-                            task.cancel()
-                    return result
-            except Exception:
-                continue
+    done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    result = None
+    for t in done:
+        try:
+            data = t.result()
+        except Exception:
+            continue
+        if data:
+            result = data
+            break
 
-    return None  # Nothing found...
+    for p in pending:
+        p.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
+
+    return result
+
+
+async def get_peer_hash_content_with_session(
+    session: aiohttp.ClientSession,
+    base_uri: str,
+    item_hash: str,
+    semaphore,
+    timeout: int = 1,
+) -> Optional[bytes]:
+    """Wrapper to ensure session is properly closed"""
+    try:
+        async with session:
+            return await get_peer_hash_content(
+                session=session,
+                base_uri=base_uri,
+                item_hash=item_hash,
+                semaphore=semaphore,
+                timeout=timeout,
+            )
+    except Exception as e:
+        LOGGER.exception(f"Error in get_peer_hash_content_with_session: {e}")
+        return None
