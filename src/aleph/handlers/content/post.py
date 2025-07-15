@@ -49,12 +49,8 @@ async def update_balances(session: AsyncDbSession, content: Mapping[str, Any]) -
     dapp = content.get("dapp")
 
     LOGGER.info("Updating balances for %s (dapp: %s)", chain, dapp)
-    print(f"Chain type: {type(chain)}, Chain value: {chain.value}, Full chain: {chain}")
 
     balances: Dict[str, float] = content["balances"]
-    print(f"Number of balances to update: {len(balances)}")
-    for addr, bal in list(balances.items())[:3]:  # Print first 3 for debug
-        print(f"  {addr}: {bal} bal type {type(bal)}")
 
     await update_balances_db(
         session=session,
