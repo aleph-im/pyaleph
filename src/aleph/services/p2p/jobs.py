@@ -61,7 +61,7 @@ async def check_peer(
 ) -> PeerStatus:
     try:
         version_info = await api_get_request(
-            session, peer_uri, "version", timeout=timeout
+            session=session, base_uri=peer_uri, method="version", timeout=timeout
         )
         if version_info is not None:
             return PeerStatus(peer_uri=peer_uri, is_online=True, version=version_info)
@@ -73,20 +73,19 @@ async def check_peer(
 
 
 async def request_version(peers: Sequence[str], my_ip: str, timeout: int = 1):
-    jobs = []
     connector = aiohttp.TCPConnector(limit_per_host=5)
     timeout_conf = aiohttp.ClientTimeout(total=timeout)
 
     async with aiohttp.ClientSession(
         connector=connector, timeout=timeout_conf
     ) as session:
+        jobs = []
         for peer in peers:
             if my_ip in peer:
                 continue
 
             jobs.append(check_peer(session, peer))
-
-    return await asyncio.gather(*jobs)
+        return await asyncio.gather(*jobs)
 
 
 async def tidy_http_peers_job(
