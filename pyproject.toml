@@ -67,7 +67,7 @@ dependencies = [
   "ujson==5.10.0",                                                                                                         # required by aiocache
   "urllib3==2.3",
   "uvloop==0.21",
-  "web3==6.11.2",
+  "web3==7.12.1",
 ]
 optional-dependencies.cosmos = [
   "cosmospy",
