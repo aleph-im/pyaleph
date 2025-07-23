@@ -64,7 +64,10 @@ async def test_forget_original_post(
     amend_hash = "93776ad67063b955869a7fa705ea2987add39486e1ed5951e9842291cf0f566c"
 
     content_handler = PostMessageHandler(
-        balances_addresses=[], balances_post_type="no-balances-today"
+        balances_addresses=[],
+        balances_post_type="no-balances-today",
+        credit_balances_addresses=[],
+        credit_balances_post_type="no-credit-balances-today",
     )
     with session_factory() as session:
         original_message = get_message_by_item_hash(

@@ -9,7 +9,10 @@ from pydantic import TypeAdapter, ValidationError
 import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.balances import (
     count_balances_by_chain,
+    count_credit_balances,
     get_balances_by_chain,
+    get_credit_balance,
+    get_credit_balances,
     get_total_detailed_balance,
 )
 from aleph.db.accessors.cost import get_total_cost_for_address
@@ -17,12 +20,15 @@ from aleph.db.accessors.files import get_address_files_for_api, get_address_file
 from aleph.db.accessors.messages import get_message_stats_by_address
 from aleph.schemas.api.accounts import (
     AddressBalanceResponse,
+    AddressCreditBalanceResponse,
     GetAccountBalanceResponse,
+    GetAccountCreditBalanceResponse,
     GetAccountFilesQueryParams,
     GetAccountFilesResponse,
     GetAccountFilesResponseItem,
     GetAccountQueryParams,
     GetBalancesChainsQueryParams,
+    GetCreditBalancesQueryParams,
 )
 from aleph.types.db_session import DbSessionFactory
 from aleph.web.controllers.app_state_getters import get_session_factory_from_request
@@ -124,6 +130,53 @@ async def get_chain_balances(request: web.Request) -> web.Response:
             "pagination_page": pagination_page,
             "pagination_total": total_balances,
             "pagination_item": "balances",
+        }
+
+        return web.json_response(text=aleph_json.dumps(response).decode("utf-8"))
+
+
+async def get_account_credit_balance(request: web.Request):
+    address = _get_address_from_request(request)
+
+    session_factory: DbSessionFactory = get_session_factory_from_request(request)
+    with session_factory() as session:
+        credits = get_credit_balance(session=session, address=address)
+        if credits is None:
+            credits = 0
+
+    return web.json_response(
+        text=GetAccountCreditBalanceResponse(
+            address=address, credits=credits
+        ).model_dump_json()
+    )
+
+
+async def get_credit_balances_handler(request: web.Request) -> web.Response:
+    try:
+        query_params = GetCreditBalancesQueryParams.model_validate(request.query)
+    except ValidationError as e:
+        raise web.HTTPUnprocessableEntity(text=e.json())
+
+    find_filters = query_params.model_dump(exclude_none=True)
+
+    session_factory: DbSessionFactory = get_session_factory_from_request(request)
+    with session_factory() as session:
+        credit_balances = get_credit_balances(session, **find_filters)
+
+        formatted_credit_balances = [
+            AddressCreditBalanceResponse.model_validate(b) for b in credit_balances
+        ]
+
+        total_credit_balances = count_credit_balances(session, **find_filters)
+
+        pagination_page = query_params.page
+        pagination_per_page = query_params.pagination
+        response = {
+            "credit_balances": formatted_credit_balances,
+            "pagination_per_page": pagination_per_page,
+            "pagination_page": pagination_page,
+            "pagination_total": total_credit_balances,
+            "pagination_item": "credit_balances",
         }
 
         return web.json_response(text=aleph_json.dumps(response).decode("utf-8"))
