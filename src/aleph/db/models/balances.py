@@ -40,3 +40,33 @@ class AlephBalanceDb(Base):
             "address", "chain", "dapp", name="balances_address_chain_dapp_uindex"
         ),
     )
+
+
+class AlephCreditBalanceDb(Base):
+    __tablename__ = "credit_balances"
+
+    id: int = Column(BigInteger, primary_key=True)
+
+    address: str = Column(String, nullable=False, index=True)
+    amount: Decimal = Column(DECIMAL, nullable=False)
+    ratio: Decimal = Column(DECIMAL, nullable=False)
+    tx_hash: str = Column(String, nullable=False)
+    token: str = Column(String, nullable=False)
+    chain: str = Column(String, nullable=False)
+    provider: str = Column(String, nullable=False)
+    origin: Optional[str] = Column(String, nullable=True)
+    ref: Optional[str] = Column(String, nullable=True)
+    payment_method: Optional[str] = Column(String, nullable=True)
+    expiration_date: Optional[dt.datetime] = Column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    last_update: dt.datetime = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tx_hash", name="credit_balances_tx_hash_uindex"),
+    )

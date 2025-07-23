@@ -17,7 +17,7 @@ class GetAccountQueryParams(BaseModel):
 
 
 FloatDecimal = Annotated[
-    Decimal, PlainSerializer(lambda x: float(x), return_type=float, when_used="json")
+    Decimal, PlainSerializer(lambda x: float(x), return_type=float, when_used="always")
 ]
 
 
@@ -26,6 +26,11 @@ class GetAccountBalanceResponse(BaseModel):
     balance: FloatDecimal
     details: Optional[Dict[str, FloatDecimal]] = None
     locked_amount: FloatDecimal
+
+
+class GetAccountCreditBalanceResponse(BaseModel):
+    address: str
+    credits: FloatDecimal
 
 
 class GetAccountFilesQueryParams(BaseModel):
@@ -69,8 +74,29 @@ class AddressBalanceResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     address: str
-    balance: str
+    balance: FloatDecimal
     chain: Chain
+
+
+class GetCreditBalancesQueryParams(BaseModel):
+    pagination: int = Field(
+        default=100,
+        ge=0,
+        description="Maximum number of credit balances to return. Specifying 0 removes this limit.",
+    )
+    page: int = Field(
+        default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
+    )
+    min_balance: int = Field(
+        default=0, ge=1, description="Minimum Credit Balance needed"
+    )
+
+
+class AddressCreditBalanceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    address: str
+    credits: FloatDecimal
 
 
 class GetAccountFilesResponseItem(BaseModel):
