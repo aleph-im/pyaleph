@@ -37,6 +37,7 @@ from aleph.handlers.content.forget import ForgetMessageHandler
 from aleph.handlers.content.post import PostMessageHandler
 from aleph.handlers.content.store import StoreMessageHandler
 from aleph.handlers.content.vm import VmMessageHandler
+from aleph.schemas.api.messages import PendingMessage, format_message
 from aleph.schemas.pending_messages import parse_message
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
@@ -414,7 +415,10 @@ class MessageHandler(BaseMessageHandler):
                 existing_message=existing_message,
                 pending_message=pending_message,
             )
-            return ProcessedMessage(message=existing_message, is_confirmation=True)
+            # We parse to dict since it's will pass on rabbitmq (at this points we don't need anymore to have DB objects)
+            return ProcessedMessage(
+                message=format_message(existing_message), is_confirmation=True
+            )
 
         # Note: Check if message is already forgotten (and confirm it)
         # this is to avoid race conditions when a confirmation arrives after the FORGET message has been preocessed
@@ -428,7 +432,9 @@ class MessageHandler(BaseMessageHandler):
                 pending_message=pending_message,
             )
             return RejectedMessage(
-                pending_message=pending_message,
+                pending_message=PendingMessage.model_validate(
+                    pending_message.to_dict()
+                ),
                 error_code=ErrorCode.FORGOTTEN_DUPLICATE,
             )
 
@@ -456,7 +462,7 @@ class MessageHandler(BaseMessageHandler):
         await content_handler.process(session=session, messages=[message])
 
         return ProcessedMessage(
-            message=message,
+            message=format_message(message),
             origin=(
                 MessageOrigin(pending_message.origin)
                 if pending_message.origin
