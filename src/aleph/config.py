@@ -41,7 +41,7 @@ def get_defaults():
                 "message_workers": {
                     # Number of message worker processes to start
                     "count": 5,
-                    "message_count": 40 # number of message to fetch by worker
+                    "message_count": 40,  # number of message to fetch by worker
                 },
                 "cron": {
                     # Interval between cron job trackers runs, expressed in hours.
