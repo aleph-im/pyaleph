@@ -203,6 +203,10 @@ def get_defaults():
             "pending_message_exchange": "aleph-pending-messages",
             # Name of the RabbitMQ exchange used for sync/message events (input of the TX processor).
             "pending_tx_exchange": "aleph-pending-txs",
+            # Name of RabbotMQ exchange used for message processing
+            "message_processing_exchange": "aleph.processing",
+            # Name of RabbotMQ exchange used for result of message processing
+            "message_result_exchange": "aleph.results",
         },
         "redis": {
             # Hostname of the Redis service.
