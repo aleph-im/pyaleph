@@ -13,6 +13,7 @@ from setproctitle import setproctitle
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.pending_messages import (
     get_next_pending_messages,
+    get_pending_message,
     make_pending_message_fetched_statement,
 )
 from aleph.db.connection import make_async_engine, make_async_session_factory
@@ -54,6 +55,10 @@ class PendingMessageFetcher(MessageJob):
 
     async def fetch_pending_message(self, pending_message: PendingMessageDb):
         async with self.session_factory() as session:
+            # Store ID before any potential session operations to ensure we can access it
+            pending_message_id = pending_message.id
+            item_hash = pending_message.item_hash
+
             try:
                 message = await self.message_handler.verify_message(
                     pending_message=pending_message
@@ -69,12 +74,25 @@ class PendingMessageFetcher(MessageJob):
             except Exception as e:
                 await session.rollback()
 
+                # Query the message again after rollback
+
+                pending_message = await get_pending_message(
+                    session, pending_message_id=pending_message_id
+                )
+
+                if pending_message is None:
+                    LOGGER.error(
+                        f"Could not retrieve pending message {item_hash} with ID {pending_message_id} after rollback"
+                    )
+                    return None
+
                 _ = await self.handle_processing_error(
                     session=session,
                     pending_message=pending_message,
                     exception=e,
                 )
                 await session.commit()
+
                 return None
 
     async def fetch_pending_messages(

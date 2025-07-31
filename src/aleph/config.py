@@ -38,6 +38,11 @@ def get_defaults():
                     # Maximum number of chain/sync events processed at the same time.
                     "max_concurrency": 20,
                 },
+                "message_workers": {
+                    # Number of message worker processes to start
+                    "count": 5,
+                    "message_count": 40,  # number of message to fetch by worker
+                },
                 "cron": {
                     # Interval between cron job trackers runs, expressed in hours.
                     "period": 0.5,  # 30 mins
@@ -198,6 +203,10 @@ def get_defaults():
             "pending_message_exchange": "aleph-pending-messages",
             # Name of the RabbitMQ exchange used for sync/message events (input of the TX processor).
             "pending_tx_exchange": "aleph-pending-txs",
+            # Name of RabbotMQ exchange used for message processing
+            "message_processing_exchange": "aleph.processing",
+            # Name of RabbotMQ exchange used for result of message processing
+            "message_result_exchange": "aleph.results",
         },
         "redis": {
             # Hostname of the Redis service.

@@ -12,6 +12,7 @@ from aleph.db.accessors.messages import reject_existing_pending_message
 from aleph.db.accessors.pending_messages import set_next_retry
 from aleph.db.models import PendingMessageDb
 from aleph.handlers.message_handler import MessageHandler
+from aleph.schemas.api.messages import PendingMessage
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import AsyncDbSession, AsyncDbSessionFactory
 from aleph.types.message_processing_result import RejectedMessage, WillRetryMessage
@@ -212,7 +213,10 @@ class MessageJob(MqWatcher):
             else getattr(exception, "error_code", ErrorCode.INTERNAL_ERROR)
         )
 
-        return RejectedMessage(pending_message=pending_message, error_code=error_code)
+        return RejectedMessage(
+            pending_message=PendingMessage.model_validate(pending_message.to_dict()),
+            error_code=error_code,
+        )
 
     async def _handle_retry(
         self,
@@ -220,10 +224,13 @@ class MessageJob(MqWatcher):
         pending_message: PendingMessageDb,
         exception: BaseException,
     ) -> Union[RejectedMessage, WillRetryMessage]:
+        item_hash = pending_message.item_hash
+        error_code = None
+
         if isinstance(exception, FileNotFoundException):
             LOGGER.warning(
                 "Could not fetch message %s, putting it back in the fetch queue: %s",
-                pending_message.item_hash,
+                item_hash,
                 str(exception),
             )
             error_code = exception.error_code
@@ -237,7 +244,7 @@ class MessageJob(MqWatcher):
                 "%s error (%d) - message %s marked for retry",
                 exception.error_code.name,
                 exception.error_code.value,
-                pending_message.item_hash,
+                item_hash,
             )
             error_code = exception.error_code
             await schedule_next_attempt(
@@ -248,10 +255,13 @@ class MessageJob(MqWatcher):
                 "Unexpected error while fetching message", exc_info=exception
             )
             error_code = ErrorCode.INTERNAL_ERROR
-        if pending_message.retries >= self.max_retries:
+
+        # Use pending_message.retries directly to avoid creating a new session access
+        retries = pending_message.retries
+        if retries >= self.max_retries:
             LOGGER.warning(
                 "Rejecting pending message: %s - too many retries",
-                pending_message.item_hash,
+                item_hash,
             )
             return await self._handle_rejection(
                 session=session,
@@ -263,7 +273,10 @@ class MessageJob(MqWatcher):
                 session=session, pending_message=pending_message
             )
             return WillRetryMessage(
-                pending_message=pending_message, error_code=error_code
+                pending_message=PendingMessage.model_validate(
+                    pending_message.to_dict()
+                ),
+                error_code=error_code,
             )
 
     async def handle_processing_error(
