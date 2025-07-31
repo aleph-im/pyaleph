@@ -8,6 +8,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    Computed,
     ForeignKey,
     Index,
     Integer,
@@ -69,10 +70,18 @@ class PendingMessageDb(Base):
     fetched: bool = Column(Boolean, nullable=False)
     origin: Optional[str] = Column(String, nullable=True, default=MessageOrigin.P2P)
 
+    content_address: Optional[str] = Column(
+        String, Computed("content->>'address'", persisted=True), index=True
+    )
     __table_args__ = (
         CheckConstraint(
             "signature is not null or not check_message",
             name="signature_not_null_if_check_message",
+        ),
+        Index(
+            "ix_pending_messages_content_address_attempt",
+            "content_address",
+            "next_attempt",
         ),
         UniqueConstraint("sender", "item_hash", "signature", name="uq_pending_message"),
     )
