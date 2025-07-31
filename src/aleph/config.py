@@ -38,6 +38,11 @@ def get_defaults():
                     # Maximum number of chain/sync events processed at the same time.
                     "max_concurrency": 20,
                 },
+                "message_workers": {
+                    # Number of message worker processes to start
+                    "count": 5,
+                    "message_count": 40 # number of message to fetch by worker
+                },
                 "cron": {
                     # Interval between cron job trackers runs, expressed in hours.
                     "period": 0.5,  # 30 mins
