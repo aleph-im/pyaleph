@@ -5,7 +5,6 @@ Job in charge of (re-) processing Aleph messages waiting in the pending queue.
 import asyncio
 from logging import getLogger
 from typing import AsyncIterator, Dict, List, NewType, Sequence, Set
-from aleph.db.accessors.pending_messages import get_pending_message
 
 import aio_pika.abc
 from configmanager import Config
@@ -14,6 +13,7 @@ from setproctitle import setproctitle
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.pending_messages import (
     get_next_pending_messages,
+    get_pending_message,
     make_pending_message_fetched_statement,
 )
 from aleph.db.connection import make_async_engine, make_async_session_factory
