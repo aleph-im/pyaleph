@@ -3,6 +3,7 @@ from multiprocessing import Process
 from typing import Coroutine, List
 
 from aleph.jobs.fetch_pending_messages import fetch_pending_messages_subprocess
+from aleph.jobs.message_worker import message_worker_subprocess
 from aleph.jobs.process_pending_messages import (
     fetch_and_process_messages_task,
     pending_messages_subprocess,
@@ -38,6 +39,25 @@ def start_jobs(
             target=pending_txs_subprocess,
             args=(config_values,),
         )
+
+        num_workers = (
+            config.aleph.jobs.message_workers.count.value
+            if hasattr(config.aleph.jobs, "message_workers")
+            and hasattr(config.aleph.jobs.message_workers, "count")
+            else 5
+        )
+        LOGGER.info(f"Starting {num_workers} message worker processes")
+        worker_processes = []
+        for i in range(num_workers):
+            worker_id = f"worker-{i+1}"
+            wp = Process(
+                target=message_worker_subprocess,
+                args=(config_values, worker_id),
+            )
+            worker_processes.append(wp)
+            wp.start()
+            LOGGER.info(f"Started message worker {worker_id}")
+
         p1.start()
         p2.start()
         p3.start()
