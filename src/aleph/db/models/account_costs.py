@@ -25,5 +25,6 @@ class AccountCostsDb(Base):
     payment_type: PaymentType = Column(ChoiceType(PaymentType), nullable=False)
     cost_hold: Decimal = Column(DECIMAL, nullable=False)
     cost_stream: Decimal = Column(DECIMAL, nullable=False)
+    cost_credit: Decimal = Column(DECIMAL, nullable=False, default=0)
 
     __table_args__ = (UniqueConstraint("owner", "item_hash", "type", "name"),)

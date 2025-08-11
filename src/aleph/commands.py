@@ -30,6 +30,7 @@ from aleph.db.connection import make_db_url, make_engine, make_session_factory
 from aleph.exceptions import InvalidConfigException, KeyNotFoundException
 from aleph.jobs import start_jobs
 from aleph.jobs.cron.balance_job import BalanceCronJob
+from aleph.jobs.cron.credit_balance_job import CreditBalanceCronJob
 from aleph.jobs.cron.cron_job import CronJob, cron_job_task
 from aleph.network import listener_tasks
 from aleph.services import p2p
@@ -151,7 +152,10 @@ async def main(args: List[str]) -> None:
         )
         cron_job = CronJob(
             session_factory=session_factory,
-            jobs={"balance": BalanceCronJob(session_factory=session_factory)},
+            jobs={
+                "balance": BalanceCronJob(session_factory=session_factory),
+                "credit_balance": CreditBalanceCronJob(session_factory=session_factory),
+            },
         )
         chain_data_service = ChainDataService(
             session_factory=session_factory,

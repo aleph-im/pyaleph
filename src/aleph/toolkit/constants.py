@@ -11,8 +11,12 @@ PRICE_PRECISION = 18
 DEFAULT_PRICE_AGGREGATE = {
     "program": {
         "price": {
-            "storage": {"payg": "0.000000977", "holding": "0.05"},
-            "compute_unit": {"payg": "0.011", "holding": "200"},
+            "storage": {
+                "payg": "0.000000977",
+                "holding": "0.05",
+                "credit": "0.000000977",
+            },
+            "compute_unit": {"payg": "0.011", "holding": "200", "credit": "0.011"},
         },
         "tiers": [
             {"id": "tier-1", "compute_units": 1},
@@ -28,11 +32,17 @@ DEFAULT_PRICE_AGGREGATE = {
             "memory_mib": 2048,
         },
     },
-    "storage": {"price": {"storage": {"holding": "0.333333333"}}},
+    "storage": {
+        "price": {"storage": {"holding": "0.333333333", "credit": "0.333333333"}}
+    },
     "instance": {
         "price": {
-            "storage": {"payg": "0.000000977", "holding": "0.05"},
-            "compute_unit": {"payg": "0.055", "holding": "1000"},
+            "storage": {
+                "payg": "0.000000977",
+                "holding": "0.05",
+                "credit": "0.000000977",
+            },
+            "compute_unit": {"payg": "0.055", "holding": "1000", "credit": "0.055"},
         },
         "tiers": [
             {"id": "tier-1", "compute_units": 1},
@@ -51,8 +61,12 @@ DEFAULT_PRICE_AGGREGATE = {
     "web3_hosting": {"price": {"fixed": 50, "storage": {"holding": "0.333333333"}}},
     "program_persistent": {
         "price": {
-            "storage": {"payg": "0.000000977", "holding": "0.05"},
-            "compute_unit": {"payg": "0.055", "holding": "1000"},
+            "storage": {
+                "payg": "0.000000977",
+                "holding": "0.05",
+                "credit": "0.000000977",
+            },
+            "compute_unit": {"payg": "0.055", "holding": "1000", "credit": "0.055"},
         },
         "tiers": [
             {"id": "tier-1", "compute_units": 1},
@@ -70,8 +84,8 @@ DEFAULT_PRICE_AGGREGATE = {
     },
     "instance_gpu_premium": {
         "price": {
-            "storage": {"payg": "0.000000977"},
-            "compute_unit": {"payg": "0.56"},
+            "storage": {"payg": "0.000000977", "credit": "0.000000977"},
+            "compute_unit": {"payg": "0.56", "credit": "0.56"},
         },
         "tiers": [
             {
@@ -95,8 +109,12 @@ DEFAULT_PRICE_AGGREGATE = {
     },
     "instance_confidential": {
         "price": {
-            "storage": {"payg": "0.000000977", "holding": "0.05"},
-            "compute_unit": {"payg": "0.11", "holding": "2000"},
+            "storage": {
+                "payg": "0.000000977",
+                "holding": "0.05",
+                "credit": "0.000000977",
+            },
+            "compute_unit": {"payg": "0.11", "holding": "2000", "credit": "0.11"},
         },
         "tiers": [
             {"id": "tier-1", "compute_units": 1},
@@ -114,8 +132,8 @@ DEFAULT_PRICE_AGGREGATE = {
     },
     "instance_gpu_standard": {
         "price": {
-            "storage": {"payg": "0.000000977"},
-            "compute_unit": {"payg": "0.28"},
+            "storage": {"payg": "0.000000977", "credit": "0.000000977"},
+            "compute_unit": {"payg": "0.28", "credit": "0.28"},
         },
         "tiers": [
             {
