@@ -85,15 +85,12 @@ def _get_settings(session: DbSession) -> Settings:
 
 
 def get_payment_type(content: CostComputableContent) -> PaymentType:
-    return (
-        PaymentType.superfluid
-        if (
-            hasattr(content, "payment")
-            and content.payment
-            and content.payment.is_stream
-        )
-        else PaymentType.hold
-    )
+    if hasattr(content, "payment") and content.payment and content.payment.is_credit:
+        return PaymentType.credit
+    elif hasattr(content, "payment") and content.payment and content.payment.is_stream:
+        return PaymentType.superfluid
+    else:
+        return PaymentType.hold
 
 
 def _is_confidential_vm(
@@ -241,6 +238,7 @@ def _get_volumes_costs(
     price_per_mib_second: Decimal,
     owner: str,
     item_hash: str,
+    price_per_mib_credit: Decimal,
 ) -> List[AccountCostsDb]:
     costs: List[AccountCostsDb] = []
 
@@ -263,6 +261,7 @@ def _get_volumes_costs(
         cost_stream = format_cost(
             storage_mib * price_per_mib_second,
         )
+        cost_credit = format_cost(storage_mib * price_per_mib_credit)
 
         costs.append(
             AccountCostsDb(
@@ -274,6 +273,7 @@ def _get_volumes_costs(
                 payment_type=payment_type,
                 cost_hold=cost_hold,
                 cost_stream=cost_stream,
+                cost_credit=cost_credit,
             )
         )
 
@@ -407,6 +407,7 @@ def _get_execution_volumes_costs(
 
     price_per_mib = pricing.price.storage.holding
     price_per_mib_second = pricing.price.storage.payg / HOUR
+    price_per_mib_credit = pricing.price.storage.credit / HOUR
 
     return _get_volumes_costs(
         session,
@@ -416,6 +417,7 @@ def _get_execution_volumes_costs(
         price_per_mib_second,
         content.address,
         item_hash,
+        price_per_mib_credit,
     )
 
 
@@ -439,9 +441,11 @@ def _get_additional_storage_price(
 
     price_per_mib = pricing.price.storage.holding
     price_per_mib_second = pricing.price.storage.payg / HOUR
+    price_per_mib_credit = pricing.price.storage.credit / HOUR
 
     max_discount_hold = execution_volume_discount_mib * price_per_mib
     max_discount_stream = execution_volume_discount_mib * price_per_mib_second
+    max_discount_credit = execution_volume_discount_mib * price_per_mib_credit
 
     discount_holding = min(
         Decimal(reduce(lambda x, y: x + Decimal(y.cost_hold), costs, Decimal(0))),
@@ -451,9 +455,14 @@ def _get_additional_storage_price(
         Decimal(reduce(lambda x, y: x + Decimal(y.cost_stream), costs, Decimal(0))),
         max_discount_stream,
     )
+    discount_credit = min(
+        Decimal(reduce(lambda x, y: x + Decimal(y.cost_credit), costs, Decimal(0))),
+        max_discount_credit,
+    )
 
     cost_hold = format_cost(-discount_holding)
     cost_stream = format_cost(-discount_stream)
+    cost_credit = format_cost(-discount_credit)
 
     costs.append(
         AccountCostsDb(
@@ -464,6 +473,7 @@ def _get_additional_storage_price(
             payment_type=payment_type,
             cost_hold=cost_hold,
             cost_stream=cost_stream,
+            cost_credit=cost_credit,
         )
     )
 
@@ -498,6 +508,7 @@ def _calculate_executable_costs(
 
     compute_unit_cost = pricing.price.compute_unit.holding
     compute_unit_cost_second = pricing.price.compute_unit.payg / HOUR
+    compute_unit_cost_credit = pricing.price.compute_unit.credit / HOUR
 
     compute_unit_price = (
         compute_units_required * compute_unit_multiplier * compute_unit_cost
@@ -505,9 +516,13 @@ def _calculate_executable_costs(
     compute_unit_price_stream = (
         compute_units_required * compute_unit_multiplier * compute_unit_cost_second
     )
+    compute_unit_price_credit = (
+        compute_units_required * compute_unit_multiplier * compute_unit_cost_credit
+    )
 
     cost_hold = format_cost(compute_unit_price)
     cost_stream = format_cost(compute_unit_price_stream)
+    cost_credit = format_cost(compute_unit_price_credit)
 
     execution_cost = AccountCostsDb(
         owner=content.address,
@@ -517,6 +532,7 @@ def _calculate_executable_costs(
         payment_type=payment_type,
         cost_hold=cost_hold,
         cost_stream=cost_stream,
+        cost_credit=cost_credit,
     )
 
     costs: List[AccountCostsDb] = [execution_cost]
@@ -544,6 +560,7 @@ def _calculate_storage_costs(
 
     price_per_mib = pricing.price.storage.holding
     price_per_mib_second = pricing.price.storage.payg / HOUR
+    price_per_mib_credit = pricing.price.storage.credit / HOUR
 
     return _get_volumes_costs(
         session,
@@ -553,6 +570,7 @@ def _calculate_storage_costs(
         price_per_mib_second,
         content.address,
         item_hash,
+        price_per_mib_credit,
     )
 
 
@@ -596,11 +614,12 @@ def get_total_and_detailed_costs(
     payment_type = get_payment_type(content)
 
     costs = get_detailed_costs(session, content, item_hash)
-    cost = format_cost(
-        reduce(lambda x, y: x + y.cost_stream, costs, Decimal(0))
-        if payment_type == PaymentType.superfluid
-        else reduce(lambda x, y: x + y.cost_hold, costs, Decimal(0))
-    )
+    if payment_type == PaymentType.superfluid:
+        cost = format_cost(reduce(lambda x, y: x + y.cost_stream, costs, Decimal(0)))
+    elif payment_type == PaymentType.credit:
+        cost = format_cost(reduce(lambda x, y: x + y.cost_credit, costs, Decimal(0)))
+    else:
+        cost = format_cost(reduce(lambda x, y: x + y.cost_hold, costs, Decimal(0)))
 
     return Decimal(cost), list(costs)
 
@@ -613,10 +632,11 @@ def get_total_and_detailed_costs_from_db(
     payment_type = get_payment_type(content)
 
     costs = get_message_costs(session, item_hash)
-    cost = format_cost(
-        reduce(lambda x, y: x + y.cost_stream, costs, Decimal(0))
-        if payment_type == PaymentType.superfluid
-        else reduce(lambda x, y: x + y.cost_hold, costs, Decimal(0))
-    )
+    if payment_type == PaymentType.superfluid:
+        cost = format_cost(reduce(lambda x, y: x + y.cost_stream, costs, Decimal(0)))
+    elif payment_type == PaymentType.credit:
+        cost = format_cost(reduce(lambda x, y: x + y.cost_credit, costs, Decimal(0)))
+    else:
+        cost = format_cost(reduce(lambda x, y: x + y.cost_hold, costs, Decimal(0)))
 
     return Decimal(cost), list(costs)

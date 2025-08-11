@@ -17,8 +17,6 @@ from aleph_message.models.execution.volume import (
     PersistentVolume,
 )
 
-from aleph.db.accessors.balances import get_total_balance
-from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import (
     find_file_pins,
     find_file_tags,
@@ -51,13 +49,13 @@ from aleph.db.models import (
 )
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.handlers.content.content_handler import ContentHandler
-from aleph.services.cost import get_total_and_detailed_costs
+from aleph.services.cost import get_payment_type, get_total_and_detailed_costs
+from aleph.services.cost_validation import validate_balance_for_payment
 from aleph.toolkit.costs import are_store_and_program_free
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag
 from aleph.types.message_status import (
-    InsufficientBalanceException,
     InternalError,
     InvalidMessageFormat,
     VmCannotUpdateUpdate,
@@ -352,22 +350,19 @@ class VmMessageHandler(ContentHandler):
         ):
             return costs
 
-        # NOTE: For now allow to create anything that is being paid with STREAM for free, but generate a cost depending on the content.payment prop (HOLD / STREAM)
-        if content.payment and content.payment.is_stream:
+        payment_type = get_payment_type(content)
+
+        # NOTE: For now allow to create anything that is being paid with STREAM for free, but generate a cost depending on the content.payment prop (HOLD / STREAM / CREDIT)
+        if payment_type == PaymentType.superfluid:
             return costs
 
-        # NOTE: Instances and persistent Programs being paid by HOLD are the only ones being checked for now
-        current_balance = get_total_balance(address=content.address, session=session)
-        current_cost = get_total_cost_for_address(
-            session=session, address=content.address
-        )
-
-        required_balance = current_cost + message_cost
-
-        if current_balance < required_balance:
-            raise InsufficientBalanceException(
-                balance=current_balance,
-                required_balance=required_balance,
+        # Handle credit and other payment types using reusable validation
+        if payment_type in [PaymentType.credit, PaymentType.hold]:
+            validate_balance_for_payment(
+                session=session,
+                address=content.address,
+                message_cost=message_cost,
+                payment_type=payment_type,
             )
 
         return costs

@@ -19,14 +19,17 @@ class ProductPriceType(str, Enum):
 class ProductPriceOptions:
     holding: Decimal
     payg: Decimal
+    credit: Decimal
 
     def __init__(
         self,
         holding: Optional[str | Decimal],
         payg: Optional[str | Decimal] = Decimal(0),
+        credit: Optional[str | Decimal] = Decimal(0),
     ):
         self.holding = Decimal(holding or 0)
         self.payg = Decimal(payg or 0)
+        self.credit = Decimal(credit or 0)
 
 
 class ProductComputeUnit:
@@ -122,11 +125,13 @@ class ProductPricing:
                 storage=ProductPriceOptions(
                     price["storage"].get("holding", None),
                     price["storage"].get("payg", None),
+                    price["storage"].get("credit", None),
                 ),
                 compute_unit=(
                     ProductPriceOptions(
                         price["compute_unit"].get("holding", None),
                         price["compute_unit"].get("payg", None),
+                        price["compute_unit"].get("credit", None),
                     )
                     if compute_unit
                     else None
