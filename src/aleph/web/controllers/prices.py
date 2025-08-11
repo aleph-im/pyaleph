@@ -29,6 +29,7 @@ from aleph.services.cost import (
 )
 from aleph.services.pricing_utils import get_pricing_timeline
 from aleph.toolkit.costs import format_cost_str
+from aleph.toolkit.ecdsa import require_auth_token
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import MessageStatus
 from aleph.web.controllers.app_state_getters import (
@@ -172,6 +173,7 @@ async def message_price_estimate(request: web.Request):
     return web.json_response(text=aleph_json.dumps(response).decode("utf-8"))
 
 
+@require_auth_token
 async def recalculate_message_costs(request: web.Request):
     """Force recalculation of message costs in chronological order with historical pricing.
 
@@ -182,6 +184,8 @@ async def recalculate_message_costs(request: web.Request):
     4. For each message, use the pricing model that was active when the message was created
     5. Delete existing cost entries and recalculate with historical pricing
     6. Store the new cost calculations
+
+    Requires authentication via X-Auth-Token header.
     """
 
     session_factory = get_session_factory_from_request(request)
