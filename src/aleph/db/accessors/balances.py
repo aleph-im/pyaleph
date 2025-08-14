@@ -189,7 +189,7 @@ def get_updated_balance_accounts(session: DbSession, last_update: dt.datetime):
     return (session.execute(select_stmt)).scalars().all()
 
 
-def get_credit_balance(session: DbSession, address: str) -> Decimal:
+def get_credit_balance(session: DbSession, address: str) -> int:
     now = utc_now()
 
     # Sum all non-expired credit balances for the address
@@ -203,7 +203,7 @@ def get_credit_balance(session: DbSession, address: str) -> Decimal:
         )
     ).scalar()
 
-    return result if result is not None else Decimal(0)
+    return result if result is not None else 0
 
 
 def get_credit_balances(
@@ -288,7 +288,7 @@ def update_credit_balances(
     csv_rows = []
     for index, credit_entry in enumerate(credits_list):
         address = credit_entry["address"]
-        amount = Decimal(credit_entry["amount"])  # Cast from string to Decimal
+        amount = int(credit_entry["amount"])  # Cast to integer
         ratio = Decimal(credit_entry["ratio"])
         tx_hash = credit_entry["tx_hash"]
         provider = credit_entry["provider"]
@@ -354,7 +354,7 @@ def update_credit_balances_airdrop(
     csv_rows = []
     for index, credit_entry in enumerate(credits_list):
         address = credit_entry["address"]
-        amount = Decimal(credit_entry["amount"])
+        amount = int(credit_entry["amount"])  # Cast to integer
         origin = credit_entry.get("origin", "")
         expiration_timestamp = credit_entry.get("expiration", 0)
 

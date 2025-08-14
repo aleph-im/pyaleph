@@ -48,7 +48,7 @@ class AlephCreditBalanceDb(Base):
     id: int = Column(BigInteger, autoincrement=True)
 
     address: str = Column(String, nullable=False, index=True)
-    amount: Decimal = Column(DECIMAL, nullable=False)
+    amount: int = Column(BigInteger, nullable=False)
     ratio: Optional[Decimal] = Column(DECIMAL, nullable=True)
     tx_hash: Optional[str] = Column(String, nullable=True)
     token: Optional[str] = Column(String, nullable=True)

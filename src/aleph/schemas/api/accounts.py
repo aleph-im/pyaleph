@@ -30,7 +30,7 @@ class GetAccountBalanceResponse(BaseModel):
 
 class GetAccountCreditBalanceResponse(BaseModel):
     address: str
-    credits: FloatDecimal
+    credits: int
 
 
 class GetAccountFilesQueryParams(BaseModel):
@@ -96,7 +96,7 @@ class AddressCreditBalanceResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     address: str
-    credits: FloatDecimal
+    credits: int
 
 
 class GetAccountFilesResponseItem(BaseModel):
