@@ -351,7 +351,7 @@ class InsufficientCreditException(InvalidMessageException):
 
     def __init__(
         self,
-        credit_balance: Decimal,
+        credit_balance: int,
         required_credits: Decimal,
         min_runtime_days: int = 1,
     ):
