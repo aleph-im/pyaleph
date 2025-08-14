@@ -38,8 +38,8 @@ def get_defaults():
                 "addresses": [
                     "0x214061ffe7e365cA37956D091C807757B4d23427",
                 ],
-                # POST message type for credit balance updates.
-                "post_type": "aleph_credit_distribution",
+                # POST message types for credit balance updates.
+                "post_types": ["aleph_credit_distribution", "aleph_credit_airdrop"],
             },
             "jobs": {
                 "pending_messages": {

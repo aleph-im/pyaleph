@@ -266,6 +266,7 @@ def update_credit_balances(
     credits_list: Sequence[Dict[str, Any]],
     token: str,
     chain: str,
+    message_hash: str,
 ) -> None:
     """
     Updates multiple credit balances at the same time, efficiently.
@@ -285,7 +286,7 @@ def update_credit_balances(
 
     # Prepare an in-memory CSV file for use with the COPY operator
     csv_rows = []
-    for credit_entry in credits_list:
+    for index, credit_entry in enumerate(credits_list):
         address = credit_entry["address"]
         amount = Decimal(credit_entry["amount"])  # Cast from string to Decimal
         ratio = Decimal(credit_entry["ratio"])
@@ -295,7 +296,7 @@ def update_credit_balances(
         # Extract optional fields from each credit entry
         expiration_timestamp = credit_entry.get("expiration", "")
         origin = credit_entry.get("origin", "")
-        ref = credit_entry.get("ref", "")
+        payment_ref = credit_entry.get("ref", "")
         payment_method = credit_entry.get("payment_method", "")
 
         # Convert expiration timestamp to datetime
@@ -307,20 +308,78 @@ def update_credit_balances(
         )
 
         csv_rows.append(
-            f"{address};{amount};{ratio};{tx_hash};{expiration_date or ''};{token};{chain};{origin};{provider};{ref};{payment_method};{last_update}"
+            f"{address};{amount};{ratio};{tx_hash};{expiration_date or ''};{token};{chain};{origin};{provider};{payment_ref};{payment_method};{message_hash};{index};{last_update}"
         )
 
     csv_credit_balances = StringIO("\n".join(csv_rows))
     cursor.copy_expert(
-        "COPY temp_credit_balances(address, amount, ratio, tx_hash, expiration_date, token, chain, origin, provider, ref, payment_method, last_update) FROM STDIN WITH CSV DELIMITER ';'",
+        "COPY temp_credit_balances(address, amount, ratio, tx_hash, expiration_date, token, chain, origin, provider, payment_ref, payment_method, distribution_ref, distribution_index, last_update) FROM STDIN WITH CSV DELIMITER ';'",
         csv_credit_balances,
     )
     session.execute(
         """
-        INSERT INTO credit_balances(address, amount, ratio, tx_hash, expiration_date, token, chain, origin, provider, ref, payment_method, last_update)
+        INSERT INTO credit_balances(address, amount, ratio, tx_hash, expiration_date, token, chain, origin, provider, payment_ref, payment_method, distribution_ref, distribution_index, last_update)
             (SELECT address, amount, ratio, tx_hash, expiration_date, token, chain, 
-             NULLIF(origin, ''), provider, NULLIF(ref, ''), NULLIF(payment_method, ''), last_update FROM temp_credit_balances)
+             NULLIF(origin, ''), provider, NULLIF(payment_ref, ''), NULLIF(payment_method, ''), distribution_ref, distribution_index, last_update FROM temp_credit_balances)
             ON CONFLICT ON CONSTRAINT credit_balances_tx_hash_uindex DO NOTHING
+        """  # type: ignore[arg-type]
+    )
+
+    # Drop the temporary table
+    session.execute("DROP TABLE temp_credit_balances")  # type: ignore[arg-type]
+
+
+def update_credit_balances_airdrop(
+    session: DbSession,
+    credits_list: Sequence[Dict[str, Any]],
+    message_hash: str,
+) -> None:
+    """
+    Updates multiple credit balances from airdrop messages.
+
+    Similar to update_credit_balances, this uses a temporary table and bulk operations
+    for better performance. The airdrop schema doesn't include token/chain/ratio fields.
+    """
+
+    last_update = utc_now()
+
+    session.execute(
+        "CREATE TEMPORARY TABLE temp_credit_balances AS SELECT * FROM credit_balances WITH NO DATA"  # type: ignore[arg-type]
+    )
+
+    conn = session.connection().connection
+    cursor = conn.cursor()
+
+    # Prepare an in-memory CSV file for use with the COPY operator
+    csv_rows = []
+    for index, credit_entry in enumerate(credits_list):
+        address = credit_entry["address"]
+        amount = Decimal(credit_entry["amount"])
+        origin = credit_entry.get("origin", "")
+        expiration_timestamp = credit_entry.get("expiration", 0)
+
+        # Convert expiration timestamp to datetime
+        expiration_date = (
+            dt.datetime.fromtimestamp(expiration_timestamp / 1000, tz=dt.timezone.utc)
+            if expiration_timestamp > 0
+            else None
+        )
+
+        csv_rows.append(
+            f"{address};{amount};;{expiration_date or ''};;;;{origin};;;;;{message_hash};{index};{last_update}"
+        )
+
+    csv_credit_balances = StringIO("\n".join(csv_rows))
+    cursor.copy_expert(
+        "COPY temp_credit_balances(address, amount, ratio, tx_hash, expiration_date, token, chain, origin, provider, payment_ref, payment_method, distribution_ref, distribution_index, last_update) FROM STDIN WITH CSV DELIMITER ';'",
+        csv_credit_balances,
+    )
+    session.execute(
+        """
+        INSERT INTO credit_balances(address, amount, ratio, tx_hash, expiration_date, token, chain, origin, provider, payment_ref, payment_method, distribution_ref, distribution_index, last_update)
+            (SELECT address, amount, NULLIF(ratio, ''), NULLIF(tx_hash, ''), expiration_date, NULLIF(token, ''), NULLIF(chain, ''), 
+             NULLIF(origin, ''), NULLIF(provider, ''), NULLIF(payment_ref, ''), NULLIF(payment_method, ''), distribution_ref, distribution_index, last_update FROM temp_credit_balances)
+            ON CONFLICT ON CONSTRAINT credit_balances_distribution_ref_index_uindex DO NOTHING
         """  # type: ignore[arg-type]
     )
 

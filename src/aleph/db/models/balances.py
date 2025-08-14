@@ -45,18 +45,20 @@ class AlephBalanceDb(Base):
 class AlephCreditBalanceDb(Base):
     __tablename__ = "credit_balances"
 
-    id: int = Column(BigInteger, primary_key=True)
+    id: int = Column(BigInteger, autoincrement=True)
 
     address: str = Column(String, nullable=False, index=True)
     amount: Decimal = Column(DECIMAL, nullable=False)
-    ratio: Decimal = Column(DECIMAL, nullable=False)
-    tx_hash: str = Column(String, nullable=False)
-    token: str = Column(String, nullable=False)
-    chain: str = Column(String, nullable=False)
-    provider: str = Column(String, nullable=False)
+    ratio: Optional[Decimal] = Column(DECIMAL, nullable=True)
+    tx_hash: Optional[str] = Column(String, nullable=True)
+    token: Optional[str] = Column(String, nullable=True)
+    chain: Optional[str] = Column(String, nullable=True)
+    provider: Optional[str] = Column(String, nullable=True)
     origin: Optional[str] = Column(String, nullable=True)
-    ref: Optional[str] = Column(String, nullable=True)
+    payment_ref: Optional[str] = Column(String, nullable=True)
     payment_method: Optional[str] = Column(String, nullable=True)
+    distribution_ref: str = Column(String, nullable=False, primary_key=True)
+    distribution_index: int = Column(Integer, nullable=False, primary_key=True)
     expiration_date: Optional[dt.datetime] = Column(
         TIMESTAMP(timezone=True), nullable=True
     )
