@@ -23,7 +23,7 @@ def upgrade() -> None:
         'credit_balances',
         sa.Column('id', sa.BigInteger(), autoincrement=True),
         sa.Column('address', sa.String(), nullable=False),
-        sa.Column('amount', sa.DECIMAL(), nullable=False),
+        sa.Column('amount', sa.BigInteger(), nullable=False),
         sa.Column('ratio', sa.DECIMAL(), nullable=True),
         sa.Column('tx_hash', sa.String(), nullable=True),
         sa.Column('token', sa.String(), nullable=True),
