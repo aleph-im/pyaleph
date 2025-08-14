@@ -67,7 +67,7 @@ async def test_forget_original_post(
         balances_addresses=[],
         balances_post_type="no-balances-today",
         credit_balances_addresses=[],
-        credit_balances_post_type="no-credit-balances-today",
+        credit_balances_post_types=["no-credit-balances-today"],
     )
     with session_factory() as session:
         original_message = get_message_by_item_hash(
