@@ -15,8 +15,6 @@ import aioipfs
 from aleph_message.models import ItemHash, ItemType, StoreContent
 
 from aleph.config import get_config
-from aleph.db.accessors.balances import get_total_balance
-from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import (
     delete_file_pin,
     get_file_tag,
@@ -33,7 +31,12 @@ from aleph.db.models.account_costs import AccountCostsDb
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.handlers.content.content_handler import ContentHandler
 from aleph.schemas.cost_estimation_messages import CostEstimationStoreContent
-from aleph.services.cost import calculate_storage_size, get_total_and_detailed_costs
+from aleph.services.cost import (
+    calculate_storage_size,
+    get_payment_type,
+    get_total_and_detailed_costs,
+)
+from aleph.services.cost_validation import validate_balance_for_payment
 from aleph.storage import StorageService
 from aleph.toolkit.constants import MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE, MiB
 from aleph.toolkit.costs import are_store_and_program_free
@@ -42,7 +45,6 @@ from aleph.types.db_session import DbSession
 from aleph.types.files import FileType
 from aleph.types.message_status import (
     FileUnavailable,
-    InsufficientBalanceException,
     InvalidMessageFormat,
     PermissionDenied,
     StoreCannotUpdateStoreWithRef,
@@ -190,11 +192,6 @@ class StoreMessageHandler(ContentHandler):
         config = get_config()
         ipfs_enabled = config.ipfs.enabled.value
 
-        current_balance = get_total_balance(session=session, address=content.address)
-        current_cost = get_total_cost_for_address(
-            session=session, address=content.address
-        )
-
         engine = content.item_type
         # Initially only do that balance pre-check for ipfs files.
         if engine == ItemType.ipfs and ipfs_enabled:
@@ -229,13 +226,14 @@ class StoreMessageHandler(ContentHandler):
         else:
             message_cost = Decimal(0)
 
-        required_balance = current_cost + message_cost
-
-        if current_balance < required_balance:
-            raise InsufficientBalanceException(
-                balance=current_balance,
-                required_balance=required_balance,
-            )
+        # Use reusable validation for all payment types including credit
+        payment_type = get_payment_type(content)
+        validate_balance_for_payment(
+            session=session,
+            address=content.address,
+            message_cost=message_cost,
+            payment_type=payment_type,
+        )
 
         return None
 
@@ -258,18 +256,15 @@ class StoreMessageHandler(ContentHandler):
         ):
             return costs
 
-        current_balance = get_total_balance(address=content.address, session=session)
-        current_cost = get_total_cost_for_address(
-            session=session, address=content.address
+        payment_type = get_payment_type(content)
+
+        # Use reusable validation for all payment types
+        validate_balance_for_payment(
+            session=session,
+            address=content.address,
+            message_cost=message_cost,
+            payment_type=payment_type,
         )
-
-        required_balance = current_cost + message_cost
-
-        if current_balance < required_balance:
-            raise InsufficientBalanceException(
-                balance=current_balance,
-                required_balance=required_balance,
-            )
 
         return costs
 

@@ -385,3 +385,15 @@ def update_credit_balances_airdrop(
 
     # Drop the temporary table
     session.execute("DROP TABLE temp_credit_balances")  # type: ignore[arg-type]
+
+
+def get_updated_credit_balance_accounts(session: DbSession, last_update: dt.datetime):
+    """
+    Get addresses that have had their credit balances updated since the given timestamp.
+    """
+    select_stmt = (
+        select(AlephCreditBalanceDb.address)
+        .where(AlephCreditBalanceDb.last_update >= last_update)
+        .distinct()
+    )
+    return session.execute(select_stmt).scalars().all()
