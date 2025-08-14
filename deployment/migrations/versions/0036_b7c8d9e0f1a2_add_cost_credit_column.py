@@ -19,8 +19,20 @@ depends_on = None
 def upgrade() -> None:
     # Add cost_credit column to account_costs table
     op.add_column('account_costs', sa.Column('cost_credit', sa.DECIMAL(), nullable=False, server_default='0'))
+    
+    # Add missing CREDIT_INSUFFICIENT error code
+    op.execute(
+        """
+        INSERT INTO error_codes(code, description) VALUES 
+            (6, 'Insufficient credit')
+        ON CONFLICT (code) DO NOTHING
+        """
+    )
 
 
 def downgrade() -> None:
+    # Remove CREDIT_INSUFFICIENT error code
+    op.execute("DELETE FROM error_codes WHERE code = 6")
+    
     # Remove cost_credit column from account_costs table
     op.drop_column('account_costs', 'cost_credit')
