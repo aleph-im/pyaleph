@@ -7,6 +7,8 @@ from sqlalchemy import update
 from aleph.db.accessors.balances import update_balances as update_balances_db
 from aleph.db.accessors.balances import (
     update_credit_balances as update_credit_balances_db,
+)
+from aleph.db.accessors.balances import (
     update_credit_balances_airdrop as update_credit_balances_airdrop_db,
 )
 from aleph.db.accessors.posts import (
@@ -64,7 +66,9 @@ def update_balances(session: DbSession, content: Mapping[str, Any]) -> None:
     )
 
 
-def update_credit_balances(session: DbSession, content: Mapping[str, Any], message_hash: str) -> None:
+def update_credit_balances(
+    session: DbSession, content: Mapping[str, Any], message_hash: str
+) -> None:
     try:
         distribution = content["distribution"]
         credits_list = distribution["credits"]
@@ -86,7 +90,9 @@ def update_credit_balances(session: DbSession, content: Mapping[str, Any], messa
     )
 
 
-def update_credit_balances_airdrop(session: DbSession, content: Mapping[str, Any], message_hash: str) -> None:
+def update_credit_balances_airdrop(
+    session: DbSession, content: Mapping[str, Any], message_hash: str
+) -> None:
     try:
         airdrop = content["airdrop"]
         credits_list = airdrop["credits"]
@@ -198,9 +204,17 @@ class PostMessageHandler(ContentHandler):
         ):
             LOGGER.info("Updating credit balances...")
             if content.type == "aleph_credit_distribution":
-                update_credit_balances(session=session, content=content.content, message_hash=message.item_hash)
+                update_credit_balances(
+                    session=session,
+                    content=content.content,
+                    message_hash=message.item_hash,
+                )
             elif content.type == "aleph_credit_airdrop":
-                update_credit_balances_airdrop(session=session, content=content.content, message_hash=message.item_hash)
+                update_credit_balances_airdrop(
+                    session=session,
+                    content=content.content,
+                    message_hash=message.item_hash,
+                )
             LOGGER.info("Done updating credit balances")
 
     async def process(self, session: DbSession, messages: List[MessageDb]) -> None:
