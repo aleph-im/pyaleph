@@ -74,7 +74,7 @@ class BaseMessageHandler:
                 balances_addresses=config.aleph.balances.addresses.value,
                 balances_post_type=config.aleph.balances.post_type.value,
                 credit_balances_addresses=config.aleph.credit_balances.addresses.value,
-                credit_balances_post_type=config.aleph.credit_balances.post_type.value,
+                credit_balances_post_types=config.aleph.credit_balances.post_types.value,
             ),
             MessageType.program: vm_handler,
             MessageType.store: StoreMessageHandler(

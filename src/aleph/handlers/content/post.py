@@ -7,6 +7,7 @@ from sqlalchemy import update
 from aleph.db.accessors.balances import update_balances as update_balances_db
 from aleph.db.accessors.balances import (
     update_credit_balances as update_credit_balances_db,
+    update_credit_balances_airdrop as update_credit_balances_airdrop_db,
 )
 from aleph.db.accessors.posts import (
     delete_amends,
@@ -63,7 +64,7 @@ def update_balances(session: DbSession, content: Mapping[str, Any]) -> None:
     )
 
 
-def update_credit_balances(session: DbSession, content: Mapping[str, Any]) -> None:
+def update_credit_balances(session: DbSession, content: Mapping[str, Any], message_hash: str) -> None:
     try:
         distribution = content["distribution"]
         credits_list = distribution["credits"]
@@ -81,6 +82,25 @@ def update_credit_balances(session: DbSession, content: Mapping[str, Any]) -> No
         credits_list=credits_list,
         token=token,
         chain=chain,
+        message_hash=message_hash,
+    )
+
+
+def update_credit_balances_airdrop(session: DbSession, content: Mapping[str, Any], message_hash: str) -> None:
+    try:
+        airdrop = content["airdrop"]
+        credits_list = airdrop["credits"]
+    except KeyError as e:
+        raise InvalidMessageFormat(
+            f"Missing field '{e.args[0]}' for credit airdrop post"
+        )
+
+    LOGGER.info("Updating credit balances airdrop for %d addresses", len(credits_list))
+
+    update_credit_balances_airdrop_db(
+        session=session,
+        credits_list=credits_list,
+        message_hash=message_hash,
     )
 
 
@@ -110,12 +130,12 @@ class PostMessageHandler(ContentHandler):
         balances_addresses: List[str],
         balances_post_type: str,
         credit_balances_addresses: List[str],
-        credit_balances_post_type: str,
+        credit_balances_post_types: List[str],
     ):
         self.balances_addresses = balances_addresses
         self.balances_post_type = balances_post_type
         self.credit_balances_addresses = credit_balances_addresses
-        self.credit_balances_post_type = credit_balances_post_type
+        self.credit_balances_post_types = credit_balances_post_types
 
     async def check_dependencies(self, session: DbSession, message: MessageDb):
         content = get_post_content(message)
@@ -172,12 +192,15 @@ class PostMessageHandler(ContentHandler):
             LOGGER.info("Done updating balances")
 
         if (
-            content.type == self.credit_balances_post_type
+            content.type in self.credit_balances_post_types
             and content.address in self.credit_balances_addresses
             and content.content
         ):
             LOGGER.info("Updating credit balances...")
-            update_credit_balances(session=session, content=content.content)
+            if content.type == "aleph_credit_distribution":
+                update_credit_balances(session=session, content=content.content, message_hash=message.item_hash)
+            elif content.type == "aleph_credit_airdrop":
+                update_credit_balances_airdrop(session=session, content=content.content, message_hash=message.item_hash)
             LOGGER.info("Done updating credit balances")
 
     async def process(self, session: DbSession, messages: List[MessageDb]) -> None:
