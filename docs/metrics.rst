@@ -22,7 +22,7 @@ Below are the current metrics, a lot more are coming in the future as we improve
 +=================================================+===============+============================================================================================+
 | pyaleph_build_info                              | dict          | Number of transactions that are pending treatment or need to be retried                    |
 +-------------------------------------------------+---------------+--------------------------------------------------------------------------------------------+
-| pyaleph_status_peers_total                      | int           | Number of transactions that are pending treatment or need to be retried                    |
+| pyaleph_status_peers_total                      | int           | Total number of peers                                                                      |
 +-------------------------------------------------+---------------+--------------------------------------------------------------------------------------------+
 | pyaleph_status_sync_messages_total              | int           | Total number of treated message                                                            |
 +-------------------------------------------------+---------------+--------------------------------------------------------------------------------------------+
