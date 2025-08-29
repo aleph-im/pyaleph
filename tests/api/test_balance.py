@@ -4,7 +4,10 @@ from aleph_message.models import Chain
 from aleph.db.models import AlephBalanceDb
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 
-MESSAGES_URI = "/api/v0/addresses/0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba/balance"
+ACCOUNT_BALANCE_URI = (
+    "/api/v0/addresses/0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba/balance"
+)
+BALANCES_URI = "/api/v0/balances"
 
 
 @pytest.mark.asyncio
@@ -23,7 +26,7 @@ async def test_get_balance(
 
     assert fixture_instance_message.item_content
 
-    response = await ccn_api_client.get(MESSAGES_URI)
+    response = await ccn_api_client.get(ACCOUNT_BALANCE_URI)
     assert response.status == 200, await response.text()
     data = await response.json()
     assert data["balance"] == user_balance.balance
@@ -51,7 +54,7 @@ async def test_get_balance_with_chain(
     expected_locked_amount = 1001.8
     chain = Chain.AVAX.value
     # Test Avax
-    avax_response = await ccn_api_client.get(f"{MESSAGES_URI}?chain={chain}")
+    avax_response = await ccn_api_client.get(f"{ACCOUNT_BALANCE_URI}?chain={chain}")
 
     assert avax_response.status == 200, await avax_response.text()
     avax_data = await avax_response.json()
@@ -61,7 +64,7 @@ async def test_get_balance_with_chain(
 
     # Verify ETH Value
     chain = Chain.ETH.value
-    eth_response = await ccn_api_client.get(f"{MESSAGES_URI}?chain={chain}")
+    eth_response = await ccn_api_client.get(f"{ACCOUNT_BALANCE_URI}?chain={chain}")
     assert eth_response.status == 200, await eth_response.text()
     eth_data = await eth_response.json()
     eth_expected_balance = user_balance_eth_avax.balance
@@ -69,7 +72,7 @@ async def test_get_balance_with_chain(
     assert eth_data["locked_amount"] == expected_locked_amount
 
     # Verify All Chain
-    total_response = await ccn_api_client.get(f"{MESSAGES_URI}")
+    total_response = await ccn_api_client.get(f"{ACCOUNT_BALANCE_URI}")
     assert total_response.status == 200, await total_response.text()
     total_data = await total_response.json()
     total_expected_balance = user_balance_eth_avax.balance * 2
@@ -86,7 +89,7 @@ async def test_get_balance_with_chain(
 async def test_get_balance_with_no_balance(
     ccn_api_client,
 ):
-    response = await ccn_api_client.get(f"{MESSAGES_URI}")
+    response = await ccn_api_client.get(f"{ACCOUNT_BALANCE_URI}")
 
     assert response.status == 200, await response.text()
     data = await response.json()
@@ -94,7 +97,7 @@ async def test_get_balance_with_no_balance(
     assert data["locked_amount"] == 0
 
     # Test Eth Case
-    response = await ccn_api_client.get(f"{MESSAGES_URI}?chain{Chain.ETH.value}")
+    response = await ccn_api_client.get(f"{ACCOUNT_BALANCE_URI}?chain{Chain.ETH.value}")
 
     assert response.status == 200, await response.text()
     data = await response.json()
@@ -102,3 +105,25 @@ async def test_get_balance_with_no_balance(
     assert data["locked_amount"] == 0
     details = data["details"]
     assert not details
+
+
+@pytest.mark.asyncio
+async def test_get_balances(
+    ccn_api_client,
+    user_balance: AlephBalanceDb,
+):
+    response = await ccn_api_client.get(f"{BALANCES_URI}")
+    assert response.status == 200, await response.text()
+    data = await response.json()
+    assert len(data["balances"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_get_balances_with_chains_param(
+    ccn_api_client,
+    user_balance_eth_avax: AlephBalanceDb,
+):
+    response = await ccn_api_client.get(f"{BALANCES_URI}?chains=AVAX")
+    assert response.status == 200, await response.text()
+    data = await response.json()
+    assert len(data["balances"]) > 0
