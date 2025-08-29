@@ -108,7 +108,10 @@ async def get_chain_balances(request: web.Request) -> web.Response:
         balances = get_balances_by_chain(session, **find_filters)
 
         formatted_balances = [
-            AddressBalanceResponse.model_validate(b) for b in balances
+            AddressBalanceResponse(
+                address=b.address, balance=str(b.balance), chain=b.chain
+            )
+            for b in balances
         ]
 
         total_balances = count_balances_by_chain(session, **find_filters)
