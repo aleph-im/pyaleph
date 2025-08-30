@@ -18,6 +18,12 @@ def get_defaults():
             "reference_node_url": None,
             # URL of the aleph.im cross-chain indexer.
             "indexer_url": "https://multichain.api.aleph.cloud",
+            "auth": {
+                # Public key for verifying authentication tokens (compressed secp256k1 format)
+                "public_key": "0209fe82e08ec3c5c3ee4904fa147a11d49c7130579066c8a452d279d539959389",
+                # Maximum token age in seconds (default: 5 minutes)
+                "max_token_age": 300,
+            },
             "balances": {
                 # Addresses allowed to publish balance updates.
                 "addresses": [
