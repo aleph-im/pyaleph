@@ -20,7 +20,7 @@ from aleph.db.accessors.posts import (
     get_matching_posts_legacy,
 )
 from aleph.db.models import ChainTxDb, message_confirmations
-from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.db_session import AsyncDbSession, AsyncDbSessionFactory
 from aleph.types.sort_order import SortBy, SortOrder
 from aleph.web.controllers.utils import (
     DEFAULT_MESSAGES_PER_PAGE,
@@ -122,8 +122,8 @@ def merged_post_to_dict(merged_post: MergedPost) -> Dict[str, Any]:
     }
 
 
-def get_post_confirmations(
-    session: DbSession, post: MergedPostV0
+async def get_post_confirmations(
+    session: AsyncDbSession, post: MergedPostV0
 ) -> List[Dict[str, Any]]:
     select_stmt = (
         select(
@@ -136,17 +136,17 @@ def get_post_confirmations(
         .where(message_confirmations.c.item_hash == post.item_hash)
     )
 
-    results = session.execute(select_stmt).all()
+    results = (await session.execute(select_stmt)).all()
     return [
         {"chain": row.chain, "hash": row.hash, "height": row.height} for row in results
     ]
 
 
-def merged_post_v0_to_dict(
-    session: DbSession, merged_post: MergedPostV0
+async def merged_post_v0_to_dict(
+    session: AsyncDbSession, merged_post: MergedPostV0
 ) -> Dict[str, Any]:
 
-    confirmations = get_post_confirmations(session, merged_post)
+    confirmations = await get_post_confirmations(session, merged_post)
 
     return {
         "chain": merged_post.chain,
@@ -193,12 +193,12 @@ async def view_posts_list_v0(request: web.Request) -> web.Response:
     pagination_page = query_params.page
     pagination_per_page = query_params.pagination
 
-    session_factory: DbSessionFactory = request.app["session_factory"]
+    session_factory: AsyncDbSessionFactory = request.app["session_factory"]
 
-    with session_factory() as session:
-        total_posts = count_matching_posts(session=session, **find_filters)
-        results = get_matching_posts_legacy(session=session, **find_filters)
-        posts = [merged_post_v0_to_dict(session, post) for post in results]
+    async with session_factory() as session:
+        total_posts = await count_matching_posts(session=session, **find_filters)
+        results = await get_matching_posts_legacy(session=session, **find_filters)
+        posts = [await merged_post_v0_to_dict(session, post) for post in results]
 
     context: Dict[str, Any] = {"posts": posts}
 
@@ -244,10 +244,10 @@ async def view_posts_list_v1(request) -> web.Response:
     pagination_page = query_params.page
     pagination_per_page = query_params.pagination
 
-    session_factory: DbSessionFactory = request.app["session_factory"]
-    with session_factory() as session:
-        total_posts = count_matching_posts(session=session, **find_filters)
-        results = get_matching_posts(session=session, **find_filters)
+    session_factory: AsyncDbSessionFactory = request.app["session_factory"]
+    async with session_factory() as session:
+        total_posts = await count_matching_posts(session=session, **find_filters)
+        results = await get_matching_posts(session=session, **find_filters)
         posts = [merged_post_to_dict(post) for post in results]
 
     context: Dict[str, Any] = {"posts": posts}

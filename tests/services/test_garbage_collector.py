@@ -14,13 +14,13 @@ from aleph.db.models import (
 from aleph.services.storage.engine import StorageEngine
 from aleph.services.storage.garbage_collector import GarbageCollector
 from aleph.storage import StorageService
-from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.db_session import AsyncDbSession, AsyncDbSessionFactory
 from aleph.types.files import FileType
 
 
 @pytest.fixture
 def gc(
-    session_factory: DbSessionFactory, test_storage_service: StorageService
+    session_factory: AsyncDbSessionFactory, test_storage_service: StorageService
 ) -> GarbageCollector:
     return GarbageCollector(
         session_factory=session_factory, storage_service=test_storage_service
@@ -29,7 +29,7 @@ def gc(
 
 @pytest_asyncio.fixture
 async def fixture_files(
-    session_factory: DbSessionFactory, test_storage_service: StorageService
+    session_factory: AsyncDbSessionFactory, test_storage_service: StorageService
 ):
     files = [
         StoredFileDb(
@@ -89,17 +89,19 @@ async def fixture_files(
             filename=file.hash, content=b"test"
         )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add_all(files)
-        session.commit()
+        await session.commit()
 
-        yield files
+        # We re get file to avoid lazy load and using sync engine
+        loaded_files = [await get_file(session, f.hash) for f in files]
+        yield loaded_files
 
 
 async def assert_file_is_deleted(
-    session: DbSession, storage_engine: StorageEngine, file_hash: str
+    session: AsyncDbSession, storage_engine: StorageEngine, file_hash: str
 ):
-    file_db = get_file(session=session, file_hash=file_hash)
+    file_db = await get_file(session=session, file_hash=file_hash)
     assert file_db is None
 
     content = await storage_engine.read(filename=file_hash)
@@ -107,9 +109,9 @@ async def assert_file_is_deleted(
 
 
 async def assert_file_exists(
-    session: DbSession, storage_engine: StorageEngine, file_hash: str
+    session: AsyncDbSession, storage_engine: StorageEngine, file_hash: str
 ):
-    file_db = get_file(session=session, file_hash=file_hash)
+    file_db = await get_file(session=session, file_hash=file_hash)
     assert file_db
 
     content = await storage_engine.read(filename=file_hash)
@@ -126,14 +128,14 @@ async def assert_file_exists(
     ],
 )
 async def test_garbage_collector_collect(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     gc: GarbageCollector,
     fixture_files: List[StoredFileDb],
     gc_run_datetime: dt.datetime,
 ):
-    with session_factory() as session:
+    async with session_factory() as session:
         await gc.collect(datetime=gc_run_datetime)
-        session.commit()
+        await session.commit()
 
         storage_engine = gc.storage_service.storage_engine
         for fixture_file in fixture_files:

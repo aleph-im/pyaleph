@@ -38,7 +38,7 @@ from aleph.schemas.chains.indexer_response import (
 from aleph.toolkit.range import MultiRange, Range
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.chain_sync import ChainEventType, ChainSyncProtocol
-from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.db_session import AsyncDbSession, AsyncDbSessionFactory
 
 LOGGER = logging.getLogger(__name__)
 
@@ -246,7 +246,7 @@ class AlephIndexerReader:
     def __init__(
         self,
         chain: Chain,
-        session_factory: DbSessionFactory,
+        session_factory: AsyncDbSessionFactory,
         pending_tx_publisher: PendingTxPublisher,
     ):
         self.chain = chain
@@ -257,7 +257,7 @@ class AlephIndexerReader:
 
     async def fetch_range(
         self,
-        session: DbSession,
+        session: AsyncDbSession,
         indexer_client: AlephIndexerClient,
         chain: Chain,
         event_type: ChainEventType,
@@ -295,7 +295,9 @@ class AlephIndexerReader:
                 LOGGER.info("%d new txs", len(txs))
                 # Events are listed in reverse order in the indexer response
                 for tx in txs:
-                    self.pending_tx_publisher.add_pending_tx(session=session, tx=tx)
+                    await self.pending_tx_publisher.add_pending_tx(
+                        session=session, tx=tx
+                    )
 
                 if nb_events_fetched >= limit:
                     last_event_datetime = txs[-1].datetime
@@ -320,7 +322,7 @@ class AlephIndexerReader:
                 str(synced_range),
             )
 
-            add_indexer_range(
+            await add_indexer_range(
                 session=session,
                 chain=chain,
                 event_type=event_type,
@@ -329,7 +331,7 @@ class AlephIndexerReader:
 
             # Committing periodically reduces the size of DB transactions for large numbers
             # of events.
-            session.commit()
+            await session.commit()
 
             # Now that the txs are committed to the DB, add them to the pending tx message queue
             for tx in txs:
@@ -347,7 +349,7 @@ class AlephIndexerReader:
 
     async def fetch_new_events(
         self,
-        session: DbSession,
+        session: AsyncDbSession,
         indexer_url: str,
         smart_contract_address: str,
         event_type: ChainEventType,
@@ -372,7 +374,7 @@ class AlephIndexerReader:
                 ]
             )
 
-            multirange_to_sync = get_missing_indexer_datetime_multirange(
+            multirange_to_sync = await get_missing_indexer_datetime_multirange(
                 session=session,
                 chain=self.chain,
                 event_type=event_type,
@@ -399,14 +401,14 @@ class AlephIndexerReader:
     ):
         while True:
             try:
-                with self.session_factory() as session:
+                async with self.session_factory() as session:
                     await self.fetch_new_events(
                         session=session,
                         indexer_url=indexer_url,
                         smart_contract_address=smart_contract_address,
                         event_type=event_type,
                     )
-                    session.commit()
+                    await session.commit()
             except Exception:
                 LOGGER.exception(
                     "An unexpected exception occurred, "

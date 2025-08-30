@@ -1,9 +1,9 @@
 from typing import Any, Dict, Iterable, Optional, Set
 
-from sqlalchemy import Column, Table, exists, func, select, text
+from sqlalchemy import Column, Table, exists, func, inspect, select, text
 from sqlalchemy.orm import declarative_base
 
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 
 
 class AugmentedBase:
@@ -12,21 +12,22 @@ class AugmentedBase:
 
     def to_dict(self, exclude: Optional[Set[str]] = None) -> Dict[str, Any]:
         exclude_set = exclude if exclude is not None else set()
+        insp = inspect(self)
 
         return {
             column.name: getattr(self, column.name)
             for column in self.__table__.columns
-            if column.name not in exclude_set
+            if column.name not in exclude_set and column.name not in insp.unloaded
         }
 
     @classmethod
-    def count(cls, session: DbSession) -> int:
+    async def count(cls, session: AsyncDbSession) -> int:
         return (
-            session.execute(text(f"SELECT COUNT(*) FROM {cls.__tablename__}"))
+            await session.execute(text(f"SELECT COUNT(*) FROM {cls.__tablename__}"))
         ).scalar_one()
 
     @classmethod
-    def estimate_count(cls, session: DbSession) -> int:
+    async def estimate_count(cls, session: AsyncDbSession) -> int:
         """
         Returns an approximation of the number of rows in a table.
 
@@ -39,37 +40,41 @@ class AugmentedBase:
                  has never been analyzed or vacuumed.
         """
 
-        return session.execute(
-            text(
-                f"SELECT reltuples::bigint FROM pg_class WHERE relname = '{cls.__tablename__}'"
+        return (
+            await session.execute(
+                text(
+                    f"SELECT reltuples::bigint FROM pg_class WHERE relname = '{cls.__tablename__}'"
+                )
             )
         ).scalar_one()
 
     @classmethod
-    def fast_count(cls, session: DbSession) -> int:
+    async def fast_count(cls, session: AsyncDbSession) -> int:
         """
         :param session: DB session.
         :return: The estimate count of the table if available from pg_class, otherwise
                  the real count of rows.
         """
-        estimate_count = cls.estimate_count(session)
+        estimate_count = await cls.estimate_count(session)
         if estimate_count == -1:
-            return cls.count(session)
+            return await cls.count(session)
 
         return estimate_count
 
     # TODO: set type of "where" to the SQLA boolean expression class
     @classmethod
-    def exists(cls, session: DbSession, where) -> bool:
+    async def exists(cls, session: AsyncDbSession, where) -> bool:
 
         exists_stmt = exists(text("1")).select().where(where)
-        result = (session.execute(exists_stmt)).scalar()
+        result = (await session.execute(exists_stmt)).scalar()
         return result is not None
 
     @classmethod
-    def jsonb_keys(cls, session: DbSession, column: Column, where) -> Iterable[str]:
+    async def jsonb_keys(
+        cls, session: AsyncDbSession, column: Column, where
+    ) -> Iterable[str]:
         select_stmt = select(func.jsonb_object_keys(column)).where(where)
-        return session.execute(select_stmt).scalars()
+        return (await session.execute(select_stmt)).scalars()
 
 
 Base = declarative_base(cls=AugmentedBase)

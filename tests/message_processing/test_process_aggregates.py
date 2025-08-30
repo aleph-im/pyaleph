@@ -20,7 +20,7 @@ from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
-from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.db_session import AsyncDbSession, AsyncDbSessionFactory
 from aleph.types.message_processing_result import ProcessedMessage
 
 
@@ -28,7 +28,7 @@ from aleph.types.message_processing_result import ProcessedMessage
 async def test_process_aggregate_first_element(
     mocker,
     mock_config: Config,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     fixture_aggregate_messages: List[Dict],
 ):
     storage_service = StorageService(
@@ -45,9 +45,9 @@ async def test_process_aggregate_first_element(
 
     item_hash = "a87004aa03f8ae63d2c4bbe84b93b9ce70ca6482ce36c82ab0b0f689fc273f34"
 
-    with session_factory() as session:
+    async with session_factory() as session:
         pending_message = (
-            session.execute(
+            await session.execute(
                 select(PendingMessageDb)
                 .where(PendingMessageDb.item_hash == item_hash)
                 .options(selectinload(PendingMessageDb.tx))
@@ -55,7 +55,7 @@ async def test_process_aggregate_first_element(
         ).scalar_one()
 
         await message_handler.process(session=session, pending_message=pending_message)
-        session.commit()
+        await session.commit()
 
     # Check the aggregate
     content = json.loads(pending_message.item_content)
@@ -63,9 +63,9 @@ async def test_process_aggregate_first_element(
     expected_key = content["key"]
     expected_creation_datetime = timestamp_to_datetime(content["time"])
 
-    with session_factory() as session:
+    async with session_factory() as session:
         elements = list(
-            get_aggregate_elements(
+            await get_aggregate_elements(
                 session=session, key=expected_key, owner=pending_message.sender
             )
         )
@@ -75,7 +75,7 @@ async def test_process_aggregate_first_element(
         assert element.creation_datetime == expected_creation_datetime
         assert element.content == content["content"]
 
-        aggregate = get_aggregate_by_key(
+        aggregate = await get_aggregate_by_key(
             session=session,
             owner=pending_message.sender,
             key=expected_key,
@@ -91,7 +91,7 @@ async def test_process_aggregate_first_element(
 
 @pytest.mark.asyncio
 async def test_process_aggregates(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     message_processor: PendingMessageProcessor,
     fixture_aggregate_messages: List[Dict],
 ):
@@ -140,14 +140,14 @@ def aggregate_updates() -> Sequence[PendingMessageDb]:
 
 
 async def process_aggregates_one_by_one(
-    session: DbSession,
+    session: AsyncDbSession,
     message_processor: PendingMessageProcessor,
     aggregates: Iterable[PendingMessageDb],
 ) -> Sequence[MessageDb]:
     messages = []
     for pending_aggregate in aggregates:
         session.add(pending_aggregate)
-        session.commit()
+        await session.commit()
 
         result = one(
             await process_pending_messages(
@@ -164,11 +164,11 @@ async def process_aggregates_one_by_one(
 
 @pytest.mark.asyncio
 async def test_process_aggregates_in_order(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     message_processor: PendingMessageProcessor,
     aggregate_updates: Sequence[PendingMessageDb],
 ):
-    with session_factory() as session:
+    async with session_factory() as session:
         original, update = await process_aggregates_one_by_one(
             session=session,
             message_processor=message_processor,
@@ -181,7 +181,7 @@ async def test_process_aggregates_in_order(
 
         content = original.parsed_content
         assert isinstance(content, AggregateContent)
-        aggregate = get_aggregate_by_key(
+        aggregate = await get_aggregate_by_key(
             session=session, key=str(content.key), owner=content.address
         )
         assert aggregate
@@ -191,11 +191,11 @@ async def test_process_aggregates_in_order(
 
 @pytest.mark.asyncio
 async def test_process_aggregates_reverse_order(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     message_processor: PendingMessageProcessor,
     aggregate_updates: Sequence[PendingMessageDb],
 ):
-    with session_factory() as session:
+    async with session_factory() as session:
         update, original = await process_aggregates_one_by_one(
             session=session,
             message_processor=message_processor,
@@ -204,7 +204,7 @@ async def test_process_aggregates_reverse_order(
 
         content = original.parsed_content
         assert isinstance(content, AggregateContent)
-        aggregate = get_aggregate_by_key(
+        aggregate = await get_aggregate_by_key(
             session=session, key=str(content.key), owner=content.address
         )
         assert aggregate
@@ -215,9 +215,9 @@ async def test_process_aggregates_reverse_order(
 @pytest.mark.asyncio
 async def test_delete_aggregate_one_element(
     mocker,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
 ):
-    with session_factory() as session:
+    async with session_factory() as session:
         element = AggregateElementDb(
             item_hash="d73d50b2d2c670d4c6c8e03ad0e4e2145642375f92784c68539a3400e0e4e242",
             key="my-aggregate",
@@ -236,7 +236,7 @@ async def test_delete_aggregate_one_element(
                 dirty=False,
             )
         )
-        session.commit()
+        await session.commit()
 
         message = mocker.MagicMock()
         message.item_hash = element.item_hash
@@ -249,14 +249,14 @@ async def test_delete_aggregate_one_element(
 
         aggregate_handler = AggregateMessageHandler()
         await aggregate_handler.forget_message(session=session, message=message)
-        session.commit()
+        await session.commit()
 
-        aggregate = get_aggregate_by_key(
+        aggregate = await get_aggregate_by_key(
             session=session, owner=element.owner, key=element.key
         )
         assert aggregate is None
         aggregate_elements = list(
-            get_aggregate_elements(
+            await get_aggregate_elements(
                 session=session, owner=element.owner, key=element.key
             )
         )
@@ -267,10 +267,10 @@ async def test_delete_aggregate_one_element(
 @pytest.mark.parametrize("element_to_forget", ["first", "last"])
 async def test_delete_aggregate_two_elements(
     mocker,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     element_to_forget: str,
 ):
-    with session_factory() as session:
+    async with session_factory() as session:
         first_element = AggregateElementDb(
             item_hash="d73d50b2d2c670d4c6c8e03ad0e4e2145642375f92784c68539a3400e0e4e242",
             key="my-aggregate",
@@ -297,7 +297,7 @@ async def test_delete_aggregate_two_elements(
                 dirty=False,
             )
         )
-        session.commit()
+        await session.commit()
 
         if element_to_forget == "first":
             element_to_delete, element_to_keep = first_element, last_element
@@ -315,9 +315,9 @@ async def test_delete_aggregate_two_elements(
 
         aggregate_handler = AggregateMessageHandler()
         await aggregate_handler.forget_message(session=session, message=message)
-        session.commit()
+        await session.commit()
 
-        aggregate = get_aggregate_by_key(
+        aggregate = await get_aggregate_by_key(
             session=session, owner=first_element.owner, key=first_element.key
         )
         assert aggregate is not None
@@ -329,7 +329,7 @@ async def test_delete_aggregate_two_elements(
         assert aggregate.creation_datetime == element_to_keep.creation_datetime
 
         aggregate_elements = list(
-            get_aggregate_elements(
+            await get_aggregate_elements(
                 session=session, owner=first_element.owner, key=first_element.key
             )
         )

@@ -2,9 +2,8 @@ import time
 from typing import Optional
 
 from sqlalchemy import select, text
-from sqlalchemy.orm.session import Session
 
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 
 
 def _parse_ccn_result(result):
@@ -60,8 +59,8 @@ def _build_metric_filter(select_stmt, node_id, start_date, end_date, sort_order)
     return select_stmt
 
 
-def query_metric_ccn(
-    session: Session,
+async def query_metric_ccn(
+    session: AsyncDbSession,
     node_id: Optional[str] = None,
     start_date: Optional[float] = None,
     end_date: Optional[float] = None,
@@ -95,13 +94,13 @@ def query_metric_ccn(
         sort_order=sort_order,
     )
 
-    result = session.execute(select_stmt).fetchall()
+    result = (await session.execute(select_stmt)).fetchall()
 
     return _parse_ccn_result(result=result)
 
 
-def query_metric_crn(
-    session: DbSession,
+async def query_metric_crn(
+    session: AsyncDbSession,
     node_id: str,
     start_date: Optional[float] = None,
     end_date: Optional[float] = None,
@@ -132,6 +131,6 @@ def query_metric_crn(
         sort_order=sort_order,
     )
 
-    result = session.execute(select_stmt).fetchall()
+    result = (await session.execute(select_stmt)).fetchall()
 
     return _parse_crn_result(result=result)

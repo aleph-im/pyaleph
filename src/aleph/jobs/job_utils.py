@@ -13,7 +13,7 @@ from aleph.db.accessors.pending_messages import set_next_retry
 from aleph.db.models import PendingMessageDb
 from aleph.handlers.message_handler import MessageHandler
 from aleph.toolkit.timestamp import utc_now
-from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.db_session import AsyncDbSession, AsyncDbSessionFactory
 from aleph.types.message_processing_result import RejectedMessage, WillRetryMessage
 from aleph.types.message_status import (
     ErrorCode,
@@ -95,8 +95,8 @@ def compute_next_retry_interval(attempts: int) -> dt.timedelta:
     return dt.timedelta(seconds=min(seconds, MAX_RETRY_INTERVAL))
 
 
-def schedule_next_attempt(
-    session: DbSession, pending_message: PendingMessageDb
+async def schedule_next_attempt(
+    session: AsyncDbSession, pending_message: PendingMessageDb
 ) -> None:
     """
     Schedules the next attempt time for a failed pending message.
@@ -115,7 +115,7 @@ def schedule_next_attempt(
     # are processed in the right order while leaving enough time for the issue that
     # caused the original message to be rescheduled to get resolved.
     next_attempt = utc_now() + compute_next_retry_interval(pending_message.retries)
-    set_next_retry(
+    await set_next_retry(
         session=session, pending_message=pending_message, next_attempt=next_attempt
     )
     pending_message.next_attempt = next_attempt
@@ -181,7 +181,7 @@ class MqWatcher:
 class MessageJob(MqWatcher):
     def __init__(
         self,
-        session_factory: DbSessionFactory,
+        session_factory: AsyncDbSessionFactory,
         message_handler: MessageHandler,
         max_retries: int,
         pending_message_queue: aio_pika.abc.AbstractQueue,
@@ -193,12 +193,12 @@ class MessageJob(MqWatcher):
         self.max_retries = max_retries
 
     @staticmethod
-    def _handle_rejection(
-        session: DbSession,
+    async def _handle_rejection(
+        session: AsyncDbSession,
         pending_message: PendingMessageDb,
         exception: BaseException,
     ) -> RejectedMessage:
-        rejected_message_db = reject_existing_pending_message(
+        rejected_message_db = await reject_existing_pending_message(
             session=session,
             pending_message=pending_message,
             exception=exception,
@@ -216,7 +216,7 @@ class MessageJob(MqWatcher):
 
     async def _handle_retry(
         self,
-        session: DbSession,
+        session: AsyncDbSession,
         pending_message: PendingMessageDb,
         exception: BaseException,
     ) -> Union[RejectedMessage, WillRetryMessage]:
@@ -227,7 +227,7 @@ class MessageJob(MqWatcher):
                 str(exception),
             )
             error_code = exception.error_code
-            session.execute(
+            await session.execute(
                 update(PendingMessageDb)
                 .where(PendingMessageDb.id == pending_message.id)
                 .values(fetched=False)
@@ -240,7 +240,9 @@ class MessageJob(MqWatcher):
                 pending_message.item_hash,
             )
             error_code = exception.error_code
-            schedule_next_attempt(session=session, pending_message=pending_message)
+            await schedule_next_attempt(
+                session=session, pending_message=pending_message
+            )
         else:
             LOGGER.exception(
                 "Unexpected error while fetching message", exc_info=exception
@@ -251,20 +253,22 @@ class MessageJob(MqWatcher):
                 "Rejecting pending message: %s - too many retries",
                 pending_message.item_hash,
             )
-            return self._handle_rejection(
+            return await self._handle_rejection(
                 session=session,
                 pending_message=pending_message,
                 exception=exception,
             )
         else:
-            schedule_next_attempt(session=session, pending_message=pending_message)
+            await schedule_next_attempt(
+                session=session, pending_message=pending_message
+            )
             return WillRetryMessage(
                 pending_message=pending_message, error_code=error_code
             )
 
     async def handle_processing_error(
         self,
-        session: DbSession,
+        session: AsyncDbSession,
         pending_message: PendingMessageDb,
         exception: BaseException,
     ) -> Union[RejectedMessage, WillRetryMessage]:
@@ -274,7 +278,7 @@ class MessageJob(MqWatcher):
                 pending_message.item_hash,
                 str(exception),
             )
-            return self._handle_rejection(
+            return await self._handle_rejection(
                 session=session, pending_message=pending_message, exception=exception
             )
         else:

@@ -2,12 +2,14 @@ import asyncio
 import logging
 
 from aleph.db.accessors.messages import refresh_address_stats_mat_view
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 LOGGER = logging.getLogger(__name__)
 
 
-async def refresh_cache_materialized_views(session_factory: DbSessionFactory) -> None:
+async def refresh_cache_materialized_views(
+    session_factory: AsyncDbSessionFactory,
+) -> None:
     """
     Refresh DB materialized views used as caches, periodically.
 
@@ -19,9 +21,9 @@ async def refresh_cache_materialized_views(session_factory: DbSessionFactory) ->
 
     while True:
         try:
-            with session_factory() as session:
-                refresh_address_stats_mat_view(session)
-                session.commit()
+            async with session_factory() as session:
+                await refresh_address_stats_mat_view(session)
+                await session.commit()
                 LOGGER.info("Refreshed address stats materialized view")
 
         except Exception:

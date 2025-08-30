@@ -13,7 +13,7 @@ from setproctitle import setproctitle
 import aleph.toolkit.json as aleph_json
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.pending_messages import get_next_pending_message
-from aleph.db.connection import make_engine, make_session_factory
+from aleph.db.connection import make_async_engine, make_async_session_factory
 from aleph.handlers.message_handler import MessageHandler
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
@@ -22,7 +22,7 @@ from aleph.storage import StorageService
 from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
 from aleph.toolkit.timestamp import utc_now
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 from aleph.types.message_processing_result import MessageProcessingResult
 
 from ..types.message_status import MessageOrigin
@@ -34,7 +34,7 @@ LOGGER = getLogger(__name__)
 class PendingMessageProcessor(MessageJob):
     def __init__(
         self,
-        session_factory: DbSessionFactory,
+        session_factory: AsyncDbSessionFactory,
         message_handler: MessageHandler,
         max_retries: int,
         mq_conn: aio_pika.abc.AbstractConnection,
@@ -54,7 +54,7 @@ class PendingMessageProcessor(MessageJob):
     @classmethod
     async def new(
         cls,
-        session_factory: DbSessionFactory,
+        session_factory: AsyncDbSessionFactory,
         message_handler: MessageHandler,
         max_retries: int,
         mq_host: str,
@@ -101,8 +101,8 @@ class PendingMessageProcessor(MessageJob):
         self,
     ) -> AsyncIterator[Sequence[MessageProcessingResult]]:
         while True:
-            with self.session_factory() as session:
-                pending_message = get_next_pending_message(
+            async with self.session_factory() as session:
+                pending_message = await get_next_pending_message(
                     current_time=utc_now(), session=session, fetched=True
                 )
                 if not pending_message:
@@ -114,16 +114,21 @@ class PendingMessageProcessor(MessageJob):
                             session=session, pending_message=pending_message
                         )
                     )
-                    session.commit()
+                    await session.commit()
 
                 except Exception as e:
-                    session.rollback()
+                    await session.rollback()
+
+                    await session.refresh(
+                        pending_message, attribute_names=["item_hash", "id", "retries"]
+                    )
+
                     result = await self.handle_processing_error(
                         session=session,
                         pending_message=pending_message,
                         exception=e,
                     )
-                    session.commit()
+                    await session.commit()
 
                 yield [result]
 
@@ -149,8 +154,8 @@ class PendingMessageProcessor(MessageJob):
 
 
 async def fetch_and_process_messages_task(config: Config):
-    engine = make_engine(config=config, application_name="aleph-process")
-    session_factory = make_session_factory(engine)
+    engine = make_async_engine(config=config, application_name="aleph-process")
+    session_factory = make_async_session_factory(engine)
 
     async with (
         NodeCache(
@@ -183,7 +188,7 @@ async def fetch_and_process_messages_task(config: Config):
 
         async with pending_message_processor:
             while True:
-                with session_factory() as session:
+                async with session_factory() as session:
                     try:
                         message_processing_pipeline = (
                             pending_message_processor.make_pipeline()
@@ -196,7 +201,7 @@ async def fetch_and_process_messages_task(config: Config):
 
                     except Exception:
                         LOGGER.exception("Error in pending messages job")
-                        session.rollback()
+                        await session.rollback()
 
                 LOGGER.info("Waiting for new pending messages...")
                 # We still loop periodically for retried messages as we do not bother sending a message

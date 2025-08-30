@@ -2,7 +2,7 @@ from aiohttp import web
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from aleph.db.accessors.messages import get_programs_triggered_by_messages
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 from aleph.types.sort_order import SortOrder
 
 
@@ -20,9 +20,9 @@ async def get_programs_on_message(request: web.Request) -> web.Response:
             data=error.json(), status=web.HTTPBadRequest.status_code
         )
 
-    session_factory: DbSessionFactory = request.app["session_factory"]
+    session_factory: AsyncDbSessionFactory = request.app["session_factory"]
 
-    with session_factory() as session:
+    async with session_factory() as session:
         messages = [
             {
                 "item_hash": result.item_hash,
@@ -30,7 +30,7 @@ async def get_programs_on_message(request: web.Request) -> web.Response:
                     "on": {"message": result.message_subscriptions},
                 },
             }
-            for result in get_programs_triggered_by_messages(
+            for result in await get_programs_triggered_by_messages(
                 session=session, sort_order=query.sort_order
             )
         ]

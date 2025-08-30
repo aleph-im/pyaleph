@@ -4,8 +4,9 @@ from typing import Collection, Iterable, Optional, Tuple, Union
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import Row
+from sqlalchemy.orm import selectinload
 
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 from aleph.types.files import FileTag, FileType
 from aleph.types.sort_order import SortOrder
 from aleph.utils import make_file_tag
@@ -22,11 +23,13 @@ from ..models.files import (
 )
 
 
-def is_pinned_file(session: DbSession, file_hash: str) -> bool:
-    return FilePinDb.exists(session=session, where=FilePinDb.file_hash == file_hash)
+async def is_pinned_file(session: AsyncDbSession, file_hash: str) -> bool:
+    return await FilePinDb.exists(
+        session=session, where=FilePinDb.file_hash == file_hash
+    )
 
 
-def get_unpinned_files(session: DbSession) -> Iterable[StoredFileDb]:
+async def get_unpinned_files(session: AsyncDbSession) -> Iterable[StoredFileDb]:
     """
     Returns the list of files that are not pinned by a message or an on-chain transaction.
     """
@@ -35,11 +38,11 @@ def get_unpinned_files(session: DbSession) -> Iterable[StoredFileDb]:
         .join(FilePinDb, StoredFileDb.hash == FilePinDb.file_hash, isouter=True)
         .where(FilePinDb.id.is_(None))
     )
-    return session.execute(select_stmt).scalars()
+    return (await session.execute(select_stmt)).scalars()
 
 
-def upsert_tx_file_pin(
-    session: DbSession, file_hash: str, tx_hash: str, created: dt.datetime
+async def upsert_tx_file_pin(
+    session: AsyncDbSession, file_hash: str, tx_hash: str, created: dt.datetime
 ) -> None:
     upsert_stmt = (
         insert(TxFilePinDb)
@@ -48,11 +51,11 @@ def upsert_tx_file_pin(
         )
         .on_conflict_do_nothing()
     )
-    session.execute(upsert_stmt)
+    await session.execute(upsert_stmt)
 
 
-def insert_content_file_pin(
-    session: DbSession,
+async def insert_content_file_pin(
+    session: AsyncDbSession,
     file_hash: str,
     owner: str,
     item_hash: str,
@@ -65,11 +68,11 @@ def insert_content_file_pin(
         type=FilePinType.CONTENT,
         created=created,
     )
-    session.execute(insert_stmt)
+    await session.execute(insert_stmt)
 
 
-def insert_message_file_pin(
-    session: DbSession,
+async def insert_message_file_pin(
+    session: AsyncDbSession,
     file_hash: str,
     owner: str,
     item_hash: str,
@@ -84,32 +87,34 @@ def insert_message_file_pin(
         ref=ref,
         created=created,
     )
-    session.execute(insert_stmt)
+    await session.execute(insert_stmt)
 
 
-def count_file_pins(session: DbSession, file_hash: str) -> int:
+async def count_file_pins(session: AsyncDbSession, file_hash: str) -> int:
     select_count_stmt = select(func.count()).select_from(
         select(FilePinDb).where(FilePinDb.file_hash == file_hash).subquery()
     )
-    return session.execute(select_count_stmt).scalar_one()
+    return (await session.execute(select_count_stmt)).scalar_one()
 
 
-def find_file_pins(session: DbSession, item_hashes: Collection[str]) -> Iterable[str]:
+async def find_file_pins(
+    session: AsyncDbSession, item_hashes: Collection[str]
+) -> Iterable[str]:
     select_stmt = select(MessageFilePinDb.item_hash).where(
         MessageFilePinDb.item_hash.in_(item_hashes)
     )
-    return session.execute(select_stmt).scalars()
+    return (await session.execute(select_stmt)).scalars()
 
 
-def delete_file_pin(session: DbSession, item_hash: str) -> None:
+async def delete_file_pin(session: AsyncDbSession, item_hash: str) -> None:
     delete_stmt = delete(MessageFilePinDb).where(
         MessageFilePinDb.item_hash == item_hash
     )
-    session.execute(delete_stmt)
+    await session.execute(delete_stmt)
 
 
-def insert_grace_period_file_pin(
-    session: DbSession,
+async def insert_grace_period_file_pin(
+    session: AsyncDbSession,
     file_hash: str,
     created: dt.datetime,
     delete_by: dt.datetime,
@@ -126,12 +131,12 @@ def insert_grace_period_file_pin(
         type=FilePinType.GRACE_PERIOD,
         delete_by=delete_by,
     )
-    session.execute(insert_stmt)
+    await session.execute(insert_stmt)
 
 
 # TODO: Improve performance
-def update_file_pin_grace_period(
-    session: DbSession,
+async def update_file_pin_grace_period(
+    session: AsyncDbSession,
     item_hash: str,
     delete_by: Union[dt.datetime, None],
 ) -> None:
@@ -147,13 +152,13 @@ def update_file_pin_grace_period(
             )
         )
 
-        grace_period = session.execute(delete_stmt).first()
+        grace_period = (await session.execute(delete_stmt)).first()
         if grace_period is None:
             return
 
         file_hash, owner, ref, created = grace_period
 
-        insert_message_file_pin(
+        await insert_message_file_pin(
             session=session,
             item_hash=item_hash,
             file_hash=file_hash,
@@ -173,13 +178,13 @@ def update_file_pin_grace_period(
             )
         )
 
-        message_pin = session.execute(delete_stmt).first()
+        message_pin = (await session.execute(delete_stmt)).first()
         if message_pin is None:
             return
 
         file_hash, owner, ref, created = message_pin
 
-        insert_grace_period_file_pin(
+        await insert_grace_period_file_pin(
             session=session,
             item_hash=item_hash,
             file_hash=file_hash,
@@ -189,7 +194,7 @@ def update_file_pin_grace_period(
             delete_by=delete_by,
         )
 
-    refresh_file_tag(
+    await refresh_file_tag(
         session=session,
         tag=make_file_tag(
             owner=owner,
@@ -199,22 +204,32 @@ def update_file_pin_grace_period(
     )
 
 
-def delete_grace_period_file_pins(session: DbSession, datetime: dt.datetime) -> None:
+async def delete_grace_period_file_pins(
+    session: AsyncDbSession, datetime: dt.datetime
+) -> None:
     delete_stmt = delete(GracePeriodFilePinDb).where(
         GracePeriodFilePinDb.delete_by < datetime
     )
-    session.execute(delete_stmt)
+    await session.execute(delete_stmt)
 
 
-def get_message_file_pin(
-    session: DbSession, item_hash: str
+async def get_message_file_pin(
+    session: AsyncDbSession, item_hash: str
 ) -> Optional[MessageFilePinDb]:
-    return session.execute(
-        select(MessageFilePinDb).where(MessageFilePinDb.item_hash == item_hash)
-    ).scalar_one_or_none()
+    stmt = (
+        select(MessageFilePinDb)
+        .options(
+            selectinload(MessageFilePinDb.file)
+        )  # select in load to avoid lazy loads / implicit IO
+        .where(MessageFilePinDb.item_hash == item_hash)
+    )
+
+    return (await session.execute(stmt)).scalar_one_or_none()
 
 
-def get_address_files_stats(session: DbSession, owner: str) -> Tuple[int, int]:
+async def get_address_files_stats(
+    session: AsyncDbSession, owner: str
+) -> Tuple[int, int]:
     select_stmt = (
         select(
             func.count().label("nb_files"),
@@ -224,12 +239,12 @@ def get_address_files_stats(session: DbSession, owner: str) -> Tuple[int, int]:
         .join(StoredFileDb, MessageFilePinDb.file_hash == StoredFileDb.hash)
         .where(MessageFilePinDb.owner == owner)
     )
-    result = session.execute(select_stmt).one()
+    result = (await session.execute(select_stmt)).one()
     return result.nb_files, result.total_size
 
 
-def get_address_files_for_api(
-    session: DbSession,
+async def get_address_files_for_api(
+    session: AsyncDbSession,
     owner: str,
     pagination: int = 0,
     page: int = 1,
@@ -263,48 +278,67 @@ def get_address_files_for_api(
 
     select_stmt = select_stmt.order_by(*order_by_columns)
 
-    return session.execute(select_stmt).all()
+    return (await session.execute(select_stmt)).all()
 
 
-def upsert_file(session: DbSession, file_hash: str, size: int, file_type: FileType):
+async def upsert_file(
+    session: AsyncDbSession, file_hash: str, size: int, file_type: FileType
+):
     upsert_file_stmt = (
         insert(StoredFileDb)
         .values(hash=file_hash, size=size, type=file_type)
         .on_conflict_do_nothing(constraint="files_pkey")
     )
-    session.execute(upsert_file_stmt)
+    await session.execute(upsert_file_stmt)
 
 
-def get_file(session: DbSession, file_hash: str) -> Optional[StoredFileDb]:
-    select_stmt = select(StoredFileDb).where(StoredFileDb.hash == file_hash)
-    return session.execute(select_stmt).scalar_one_or_none()
+async def get_file(session: AsyncDbSession, file_hash: str) -> Optional[StoredFileDb]:
+    select_stmt = (
+        select(StoredFileDb)
+        .options(
+            selectinload(StoredFileDb.pins),
+            selectinload(StoredFileDb.tags),
+        )
+        .where(StoredFileDb.hash == file_hash)
+    )
+    return (await session.execute(select_stmt)).scalar_one_or_none()
 
 
-def delete_file(session: DbSession, file_hash: str) -> None:
+async def delete_file(session: AsyncDbSession, file_hash: str) -> None:
     delete_stmt = delete(StoredFileDb).where(StoredFileDb.hash == file_hash)
-    session.execute(delete_stmt)
+    await session.execute(delete_stmt)
 
 
-def get_file_tag(session: DbSession, tag: FileTag) -> Optional[FileTagDb]:
-    select_stmt = select(FileTagDb).where(FileTagDb.tag == tag)
-    return session.execute(select_stmt).scalar()
+async def get_file_tag(session: AsyncDbSession, tag: FileTag) -> Optional[FileTagDb]:
+    select_stmt = (
+        select(FileTagDb)
+        .options(
+            selectinload(FileTagDb.file)
+        )  # Avoid lazy load / Implicit IO https://docs.sqlalchemy.org/en/14/orm/extensions/asyncio.html#preventing-implicit-io-when-using-asyncsession
+        .where(FileTagDb.tag == tag)
+    )
+    return (await session.execute(select_stmt)).scalar_one_or_none()
 
 
-def file_pin_exists(session: DbSession, item_hash: str) -> bool:
-    return FilePinDb.exists(session=session, where=FilePinDb.item_hash == item_hash)
+async def file_pin_exists(session: AsyncDbSession, item_hash: str) -> bool:
+    return await FilePinDb.exists(
+        session=session, where=FilePinDb.item_hash == item_hash
+    )
 
 
-def file_tag_exists(session: DbSession, tag: FileTag) -> bool:
-    return FileTagDb.exists(session=session, where=FileTagDb.tag == tag)
+async def file_tag_exists(session: AsyncDbSession, tag: FileTag) -> bool:
+    return await FileTagDb.exists(session=session, where=FileTagDb.tag == tag)
 
 
-def find_file_tags(session: DbSession, tags: Collection[FileTag]) -> Iterable[FileTag]:
+async def find_file_tags(
+    session: AsyncDbSession, tags: Collection[FileTag]
+) -> Iterable[FileTag]:
     select_stmt = select(FileTagDb.tag).where(FileTagDb.tag.in_(tags))
-    return session.execute(select_stmt).scalars()
+    return (await session.execute(select_stmt)).scalars()
 
 
-def upsert_file_tag(
-    session: DbSession,
+async def upsert_file_tag(
+    session: AsyncDbSession,
     tag: FileTag,
     owner: str,
     file_hash: str,
@@ -318,10 +352,10 @@ def upsert_file_tag(
         set_={"file_hash": file_hash, "last_updated": last_updated},
         where=FileTagDb.last_updated < last_updated,
     )
-    session.execute(upsert_stmt)
+    await session.execute(upsert_stmt)
 
 
-def refresh_file_tag(session: DbSession, tag: FileTag) -> None:
+async def refresh_file_tag(session: AsyncDbSession, tag: FileTag) -> None:
     coalesced_ref = func.coalesce(MessageFilePinDb.ref, MessageFilePinDb.item_hash)
     select_latest_file_pin_stmt = (
         select(
@@ -352,5 +386,5 @@ def refresh_file_tag(session: DbSession, tag: FileTag) -> None:
             "last_updated": insert_stmt.excluded.last_updated,
         },
     )
-    session.execute(delete(FileTagDb).where(FileTagDb.tag == tag))
-    session.execute(upsert_stmt)
+    await session.execute(delete(FileTagDb).where(FileTagDb.tag == tag))
+    await session.execute(upsert_stmt)

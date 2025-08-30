@@ -12,12 +12,12 @@ from aleph.db.models import PostDb
 from aleph.handlers.content.post import PostMessageHandler
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 
 @pytest.mark.asyncio
 async def test_process_post_and_amend(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     mock_config: Config,
     message_processor: PendingMessageProcessor,
     fixture_post_messages: List[Dict],
@@ -29,9 +29,9 @@ async def test_process_post_and_amend(
     original_hash = "9f02e3b5efdbdc0b487359117ae3af40db654892487feae452689a0b84dc1025"
     amend_hash = "93776ad67063b955869a7fa705ea2987add39486e1ed5951e9842291cf0f566c"
 
-    with session_factory() as session:
+    async with session_factory() as session:
         # We should now have one post
-        post = get_post(session=session, item_hash=original_hash)
+        post = await get_post(session=session, item_hash=original_hash)
 
     fixtures_by_item_hash = {m["item_hash"]: m for m in fixture_post_messages}
     original = fixtures_by_item_hash[original_hash]
@@ -51,7 +51,7 @@ async def test_process_post_and_amend(
 
 @pytest.mark.asyncio
 async def test_forget_original_post(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     mock_config: Config,
     message_processor: PendingMessageProcessor,
     fixture_post_messages: List[Dict],
@@ -66,8 +66,8 @@ async def test_forget_original_post(
     content_handler = PostMessageHandler(
         balances_addresses=[], balances_post_type="no-balances-today"
     )
-    with session_factory() as session:
-        original_message = get_message_by_item_hash(
+    async with session_factory() as session:
+        original_message = await get_message_by_item_hash(
             session=session, item_hash=ItemHash(original_hash)
         )
         assert original_message is not None
@@ -75,9 +75,9 @@ async def test_forget_original_post(
             session=session,
             message=original_message,
         )
-        session.commit()
+        await session.commit()
 
         assert additional_hashes_to_forget == {amend_hash}
 
-        posts = list(session.execute(select(PostDb)).scalars())
+        posts = list((await session.execute(select(PostDb))).scalars())
         assert posts == []

@@ -22,7 +22,7 @@ from aleph.db.models import ChainTxDb, MessageDb, MessageStatusDb, message_confi
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.channel import Channel
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 from aleph.types.message_status import MessageStatus
 
 
@@ -66,14 +66,14 @@ def assert_messages_equal(expected: MessageDb, actual: MessageDb):
 
 @pytest.mark.asyncio
 async def test_get_message(
-    session_factory: DbSessionFactory, fixture_message: MessageDb
+    session_factory: AsyncDbSessionFactory, fixture_message: MessageDb
 ):
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(fixture_message)
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        fetched_message = get_message_by_item_hash(
+    async with session_factory() as session:
+        fetched_message = await get_message_by_item_hash(
             session=session, item_hash=ItemHash(fixture_message.item_hash)
         )
 
@@ -87,7 +87,7 @@ async def test_get_message(
 
 @pytest.mark.asyncio
 async def test_get_message_with_confirmations(
-    session_factory: DbSessionFactory, fixture_message: MessageDb
+    session_factory: AsyncDbSessionFactory, fixture_message: MessageDb
 ):
     confirmations = [
         ChainTxDb(
@@ -114,12 +114,12 @@ async def test_get_message_with_confirmations(
 
     fixture_message.confirmations = confirmations
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(fixture_message)
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        fetched_message = get_message_by_item_hash(
+    async with session_factory() as session:
+        fetched_message = await get_message_by_item_hash(
             session=session, item_hash=ItemHash(fixture_message.item_hash)
         )
 
@@ -141,43 +141,47 @@ async def test_get_message_with_confirmations(
 
 
 @pytest.mark.asyncio
-async def test_message_exists(session_factory: DbSessionFactory, fixture_message):
-    with session_factory() as session:
-        assert not message_exists(session=session, item_hash=fixture_message.item_hash)
+async def test_message_exists(session_factory: AsyncDbSessionFactory, fixture_message):
+    async with session_factory() as session:
+        assert not await message_exists(
+            session=session, item_hash=fixture_message.item_hash
+        )
 
         session.add(fixture_message)
-        session.commit()
+        await session.commit()
 
-        assert message_exists(session=session, item_hash=fixture_message.item_hash)
+        assert await message_exists(
+            session=session, item_hash=fixture_message.item_hash
+        )
 
 
 @pytest.mark.asyncio
 async def test_message_count(
-    session_factory: DbSessionFactory, fixture_message: MessageDb
+    session_factory: AsyncDbSessionFactory, fixture_message: MessageDb
 ):
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(fixture_message)
-        session.commit()
+        await session.commit()
 
         # Analyze updates the table size estimate
-        session.execute(text("analyze messages"))
-        session.commit()
+        await session.execute(text("analyze messages"))
+        await session.commit()
 
-    with session_factory() as session:
-        exact_count = MessageDb.count(session)
+    async with session_factory() as session:
+        exact_count = await MessageDb.count(session)
         assert exact_count == 1
 
-        estimate_count = MessageDb.estimate_count(session)
+        estimate_count = await MessageDb.estimate_count(session)
         assert isinstance(estimate_count, int)
         assert estimate_count == 1
 
-        fast_count = MessageDb.fast_count(session)
+        fast_count = await MessageDb.fast_count(session)
         assert fast_count == 1
 
 
 @pytest.mark.asyncio
 async def test_upsert_query_confirmation(
-    session_factory: DbSessionFactory, fixture_message: MessageDb
+    session_factory: AsyncDbSessionFactory, fixture_message: MessageDb
 ):
     item_hash = fixture_message.item_hash
 
@@ -196,31 +200,35 @@ async def test_upsert_query_confirmation(
         item_hash=item_hash, tx_hash=chain_tx.hash
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(fixture_message)
         session.add(chain_tx)
-        session.commit()
+        await session.commit()
 
     # Insert
-    with session_factory() as session:
-        session.execute(upsert_stmt)
-        session.commit()
+    async with session_factory() as session:
+        await session.execute(upsert_stmt)
+        await session.commit()
 
-        confirmation_db = session.execute(
-            select(message_confirmations).where(
-                message_confirmations.c.item_hash == item_hash
+        confirmation_db = (
+            await session.execute(
+                select(message_confirmations).where(
+                    message_confirmations.c.item_hash == item_hash
+                )
             )
         ).one()
         assert confirmation_db.tx_hash == chain_tx.hash
 
     # Upsert
-    with session_factory() as session:
-        session.execute(upsert_stmt)
-        session.commit()
+    async with session_factory() as session:
+        await session.execute(upsert_stmt)
+        await session.commit()
 
-        confirmation_db = session.execute(
-            select(message_confirmations).where(
-                message_confirmations.c.item_hash == item_hash
+        confirmation_db = (
+            await session.execute(
+                select(message_confirmations).where(
+                    message_confirmations.c.item_hash == item_hash
+                )
             )
         ).one()
         assert confirmation_db.tx_hash == chain_tx.hash
@@ -228,22 +236,22 @@ async def test_upsert_query_confirmation(
 
 @pytest.mark.asyncio
 async def test_upsert_query_message(
-    session_factory: DbSessionFactory, fixture_message: MessageDb
+    session_factory: AsyncDbSessionFactory, fixture_message: MessageDb
 ):
     message = copy(fixture_message)
     message.time = fixture_message.time - dt.timedelta(seconds=1)
 
     upsert_stmt = make_message_upsert_query(message)
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(message)
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        session.execute(upsert_stmt)
-        session.commit()
+    async with session_factory() as session:
+        await session.execute(upsert_stmt)
+        await session.commit()
 
-        message_db = get_message_by_item_hash(
+        message_db = await get_message_by_item_hash(
             session=session, item_hash=ItemHash(message.item_hash)
         )
 
@@ -253,9 +261,9 @@ async def test_upsert_query_message(
 
 @pytest.mark.asyncio
 async def test_get_unconfirmed_messages(
-    session_factory: DbSessionFactory, fixture_message: MessageDb
+    session_factory: AsyncDbSessionFactory, fixture_message: MessageDb
 ):
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(fixture_message)
         session.add(
             MessageStatusDb(
@@ -264,10 +272,10 @@ async def test_get_unconfirmed_messages(
                 reception_time=fixture_message.time,
             )
         )
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        unconfirmed_messages = list(get_unconfirmed_messages(session))
+    async with session_factory() as session:
+        unconfirmed_messages = list(await get_unconfirmed_messages(session))
 
     assert len(unconfirmed_messages) == 1
     assert_messages_equal(fixture_message, unconfirmed_messages[0])
@@ -283,74 +291,76 @@ async def test_get_unconfirmed_messages(
         protocol_version=1,
         content="Qmsomething",
     )
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(tx)
-        session.flush()
-        session.execute(
+        await session.flush()
+        await session.execute(
             insert(message_confirmations).values(
                 item_hash=fixture_message.item_hash, tx_hash=tx.hash
             )
         )
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
+    async with session_factory() as session:
         # Check that the message is now ignored
-        unconfirmed_messages = list(get_unconfirmed_messages(session))
+        unconfirmed_messages = list(await get_unconfirmed_messages(session))
         assert unconfirmed_messages == []
 
         # Check that it is also ignored when the chain parameter is specified
-        unconfirmed_messages = list(get_unconfirmed_messages(session, chain=tx.chain))
+        unconfirmed_messages = list(
+            await get_unconfirmed_messages(session, chain=tx.chain)
+        )
         assert unconfirmed_messages == []
 
         # Check that it reappears if we specify a different chain
         unconfirmed_messages = list(
-            get_unconfirmed_messages(session, chain=Chain.TEZOS)
+            await get_unconfirmed_messages(session, chain=Chain.TEZOS)
         )
         assert len(unconfirmed_messages) == 1
         assert_messages_equal(fixture_message, unconfirmed_messages[0])
 
         # Check that the limit parameter is respected
         unconfirmed_messages = list(
-            get_unconfirmed_messages(session, chain=Chain.TEZOS, limit=0)
+            await get_unconfirmed_messages(session, chain=Chain.TEZOS, limit=0)
         )
         assert unconfirmed_messages == []
 
 
 @pytest.mark.asyncio
 async def test_get_unconfirmed_messages_trusted_messages(
-    session_factory: DbSessionFactory, fixture_message: MessageDb
+    session_factory: AsyncDbSessionFactory, fixture_message: MessageDb
 ):
     fixture_message.signature = None
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(fixture_message)
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        unconfirmed_messages = list(get_unconfirmed_messages(session))
+    async with session_factory() as session:
+        unconfirmed_messages = list(await get_unconfirmed_messages(session))
         assert unconfirmed_messages == []
 
 
 @pytest.mark.asyncio
 async def test_get_distinct_channels(
-    session_factory: DbSessionFactory, fixture_message: MessageDb
+    session_factory: AsyncDbSessionFactory, fixture_message: MessageDb
 ):
     # TODO: improve this test
     #       * use several messages
     #       * test if None if considered as a channel
     #       * test
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(fixture_message)
-        session.commit()
-        channels = list(get_distinct_channels(session=session))
+        await session.commit()
+        channels = list(await get_distinct_channels(session=session))
 
     assert channels == [fixture_message.channel]
 
 
 @pytest.mark.asyncio
 async def test_forget_message(
-    session_factory: DbSessionFactory, fixture_message: MessageDb
+    session_factory: AsyncDbSessionFactory, fixture_message: MessageDb
 ):
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(fixture_message)
         session.add(
             MessageStatusDb(
@@ -359,34 +369,34 @@ async def test_forget_message(
                 reception_time=fixture_message.time,
             )
         )
-        session.commit()
+        await session.commit()
 
     forget_message_hash = (
         "d06251c954d4c75476c749e80b8f2a4962d20282b28b3e237e30b0a76157df2d"
     )
 
-    with session_factory() as session:
-        forget_message(
+    async with session_factory() as session:
+        await forget_message(
             session=session,
             item_hash=fixture_message.item_hash,
             forget_message_hash=forget_message_hash,
         )
-        session.commit()
+        await session.commit()
 
-        message_status = get_message_status(
+        message_status = await get_message_status(
             session=session, item_hash=ItemHash(fixture_message.item_hash)
         )
         assert message_status
         assert message_status.status == MessageStatus.FORGOTTEN
 
         # Assert that the message is not present in messages anymore
-        message = get_message_by_item_hash(
+        message = await get_message_by_item_hash(
             session=session, item_hash=ItemHash(fixture_message.item_hash)
         )
         assert message is None
 
         # Assert that the metadata was inserted properly in forgotten_messages
-        forgotten_message = get_forgotten_message(
+        forgotten_message = await get_forgotten_message(
             session=session, item_hash=ItemHash(fixture_message.item_hash)
         )
         assert forgotten_message
@@ -406,14 +416,14 @@ async def test_forget_message(
             "2aa1f44199181110e0c6b79ccc5e40ceaf20eac791dcfcd1b4f8f2f32b2d8502"
         )
 
-        append_to_forgotten_by(
+        await append_to_forgotten_by(
             session=session,
             forgotten_message_hash=fixture_message.item_hash,
             forget_message_hash=new_forget_message_hash,
         )
-        session.commit()
+        await session.commit()
 
-        forgotten_message = get_forgotten_message(
+        forgotten_message = await get_forgotten_message(
             session=session, item_hash=fixture_message.item_hash
         )
         assert forgotten_message

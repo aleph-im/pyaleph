@@ -27,7 +27,7 @@ from aleph.handlers.content.vm import VmMessageHandler
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 from aleph.types.files import FileType
 from aleph.types.message_processing_result import ProcessedMessage, RejectedMessage
 from aleph.types.message_status import MessageStatus
@@ -53,7 +53,7 @@ def forget_handler(mocker) -> ForgetMessageHandler:
 
 @pytest.mark.asyncio
 async def test_forget_post_message(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     message_processor: PendingMessageProcessor,
     mock_config: Config,
 ):
@@ -100,7 +100,7 @@ async def test_forget_post_message(
         forget_message_dict, reception_time=dt.datetime(2022, 1, 2), fetched=True
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         target_message_result = one(
             await process_pending_messages(
                 message_processor=message_processor,
@@ -112,7 +112,9 @@ async def test_forget_post_message(
         target_message = target_message_result.message
 
         # Sanity check
-        post = get_post(session=session, item_hash=ItemHash(target_message.item_hash))
+        post = await get_post(
+            session=session, item_hash=ItemHash(target_message.item_hash)
+        )
         assert post
 
         # Now process, the forget message
@@ -127,31 +129,33 @@ async def test_forget_post_message(
         assert isinstance(forget_message_result, ProcessedMessage)
         forget_message = forget_message_result.message
 
-        target_message_status = get_message_status(
+        target_message_status = await get_message_status(
             session=session, item_hash=ItemHash(target_message.item_hash)
         )
         assert target_message_status
         assert target_message_status.status == MessageStatus.FORGOTTEN
 
-        forget_message_status = get_message_status(
+        forget_message_status = await get_message_status(
             session=session, item_hash=ItemHash(forget_message.item_hash)
         )
         assert forget_message_status
         assert forget_message_status.status == MessageStatus.PROCESSED
 
-        forgotten_message = get_forgotten_message(
+        forgotten_message = await get_forgotten_message(
             session=session, item_hash=ItemHash(target_message.item_hash)
         )
         assert forgotten_message
 
         # Check that the post was deleted
-        post = get_post(session=session, item_hash=ItemHash(target_message.item_hash))
+        post = await get_post(
+            session=session, item_hash=ItemHash(target_message.item_hash)
+        )
         assert post is None
 
 
 @pytest.mark.asyncio
 async def test_forget_store_message(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     message_processor: PendingMessageProcessor,
     mock_config: Config,
     fixture_product_prices_aggregate_in_db,
@@ -199,7 +203,7 @@ async def test_forget_store_message(
         content=b"Test",
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         target_message_result = one(
             await process_pending_messages(
                 message_processor=message_processor,
@@ -210,7 +214,7 @@ async def test_forget_store_message(
         assert isinstance(target_message_result, ProcessedMessage)
 
         # Sanity check
-        nb_references = count_file_pins(session=session, file_hash=file_hash)
+        nb_references = await count_file_pins(session=session, file_hash=file_hash)
         assert nb_references == 1
 
         forget_message_result = one(
@@ -223,7 +227,7 @@ async def test_forget_store_message(
         assert isinstance(forget_message_result, ProcessedMessage)
 
         # Check that the file is pinned with a grace period
-        file = get_file(session=session, file_hash=file_hash)
+        file = await get_file(session=session, file_hash=file_hash)
         assert file
         assert file.pins
 
@@ -233,7 +237,7 @@ async def test_forget_store_message(
 
 @pytest.mark.asyncio
 async def test_forget_forget_message(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     message_processor: PendingMessageProcessor,
     mock_config: Config,
 ):
@@ -280,7 +284,7 @@ async def test_forget_forget_message(
         reception_time=dt.datetime(2022, 1, 2),
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(target_message)
         session.add(
             MessageStatusDb(
@@ -289,7 +293,7 @@ async def test_forget_forget_message(
                 reception_time=dt.datetime(2022, 1, 1),
             )
         )
-        session.commit()
+        await session.commit()
 
         processed_message_results = list(
             await process_pending_messages(
@@ -303,13 +307,13 @@ async def test_forget_forget_message(
         for result in processed_message_results:
             assert isinstance(result, RejectedMessage)
 
-        target_message_status = get_message_status(
+        target_message_status = await get_message_status(
             session=session, item_hash=ItemHash(target_message.item_hash)
         )
         assert target_message_status
         assert target_message_status.status == MessageStatus.PROCESSED
 
-        forget_message_status = get_message_status(
+        forget_message_status = await get_message_status(
             session=session, item_hash=ItemHash(pending_forget_message.item_hash)
         )
         assert forget_message_status
@@ -318,7 +322,7 @@ async def test_forget_forget_message(
 
 @pytest.mark.asyncio
 async def test_forget_store_multi_users(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     message_processor: PendingMessageProcessor,
     mock_config: Config,
 ):
@@ -398,7 +402,7 @@ async def test_forget_store_multi_users(
     storage_engine = message_processor.message_handler.storage_service.storage_engine
     await storage_engine.write(filename=file_hash, content=file_content)
 
-    with session_factory() as session:
+    async with session_factory() as session:
         # Add messages, file references, etc
         session.add(store_message_user1)
         session.add(store_message_user2)
@@ -450,20 +454,22 @@ async def test_forget_store_multi_users(
         )
         assert isinstance(forget_message_result, ProcessedMessage)
 
-        message1_status = get_message_status(
+        message1_status = await get_message_status(
             session=session, item_hash=ItemHash(store_message_user1.item_hash)
         )
         assert message1_status
         assert message1_status.status == MessageStatus.FORGOTTEN
 
         # Check that the second message and its linked objects are still there
-        message2_status = get_message_status(
+        message2_status = await get_message_status(
             session=session, item_hash=ItemHash(store_message_user2.item_hash)
         )
         assert message2_status
         assert message2_status.status == MessageStatus.PROCESSED
-        file_pin = session.execute(
-            select(FilePinDb).where(FilePinDb.file_hash == file_hash)
+        file_pin = (
+            await session.execute(
+                select(FilePinDb).where(FilePinDb.file_hash == file_hash)
+            )
         ).scalar_one()
         assert file_pin.item_hash == store_message_user2.item_hash
         assert file_pin.owner == store_message_user2.sender
@@ -475,7 +481,7 @@ async def test_forget_store_multi_users(
 
 @pytest.mark.asyncio
 async def test_forget_store_message_dependent(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     message_processor: PendingMessageProcessor,
     mock_config: Config,
     fixture_product_prices_aggregate_in_db,
@@ -562,7 +568,7 @@ async def test_forget_store_message_dependent(
         content=b"Runtime",
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         target_message_result = one(
             await process_pending_messages(
                 message_processor=message_processor,
@@ -592,7 +598,7 @@ async def test_forget_store_message_dependent(
         assert isinstance(target_message_result2, ProcessedMessage)
 
         # Sanity check
-        nb_references = count_file_pins(session=session, file_hash=file_hash)
+        nb_references = await count_file_pins(session=session, file_hash=file_hash)
         assert nb_references == 1
 
         forget_message_result = one(
@@ -606,5 +612,5 @@ async def test_forget_store_message_dependent(
         assert forget_message_result.error_code == 503
 
         # Check that the file continues pinned with a grace period
-        nb_references = count_file_pins(session=session, file_hash=file_hash)
+        nb_references = await count_file_pins(session=session, file_hash=file_hash)
         assert nb_references == 1

@@ -54,7 +54,7 @@ from aleph.handlers.content.content_handler import ContentHandler
 from aleph.services.cost import get_total_and_detailed_costs
 from aleph.toolkit.costs import are_store_and_program_free
 from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 from aleph.types.files import FileTag
 from aleph.types.message_status import (
     InsufficientBalanceException,
@@ -241,8 +241,8 @@ def vm_message_to_db(message: MessageDb) -> VmBaseDb:
     return vm
 
 
-def find_missing_volumes(
-    session: DbSession, content: ExecutableContent
+async def find_missing_volumes(
+    session: AsyncDbSession, content: ExecutableContent
 ) -> Set[FileTag]:
     tags_to_check = set()
     pins_to_check = set()
@@ -273,18 +273,18 @@ def find_missing_volumes(
     # For each volume, if use_latest is set check the tags and otherwise check
     # the file pins.
 
-    file_tags_db = set(find_file_tags(session=session, tags=tags_to_check))
-    file_pins_db = set(find_file_pins(session=session, item_hashes=pins_to_check))
+    file_tags_db = set(await find_file_tags(session=session, tags=tags_to_check))
+    file_pins_db = set(await find_file_pins(session=session, item_hashes=pins_to_check))
 
     return (pins_to_check - file_pins_db) | (tags_to_check - file_tags_db)
 
 
-def check_parent_volumes_size_requirements(
-    session: DbSession, content: ExecutableContent
+async def check_parent_volumes_size_requirements(
+    session: AsyncDbSession, content: ExecutableContent
 ) -> None:
-    def _get_parent_volume_file(_parent: ParentVolume) -> StoredFileDb:
+    async def _get_parent_volume_file(_parent: ParentVolume) -> StoredFileDb:
         if _parent.use_latest:
-            file_tag = get_file_tag(session=session, tag=FileTag(_parent.ref))
+            file_tag = await get_file_tag(session=session, tag=FileTag(_parent.ref))
             if file_tag is None:
                 raise InternalError(
                     f"Could not find latest version of parent volume {_parent.ref}"
@@ -292,7 +292,7 @@ def check_parent_volumes_size_requirements(
 
             return file_tag.file
 
-        file_pin = get_message_file_pin(session=session, item_hash=_parent.ref)
+        file_pin = await get_message_file_pin(session=session, item_hash=_parent.ref)
         if file_pin is None:
             raise InternalError(
                 f"Could not find original version of parent volume {_parent.ref}"
@@ -315,7 +315,7 @@ def check_parent_volumes_size_requirements(
 
     for volume in volumes_with_parent:
         if volume.parent:
-            volume_metadata = _get_parent_volume_file(volume.parent)
+            volume_metadata = await _get_parent_volume_file(volume.parent)
             volume_size = volume.size_mib * 1024 * 1024
             if volume_size < volume_metadata.size:
                 raise VmVolumeTooSmall(
@@ -337,11 +337,11 @@ class VmMessageHandler(ContentHandler):
     """
 
     async def check_balance(
-        self, session: DbSession, message: MessageDb
+        self, session: AsyncDbSession, message: MessageDb
     ) -> List[AccountCostsDb]:
         content = _get_vm_content(message)
 
-        message_cost, costs = get_total_and_detailed_costs(
+        message_cost, costs = await get_total_and_detailed_costs(
             session, content, message.item_hash
         )
 
@@ -357,8 +357,10 @@ class VmMessageHandler(ContentHandler):
             return costs
 
         # NOTE: Instances and persistent Programs being paid by HOLD are the only ones being checked for now
-        current_balance = get_total_balance(address=content.address, session=session)
-        current_cost = get_total_cost_for_address(
+        current_balance = await get_total_balance(
+            address=content.address, session=session
+        )
+        current_cost = await get_total_cost_for_address(
             session=session, address=content.address
         )
 
@@ -372,25 +374,27 @@ class VmMessageHandler(ContentHandler):
 
         return costs
 
-    async def check_dependencies(self, session: DbSession, message: MessageDb) -> None:
+    async def check_dependencies(
+        self, session: AsyncDbSession, message: MessageDb
+    ) -> None:
         content = _get_vm_content(message)
 
-        missing_volumes = find_missing_volumes(session=session, content=content)
+        missing_volumes = await find_missing_volumes(session=session, content=content)
         if missing_volumes:
             raise VmVolumeNotFound([volume for volume in missing_volumes])
 
-        check_parent_volumes_size_requirements(session=session, content=content)
+        await check_parent_volumes_size_requirements(session=session, content=content)
 
         # Check dependencies if the message updates an existing instance/program
         if (ref := content.replaces) is not None:
-            original_program = get_program(session=session, item_hash=ref)
+            original_program = await get_program(session=session, item_hash=ref)
             if original_program is None:
                 raise VmRefNotFound(ref)
 
             if original_program.replaces is not None:
                 raise VmCannotUpdateUpdate()
 
-            is_amend_allowed = is_vm_amend_allowed(session=session, vm_hash=ref)
+            is_amend_allowed = await is_vm_amend_allowed(session=session, vm_hash=ref)
             if is_amend_allowed is None:
                 raise InternalError(f"Could not find current version of program {ref}")
 
@@ -398,12 +402,12 @@ class VmMessageHandler(ContentHandler):
                 raise VmUpdateNotAllowed()
 
     @staticmethod
-    async def process_vm_message(session: DbSession, message: MessageDb):
+    async def process_vm_message(session: AsyncDbSession, message: MessageDb):
         vm = vm_message_to_db(message)
         session.add(vm)
 
         program_ref = vm.replaces or vm.item_hash
-        upsert_vm_version(
+        await upsert_vm_version(
             session=session,
             vm_hash=vm.item_hash,
             owner=vm.owner,
@@ -411,24 +415,26 @@ class VmMessageHandler(ContentHandler):
             last_updated=vm.created,
         )
 
-    async def process(self, session: DbSession, messages: List[MessageDb]) -> None:
+    async def process(self, session: AsyncDbSession, messages: List[MessageDb]) -> None:
         for message in messages:
             await self.process_vm_message(session=session, message=message)
 
-    async def forget_message(self, session: DbSession, message: MessageDb) -> Set[str]:
+    async def forget_message(
+        self, session: AsyncDbSession, message: MessageDb
+    ) -> Set[str]:
         content = _get_vm_content(message)
 
         LOGGER.debug("Deleting program %s...", message.item_hash)
 
-        delete_vm(session=session, vm_hash=message.item_hash)
+        await delete_vm(session=session, vm_hash=message.item_hash)
 
         if content.replaces:
             update_hashes = set()
         else:
             update_hashes = set(
-                delete_vm_updates(session=session, vm_hash=message.item_hash)
+                await delete_vm_updates(session=session, vm_hash=message.item_hash)
             )
 
-        refresh_vm_version(session=session, vm_hash=message.item_hash)
+        await refresh_vm_version(session=session, vm_hash=message.item_hash)
 
         return update_hashes

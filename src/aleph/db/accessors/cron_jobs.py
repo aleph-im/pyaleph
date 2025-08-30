@@ -4,28 +4,30 @@ from typing import List, Optional
 from sqlalchemy import delete, select, update
 
 from aleph.db.models.cron_jobs import CronJobDb
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 
 
-def get_cron_jobs(session: DbSession) -> List[CronJobDb]:
+async def get_cron_jobs(session: AsyncDbSession) -> List[CronJobDb]:
     select_stmt = select(CronJobDb)
 
-    return (session.execute(select_stmt)).scalars().all()
+    return (await session.execute(select_stmt)).scalars().all()
 
 
-def get_cron_job(session: DbSession, id: str) -> Optional[CronJobDb]:
+async def get_cron_job(session: AsyncDbSession, id: str) -> Optional[CronJobDb]:
     select_stmt = select(CronJobDb).where(CronJobDb.id == id)
 
-    return (session.execute(select_stmt)).scalar_one_or_none()
+    return (await session.execute(select_stmt)).scalar_one_or_none()
 
 
-def update_cron_job(session: DbSession, id: str, last_run: dt.datetime) -> None:
+async def update_cron_job(
+    session: AsyncDbSession, id: str, last_run: dt.datetime
+) -> None:
     update_stmt = update(CronJobDb).values(last_run=last_run).where(CronJobDb.id == id)
 
-    session.execute(update_stmt)
+    await session.execute(update_stmt)
 
 
-def delete_cron_job(session: DbSession, id: str) -> None:
+async def delete_cron_job(session: AsyncDbSession, id: str) -> None:
     delete_stmt = delete(CronJobDb).where(CronJobDb.id == id)
 
-    session.execute(delete_stmt)
+    await session.execute(delete_stmt)

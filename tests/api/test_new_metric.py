@@ -4,7 +4,7 @@ from unittest import mock
 import pytest
 import pytest_asyncio
 
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 
 from .conftest import _load_fixtures
 
@@ -15,7 +15,7 @@ def _generate_uri(node_type: str, node_id: str) -> str:
 
 @pytest_asyncio.fixture
 async def fixture_metrics_messages(
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
 ) -> Sequence[Dict[str, Any]]:
     return await _load_fixtures(session_factory, "test-metric.json")
 

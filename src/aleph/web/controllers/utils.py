@@ -22,7 +22,7 @@ from aleph.services.ipfs import IpfsService
 from aleph.services.p2p.pubsub import publish as pub_p2p
 from aleph.toolkit.shield import shielded
 from aleph.toolkit.timestamp import utc_now
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import AsyncDbSession
 from aleph.types.message_status import (
     InvalidMessageException,
     MessageProcessingStatus,
@@ -405,10 +405,12 @@ async def broadcast_and_process_message(
     return status
 
 
-def add_grace_period_for_file(session: DbSession, file_hash: str, hours: int):
+async def add_grace_period_for_file(
+    session: AsyncDbSession, file_hash: str, hours: int
+):
     current_datetime = utc_now()
     delete_by = current_datetime + dt.timedelta(hours=hours)
-    insert_grace_period_file_pin(
+    await insert_grace_period_file_pin(
         session=session,
         file_hash=file_hash,
         created=utc_now(),

@@ -26,7 +26,7 @@ from aleph.db.models import (
     RuntimeDb,
     VmVersionDb,
 )
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 from aleph.types.vms import VmVersion
 
 
@@ -177,13 +177,14 @@ def assert_programs_equal(expected: ProgramDb, actual: ProgramDb):
         assert actual.runtime.comment == expected.runtime.comment
 
 
-def test_program_accessors(
-    session_factory: DbSessionFactory,
+@pytest.mark.asyncio
+async def test_program_accessors(
+    session_factory: AsyncDbSessionFactory,
     original_program: ProgramDb,
     program_update: ProgramDb,
     program_with_many_volumes: ProgramDb,
 ):
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(original_program)
         session.add(program_update)
         session.add(
@@ -203,22 +204,22 @@ def test_program_accessors(
                 last_updated=program_with_many_volumes.created,
             )
         )
-        session.commit()
+        await session.commit()
 
-    with session_factory() as session:
-        original_program_db = get_program(
+    async with session_factory() as session:
+        original_program_db = await get_program(
             session=session, item_hash=original_program.item_hash
         )
         assert original_program_db is not None
         assert_programs_equal(expected=original_program, actual=original_program_db)
 
-        program_update_db = get_program(
+        program_update_db = await get_program(
             session=session, item_hash=program_update.item_hash
         )
         assert program_update_db is not None
         assert_programs_equal(expected=program_update_db, actual=program_update)
 
-        program_with_many_volumes_db = get_program(
+        program_with_many_volumes_db = await get_program(
             session=session, item_hash=program_with_many_volumes.item_hash
         )
         assert program_with_many_volumes_db is not None
@@ -226,75 +227,78 @@ def test_program_accessors(
             expected=program_with_many_volumes_db, actual=program_with_many_volumes
         )
 
-        is_amend_allowed = is_vm_amend_allowed(
+        is_amend_allowed = await is_vm_amend_allowed(
             session=session, vm_hash=original_program.item_hash
         )
         assert is_amend_allowed is False
 
-        is_amend_allowed = is_vm_amend_allowed(
+        is_amend_allowed = await is_vm_amend_allowed(
             session=session, vm_hash=program_with_many_volumes.item_hash
         )
         assert is_amend_allowed is True
 
 
-def test_refresh_program(
-    session_factory: DbSessionFactory,
+@pytest.mark.asyncio
+async def test_refresh_program(
+    session_factory: AsyncDbSessionFactory,
     original_program: ProgramDb,
     program_update: ProgramDb,
 ):
     program_hash = original_program.item_hash
 
-    def get_program_version(session) -> Optional[VmVersionDb]:
-        return session.execute(
-            select(VmVersionDb).where(VmVersionDb.vm_hash == program_hash)
+    async def get_program_version(session) -> Optional[VmVersionDb]:
+        return (
+            await session.execute(
+                select(VmVersionDb).where(VmVersionDb.vm_hash == program_hash)
+            )
         ).scalar_one_or_none()
 
     # Insert program version with refresh_program_version
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(original_program)
-        session.commit()
+        await session.commit()
 
-        refresh_vm_version(session=session, vm_hash=program_hash)
-        session.commit()
+        await refresh_vm_version(session=session, vm_hash=program_hash)
+        await session.commit()
 
-        program_version_db = get_program_version(session)
+        program_version_db = await get_program_version(session)
         assert program_version_db is not None
         assert program_version_db.current_version == program_hash
         assert program_version_db.last_updated == original_program.created
 
     # Update the version of the program, program_versions should be updated
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(program_update)
-        session.commit()
+        await session.commit()
 
-        refresh_vm_version(session=session, vm_hash=program_hash)
-        session.commit()
+        await refresh_vm_version(session=session, vm_hash=program_hash)
+        await session.commit()
 
-        program_version_db = get_program_version(session)
+        program_version_db = await get_program_version(session)
         assert program_version_db is not None
         assert program_version_db.current_version == program_update.item_hash
         assert program_version_db.last_updated == program_update.created
 
     # Delete the update, the original should be back in program_versions
-    with session_factory() as session:
-        delete_vm(session=session, vm_hash=program_update.item_hash)
-        session.commit()
+    async with session_factory() as session:
+        await delete_vm(session=session, vm_hash=program_update.item_hash)
+        await session.commit()
 
-        refresh_vm_version(session=session, vm_hash=program_hash)
-        session.commit()
+        await refresh_vm_version(session=session, vm_hash=program_hash)
+        await session.commit()
 
-        program_version_db = get_program_version(session)
+        program_version_db = await get_program_version(session)
         assert program_version_db is not None
         assert program_version_db.current_version == program_hash
         assert program_version_db.last_updated == original_program.created
 
     # Delete the original, no entry should be left in program_versions
-    with session_factory() as session:
-        delete_vm(session=session, vm_hash=original_program.item_hash)
-        session.commit()
+    async with session_factory() as session:
+        await delete_vm(session=session, vm_hash=original_program.item_hash)
+        await session.commit()
 
-        refresh_vm_version(session=session, vm_hash=program_hash)
-        session.commit()
+        await refresh_vm_version(session=session, vm_hash=program_hash)
+        await session.commit()
 
-        program_version_db = get_program_version(session)
+        program_version_db = await get_program_version(session)
         assert program_version_db is None

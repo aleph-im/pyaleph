@@ -23,7 +23,7 @@ from aleph.toolkit.constants import (
 )
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import AsyncDbSessionFactory
 from aleph.types.message_status import InsufficientBalanceException, MessageStatus
 
 
@@ -146,7 +146,7 @@ class MockStorageEngine(StorageEngine):
 async def test_process_store(
     mocker,
     mock_config: Config,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
     fixture_store_message: PendingMessageDb,
@@ -168,13 +168,13 @@ async def test_process_store(
         config=mock_config,
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         await message_handler.process(
             session=session, pending_message=fixture_store_message
         )
-        session.commit()
+        await session.commit()
 
-        cost, _ = get_total_and_detailed_costs_from_db(
+        cost, _ = await get_total_and_detailed_costs_from_db(
             session=session,
             content=fixture_store_message.content,
             item_hash=fixture_store_message.item_hash,
@@ -186,7 +186,7 @@ async def test_process_store(
 @pytest.mark.asyncio
 async def test_process_store_no_signature(
     mocker,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     message_processor: PendingMessageProcessor,
     fixture_store_message: PendingMessageDb,
     fixture_product_prices_aggregate_in_db,
@@ -204,7 +204,7 @@ async def test_process_store_no_signature(
     content = json.loads(fixture_store_message.item_content)
     fixture_store_message.content = content
 
-    with session_factory() as session:
+    async with session_factory() as session:
         session.add(fixture_store_message)
         session.add(
             MessageStatusDb(
@@ -213,7 +213,7 @@ async def test_process_store_no_signature(
                 reception_time=fixture_store_message.reception_time,
             )
         )
-        session.commit()
+        await session.commit()
 
     storage_service = StorageService(
         storage_engine=MockStorageEngine(
@@ -235,15 +235,15 @@ async def test_process_store_no_signature(
     # Exhaust the iterator
     _ = [message async for message in pipeline]
 
-    with session_factory() as session:
-        message_db = get_message_by_item_hash(
+    async with session_factory() as session:
+        message_db = await get_message_by_item_hash(
             session=session, item_hash=ItemHash(fixture_store_message.item_hash)
         )
 
         assert message_db is not None
         assert message_db.signature is None
 
-        file_pin = get_message_file_pin(
+        file_pin = await get_message_file_pin(
             session=session, item_hash=ItemHash(fixture_store_message.item_hash)
         )
         assert file_pin is not None
@@ -254,7 +254,7 @@ async def test_process_store_no_signature(
 async def test_process_store_with_not_enough_balance(
     mocker,
     mock_config: Config,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
     fixture_store_message_with_cost: PendingMessageDb,
@@ -279,7 +279,7 @@ async def test_process_store_with_not_enough_balance(
         config=mock_config,
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         # NOTE: Account balance is 0 at this point
         with pytest.raises(InsufficientBalanceException):
             await message_handler.process(
@@ -291,7 +291,7 @@ async def test_process_store_with_not_enough_balance(
 async def test_process_store_small_file_no_balance_required(
     mocker,
     mock_config: Config,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
     fixture_store_message_with_cost: PendingMessageDb,
@@ -320,22 +320,22 @@ async def test_process_store_small_file_no_balance_required(
         config=mock_config,
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         # NOTE: Account balance is 0 at this point, but since the file is small
         # it should still be processed
         await message_handler.process(
             session=session, pending_message=fixture_store_message_with_cost
         )
-        session.commit()
+        await session.commit()
 
         # Verify that the message was processed successfully
-        message_db = get_message_by_item_hash(
+        message_db = await get_message_by_item_hash(
             session=session,
             item_hash=ItemHash(fixture_store_message_with_cost.item_hash),
         )
         assert message_db is not None
 
-        file_pin = get_message_file_pin(
+        file_pin = await get_message_file_pin(
             session=session,
             item_hash=ItemHash(fixture_store_message_with_cost.item_hash),
         )
@@ -361,7 +361,7 @@ async def test_pre_check_balance_free_store_message(
         grace_period=24,
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         # Create a message with timestamp before the deadline
         message = mocker.MagicMock(spec=MessageDb)
         message.time = timestamp_to_datetime(
@@ -404,7 +404,7 @@ async def test_pre_check_balance_small_ipfs_file(mocker, session_factory, mock_c
         grace_period=24,
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         message = mocker.MagicMock(spec=MessageDb)
         message.time = timestamp_to_datetime(
             STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
@@ -452,7 +452,7 @@ async def test_pre_check_balance_large_ipfs_file_insufficient_balance(
         grace_period=24,
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         message = mocker.MagicMock(spec=MessageDb)
         message.time = timestamp_to_datetime(
             STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
@@ -504,7 +504,7 @@ async def test_pre_check_balance_large_ipfs_file_sufficient_balance(
         grace_period=24,
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         # Create a message with a large file
         address = "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106"
         message = mocker.MagicMock(spec=MessageDb)
@@ -528,7 +528,7 @@ async def test_pre_check_balance_large_ipfs_file_sufficient_balance(
                 eth_height=100,
             )
         )
-        session.commit()
+        await session.commit()
 
         # Should pass the balance check
         result = await store_handler.pre_check_balance(session, message)
@@ -557,7 +557,7 @@ async def test_pre_check_balance_non_ipfs_file(mocker, session_factory, mock_con
         grace_period=24,
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         # Create a message with a non-IPFS file type
         message = mocker.MagicMock(spec=MessageDb)
         message.time = timestamp_to_datetime(
@@ -604,7 +604,7 @@ async def test_pre_check_balance_ipfs_disabled(mocker, session_factory):
 
     # Patch the get_config function to return our mock config
     with patch("aleph.handlers.content.store.get_config", return_value=mock_config):
-        with session_factory() as session:
+        async with session_factory() as session:
             message = mocker.MagicMock(spec=MessageDb)
             message.time = timestamp_to_datetime(
                 STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
@@ -642,7 +642,7 @@ async def test_pre_check_balance_ipfs_size_none(mocker, session_factory, mock_co
         grace_period=24,
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         message = mocker.MagicMock(spec=MessageDb)
         message.time = timestamp_to_datetime(
             STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
@@ -669,7 +669,7 @@ async def test_pre_check_balance_ipfs_size_none(mocker, session_factory, mock_co
 async def test_pre_check_balance_with_existing_costs(
     mocker,
     mock_config: Config,
-    session_factory: DbSessionFactory,
+    session_factory: AsyncDbSessionFactory,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
     fixture_ipfs_store_message: PendingMessageDb,
@@ -696,7 +696,7 @@ async def test_pre_check_balance_with_existing_costs(
         grace_period=24,
     )
 
-    with session_factory() as session:
+    async with session_factory() as session:
         # Create a message with a large file
         address = "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106"
         message = mocker.MagicMock(spec=MessageDb)
@@ -723,7 +723,7 @@ async def test_pre_check_balance_with_existing_costs(
                 eth_height=100,
             )
         )
-        session.commit()
+        await session.commit()
 
         # Disable signature verification
         signature_verifier = mocker.AsyncMock()
@@ -743,7 +743,7 @@ async def test_pre_check_balance_with_existing_costs(
             await message_handler.process(
                 session=session, pending_message=fixture_ipfs_store_message
             )
-            session.commit()
+            await session.commit()
 
             ipfs_service.get_ipfs_size = AsyncMock(return_value=large_file_size)
 
