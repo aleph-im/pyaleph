@@ -1,3 +1,7 @@
+from typing import Dict, Union
+
+from aleph.types.cost import ProductPriceType
+
 KiB = 1024
 MiB = 1024 * 1024
 GiB = 1024 * 1024 * 1024
@@ -8,8 +12,8 @@ HOUR = 60 * MINUTE
 PRICE_AGGREGATE_OWNER = "0xFba561a84A537fCaa567bb7A2257e7142701ae2A"
 PRICE_AGGREGATE_KEY = "pricing"
 PRICE_PRECISION = 18
-DEFAULT_PRICE_AGGREGATE = {
-    "program": {
+DEFAULT_PRICE_AGGREGATE: Dict[Union[ProductPriceType, str], dict] = {
+    ProductPriceType.PROGRAM: {
         "price": {
             "storage": {"payg": "0.000000977", "holding": "0.05"},
             "compute_unit": {"payg": "0.011", "holding": "200"},
@@ -28,8 +32,8 @@ DEFAULT_PRICE_AGGREGATE = {
             "memory_mib": 2048,
         },
     },
-    "storage": {"price": {"storage": {"holding": "0.333333333"}}},
-    "instance": {
+    ProductPriceType.STORAGE: {"price": {"storage": {"holding": "0.333333333"}}},
+    ProductPriceType.INSTANCE: {
         "price": {
             "storage": {"payg": "0.000000977", "holding": "0.05"},
             "compute_unit": {"payg": "0.055", "holding": "1000"},
@@ -48,8 +52,10 @@ DEFAULT_PRICE_AGGREGATE = {
             "memory_mib": 2048,
         },
     },
-    "web3_hosting": {"price": {"fixed": 50, "storage": {"holding": "0.333333333"}}},
-    "program_persistent": {
+    ProductPriceType.WEB3_HOSTING: {
+        "price": {"fixed": 50, "storage": {"holding": "0.333333333"}}
+    },
+    ProductPriceType.PROGRAM_PERSISTENT: {
         "price": {
             "storage": {"payg": "0.000000977", "holding": "0.05"},
             "compute_unit": {"payg": "0.055", "holding": "1000"},
@@ -68,7 +74,7 @@ DEFAULT_PRICE_AGGREGATE = {
             "memory_mib": 2048,
         },
     },
-    "instance_gpu_premium": {
+    ProductPriceType.INSTANCE_GPU_PREMIUM: {
         "price": {
             "storage": {"payg": "0.000000977"},
             "compute_unit": {"payg": "0.56"},
@@ -93,7 +99,7 @@ DEFAULT_PRICE_AGGREGATE = {
             "memory_mib": 6144,
         },
     },
-    "instance_confidential": {
+    ProductPriceType.INSTANCE_CONFIDENTIAL: {
         "price": {
             "storage": {"payg": "0.000000977", "holding": "0.05"},
             "compute_unit": {"payg": "0.11", "holding": "2000"},
@@ -112,7 +118,7 @@ DEFAULT_PRICE_AGGREGATE = {
             "memory_mib": 2048,
         },
     },
-    "instance_gpu_standard": {
+    ProductPriceType.INSTANCE_GPU_STANDARD: {
         "price": {
             "storage": {"payg": "0.000000977"},
             "compute_unit": {"payg": "0.28"},

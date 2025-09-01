@@ -7,7 +7,6 @@ Create Date: 2025-02-05 10:19:24.814606
 """
 
 from decimal import Decimal
-from typing import Dict
 from alembic import op
 import sqlalchemy as sa
 import logging
@@ -17,7 +16,8 @@ from aleph_message.models import StoreContent, ProgramContent,InstanceContent
 from aleph.db.accessors.cost import make_costs_upsert_query
 from aleph.db.accessors.messages import get_message_by_item_hash
 from aleph.services.cost import _is_confidential_vm, get_detailed_costs, CostComputableContent
-from aleph.types.cost import ProductComputeUnit, ProductPrice, ProductPriceOptions, ProductPriceType, ProductPricing
+from aleph.services.pricing_utils import build_default_pricing_model
+from aleph.types.cost import ProductPriceType
 from aleph.types.db_session import DbSession
 
 logger = logging.getLogger("alembic")
@@ -28,48 +28,6 @@ revision = "1c06d0ade60c"
 down_revision = "a3ef27f0db81"
 branch_labels = None
 depends_on = None
-
-
-hardcoded_initial_price: Dict[ProductPriceType, ProductPricing] = {
-    ProductPriceType.PROGRAM: ProductPricing(
-        ProductPriceType.PROGRAM,
-        ProductPrice(
-            ProductPriceOptions("0.05", "0.000000977"),
-            ProductPriceOptions("200", "0.011")
-        ),
-        ProductComputeUnit(1, 2048, 2048)
-    ),
-    ProductPriceType.PROGRAM_PERSISTENT: ProductPricing(
-        ProductPriceType.PROGRAM_PERSISTENT,
-        ProductPrice(
-            ProductPriceOptions("0.05", "0.000000977"),
-            ProductPriceOptions("1000",  "0.055")
-        ),
-        ProductComputeUnit(1, 20480, 2048)
-    ),
-    ProductPriceType.INSTANCE: ProductPricing(
-        ProductPriceType.INSTANCE,
-        ProductPrice(
-            ProductPriceOptions("0.05", "0.000000977"),
-            ProductPriceOptions("1000", "0.055")
-        ),
-        ProductComputeUnit(1, 20480, 2048)
-    ),
-    ProductPriceType.INSTANCE_CONFIDENTIAL: ProductPricing(
-        ProductPriceType.INSTANCE_CONFIDENTIAL,
-        ProductPrice(
-            ProductPriceOptions("0.05", "0.000000977"),
-            ProductPriceOptions("2000", "0.11")
-        ),
-        ProductComputeUnit(1, 20480, 2048)
-    ),
-    ProductPriceType.STORAGE: ProductPricing(
-        ProductPriceType.STORAGE,
-        ProductPrice(
-            ProductPriceOptions("0.333333333"),
-        )
-    ),
-}
 
 
 def _get_product_instance_type(
@@ -112,12 +70,15 @@ def do_calculate_costs() -> None:
 
     logger.debug("INIT: CALCULATE COSTS FOR: %r", msg_item_hashes)
 
+    # Build the initial pricing model from DEFAULT_PRICE_AGGREGATE
+    initial_pricing_model = build_default_pricing_model()
+
     for item_hash in msg_item_hashes:
         message = get_message_by_item_hash(session, item_hash)
         if message:
             content = message.parsed_content
             type = _get_product_price_type(content)
-            pricing = hardcoded_initial_price[type]
+            pricing = initial_pricing_model[type]
             costs = get_detailed_costs(session, content, message.item_hash, pricing)
 
             if len(costs) > 0:
