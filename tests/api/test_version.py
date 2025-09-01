@@ -1,6 +1,6 @@
 import pytest
 
-from aleph import __version__
+from aleph.version import __version__
 
 
 @pytest.mark.asyncio

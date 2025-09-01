@@ -1,6 +1,6 @@
 from aiohttp import web
 
-from aleph import __version__
+from aleph.version import __version__
 
 
 async def version(request):
