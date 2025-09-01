@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from aleph.db.accessors.metrics import query_metric_ccn, query_metric_crn
 from aleph.types.db_session import DbSessionFactory
+from aleph.version import __version__
 from aleph.web.controllers.app_state_getters import (
     get_node_cache_from_request,
     get_session_factory_from_request,
@@ -25,7 +26,9 @@ async def index(request: web.Request) -> Dict:
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
     node_cache = get_node_cache_from_request(request)
     with session_factory() as session:
-        return asdict(await get_metrics(session=session, node_cache=node_cache))
+        model = asdict(await get_metrics(session=session, node_cache=node_cache))
+        model["version"] = __version__
+        return model
 
 
 async def status_ws(request: web.Request) -> web.WebSocketResponse:

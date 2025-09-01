@@ -23,7 +23,7 @@ async def publish_host(
 ):
     """Publish our multiaddress regularly, saying we are alive."""
     await asyncio.sleep(2)
-    from aleph import __version__
+    from aleph.version import __version__
 
     msg = {
         "address": address,

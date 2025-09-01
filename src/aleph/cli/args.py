@@ -1,7 +1,7 @@
 import argparse
 import logging
 
-from aleph import __version__
+from aleph.version import __version__
 
 
 def parse_args(args):

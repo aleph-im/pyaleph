@@ -13,13 +13,13 @@ from dataclasses_json import DataClassJsonMixin
 from requests import HTTPError
 from web3 import Web3
 
-from aleph import __version__
 from aleph.config import get_config
 from aleph.db.accessors.chains import get_last_height
 from aleph.db.models import FilePinDb, MessageDb, PeerDb, PendingMessageDb, PendingTxDb
 from aleph.services.cache.node_cache import NodeCache
 from aleph.types.chain_sync import ChainEventType
 from aleph.types.db_session import DbSession
+from aleph.version import __version__
 
 LOGGER = getLogger("WEB.metrics")
 
