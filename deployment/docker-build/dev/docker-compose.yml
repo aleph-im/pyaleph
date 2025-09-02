@@ -10,7 +10,7 @@ services:
   pyaleph:
     # platform: linux/amd64
     restart: always
-    # image: alephim/pyaleph-node:0.8.0
+    # image: alephim/pyaleph-node:0.8.1
     image: localhost/alephim/pyaleph-node-dev:build
     build:
       dockerfile: ./deployment/docker-build/dev/Dockerfile
@@ -35,7 +35,7 @@ services:
   pyaleph-api:
     # platform: linux/amd64
     restart: always
-    # image: alephim/pyaleph-node:0.8.0
+    # image: alephim/pyaleph-node:0.8.1
     image: localhost/alephim/pyaleph-node:build
     build:
       dockerfile: ./deployment/docker-build/dev/Dockerfile
