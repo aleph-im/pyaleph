@@ -5,6 +5,7 @@ from aleph.db.models import MessageDb
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.permissions import check_sender_authorization
 from aleph.types.db_session import DbSession
+from aleph.types.message_status import PermissionDenied
 
 
 class ContentHandler(abc.ABC):
@@ -99,7 +100,13 @@ class ContentHandler(abc.ABC):
         :return:
         """
 
-        await check_sender_authorization(session=session, message=message)
+        is_authorized = await check_sender_authorization(
+            session=session, message=message
+        )
+        if not is_authorized:
+            raise PermissionDenied(
+                f"Sender {message.sender} is not authorized to post on behalf of address {message.parsed_content.address}"
+            )
 
     @abc.abstractmethod
     async def forget_message(self, session: DbSession, message: MessageDb) -> Set[str]:

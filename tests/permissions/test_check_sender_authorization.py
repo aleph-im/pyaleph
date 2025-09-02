@@ -7,6 +7,7 @@ from message_test_helpers import make_validated_message_from_dict
 from aleph.db.models import AggregateDb, AggregateElementDb
 from aleph.permissions import check_sender_authorization
 from aleph.toolkit.timestamp import timestamp_to_datetime
+from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
 
 
@@ -133,3 +134,78 @@ async def test_authorized_with_db(session_factory: DbSessionFactory):
             session=session, message=message
         )
         assert is_authorized
+
+
+@pytest.mark.asyncio
+async def test_message_processing_should_fail_on_permission(
+    mocker, session_factory: DbSessionFactory, mock_config
+):
+    """
+    Test that reproduces the permission bug at the message processing level.
+    An attacker can send a message with victim's address, and it should be rejected
+    during message processing, but currently it's accepted due to the bug.
+    """
+    import datetime as dt
+
+    from aleph.chains.signature_verifier import SignatureVerifier
+    from aleph.db.models import PendingMessageDb
+    from aleph.handlers.message_handler import MessageHandler
+    from aleph.storage import StorageService
+    from aleph.types.message_status import PermissionDenied
+
+    # Mock the storage and signature verification to focus on permission testing
+    storage_service = mocker.Mock(spec=StorageService)
+    signature_verifier = mocker.Mock(spec=SignatureVerifier)
+
+    message_handler = MessageHandler(
+        signature_verifier=signature_verifier,
+        storage_service=storage_service,
+        config=mock_config,
+    )
+
+    # Mock successful signature verification and content fetching
+    signature_verifier.verify_signature = mocker.AsyncMock()
+    storage_service.get_message_content = mocker.AsyncMock(
+        return_value=mocker.Mock(
+            value={
+                "address": "0xVictimAccount123456789012345678901234567890",  # Victim's address
+                "time": 1651050219.3481126,
+                "content": {"test": True},
+                "type": "test",
+            },
+            raw_value=b'{"address":"0xVictimAccount123456789012345678901234567890","time":1651050219.3481126,"content":{"test":true},"type":"test"}',
+        )
+    )
+
+    # Mock that there's no authorization aggregate for the victim
+    mocker.patch("aleph.permissions.get_aggregate_by_key", return_value=None)
+
+    # Create a malicious pending message where sender != address in content
+    malicious_message = PendingMessageDb(
+        item_hash="a1b2c3d4e5f6789012345678901234567890123456789012345678901234abcd",  # Valid 64-char hash
+        type="POST",
+        chain="ETH",
+        sender="0xAttackerAccount123456789012345678901234567890",  # Attacker's address
+        signature="fake_attacker_signature",
+        item_type="inline",
+        channel=Channel("TEST"),
+        reception_time=dt.datetime.now(),
+        check_message=True,
+        fetched=True,
+        tx_hash=None,
+    )
+
+    with session_factory() as session:
+        # BUG: This should raise PermissionDenied but currently it doesn't
+        # The message gets processed successfully when it should be rejected
+        try:
+            await message_handler.process(
+                session=session, pending_message=malicious_message
+            )
+            # If we reach this point, the bug exists - the message was processed when it should have been rejected
+            pytest.fail(
+                "BUG REPRODUCED: Message with mismatched sender/address was processed successfully when it should have been rejected with PermissionDenied"
+            )
+        except PermissionDenied:
+            # This is the expected behavior - the message should be rejected
+            pass
