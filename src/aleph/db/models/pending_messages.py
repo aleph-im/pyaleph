@@ -58,7 +58,7 @@ class PendingMessageDb(Base):
     item_type: ItemType = Column(ChoiceType(ItemType), nullable=False)
     item_content = Column(String, nullable=True)
     content: Optional[Dict[str, Any]] = Column(JSONB, nullable=True)
-    time: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
+    time: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False, index=True)
     channel: Optional[Channel] = Column(String, nullable=True)
 
     reception_time: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
