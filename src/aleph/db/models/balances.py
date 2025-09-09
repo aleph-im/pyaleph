@@ -55,10 +55,10 @@ class AlephCreditBalanceDb(Base):
     chain: Optional[str] = Column(String, nullable=True)
     provider: Optional[str] = Column(String, nullable=True)
     origin: Optional[str] = Column(String, nullable=True)
-    payment_ref: Optional[str] = Column(String, nullable=True)
+    origin_ref: Optional[str] = Column(String, nullable=True)
     payment_method: Optional[str] = Column(String, nullable=True)
-    distribution_ref: str = Column(String, nullable=False, primary_key=True)
-    distribution_index: int = Column(Integer, nullable=False, primary_key=True)
+    credit_ref: str = Column(String, nullable=False, primary_key=True)
+    credit_index: int = Column(Integer, nullable=False, primary_key=True)
     expiration_date: Optional[dt.datetime] = Column(
         TIMESTAMP(timezone=True), nullable=True
     )
@@ -67,8 +67,4 @@ class AlephCreditBalanceDb(Base):
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
-    )
-
-    __table_args__ = (
-        UniqueConstraint("tx_hash", name="credit_balances_tx_hash_uindex"),
     )

@@ -30,30 +30,25 @@ def upgrade() -> None:
         sa.Column('chain', sa.String(), nullable=True),
         sa.Column('provider', sa.String(), nullable=True),
         sa.Column('origin', sa.String(), nullable=True),
-        sa.Column('payment_ref', sa.String(), nullable=True),
+        sa.Column('origin_ref', sa.String(), nullable=True),
         sa.Column('payment_method', sa.String(), nullable=True),
-        sa.Column('distribution_ref', sa.String(), nullable=False),
-        sa.Column('distribution_index', sa.Integer(), nullable=False),
+        sa.Column('credit_ref', sa.String(), nullable=False),
+        sa.Column('credit_index', sa.Integer(), nullable=False),
         sa.Column('expiration_date', sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column('last_update', sa.TIMESTAMP(timezone=True), nullable=False, 
                   server_default=func.now(), onupdate=func.now()),
-        sa.PrimaryKeyConstraint('distribution_ref', 'distribution_index'),
+        sa.PrimaryKeyConstraint('credit_ref', 'credit_index', name='credit_balances_pkey'),
     )
     
     # Create index on address for efficient lookups
     op.create_index(op.f('ix_credit_balances_address'), 'credit_balances', ['address'], unique=False)
     
     # Add unique constraint on tx_hash to prevent duplicate credit lines (when tx_hash is not null)
-    op.execute(
-        """
-        ALTER TABLE credit_balances ADD CONSTRAINT credit_balances_tx_hash_uindex 
-        UNIQUE (tx_hash)
-        """
-    )
+    op.create_unique_constraint('credit_balances_tx_hash_key', 'credit_balances', ['tx_hash'])
 
 
 def downgrade() -> None:
     # Drop the credit_balances table and its constraints
     op.drop_index('ix_credit_balances_address', 'credit_balances')
-    op.drop_constraint('credit_balances_tx_hash_uindex', 'credit_balances')
+    op.drop_constraint('credit_balances_tx_hash_key', 'credit_balances')
     op.drop_table('credit_balances')

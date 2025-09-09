@@ -6,10 +6,11 @@ from sqlalchemy import update
 
 from aleph.db.accessors.balances import update_balances as update_balances_db
 from aleph.db.accessors.balances import (
-    update_credit_balances as update_credit_balances_db,
-)
-from aleph.db.accessors.balances import (
-    update_credit_balances_airdrop as update_credit_balances_airdrop_db,
+    update_credit_balances_distribution as update_credit_balances_distribution_db,
+    update_credit_balances_expense as update_credit_balances_expense_db,
+    update_credit_balances_transfer as update_credit_balances_transfer_db,
+    validate_credit_transfer_balance,
+    get_credit_balance,
 )
 from aleph.db.accessors.posts import (
     delete_amends,
@@ -66,7 +67,7 @@ def update_balances(session: DbSession, content: Mapping[str, Any]) -> None:
     )
 
 
-def update_credit_balances(
+def update_credit_balances_distribution(
     session: DbSession, content: Mapping[str, Any], message_hash: str
 ) -> None:
     try:
@@ -81,7 +82,7 @@ def update_credit_balances(
 
     LOGGER.info("Updating credit balances for %d addresses", len(credits_list))
 
-    update_credit_balances_db(
+    update_credit_balances_distribution_db(
         session=session,
         credits_list=credits_list,
         token=token,
@@ -90,22 +91,60 @@ def update_credit_balances(
     )
 
 
-def update_credit_balances_airdrop(
+
+
+def update_credit_balances_expense(
     session: DbSession, content: Mapping[str, Any], message_hash: str
 ) -> None:
     try:
-        airdrop = content["airdrop"]
-        credits_list = airdrop["credits"]
+        expense = content["expense"]
+        credits_list = expense["credits"]
     except KeyError as e:
         raise InvalidMessageFormat(
-            f"Missing field '{e.args[0]}' for credit airdrop post"
+            f"Missing field '{e.args[0]}' for credit expense post"
         )
 
-    LOGGER.info("Updating credit balances airdrop for %d addresses", len(credits_list))
+    LOGGER.info("Updating credit balances expense for %d addresses", len(credits_list))
 
-    update_credit_balances_airdrop_db(
+    update_credit_balances_expense_db(
         session=session,
         credits_list=credits_list,
+        message_hash=message_hash,
+    )
+
+
+def update_credit_balances_transfer(
+    session: DbSession, 
+    content: Mapping[str, Any], 
+    message_hash: str, 
+    sender_address: str,
+    whitelisted_addresses: List[str]
+) -> None:
+    try:
+        transfer = content["transfer"]
+        credits_list = transfer["credits"]
+    except KeyError as e:
+        raise InvalidMessageFormat(
+            f"Missing field '{e.args[0]}' for credit transfer post"
+        )
+
+    # Only validate if sender is not in the whitelisted addresses
+    if sender_address not in whitelisted_addresses:
+        # Calculate total transfer amount for validation
+        total_amount = sum(int(credit["amount"]) for credit in credits_list)
+
+        if not validate_credit_transfer_balance(session, sender_address, total_amount):
+            raise InvalidMessageFormat(
+                f"Insufficient credit balance for transfer. Required: {total_amount}, Available: {get_credit_balance(session, sender_address)}"
+            )
+
+    LOGGER.info("Updating credit balances transfer for %d recipients", len(credits_list))
+
+    update_credit_balances_transfer_db(
+        session=session,
+        credits_list=credits_list,
+        sender_address=sender_address,
+        whitelisted_addresses=whitelisted_addresses,
         message_hash=message_hash,
     )
 
@@ -207,16 +246,24 @@ class PostMessageHandler(ContentHandler):
         ):
             LOGGER.info("Updating credit balances...")
             if content.type == "aleph_credit_distribution":
-                update_credit_balances(
+                update_credit_balances_distribution(
                     session=session,
                     content=content.content,
                     message_hash=message.item_hash,
                 )
-            elif content.type == "aleph_credit_airdrop":
-                update_credit_balances_airdrop(
+            elif content.type == "aleph_credit_expense":
+                update_credit_balances_expense(
                     session=session,
                     content=content.content,
                     message_hash=message.item_hash,
+                )
+            elif content.type == "aleph_credit_transfer":
+                update_credit_balances_transfer(
+                    session=session,
+                    content=content.content,
+                    message_hash=message.item_hash,
+                    sender_address=content.address,
+                    whitelisted_addresses=self.credit_balances_addresses,
                 )
             LOGGER.info("Done updating credit balances")
 

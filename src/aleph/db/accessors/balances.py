@@ -2,6 +2,8 @@ import datetime as dt
 from decimal import Decimal
 from io import StringIO
 from typing import Any, Dict, Mapping, Optional, Sequence
+import time
+import random
 
 from aleph_message.models import Chain
 from sqlalchemy import func, select
@@ -242,8 +244,6 @@ def get_credit_balances(
 
 
 def count_credit_balances(session: DbSession, min_balance: int = 0, **kwargs):
-    from aleph.toolkit.timestamp import utc_now
-
     now = utc_now()
 
     # Count unique addresses with non-expired credit balances
@@ -261,130 +261,57 @@ def count_credit_balances(session: DbSession, min_balance: int = 0, **kwargs):
     return session.execute(query).scalar_one()
 
 
-def update_credit_balances(
+def _bulk_insert_credit_balances(
     session: DbSession,
-    credits_list: Sequence[Dict[str, Any]],
-    token: str,
-    chain: str,
-    message_hash: str,
+    csv_rows: Sequence[str],
 ) -> None:
     """
-    Updates multiple credit balances at the same time, efficiently.
-
-    Similar to update_balances, this uses a temporary table and bulk operations
-    for better performance.
+    Generic function to bulk insert credit balance rows using temporary table.
+    
+    Args:
+        session: Database session
+        csv_rows: List of CSV-formatted strings with credit balance data
     """
-
-    last_update = utc_now()
-
+    
+    # Generate unique table name with timestamp and random suffix to avoid race conditions
+    timestamp = int(time.time() * 1000000)  # microseconds
+    random_suffix = random.randint(1000, 9999)
+    temp_table_name = f"temp_credit_balances_{timestamp}_{random_suffix}"
+    
+    # Drop the temporary table if it exists from a previous operation
+    session.execute(f"DROP TABLE IF EXISTS {temp_table_name}")  # type: ignore[arg-type]
+    
     session.execute(
-        "CREATE TEMPORARY TABLE temp_credit_balances AS SELECT * FROM credit_balances WITH NO DATA"  # type: ignore[arg-type]
+        f"CREATE TEMPORARY TABLE {temp_table_name} AS SELECT * FROM credit_balances WITH NO DATA"  # type: ignore[arg-type]
     )
 
     conn = session.connection().connection
     cursor = conn.cursor()
 
-    # Prepare an in-memory CSV file for use with the COPY operator
-    csv_rows = []
-    for index, credit_entry in enumerate(credits_list):
-        address = credit_entry["address"]
-        amount = int(credit_entry["amount"])  # Cast to integer
-        ratio = Decimal(credit_entry["ratio"])
-        tx_hash = credit_entry["tx_hash"]
-        provider = credit_entry["provider"]
-
-        # Extract optional fields from each credit entry
-        expiration_timestamp = credit_entry.get("expiration", "")
-        origin = credit_entry.get("origin", "")
-        payment_ref = credit_entry.get("ref", "")
-        payment_method = credit_entry.get("payment_method", "")
-
-        # Convert expiration timestamp to datetime
-
-        expiration_date = (
-            dt.datetime.fromtimestamp(expiration_timestamp / 1000, tz=dt.timezone.utc)
-            if expiration_timestamp != ""
-            else None
-        )
-
-        csv_rows.append(
-            f"{address};{amount};{ratio};{tx_hash};{expiration_date or ''};{token};{chain};{origin};{provider};{payment_ref};{payment_method};{message_hash};{index};{last_update}"
-        )
-
+    # Common column specification for all credit balance types
+    # Common fields first: address, amount, credit_ref, credit_index, last_update
+    # Optional fields last: ratio, tx_hash, expiration_date, token, chain, origin, provider, origin_ref, payment_method
+    copy_columns = "address, amount, credit_ref, credit_index, last_update, ratio, tx_hash, expiration_date, token, chain, origin, provider, origin_ref, payment_method"
+    
     csv_credit_balances = StringIO("\n".join(csv_rows))
     cursor.copy_expert(
-        "COPY temp_credit_balances(address, amount, ratio, tx_hash, expiration_date, token, chain, origin, provider, payment_ref, payment_method, distribution_ref, distribution_index, last_update) FROM STDIN WITH CSV DELIMITER ';'",
+        f"COPY {temp_table_name}({copy_columns}) FROM STDIN WITH CSV DELIMITER ';'",
         csv_credit_balances,
     )
-    session.execute(
+
+    
+    # Common insert query that handles all message types with proper type casting
+    insert_query = f"""
+        INSERT INTO credit_balances({copy_columns})
+            (SELECT {copy_columns} FROM {temp_table_name})
+            ON CONFLICT ON CONSTRAINT credit_balances_pkey DO NOTHING
         """
-        INSERT INTO credit_balances(address, amount, ratio, tx_hash, expiration_date, token, chain, origin, provider, payment_ref, payment_method, distribution_ref, distribution_index, last_update)
-            (SELECT address, amount, ratio, tx_hash, expiration_date, token, chain, 
-             NULLIF(origin, ''), provider, NULLIF(payment_ref, ''), NULLIF(payment_method, ''), distribution_ref, distribution_index, last_update FROM temp_credit_balances)
-            ON CONFLICT ON CONSTRAINT credit_balances_tx_hash_uindex DO NOTHING
-        """  # type: ignore[arg-type]
-    )
+    
+    session.execute(insert_query)  # type: ignore[arg-type]
 
     # Drop the temporary table
-    session.execute("DROP TABLE temp_credit_balances")  # type: ignore[arg-type]
+    session.execute(f"DROP TABLE {temp_table_name}")  # type: ignore[arg-type]
 
-
-def update_credit_balances_airdrop(
-    session: DbSession,
-    credits_list: Sequence[Dict[str, Any]],
-    message_hash: str,
-) -> None:
-    """
-    Updates multiple credit balances from airdrop messages.
-
-    Similar to update_credit_balances, this uses a temporary table and bulk operations
-    for better performance. The airdrop schema doesn't include token/chain/ratio fields.
-    """
-
-    last_update = utc_now()
-
-    session.execute(
-        "CREATE TEMPORARY TABLE temp_credit_balances AS SELECT * FROM credit_balances WITH NO DATA"  # type: ignore[arg-type]
-    )
-
-    conn = session.connection().connection
-    cursor = conn.cursor()
-
-    # Prepare an in-memory CSV file for use with the COPY operator
-    csv_rows = []
-    for index, credit_entry in enumerate(credits_list):
-        address = credit_entry["address"]
-        amount = int(credit_entry["amount"])  # Cast to integer
-        origin = credit_entry.get("origin", "")
-        expiration_timestamp = credit_entry.get("expiration", 0)
-
-        # Convert expiration timestamp to datetime
-        expiration_date = (
-            dt.datetime.fromtimestamp(expiration_timestamp / 1000, tz=dt.timezone.utc)
-            if expiration_timestamp > 0
-            else None
-        )
-
-        csv_rows.append(
-            f"{address};{amount};;{expiration_date or ''};;;;{origin};;;;;{message_hash};{index};{last_update}"
-        )
-
-    csv_credit_balances = StringIO("\n".join(csv_rows))
-    cursor.copy_expert(
-        "COPY temp_credit_balances(address, amount, ratio, tx_hash, expiration_date, token, chain, origin, provider, payment_ref, payment_method, distribution_ref, distribution_index, last_update) FROM STDIN WITH CSV DELIMITER ';'",
-        csv_credit_balances,
-    )
-    session.execute(
-        """
-        INSERT INTO credit_balances(address, amount, ratio, tx_hash, expiration_date, token, chain, origin, provider, payment_ref, payment_method, distribution_ref, distribution_index, last_update)
-            (SELECT address, amount, NULLIF(ratio, ''), NULLIF(tx_hash, ''), expiration_date, NULLIF(token, ''), NULLIF(chain, ''), 
-             NULLIF(origin, ''), NULLIF(provider, ''), NULLIF(payment_ref, ''), NULLIF(payment_method, ''), distribution_ref, distribution_index, last_update FROM temp_credit_balances)
-            ON CONFLICT ON CONSTRAINT credit_balances_distribution_ref_index_uindex DO NOTHING
-        """  # type: ignore[arg-type]
-    )
-
-    # Drop the temporary table
-    session.execute("DROP TABLE temp_credit_balances")  # type: ignore[arg-type]
 
 
 def get_updated_credit_balance_accounts(session: DbSession, last_update: dt.datetime):
@@ -397,3 +324,146 @@ def get_updated_credit_balance_accounts(session: DbSession, last_update: dt.date
         .distinct()
     )
     return session.execute(select_stmt).scalars().all()
+
+
+
+def update_credit_balances_distribution(
+    session: DbSession,
+    credits_list: Sequence[Dict[str, Any]],
+    token: str,
+    chain: str,
+    message_hash: str,
+) -> None:
+    """
+    Updates credit balances for distribution messages (aleph_credit_distribution).
+    
+    Distribution messages include all fields like ratio, tx_hash, provider, 
+    payment_method, token, chain, and expiration_date.
+    """
+
+    last_update = utc_now()
+    csv_rows = []
+
+    for index, credit_entry in enumerate(credits_list):
+        address = credit_entry["address"]
+        amount = abs(int(credit_entry["amount"]))
+        ratio = Decimal(credit_entry["ratio"])
+        tx_hash = credit_entry["tx_hash"]
+        provider = credit_entry["provider"]
+
+        # Extract optional fields from each credit entry
+        expiration_timestamp = credit_entry.get("expiration", "")
+        origin = credit_entry.get("origin", "")
+        origin_ref = credit_entry.get("ref", "")
+        payment_method = credit_entry.get("payment_method", "")
+
+        # Convert expiration timestamp to datetime
+
+        expiration_date = (
+            dt.datetime.fromtimestamp(expiration_timestamp / 1000, tz=dt.timezone.utc)
+            if expiration_timestamp != ""
+            else None
+        )
+
+        csv_rows.append(
+            f"{address};{amount};{message_hash};{index};{last_update};{ratio};{tx_hash};{expiration_date or ''};{token};{chain};{origin};{provider};{origin_ref};{payment_method}"
+        )
+
+    _bulk_insert_credit_balances(session, csv_rows)
+
+def update_credit_balances_expense(
+    session: DbSession,
+    credits_list: Sequence[Dict[str, Any]],
+    message_hash: str,
+) -> None:
+    """
+    Updates credit balances for expense messages (aleph_credit_expense).
+    
+    Expense messages have negative amounts and only include origin_ref field.
+    Other fields like ratio, tx_hash, provider, payment_method, token, chain, 
+    origin, and expiration_date are not present.
+    """
+    
+    last_update = utc_now()
+    csv_rows = []
+    
+    for index, credit_entry in enumerate(credits_list):
+        address = credit_entry["address"]
+        amount = -abs(int(credit_entry["amount"]))
+        origin_ref = credit_entry.get("ref", "")
+
+        csv_rows.append(
+            f"{address};{amount};{message_hash};{index};{last_update};;;;;;;ALEPH;{origin_ref};credit_expense"
+        )
+
+    _bulk_insert_credit_balances(session, csv_rows)
+
+
+def update_credit_balances_transfer(
+    session: DbSession,
+    credits_list: Sequence[Dict[str, Any]],
+    sender_address: str,
+    whitelisted_addresses: Sequence[str],
+    message_hash: str,
+) -> None:
+    """
+    Updates credit balances for transfer messages (aleph_credit_transfer).
+    
+    Transfer messages involve two entries per transfer:
+    - One negative entry for the sender (subtracting credits)
+    - One positive entry for the recipient (adding credits)
+    
+    Special case: If sender is in the whitelisted addresses, only add credits to recipient.
+    """
+    
+    last_update = utc_now()
+    csv_rows = []
+    index = 0
+    
+    for credit_entry in credits_list:
+        recipient_address = credit_entry["address"]
+        amount = abs(int(credit_entry["amount"]))
+        expiration_timestamp = credit_entry.get("expiration", "")
+        
+        # Convert expiration timestamp to datetime
+        expiration_date = (
+            dt.datetime.fromtimestamp(expiration_timestamp / 1000, tz=dt.timezone.utc)
+            if expiration_timestamp != ""
+            else None
+        )
+
+        # Add positive entry for recipient (origin = sender, provider = ALEPH, payment_method = credit_transfer)
+        csv_rows.append(
+            f"{recipient_address};{amount};{message_hash};{index};{last_update};;;{expiration_date or ''};;;{sender_address};ALEPH;;credit_transfer"
+        )
+        index += 1
+
+        # Add negative entry for sender (unless sender is in whitelisted addresses)
+        # (origin = recipient, provider = ALEPH, payment_method = credit_transfer)
+        if sender_address not in whitelisted_addresses:
+            csv_rows.append(
+                f"{sender_address};{-amount};{message_hash};{index};{last_update};;;;;;{recipient_address};ALEPH;;credit_transfer"
+            )
+            index += 1
+
+    _bulk_insert_credit_balances(session, csv_rows)
+
+
+def validate_credit_transfer_balance(
+    session: DbSession,
+    sender_address: str,
+    total_transfer_amount: int,
+) -> bool:
+    """
+    Validates if the sender has enough credit balance to process a transfer.
+    
+    Args:
+        session: Database session
+        sender_address: Address of the sender
+        total_transfer_amount: Total amount to be transferred
+        
+    Returns:
+        True if sender has sufficient balance, False otherwise
+    """
+    current_balance = get_credit_balance(session, sender_address)
+    return current_balance >= total_transfer_amount
