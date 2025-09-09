@@ -36,10 +36,12 @@ def get_defaults():
             "credit_balances": {
                 # Addresses allowed to publish credit balance updates.
                 "addresses": [
-                    "0x214061ffe7e365cA37956D091C807757B4d23427",
+                    "0xf47811a9136bb18f6956D2e614eD063f0A292c63",
                 ],
                 # POST message types for credit balance updates.
-                "post_types": ["aleph_credit_distribution", "aleph_credit_airdrop"],
+                "post_types": ["aleph_credit_distribution", "aleph_credit_transfer", "aleph_credit_expense"],
+                # Allowed channels for credit balance messages.
+                "channels": ["ALEPH_CREDIT_STAGING"],
             },
             "jobs": {
                 "pending_messages": {

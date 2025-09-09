@@ -137,11 +137,13 @@ class PostMessageHandler(ContentHandler):
         balances_post_type: str,
         credit_balances_addresses: List[str],
         credit_balances_post_types: List[str],
+        credit_balances_channels: List[str],
     ):
         self.balances_addresses = balances_addresses
         self.balances_post_type = balances_post_type
         self.credit_balances_addresses = credit_balances_addresses
         self.credit_balances_post_types = credit_balances_post_types
+        self.credit_balances_channels = credit_balances_channels
 
     async def check_dependencies(self, session: DbSession, message: MessageDb):
         content = get_post_content(message)
@@ -200,6 +202,7 @@ class PostMessageHandler(ContentHandler):
         if (
             content.type in self.credit_balances_post_types
             and content.address in self.credit_balances_addresses
+            and (not self.credit_balances_channels or message.channel in self.credit_balances_channels)
             and content.content
         ):
             LOGGER.info("Updating credit balances...")
