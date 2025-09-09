@@ -1,7 +1,7 @@
 """add credit_balances table
 
 Revision ID: a1b2c3d4e5f6
-Revises: 8ece21fbeb47
+Revises: 35a67ccc4451
 Create Date: 2025-07-14 00:00:00.000000
 
 """
@@ -12,7 +12,7 @@ from sqlalchemy.sql import func
 
 # revision identifiers, used by Alembic.
 revision = 'a1b2c3d4e5f6'
-down_revision = '8ece21fbeb47'
+down_revision = '35a67ccc4451'
 branch_labels = None
 depends_on = None
 
