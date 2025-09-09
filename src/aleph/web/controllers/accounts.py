@@ -114,9 +114,7 @@ async def get_chain_balances(request: web.Request) -> web.Response:
         balances = get_balances_by_chain(session, **find_filters)
 
         formatted_balances = [
-            AddressBalanceResponse(
-                address=b.address, balance=str(b.balance), chain=b.chain
-            )
+            AddressBalanceResponse(address=b.address, balance=b.balance, chain=b.chain)
             for b in balances
         ]
 
