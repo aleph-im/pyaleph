@@ -22,7 +22,6 @@ from aleph.schemas.api.accounts import (
     AddressBalanceResponse,
     AddressCreditBalanceResponse,
     GetAccountBalanceResponse,
-    GetAccountCreditBalanceResponse,
     GetAccountFilesQueryParams,
     GetAccountFilesResponse,
     GetAccountFilesResponseItem,
@@ -94,9 +93,12 @@ async def get_account_balance(request: web.Request):
             session=session, address=address, chain=query_params.chain
         )
         total_cost = get_total_cost_for_address(session=session, address=address)
+        credits = get_credit_balance(session=session, address=address)
+        if credits is None:
+            credits = 0
     return web.json_response(
         text=GetAccountBalanceResponse(
-            address=address, balance=balance, locked_amount=total_cost, details=details
+            address=address, balance=balance, locked_amount=total_cost, details=details, credit_balance=credits
         ).model_dump_json()
     )
 
@@ -132,21 +134,6 @@ async def get_chain_balances(request: web.Request) -> web.Response:
 
         return web.json_response(text=aleph_json.dumps(response).decode("utf-8"))
 
-
-async def get_account_credit_balance(request: web.Request):
-    address = _get_address_from_request(request)
-
-    session_factory: DbSessionFactory = get_session_factory_from_request(request)
-    with session_factory() as session:
-        credits = get_credit_balance(session=session, address=address)
-        if credits is None:
-            credits = 0
-
-    return web.json_response(
-        text=GetAccountCreditBalanceResponse(
-            address=address, credits=credits
-        ).model_dump_json()
-    )
 
 
 async def get_credit_balances_handler(request: web.Request) -> web.Response:

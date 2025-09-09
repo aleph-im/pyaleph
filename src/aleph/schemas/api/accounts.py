@@ -26,11 +26,9 @@ class GetAccountBalanceResponse(BaseModel):
     balance: FloatDecimal
     details: Optional[Dict[str, FloatDecimal]] = None
     locked_amount: FloatDecimal
+    credit_balance: int = 0
 
 
-class GetAccountCreditBalanceResponse(BaseModel):
-    address: str
-    credits: int
 
 
 class GetAccountFilesQueryParams(BaseModel):
