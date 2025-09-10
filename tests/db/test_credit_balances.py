@@ -1,15 +1,13 @@
 import datetime as dt
 from decimal import Decimal
 
-import pytest
-
 from aleph.db.accessors.balances import (
     get_credit_balance,
     update_credit_balances_distribution,
     update_credit_balances_expense,
     update_credit_balances_transfer,
 )
-from aleph.db.models import AlephCreditBalanceDb, AlephCreditHistoryDb
+from aleph.db.models import AlephCreditHistoryDb
 from aleph.types.db_session import DbSessionFactory
 
 
@@ -28,9 +26,9 @@ def test_update_credit_balances_distribution(session_factory: DbSessionFactory):
             "payment_method": "test_payment",
         }
     ]
-    
+
     message_timestamp = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
-    
+
     with session_factory() as session:
         update_credit_balances_distribution(
             session=session,
@@ -41,11 +39,13 @@ def test_update_credit_balances_distribution(session_factory: DbSessionFactory):
             message_timestamp=message_timestamp,
         )
         session.commit()
-        
+
         # Verify credit history record was inserted
-        credit_record = session.query(AlephCreditHistoryDb).filter_by(
-            address="0x123", credit_ref="msg_hash_123"
-        ).first()
+        credit_record = (
+            session.query(AlephCreditHistoryDb)
+            .filter_by(address="0x123", credit_ref="msg_hash_123")
+            .first()
+        )
 
         assert credit_record is not None
         assert credit_record.address == "0x123"
@@ -73,9 +73,9 @@ def test_update_credit_balances_expense(session_factory: DbSessionFactory):
             "ref": "expense_ref",
         }
     ]
-    
+
     message_timestamp = dt.datetime(2023, 1, 2, 12, 0, 0, tzinfo=dt.timezone.utc)
-    
+
     with session_factory() as session:
         update_credit_balances_expense(
             session=session,
@@ -84,12 +84,14 @@ def test_update_credit_balances_expense(session_factory: DbSessionFactory):
             message_timestamp=message_timestamp,
         )
         session.commit()
-        
+
         # Verify expense record was inserted
-        expense_record = session.query(AlephCreditHistoryDb).filter_by(
-            address="0x456", credit_ref="expense_msg_789"
-        ).first()
-        
+        expense_record = (
+            session.query(AlephCreditHistoryDb)
+            .filter_by(address="0x456", credit_ref="expense_msg_789")
+            .first()
+        )
+
         assert expense_record is not None
         assert expense_record.address == "0x456"
         assert expense_record.amount == -500
@@ -106,7 +108,6 @@ def test_update_credit_balances_expense(session_factory: DbSessionFactory):
         assert expense_record.message_timestamp == message_timestamp
 
 
-
 def test_update_credit_balances_transfer(session_factory: DbSessionFactory):
     """Test direct database insertion for credit transfer messages."""
     credits_list = [
@@ -116,9 +117,9 @@ def test_update_credit_balances_transfer(session_factory: DbSessionFactory):
             "expiration": 1700000000000,  # timestamp in ms
         }
     ]
-    
+
     message_timestamp = dt.datetime(2023, 1, 3, 12, 0, 0, tzinfo=dt.timezone.utc)
-    
+
     with session_factory() as session:
         update_credit_balances_transfer(
             session=session,
@@ -129,14 +130,18 @@ def test_update_credit_balances_transfer(session_factory: DbSessionFactory):
             message_timestamp=message_timestamp,
         )
         session.commit()
-        
+
         # Verify both sender and recipient records were created
-        records = session.query(AlephCreditHistoryDb).filter_by(
-            credit_ref="transfer_msg_456"
-        ).all()
-        
-        assert len(records) == 2  # One for sender (negative) and one for recipient (positive)
-        
+        records = (
+            session.query(AlephCreditHistoryDb)
+            .filter_by(credit_ref="transfer_msg_456")
+            .all()
+        )
+
+        assert (
+            len(records) == 2
+        )  # One for sender (negative) and one for recipient (positive)
+
         # Find recipient record (positive amount)
         recipient_record = next(r for r in records if r.amount == 250)
         assert recipient_record.address == "0x789"
@@ -153,7 +158,6 @@ def test_update_credit_balances_transfer(session_factory: DbSessionFactory):
         assert recipient_record.credit_ref == "transfer_msg_456"
         assert recipient_record.credit_index == 0
 
-        
         # Find sender record (negative amount)
         sender_record = next(r for r in records if r.amount == -250)
         assert sender_record.address == "0xsender"
@@ -180,9 +184,9 @@ def test_whitelisted_sender_transfer(session_factory: DbSessionFactory):
             "expiration": 1700000000000,
         }
     ]
-    
+
     message_timestamp = dt.datetime(2023, 1, 4, 12, 0, 0, tzinfo=dt.timezone.utc)
-    
+
     with session_factory() as session:
         update_credit_balances_transfer(
             session=session,
@@ -193,14 +197,16 @@ def test_whitelisted_sender_transfer(session_factory: DbSessionFactory):
             message_timestamp=message_timestamp,
         )
         session.commit()
-        
+
         # Verify only recipient record was created (no negative entry for whitelisted sender)
-        records = session.query(AlephCreditHistoryDb).filter_by(
-            credit_ref="whitelist_transfer_123"
-        ).all()
-        
+        records = (
+            session.query(AlephCreditHistoryDb)
+            .filter_by(credit_ref="whitelist_transfer_123")
+            .all()
+        )
+
         assert len(records) == 1  # Only recipient record, no sender debit
-        
+
         recipient_record = records[0]
         assert recipient_record.address == "0xrecipient"
         assert recipient_record.amount == 500
@@ -213,7 +219,7 @@ def test_whitelisted_sender_transfer(session_factory: DbSessionFactory):
 def test_balance_validation_insufficient_credits(session_factory: DbSessionFactory):
     """Test balance validation fails when sender has insufficient credits."""
     from aleph.db.accessors.balances import validate_credit_transfer_balance
-    
+
     # Create initial balance of 500
     credits_list = [
         {
@@ -225,9 +231,9 @@ def test_balance_validation_insufficient_credits(session_factory: DbSessionFacto
             "expiration": 2000000000000,
         }
     ]
-    
+
     message_timestamp = dt.datetime(2023, 1, 5, 12, 0, 0, tzinfo=dt.timezone.utc)
-    
+
     with session_factory() as session:
         update_credit_balances_distribution(
             session=session,
@@ -238,30 +244,30 @@ def test_balance_validation_insufficient_credits(session_factory: DbSessionFacto
             message_timestamp=message_timestamp,
         )
         session.commit()
-        
+
         # Should pass for amounts <= 500
-        assert validate_credit_transfer_balance(session, "0xlow_balance", 500) == True
-        assert validate_credit_transfer_balance(session, "0xlow_balance", 400) == True
-        
+        assert validate_credit_transfer_balance(session, "0xlow_balance", 500)
+        assert validate_credit_transfer_balance(session, "0xlow_balance", 400)
+
         # Should fail for amounts > 500
-        assert validate_credit_transfer_balance(session, "0xlow_balance", 600) == False
-        assert validate_credit_transfer_balance(session, "0xlow_balance", 1000) == False
+        assert not validate_credit_transfer_balance(session, "0xlow_balance", 600)
+        assert not validate_credit_transfer_balance(session, "0xlow_balance", 1000)
 
 
 def test_expired_credits_excluded_from_transfers(session_factory: DbSessionFactory):
     """Test that expired credits are not counted when validating transfers."""
     import time
-    
+
     expired_timestamp = int((time.time() - 86400) * 1000)  # 1 day ago
-    valid_timestamp = int((time.time() + 86400) * 1000)    # 1 day from now
-    
+    valid_timestamp = int((time.time() + 86400) * 1000)  # 1 day from now
+
     credits_list = [
         {
             "address": "0xexpired_user",
             "amount": 800,  # Expired credits
             "ratio": "1.0",
             "tx_hash": "0xexpired",
-            "provider": "test_provider", 
+            "provider": "test_provider",
             "expiration": expired_timestamp,
         },
         {
@@ -271,12 +277,12 @@ def test_expired_credits_excluded_from_transfers(session_factory: DbSessionFacto
             "tx_hash": "0xvalid",
             "provider": "test_provider",
             "expiration": valid_timestamp,
-        }
+        },
     ]
-    
+
     with session_factory() as session:
         message_timestamp_1 = dt.datetime(2023, 1, 6, 12, 0, 0, tzinfo=dt.timezone.utc)
-        
+
         update_credit_balances_distribution(
             session=session,
             credits_list=credits_list,
@@ -286,15 +292,16 @@ def test_expired_credits_excluded_from_transfers(session_factory: DbSessionFacto
             message_timestamp=message_timestamp_1,
         )
         session.commit()
-        
+
         # Total balance should only be 200 (expired credits excluded)
         balance = get_credit_balance(session, "0xexpired_user")
         assert balance == 200
-        
+
         # Transfer validation should only consider valid credits (200)
         from aleph.db.accessors.balances import validate_credit_transfer_balance
-        assert validate_credit_transfer_balance(session, "0xexpired_user", 200) == True
-        assert validate_credit_transfer_balance(session, "0xexpired_user", 300) == False
+
+        assert validate_credit_transfer_balance(session, "0xexpired_user", 200)
+        assert not validate_credit_transfer_balance(session, "0xexpired_user", 300)
 
 
 def test_multiple_recipients_single_transfer(session_factory: DbSessionFactory):
@@ -310,15 +317,15 @@ def test_multiple_recipients_single_transfer(session_factory: DbSessionFactory):
             "amount": 200,
         },
         {
-            "address": "0xrecipient3", 
+            "address": "0xrecipient3",
             "amount": 150,
             "expiration": 1800000000000,
-        }
+        },
     ]
-    
+
     with session_factory() as session:
         message_timestamp = dt.datetime(2023, 1, 7, 12, 0, 0, tzinfo=dt.timezone.utc)
-        
+
         update_credit_balances_transfer(
             session=session,
             credits_list=credits_list,
@@ -328,27 +335,29 @@ def test_multiple_recipients_single_transfer(session_factory: DbSessionFactory):
             message_timestamp=message_timestamp,
         )
         session.commit()
-        
-        records = session.query(AlephCreditHistoryDb).filter_by(
-            credit_ref="multi_recipient_transfer"
-        ).all()
-        
+
+        records = (
+            session.query(AlephCreditHistoryDb)
+            .filter_by(credit_ref="multi_recipient_transfer")
+            .all()
+        )
+
         # Should have 6 records: 3 positive (recipients) + 3 negative (sender)
         assert len(records) == 6
-        
+
         # Check all positive records (recipients)
         positive_records = [r for r in records if r.amount > 0]
         assert len(positive_records) == 3
-        
+
         amounts = {r.address: r.amount for r in positive_records}
         assert amounts["0xrecipient1"] == 300
-        assert amounts["0xrecipient2"] == 200  
+        assert amounts["0xrecipient2"] == 200
         assert amounts["0xrecipient3"] == 150
-        
+
         # Check all negative records (sender debits)
         negative_records = [r for r in records if r.amount < 0]
         assert len(negative_records) == 3
-        
+
         for neg_record in negative_records:
             assert neg_record.address == "0xmulti_sender"
             assert neg_record.amount in [-300, -200, -150]
@@ -363,10 +372,10 @@ def test_zero_amount_edge_case(session_factory: DbSessionFactory):
             "expiration": 1700000000000,
         }
     ]
-    
+
     with session_factory() as session:
         message_timestamp = dt.datetime(2023, 1, 8, 12, 0, 0, tzinfo=dt.timezone.utc)
-        
+
         update_credit_balances_transfer(
             session=session,
             credits_list=credits_list,
@@ -376,18 +385,20 @@ def test_zero_amount_edge_case(session_factory: DbSessionFactory):
             message_timestamp=message_timestamp,
         )
         session.commit()
-        
-        records = session.query(AlephCreditHistoryDb).filter_by(
-            credit_ref="zero_amount_transfer"
-        ).all()
-        
+
+        records = (
+            session.query(AlephCreditHistoryDb)
+            .filter_by(credit_ref="zero_amount_transfer")
+            .all()
+        )
+
         # Should still create both records
         assert len(records) == 2
-        
+
         # Both should have zero amounts
         for record in records:
             assert record.amount == 0
-        
+
         # Verify addresses
         addresses = {r.address for r in records}
         assert "0xzero_recipient" in addresses
@@ -403,10 +414,10 @@ def test_self_transfer_edge_case(session_factory: DbSessionFactory):
             "expiration": 1700000000000,
         }
     ]
-    
+
     with session_factory() as session:
         message_timestamp = dt.datetime(2023, 1, 9, 12, 0, 0, tzinfo=dt.timezone.utc)
-        
+
         update_credit_balances_transfer(
             session=session,
             credits_list=credits_list,
@@ -416,18 +427,20 @@ def test_self_transfer_edge_case(session_factory: DbSessionFactory):
             message_timestamp=message_timestamp,
         )
         session.commit()
-        
-        records = session.query(AlephCreditHistoryDb).filter_by(
-            credit_ref="self_transfer_test"
-        ).all()
-        
+
+        records = (
+            session.query(AlephCreditHistoryDb)
+            .filter_by(credit_ref="self_transfer_test")
+            .all()
+        )
+
         # Should create both positive and negative records
         assert len(records) == 2
-        
+
         amounts = [r.amount for r in records]
-        assert 250 in amounts   # Positive entry
+        assert 250 in amounts  # Positive entry
         assert -250 in amounts  # Negative entry
-        
+
         # Both records should have same address
         for record in records:
             assert record.address == "0xself_transfer_user"
@@ -436,10 +449,10 @@ def test_self_transfer_edge_case(session_factory: DbSessionFactory):
 def test_balance_fix_doesnt_affect_valid_credits(session_factory: DbSessionFactory):
     """Test that the negative balance fix doesn't affect normal scenarios."""
     import time
-    
+
     # Create valid credits (far future expiration)
     valid_timestamp = int((time.time() + 86400 * 365) * 1000)  # 1 year from now
-    
+
     credits_list = [
         {
             "address": "0xvalid_user",
@@ -450,9 +463,9 @@ def test_balance_fix_doesnt_affect_valid_credits(session_factory: DbSessionFacto
             "expiration": valid_timestamp,
         }
     ]
-    
+
     message_timestamp_1 = dt.datetime(2023, 1, 11, 12, 0, 0, tzinfo=dt.timezone.utc)
-    
+
     with session_factory() as session:
         update_credit_balances_distribution(
             session=session,
@@ -463,11 +476,11 @@ def test_balance_fix_doesnt_affect_valid_credits(session_factory: DbSessionFacto
             message_timestamp=message_timestamp_1,
         )
         session.commit()
-        
+
         # Balance should be 1000
         balance = get_credit_balance(session, "0xvalid_user")
         assert balance == 1000
-        
+
         # Add some expenses
         expense_credits = [
             {
@@ -476,9 +489,9 @@ def test_balance_fix_doesnt_affect_valid_credits(session_factory: DbSessionFacto
                 "ref": "expense_ref",
             }
         ]
-        
+
         expense_timestamp = dt.datetime(2023, 1, 11, 13, 0, 0, tzinfo=dt.timezone.utc)
-        
+
         update_credit_balances_expense(
             session=session,
             credits_list=expense_credits,
@@ -486,11 +499,11 @@ def test_balance_fix_doesnt_affect_valid_credits(session_factory: DbSessionFacto
             message_timestamp=expense_timestamp,
         )
         session.commit()
-        
+
         # Balance should be 700 (1000 - 300)
         balance = get_credit_balance(session, "0xvalid_user")
         assert balance == 700
-        
+
         # Add a transfer (user sends 200 to someone else)
         transfer_credits = [
             {
@@ -499,9 +512,9 @@ def test_balance_fix_doesnt_affect_valid_credits(session_factory: DbSessionFacto
                 "expiration": valid_timestamp,
             }
         ]
-        
+
         transfer_timestamp = dt.datetime(2023, 1, 11, 14, 0, 0, tzinfo=dt.timezone.utc)
-        
+
         update_credit_balances_transfer(
             session=session,
             credits_list=transfer_credits,
@@ -511,37 +524,45 @@ def test_balance_fix_doesnt_affect_valid_credits(session_factory: DbSessionFacto
             message_timestamp=transfer_timestamp,
         )
         session.commit()
-        
+
         # Balance should be 500 (700 - 200)
         balance = get_credit_balance(session, "0xvalid_user")
         assert balance == 500
-        
+
         # Verify the fix doesn't interfere with normal positive balances
         assert balance > 0
 
 
-def test_fifo_scenario_1_non_expiring_first_equals_0_remaining(session_factory: DbSessionFactory):
+def test_fifo_scenario_1_non_expiring_first_equals_0_remaining(
+    session_factory: DbSessionFactory,
+):
     """
     FIFO Scenario 1: Non-expiring credits received FIRST → Result: 0 remaining
-    
+
     Setup:
     - 1000 non-expiring credits (received FIRST at T1)
-    - 1000 expiring credits (received SECOND at T2, expire at T4)  
+    - 1000 expiring credits (received SECOND at T2, expire at T4)
     - 1500 expense at T3 (before expiration at T4)
-    
+
     FIFO Consumption: 1000 (non-expiring) + 500 (expiring) = 1500 total consumed
     Final Balance: 0 (non-expiring remaining) + 500 (expiring remaining but expired) = 0
     """
     import time
-    
+
     # Set up timestamps - expiration between expense and now
     base_time = time.time()
     expiration_time = int((base_time - 300) * 1000)  # Expired 5 minutes ago
-    
-    message_timestamp_1 = dt.datetime.fromtimestamp(base_time - 3600, tz=dt.timezone.utc)      # Non-expiring credits (FIRST)
-    message_timestamp_2 = dt.datetime.fromtimestamp(base_time - 1800, tz=dt.timezone.utc)      # Expiring credits (SECOND)  
-    expense_timestamp = dt.datetime.fromtimestamp(base_time - 600, tz=dt.timezone.utc)         # Expense (BEFORE expiration at -300)
-    
+
+    message_timestamp_1 = dt.datetime.fromtimestamp(
+        base_time - 3600, tz=dt.timezone.utc
+    )  # Non-expiring credits (FIRST)
+    message_timestamp_2 = dt.datetime.fromtimestamp(
+        base_time - 1800, tz=dt.timezone.utc
+    )  # Expiring credits (SECOND)
+    expense_timestamp = dt.datetime.fromtimestamp(
+        base_time - 600, tz=dt.timezone.utc
+    )  # Expense (BEFORE expiration at -300)
+
     with session_factory() as session:
         # Add 1000 non-expiring credits (FIRST chronologically)
         credits_no_expiry = [
@@ -553,39 +574,39 @@ def test_fifo_scenario_1_non_expiring_first_equals_0_remaining(session_factory: 
                 "provider": "test_provider",
             }
         ]
-        
+
         update_credit_balances_distribution(
             session=session,
             credits_list=credits_no_expiry,
             token="TEST",
-            chain="ETH", 
+            chain="ETH",
             message_hash="no_expiry_credits",
             message_timestamp=message_timestamp_1,
         )
         session.commit()
-        
+
         # Add 1000 expiring credits (SECOND chronologically)
         credits_with_expiry = [
             {
                 "address": "0xcorner_case_user",
                 "amount": 1000,
-                "ratio": "1.0", 
+                "ratio": "1.0",
                 "tx_hash": "0xwith_expiry",
                 "provider": "test_provider",
                 "expiration": expiration_time,
             }
         ]
-        
+
         update_credit_balances_distribution(
             session=session,
             credits_list=credits_with_expiry,
             token="TEST",
             chain="ETH",
-            message_hash="expiring_credits", 
+            message_hash="expiring_credits",
             message_timestamp=message_timestamp_2,
         )
         session.commit()
-        
+
         # Step 3: Add expense of 1500 BEFORE expiration
         expense_credits = [
             {
@@ -594,7 +615,7 @@ def test_fifo_scenario_1_non_expiring_first_equals_0_remaining(session_factory: 
                 "ref": "big_expense",
             }
         ]
-        
+
         update_credit_balances_expense(
             session=session,
             credits_list=expense_credits,
@@ -602,60 +623,70 @@ def test_fifo_scenario_1_non_expiring_first_equals_0_remaining(session_factory: 
             message_timestamp=expense_timestamp,  # This is BEFORE tomorrow's expiration
         )
         session.commit()
-        
+
         # Check final balance (expiring credits have already expired)
         balance_after_expiration = get_credit_balance(session, "0xcorner_case_user")
-        
+
         # Expected: 0 remaining (all non-expiring consumed, expiring remainder expired)
         expected_balance = 0
-        assert balance_after_expiration == expected_balance, f"Scenario 1: Expected {expected_balance} remaining credits, got {balance_after_expiration}"
+        assert (
+            balance_after_expiration == expected_balance
+        ), f"Scenario 1: Expected {expected_balance} remaining credits, got {balance_after_expiration}"
 
 
-def test_fifo_scenario_2_expiring_first_equals_500_remaining(session_factory: DbSessionFactory):
+def test_fifo_scenario_2_expiring_first_equals_500_remaining(
+    session_factory: DbSessionFactory,
+):
     """
     FIFO Scenario 2: Expiring credits received FIRST → Result: 500 remaining
-    
+
     Setup:
     - 1000 expiring credits (received FIRST at T1, expire at T4)
-    - 1000 non-expiring credits (received SECOND at T2)  
+    - 1000 non-expiring credits (received SECOND at T2)
     - 1500 expense at T3 (before expiration at T4)
-    
+
     FIFO Consumption: 1000 (expiring) + 500 (non-expiring) = 1500 total consumed
     Final Balance: 0 (expiring remaining but expired) + 500 (non-expiring remaining) = 500
     """
     import time
-    
+
     # Set up timestamps - expiration between expense and now
     base_time = time.time()
     expiration_time = int((base_time - 300) * 1000)  # Expired 5 minutes ago
-    
-    message_timestamp_1 = dt.datetime.fromtimestamp(base_time - 3600, tz=dt.timezone.utc)      # Expiring credits (FIRST)
-    message_timestamp_2 = dt.datetime.fromtimestamp(base_time - 1800, tz=dt.timezone.utc)      # Non-expiring credits (SECOND)  
-    expense_timestamp = dt.datetime.fromtimestamp(base_time - 600, tz=dt.timezone.utc)         # Expense (BEFORE expiration at -300)
-    
+
+    message_timestamp_1 = dt.datetime.fromtimestamp(
+        base_time - 3600, tz=dt.timezone.utc
+    )  # Expiring credits (FIRST)
+    message_timestamp_2 = dt.datetime.fromtimestamp(
+        base_time - 1800, tz=dt.timezone.utc
+    )  # Non-expiring credits (SECOND)
+    expense_timestamp = dt.datetime.fromtimestamp(
+        base_time - 600, tz=dt.timezone.utc
+    )  # Expense (BEFORE expiration at -300)
+
     with session_factory() as session:
         # Add 1000 expiring credits (FIRST chronologically)
         credits_with_expiry = [
             {
                 "address": "0xscenario2_user",
                 "amount": 1000,
-                "ratio": "1.0", 
+                "ratio": "1.0",
                 "tx_hash": "0xexpiry_first",
                 "provider": "test_provider",
                 "expiration": expiration_time,
             }
         ]
-        
+
         update_credit_balances_distribution(
             session=session,
             credits_list=credits_with_expiry,
             token="TEST",
             chain="ETH",
-            message_hash="expiring_credits_first", 
+            message_hash="expiring_credits_first",
             message_timestamp=message_timestamp_1,  # FIRST timestamp
         )
         session.commit()
-        
+
         # Add 1000 non-expiring credits (SECOND chronologically)
         credits_no_expiry = [
             {
@@ -666,17 +697,17 @@ def test_fifo_scenario_2_expiring_first_equals_500_remaining(session_factory: Db
                 "provider": "test_provider",
             }
         ]
-        
+
         update_credit_balances_distribution(
             session=session,
             credits_list=credits_no_expiry,
             token="TEST",
-            chain="ETH", 
+            chain="ETH",
             message_hash="no_expiry_credits_second",
             message_timestamp=message_timestamp_2,  # SECOND timestamp
         )
         session.commit()
-        
+
         # Step 3: Add expense of 1500 BEFORE expiration
         expense_credits = [
             {
@@ -685,7 +716,7 @@ def test_fifo_scenario_2_expiring_first_equals_500_remaining(session_factory: Db
                 "ref": "big_expense_scenario2",
             }
         ]
-        
+
         update_credit_balances_expense(
             session=session,
             credits_list=expense_credits,
@@ -693,10 +724,12 @@ def test_fifo_scenario_2_expiring_first_equals_500_remaining(session_factory: Db
             message_timestamp=expense_timestamp,  # This is BEFORE tomorrow's expiration
         )
         session.commit()
-        
+
         # Check final balance (expiring credits have already expired)
         balance_after_expiration = get_credit_balance(session, "0xscenario2_user")
-        
+
         # Expected: 500 remaining (expiring consumed and expired, non-expiring remainder survives)
         expected_balance = 500
-        assert balance_after_expiration == expected_balance, f"Scenario 2: Expected {expected_balance} remaining credits, got {balance_after_expiration}"
+        assert (
+            balance_after_expiration == expected_balance
+        ), f"Scenario 2: Expected {expected_balance} remaining credits, got {balance_after_expiration}"

@@ -1,17 +1,22 @@
+import datetime as dt
 import logging
 from typing import Any, Dict, List, Mapping, Optional, Set, Union
 
 from aleph_message.models import Chain, ChainRef, PostContent
 from sqlalchemy import update
 
+from aleph.db.accessors.balances import get_credit_balance
 from aleph.db.accessors.balances import update_balances as update_balances_db
 from aleph.db.accessors.balances import (
     update_credit_balances_distribution as update_credit_balances_distribution_db,
-    update_credit_balances_expense as update_credit_balances_expense_db,
-    update_credit_balances_transfer as update_credit_balances_transfer_db,
-    validate_credit_transfer_balance,
-    get_credit_balance,
 )
+from aleph.db.accessors.balances import (
+    update_credit_balances_expense as update_credit_balances_expense_db,
+)
+from aleph.db.accessors.balances import (
+    update_credit_balances_transfer as update_credit_balances_transfer_db,
+)
+from aleph.db.accessors.balances import validate_credit_transfer_balance
 from aleph.db.accessors.posts import (
     delete_amends,
     delete_post,
@@ -68,7 +73,10 @@ def update_balances(session: DbSession, content: Mapping[str, Any]) -> None:
 
 
 def update_credit_balances_distribution(
-    session: DbSession, content: Mapping[str, Any], message_hash: str
+    session: DbSession,
+    content: Mapping[str, Any],
+    message_hash: str,
+    message_timestamp: dt.datetime,
 ) -> None:
     try:
         distribution = content["distribution"]
@@ -88,13 +96,15 @@ def update_credit_balances_distribution(
         token=token,
         chain=chain,
         message_hash=message_hash,
+        message_timestamp=message_timestamp,
     )
 
 
-
-
 def update_credit_balances_expense(
-    session: DbSession, content: Mapping[str, Any], message_hash: str
+    session: DbSession,
+    content: Mapping[str, Any],
+    message_hash: str,
+    message_timestamp: dt.datetime,
 ) -> None:
     try:
         expense = content["expense"]
@@ -110,15 +120,17 @@ def update_credit_balances_expense(
         session=session,
         credits_list=credits_list,
         message_hash=message_hash,
+        message_timestamp=message_timestamp,
     )
 
 
 def update_credit_balances_transfer(
-    session: DbSession, 
-    content: Mapping[str, Any], 
-    message_hash: str, 
+    session: DbSession,
+    content: Mapping[str, Any],
+    message_hash: str,
+    message_timestamp: dt.datetime,
     sender_address: str,
-    whitelisted_addresses: List[str]
+    whitelisted_addresses: List[str],
 ) -> None:
     try:
         transfer = content["transfer"]
@@ -138,7 +150,9 @@ def update_credit_balances_transfer(
                 f"Insufficient credit balance for transfer. Required: {total_amount}, Available: {get_credit_balance(session, sender_address)}"
             )
 
-    LOGGER.info("Updating credit balances transfer for %d recipients", len(credits_list))
+    LOGGER.info(
+        "Updating credit balances transfer for %d recipients", len(credits_list)
+    )
 
     update_credit_balances_transfer_db(
         session=session,
@@ -146,6 +160,7 @@ def update_credit_balances_transfer(
         sender_address=sender_address,
         whitelisted_addresses=whitelisted_addresses,
         message_hash=message_hash,
+        message_timestamp=message_timestamp,
     )
 
 
@@ -241,7 +256,10 @@ class PostMessageHandler(ContentHandler):
         if (
             content.type in self.credit_balances_post_types
             and content.address in self.credit_balances_addresses
-            and (not self.credit_balances_channels or message.channel in self.credit_balances_channels)
+            and (
+                not self.credit_balances_channels
+                or message.channel in self.credit_balances_channels
+            )
             and content.content
         ):
             LOGGER.info("Updating credit balances...")
@@ -250,18 +268,21 @@ class PostMessageHandler(ContentHandler):
                     session=session,
                     content=content.content,
                     message_hash=message.item_hash,
+                    message_timestamp=creation_datetime,
                 )
             elif content.type == "aleph_credit_expense":
                 update_credit_balances_expense(
                     session=session,
                     content=content.content,
                     message_hash=message.item_hash,
+                    message_timestamp=creation_datetime,
                 )
             elif content.type == "aleph_credit_transfer":
                 update_credit_balances_transfer(
                     session=session,
                     content=content.content,
                     message_hash=message.item_hash,
+                    message_timestamp=creation_datetime,
                     sender_address=content.address,
                     whitelisted_addresses=self.credit_balances_addresses,
                 )

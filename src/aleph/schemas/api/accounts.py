@@ -29,8 +29,6 @@ class GetAccountBalanceResponse(BaseModel):
     credit_balance: int = 0
 
 
-
-
 class GetAccountFilesQueryParams(BaseModel):
     pagination: int = Field(
         default=100,
@@ -111,6 +109,43 @@ class GetAccountFilesResponse(BaseModel):
     address: str
     total_size: int
     files: List[GetAccountFilesResponseItem]
+    pagination_page: int
+    pagination_total: int
+    pagination_per_page: int
+
+
+class GetAccountCreditHistoryQueryParams(BaseModel):
+    pagination: int = Field(
+        default=0,
+        ge=0,
+        description="Maximum number of credit history entries to return. Specifying 0 returns all entries.",
+    )
+    page: int = Field(
+        default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
+    )
+
+
+class CreditHistoryResponseItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    amount: int
+    ratio: Optional[Decimal] = None
+    tx_hash: Optional[str] = None
+    token: Optional[str] = None
+    chain: Optional[str] = None
+    provider: Optional[str] = None
+    origin: Optional[str] = None
+    origin_ref: Optional[str] = None
+    payment_method: Optional[str] = None
+    credit_ref: str
+    credit_index: int
+    expiration_date: Optional[dt.datetime] = None
+    message_timestamp: dt.datetime
+
+
+class GetAccountCreditHistoryResponse(BaseModel):
+    address: str
+    credit_history: List[CreditHistoryResponseItem]
     pagination_page: int
     pagination_total: int
     pagination_per_page: int
