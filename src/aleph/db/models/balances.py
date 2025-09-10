@@ -42,8 +42,8 @@ class AlephBalanceDb(Base):
     )
 
 
-class AlephCreditBalanceDb(Base):
-    __tablename__ = "credit_balances"
+class AlephCreditHistoryDb(Base):
+    __tablename__ = "credit_history"
 
     id: int = Column(BigInteger, autoincrement=True)
 
@@ -62,6 +62,24 @@ class AlephCreditBalanceDb(Base):
     expiration_date: Optional[dt.datetime] = Column(
         TIMESTAMP(timezone=True), nullable=True
     )
+    message_timestamp: dt.datetime = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        index=True,
+    )
+    last_update: dt.datetime = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class AlephCreditBalanceDb(Base):
+    __tablename__ = "credit_balances"
+
+    address: str = Column(String, primary_key=True, index=True)
+    balance: int = Column(BigInteger, nullable=False, default=0)
     last_update: dt.datetime = Column(
         TIMESTAMP(timezone=True),
         nullable=False,
