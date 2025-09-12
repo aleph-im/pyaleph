@@ -35,13 +35,18 @@ def validate_balance_for_payment(
     """
     if payment_type == PaymentType.credit:
         current_credit_balance = get_credit_balance(address=address, session=session)
+        
+        # Get current hourly credit cost for all running VMs
         current_credit_cost = get_total_cost_for_address(
-            session=session, address=address, payment_type=PaymentType.credit
+            session=session, address=address, payment_type=payment_type
         )
-
+        
+        # Calculate total hourly cost (existing VMs + new VM)
+        total_hourly_cost = current_credit_cost + message_cost
+        
         # Calculate minimum required credits for 1-day runtime (24 hours)
-        daily_credit_cost = message_cost * 24  # Assuming message_cost is per hour
-        required_credits = current_credit_cost + daily_credit_cost
+        daily_credit_cost = total_hourly_cost * 24
+        required_credits = daily_credit_cost
 
         if current_credit_balance < required_credits:
             raise InsufficientCreditException(
