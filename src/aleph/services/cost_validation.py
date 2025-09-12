@@ -4,6 +4,7 @@ from aleph_message.models import PaymentType
 
 from aleph.db.accessors.balances import get_credit_balance, get_total_balance
 from aleph.db.accessors.cost import get_total_cost_for_address
+from aleph.toolkit.constants import DAY
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import (
     InsufficientBalanceException,
@@ -26,7 +27,7 @@ def validate_balance_for_payment(
     Args:
         session: Database session
         address: Account address to check
-        message_cost: Cost of the message (per hour for credits)
+        message_cost: Cost of the message (per seconds for credits)
         payment_type: Type of payment (hold, superfluid, credit)
 
     Raises:
@@ -41,12 +42,12 @@ def validate_balance_for_payment(
             session=session, address=address, payment_type=payment_type
         )
         
-        # Calculate total hourly cost (existing VMs + new VM)
-        total_hourly_cost = current_credit_cost + message_cost
+        # Calculate total per-second cost (existing VMs + new VM)
+        # Note: both current_credit_cost and message_cost are per-second rates
+        total_per_second_cost = current_credit_cost + message_cost
         
-        # Calculate minimum required credits for 1-day runtime (24 hours)
-        daily_credit_cost = total_hourly_cost * 24
-        required_credits = daily_credit_cost
+        # Calculate minimum required credits for 1-day runtime
+        required_credits = total_per_second_cost * DAY
 
         if current_credit_balance < required_credits:
             raise InsufficientCreditException(
