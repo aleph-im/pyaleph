@@ -1,4 +1,5 @@
 import asyncio
+import json
 from unittest.mock import AsyncMock, patch
 
 import aioipfs
@@ -131,6 +132,31 @@ async def test_get_ipfs_size_non_dict():
     assert result == 8765
     ipfs_client.dag.get.assert_called_once_with("test_hash")
     ipfs_client.block.stat.assert_called_once_with("test_hash")
+
+
+@pytest.mark.asyncio
+async def test_get_ipfs_size_json():
+    """Test when dag.get returns a non-dictionary (bytes)"""
+    # Setup
+    mock_dag_get_data = {
+        "Data": {"/": {"bytes": "CAE"}},
+        "Links": [
+            {"Hash": {"/": "hash1"}, "Name": "test1", "Tsize": 12596071},
+            {"Hash": {"/": "hash2"}, "Name": "test2", "Tsize": 20168090},
+        ],
+    }
+    ipfs_client = AsyncMock()
+    ipfs_client.dag.get = AsyncMock(return_value=json.dumps(mock_dag_get_data))
+
+    service = IpfsService(ipfs_client=ipfs_client)
+
+    # Execute
+    result = await service.get_ipfs_size("test_hash")
+
+    # Assert
+    assert result == 32764161
+    ipfs_client.dag.get.assert_called_once_with("test_hash")
+    ipfs_client.block.stat.assert_not_called()
 
 
 @pytest.mark.asyncio

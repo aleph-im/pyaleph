@@ -68,6 +68,7 @@ class IpfsService:
                 dag_node = await asyncio.wait_for(
                     self.ipfs_client.dag.get(hash), timeout=timeout
                 )
+                result = 0
                 if isinstance(dag_node, str):
                     dag_node = json.loads(dag_node)
                 if isinstance(dag_node, dict):
