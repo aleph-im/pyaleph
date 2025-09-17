@@ -68,6 +68,8 @@ class IpfsService:
                 dag_node = await asyncio.wait_for(
                     self.ipfs_client.dag.get(hash), timeout=timeout
                 )
+                if isinstance(dag_node, str):
+                    dag_node = json.loads(dag_node)
                 if isinstance(dag_node, dict):
                     if "Data" in dag_node and isinstance(dag_node["Data"], dict):
                         # This is the common structure for UnixFS nodes after aioipfs parsing
@@ -81,7 +83,11 @@ class IpfsService:
                             "Tsize" in dag_node
                         ):  # Sometimes it might be at the top level directly
                             result = dag_node["Tsize"]
-                    elif "Links" in dag_node and isinstance(dag_node["Links"], list):
+                    if (
+                        result == 0
+                        and "Links" in dag_node
+                        and isinstance(dag_node["Links"], list)
+                    ):
                         total_size = 0
                         for link in dag_node["Links"]:
                             # In case it's a link list, get the Tsize property if exists
