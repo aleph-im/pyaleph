@@ -204,6 +204,8 @@ def get_defaults():
             "pending_message_exchange": "aleph-pending-messages",
             # Name of the RabbitMQ exchange used for sync/message events (input of the TX processor).
             "pending_tx_exchange": "aleph-pending-txs",
+            # Heartbeat interval in seconds to prevent connection timeouts during long operations.
+            "heartbeat": 600,
         },
         "redis": {
             # Hostname of the Redis service.
