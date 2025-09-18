@@ -41,6 +41,7 @@ async def _make_pending_queue(
             port=config.rabbitmq.port.value,
             login=config.rabbitmq.username.value,
             password=config.rabbitmq.password.value,
+            heartbeat=config.rabbitmq.heartbeat.value,
         )
         channel = await mq_conn.channel()
 
