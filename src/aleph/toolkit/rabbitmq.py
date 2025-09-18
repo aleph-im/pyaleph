@@ -7,5 +7,6 @@ async def make_mq_conn(config) -> aio_pika.abc.AbstractConnection:
         port=config.rabbitmq.port.value,
         login=config.rabbitmq.username.value,
         password=config.rabbitmq.password.value,
+        heartbeat=config.rabbitmq.heartbeat.value,
     )
     return mq_conn

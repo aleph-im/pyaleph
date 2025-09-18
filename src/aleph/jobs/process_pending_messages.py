@@ -63,9 +63,14 @@ class PendingMessageProcessor(MessageJob):
         mq_password: str,
         message_exchange_name: str,
         pending_message_exchange_name: str,
+        mq_heartbeat: int,
     ):
         mq_conn = await aio_pika.connect_robust(
-            host=mq_host, port=mq_port, login=mq_username, password=mq_password
+            host=mq_host,
+            port=mq_port,
+            login=mq_username,
+            password=mq_password,
+            heartbeat=mq_heartbeat,
         )
         channel = await mq_conn.channel()
         mq_message_exchange = await channel.declare_exchange(
@@ -179,6 +184,7 @@ async def fetch_and_process_messages_task(config: Config):
             mq_password=config.rabbitmq.password.value,
             message_exchange_name=config.rabbitmq.message_exchange.value,
             pending_message_exchange_name=config.rabbitmq.pending_message_exchange.value,
+            mq_heartbeat=config.rabbitmq.heartbeat.value,
         )
 
         async with pending_message_processor:

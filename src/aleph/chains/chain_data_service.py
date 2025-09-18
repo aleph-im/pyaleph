@@ -231,6 +231,7 @@ async def make_pending_tx_exchange(config: Config) -> aio_pika.abc.AbstractExcha
         port=config.rabbitmq.port.value,
         login=config.rabbitmq.username.value,
         password=config.rabbitmq.password.value,
+        heartbeat=config.rabbitmq.heartbeat.value,
     )
     channel = await mq_conn.channel()
     pending_tx_exchange = await channel.declare_exchange(
