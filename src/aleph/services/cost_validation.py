@@ -36,16 +36,16 @@ def validate_balance_for_payment(
     """
     if payment_type == PaymentType.credit:
         current_credit_balance = get_credit_balance(address=address, session=session)
-        
+
         # Get current hourly credit cost for all running VMs
         current_credit_cost = get_total_cost_for_address(
             session=session, address=address, payment_type=payment_type
         )
-        
+
         # Calculate total per-second cost (existing VMs + new VM)
         # Note: both current_credit_cost and message_cost are per-second rates
         total_per_second_cost = current_credit_cost + message_cost
-        
+
         # Calculate minimum required credits for 1-day runtime
         required_credits = total_per_second_cost * DAY
 
