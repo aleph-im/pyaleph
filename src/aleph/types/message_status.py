@@ -169,16 +169,6 @@ class FileNotFoundException(RetryMessageException):
         super().__init__(f"File not found: {file_hash}")
 
 
-class FileContentNotFoundException(RetryMessageException):
-    """
-    A file required to process the message could not be found, locally and/or
-    on the network.
-    """
-
-    def __init__(self, file_hash: str):
-        super().__init__(f"File content not found: {file_hash}")
-
-
 class MessageContentUnavailable(FileNotFoundException):
     """
     The message content is not available at the moment (storage/IPFS item types).
@@ -188,14 +178,6 @@ class MessageContentUnavailable(FileNotFoundException):
 
 
 class FileUnavailable(FileNotFoundException):
-    """
-    A file pointed to by the message is not available at the moment.
-    """
-
-    error_code = ErrorCode.FILE_UNAVAILABLE
-
-
-class FileContentUnavailable(FileContentNotFoundException):
     """
     A file pointed to by the message is not available at the moment.
     """
