@@ -17,8 +17,8 @@ from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_processing_result import RejectedMessage, WillRetryMessage
 from aleph.types.message_status import (
     ErrorCode,
-    FileNotFoundException,
     InvalidMessageException,
+    MessageContentUnavailable,
     RetryMessageException,
 )
 
@@ -221,7 +221,7 @@ class MessageJob(MqWatcher):
         pending_message: PendingMessageDb,
         exception: BaseException,
     ) -> Union[RejectedMessage, WillRetryMessage]:
-        if isinstance(exception, FileNotFoundException):
+        if isinstance(exception, MessageContentUnavailable):
             LOGGER.warning(
                 "Could not fetch message %s, putting it back in the fetch queue: %s",
                 pending_message.item_hash,
@@ -233,20 +233,12 @@ class MessageJob(MqWatcher):
                 .where(PendingMessageDb.id == pending_message.id)
                 .values(fetched=False)
             )
-        elif isinstance(exception, RetryMessageException):
-            LOGGER.warning(
-                "%s error (%d) - message %s marked for retry",
-                exception.error_code.name,
-                exception.error_code.value,
-                pending_message.item_hash,
-            )
-            error_code = exception.error_code
-            schedule_next_attempt(session=session, pending_message=pending_message)
-        else:
+        elif not isinstance(exception, RetryMessageException):
             LOGGER.exception(
                 "Unexpected error while fetching message", exc_info=exception
             )
             error_code = ErrorCode.INTERNAL_ERROR
+
         if pending_message.retries >= self.max_retries:
             LOGGER.warning(
                 "Rejecting pending message: %s - too many retries",
@@ -258,6 +250,11 @@ class MessageJob(MqWatcher):
                 exception=exception,
             )
         else:
+            LOGGER.warning(
+                "Message %s marked for retry: %s",
+                pending_message.item_hash,
+                str(exception),
+            )
             schedule_next_attempt(session=session, pending_message=pending_message)
             return WillRetryMessage(
                 pending_message=pending_message, error_code=error_code
