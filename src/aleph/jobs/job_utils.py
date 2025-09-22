@@ -221,6 +221,7 @@ class MessageJob(MqWatcher):
         pending_message: PendingMessageDb,
         exception: BaseException,
     ) -> Union[RejectedMessage, WillRetryMessage]:
+        error_code = ErrorCode.INTERNAL_ERROR
         if isinstance(exception, MessageContentUnavailable):
             LOGGER.warning(
                 "Could not fetch message %s, putting it back in the fetch queue: %s",
@@ -237,7 +238,6 @@ class MessageJob(MqWatcher):
             LOGGER.exception(
                 "Unexpected error while fetching message", exc_info=exception
             )
-            error_code = ErrorCode.INTERNAL_ERROR
 
         if pending_message.retries >= self.max_retries:
             LOGGER.warning(
