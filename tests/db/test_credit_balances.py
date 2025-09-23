@@ -1,5 +1,8 @@
+import time
 import datetime as dt
 from decimal import Decimal
+
+from sqlalchemy import select
 
 from aleph.db.accessors.balances import (
     get_credit_balance,
@@ -256,7 +259,6 @@ def test_balance_validation_insufficient_credits(session_factory: DbSessionFacto
 
 def test_expired_credits_excluded_from_transfers(session_factory: DbSessionFactory):
     """Test that expired credits are not counted when validating transfers."""
-    import time
 
     expired_timestamp = int((time.time() - 86400) * 1000)  # 1 day ago
     valid_timestamp = int((time.time() + 86400) * 1000)  # 1 day from now
@@ -448,7 +450,6 @@ def test_self_transfer_edge_case(session_factory: DbSessionFactory):
 
 def test_balance_fix_doesnt_affect_valid_credits(session_factory: DbSessionFactory):
     """Test that the negative balance fix doesn't affect normal scenarios."""
-    import time
 
     # Create valid credits (far future expiration)
     valid_timestamp = int((time.time() + 86400 * 365) * 1000)  # 1 year from now
@@ -547,7 +548,6 @@ def test_fifo_scenario_1_non_expiring_first_equals_0_remaining(
     FIFO Consumption: 1000 (non-expiring) + 500 (expiring) = 1500 total consumed
     Final Balance: 0 (non-expiring remaining) + 500 (expiring remaining but expired) = 0
     """
-    import time
 
     # Set up timestamps - expiration between expense and now
     base_time = time.time()
@@ -648,7 +648,6 @@ def test_fifo_scenario_2_expiring_first_equals_500_remaining(
     FIFO Consumption: 1000 (expiring) + 500 (non-expiring) = 1500 total consumed
     Final Balance: 0 (expiring remaining but expired) + 500 (non-expiring remaining) = 500
     """
-    import time
 
     # Set up timestamps - expiration between expense and now
     base_time = time.time()
@@ -733,3 +732,84 @@ def test_fifo_scenario_2_expiring_first_equals_500_remaining(
         assert (
             balance_after_expiration == expected_balance
         ), f"Scenario 2: Expected {expected_balance} remaining credits, got {balance_after_expiration}"
+
+
+def test_cache_invalidation_on_credit_expiration(session_factory: DbSessionFactory):
+    """
+    Test that cached balances are recalculated when credits expire.
+
+    This test covers the bug where cached balances were not being recalculated
+    when credits expired after the cache was last updated.
+
+    Bug scenario:
+    1. Credit with expiration date X is added at time T1
+    2. Cache is calculated at time T2 (where T1 < T2 < X)
+    3. Current time is T3 (where T2 < X < T3, so credit has expired)
+    4. Without the fix, cached balance would be returned incorrectly
+    5. With the fix, balance is recalculated because credit expired after cache update
+    """
+
+    base_time = time.time()
+
+    # Time T1: Add credit
+    credit_time = dt.datetime.fromtimestamp(base_time - 3600, tz=dt.timezone.utc)  # 1 hour ago
+
+    # Time T2: Cache calculation time (30 minutes ago, before expiration)
+    cache_time = dt.datetime.fromtimestamp(base_time - 1800, tz=dt.timezone.utc)
+
+    # Time X: Credit expiration (between cache time and now)
+    expiration_time = int((base_time - 300) * 1000)  # Expired 5 minutes ago
+
+    with session_factory() as session:
+        # Step 1: Add credit with expiration date
+        credits_list = [
+            {
+                "address": "0xcache_bug_user",
+                "amount": 1000,
+                "ratio": "1.0",
+                "tx_hash": "0xcache_test",
+                "provider": "test_provider",
+                "expiration": expiration_time,  # Will expire at T3
+            }
+        ]
+
+        update_credit_balances_distribution(
+            session=session,
+            credits_list=credits_list,
+            token="TEST",
+            chain="ETH",
+            message_hash="cache_expiration_test",
+            message_timestamp=credit_time,  # T1
+        )
+        session.commit()
+
+        # Step 2: Simulate cache being calculated at T2 (before expiration)
+        # Mock utc_now to return cache_time during first balance calculation
+        balance_before_expiration = get_credit_balance(session, "0xcache_bug_user", cache_time)
+        session.commit()
+
+        # Verify that at T2, the balance was 1000 (credit not yet expired)
+        assert balance_before_expiration == 1000
+
+        # Verify that a cache entry was created and manually update its timestamp
+        # to simulate it being created at T2 (cache_time)
+        from aleph.db.models import AlephCreditBalanceDb
+        cached_balance = session.execute(
+            select(AlephCreditBalanceDb).where(AlephCreditBalanceDb.address == "0xcache_bug_user")
+        ).scalar_one_or_none()
+
+        assert cached_balance is not None
+        assert cached_balance.balance == 1000
+        assert cached_balance.last_update == cache_time
+
+        # Step 3: Now check balance at current time (T3, after expiration)
+        # The fix should detect that credit expired after cache update and recalculate
+        balance_after_expiration = get_credit_balance(session, "0xcache_bug_user")
+
+        # Expected: 0 (credit has expired)
+        assert balance_after_expiration == 0
+
+        # Verify that cache was updated (should have a newer timestamp)
+        session.refresh(cached_balance)
+        assert cached_balance.balance == 0
+        assert cached_balance.last_update > cache_time

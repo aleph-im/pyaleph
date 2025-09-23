@@ -191,7 +191,7 @@ def get_updated_balance_accounts(session: DbSession, last_update: dt.datetime):
     return (session.execute(select_stmt)).scalars().all()
 
 
-def _calculate_credit_balance_fifo(session: DbSession, address: str) -> int:
+def _calculate_credit_balance_fifo(session: DbSession, address: str, now: Optional[dt.datetime] = None) -> int:
     """
     Calculate credit balance using FIFO consumption strategy.
 
@@ -202,7 +202,8 @@ def _calculate_credit_balance_fifo(session: DbSession, address: str) -> int:
        occurred before the credit's expiration date
     4. Return remaining balance considering current expiration status
     """
-    now = utc_now()
+
+    now = now if now is not None else utc_now()
 
     # Get all credit history for this address, ordered by message timestamp
     records = (
@@ -265,20 +266,18 @@ def _calculate_credit_balance_fifo(session: DbSession, address: str) -> int:
     return max(0, total_balance)
 
 
-def get_credit_balance(session: DbSession, address: str) -> int:
+def get_credit_balance(session: DbSession, address: str, now: Optional[dt.datetime] = None) -> int:
     """
     Get credit balance using lazy recalculation strategy.
 
     1. Check if cached balance exists in credit_balances table
     2. Check if credit_history has newer entries than cached balance
-    3. If newer entries exist, recalculate using FIFO and update cache
-    4. Return cached balance
+    3. Check if any credits have expiration dates that occurred after the cache's last update
+    4. If recalculation is needed, recalculate using FIFO and update cache
+    5. Return cached balance
     """
 
-    # Get cached balance if it exists
-    cached_balance = session.execute(
-        select(AlephCreditBalanceDb).where(AlephCreditBalanceDb.address == address)
-    ).scalar_one_or_none()
+    now = now if now is not None else utc_now()
 
     # Get the timestamp of the most recent credit history entry for this address
     latest_history_timestamp = session.execute(
@@ -289,28 +288,42 @@ def get_credit_balance(session: DbSession, address: str) -> int:
 
     # If no history exists, balance is 0
     if latest_history_timestamp is None:
-        if cached_balance is None:
-            # Create new cache entry
-            session.add(AlephCreditBalanceDb(address=address, balance=0))
-            session.flush()
         return 0
 
+    # Get cached balance if it exists
+    cached_balance = session.execute(
+        select(AlephCreditBalanceDb).where(AlephCreditBalanceDb.address == address)
+    ).scalar_one_or_none()
+    
     # Check if recalculation is needed
-    needs_recalculation = (
-        cached_balance is None or cached_balance.last_update < latest_history_timestamp
-    )
+    needs_recalculation = cached_balance is None or cached_balance.last_update < latest_history_timestamp
+
+    # Also check if any credits have expiration dates that occurred after the cache's last update
+    # This handles the case where credits expired since the last cache update
+    if not needs_recalculation and cached_balance is not None:
+        # Check for any credits with expiration dates between cache last_update and now
+        earliest_expiration_after_cache = session.execute(
+            select(func.min(AlephCreditHistoryDb.expiration_date)).where(
+                (AlephCreditHistoryDb.address == address)
+                & (AlephCreditHistoryDb.expiration_date.isnot(None))
+                & (AlephCreditHistoryDb.expiration_date > cached_balance.last_update)
+                & (AlephCreditHistoryDb.expiration_date <= now)
+            )
+        ).scalar()
+
+        needs_recalculation = earliest_expiration_after_cache is not None
 
     if needs_recalculation:
         # Recalculate balance using FIFO
-        new_balance = _calculate_credit_balance_fifo(session, address)
+        new_balance = _calculate_credit_balance_fifo(session, address, now)
 
         if cached_balance is None:
             # Create new cache entry
-            session.add(AlephCreditBalanceDb(address=address, balance=new_balance))
+            session.add(AlephCreditBalanceDb(address=address, balance=new_balance, last_update= now))
         else:
             # Update existing cache entry
             cached_balance.balance = new_balance
-            cached_balance.last_update = utc_now()
+            cached_balance.last_update = now
 
         session.flush()
         return new_balance
