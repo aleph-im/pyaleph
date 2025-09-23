@@ -63,7 +63,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libpq-dev libsodium-dev libgmp-dev
       - run: |
-          pip install hatch coverage
+          pip install "click<8.2" hatch coverage
 
       - run: |
           sudo cp .github/openssl-ci.cnf /etc/ssl/openssl.cnf
