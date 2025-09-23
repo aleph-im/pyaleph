@@ -66,7 +66,7 @@ class IpfsService:
             try_count += 1
             try:
                 dag_node = await asyncio.wait_for(
-                    self.ipfs_client.dag.get(hash, output_code="json"), timeout=timeout
+                    self.ipfs_client.dag.get(hash), timeout=timeout
                 )
                 result = 0
                 if isinstance(dag_node, str):
