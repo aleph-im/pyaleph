@@ -10,7 +10,7 @@ from configmanager import Config
 
 from aleph.services.ipfs.common import make_ipfs_client
 from aleph.services.utils import get_IP
-from aleph.types.message_status import FileContentUnavailable, FileUnavailable
+from aleph.types.message_status import FileUnavailable
 from aleph.utils import run_in_executor
 
 LOGGER = logging.getLogger(__name__)
@@ -120,9 +120,7 @@ class IpfsService:
                 await asyncio.sleep(0.5)
                 continue
             except asyncio.TimeoutError:
-                raise FileContentUnavailable(
-                    "Could not retrieve IPFS content at this time"
-                )
+                raise FileUnavailable("Could not retrieve IPFS content at this time")
             except (
                 concurrent.futures.CancelledError,
                 aiohttp.client_exceptions.ClientConnectorError,
