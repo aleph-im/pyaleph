@@ -18,7 +18,7 @@ jobs:
       - name: Install pip and hatch
         run: |
           sudo apt-get install -y python3-pip
-          pip3 install hatch hatch-vcs
+          pip3 install "click<8.2" hatch hatch-vcs
 
       - name: Cache dependencies
         uses: actions/cache@v4
