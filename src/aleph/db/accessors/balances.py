@@ -191,7 +191,9 @@ def get_updated_balance_accounts(session: DbSession, last_update: dt.datetime):
     return (session.execute(select_stmt)).scalars().all()
 
 
-def _calculate_credit_balance_fifo(session: DbSession, address: str, now: Optional[dt.datetime] = None) -> int:
+def _calculate_credit_balance_fifo(
+    session: DbSession, address: str, now: Optional[dt.datetime] = None
+) -> int:
     """
     Calculate credit balance using FIFO consumption strategy.
 
@@ -266,7 +268,9 @@ def _calculate_credit_balance_fifo(session: DbSession, address: str, now: Option
     return max(0, total_balance)
 
 
-def get_credit_balance(session: DbSession, address: str, now: Optional[dt.datetime] = None) -> int:
+def get_credit_balance(
+    session: DbSession, address: str, now: Optional[dt.datetime] = None
+) -> int:
     """
     Get credit balance using lazy recalculation strategy.
 
@@ -294,9 +298,11 @@ def get_credit_balance(session: DbSession, address: str, now: Optional[dt.dateti
     cached_balance = session.execute(
         select(AlephCreditBalanceDb).where(AlephCreditBalanceDb.address == address)
     ).scalar_one_or_none()
-    
+
     # Check if recalculation is needed
-    needs_recalculation = cached_balance is None or cached_balance.last_update < latest_history_timestamp
+    needs_recalculation = (
+        cached_balance is None or cached_balance.last_update < latest_history_timestamp
+    )
 
     # Also check if any credits have expiration dates that occurred after the cache's last update
     # This handles the case where credits expired since the last cache update
@@ -319,7 +325,11 @@ def get_credit_balance(session: DbSession, address: str, now: Optional[dt.dateti
 
         if cached_balance is None:
             # Create new cache entry
-            session.add(AlephCreditBalanceDb(address=address, balance=new_balance, last_update= now))
+            session.add(
+                AlephCreditBalanceDb(
+                    address=address, balance=new_balance, last_update=now
+                )
+            )
         else:
             # Update existing cache entry
             cached_balance.balance = new_balance

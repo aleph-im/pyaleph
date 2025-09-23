@@ -1,5 +1,5 @@
-import time
 import datetime as dt
+import time
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -752,7 +752,9 @@ def test_cache_invalidation_on_credit_expiration(session_factory: DbSessionFacto
     base_time = time.time()
 
     # Time T1: Add credit
-    credit_time = dt.datetime.fromtimestamp(base_time - 3600, tz=dt.timezone.utc)  # 1 hour ago
+    credit_time = dt.datetime.fromtimestamp(
+        base_time - 3600, tz=dt.timezone.utc
+    )  # 1 hour ago
 
     # Time T2: Cache calculation time (30 minutes ago, before expiration)
     cache_time = dt.datetime.fromtimestamp(base_time - 1800, tz=dt.timezone.utc)
@@ -785,7 +787,9 @@ def test_cache_invalidation_on_credit_expiration(session_factory: DbSessionFacto
 
         # Step 2: Simulate cache being calculated at T2 (before expiration)
         # Mock utc_now to return cache_time during first balance calculation
-        balance_before_expiration = get_credit_balance(session, "0xcache_bug_user", cache_time)
+        balance_before_expiration = get_credit_balance(
+            session, "0xcache_bug_user", cache_time
+        )
         session.commit()
 
         # Verify that at T2, the balance was 1000 (credit not yet expired)
@@ -794,8 +798,11 @@ def test_cache_invalidation_on_credit_expiration(session_factory: DbSessionFacto
         # Verify that a cache entry was created and manually update its timestamp
         # to simulate it being created at T2 (cache_time)
         from aleph.db.models import AlephCreditBalanceDb
+
         cached_balance = session.execute(
-            select(AlephCreditBalanceDb).where(AlephCreditBalanceDb.address == "0xcache_bug_user")
+            select(AlephCreditBalanceDb).where(
+                AlephCreditBalanceDb.address == "0xcache_bug_user"
+            )
         ).scalar_one_or_none()
 
         assert cached_balance is not None
