@@ -8,6 +8,7 @@ GiB = 1024 * 1024 * 1024
 
 MINUTE = 60
 HOUR = 60 * MINUTE
+DAY = 24 * HOUR
 
 PRICE_AGGREGATE_OWNER = "0xFba561a84A537fCaa567bb7A2257e7142701ae2A"
 PRICE_AGGREGATE_KEY = "pricing"
@@ -15,8 +16,12 @@ PRICE_PRECISION = 18
 DEFAULT_PRICE_AGGREGATE: Dict[Union[ProductPriceType, str], dict] = {
     ProductPriceType.PROGRAM: {
         "price": {
-            "storage": {"payg": "0.000000977", "holding": "0.05"},
-            "compute_unit": {"payg": "0.011", "holding": "200"},
+            "storage": {
+                "payg": "0.000000977",
+                "holding": "0.05",
+                "credit": "0.000000977",
+            },
+            "compute_unit": {"payg": "0.011", "holding": "200", "credit": "0.011"},
         },
         "tiers": [
             {"id": "tier-1", "compute_units": 1},
@@ -35,8 +40,12 @@ DEFAULT_PRICE_AGGREGATE: Dict[Union[ProductPriceType, str], dict] = {
     ProductPriceType.STORAGE: {"price": {"storage": {"holding": "0.333333333"}}},
     ProductPriceType.INSTANCE: {
         "price": {
-            "storage": {"payg": "0.000000977", "holding": "0.05"},
-            "compute_unit": {"payg": "0.055", "holding": "1000"},
+            "storage": {
+                "payg": "0.000000977",
+                "holding": "0.05",
+                "credit": "0.000000977",
+            },
+            "compute_unit": {"payg": "0.055", "holding": "1000", "credit": "0.055"},
         },
         "tiers": [
             {"id": "tier-1", "compute_units": 1},
@@ -57,8 +66,12 @@ DEFAULT_PRICE_AGGREGATE: Dict[Union[ProductPriceType, str], dict] = {
     },
     ProductPriceType.PROGRAM_PERSISTENT: {
         "price": {
-            "storage": {"payg": "0.000000977", "holding": "0.05"},
-            "compute_unit": {"payg": "0.055", "holding": "1000"},
+            "storage": {
+                "payg": "0.000000977",
+                "holding": "0.05",
+                "credit": "0.000000977",
+            },
+            "compute_unit": {"payg": "0.055", "holding": "1000", "credit": "0.055"},
         },
         "tiers": [
             {"id": "tier-1", "compute_units": 1},
@@ -76,8 +89,8 @@ DEFAULT_PRICE_AGGREGATE: Dict[Union[ProductPriceType, str], dict] = {
     },
     ProductPriceType.INSTANCE_GPU_PREMIUM: {
         "price": {
-            "storage": {"payg": "0.000000977"},
-            "compute_unit": {"payg": "0.56"},
+            "storage": {"payg": "0.000000977", "credit": "0.000000977"},
+            "compute_unit": {"payg": "0.56", "credit": "0.56"},
         },
         "tiers": [
             {
@@ -101,8 +114,12 @@ DEFAULT_PRICE_AGGREGATE: Dict[Union[ProductPriceType, str], dict] = {
     },
     ProductPriceType.INSTANCE_CONFIDENTIAL: {
         "price": {
-            "storage": {"payg": "0.000000977", "holding": "0.05"},
-            "compute_unit": {"payg": "0.11", "holding": "2000"},
+            "storage": {
+                "payg": "0.000000977",
+                "holding": "0.05",
+                "credit": "0.000000977",
+            },
+            "compute_unit": {"payg": "0.11", "holding": "2000", "credit": "0.11"},
         },
         "tiers": [
             {"id": "tier-1", "compute_units": 1},
@@ -120,8 +137,8 @@ DEFAULT_PRICE_AGGREGATE: Dict[Union[ProductPriceType, str], dict] = {
     },
     ProductPriceType.INSTANCE_GPU_STANDARD: {
         "price": {
-            "storage": {"payg": "0.000000977"},
-            "compute_unit": {"payg": "0.28"},
+            "storage": {"payg": "0.000000977", "credit": "0.000000977"},
+            "compute_unit": {"payg": "0.28", "credit": "0.28"},
         },
         "tiers": [
             {

@@ -53,7 +53,7 @@ COPY src ./src
 
 # Install project deps and test deps
 RUN pip install -e .[testing,docs]
-RUN pip install hatch
+RUN pip install "click<8.2" hatch
 
 # Install project test deps
 RUN apt-get update && apt-get install -y \

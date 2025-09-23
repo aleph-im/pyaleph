@@ -40,3 +40,49 @@ class AlephBalanceDb(Base):
             "address", "chain", "dapp", name="balances_address_chain_dapp_uindex"
         ),
     )
+
+
+class AlephCreditHistoryDb(Base):
+    __tablename__ = "credit_history"
+
+    id: int = Column(BigInteger, autoincrement=True)
+
+    address: str = Column(String, nullable=False, index=True)
+    amount: int = Column(BigInteger, nullable=False)
+    ratio: Optional[Decimal] = Column(DECIMAL, nullable=True)
+    tx_hash: Optional[str] = Column(String, nullable=True)
+    token: Optional[str] = Column(String, nullable=True)
+    chain: Optional[str] = Column(String, nullable=True)
+    provider: Optional[str] = Column(String, nullable=True)
+    origin: Optional[str] = Column(String, nullable=True)
+    origin_ref: Optional[str] = Column(String, nullable=True)
+    payment_method: Optional[str] = Column(String, nullable=True)
+    credit_ref: str = Column(String, nullable=False, primary_key=True)
+    credit_index: int = Column(Integer, nullable=False, primary_key=True)
+    expiration_date: Optional[dt.datetime] = Column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    message_timestamp: dt.datetime = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        index=True,
+    )
+    last_update: dt.datetime = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class AlephCreditBalanceDb(Base):
+    __tablename__ = "credit_balances"
+
+    address: str = Column(String, primary_key=True, index=True)
+    balance: int = Column(BigInteger, nullable=False, default=0)
+    last_update: dt.datetime = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )

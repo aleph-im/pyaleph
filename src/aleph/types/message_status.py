@@ -41,6 +41,7 @@ class ErrorCode(IntEnum):
     CONTENT_UNAVAILABLE = 3
     FILE_UNAVAILABLE = 4
     BALANCE_INSUFFICIENT = 5
+    CREDIT_INSUFFICIENT = 6
     POST_AMEND_NO_TARGET = 100
     POST_AMEND_TARGET_NOT_FOUND = 101
     POST_AMEND_AMEND = 102
@@ -60,6 +61,7 @@ class ErrorCode(IntEnum):
 
 class RemovedMessageReason(str, Enum):
     BALANCE_INSUFFICIENT = "balance_insufficient"
+    CREDIT_INSUFFICIENT = "credit_insufficient"
 
 
 class MessageProcessingException(Exception):
@@ -169,16 +171,6 @@ class FileNotFoundException(RetryMessageException):
         super().__init__(f"File not found: {file_hash}")
 
 
-class FileContentNotFoundException(RetryMessageException):
-    """
-    A file required to process the message could not be found, locally and/or
-    on the network.
-    """
-
-    def __init__(self, file_hash: str):
-        super().__init__(f"File content not found: {file_hash}")
-
-
 class MessageContentUnavailable(FileNotFoundException):
     """
     The message content is not available at the moment (storage/IPFS item types).
@@ -188,14 +180,6 @@ class MessageContentUnavailable(FileNotFoundException):
 
 
 class FileUnavailable(FileNotFoundException):
-    """
-    A file pointed to by the message is not available at the moment.
-    """
-
-    error_code = ErrorCode.FILE_UNAVAILABLE
-
-
-class FileContentUnavailable(FileContentNotFoundException):
     """
     A file pointed to by the message is not available at the moment.
     """
@@ -335,6 +319,41 @@ class VmVolumeTooSmall(InvalidMessageException):
                     "parent_file": str(self.parent_file),
                     "parent_size": int(self.parent_size),
                     "volume_size": int(self.volume_size),
+                }
+            ]
+        }
+
+
+class InsufficientCreditException(InvalidMessageException):
+    """
+    The user does not have enough Aleph credits to process the message.
+    """
+
+    error_code = ErrorCode.CREDIT_INSUFFICIENT
+
+    def __init__(
+        self,
+        credit_balance: int,
+        required_credits: Decimal,
+        min_runtime_days: int = 1,
+    ):
+        self.credit_balance = credit_balance
+        self.required_credits = required_credits
+        self.min_runtime_days = min_runtime_days
+
+    def details(self) -> Optional[Dict[str, Any]]:
+        """
+        Return error details in a JSON serializable format.
+
+        Returns:
+            Dictionary with error details.
+        """
+        return {
+            "errors": [
+                {
+                    "required_credits": str(self.required_credits),
+                    "account_credits": str(self.credit_balance),
+                    "min_runtime_days": self.min_runtime_days,
                 }
             ]
         }

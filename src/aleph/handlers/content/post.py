@@ -1,10 +1,22 @@
+import datetime as dt
 import logging
 from typing import Any, Dict, List, Mapping, Optional, Set, Union
 
 from aleph_message.models import Chain, ChainRef, PostContent
 from sqlalchemy import update
 
+from aleph.db.accessors.balances import get_credit_balance
 from aleph.db.accessors.balances import update_balances as update_balances_db
+from aleph.db.accessors.balances import (
+    update_credit_balances_distribution as update_credit_balances_distribution_db,
+)
+from aleph.db.accessors.balances import (
+    update_credit_balances_expense as update_credit_balances_expense_db,
+)
+from aleph.db.accessors.balances import (
+    update_credit_balances_transfer as update_credit_balances_transfer_db,
+)
+from aleph.db.accessors.balances import validate_credit_transfer_balance
 from aleph.db.accessors.posts import (
     delete_amends,
     delete_post,
@@ -60,6 +72,98 @@ def update_balances(session: DbSession, content: Mapping[str, Any]) -> None:
     )
 
 
+def update_credit_balances_distribution(
+    session: DbSession,
+    content: Mapping[str, Any],
+    message_hash: str,
+    message_timestamp: dt.datetime,
+) -> None:
+    try:
+        distribution = content["distribution"]
+        credits_list = distribution["credits"]
+        token = distribution["token"]
+        chain = distribution["chain"]
+    except KeyError as e:
+        raise InvalidMessageFormat(
+            f"Missing field '{e.args[0]}' for credit balance post"
+        )
+
+    LOGGER.info("Updating credit balances for %d addresses", len(credits_list))
+
+    update_credit_balances_distribution_db(
+        session=session,
+        credits_list=credits_list,
+        token=token,
+        chain=chain,
+        message_hash=message_hash,
+        message_timestamp=message_timestamp,
+    )
+
+
+def update_credit_balances_expense(
+    session: DbSession,
+    content: Mapping[str, Any],
+    message_hash: str,
+    message_timestamp: dt.datetime,
+) -> None:
+    try:
+        expense = content["expense"]
+        credits_list = expense["credits"]
+    except KeyError as e:
+        raise InvalidMessageFormat(
+            f"Missing field '{e.args[0]}' for credit expense post"
+        )
+
+    LOGGER.info("Updating credit balances expense for %d addresses", len(credits_list))
+
+    update_credit_balances_expense_db(
+        session=session,
+        credits_list=credits_list,
+        message_hash=message_hash,
+        message_timestamp=message_timestamp,
+    )
+
+
+def update_credit_balances_transfer(
+    session: DbSession,
+    content: Mapping[str, Any],
+    message_hash: str,
+    message_timestamp: dt.datetime,
+    sender_address: str,
+    whitelisted_addresses: List[str],
+) -> None:
+    try:
+        transfer = content["transfer"]
+        credits_list = transfer["credits"]
+    except KeyError as e:
+        raise InvalidMessageFormat(
+            f"Missing field '{e.args[0]}' for credit transfer post"
+        )
+
+    # Only validate if sender is not in the whitelisted addresses
+    if sender_address not in whitelisted_addresses:
+        # Calculate total transfer amount for validation
+        total_amount = sum(int(credit["amount"]) for credit in credits_list)
+
+        if not validate_credit_transfer_balance(session, sender_address, total_amount):
+            raise InvalidMessageFormat(
+                f"Insufficient credit balance for transfer. Required: {total_amount}, Available: {get_credit_balance(session, sender_address)}"
+            )
+
+    LOGGER.info(
+        "Updating credit balances transfer for %d recipients", len(credits_list)
+    )
+
+    update_credit_balances_transfer_db(
+        session=session,
+        credits_list=credits_list,
+        sender_address=sender_address,
+        whitelisted_addresses=whitelisted_addresses,
+        message_hash=message_hash,
+        message_timestamp=message_timestamp,
+    )
+
+
 def get_post_content_ref(ref: Optional[Union[ChainRef, str]]) -> Optional[str]:
     return ref.item_hash if isinstance(ref, ChainRef) else ref
 
@@ -81,9 +185,19 @@ class PostMessageHandler(ContentHandler):
     in case a user decides to delete a version with a FORGET.
     """
 
-    def __init__(self, balances_addresses: List[str], balances_post_type: str):
+    def __init__(
+        self,
+        balances_addresses: List[str],
+        balances_post_type: str,
+        credit_balances_addresses: List[str],
+        credit_balances_post_types: List[str],
+        credit_balances_channels: List[str],
+    ):
         self.balances_addresses = balances_addresses
         self.balances_post_type = balances_post_type
+        self.credit_balances_addresses = credit_balances_addresses
+        self.credit_balances_post_types = credit_balances_post_types
+        self.credit_balances_channels = credit_balances_channels
 
     async def check_dependencies(self, session: DbSession, message: MessageDb):
         content = get_post_content(message)
@@ -138,6 +252,41 @@ class PostMessageHandler(ContentHandler):
             LOGGER.info("Updating balances...")
             update_balances(session=session, content=content.content)
             LOGGER.info("Done updating balances")
+
+        if (
+            content.type in self.credit_balances_post_types
+            and content.address in self.credit_balances_addresses
+            and (
+                not self.credit_balances_channels
+                or message.channel in self.credit_balances_channels
+            )
+            and content.content
+        ):
+            LOGGER.info("Updating credit balances...")
+            if content.type == "aleph_credit_distribution":
+                update_credit_balances_distribution(
+                    session=session,
+                    content=content.content,
+                    message_hash=message.item_hash,
+                    message_timestamp=creation_datetime,
+                )
+            elif content.type == "aleph_credit_expense":
+                update_credit_balances_expense(
+                    session=session,
+                    content=content.content,
+                    message_hash=message.item_hash,
+                    message_timestamp=creation_datetime,
+                )
+            elif content.type == "aleph_credit_transfer":
+                update_credit_balances_transfer(
+                    session=session,
+                    content=content.content,
+                    message_hash=message.item_hash,
+                    message_timestamp=creation_datetime,
+                    sender_address=content.address,
+                    whitelisted_addresses=self.credit_balances_addresses,
+                )
+            LOGGER.info("Done updating credit balances")
 
     async def process(self, session: DbSession, messages: List[MessageDb]) -> None:
 

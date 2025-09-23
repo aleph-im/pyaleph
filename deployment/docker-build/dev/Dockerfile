@@ -54,7 +54,7 @@ COPY .git ./.git
 COPY src ./src
 
 RUN pip install -e .
-RUN pip install hatch
+RUN pip install "click<8.2" hatch
 
 FROM base
 
