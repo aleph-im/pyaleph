@@ -105,7 +105,7 @@ services:
 
   ipfs:
     restart: always
-    image: ipfs/kubo:v0.35.0
+    image: ipfs/kubo:v0.37.0
     ports:
       - "4001:4001"
       - "4001:4001/udp"
@@ -115,6 +115,7 @@ services:
       - "./001-update-ipfs-config.sh:/container-init.d/001-update-ipfs-config.sh:ro"
     environment:
       - IPFS_PROFILE=server
+      - IPFS_TELEMETRY=off
     networks:
       - pyaleph
     command: ["daemon", "--enable-pubsub-experiment", "--enable-gc", "--migrate"]
