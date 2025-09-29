@@ -26,3 +26,4 @@ class EstimatedCostsResponse(BaseModel):
     payment_type: str
     cost: str
     detail: List[EstimatedCostDetailResponse]
+    charged_address: str
