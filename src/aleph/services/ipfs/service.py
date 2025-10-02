@@ -111,6 +111,11 @@ class IpfsService:
                     LOGGER.info(
                         f"Warning: CID {hash} did not return a dictionary structure. Type: {type(dag_node)}"
                     )
+
+                if result == 0:
+                    LOGGER.info(
+                        f"INFO: CID {hash} didn't return a Size field. Executing a block stat operation"
+                    )
                     block_stat = await asyncio.wait_for(
                         self.ipfs_client.block.stat(hash), timeout=timeout
                     )
