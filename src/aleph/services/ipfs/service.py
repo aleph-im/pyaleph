@@ -8,7 +8,7 @@ import aiohttp
 import aioipfs
 from configmanager import Config
 
-from aleph.services.ipfs.common import make_ipfs_client
+from aleph.services.ipfs.common import make_ipfs_p2p_client, make_ipfs_pinning_client
 from aleph.services.utils import get_IP
 from aleph.types.message_status import FileUnavailable
 from aleph.utils import run_in_executor
@@ -19,19 +19,36 @@ MAX_LEN = 1024 * 1024 * 100
 
 
 class IpfsService:
-    def __init__(self, ipfs_client: aioipfs.AsyncIPFS):
-        self.ipfs_client = ipfs_client
+    def __init__(
+        self,
+        ipfs_client: aioipfs.AsyncIPFS,
+        pinning_client: Optional[aioipfs.AsyncIPFS] = None,
+    ):
+        self.ipfs_client = ipfs_client  # For P2P operations
+        self.pinning_client = pinning_client or ipfs_client  # For pinning operations
 
     @classmethod
     def new(cls, config: Config) -> Self:
-        ipfs_client = make_ipfs_client(config)
-        return cls(ipfs_client=ipfs_client)
+        # Create P2P client (for content retrieval, pubsub)
+        p2p_client = make_ipfs_p2p_client(config)
+
+        # Create separate pinning client if configured differently
+        if _should_use_separate_pinning_client(config):
+            LOGGER.info("Using separate IPFS client for pinning operations")
+            pinning_client = make_ipfs_pinning_client(config)
+        else:
+            pinning_client = p2p_client
+
+        return cls(ipfs_client=p2p_client, pinning_client=pinning_client)
 
     async def __aenter__(self):
         return self
 
     async def close(self):
         await self.ipfs_client.close()
+        # Only close pinning client if it's different from main client
+        if self.pinning_client != self.ipfs_client:
+            await self.pinning_client.close()
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.close()
@@ -183,11 +200,11 @@ class IpfsService:
         return result
 
     async def add_json(self, value: bytes) -> str:
-        result = self.ipfs_client.add_json(value)
+        result = self.pinning_client.add_json(value)
         return result["Hash"]
 
     async def add_bytes(self, value: bytes, cid_version: int = 0) -> str:
-        result = await self.ipfs_client.add_bytes(value, cid_version=cid_version)
+        result = await self.pinning_client.add_bytes(value, cid_version=cid_version)
         return result["Hash"]
 
     async def _pin_add(self, cid: str, timeout: int = 30):
@@ -201,7 +218,8 @@ class IpfsService:
         tick_timeout = timeout * 2
         last_progress = None
 
-        async for status in self.ipfs_client.pin.add(cid):
+        # Use pinning client instead of main client
+        async for status in self.pinning_client.pin.add(cid):
             # If the Pins key appears, the file is pinned.
             if "Pins" in status:
                 break
@@ -235,15 +253,13 @@ class IpfsService:
                 break
 
     async def add_file(self, file_content: bytes):
-        url = f"{self.ipfs_client.api_url}add"
+        """
+        Add a file to IPFS using bytes as data.
 
-        async with aiohttp.ClientSession() as session:
-            data = aiohttp.FormData()
-            data.add_field("path", file_content)
-
-            resp = await session.post(url, data=data)
-            resp.raise_for_status()
-            return await resp.json()
+        This is a backward-compatible wrapper around add_bytes().
+        Uses the pinning client for write operations.
+        """
+        return await self.add_bytes(file_content)
 
     async def sub(self, topic: str):
         ipfs_client = self.ipfs_client
@@ -269,3 +285,23 @@ class IpfsService:
 
         ipfs_client = self.ipfs_client
         await ipfs_client.pubsub.pub(topic, message_str)
+
+
+def _should_use_separate_pinning_client(config: Config) -> bool:
+    """
+    Determine if we should use a separate IPFS client for pinning operations.
+    Returns True if pinning configuration is different from main IPFS configuration.
+    """
+    if not hasattr(config.ipfs, "pinning"):
+        return False
+
+    # Check if pinning host/port are specifically configured and different
+    pinning_host = config.ipfs.pinning.host.value
+    pinning_port = config.ipfs.pinning.port.value
+
+    if pinning_host and pinning_port:
+        main_host = config.ipfs.host.value
+        main_port = config.ipfs.port.value
+        return (pinning_host != main_host) or (pinning_port != main_port)
+
+    return False

@@ -171,10 +171,12 @@ def get_defaults():
         "ipfs": {
             # Whether to enable storage and communication on IPFS.
             "enabled": True,
-            # Hostname of the IPFS service.
+            # Hostname of the IPFS.
             "host": "ipfs",
             # Port of the IPFS service.
             "port": 5001,
+            # scheme of the IPFS service
+            "scheme": "http",
             # IPFS pubsub topic used for liveness checks.
             "alive_topic": "ALEPH_ALIVE",
             # Delay between connection attempts to other nodes on the network.
@@ -184,6 +186,17 @@ def get_defaults():
                 "/ip4/51.159.57.71/tcp/4001/p2p/12D3KooWBH3JVSBwHLNzxv7EzniBP3tDmjJaoa3EJBF9wyhZtHt2",
                 "/ip4/62.210.93.220/tcp/4001/p2p/12D3KooWLcmvqojHzUnR7rr8YhFKGDD8z7fmsPyBfAm2rT3sFGAF",
             ],
+            # Pinning service configuration
+            "pinning": {
+                # Hostname of the IPFS pinning service (if different from main IPFS).
+                "host": None,
+                # Port of the IPFS pinning service (if different from main IPFS).
+                "port": 5001,
+                # Scheme of the ipfs pinning service.
+                "scheme": "http",
+                # Timeout for pinning operations (seconds)
+                "timeout": 60,
+            },
         },
         "rabbitmq": {
             # Hostname of the RabbitMQ service.
