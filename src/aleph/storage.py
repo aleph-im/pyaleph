@@ -8,6 +8,7 @@ import logging
 from hashlib import sha256
 from typing import Any, Final, Optional, cast
 
+import orjson
 from aleph_message.models import ItemType
 
 import aleph.toolkit.json as aleph_json
@@ -194,8 +195,16 @@ class StorageService:
 
         # Try to retrieve the data from the DB, then from the network or IPFS.
         content = await self.storage_engine.read(filename=content_hash)
+
         if content is not None:
-            source = ContentSource.DB
+            # check json and fix if corrupted
+            try:
+                json_content = aleph_json.loads(content)
+                source = ContentSource.DB
+            except orjson.JSONDecodeError as e:
+                LOGGER.warning("Can't decode JSON, Change source...")
+                await self.storage_engine.delete(filename=content_hash)
+                content = None
 
         if content is None and use_network:
             content = await self._fetch_content_from_network(
