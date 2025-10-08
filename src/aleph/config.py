@@ -33,6 +33,20 @@ def get_defaults():
                 # POST message type for balance updates.
                 "post_type": "balances-update",
             },
+            "credit_balances": {
+                # Addresses allowed to publish credit balance updates.
+                "addresses": [
+                    "0x2E4454fAD1906c0Ce6e45cBFA05cE898Ac3AC1dC",
+                ],
+                # POST message types for credit balance updates.
+                "post_types": [
+                    "aleph_credit_distribution",
+                    "aleph_credit_transfer",
+                    "aleph_credit_expense",
+                ],
+                # Allowed channels for credit balance messages.
+                "channels": ["ALEPH_CREDIT"],
+            },
             "jobs": {
                 "pending_messages": {
                     # Maximum number of retries for a message.

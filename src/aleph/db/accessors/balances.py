@@ -1,13 +1,15 @@
 import datetime as dt
+import random
+import time
 from decimal import Decimal
 from io import StringIO
-from typing import Dict, Mapping, Optional, Sequence
+from typing import Any, Dict, Mapping, Optional, Sequence
 
 from aleph_message.models import Chain
 from sqlalchemy import func, select
 from sqlalchemy.sql import Select
 
-from aleph.db.models import AlephBalanceDb
+from aleph.db.models import AlephBalanceDb, AlephCreditBalanceDb, AlephCreditHistoryDb
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession
 
@@ -187,3 +189,451 @@ def get_updated_balance_accounts(session: DbSession, last_update: dt.datetime):
         .distinct()
     )
     return (session.execute(select_stmt)).scalars().all()
+
+
+def _calculate_credit_balance_fifo(
+    session: DbSession, address: str, now: Optional[dt.datetime] = None
+) -> int:
+    """
+    Calculate credit balance using FIFO consumption strategy.
+
+    This function implements the core FIFO logic:
+    1. Get all positive credits (ordered by message_timestamp)
+    2. Get all negative amounts (expenses/transfers)
+    3. Apply negative amounts to oldest credits first, but only if the expense
+       occurred before the credit's expiration date
+    4. Return remaining balance considering current expiration status
+    """
+
+    now = now if now is not None else utc_now()
+
+    # Get all credit history for this address, ordered by message timestamp
+    records = (
+        session.execute(
+            select(AlephCreditHistoryDb)
+            .where(AlephCreditHistoryDb.address == address)
+            .order_by(AlephCreditHistoryDb.message_timestamp.asc())
+        )
+        .scalars()
+        .all()
+    )
+
+    # Separate positive credits and negative amounts
+    positive_credits = []
+    negative_amounts = []
+
+    for record in records:
+        if record.amount > 0:
+            positive_credits.append(
+                {
+                    "amount": record.amount,
+                    "expiration_date": record.expiration_date,
+                    "timestamp": record.message_timestamp,
+                    "remaining": record.amount,  # Track remaining balance
+                }
+            )
+        else:
+            negative_amounts.append(
+                {"amount": abs(record.amount), "timestamp": record.message_timestamp}
+            )
+
+    # Apply negative amounts using FIFO strategy
+    for expense in negative_amounts:
+        remaining_expense = expense["amount"]
+
+        # Consume from oldest credits first
+        for credit in positive_credits:
+            if remaining_expense <= 0:
+                break
+
+            # Can only consume if expense happened before credit expiration
+            # If credit has no expiration (None), expense can always consume
+            # If credit has expiration, expense must have occurred before expiration
+            expense_valid = (
+                credit["expiration_date"] is None
+                or expense["timestamp"] < credit["expiration_date"]
+            )
+
+            if expense_valid and credit["remaining"] > 0:
+                consumed = min(credit["remaining"], remaining_expense)
+                credit["remaining"] -= consumed
+                remaining_expense -= consumed
+
+    # Sum remaining balances from currently non-expired credits
+    total_balance = 0
+    for credit in positive_credits:
+        if credit["expiration_date"] is None or credit["expiration_date"] > now:
+            total_balance += credit["remaining"]
+
+    return max(0, total_balance)
+
+
+def get_credit_balance(
+    session: DbSession, address: str, now: Optional[dt.datetime] = None
+) -> int:
+    """
+    Get credit balance using lazy recalculation strategy.
+
+    1. Check if cached balance exists in credit_balances table
+    2. Check if credit_history has newer entries than cached balance
+    3. Check if any credits have expiration dates that occurred after the cache's last update
+    4. If recalculation is needed, recalculate using FIFO and update cache
+    5. Return cached balance
+    """
+
+    now = now if now is not None else utc_now()
+
+    # Get the timestamp of the most recent credit history entry for this address
+    latest_history_timestamp = session.execute(
+        select(func.max(AlephCreditHistoryDb.last_update)).where(
+            AlephCreditHistoryDb.address == address
+        )
+    ).scalar()
+
+    # If no history exists, balance is 0
+    if latest_history_timestamp is None:
+        return 0
+
+    # Get cached balance if it exists
+    cached_balance = session.execute(
+        select(AlephCreditBalanceDb).where(AlephCreditBalanceDb.address == address)
+    ).scalar_one_or_none()
+
+    # Check if recalculation is needed
+    needs_recalculation = (
+        cached_balance is None or cached_balance.last_update < latest_history_timestamp
+    )
+
+    # Also check if any credits have expiration dates that occurred after the cache's last update
+    # This handles the case where credits expired since the last cache update
+    if not needs_recalculation and cached_balance is not None:
+        # Check for any credits with expiration dates between cache last_update and now
+        earliest_expiration_after_cache = session.execute(
+            select(func.min(AlephCreditHistoryDb.expiration_date)).where(
+                (AlephCreditHistoryDb.address == address)
+                & (AlephCreditHistoryDb.expiration_date.isnot(None))
+                & (AlephCreditHistoryDb.expiration_date > cached_balance.last_update)
+                & (AlephCreditHistoryDb.expiration_date <= now)
+            )
+        ).scalar()
+
+        needs_recalculation = earliest_expiration_after_cache is not None
+
+    if needs_recalculation:
+        # Recalculate balance using FIFO
+        new_balance = _calculate_credit_balance_fifo(session, address, now)
+
+        if cached_balance is None:
+            # Create new cache entry
+            session.add(
+                AlephCreditBalanceDb(
+                    address=address, balance=new_balance, last_update=now
+                )
+            )
+        else:
+            # Update existing cache entry
+            cached_balance.balance = new_balance
+            cached_balance.last_update = now
+
+        session.flush()
+        return new_balance
+
+    return cached_balance.balance if cached_balance else 0
+
+
+def get_credit_balances(
+    session: DbSession,
+    page: int = 1,
+    pagination: int = 100,
+    min_balance: int = 0,
+    **kwargs,
+):
+    """
+    Get paginated credit balances for all addresses.
+    Uses the cached balances from the credit_balances table.
+    """
+    query = select(AlephCreditBalanceDb.address, AlephCreditBalanceDb.balance)
+
+    if min_balance > 0:
+        query = query.filter(AlephCreditBalanceDb.balance >= min_balance)
+
+    query = query.offset((page - 1) * pagination)
+
+    if pagination:
+        query = query.limit(pagination)
+
+    # Return results in the expected format (address, credits)
+    results = session.execute(query).all()
+    return [(row.address, row.balance) for row in results]
+
+
+def count_credit_balances(session: DbSession, min_balance: int = 0, **kwargs):
+    """
+    Count addresses with credit balances.
+    Uses the cached balances from the credit_balances table.
+    """
+    query = select(func.count(AlephCreditBalanceDb.address))
+
+    if min_balance > 0:
+        query = query.filter(AlephCreditBalanceDb.balance >= min_balance)
+
+    return session.execute(query).scalar_one()
+
+
+def _bulk_insert_credit_history(
+    session: DbSession,
+    csv_rows: Sequence[str],
+) -> None:
+    """
+    Generic function to bulk insert credit history rows using temporary table.
+
+    Args:
+        session: Database session
+        csv_rows: List of CSV-formatted strings with credit history data
+    """
+
+    # Generate unique table name with timestamp and random suffix to avoid race conditions
+    timestamp = int(time.time() * 1000000)  # microseconds
+    random_suffix = random.randint(1000, 9999)
+    temp_table_name = f"temp_credit_history_{timestamp}_{random_suffix}"
+
+    # Drop the temporary table if it exists from a previous operation
+    session.execute(f"DROP TABLE IF EXISTS {temp_table_name}")  # type: ignore[arg-type]
+
+    session.execute(
+        f"CREATE TEMPORARY TABLE {temp_table_name} AS SELECT * FROM credit_history WITH NO DATA"  # type: ignore[arg-type]
+    )
+
+    conn = session.connection().connection
+    cursor = conn.cursor()
+
+    # Column specification for credit history
+    # Include the new message_timestamp field
+    copy_columns = "address, amount, credit_ref, credit_index, message_timestamp, last_update, ratio, tx_hash, expiration_date, token, chain, origin, provider, origin_ref, payment_method"
+
+    csv_credit_history = StringIO("\n".join(csv_rows))
+    cursor.copy_expert(
+        f"COPY {temp_table_name}({copy_columns}) FROM STDIN WITH CSV DELIMITER ';'",
+        csv_credit_history,
+    )
+
+    # Insert query for credit history
+    insert_query = f"""
+        INSERT INTO credit_history({copy_columns})
+            (SELECT {copy_columns} FROM {temp_table_name})
+            ON CONFLICT ON CONSTRAINT credit_history_pkey DO NOTHING
+        """
+
+    session.execute(insert_query)  # type: ignore[arg-type]
+
+    # Drop the temporary table
+    session.execute(f"DROP TABLE {temp_table_name}")  # type: ignore[arg-type]
+
+
+def get_updated_credit_balance_accounts(session: DbSession, last_update: dt.datetime):
+    """
+    Get addresses that have had their credit history updated since the given timestamp.
+    """
+    select_stmt = (
+        select(AlephCreditHistoryDb.address)
+        .where(AlephCreditHistoryDb.last_update >= last_update)
+        .distinct()
+    )
+    return session.execute(select_stmt).scalars().all()
+
+
+def update_credit_balances_distribution(
+    session: DbSession,
+    credits_list: Sequence[Dict[str, Any]],
+    token: str,
+    chain: str,
+    message_hash: str,
+    message_timestamp: dt.datetime,
+) -> None:
+    """
+    Updates credit balances for distribution messages (aleph_credit_distribution).
+
+    Distribution messages include all fields like ratio, tx_hash, provider,
+    payment_method, token, chain, and expiration_date.
+    """
+
+    last_update = utc_now()
+    csv_rows = []
+
+    for index, credit_entry in enumerate(credits_list):
+        address = credit_entry["address"]
+        amount = abs(int(credit_entry["amount"]))
+        ratio = Decimal(credit_entry["ratio"])
+        tx_hash = credit_entry["tx_hash"]
+        provider = credit_entry["provider"]
+
+        # Extract optional fields from each credit entry
+        expiration_timestamp = credit_entry.get("expiration", "")
+        origin = credit_entry.get("origin", "")
+        origin_ref = credit_entry.get("ref", "")
+        payment_method = credit_entry.get("payment_method", "")
+
+        # Convert expiration timestamp to datetime
+
+        expiration_date = (
+            dt.datetime.fromtimestamp(expiration_timestamp / 1000, tz=dt.timezone.utc)
+            if expiration_timestamp != ""
+            else None
+        )
+
+        csv_rows.append(
+            f"{address};{amount};{message_hash};{index};{message_timestamp};{last_update};{ratio};{tx_hash};{expiration_date or ''};{token};{chain};{origin};{provider};{origin_ref};{payment_method}"
+        )
+
+    _bulk_insert_credit_history(session, csv_rows)
+
+
+def update_credit_balances_expense(
+    session: DbSession,
+    credits_list: Sequence[Dict[str, Any]],
+    message_hash: str,
+    message_timestamp: dt.datetime,
+) -> None:
+    """
+    Updates credit balances for expense messages (aleph_credit_expense).
+
+    Expense messages have negative amounts and only include origin_ref field.
+    Other fields like ratio, tx_hash, provider, payment_method, token, chain,
+    origin, and expiration_date are not present.
+    """
+
+    last_update = utc_now()
+    csv_rows = []
+
+    for index, credit_entry in enumerate(credits_list):
+        address = credit_entry["address"]
+        amount = -abs(int(credit_entry["amount"]))
+        origin_ref = credit_entry.get("ref", "")
+
+        csv_rows.append(
+            f"{address};{amount};{message_hash};{index};{message_timestamp};{last_update};;;;;;;ALEPH;{origin_ref};credit_expense"
+        )
+
+    _bulk_insert_credit_history(session, csv_rows)
+
+
+def update_credit_balances_transfer(
+    session: DbSession,
+    credits_list: Sequence[Dict[str, Any]],
+    sender_address: str,
+    whitelisted_addresses: Sequence[str],
+    message_hash: str,
+    message_timestamp: dt.datetime,
+) -> None:
+    """
+    Updates credit balances for transfer messages (aleph_credit_transfer).
+
+    Transfer messages involve two entries per transfer:
+    - One negative entry for the sender (subtracting credits)
+    - One positive entry for the recipient (adding credits)
+
+    Special case: If sender is in the whitelisted addresses, only add credits to recipient.
+    """
+
+    last_update = utc_now()
+    csv_rows = []
+    index = 0
+
+    for credit_entry in credits_list:
+        recipient_address = credit_entry["address"]
+        amount = abs(int(credit_entry["amount"]))
+        expiration_timestamp = credit_entry.get("expiration", "")
+
+        # Convert expiration timestamp to datetime
+        expiration_date = (
+            dt.datetime.fromtimestamp(expiration_timestamp / 1000, tz=dt.timezone.utc)
+            if expiration_timestamp != ""
+            else None
+        )
+
+        # Add positive entry for recipient (origin = sender, provider = ALEPH, payment_method = credit_transfer)
+        csv_rows.append(
+            f"{recipient_address};{amount};{message_hash};{index};{message_timestamp};{last_update};;;{expiration_date or ''};;;{sender_address};ALEPH;;credit_transfer"
+        )
+        index += 1
+
+        # Add negative entry for sender (unless sender is in whitelisted addresses)
+        # (origin = recipient, provider = ALEPH, payment_method = credit_transfer)
+        if sender_address not in whitelisted_addresses:
+            csv_rows.append(
+                f"{sender_address};{-amount};{message_hash};{index};{message_timestamp};{last_update};;;;;;{recipient_address};ALEPH;;credit_transfer"
+            )
+            index += 1
+
+    _bulk_insert_credit_history(session, csv_rows)
+
+
+def validate_credit_transfer_balance(
+    session: DbSession,
+    sender_address: str,
+    total_transfer_amount: int,
+) -> bool:
+    """
+    Validates if the sender has enough credit balance to process a transfer.
+
+    Args:
+        session: Database session
+        sender_address: Address of the sender
+        total_transfer_amount: Total amount to be transferred
+
+    Returns:
+        True if sender has sufficient balance, False otherwise
+    """
+    current_balance = get_credit_balance(session, sender_address)
+    return current_balance >= total_transfer_amount
+
+
+def get_address_credit_history(
+    session: DbSession,
+    address: str,
+    page: int = 1,
+    pagination: int = 0,
+) -> Sequence[AlephCreditHistoryDb]:
+    """
+    Get paginated credit history entries for a specific address, ordered from newest to oldest.
+
+    Args:
+        session: Database session
+        address: Address to get credit history for
+        page: Page number (starts at 1)
+        pagination: Number of entries per page (0 for all entries)
+
+    Returns:
+        List of credit history entries ordered by message_timestamp desc
+    """
+    query = (
+        select(AlephCreditHistoryDb)
+        .where(AlephCreditHistoryDb.address == address)
+        .order_by(AlephCreditHistoryDb.message_timestamp.desc())
+    )
+
+    if pagination > 0:
+        query = query.offset((page - 1) * pagination).limit(pagination)
+
+    return session.execute(query).scalars().all()
+
+
+def count_address_credit_history(
+    session: DbSession,
+    address: str,
+) -> int:
+    """
+    Count total credit history entries for a specific address.
+
+    Args:
+        session: Database session
+        address: Address to count credit history for
+
+    Returns:
+        Total number of credit history entries for the address
+    """
+    query = select(func.count(AlephCreditHistoryDb.credit_ref)).where(
+        AlephCreditHistoryDb.address == address
+    )
+
+    return session.execute(query).scalar_one()

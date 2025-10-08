@@ -42,6 +42,9 @@ def forget_handler(mocker) -> ForgetMessageHandler:
         MessageType.post: PostMessageHandler(
             balances_addresses=["nope"],
             balances_post_type="no-balances-in-tests",
+            credit_balances_addresses=["nope"],
+            credit_balances_post_types=["no-balances-in-tests"],
+            credit_balances_channels=["nope"],
         ),
         MessageType.program: vm_handler,
         MessageType.store: StoreMessageHandler(

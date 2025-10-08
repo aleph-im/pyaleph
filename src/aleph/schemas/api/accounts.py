@@ -17,7 +17,7 @@ class GetAccountQueryParams(BaseModel):
 
 
 FloatDecimal = Annotated[
-    Decimal, PlainSerializer(lambda x: float(x), return_type=float, when_used="json")
+    Decimal, PlainSerializer(lambda x: float(x), return_type=float, when_used="always")
 ]
 
 
@@ -26,6 +26,7 @@ class GetAccountBalanceResponse(BaseModel):
     balance: FloatDecimal
     details: Optional[Dict[str, FloatDecimal]] = None
     locked_amount: FloatDecimal
+    credit_balance: int = 0
 
 
 class GetAccountFilesQueryParams(BaseModel):
@@ -69,8 +70,29 @@ class AddressBalanceResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     address: str
-    balance: str
+    balance: FloatDecimal
     chain: Chain
+
+
+class GetCreditBalancesQueryParams(BaseModel):
+    pagination: int = Field(
+        default=100,
+        ge=0,
+        description="Maximum number of credit balances to return. Specifying 0 removes this limit.",
+    )
+    page: int = Field(
+        default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
+    )
+    min_balance: int = Field(
+        default=0, ge=1, description="Minimum Credit Balance needed"
+    )
+
+
+class AddressCreditBalanceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    address: str
+    credits: int
 
 
 class GetAccountFilesResponseItem(BaseModel):
@@ -87,6 +109,43 @@ class GetAccountFilesResponse(BaseModel):
     address: str
     total_size: int
     files: List[GetAccountFilesResponseItem]
+    pagination_page: int
+    pagination_total: int
+    pagination_per_page: int
+
+
+class GetAccountCreditHistoryQueryParams(BaseModel):
+    pagination: int = Field(
+        default=0,
+        ge=0,
+        description="Maximum number of credit history entries to return. Specifying 0 returns all entries.",
+    )
+    page: int = Field(
+        default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
+    )
+
+
+class CreditHistoryResponseItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    amount: int
+    ratio: Optional[Decimal] = None
+    tx_hash: Optional[str] = None
+    token: Optional[str] = None
+    chain: Optional[str] = None
+    provider: Optional[str] = None
+    origin: Optional[str] = None
+    origin_ref: Optional[str] = None
+    payment_method: Optional[str] = None
+    credit_ref: str
+    credit_index: int
+    expiration_date: Optional[dt.datetime] = None
+    message_timestamp: dt.datetime
+
+
+class GetAccountCreditHistoryResponse(BaseModel):
+    address: str
+    credit_history: List[CreditHistoryResponseItem]
     pagination_page: int
     pagination_total: int
     pagination_per_page: int

@@ -19,11 +19,14 @@ def get_total_cost_for_address(
     address: str,
     payment_type: Optional[PaymentType] = PaymentType.hold,
 ) -> Decimal:
-    total_prop = (
-        AccountCostsDb.cost_hold
-        if payment_type == PaymentType.hold
-        else AccountCostsDb.cost_stream
-    )
+    if payment_type == PaymentType.hold:
+        total_prop = AccountCostsDb.cost_hold
+    elif payment_type == PaymentType.superfluid:
+        total_prop = AccountCostsDb.cost_stream
+    elif payment_type == PaymentType.credit:
+        total_prop = AccountCostsDb.cost_credit
+    else:
+        total_prop = AccountCostsDb.cost_hold
 
     select_stmt = (
         select(func.sum(total_prop))
@@ -43,11 +46,14 @@ def get_total_costs_for_address_grouped_by_message(
     address: str,
     payment_type: Optional[PaymentType] = PaymentType.hold,
 ):
-    total_prop = (
-        AccountCostsDb.cost_hold
-        if payment_type == PaymentType.hold
-        else AccountCostsDb.cost_stream
-    )
+    if payment_type == PaymentType.hold:
+        total_prop = AccountCostsDb.cost_hold
+    elif payment_type == PaymentType.superfluid:
+        total_prop = AccountCostsDb.cost_stream
+    elif payment_type == PaymentType.credit:
+        total_prop = AccountCostsDb.cost_credit
+    else:
+        total_prop = AccountCostsDb.cost_hold
 
     id_field = func.min(AccountCostsDb.id)
 
@@ -94,6 +100,7 @@ def make_costs_upsert_query(costs: List[AccountCostsDb]) -> Insert:
         set_={
             "cost_hold": upsert_stmt.excluded.cost_hold,
             "cost_stream": upsert_stmt.excluded.cost_stream,
+            "cost_credit": upsert_stmt.excluded.cost_credit,
         },
     )
 

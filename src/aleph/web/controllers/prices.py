@@ -127,6 +127,7 @@ async def message_price(request: web.Request):
         "payment_type": payment_type,
         "cost": format_cost_str(required_tokens),
         "detail": costs,
+        "charged_address": content.address,
     }
 
     response = EstimatedCostsResponse.model_validate(model)
@@ -166,6 +167,7 @@ async def message_price_estimate(request: web.Request):
         "payment_type": payment_type,
         "cost": format_cost_str(required_tokens),
         "detail": costs,
+        "charged_address": content.address,
     }
 
     response = EstimatedCostsResponse.model_validate(model)
