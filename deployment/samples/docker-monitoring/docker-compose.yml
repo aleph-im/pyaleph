@@ -13,7 +13,7 @@ volumes:
 services:
   pyaleph:
     restart: always
-    image: alephim/pyaleph-node:0.5.7
+    image: alephim/pyaleph-node:0.8.2
     command: --config /opt/pyaleph/config.yml --key-dir /opt/pyaleph/keys -v
     volumes:
       - ./config.yml:/opt/pyaleph/config.yml
@@ -32,7 +32,7 @@ services:
 
   pyaleph-api:
     restart: always
-    image: alephim/pyaleph-node:0.5.7
+    image: alephim/pyaleph-node:0.8.2
     command: --config /opt/pyaleph/config.yml --key-dir /opt/pyaleph/keys -v
     entrypoint: ["bash", "deployment/scripts/run_aleph_ccn_api.sh"]
     ports:
@@ -107,20 +107,20 @@ services:
 
   ipfs:
     restart: always
-    image: ipfs/kubo:v0.35.0
+    image: ipfs/kubo:v0.37.0
     ports:
       - "4001:4001"
       - "4001:4001/udp"
       - "127.0.0.1:5001:5001"
     volumes:
       - "pyaleph-ipfs:/data/ipfs"
-      - "./kubo.json:/etc/kubo.json:ro"
+      - "./001-update-ipfs-config.sh:/container-init.d/001-update-ipfs-config.sh:ro"
     environment:
       - IPFS_PROFILE=server
+      - IPFS_TELEMETRY=off
     networks:
       - pyaleph
-    command: ["daemon", "--enable-pubsub-experiment", "--enable-gc", "--migrate",
-      "--config-file", "/etc/kubo.json"]
+    command: ["daemon", "--enable-pubsub-experiment", "--enable-gc", "--migrate"]
 
   prometheus:
     restart: always

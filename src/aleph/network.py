@@ -9,7 +9,7 @@ import aleph.toolkit.json as aleph_json
 from aleph.handlers.message_handler import MessagePublisher
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
-from aleph.services.ipfs.common import make_ipfs_client
+from aleph.services.ipfs.common import make_ipfs_p2p_client
 from aleph.services.ipfs.pubsub import incoming_channel as incoming_ipfs_channel
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
@@ -46,7 +46,7 @@ async def listener_tasks(
     from aleph.services.p2p.protocol import incoming_channel as incoming_p2p_channel
 
     # TODO: these should be passed as parameters. This module could probably be a class instead?
-    ipfs_client = make_ipfs_client(config)
+    ipfs_client = make_ipfs_p2p_client(config)
     ipfs_service = IpfsService(ipfs_client=ipfs_client)
     storage_service = StorageService(
         storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),

@@ -10,7 +10,7 @@ services:
   pyaleph:
     # platform: linux/amd64
     restart: always
-    # image: alephim/pyaleph-node:0.8.1
+    # image: alephim/pyaleph-node:0.8.2
     image: localhost/alephim/pyaleph-node-dev:build
     build:
       dockerfile: ./deployment/docker-build/dev/Dockerfile
@@ -35,7 +35,7 @@ services:
   pyaleph-api:
     # platform: linux/amd64
     restart: always
-    # image: alephim/pyaleph-node:0.8.1
+    # image: alephim/pyaleph-node:0.8.2
     image: localhost/alephim/pyaleph-node:build
     build:
       dockerfile: ./deployment/docker-build/dev/Dockerfile
@@ -115,20 +115,20 @@ services:
 
   ipfs:
     restart: always
-    image: ipfs/kubo:v0.35.0
+    image: ipfs/kubo:v0.37.0
     ports:
       - "4001:4001"
       - "4001:4001/udp"
       - "127.0.0.1:5001:5001"
     volumes:
       - "pyaleph-ipfs:/data/ipfs"
-      - "./kubo.json:/etc/kubo.json:ro"
+      - "./001-update-ipfs-config.sh:/container-init.d/001-update-ipfs-config.sh:ro"
     environment:
       - IPFS_PROFILE=server
+      - IPFS_TELEMETRY=off
     networks:
       - pyaleph
-    command: ["daemon", "--enable-pubsub-experiment", "--enable-gc", "--migrate",
-      "--config-file", "/etc/kubo.json"]
+    command: ["daemon", "--enable-pubsub-experiment", "--enable-gc", "--migrate"]
 
 
 networks:

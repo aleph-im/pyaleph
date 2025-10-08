@@ -221,14 +221,20 @@ class MessageJob(MqWatcher):
         pending_message: PendingMessageDb,
         exception: BaseException,
     ) -> Union[RejectedMessage, WillRetryMessage]:
-        error_code = ErrorCode.INTERNAL_ERROR
+
+        # Assume if the error_code attribute exists, get it, but if not assign to general Internal Error code.
+        error_code = (
+            exception.error_code
+            if hasattr(exception, "error_code")
+            else ErrorCode.INTERNAL_ERROR
+        )
+
         if isinstance(exception, MessageContentUnavailable):
             LOGGER.warning(
                 "Could not fetch message %s, putting it back in the fetch queue: %s",
                 pending_message.item_hash,
                 str(exception),
             )
-            error_code = exception.error_code
             session.execute(
                 update(PendingMessageDb)
                 .where(PendingMessageDb.id == pending_message.id)
