@@ -36,7 +36,7 @@ def get_defaults():
             "credit_balances": {
                 # Addresses allowed to publish credit balance updates.
                 "addresses": [
-                    "0xf47811a9136bb18f6956D2e614eD063f0A292c63",
+                    "0x2E4454fAD1906c0Ce6e45cBFA05cE898Ac3AC1dC",
                 ],
                 # POST message types for credit balance updates.
                 "post_types": [
