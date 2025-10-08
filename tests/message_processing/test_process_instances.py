@@ -175,7 +175,119 @@ def fixture_instance_message_payg(
             "type": "superfluid",
         },
         "resources": {"vcpus": 1, "memory": 2048, "seconds": 30},
-        "requirements": {"cpu": {"architecture": "x86_64"}},
+        "requirements": None,
+        "rootfs": {
+            "parent": {
+                "ref": "549ec451d9b099cad112d4aaa2c00ac40fb6729a92ff252ff22eef0b5c3cb613",
+                "use_latest": True,
+            },
+            "persistence": "host",
+            "name": "test-rootfs",
+            "size_mib": 20480,
+        },
+        "authorized_keys": [
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGULT6A41Msmw2KEu0R9MvUjhuWNAsbdeZ0DOwYbt4Qt user@example",
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH0jqdc5dmt75QhTrWqeHDV9xN8vxbgFyOYs2fuQl7CI",
+        ],
+        "volumes": [
+            {
+                "comment": "Python libraries. Read-only since a 'ref' is specified.",
+                "mount": "/opt/venv",
+                "ref": "5f31b0706f59404fad3d0bff97ef89ddf24da4761608ea0646329362c662ba51",
+                "use_latest": False,
+            },
+            {
+                "comment": "Ephemeral storage, read-write but will not persist after the VM stops",
+                "mount": "/var/cache",
+                "ephemeral": True,
+                "size_mib": 5,
+            },
+            {
+                "comment": "Working data persisted on the VM supervisor, not available on other nodes",
+                "mount": "/var/lib/sqlite",
+                "name": "sqlite-data",
+                "persistence": "host",
+                "size_mib": 10,
+            },
+            {
+                "comment": "Working data persisted on the Aleph network. "
+                "New VMs will try to use the latest version of this volume, "
+                "with no guarantee against conflicts",
+                "mount": "/var/lib/statistics",
+                "name": "statistics",
+                "persistence": "store",
+                "size_mib": 10,
+            },
+            {
+                "comment": "Raw drive to use by a process, do not mount it",
+                "name": "raw-data",
+                "persistence": "host",
+                "mount": "/var/raw",
+                "size_mib": 10,
+            },
+        ],
+        "time": 1619017773.8950517,
+    }
+
+    pending_message = PendingMessageDb(
+        item_hash="734a1287a2b7b5be060312ff5b05ad1bcf838950492e3428f2ac6437a1acad26",
+        type=MessageType.instance,
+        chain=Chain.ETH,
+        sender="0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
+        signature=None,
+        item_type=ItemType.inline,
+        item_content=json.dumps(content),
+        time=timestamp_to_datetime(1619017773.8950577),
+        channel=None,
+        reception_time=timestamp_to_datetime(1619017774),
+        fetched=True,
+        check_message=False,
+        retries=0,
+        next_attempt=dt.datetime(2023, 1, 1),
+    )
+    with session_factory() as session:
+
+        session.add(pending_message)
+        session.add(
+            MessageStatusDb(
+                item_hash=pending_message.item_hash,
+                status=MessageStatus.PENDING,
+                reception_time=pending_message.reception_time,
+            )
+        )
+        session.commit()
+
+    return pending_message
+
+
+@pytest.fixture
+def fixture_new_instance_message_payg(
+    session_factory: DbSessionFactory,
+) -> PendingMessageDb:
+    content = {
+        "address": "0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
+        "allow_amend": False,
+        "variables": {
+            "VM_CUSTOM_VARIABLE": "SOMETHING",
+            "VM_CUSTOM_VARIABLE_2": "32",
+        },
+        "environment": {
+            "reproducible": True,
+            "internet": False,
+            "aleph_api": False,
+            "shared_cache": False,
+        },
+        "payment": {
+            "chain": "AVAX",
+            "receiver": "0xA07B1214bAe0D5ccAA25449C3149c0aC83658874",
+            "type": "superfluid",
+        },
+        "resources": {"vcpus": 1, "memory": 2048, "seconds": 30},
+        "requirements": {
+            "node": {
+                "node_hash": "dc3d1d194a990b5c54380c3c0439562fefa42f5a46807cba1c500ec3affecf04"
+            }
+        },
         "rootfs": {
             "parent": {
                 "ref": "549ec451d9b099cad112d4aaa2c00ac40fb6729a92ff252ff22eef0b5c3cb613",
@@ -658,7 +770,7 @@ async def test_compare_account_cost_with_cost_function_hold(
 
 
 @pytest.mark.asyncio
-async def test_compare_account_cost_with_cost_payg_funct(
+async def test_compare_account_cost_with_cost_legacy_payg_funct(
     session_factory: DbSessionFactory,
     message_processor: PendingMessageProcessor,
     fixture_instance_message_payg: PendingMessageDb,
@@ -692,6 +804,47 @@ async def test_compare_account_cost_with_cost_payg_funct(
             session=session,
             content=content,
             item_hash=fixture_instance_message_payg.item_hash,
+        )
+
+    assert cost == Decimal("0.000015287547777772")
+    assert cost == db_cost
+
+
+@pytest.mark.asyncio
+async def test_compare_account_cost_with_cost_payg_funct(
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    fixture_new_instance_message_payg: PendingMessageDb,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+    user_balance: AlephBalanceDb,
+):
+    with session_factory() as session:
+        insert_volume_refs(session, fixture_new_instance_message_payg)
+        session.commit()
+
+    pipeline = message_processor.make_pipeline()
+    # Exhaust the iterator
+    _ = [message async for message in pipeline]
+
+    assert fixture_new_instance_message_payg.item_content
+
+    content = InstanceContent.model_validate_json(
+        fixture_new_instance_message_payg.item_content
+    )  # Parse again
+
+    with session_factory() as session:
+        assert content.payment.type == PaymentType.superfluid
+        cost, details = get_total_and_detailed_costs(
+            session=session,
+            content=content,
+            item_hash=fixture_new_instance_message_payg.item_hash,
+        )
+
+        db_cost, details = get_total_and_detailed_costs_from_db(
+            session=session,
+            content=content,
+            item_hash=fixture_new_instance_message_payg.item_hash,
         )
 
     assert cost == Decimal("0.000015287547777772")
