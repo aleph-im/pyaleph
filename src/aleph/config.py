@@ -45,7 +45,7 @@ def get_defaults():
                     "aleph_credit_expense",
                 ],
                 # Allowed channels for credit balance messages.
-                "channels": ["ALEPH_CREDIT_STAGING"],
+                "channels": ["ALEPH_CREDIT"],
             },
             "jobs": {
                 "pending_messages": {
