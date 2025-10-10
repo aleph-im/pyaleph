@@ -252,14 +252,15 @@ class IpfsService:
             else:
                 break
 
-    async def add_file(self, file_content: bytes):
+    async def add_file(self, file_content: bytes) -> Dict[str, str]:
         """
         Add a file to IPFS using bytes as data.
 
         This is a backward-compatible wrapper around add_bytes().
         Uses the pinning client for write operations.
         """
-        return await self.add_bytes(file_content)
+        hash = await self.add_bytes(file_content)
+        return {"Hash": hash}
 
     async def sub(self, topic: str):
         ipfs_client = self.ipfs_client
