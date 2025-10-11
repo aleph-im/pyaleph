@@ -11,7 +11,7 @@ license = { file = "LICENSE.txt" }
 authors = [
   { name = "Moshe Malawach", email = "moshe.malawach@protonmail.com" },
 ]
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12,<3.14"
 classifiers = [
   "Development Status :: 4 - Beta",
   "Programming Language :: Python",
