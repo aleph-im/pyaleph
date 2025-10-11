@@ -1,12 +1,12 @@
 # Aleph Core Channel Node (CCN)
 
-Next generation network of decentralized big data applications. Development follows the [Aleph Whitepaper](https://github.com/moshemalawach/aleph-whitepaper).
+Next generation network of decentralized cloud applications. Development follows the [Aleph Whitepaper](https://github.com/moshemalawach/aleph-whitepaper).
 
 ## Documentation
 
 Albeit still incomplete as it is a work in progress, documentation
 can be found at http://pyaleph.readthedocs.io/ or 
-built from this repository with `$ python setup.py docs`
+built from this repository with `$ python setup.py docs`.
 
 ## Deployment
 
@@ -66,45 +66,27 @@ nix-shell
 hatch run testing:test
 ```
 
-### Run test locally
+### Run tests locally
 
-We do not recommend that you run tests directly on your machine because of the
-complexity of doing so but if you want to do it you need to:
+Running tests locally requires setting up a local test environment through Docker Compose.
+From the root of the project, run the following commands to start the environment:
 
-- install [hatch](https://github.com/pypa/hatch), you can use pipx for that (`pipx install hatch`) or install it in a virtualenv
-- install postgresql, at least version 15.1, `apt install postgresql`
-- install redis, at least version 7, `apt install redis`
-- have de nightly version of rust install, you can use [rustup](https://rustup.rs/) for that and do a `rustup default nightly`
-
-Then configure PostgreSQL for your local application using a `config.yml` file in the root of the project.
-
-Here is an not extensible example configuration:
-
-```yaml
-postgres:
-  port: 5432
-  user: username
-  password: password
-  host:  # leave empty to use unix socket
+```shell
+# Copy the template config file for local development
+cp deployment/docker-build/config.yml .
+# Start the environment
+docker-compose -f deployment/docker-build/docker-compose.yml up -d
 ```
 
-All overloadable and default values can be found in `src/aleph/config.py` and
-you can also customize the redis connection this way.
+Once the environment is up, you can simply run tests from your IDE or from the command line:
 
-The you can run:
-
-```bash
-hatch run testing:test
+```shell
+pytest -v .
 ```
-
-Or any of the env you can see using `hatch env show`.
-
-In case of doubt you can refer to the file `.github/workflows/pyaleph-ci.yml`,
-this is how it runs on our CI.
 
 ## Software used
 
-The Aleph CCN is written in Python and requires Python v3.8+. It will not work with older versions of Python.
+The Aleph CCN is written in Python and requires Python v3.12+. It will not work with older versions of Python.
 
 It also relies on [IPFS](https://ipfs.io/).
 
