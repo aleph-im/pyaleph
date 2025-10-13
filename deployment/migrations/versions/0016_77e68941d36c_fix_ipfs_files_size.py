@@ -45,7 +45,7 @@ async def upgrade_async() -> None:
     ).all()
 
     config = get_config()
-    ipfs_client = make_ipfs_client(config)
+    ipfs_client = make_ipfs_client(host=config.ipfs.host.value, port=config.ipfs.port.value)
 
     for file in files:
         stats = await stat_ipfs(ipfs_client, cid=file.hash)
