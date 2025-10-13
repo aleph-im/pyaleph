@@ -112,7 +112,9 @@ def test_update_credit_balances_expense(session_factory: DbSessionFactory):
         assert expense_record.message_timestamp == message_timestamp
 
 
-def test_update_credit_balances_expense_with_new_fields(session_factory: DbSessionFactory):
+def test_update_credit_balances_expense_with_new_fields(
+    session_factory: DbSessionFactory,
+):
     """Test direct database insertion for credit expense messages with new fields."""
     credits_list = [
         {
@@ -148,11 +150,11 @@ def test_update_credit_balances_expense_with_new_fields(session_factory: DbSessi
         assert expense_record.address == "0x456"
         assert expense_record.amount == -500
         assert expense_record.ratio == Decimal("0.001")  # price mapped to ratio
-        assert expense_record.tx_hash == "exec_12345"  # execution_id mapped to tx_hash
+        assert expense_record.tx_hash == "node_67890"  # node_id mapped to tx_hash
         assert expense_record.token is None
         assert expense_record.chain is None
         assert expense_record.provider == "ALEPH"
-        assert expense_record.origin == "node_67890"  # node_id mapped to origin
+        assert expense_record.origin == "exec_12345"  # execution_id mapped to origin
         assert expense_record.origin_ref == "expense_ref"
         assert expense_record.payment_method == "credit_expense"
         assert expense_record.credit_ref == "expense_msg_with_fields_789"

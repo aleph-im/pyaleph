@@ -498,8 +498,8 @@ def update_credit_balances_expense(
     Updates credit balances for expense messages (aleph_credit_expense).
 
     Expense messages have negative amounts and can include:
-    - execution_id (mapped to tx_hash)
-    - node_id (mapped to origin)
+    - execution_id (mapped to origin)
+    - node_id (mapped to tx_hash)
     - price (mapped to ratio)
     - time (skipped for now)
     - ref (mapped to origin_ref)
@@ -514,8 +514,8 @@ def update_credit_balances_expense(
         origin_ref = credit_entry.get("ref", "")
 
         # Map new fields
-        tx_hash = credit_entry.get("execution_id", "")
-        origin = credit_entry.get("node_id", "")
+        origin = credit_entry.get("execution_id", "")
+        tx_hash = credit_entry.get("node_id", "")
         ratio = credit_entry.get("price", "")
         # Skip time field for now
 
