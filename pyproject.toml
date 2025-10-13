@@ -27,7 +27,7 @@ dependencies = [
   "aiohttp-cors==0.8.0",
   "aiohttp-jinja2==1.6",
   "aioipfs~=0.7.1",
-  "alembic==1.15.1",
+  "alembic==1.17.0",
   "aleph-message~=1.0.5",
   "aleph-nuls2==0.1",
   "aleph-p2p-client @ git+https://github.com/aleph-im/p2p-service-client-python@cbfebb871db94b2ca580e66104a67cd730c5020c",
