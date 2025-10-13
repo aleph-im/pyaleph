@@ -103,9 +103,61 @@ def test_update_credit_balances_expense(session_factory: DbSessionFactory):
         assert expense_record.token is None
         assert expense_record.chain is None
         assert expense_record.provider == "ALEPH"
+        assert expense_record.origin is None
         assert expense_record.origin_ref == "expense_ref"
         assert expense_record.payment_method == "credit_expense"
         assert expense_record.credit_ref == "expense_msg_789"
+        assert expense_record.credit_index == 0
+        assert expense_record.expiration_date is None
+        assert expense_record.message_timestamp == message_timestamp
+
+
+def test_update_credit_balances_expense_with_new_fields(
+    session_factory: DbSessionFactory,
+):
+    """Test direct database insertion for credit expense messages with new fields."""
+    credits_list = [
+        {
+            "address": "0x456",
+            "amount": 500,
+            "ref": "expense_ref",
+            "execution_id": "exec_12345",
+            "node_id": "node_67890",
+            "price": "0.001",
+            "time": 1640995200000,  # This will be skipped for now
+        }
+    ]
+
+    message_timestamp = dt.datetime(2023, 1, 2, 12, 0, 0, tzinfo=dt.timezone.utc)
+
+    with session_factory() as session:
+        update_credit_balances_expense(
+            session=session,
+            credits_list=credits_list,
+            message_hash="expense_msg_with_fields_789",
+            message_timestamp=message_timestamp,
+        )
+        session.commit()
+
+        # Verify expense record was inserted with new field mappings
+        expense_record = (
+            session.query(AlephCreditHistoryDb)
+            .filter_by(address="0x456", credit_ref="expense_msg_with_fields_789")
+            .first()
+        )
+
+        assert expense_record is not None
+        assert expense_record.address == "0x456"
+        assert expense_record.amount == -500
+        assert expense_record.ratio == Decimal("0.001")  # price mapped to ratio
+        assert expense_record.tx_hash == "node_67890"  # node_id mapped to tx_hash
+        assert expense_record.token is None
+        assert expense_record.chain is None
+        assert expense_record.provider == "ALEPH"
+        assert expense_record.origin == "exec_12345"  # execution_id mapped to origin
+        assert expense_record.origin_ref == "expense_ref"
+        assert expense_record.payment_method == "credit_expense"
+        assert expense_record.credit_ref == "expense_msg_with_fields_789"
         assert expense_record.credit_index == 0
         assert expense_record.expiration_date is None
         assert expense_record.message_timestamp == message_timestamp

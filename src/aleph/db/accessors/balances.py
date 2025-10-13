@@ -497,9 +497,12 @@ def update_credit_balances_expense(
     """
     Updates credit balances for expense messages (aleph_credit_expense).
 
-    Expense messages have negative amounts and only include origin_ref field.
-    Other fields like ratio, tx_hash, provider, payment_method, token, chain,
-    origin, and expiration_date are not present.
+    Expense messages have negative amounts and can include:
+    - execution_id (mapped to origin)
+    - node_id (mapped to tx_hash)
+    - price (mapped to ratio)
+    - time (skipped for now)
+    - ref (mapped to origin_ref)
     """
 
     last_update = utc_now()
@@ -510,8 +513,14 @@ def update_credit_balances_expense(
         amount = -abs(int(credit_entry["amount"]))
         origin_ref = credit_entry.get("ref", "")
 
+        # Map new fields
+        origin = credit_entry.get("execution_id", "")
+        tx_hash = credit_entry.get("node_id", "")
+        ratio = credit_entry.get("price", "")
+        # Skip time field for now
+
         csv_rows.append(
-            f"{address};{amount};{message_hash};{index};{message_timestamp};{last_update};;;;;;;ALEPH;{origin_ref};credit_expense"
+            f"{address};{amount};{message_hash};{index};{message_timestamp};{last_update};{ratio};{tx_hash};;;;{origin};ALEPH;{origin_ref};credit_expense"
         )
 
     _bulk_insert_credit_history(session, csv_rows)
