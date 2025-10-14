@@ -61,7 +61,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def message_to_dict(message: MessageDb) -> Dict[str, Any]:
-    message_dict = message.to_dict()
+    message_dict = message.to_dict(exclude={"content_type"})
     message_dict["time"] = message.time.timestamp()
     confirmations = [
         {"chain": c.chain, "hash": c.hash, "height": c.height}
