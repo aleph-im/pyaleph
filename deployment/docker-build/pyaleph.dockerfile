@@ -1,6 +1,6 @@
-FROM ubuntu:24.04 as base
+FROM ubuntu:24.04 AS base
 
-ENV DEBIAN_FRONTEND noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get -y upgrade && apt-get install -y software-properties-common
 RUN add-apt-repository -y ppa:deadsnakes/ppa
@@ -12,7 +12,7 @@ RUN apt-get update && apt-get -y upgrade && apt-get install -y \
      libpq5 \
      python3.12
 
-FROM base as builder
+FROM base AS builder
 
 RUN openssl version
 RUN cat /etc/ssl/openssl.cnf
@@ -41,7 +41,7 @@ RUN rustup default nightly
 RUN python3.12 -m venv /opt/venv
 
 # Install pip
-ENV PIP_NO_CACHE_DIR yes
+ENV PIP_NO_CACHE_DIR=yes
 RUN /opt/venv/bin/python3.12 -m pip install --upgrade pip wheel
 ENV PATH="/opt/venv/bin:${PATH}"
 
