@@ -84,6 +84,8 @@ def get_defaults():
             "mq_host": "rabbitmq",
             # Delay between connection attempts to other nodes on the network.
             "reconnect_delay": 60,
+            # Only peers seen more recently than this value will be dialed. Avoids dialing dead nodes.
+            "max_peer_age": 24 * 60 * 60,
             # P2P pubsub topic used for liveness checks.
             "alive_topic": "ALIVE",
             # Enabled P2P clients (HTTP and/or P2P).

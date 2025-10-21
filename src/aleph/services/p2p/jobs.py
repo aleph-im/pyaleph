@@ -1,4 +1,5 @@
 import asyncio
+import datetime as dt
 import logging
 from dataclasses import dataclass
 from typing import Optional
@@ -9,10 +10,9 @@ from configmanager import Config
 from aleph.db.accessors.peers import get_all_addresses_by_peer_type
 from aleph.db.models import PeerType
 from aleph.types.db_session import DbSessionFactory
-
-from ..cache.node_cache import NodeCache
 from .http import api_get_request
 from .peers import connect_peer
+from ..cache.node_cache import NodeCache
 
 
 @dataclass
@@ -30,14 +30,17 @@ async def reconnect_p2p_job(
 ) -> None:
     await asyncio.sleep(2)
 
+    max_peer_age = dt.timedelta(seconds=config.p2p.max_peer_age.value)
+
     while True:
         try:
             peers = set(config.p2p.peers.value)
 
+            last_seen = dt.datetime.now(dt.timezone.utc) - max_peer_age
             with session_factory() as session:
                 peers |= set(
                     get_all_addresses_by_peer_type(
-                        session=session, peer_type=PeerType.P2P
+                        session=session, peer_type=PeerType.P2P, last_seen=last_seen
                     )
                 )
 

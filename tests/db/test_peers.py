@@ -58,6 +58,17 @@ async def test_get_all_addresses_by_peer_type(session_factory: DbSessionFactory)
     assert p2p_entries == [p2p_entry.address]
     assert ipfs_entries == [ipfs_entry.address]
 
+    with session_factory() as session:
+        recent_p2p_entries = get_all_addresses_by_peer_type(
+            session=session, peer_type=PeerType.P2P, last_seen=last_seen
+        )
+        old_p2p_entries = get_all_addresses_by_peer_type(
+            session=session, peer_type=PeerType.P2P, last_seen=last_seen + dt.timedelta(days=1)
+        )
+        assert recent_p2p_entries == [p2p_entry.address]
+        assert old_p2p_entries == []
+
+
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("peer_type", (PeerType.HTTP, PeerType.P2P, PeerType.IPFS))
