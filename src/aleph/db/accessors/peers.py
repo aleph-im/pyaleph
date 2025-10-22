@@ -11,7 +11,9 @@ from ..models.peers import PeerDb, PeerType
 
 
 def get_all_addresses_by_peer_type(
-    session: DbSession, peer_type: PeerType, last_seen: Optional[dt.datetime] = None,
+    session: DbSession,
+    peer_type: PeerType,
+    last_seen: Optional[dt.datetime] = None,
 ) -> Sequence[str]:
     """
     Fetches all peer addresses filtered by peer type and optionally by the last_seen

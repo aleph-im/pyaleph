@@ -5,6 +5,10 @@ name: Test code quality
 on:
   push:
     branches:
+      - dev
+      - main
+  pull_request:
+    branches:
       - "*"
 
 

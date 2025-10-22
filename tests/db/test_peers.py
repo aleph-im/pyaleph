@@ -63,11 +63,12 @@ async def test_get_all_addresses_by_peer_type(session_factory: DbSessionFactory)
             session=session, peer_type=PeerType.P2P, last_seen=last_seen
         )
         old_p2p_entries = get_all_addresses_by_peer_type(
-            session=session, peer_type=PeerType.P2P, last_seen=last_seen + dt.timedelta(days=1)
+            session=session,
+            peer_type=PeerType.P2P,
+            last_seen=last_seen + dt.timedelta(days=1),
         )
         assert recent_p2p_entries == [p2p_entry.address]
         assert old_p2p_entries == []
-
 
 
 @pytest.mark.asyncio

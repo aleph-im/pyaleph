@@ -12,7 +12,7 @@ from coincurve.keys import PrivateKey, PublicKey
 
 LOGGER = logging.getLogger(__name__)
 
-PLACE_HOLDER = b"\xFF\xFF\xFF\xFF"
+PLACE_HOLDER = b"\xff\xff\xff\xff"
 B58_DIGITS = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 MESSAGE_TEMPLATE = "\x18NULS Signed Message:\n{}"
 

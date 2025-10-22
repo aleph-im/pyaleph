@@ -1,4 +1,4 @@
-""" While our own streamer libp2p protocol is still unstable, use direct
+"""While our own streamer libp2p protocol is still unstable, use direct
 HTTP connection to standard rest API.
 """
 
