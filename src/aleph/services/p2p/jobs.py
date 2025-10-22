@@ -10,9 +10,10 @@ from configmanager import Config
 from aleph.db.accessors.peers import get_all_addresses_by_peer_type
 from aleph.db.models import PeerType
 from aleph.types.db_session import DbSessionFactory
+
+from ..cache.node_cache import NodeCache
 from .http import api_get_request
 from .peers import connect_peer
-from ..cache.node_cache import NodeCache
 
 
 @dataclass

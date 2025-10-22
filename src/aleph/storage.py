@@ -1,4 +1,4 @@
-""" Storage module for Aleph.
+"""Storage module for Aleph.
 Basically manages the IPFS storage.
 """
 

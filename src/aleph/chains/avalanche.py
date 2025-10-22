@@ -13,7 +13,7 @@ from .abc import Verifier
 
 LOGGER = logging.getLogger("chains.avalanche")
 CHAIN_NAME = "AVAX"
-MESSAGE_TEMPLATE = b"\x1AAvalanche Signed Message:\n%b"
+MESSAGE_TEMPLATE = b"\x1aAvalanche Signed Message:\n%b"
 
 
 async def pack_message(message):
