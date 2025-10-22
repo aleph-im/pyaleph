@@ -5,9 +5,7 @@ from typing import Any, Dict, List, Mapping, Optional, Set, Union
 from aleph_message.models import Chain, ChainRef, PostContent
 from sqlalchemy import update
 
-from aleph.db.accessors.balances import (
-    get_credit_balance,
-)
+from aleph.db.accessors.balances import get_credit_balance
 from aleph.db.accessors.balances import update_balances as update_balances_db
 from aleph.db.accessors.balances import (
     update_credit_balances_distribution as update_credit_balances_distribution_db,
@@ -18,9 +16,7 @@ from aleph.db.accessors.balances import (
 from aleph.db.accessors.balances import (
     update_credit_balances_transfer as update_credit_balances_transfer_db,
 )
-from aleph.db.accessors.balances import (
-    validate_credit_transfer_balance,
-)
+from aleph.db.accessors.balances import validate_credit_transfer_balance
 from aleph.db.accessors.posts import (
     delete_amends,
     delete_post,

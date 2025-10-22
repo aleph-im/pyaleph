@@ -13,12 +13,7 @@ from typing import (
 )
 
 from aleph_message.models import Chain, ItemHash, ItemType
-from sqlalchemy import (
-    TIMESTAMP,
-    Float,
-    String,
-    case,
-)
+from sqlalchemy import TIMESTAMP, Float, String, case
 from sqlalchemy import cast as sqla_cast
 from sqlalchemy import (
     delete,
