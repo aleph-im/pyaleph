@@ -56,8 +56,13 @@ class PendingMessageFetcher(MessageJob):
         with self.session_factory() as session:
             try:
                 message = await self.message_handler.verify_message(
-                    pending_message=pending_message
+                    pending_message=pending_message, session=session
                 )
+                # Fetch related content like the IPFS associated file
+                await self.message_handler.fetch_related_content(
+                    session=session, message=message
+                )
+
                 session.execute(
                     make_pending_message_fetched_statement(
                         pending_message, message.content
