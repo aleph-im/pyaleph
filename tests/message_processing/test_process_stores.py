@@ -8,7 +8,7 @@ import pytest
 from aleph_message.models import Chain, ItemHash, ItemType, MessageType, StoreContent
 from configmanager import Config
 
-from aleph.db.accessors.files import get_message_file_pin
+from aleph.db.accessors.files import get_message_file_pin, upsert_file
 from aleph.db.accessors.messages import get_message_by_item_hash
 from aleph.db.models import AlephBalanceDb, MessageDb, MessageStatusDb, PendingMessageDb
 from aleph.handlers.content.store import StoreMessageHandler
@@ -24,6 +24,7 @@ from aleph.toolkit.constants import (
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
+from aleph.types.files import FileType
 from aleph.types.message_status import InsufficientBalanceException, MessageStatus
 
 
@@ -169,6 +170,10 @@ async def test_process_store(
     )
 
     with session_factory() as session:
+        message = await message_handler.verify_message(
+            session=session, pending_message=fixture_store_message
+        )
+        await message_handler.fetch_related_content(session=session, message=message)
         await message_handler.process(
             session=session, pending_message=fixture_store_message
         )
@@ -215,15 +220,24 @@ async def test_process_store_no_signature(
         )
         session.commit()
 
+    file_hash = "c25b0525bc308797d3e35763faf5c560f2974dab802cb4a734ae4e9d1040319e"
+    file_content = b"Hello Aleph.im"
+
     storage_service = StorageService(
-        storage_engine=MockStorageEngine(
-            files={
-                "c25b0525bc308797d3e35763faf5c560f2974dab802cb4a734ae4e9d1040319e": b"Hello Aleph.im"
-            }
-        ),
+        storage_engine=MockStorageEngine(files={file_hash: file_content}),
         ipfs_service=mocker.AsyncMock(),
         node_cache=mocker.AsyncMock(),
     )
+
+    with session_factory() as session:
+        # Add the file to the database before processing
+        upsert_file(
+            session=session,
+            file_hash=file_hash,
+            size=len(file_content),
+            file_type=FileType.FILE,
+        )
+        session.commit()
     message_processor.message_handler.storage_service = storage_service
     storage_handler = message_processor.message_handler.content_handlers[
         MessageType.store
@@ -236,6 +250,14 @@ async def test_process_store_no_signature(
     _ = [message async for message in pipeline]
 
     with session_factory() as session:
+        # Ensure content is here
+        message = await message_processor.message_handler.verify_message(
+            session=session, pending_message=fixture_store_message
+        )
+        await message_processor.message_handler.fetch_related_content(
+            session=session, message=message
+        )
+
         message_db = get_message_by_item_hash(
             session=session, item_hash=ItemHash(fixture_store_message.item_hash)
         )
@@ -281,6 +303,10 @@ async def test_process_store_with_not_enough_balance(
 
     with session_factory() as session:
         # NOTE: Account balance is 0 at this point
+        message = await message_handler.verify_message(
+            session=session, pending_message=fixture_store_message_with_cost
+        )
+        await message_handler.fetch_related_content(session=session, message=message)
         with pytest.raises(InsufficientBalanceException):
             await message_handler.process(
                 session=session, pending_message=fixture_store_message_with_cost
@@ -323,6 +349,10 @@ async def test_process_store_small_file_no_balance_required(
     with session_factory() as session:
         # NOTE: Account balance is 0 at this point, but since the file is small
         # it should still be processed
+        message = await message_handler.verify_message(
+            session=session, pending_message=fixture_store_message_with_cost
+        )
+        await message_handler.fetch_related_content(session=session, message=message)
         await message_handler.process(
             session=session, pending_message=fixture_store_message_with_cost
         )
@@ -738,6 +768,14 @@ async def test_pre_check_balance_with_existing_costs(
             "aleph.storage.StorageService.get_hash_content",
             return_value=small_file_content,
         ):
+
+            # Those are fetch from the fetch pipeline so we need them
+            message_fetch = await message_handler.verify_message(
+                session=session, pending_message=fixture_ipfs_store_message
+            )
+            await message_handler.fetch_related_content(
+                session=session, message=message_fetch
+            )
 
             # Process first message to add existing costs
             await message_handler.process(

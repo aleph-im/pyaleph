@@ -7,7 +7,7 @@ from message_test_helpers import process_pending_messages
 from more_itertools import one
 from sqlalchemy import select
 
-from aleph.db.accessors.files import count_file_pins, get_file
+from aleph.db.accessors.files import count_file_pins, get_file, upsert_file
 from aleph.db.accessors.messages import get_forgotten_message, get_message_status
 from aleph.db.accessors.posts import get_post
 from aleph.db.models import (
@@ -203,6 +203,16 @@ async def test_forget_store_message(
     )
 
     with session_factory() as session:
+        # Add the file to the database before processing
+        upsert_file(
+            session=session,
+            file_hash=file_hash,
+            size=4,
+            file_type=FileType.FILE,
+        )
+        session.commit()
+
+        # Process the message
         target_message_result = one(
             await process_pending_messages(
                 message_processor=message_processor,
@@ -566,6 +576,21 @@ async def test_forget_store_message_dependent(
     )
 
     with session_factory() as session:
+        # Add the file to the database before processing
+        upsert_file(
+            session=session,
+            file_hash=file_hash,
+            size=4,
+            file_type=FileType.FILE,
+        )
+
+        upsert_file(
+            session=session,
+            file_hash=runtime_hash,
+            size=7,
+            file_type=FileType.FILE,
+        )
+        session.commit()
         target_message_result = one(
             await process_pending_messages(
                 message_processor=message_processor,
