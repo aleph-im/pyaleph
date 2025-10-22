@@ -182,7 +182,7 @@ def post_with_refs_and_tags() -> Tuple[MessageDb, PostDb, MessageStatusDb]:
 
 @pytest.fixture
 def amended_post_with_refs_and_tags(
-    post_with_refs_and_tags: Tuple[MessageDb, PostDb, MessageStatusDb]
+    post_with_refs_and_tags: Tuple[MessageDb, PostDb, MessageStatusDb],
 ):
     original_message, original_post, _ = post_with_refs_and_tags
 

@@ -18,7 +18,7 @@ LOGGER = logging.getLogger("jobs.reconnect_ipfs")
 
 
 async def reconnect_ipfs_job(
-        config: Config, session_factory: DbSessionFactory, ipfs_service: IpfsService
+    config: Config, session_factory: DbSessionFactory, ipfs_service: IpfsService
 ):
     from aleph.services.utils import get_IP
 

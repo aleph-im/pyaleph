@@ -14,7 +14,7 @@ def timestamp_to_datetime(timestamp: float) -> dt.datetime:
 
 
 def coerce_to_datetime(
-    datetime_or_timestamp: Optional[Union[float, dt.datetime]]
+    datetime_or_timestamp: Optional[Union[float, dt.datetime]],
 ) -> Optional[dt.datetime]:
     # None for datetimes or 0 for timestamps results in returning None
     if datetime_or_timestamp is None or not datetime_or_timestamp:

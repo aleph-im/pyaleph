@@ -20,7 +20,7 @@ from aleph.types.db_session import DbSession
 
 
 def build_pricing_model_from_aggregate(
-    aggregate_content: Dict[Union[ProductPriceType, str], dict]
+    aggregate_content: Dict[Union[ProductPriceType, str], dict],
 ) -> Dict[ProductPriceType, ProductPricing]:
     """
     Build a complete pricing model from an aggregate content dictionary.
