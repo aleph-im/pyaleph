@@ -55,12 +55,8 @@ class PendingMessageFetcher(MessageJob):
     async def fetch_pending_message(self, pending_message: PendingMessageDb):
         with self.session_factory() as session:
             try:
-                message = await self.message_handler.verify_message(
+                message = await self.message_handler.verify_and_fetch_message(
                     pending_message=pending_message, session=session
-                )
-                # Fetch related content like the IPFS associated file
-                await self.message_handler.fetch_related_content(
-                    session=session, message=message
                 )
 
                 session.execute(
