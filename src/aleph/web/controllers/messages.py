@@ -84,13 +84,13 @@ class BaseMessageQueryParams(BaseModel):
     message_type: Optional[MessageType] = Field(
         default=None,
         alias="msgType",
-        description="Message type. Deprecated: use msgTypes instead",
+        description="Message type. Deprecated: use msgTypes instead.",
     )
     message_types: Optional[List[MessageType]] = Field(
         default=None, alias="msgTypes", description="Accepted message types."
     )
     message_statuses: Optional[List[MessageStatus]] = Field(
-        default=[MessageStatus.PROCESSED, MessageStatus.REMOVING],
+        default=None,
         alias="msgStatuses",
         description="Accepted values for the 'status' field.",
     )

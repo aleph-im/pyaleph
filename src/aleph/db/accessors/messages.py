@@ -73,8 +73,8 @@ def make_matching_messages_query(
     content_types: Optional[Sequence[str]] = None,
     tags: Optional[Sequence[str]] = None,
     channels: Optional[Sequence[str]] = None,
-    sort_by: SortBy = SortBy.TIME,
-    sort_order: SortOrder = SortOrder.DESCENDING,
+    sort_by: Optional[SortBy] = SortBy.TIME,
+    sort_order: Optional[SortOrder] = SortOrder.DESCENDING,
     page: int = 1,
     pagination: int = 20,
     include_confirmations: bool = False,
@@ -167,7 +167,6 @@ def make_matching_messages_query(
                 select_earliest_confirmation.c.height < end_block
             )
 
-        sort_by = SortBy.TX_TIME
         if sort_by == SortBy.TX_TIME:
             order_by_columns = (
                 (
@@ -186,7 +185,7 @@ def make_matching_messages_query(
                     MessageDb.item_hash.asc(),
                 )
             )
-    else:
+    elif sort_by == SortBy.TIME:
         if sort_order == SortOrder.DESCENDING:
             order_by_columns = (
                 MessageDb.time.desc(),
@@ -213,6 +212,8 @@ def count_matching_messages(
     session: DbSession,
     start_date: float = 0.0,
     end_date: float = 0.0,
+    start_block: int = 0,
+    end_block: int = 0,
     sort_by: SortBy = SortBy.TIME,
     sort_order: SortOrder = SortOrder.DESCENDING,
     page: int = 1,
@@ -222,7 +223,9 @@ def count_matching_messages(
     # Note that we deliberately ignore the pagination parameters so that users can pass
     # the same parameters as get_matching_messages and get the total number of messages,
     # not just the number on a page.
-    if kwargs or start_date or end_date:
+    # We also ignore sorting options as PostgreSQL does not optimize away ORDER BY clauses
+    # in count subqueries, causing severe performance issues.
+    if kwargs or start_date or end_date or start_block or end_block:
         select_stmt = make_matching_messages_query(
             **kwargs,
             start_date=start_date,
@@ -230,6 +233,8 @@ def count_matching_messages(
             include_confirmations=False,
             page=1,
             pagination=0,
+            sort_by=None,
+            sort_order=None,
         ).subquery()
         select_count_stmt = select(func.count()).select_from(select_stmt)
         return session.execute(select_count_stmt).scalar_one()
