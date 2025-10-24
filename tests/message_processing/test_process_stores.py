@@ -215,15 +215,15 @@ async def test_process_store_no_signature(
         )
         session.commit()
 
+    file_hash = "c25b0525bc308797d3e35763faf5c560f2974dab802cb4a734ae4e9d1040319e"
+    file_content = b"Hello Aleph.im"
+
     storage_service = StorageService(
-        storage_engine=MockStorageEngine(
-            files={
-                "c25b0525bc308797d3e35763faf5c560f2974dab802cb4a734ae4e9d1040319e": b"Hello Aleph.im"
-            }
-        ),
+        storage_engine=MockStorageEngine(files={file_hash: file_content}),
         ipfs_service=mocker.AsyncMock(),
         node_cache=mocker.AsyncMock(),
     )
+
     message_processor.message_handler.storage_service = storage_service
     storage_handler = message_processor.message_handler.content_handlers[
         MessageType.store
@@ -738,7 +738,6 @@ async def test_pre_check_balance_with_existing_costs(
             "aleph.storage.StorageService.get_hash_content",
             return_value=small_file_content,
         ):
-
             # Process first message to add existing costs
             await message_handler.process(
                 session=session, pending_message=fixture_ipfs_store_message

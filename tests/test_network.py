@@ -120,6 +120,8 @@ async def test_incoming_inline_content(
         reception_time=dt.datetime(2022, 1, 1),
         fetched=True,
     )
-
-    message = await message_handler.verify_message(pending_message=pending_message)
-    assert message is not None
+    with session_factory() as session:
+        message = await message_handler.verify_and_fetch_message(
+            pending_message=pending_message, session=session
+        )
+        assert message is not None
