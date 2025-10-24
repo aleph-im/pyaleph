@@ -224,8 +224,6 @@ async def test_process_store_no_signature(
         node_cache=mocker.AsyncMock(),
     )
 
-    with session_factory() as session:
-        session.commit()
     message_processor.message_handler.storage_service = storage_service
     storage_handler = message_processor.message_handler.content_handlers[
         MessageType.store
@@ -324,6 +322,7 @@ async def test_process_store_small_file_no_balance_required(
 
     with session_factory() as session:
         # NOTE: Account balance is 0 at this point, but since the file is small
+        # it should still be processed
         await message_handler.process(
             session=session, pending_message=fixture_store_message_with_cost
         )
@@ -739,7 +738,6 @@ async def test_pre_check_balance_with_existing_costs(
             "aleph.storage.StorageService.get_hash_content",
             return_value=small_file_content,
         ):
-
             # Process first message to add existing costs
             await message_handler.process(
                 session=session, pending_message=fixture_ipfs_store_message

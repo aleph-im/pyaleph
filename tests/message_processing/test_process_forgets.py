@@ -203,7 +203,6 @@ async def test_forget_store_message(
     )
 
     with session_factory() as session:
-        # Process the message
         target_message_result = one(
             await process_pending_messages(
                 message_processor=message_processor,
