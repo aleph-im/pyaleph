@@ -149,3 +149,8 @@ class GetAccountCreditHistoryResponse(BaseModel):
     pagination_page: int
     pagination_total: int
     pagination_per_page: int
+
+
+class GetResourceConsumedCreditsResponse(BaseModel):
+    item_hash: str
+    consumed_credits: int

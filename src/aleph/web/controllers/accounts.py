@@ -15,6 +15,7 @@ from aleph.db.accessors.balances import (
     get_balances_by_chain,
     get_credit_balance,
     get_credit_balances,
+    get_resource_consumed_credits,
     get_total_detailed_balance,
 )
 from aleph.db.accessors.cost import get_total_cost_for_address
@@ -33,6 +34,7 @@ from aleph.schemas.api.accounts import (
     GetAccountQueryParams,
     GetBalancesChainsQueryParams,
     GetCreditBalancesQueryParams,
+    GetResourceConsumedCreditsResponse,
 )
 from aleph.types.db_session import DbSessionFactory
 from aleph.web.controllers.app_state_getters import get_session_factory_from_request
@@ -82,6 +84,13 @@ def _get_chain_from_request(request: web.Request) -> str:
     if chain is None:
         raise web.HTTPUnprocessableEntity(text="Chain must be specified.")
     return chain
+
+
+def _get_item_hash_from_request(request: web.Request) -> str:
+    item_hash = request.match_info.get("item_hash")
+    if item_hash is None:
+        raise web.HTTPUnprocessableEntity(text="Item hash must be specified.")
+    return item_hash
 
 
 async def get_account_balance(request: web.Request):
@@ -265,6 +274,25 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
             pagination_page=query_params.page,
             pagination_total=total_entries,
             pagination_per_page=query_params.pagination,
+        )
+
+        return web.json_response(text=response.model_dump_json())
+
+
+async def get_resource_consumed_credits(request: web.Request) -> web.Response:
+    """Returns the total credits consumed by a specific resource (item_hash)."""
+    item_hash = _get_item_hash_from_request(request)
+
+    session_factory: DbSessionFactory = get_session_factory_from_request(request)
+
+    with session_factory() as session:
+        consumed_credits = get_resource_consumed_credits(
+            session=session, item_hash=item_hash
+        )
+
+        response = GetResourceConsumedCreditsResponse(
+            item_hash=item_hash,
+            consumed_credits=consumed_credits,
         )
 
         return web.json_response(text=response.model_dump_json())
