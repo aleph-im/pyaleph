@@ -7,9 +7,7 @@ import aiohttp_jinja2
 import jinja2
 import pkg_resources
 from aiohttp import web
-from aiohttp_apispec import (
-    setup_aiohttp_apispec,
-)
+from aiohttp_apispec import setup_aiohttp_apispec
 
 from aleph.web.controllers.routes import register_routes
 
