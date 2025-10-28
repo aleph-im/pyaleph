@@ -133,7 +133,9 @@ async def handle_txs_task(config: Config):
 
     async with (
         NodeCache(
-            redis_host=config.redis.host.value, redis_port=config.redis.port.value
+            redis_host=config.redis.host.value,
+            redis_port=config.redis.port.value,
+            message_count_cache_ttl=config.perf.message_count_cache_ttl.value,
         ) as node_cache,
         IpfsService.new(config) as ipfs_service,
     ):

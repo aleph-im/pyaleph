@@ -42,7 +42,9 @@ async def configure_aiohttp_app(
         session_factory = make_session_factory(engine)
 
         node_cache = NodeCache(
-            redis_host=config.redis.host.value, redis_port=config.redis.port.value
+            redis_host=config.redis.host.value,
+            redis_port=config.redis.port.value,
+            message_count_cache_ttl=config.perf.message_count_cache_ttl.value,
         )
         # TODO: find a way to close the node cache when exiting the API process, not closing it causes
         #       a warning.
