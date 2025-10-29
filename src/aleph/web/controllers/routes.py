@@ -85,7 +85,7 @@ def register_routes(app: web.Application):
     )
     app.router.add_get(
         "/api/v0/messages/{item_hash}/consumed_credits",
-        accounts.get_resource_consumed_credits,
+        accounts.get_resource_consumed_credits_controller,
     )
 
     app.router.add_post("/api/v0/ipfs/add_json", storage.add_ipfs_json_controller)

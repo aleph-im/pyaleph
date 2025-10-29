@@ -279,7 +279,9 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
         return web.json_response(text=response.model_dump_json())
 
 
-async def get_resource_consumed_credits(request: web.Request) -> web.Response:
+async def get_resource_consumed_credits_controller(
+    request: web.Request,
+) -> web.Response:
     """Returns the total credits consumed by a specific resource (item_hash)."""
     item_hash = _get_item_hash_from_request(request)
 
