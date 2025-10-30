@@ -1,15 +1,14 @@
 import base64
 import time
-import pytest
 from unittest.mock import patch
 
 from aleph.toolkit.ecdsa import (
+    create_auth_token,
     generate_key_pair,
     generate_key_pair_from_private_key,
     sign_message,
-    verify_signature,
-    create_auth_token,
     verify_auth_token,
+    verify_signature,
 )
 
 
@@ -28,12 +27,14 @@ def test_generate_key_pair():
     assert len(public_key) == 66
 
     # Public key should start with 02 or 03 (compressed format)
-    assert public_key.startswith(('02', '03'))
+    assert public_key.startswith(("02", "03"))
 
 
 def test_generate_key_pair_from_private_key():
     """Test key pair generation from existing private key."""
-    test_private_key = "646fa150ca94320b8eca3bd28d106703f3602dfb13b6b982cc17d17fd1182f85"
+    test_private_key = (
+        "646fa150ca94320b8eca3bd28d106703f3602dfb13b6b982cc17d17fd1182f85"
+    )
 
     private_key, public_key = generate_key_pair_from_private_key(test_private_key)
 
@@ -43,7 +44,7 @@ def test_generate_key_pair_from_private_key():
     # Public key should be correctly derived
     assert isinstance(public_key, str)
     assert len(public_key) == 66
-    assert public_key.startswith(('02', '03'))
+    assert public_key.startswith(("02", "03"))
 
 
 def test_sign_and_verify_message():
@@ -121,7 +122,7 @@ def test_verify_auth_token_expired():
     # Mock time to create an old token
     old_timestamp = int(time.time()) - 600  # 10 minutes ago
 
-    with patch('aleph.toolkit.ecdsa.time.time', return_value=old_timestamp):
+    with patch("aleph.toolkit.ecdsa.time.time", return_value=old_timestamp):
         token = create_auth_token(private_key)
 
     # Should fail with default max_age (5 minutes)
@@ -140,7 +141,7 @@ def test_verify_auth_token_future_timestamp():
     # Mock time to create a future token
     future_timestamp = int(time.time()) + 60  # 1 minute in future
 
-    with patch('aleph.toolkit.ecdsa.time.time', return_value=future_timestamp):
+    with patch("aleph.toolkit.ecdsa.time.time", return_value=future_timestamp):
         token = create_auth_token(private_key)
 
     # Should pass as it uses abs() for time difference
@@ -184,8 +185,12 @@ def test_verify_signature_with_invalid_inputs():
 def test_token_roundtrip_with_known_values():
     """Test token creation and verification with known test values."""
     # Use known values for reproducible testing
-    test_private_key = "50b44756efbcb9266d974af8a8bcecb97d960fd8ddaadd31ecf2082c757fcaad"
-    test_public_key = "023d3b6f2e92e5d30b8d75291087051f6ef9425abbb626bebc3a5b358bce6007ee"
+    test_private_key = (
+        "50b44756efbcb9266d974af8a8bcecb97d960fd8ddaadd31ecf2082c757fcaad"
+    )
+    test_public_key = (
+        "023d3b6f2e92e5d30b8d75291087051f6ef9425abbb626bebc3a5b358bce6007ee"
+    )
 
     # Create token
     token = create_auth_token(test_private_key)
