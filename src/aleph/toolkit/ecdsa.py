@@ -64,7 +64,7 @@ def verify_signature(message: str, signature_b64: str, public_key_hex: str) -> b
         True if signature is valid, False otherwise
     """
     try:
-        public_key = PublicKey.from_hex(public_key_hex)
+        public_key = PublicKey(bytes.fromhex(public_key_hex))
         signature = base64.b64decode(signature_b64)
         message_bytes = message.encode("utf-8")
         return public_key.verify(signature, message_bytes)
