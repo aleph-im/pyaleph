@@ -1,6 +1,7 @@
 import datetime as dt
 import time
 from decimal import Decimal
+from typing import Any, Dict, List
 
 from sqlalchemy import select
 
@@ -911,8 +912,9 @@ def test_get_resource_consumed_credits_single_record(session_factory: DbSessionF
 
         # Manually set the origin field to the item_hash we want to test
         # Since update_credit_balances_expense doesn't set origin by default
-        from aleph.db.models import AlephCreditHistoryDb
         from sqlalchemy import update as sql_update
+
+        from aleph.db.models import AlephCreditHistoryDb
 
         session.execute(
             sql_update(AlephCreditHistoryDb)
@@ -927,7 +929,9 @@ def test_get_resource_consumed_credits_single_record(session_factory: DbSessionF
         assert consumed_credits == 150
 
 
-def test_get_resource_consumed_credits_multiple_records(session_factory: DbSessionFactory):
+def test_get_resource_consumed_credits_multiple_records(
+    session_factory: DbSessionFactory,
+):
     """Test get_resource_consumed_credits with multiple expense records for the same resource."""
     from aleph.db.accessors.balances import get_resource_consumed_credits
 
@@ -935,37 +939,49 @@ def test_get_resource_consumed_credits_multiple_records(session_factory: DbSessi
 
     with session_factory() as session:
         # Create multiple expense records for the same resource
-        expense_batches = [
+        expense_batches: List[Dict[str, Any]] = [
             {
-                "credits": [{"address": "0xuser1", "amount": 100, "ref": "resource_456"}],
+                "credits": [
+                    {"address": "0xuser1", "amount": 100, "ref": "resource_456"}
+                ],
                 "message_hash": "expense_msg_1",
             },
             {
-                "credits": [{"address": "0xuser2", "amount": 250, "ref": "resource_456"}],
+                "credits": [
+                    {"address": "0xuser2", "amount": 250, "ref": "resource_456"}
+                ],
                 "message_hash": "expense_msg_2",
             },
             {
-                "credits": [{"address": "0xuser3", "amount": 75, "ref": "resource_456"}],
+                "credits": [
+                    {"address": "0xuser3", "amount": 75, "ref": "resource_456"}
+                ],
                 "message_hash": "expense_msg_3",
             },
         ]
 
+        # Import required modules
+        from sqlalchemy import update as sql_update
+
+        from aleph.db.models import AlephCreditHistoryDb
+
         for batch in expense_batches:
+            credits_list: List[Dict[str, Any]] = batch["credits"]
+            message_hash: str = batch["message_hash"]
             update_credit_balances_expense(
                 session=session,
-                credits_list=batch["credits"],
-                message_hash=batch["message_hash"],
+                credits_list=credits_list,
+                message_hash=message_hash,
                 message_timestamp=message_timestamp,
             )
 
         # Set origin for all records
-        from aleph.db.models import AlephCreditHistoryDb
-        from sqlalchemy import update as sql_update
 
         for batch in expense_batches:
+            batch_message_hash = batch["message_hash"]
             session.execute(
                 sql_update(AlephCreditHistoryDb)
-                .where(AlephCreditHistoryDb.credit_ref == batch["message_hash"])
+                .where(AlephCreditHistoryDb.credit_ref == batch_message_hash)
                 .values(origin="resource_456")
             )
         session.commit()
@@ -977,7 +993,9 @@ def test_get_resource_consumed_credits_multiple_records(session_factory: DbSessi
         assert consumed_credits == 425
 
 
-def test_get_resource_consumed_credits_filters_by_payment_method(session_factory: DbSessionFactory):
+def test_get_resource_consumed_credits_filters_by_payment_method(
+    session_factory: DbSessionFactory,
+):
     """Test that get_resource_consumed_credits only counts credit_expense payments."""
     from aleph.db.accessors.balances import get_resource_consumed_credits
 
@@ -1025,8 +1043,9 @@ def test_get_resource_consumed_credits_filters_by_payment_method(session_factory
         )
 
         # Set origin for all records to the same resource
-        from aleph.db.models import AlephCreditHistoryDb
         from sqlalchemy import update as sql_update
+
+        from aleph.db.models import AlephCreditHistoryDb
 
         for msg_hash in ["distribution_msg", "transfer_msg", "expense_msg"]:
             session.execute(
@@ -1043,7 +1062,9 @@ def test_get_resource_consumed_credits_filters_by_payment_method(session_factory
         assert consumed_credits == 150
 
 
-def test_get_resource_consumed_credits_filters_by_origin(session_factory: DbSessionFactory):
+def test_get_resource_consumed_credits_filters_by_origin(
+    session_factory: DbSessionFactory,
+):
     """Test that get_resource_consumed_credits only counts records with matching origin."""
     from aleph.db.accessors.balances import get_resource_consumed_credits
 
@@ -1051,7 +1072,7 @@ def test_get_resource_consumed_credits_filters_by_origin(session_factory: DbSess
 
     with session_factory() as session:
         # Create expense records for different resources
-        expenses = [
+        expenses: List[Dict[str, Any]] = [
             {
                 "credits": [{"address": "0xuser1", "amount": 100}],
                 "message_hash": "expense_resource_a",
@@ -1069,22 +1090,28 @@ def test_get_resource_consumed_credits_filters_by_origin(session_factory: DbSess
             },
         ]
 
+        # Import required modules
+        from sqlalchemy import update as sql_update
+
+        from aleph.db.models import AlephCreditHistoryDb
+
         for expense in expenses:
+            credits_list: List[Dict[str, Any]] = expense["credits"]
+            message_hash: str = expense["message_hash"]
+            origin: str = expense["origin"]
             update_credit_balances_expense(
                 session=session,
-                credits_list=expense["credits"],
-                message_hash=expense["message_hash"],
+                credits_list=credits_list,
+                message_hash=message_hash,
                 message_timestamp=message_timestamp,
             )
 
             # Set the origin for this expense
-            from aleph.db.models import AlephCreditHistoryDb
-            from sqlalchemy import update as sql_update
 
             session.execute(
                 sql_update(AlephCreditHistoryDb)
-                .where(AlephCreditHistoryDb.credit_ref == expense["message_hash"])
-                .values(origin=expense["origin"])
+                .where(AlephCreditHistoryDb.credit_ref == message_hash)
+                .values(origin=origin)
             )
 
         session.commit()
@@ -1108,7 +1135,9 @@ def test_get_resource_consumed_credits_filters_by_origin(session_factory: DbSess
         assert consumed_credits_none == 0
 
 
-def test_get_resource_consumed_credits_uses_absolute_values(session_factory: DbSessionFactory):
+def test_get_resource_consumed_credits_uses_absolute_values(
+    session_factory: DbSessionFactory,
+):
     """Test that get_resource_consumed_credits uses absolute values of amounts."""
     from aleph.db.accessors.balances import get_resource_consumed_credits
 
@@ -1125,8 +1154,9 @@ def test_get_resource_consumed_credits_uses_absolute_values(session_factory: DbS
         )
 
         # Set origin
-        from aleph.db.models import AlephCreditHistoryDb
         from sqlalchemy import update as sql_update
+
+        from aleph.db.models import AlephCreditHistoryDb
 
         session.execute(
             sql_update(AlephCreditHistoryDb)

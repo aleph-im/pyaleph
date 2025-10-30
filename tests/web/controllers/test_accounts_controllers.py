@@ -1,10 +1,9 @@
 import json
-import pytest
-import pytest_asyncio
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from aleph.web.controllers.accounts import get_resource_consumed_credits_controller
-from aleph.types.db_session import DbSessionFactory
 
 
 @pytest.mark.asyncio
@@ -23,9 +22,17 @@ async def test_get_resource_consumed_credits_controller_success():
     # Mock consumed credits value
     expected_consumed_credits = 42
 
-    with patch("aleph.web.controllers.accounts.get_item_hash_str_from_request") as mock_get_hash, \
-         patch("aleph.web.controllers.accounts.get_session_factory_from_request") as mock_get_factory, \
-         patch("aleph.web.controllers.accounts.get_resource_consumed_credits") as mock_get_credits:
+    with (
+        patch(
+            "aleph.web.controllers.accounts.get_item_hash_str_from_request"
+        ) as mock_get_hash,
+        patch(
+            "aleph.web.controllers.accounts.get_session_factory_from_request"
+        ) as mock_get_factory,
+        patch(
+            "aleph.web.controllers.accounts.get_resource_consumed_credits"
+        ) as mock_get_credits,
+    ):
 
         # Set up mocks
         mock_get_hash.return_value = "test_hash_123"
@@ -44,7 +51,9 @@ async def test_get_resource_consumed_credits_controller_success():
         # Verify mocks were called correctly
         mock_get_hash.assert_called_once_with(mock_request)
         mock_get_factory.assert_called_once_with(mock_request)
-        mock_get_credits.assert_called_once_with(session=mock_session, item_hash="test_hash_123")
+        mock_get_credits.assert_called_once_with(
+            session=mock_session, item_hash="test_hash_123"
+        )
 
 
 @pytest.mark.asyncio
@@ -63,9 +72,17 @@ async def test_get_resource_consumed_credits_controller_zero_credits():
     # Mock zero consumed credits
     expected_consumed_credits = 0
 
-    with patch("aleph.web.controllers.accounts.get_item_hash_str_from_request") as mock_get_hash, \
-         patch("aleph.web.controllers.accounts.get_session_factory_from_request") as mock_get_factory, \
-         patch("aleph.web.controllers.accounts.get_resource_consumed_credits") as mock_get_credits:
+    with (
+        patch(
+            "aleph.web.controllers.accounts.get_item_hash_str_from_request"
+        ) as mock_get_hash,
+        patch(
+            "aleph.web.controllers.accounts.get_session_factory_from_request"
+        ) as mock_get_factory,
+        patch(
+            "aleph.web.controllers.accounts.get_resource_consumed_credits"
+        ) as mock_get_credits,
+    ):
 
         # Set up mocks
         mock_get_hash.return_value = "empty_hash_456"
@@ -98,9 +115,17 @@ async def test_get_resource_consumed_credits_controller_large_credits():
     # Mock large consumed credits value
     expected_consumed_credits = 999999
 
-    with patch("aleph.web.controllers.accounts.get_item_hash_str_from_request") as mock_get_hash, \
-         patch("aleph.web.controllers.accounts.get_session_factory_from_request") as mock_get_factory, \
-         patch("aleph.web.controllers.accounts.get_resource_consumed_credits") as mock_get_credits:
+    with (
+        patch(
+            "aleph.web.controllers.accounts.get_item_hash_str_from_request"
+        ) as mock_get_hash,
+        patch(
+            "aleph.web.controllers.accounts.get_session_factory_from_request"
+        ) as mock_get_factory,
+        patch(
+            "aleph.web.controllers.accounts.get_resource_consumed_credits"
+        ) as mock_get_credits,
+    ):
 
         # Set up mocks
         mock_get_hash.return_value = "large_hash_789"
