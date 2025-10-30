@@ -18,6 +18,7 @@ from pydantic import BaseModel
 
 import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.files import insert_grace_period_file_pin
+from aleph.schemas.messages_query_params import DEFAULT_MESSAGES_PER_PAGE
 from aleph.schemas.pending_messages import BasePendingMessage, parse_message
 from aleph.services.ipfs import IpfsService
 from aleph.services.p2p.pubsub import publish as pub_p2p
@@ -36,10 +37,6 @@ from aleph.web.controllers.app_state_getters import (
     get_mq_channel_from_request,
     get_p2p_client_from_request,
 )
-
-DEFAULT_MESSAGES_PER_PAGE = 20
-DEFAULT_PAGE = 1
-LIST_FIELD_SEPARATOR = ","
 
 
 @overload

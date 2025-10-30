@@ -20,16 +20,14 @@ from aleph.db.accessors.posts import (
     get_matching_posts_legacy,
 )
 from aleph.db.models import ChainTxDb, message_confirmations
-from aleph.types.db_session import DbSession, DbSessionFactory
-from aleph.types.sort_order import SortBy, SortOrder
-from aleph.web.controllers.utils import (
+from aleph.schemas.messages_query_params import (
     DEFAULT_MESSAGES_PER_PAGE,
     DEFAULT_PAGE,
     LIST_FIELD_SEPARATOR,
-    Pagination,
-    cond_output,
-    get_path_page,
 )
+from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.sort_order import SortBy, SortOrder
+from aleph.web.controllers.utils import Pagination, cond_output, get_path_page
 
 
 class PostQueryParams(BaseModel):

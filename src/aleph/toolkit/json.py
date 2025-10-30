@@ -18,7 +18,6 @@ SerializedJson = bytes
 # serializer changes easier.
 SerializedJsonInput = Union[bytes, str]
 
-
 # Note: JSONDecodeError is a subclass of ValueError, but the JSON module sometimes throws
 #       raw value errors, including on NaN because of our custom parse_constant.
 DecodeError = orjson.JSONDecodeError
@@ -55,8 +54,11 @@ def extended_json_encoder(obj: Any) -> Any:
         raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 
-def dumps(obj: Any) -> bytes:
+def dumps(obj: Any, sort_keys: bool = True) -> bytes:
     try:
-        return orjson.dumps(obj)
+        opts = orjson.OPT_SORT_KEYS | orjson.OPT_NON_STR_KEYS if sort_keys else 0
+        return orjson.dumps(obj, option=opts)
     except TypeError:
-        return json.dumps(obj, default=extended_json_encoder).encode()
+        return json.dumps(
+            obj, default=extended_json_encoder, sort_keys=sort_keys
+        ).encode()

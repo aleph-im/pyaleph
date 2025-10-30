@@ -1,6 +1,12 @@
-from typing import Any, List, Optional, Set
+from hashlib import sha256
+from typing import Any, Dict, List, Optional, Set
 
 import redis.asyncio as redis_asyncio
+
+import aleph.toolkit.json as aleph_json
+from aleph.db.accessors.messages import count_matching_messages
+from aleph.schemas.messages_query_params import MessageQueryParams
+from aleph.types.db_session import DbSession
 
 CacheKey = Any
 CacheValue = bytes
@@ -10,9 +16,10 @@ class NodeCache:
     API_SERVERS_KEY = "api_servers"
     PUBLIC_ADDRESSES_KEY = "public_addresses"
 
-    def __init__(self, redis_host: str, redis_port: int):
+    def __init__(self, redis_host: str, redis_port: int, message_count_cache_ttl):
         self.redis_host = redis_host
         self.redis_port = redis_port
+        self.message_cache_count_ttl = message_count_cache_ttl
 
         self._redis_client: Optional[redis_asyncio.Redis] = None
 
@@ -52,8 +59,8 @@ class NodeCache:
     async def get(self, key: CacheKey) -> Optional[CacheValue]:
         return await self.redis_client.get(key)
 
-    async def set(self, key: CacheKey, value: Any):
-        await self.redis_client.set(key, value)
+    async def set(self, key: CacheKey, value: Any, expiration: Optional[int] = None):
+        await self.redis_client.set(key, value, ex=expiration)
 
     async def incr(self, key: CacheKey):
         await self.redis_client.incr(key)
@@ -82,3 +89,25 @@ class NodeCache:
     async def get_public_addresses(self) -> List[str]:
         addresses = await self.redis_client.smembers(self.PUBLIC_ADDRESSES_KEY)
         return [addr.decode() for addr in addresses]
+
+    @staticmethod
+    def _message_filter_id(filters: Dict[str, Any]):
+        filters_json = aleph_json.dumps(filters, sort_keys=True)
+        return sha256(filters_json).hexdigest()
+
+    async def count_messages(
+        self, session: DbSession, query_params: MessageQueryParams
+    ) -> int:
+        filters = query_params.model_dump(exclude_none=True)
+        cache_key = f"message_count:{self._message_filter_id(filters)}"
+
+        cached_result = await self.get(cache_key)
+        if cached_result is not None:
+            return int(cached_result.decode())
+
+        # Slow, can take a few seconds
+        n_matches = count_matching_messages(session, **filters)
+
+        await self.set(cache_key, n_matches, expiration=self.message_cache_count_ttl)
+
+        return n_matches
