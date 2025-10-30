@@ -33,9 +33,12 @@ async def ipfs_add_file(request: web.Request):
     file_content: bytes
     if isinstance(file_field, bytes):
         file_content = file_field
+        filename = "file"
     elif isinstance(file_field, str):
         file_content = file_field.encode()
+        filename = "file"
     elif isinstance(file_field, FileField):
+        filename = file_field.filename
         if file_field.content_type != "application/octet-stream":
             raise web.HTTPUnprocessableEntity(
                 reason="Invalid content-type for 'file' field. Must be 'application/octet-stream'."
@@ -46,10 +49,7 @@ async def ipfs_add_file(request: web.Request):
             reason="Invalid type for 'file' field. Must be bytes, str or FileField."
         )
 
-    ipfs_add_response = await ipfs_service.add_file(file_content)
-
-    cid = ipfs_add_response["Hash"]
-    name = ipfs_add_response["Name"]
+    cid = await ipfs_service.add_bytes(file_content)
 
     # IPFS add returns the cumulative size and not the real file size.
     # We need the real file size here.
@@ -71,7 +71,7 @@ async def ipfs_add_file(request: web.Request):
     output = {
         "status": "success",
         "hash": cid,
-        "name": name,
+        "name": filename,
         "size": size,
     }
     return web.json_response(output)
