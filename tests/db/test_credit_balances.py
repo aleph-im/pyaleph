@@ -4,14 +4,17 @@ from decimal import Decimal
 from typing import Any, Dict, List
 
 from sqlalchemy import select
+from sqlalchemy import update as sql_update
 
 from aleph.db.accessors.balances import (
     get_credit_balance,
+    get_resource_consumed_credits,
     update_credit_balances_distribution,
     update_credit_balances_expense,
     update_credit_balances_transfer,
+    validate_credit_transfer_balance,
 )
-from aleph.db.models import AlephCreditHistoryDb
+from aleph.db.models import AlephCreditBalanceDb, AlephCreditHistoryDb
 from aleph.types.db_session import DbSessionFactory
 
 
@@ -274,7 +277,6 @@ def test_whitelisted_sender_transfer(session_factory: DbSessionFactory):
 
 def test_balance_validation_insufficient_credits(session_factory: DbSessionFactory):
     """Test balance validation fails when sender has insufficient credits."""
-    from aleph.db.accessors.balances import validate_credit_transfer_balance
 
     # Create initial balance of 500
     credits_list = [
@@ -353,7 +355,6 @@ def test_expired_credits_excluded_from_transfers(session_factory: DbSessionFacto
         assert balance == 200
 
         # Transfer validation should only consider valid credits (200)
-        from aleph.db.accessors.balances import validate_credit_transfer_balance
 
         assert validate_credit_transfer_balance(session, "0xexpired_user", 200)
         assert not validate_credit_transfer_balance(session, "0xexpired_user", 300)
@@ -850,7 +851,6 @@ def test_cache_invalidation_on_credit_expiration(session_factory: DbSessionFacto
 
         # Verify that a cache entry was created and manually update its timestamp
         # to simulate it being created at T2 (cache_time)
-        from aleph.db.models import AlephCreditBalanceDb
 
         cached_balance = session.execute(
             select(AlephCreditBalanceDb).where(
@@ -877,7 +877,6 @@ def test_cache_invalidation_on_credit_expiration(session_factory: DbSessionFacto
 
 def test_get_resource_consumed_credits_no_records(session_factory: DbSessionFactory):
     """Test get_resource_consumed_credits returns 0 when no records exist."""
-    from aleph.db.accessors.balances import get_resource_consumed_credits
 
     with session_factory() as session:
         consumed_credits = get_resource_consumed_credits(
@@ -888,7 +887,6 @@ def test_get_resource_consumed_credits_no_records(session_factory: DbSessionFact
 
 def test_get_resource_consumed_credits_single_record(session_factory: DbSessionFactory):
     """Test get_resource_consumed_credits with a single expense record."""
-    from aleph.db.accessors.balances import get_resource_consumed_credits
 
     # Create a credit expense record
     expense_credits = [
@@ -912,9 +910,6 @@ def test_get_resource_consumed_credits_single_record(session_factory: DbSessionF
 
         # Manually set the origin field to the item_hash we want to test
         # Since update_credit_balances_expense doesn't set origin by default
-        from sqlalchemy import update as sql_update
-
-        from aleph.db.models import AlephCreditHistoryDb
 
         session.execute(
             sql_update(AlephCreditHistoryDb)
@@ -933,7 +928,6 @@ def test_get_resource_consumed_credits_multiple_records(
     session_factory: DbSessionFactory,
 ):
     """Test get_resource_consumed_credits with multiple expense records for the same resource."""
-    from aleph.db.accessors.balances import get_resource_consumed_credits
 
     message_timestamp = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
 
@@ -961,9 +955,6 @@ def test_get_resource_consumed_credits_multiple_records(
         ]
 
         # Import required modules
-        from sqlalchemy import update as sql_update
-
-        from aleph.db.models import AlephCreditHistoryDb
 
         for batch in expense_batches:
             credits_list: List[Dict[str, Any]] = batch["credits"]
@@ -997,7 +988,6 @@ def test_get_resource_consumed_credits_filters_by_payment_method(
     session_factory: DbSessionFactory,
 ):
     """Test that get_resource_consumed_credits only counts credit_expense payments."""
-    from aleph.db.accessors.balances import get_resource_consumed_credits
 
     message_timestamp = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
 
@@ -1043,9 +1033,6 @@ def test_get_resource_consumed_credits_filters_by_payment_method(
         )
 
         # Set origin for all records to the same resource
-        from sqlalchemy import update as sql_update
-
-        from aleph.db.models import AlephCreditHistoryDb
 
         for msg_hash in ["distribution_msg", "transfer_msg", "expense_msg"]:
             session.execute(
@@ -1066,7 +1053,6 @@ def test_get_resource_consumed_credits_filters_by_origin(
     session_factory: DbSessionFactory,
 ):
     """Test that get_resource_consumed_credits only counts records with matching origin."""
-    from aleph.db.accessors.balances import get_resource_consumed_credits
 
     message_timestamp = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
 
@@ -1091,9 +1077,6 @@ def test_get_resource_consumed_credits_filters_by_origin(
         ]
 
         # Import required modules
-        from sqlalchemy import update as sql_update
-
-        from aleph.db.models import AlephCreditHistoryDb
 
         for expense in expenses:
             credits_list: List[Dict[str, Any]] = expense["credits"]
@@ -1139,7 +1122,6 @@ def test_get_resource_consumed_credits_uses_absolute_values(
     session_factory: DbSessionFactory,
 ):
     """Test that get_resource_consumed_credits uses absolute values of amounts."""
-    from aleph.db.accessors.balances import get_resource_consumed_credits
 
     message_timestamp = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
 
@@ -1154,9 +1136,6 @@ def test_get_resource_consumed_credits_uses_absolute_values(
         )
 
         # Set origin
-        from sqlalchemy import update as sql_update
-
-        from aleph.db.models import AlephCreditHistoryDb
 
         session.execute(
             sql_update(AlephCreditHistoryDb)
