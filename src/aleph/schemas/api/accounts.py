@@ -5,9 +5,9 @@ from typing import Annotated, Dict, List, Optional
 from aleph_message.models import Chain
 from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, field_validator
 
+from aleph.schemas.messages_query_params import DEFAULT_PAGE, LIST_FIELD_SEPARATOR
 from aleph.types.files import FileType
 from aleph.types.sort_order import SortOrder
-from aleph.web.controllers.utils import DEFAULT_PAGE, LIST_FIELD_SEPARATOR
 
 
 class GetAccountQueryParams(BaseModel):
