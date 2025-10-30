@@ -38,6 +38,7 @@ from aleph.schemas.api.accounts import (
 )
 from aleph.types.db_session import DbSessionFactory
 from aleph.web.controllers.app_state_getters import get_session_factory_from_request
+from aleph.web.controllers.utils import get_item_hash_str_from_request
 
 
 def make_stats_dict(stats) -> Dict[str, Any]:
@@ -84,13 +85,6 @@ def _get_chain_from_request(request: web.Request) -> str:
     if chain is None:
         raise web.HTTPUnprocessableEntity(text="Chain must be specified.")
     return chain
-
-
-def _get_item_hash_from_request(request: web.Request) -> str:
-    item_hash = request.match_info.get("item_hash")
-    if item_hash is None:
-        raise web.HTTPUnprocessableEntity(text="Item hash must be specified.")
-    return item_hash
 
 
 async def get_account_balance(request: web.Request):
@@ -283,7 +277,7 @@ async def get_resource_consumed_credits_controller(
     request: web.Request,
 ) -> web.Response:
     """Returns the total credits consumed by a specific resource (item_hash)."""
-    item_hash = _get_item_hash_from_request(request)
+    item_hash = get_item_hash_str_from_request(request)
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
 
