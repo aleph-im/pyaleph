@@ -248,6 +248,10 @@ def get_defaults():
             # Sentry trace sample rate.
             "traces_sample_rate": None,
         },
+        "perf": {
+            # TTL of the cache in front of DB count queries on the messages table.
+            "message_count_cache_ttl": 300,
+        },
     }
 
 
