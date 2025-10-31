@@ -53,10 +53,14 @@ async def ipfs_add_file(request: web.Request):
 
     # IPFS add returns the cumulative size and not the real file size.
     # We need the real file size here.
-    stats = await asyncio.wait_for(
-        ipfs_service.ipfs_client.files.stat(f"/ipfs/{cid}"), 5
-    )
-    size = stats["Size"]
+    try:
+        stats = await asyncio.wait_for(
+            ipfs_service.ipfs_client.files.stat(f"/ipfs/{cid}"),
+            config.ipfs.stat_timeout.value,
+        )
+        size = stats["Size"]
+    except TimeoutError:
+        raise web.HTTPNotFound(reason="File not found on IPFS")
 
     with session_factory() as session:
         upsert_file(
