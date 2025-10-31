@@ -213,6 +213,8 @@ def get_defaults():
                 # Timeout for pinning operations (seconds)
                 "timeout": 60,
             },
+            # Timeout for file stat requests (seconds)
+            "stat_timeout": 30,
         },
         "rabbitmq": {
             # Hostname of the RabbitMQ service.
