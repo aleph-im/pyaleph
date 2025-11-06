@@ -53,9 +53,10 @@ async def ipfs_add_file(request: web.Request):
 
     # IPFS add returns the cumulative size and not the real file size.
     # We need the real file size here.
+    # Use pinning_client to stat the file since that's where it was added.
     try:
         stats = await asyncio.wait_for(
-            ipfs_service.ipfs_client.files.stat(f"/ipfs/{cid}"),
+            ipfs_service.pinning_client.files.stat(f"/ipfs/{cid}"),
             config.ipfs.stat_timeout.value,
         )
         size = stats["Size"]
