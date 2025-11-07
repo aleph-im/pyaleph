@@ -11,6 +11,7 @@ import aio_pika.abc
 import aiohttp_jinja2
 from aiohttp import web
 from aiohttp.web_request import FileField
+from aleph_message.models import ItemHash
 from aleph_p2p_client import AlephP2PServiceClient
 from configmanager import Config
 from pydantic import BaseModel
@@ -411,3 +412,33 @@ def add_grace_period_for_file(session: DbSession, file_hash: str, hours: int):
         created=utc_now(),
         delete_by=delete_by,
     )
+
+
+def get_item_hash_str_from_request(request: web.Request) -> str:
+    """
+    Extract and validate item_hash string from request path parameters.
+    Raises HTTPUnprocessableEntity if item_hash is missing.
+    """
+    item_hash_str = request.match_info.get("item_hash")
+    if not item_hash_str:
+        raise web.HTTPUnprocessableEntity(text="Item hash must be specified.")
+    return item_hash_str
+
+
+def get_item_hash_from_request(request: web.Request) -> ItemHash:
+    """
+    Extract and validate item_hash from request path parameters.
+    Returns an ItemHash object.
+    Raises HTTPUnprocessableEntity if item_hash is missing.
+    Raises HTTPBadRequest if item_hash format is invalid.
+    """
+    item_hash_str = request.match_info.get("item_hash")
+    if not item_hash_str:
+        raise web.HTTPUnprocessableEntity(text=f"Invalid message hash: {item_hash_str}")
+
+    try:
+        item_hash = ItemHash(item_hash_str)
+    except ValueError:
+        raise web.HTTPBadRequest(body=f"Invalid message hash: {item_hash_str}")
+
+    return item_hash

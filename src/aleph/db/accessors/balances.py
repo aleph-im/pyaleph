@@ -646,3 +646,30 @@ def count_address_credit_history(
     )
 
     return session.execute(query).scalar_one()
+
+
+def get_resource_consumed_credits(
+    session: DbSession,
+    item_hash: str,
+) -> int:
+    """
+    Calculate the total credits consumed by a specific resource.
+
+    Aggregates all credit_history entries where:
+    - payment_method = 'credit_expense'
+    - origin = item_hash (the resource identifier)
+
+    Args:
+        session: Database session
+        item_hash: The item hash of the resource (message hash)
+
+    Returns:
+        Total credits consumed by the resource
+    """
+    query = select(func.sum(func.abs(AlephCreditHistoryDb.amount))).where(
+        (AlephCreditHistoryDb.payment_method == "credit_expense")
+        & (AlephCreditHistoryDb.origin == item_hash)
+    )
+
+    result = session.execute(query).scalar()
+    return result or 0
