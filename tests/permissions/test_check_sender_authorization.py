@@ -4,11 +4,15 @@ from typing import Any, Mapping
 import pytest
 from message_test_helpers import make_validated_message_from_dict
 
-from aleph.db.models import AggregateDb, AggregateElementDb
+from aleph.chains.signature_verifier import SignatureVerifier
+from aleph.db.models import AggregateDb, AggregateElementDb, PendingMessageDb
+from aleph.handlers.message_handler import MessageHandler
 from aleph.permissions import check_sender_authorization
+from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
+from aleph.types.message_status import PermissionDenied
 
 
 @pytest.mark.asyncio
@@ -145,13 +149,6 @@ async def test_message_processing_should_fail_on_permission(
     An attacker can send a message with victim's address, and it should be rejected
     during message processing, but currently it's accepted due to the bug.
     """
-    import datetime as dt
-
-    from aleph.chains.signature_verifier import SignatureVerifier
-    from aleph.db.models import PendingMessageDb
-    from aleph.handlers.message_handler import MessageHandler
-    from aleph.storage import StorageService
-    from aleph.types.message_status import PermissionDenied
 
     # Mock the storage and signature verification to focus on permission testing
     storage_service = mocker.Mock(spec=StorageService)

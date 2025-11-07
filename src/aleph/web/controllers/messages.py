@@ -52,7 +52,10 @@ from aleph.web.controllers.app_state_getters import (
     get_node_cache_from_request,
     get_session_factory_from_request,
 )
-from aleph.web.controllers.utils import mq_make_aleph_message_topic_queue
+from aleph.web.controllers.utils import (
+    get_item_hash_from_request,
+    mq_make_aleph_message_topic_queue,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -408,14 +411,7 @@ def _get_message_with_status(
 
 
 async def view_message(request: web.Request):
-    item_hash_str = request.match_info.get("item_hash")
-    if not item_hash_str:
-        raise web.HTTPUnprocessableEntity(text=f"Invalid message hash: {item_hash_str}")
-
-    try:
-        item_hash = ItemHash(item_hash_str)
-    except ValueError:
-        raise web.HTTPBadRequest(body=f"Invalid message hash: {item_hash_str}")
+    item_hash = get_item_hash_from_request(request)
 
     session_factory: DbSessionFactory = request.app["session_factory"]
     with session_factory() as session:
@@ -430,14 +426,7 @@ async def view_message(request: web.Request):
 
 
 async def view_message_content(request: web.Request):
-    item_hash_str = request.match_info.get("item_hash")
-    if not item_hash_str:
-        raise web.HTTPUnprocessableEntity(text=f"Invalid message hash: {item_hash_str}")
-
-    try:
-        item_hash = ItemHash(item_hash_str)
-    except ValueError:
-        raise web.HTTPBadRequest(body=f"Invalid message hash: {item_hash_str}")
+    item_hash = get_item_hash_from_request(request)
 
     session_factory: DbSessionFactory = request.app["session_factory"]
     with session_factory() as session:
@@ -455,13 +444,13 @@ async def view_message_content(request: web.Request):
         or not isinstance(message_with_status.message, PostMessage)
     ):
         raise web.HTTPUnprocessableEntity(
-            text=f"Invalid message hash status {status} for hash {item_hash_str}"
+            text=f"Invalid message hash status {status} for hash {item_hash}"
         )
 
     message_type = message_with_status.message.type
     if message_type != MessageType.post:
         raise web.HTTPUnprocessableEntity(
-            text=f"Invalid message hash type {message_type} for hash {item_hash_str}"
+            text=f"Invalid message hash type {message_type} for hash {item_hash}"
         )
 
     content = message_with_status.message.content.content
@@ -469,14 +458,7 @@ async def view_message_content(request: web.Request):
 
 
 async def view_message_status(request: web.Request):
-    item_hash_str = request.match_info.get("item_hash")
-    if not item_hash_str:
-        raise web.HTTPUnprocessableEntity(text=f"Invalid message hash: {item_hash_str}")
-
-    try:
-        item_hash = ItemHash(item_hash_str)
-    except ValueError:
-        raise web.HTTPBadRequest(body=f"Invalid message hash: {item_hash_str}")
+    item_hash = get_item_hash_from_request(request)
 
     session_factory: DbSessionFactory = request.app["session_factory"]
     with session_factory() as session:
