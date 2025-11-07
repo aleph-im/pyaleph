@@ -83,6 +83,15 @@ async def api_client(ccn_test_aiohttp_app, mocker, aiohttp_client):
             "Type": "file",
         }
     )
+    ipfs_service.pinning_client.files.stat = mocker.AsyncMock(
+        return_value={
+            "Hash": EXPECTED_FILE_CID,
+            "Size": 34,
+            "CumulativeSize": 42,
+            "Blocks": 0,
+            "Type": "file",
+        }
+    )
 
     ccn_test_aiohttp_app[APP_STATE_STORAGE_SERVICE] = StorageService(
         storage_engine=InMemoryStorageEngine(files={}),
