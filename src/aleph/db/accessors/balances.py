@@ -91,7 +91,7 @@ def get_total_detailed_balance(
         query = (
             select(func.sum(AlephBalanceDb.balance))
             .where(
-                (AlephBalanceDb.address == address)
+                AlephBalanceDb.address.ilike(address)
                 & (AlephBalanceDb.chain == chain)
                 & ((AlephBalanceDb.dapp.is_(None)) if not include_dapps else True)
             )
@@ -104,7 +104,7 @@ def get_total_detailed_balance(
     query = (
         select(AlephBalanceDb.chain, func.sum(AlephBalanceDb.balance).label("balance"))
         .where(
-            (AlephBalanceDb.address == address)
+            AlephBalanceDb.address.ilike(address)
             & ((AlephBalanceDb.dapp.is_(None)) if not include_dapps else True)
         )
         .group_by(AlephBalanceDb.chain)
@@ -118,7 +118,7 @@ def get_total_detailed_balance(
     query = (
         select(func.sum(AlephBalanceDb.balance))
         .where(
-            (AlephBalanceDb.address == address)
+            AlephBalanceDb.address.ilike(address)
             & ((AlephBalanceDb.dapp.is_(None)) if not include_dapps else True)
         )
         .group_by(AlephBalanceDb.address)
