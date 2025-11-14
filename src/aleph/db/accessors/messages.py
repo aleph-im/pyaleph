@@ -211,6 +211,8 @@ def count_matching_messages(
     session: DbSession,
     start_date: float = 0.0,
     end_date: float = 0.0,
+    start_block: int = 0,
+    end_block: int = 0,
     sort_by: SortBy = SortBy.TIME,
     sort_order: SortOrder = SortOrder.DESCENDING,
     page: int = 1,
@@ -220,11 +222,13 @@ def count_matching_messages(
     # Note that we deliberately ignore the pagination parameters so that users can pass
     # the same parameters as get_matching_messages and get the total number of messages,
     # not just the number on a page.
-    if kwargs or start_date or end_date:
+    if kwargs or start_date or end_date or start_block or end_block:
         select_stmt = make_matching_messages_query(
             **kwargs,
             start_date=start_date,
             end_date=end_date,
+            start_block=start_block,
+            end_block=end_block,
             include_confirmations=False,
             page=1,
             pagination=0,
