@@ -165,7 +165,6 @@ def make_matching_messages_query(
                 select_earliest_confirmation.c.height < end_block
             )
 
-        sort_by = SortBy.TX_TIME
         if sort_by == SortBy.TX_TIME:
             order_by_columns = (
                 (
