@@ -34,6 +34,7 @@ from aleph.types.message_status import (
     InternalError,
     InvalidMessageFormat,
     NoAmendTarget,
+    PermissionDenied,
 )
 
 from .content_handler import ContentHandler
@@ -215,6 +216,34 @@ class PostMessageHandler(ContentHandler):
 
             if original_post.type == "amend":
                 raise CannotAmendAmend()
+
+    async def check_permissions(self, session: DbSession, message: MessageDb) -> None:
+        """
+        Check permissions for POST messages.
+
+        For amend messages, ensures that the amend message has the same content address
+        as the original post being amended. This prevents users from amending posts
+        that don't belong to the same address.
+        """
+        # First, perform the standard authorization check
+        await super().check_permissions(session=session, message=message)
+
+        content = get_post_content(message)
+
+        # Additional check for amend messages: ensure same owner
+        if content.type == "amend":
+            ref = get_post_content_ref(content.ref)
+
+            if ref is not None:
+                original_post = get_original_post(session=session, item_hash=ref)
+
+                if original_post is not None:
+                    # Check that the amend message has the same address as the original post
+                    if original_post.owner != content.address:
+                        raise PermissionDenied(
+                            f"Cannot amend post {ref}: amend message address {content.address} "
+                            f"does not match original post owner {original_post.owner}"
+                        )
 
     async def process_post(self, session: DbSession, message: MessageDb):
         content = get_post_content(message)
