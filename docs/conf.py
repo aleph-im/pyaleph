@@ -293,5 +293,5 @@ intersphinx_mapping = {
 
 
 rst_epilog = """
-.. |pyaleph_version| replace:: 0.9.0
+.. |pyaleph_version| replace:: 0.9.1
 """
