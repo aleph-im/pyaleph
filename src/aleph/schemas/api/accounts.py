@@ -126,18 +126,10 @@ class GetAccountCreditHistoryQueryParams(BaseModel):
     tx_hash: Optional[str] = Field(
         default=None, description="Filter by transaction hash"
     )
-    token: Optional[str] = Field(
-        default=None, description="Filter by token"
-    )
-    chain: Optional[str] = Field(
-        default=None, description="Filter by chain"
-    )
-    provider: Optional[str] = Field(
-        default=None, description="Filter by provider"
-    )
-    origin: Optional[str] = Field(
-        default=None, description="Filter by origin"
-    )
+    token: Optional[str] = Field(default=None, description="Filter by token")
+    chain: Optional[str] = Field(default=None, description="Filter by chain")
+    provider: Optional[str] = Field(default=None, description="Filter by provider")
+    origin: Optional[str] = Field(default=None, description="Filter by origin")
     origin_ref: Optional[str] = Field(
         default=None, description="Filter by origin reference"
     )
