@@ -408,8 +408,8 @@ def _bulk_insert_credit_history(
     cursor = conn.cursor()
 
     # Column specification for credit history
-    # Include the new message_timestamp field
-    copy_columns = "address, amount, credit_ref, credit_index, message_timestamp, last_update, ratio, tx_hash, expiration_date, token, chain, origin, provider, origin_ref, payment_method"
+    # Include the new message_timestamp and bonus_amount fields
+    copy_columns = "address, amount, credit_ref, credit_index, message_timestamp, last_update, price, bonus_amount, tx_hash, expiration_date, token, chain, origin, provider, origin_ref, payment_method"
 
     csv_credit_history = StringIO("\n".join(csv_rows))
     cursor.copy_expert(
@@ -453,7 +453,7 @@ def update_credit_balances_distribution(
     """
     Updates credit balances for distribution messages (aleph_credit_distribution).
 
-    Distribution messages include all fields like ratio, tx_hash, provider,
+    Distribution messages include all fields like price, tx_hash, provider,
     payment_method, token, chain, and expiration_date.
     """
 
@@ -463,7 +463,7 @@ def update_credit_balances_distribution(
     for index, credit_entry in enumerate(credits_list):
         address = credit_entry["address"]
         amount = abs(int(credit_entry["amount"]))
-        ratio = Decimal(credit_entry["ratio"])
+        price = Decimal(credit_entry["price"])
         tx_hash = credit_entry["tx_hash"]
         provider = credit_entry["provider"]
 
@@ -472,6 +472,7 @@ def update_credit_balances_distribution(
         origin = credit_entry.get("origin", "")
         origin_ref = credit_entry.get("ref", "")
         payment_method = credit_entry.get("payment_method", "")
+        bonus_amount = credit_entry.get("bonus_amount", "")
 
         # Convert expiration timestamp to datetime
 
@@ -482,7 +483,7 @@ def update_credit_balances_distribution(
         )
 
         csv_rows.append(
-            f"{address};{amount};{message_hash};{index};{message_timestamp};{last_update};{ratio};{tx_hash};{expiration_date or ''};{token};{chain};{origin};{provider};{origin_ref};{payment_method}"
+            f"{address};{amount};{message_hash};{index};{message_timestamp};{last_update};{price};{bonus_amount or ''};{tx_hash};{expiration_date or ''};{token};{chain};{origin};{provider};{origin_ref};{payment_method}"
         )
 
     _bulk_insert_credit_history(session, csv_rows)
@@ -500,7 +501,7 @@ def update_credit_balances_expense(
     Expense messages have negative amounts and can include:
     - execution_id (mapped to origin)
     - node_id (mapped to tx_hash)
-    - price (mapped to ratio)
+    - price (mapped to price)
     - time (skipped for now)
     - ref (mapped to origin_ref)
     """
@@ -516,11 +517,11 @@ def update_credit_balances_expense(
         # Map new fields
         origin = credit_entry.get("execution_id", "")
         tx_hash = credit_entry.get("node_id", "")
-        ratio = credit_entry.get("price", "")
+        price = credit_entry.get("price", "")
         # Skip time field for now
 
         csv_rows.append(
-            f"{address};{amount};{message_hash};{index};{message_timestamp};{last_update};{ratio};{tx_hash};;;;{origin};ALEPH;{origin_ref};credit_expense"
+            f"{address};{amount};{message_hash};{index};{message_timestamp};{last_update};{price};;{tx_hash};;;;{origin};ALEPH;{origin_ref};credit_expense"
         )
 
     _bulk_insert_credit_history(session, csv_rows)
@@ -562,7 +563,7 @@ def update_credit_balances_transfer(
 
         # Add positive entry for recipient (origin = sender, provider = ALEPH, payment_method = credit_transfer)
         csv_rows.append(
-            f"{recipient_address};{amount};{message_hash};{index};{message_timestamp};{last_update};;;{expiration_date or ''};;;{sender_address};ALEPH;;credit_transfer"
+            f"{recipient_address};{amount};{message_hash};{index};{message_timestamp};{last_update};;;;{expiration_date or ''};;;{sender_address};ALEPH;;credit_transfer"
         )
         index += 1
 
@@ -570,7 +571,7 @@ def update_credit_balances_transfer(
         # (origin = recipient, provider = ALEPH, payment_method = credit_transfer)
         if sender_address not in whitelisted_addresses:
             csv_rows.append(
-                f"{sender_address};{-amount};{message_hash};{index};{message_timestamp};{last_update};;;;;;{recipient_address};ALEPH;;credit_transfer"
+                f"{sender_address};{-amount};{message_hash};{index};{message_timestamp};{last_update};;;;;;;{recipient_address};ALEPH;;credit_transfer"
             )
             index += 1
 
@@ -602,6 +603,13 @@ def get_address_credit_history(
     address: str,
     page: int = 1,
     pagination: int = 0,
+    tx_hash: Optional[str] = None,
+    token: Optional[str] = None,
+    chain: Optional[str] = None,
+    provider: Optional[str] = None,
+    origin: Optional[str] = None,
+    origin_ref: Optional[str] = None,
+    payment_method: Optional[str] = None,
 ) -> Sequence[AlephCreditHistoryDb]:
     """
     Get paginated credit history entries for a specific address, ordered from newest to oldest.
@@ -611,6 +619,13 @@ def get_address_credit_history(
         address: Address to get credit history for
         page: Page number (starts at 1)
         pagination: Number of entries per page (0 for all entries)
+        tx_hash: Filter by transaction hash
+        token: Filter by token
+        chain: Filter by chain
+        provider: Filter by provider
+        origin: Filter by origin
+        origin_ref: Filter by origin reference
+        payment_method: Filter by payment method
 
     Returns:
         List of credit history entries ordered by message_timestamp desc
@@ -621,6 +636,22 @@ def get_address_credit_history(
         .order_by(AlephCreditHistoryDb.message_timestamp.desc())
     )
 
+    # Apply filters
+    if tx_hash is not None:
+        query = query.where(AlephCreditHistoryDb.tx_hash == tx_hash)
+    if token is not None:
+        query = query.where(AlephCreditHistoryDb.token == token)
+    if chain is not None:
+        query = query.where(AlephCreditHistoryDb.chain == chain)
+    if provider is not None:
+        query = query.where(AlephCreditHistoryDb.provider == provider)
+    if origin is not None:
+        query = query.where(AlephCreditHistoryDb.origin == origin)
+    if origin_ref is not None:
+        query = query.where(AlephCreditHistoryDb.origin_ref == origin_ref)
+    if payment_method is not None:
+        query = query.where(AlephCreditHistoryDb.payment_method == payment_method)
+
     if pagination > 0:
         query = query.offset((page - 1) * pagination).limit(pagination)
 
@@ -630,20 +661,50 @@ def get_address_credit_history(
 def count_address_credit_history(
     session: DbSession,
     address: str,
+    tx_hash: Optional[str] = None,
+    token: Optional[str] = None,
+    chain: Optional[str] = None,
+    provider: Optional[str] = None,
+    origin: Optional[str] = None,
+    origin_ref: Optional[str] = None,
+    payment_method: Optional[str] = None,
 ) -> int:
     """
-    Count total credit history entries for a specific address.
+    Count total credit history entries for a specific address with optional filters.
 
     Args:
         session: Database session
         address: Address to count credit history for
+        tx_hash: Filter by transaction hash
+        token: Filter by token
+        chain: Filter by chain
+        provider: Filter by provider
+        origin: Filter by origin
+        origin_ref: Filter by origin reference
+        payment_method: Filter by payment method
 
     Returns:
-        Total number of credit history entries for the address
+        Total number of credit history entries for the address matching the filters
     """
     query = select(func.count(AlephCreditHistoryDb.credit_ref)).where(
         AlephCreditHistoryDb.address == address
     )
+
+    # Apply filters
+    if tx_hash is not None:
+        query = query.where(AlephCreditHistoryDb.tx_hash == tx_hash)
+    if token is not None:
+        query = query.where(AlephCreditHistoryDb.token == token)
+    if chain is not None:
+        query = query.where(AlephCreditHistoryDb.chain == chain)
+    if provider is not None:
+        query = query.where(AlephCreditHistoryDb.provider == provider)
+    if origin is not None:
+        query = query.where(AlephCreditHistoryDb.origin == origin)
+    if origin_ref is not None:
+        query = query.where(AlephCreditHistoryDb.origin_ref == origin_ref)
+    if payment_method is not None:
+        query = query.where(AlephCreditHistoryDb.payment_method == payment_method)
 
     return session.execute(query).scalar_one()
 

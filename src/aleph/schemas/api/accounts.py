@@ -123,13 +123,34 @@ class GetAccountCreditHistoryQueryParams(BaseModel):
     page: int = Field(
         default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
     )
+    tx_hash: Optional[str] = Field(
+        default=None, description="Filter by transaction hash"
+    )
+    token: Optional[str] = Field(
+        default=None, description="Filter by token"
+    )
+    chain: Optional[str] = Field(
+        default=None, description="Filter by chain"
+    )
+    provider: Optional[str] = Field(
+        default=None, description="Filter by provider"
+    )
+    origin: Optional[str] = Field(
+        default=None, description="Filter by origin"
+    )
+    origin_ref: Optional[str] = Field(
+        default=None, description="Filter by origin reference"
+    )
+    payment_method: Optional[str] = Field(
+        default=None, description="Filter by payment method"
+    )
 
 
 class CreditHistoryResponseItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     amount: int
-    ratio: Optional[Decimal] = None
+    price: Optional[Decimal] = None
     tx_hash: Optional[str] = None
     token: Optional[str] = None
     chain: Optional[str] = None

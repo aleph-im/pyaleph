@@ -240,19 +240,36 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
             address=address,
             page=query_params.page,
             pagination=query_params.pagination,
+            tx_hash=query_params.tx_hash,
+            token=query_params.token,
+            chain=query_params.chain,
+            provider=query_params.provider,
+            origin=query_params.origin,
+            origin_ref=query_params.origin_ref,
+            payment_method=query_params.payment_method,
         )
 
         if not credit_history_entries:
             raise web.HTTPNotFound(text="No credit history found for this address")
 
-        total_entries = count_address_credit_history(session=session, address=address)
+        total_entries = count_address_credit_history(
+            session=session,
+            address=address,
+            tx_hash=query_params.tx_hash,
+            token=query_params.token,
+            chain=query_params.chain,
+            provider=query_params.provider,
+            origin=query_params.origin,
+            origin_ref=query_params.origin_ref,
+            payment_method=query_params.payment_method,
+        )
 
         # Convert to response items
         history_adapter = TypeAdapter(list[CreditHistoryResponseItem])
         credit_history_list = [
             {
                 "amount": entry.amount,
-                "ratio": entry.ratio,
+                "price": entry.price,
                 "tx_hash": entry.tx_hash,
                 "token": entry.token,
                 "chain": entry.chain,
