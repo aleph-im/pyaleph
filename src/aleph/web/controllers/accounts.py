@@ -270,6 +270,7 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
             {
                 "amount": entry.amount,
                 "price": entry.price,
+                "bonus_amount": entry.bonus_amount,
                 "tx_hash": entry.tx_hash,
                 "token": entry.token,
                 "chain": entry.chain,

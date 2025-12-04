@@ -143,6 +143,7 @@ class CreditHistoryResponseItem(BaseModel):
 
     amount: int
     price: Optional[Decimal] = None
+    bonus_amount: Optional[int] = None
     tx_hash: Optional[str] = None
     token: Optional[str] = None
     chain: Optional[str] = None
