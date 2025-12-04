@@ -24,7 +24,7 @@ def upgrade() -> None:
     op.add_column('credit_history', sa.Column('bonus_amount', sa.BigInteger(), nullable=True))
 
     # Transform data: price calculation depends on payment token
-    # For ALEPH token: price = 1 / (ratio * 0.8)
+    # For ALEPH token: ratio = (1 / price) * (1 + 0.2), therefore price = 1.2 / ratio
     # For other tokens: price = 1/ratio
     # Only update rows where payment_method is NOT 'credit_expense' or 'credit_transfer'
     # and where ratio is not null and not zero
@@ -32,7 +32,7 @@ def upgrade() -> None:
     connection.execute(sa.text("""
         UPDATE credit_history
         SET price = CASE
-            WHEN token = 'ALEPH' THEN ROUND(1.0 / (ratio * 0.8), 18)
+            WHEN token = 'ALEPH' THEN ROUND(1.2 / ratio, 18)
             ELSE ROUND(1.0 / ratio, 18)
         END
         WHERE ratio IS NOT NULL
@@ -58,13 +58,13 @@ def downgrade() -> None:
     op.add_column('credit_history', sa.Column('ratio', sa.DECIMAL(), nullable=True))
 
     # Transform data back: reverse price calculation depends on payment token
-    # For ALEPH token: ratio = (1/price) / 0.8
+    # For ALEPH token: price = 1.2 / ratio, therefore ratio = 1.2 / price
     # For other tokens: ratio = 1/price
     connection = op.get_bind()
     connection.execute(sa.text("""
         UPDATE credit_history
         SET ratio = CASE
-            WHEN token = 'ALEPH' THEN ROUND((1.0 / price) / 0.8, 18)
+            WHEN token = 'ALEPH' THEN ROUND(1.2 / price, 18)
             ELSE ROUND(1.0 / price, 18)
         END
         WHERE price IS NOT NULL
