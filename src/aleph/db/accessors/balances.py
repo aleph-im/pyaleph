@@ -453,7 +453,7 @@ def update_credit_balances_distribution(
     """
     Updates credit balances for distribution messages (aleph_credit_distribution).
 
-    Distribution messages include all fields like price, tx_hash, provider,
+    Distribution messages include all fields like price, bonus_amount, tx_hash, provider,
     payment_method, token, chain, and expiration_date.
     """
 
