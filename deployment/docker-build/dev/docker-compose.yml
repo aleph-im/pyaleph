@@ -1,10 +1,8 @@
 ---
-
 volumes:
   pyaleph-ipfs:
   pyaleph-local-storage:
   pyaleph-postgres:
-
 
 services:
   pyaleph:
@@ -128,8 +126,8 @@ services:
       - IPFS_TELEMETRY=off
     networks:
       - pyaleph
-    command: ["daemon", "--enable-pubsub-experiment", "--enable-gc", "--migrate"]
-
+    command:
+      ["daemon", "--enable-pubsub-experiment", "--enable-gc", "--migrate"]
 
 networks:
   pyaleph:
