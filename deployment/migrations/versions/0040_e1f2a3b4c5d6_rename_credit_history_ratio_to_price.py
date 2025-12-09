@@ -24,7 +24,8 @@ def upgrade() -> None:
     op.add_column('credit_history', sa.Column('bonus_amount', sa.BigInteger(), nullable=True))
 
     # Transform data: price calculation depends on payment token
-    # For ALEPH token: ratio = (1 / price) * (1 + 0.2), therefore price = 1.2 / ratio
+    # Taking into account that bonus_ratio = 1.2
+    # For ALEPH token: ratio = (1 / price) * bonus_ratio, therefore price = bonus_ratio / ratio
     # For other tokens: price = 1/ratio
     # Only update rows where payment_method is NOT 'credit_expense' or 'credit_transfer'
     # and where ratio is not null and not zero
@@ -44,7 +45,7 @@ def upgrade() -> None:
     # Update bonus_amount for ALEPH token records
     connection.execute(sa.text("""
         UPDATE credit_history
-        SET bonus_amount = TRUNC(amount * 0.20)
+        SET bonus_amount = TRUNC(amount / 1.2)
         WHERE token = 'ALEPH'
         AND amount IS NOT NULL
     """))
