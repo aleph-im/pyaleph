@@ -20,7 +20,10 @@ from aleph.db.accessors.balances import (
 )
 from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import get_address_files_for_api, get_address_files_stats
-from aleph.db.accessors.messages import get_message_stats_by_address
+from aleph.db.accessors.messages import (
+    get_distinct_post_types_for_address,
+    get_message_stats_by_address,
+)
 from aleph.schemas.api.accounts import (
     AddressBalanceResponse,
     AddressCreditBalanceResponse,
@@ -31,6 +34,7 @@ from aleph.schemas.api.accounts import (
     GetAccountFilesQueryParams,
     GetAccountFilesResponse,
     GetAccountFilesResponseItem,
+    GetAccountPostTypesResponse,
     GetAccountQueryParams,
     GetBalancesChainsQueryParams,
     GetCreditBalancesQueryParams,
@@ -289,6 +293,25 @@ async def get_resource_consumed_credits_controller(
         response = GetResourceConsumedCreditsResponse(
             item_hash=item_hash,
             consumed_credits=consumed_credits,
+        )
+
+        return web.json_response(text=response.model_dump_json())
+
+
+async def get_account_post_types(request: web.Request) -> web.Response:
+    """Returns a list of all distinct post_types an account has published messages with."""
+    address = _get_address_from_request(request)
+
+    session_factory: DbSessionFactory = get_session_factory_from_request(request)
+
+    with session_factory() as session:
+        post_types = get_distinct_post_types_for_address(
+            session=session, address=address
+        )
+
+        response = GetAccountPostTypesResponse(
+            address=address,
+            post_types=post_types,
         )
 
         return web.json_response(text=response.model_dump_json())

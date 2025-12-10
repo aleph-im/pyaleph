@@ -376,6 +376,20 @@ def get_distinct_channels(session: DbSession) -> Iterable[Channel]:
     return session.execute(select_stmt).scalars()
 
 
+def get_distinct_post_types_for_address(
+    session: DbSession, address: str
+) -> list[str]:
+    """Get distinct post_types for POST messages published by an address."""
+    select_stmt = (
+        select(MessageDb.content["type"].astext)
+        .where(MessageDb.sender == address)
+        .where(MessageDb.type == MessageType.post)
+        .distinct()
+        .order_by(MessageDb.content["type"].astext)
+    )
+    return list(session.execute(select_stmt).scalars())
+
+
 def get_forgotten_message(
     session: DbSession, item_hash: str
 ) -> Optional[ForgottenMessageDb]:

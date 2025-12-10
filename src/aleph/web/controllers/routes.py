@@ -80,6 +80,9 @@ def register_routes(app: web.Application):
     app.router.add_get("/api/v0/credit_balances", accounts.get_credit_balances_handler)
     app.router.add_get("/api/v0/addresses/{address}/files", accounts.get_account_files)
     app.router.add_get(
+        "/api/v0/addresses/{address}/post_types", accounts.get_account_post_types
+    )
+    app.router.add_get(
         "/api/v0/addresses/{address}/credit_history",
         accounts.get_account_credit_history,
     )
