@@ -83,6 +83,9 @@ def register_routes(app: web.Application):
         "/api/v0/addresses/{address}/post_types", accounts.get_account_post_types
     )
     app.router.add_get(
+        "/api/v0/addresses/{address}/channels", accounts.get_account_channels
+    )
+    app.router.add_get(
         "/api/v0/addresses/{address}/credit_history",
         accounts.get_account_credit_history,
     )

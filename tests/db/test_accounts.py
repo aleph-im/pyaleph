@@ -6,6 +6,7 @@ import pytz
 from aleph_message.models import Chain, ItemType, MessageType
 
 from aleph.db.accessors.messages import (
+    get_distinct_channels_for_address,
     get_distinct_post_types_for_address,
     get_message_stats_by_address,
     refresh_address_stats_mat_view,
@@ -251,3 +252,183 @@ async def test_get_distinct_post_types_for_address(
         empty_address = "0xEmptyAddress"
         post_types = get_distinct_post_types_for_address(session, empty_address)
         assert post_types == []
+
+
+@pytest.fixture
+def fixture_messages_for_channels():
+    """Create messages with different channels for testing."""
+    return [
+        MessageDb(
+            item_hash="channel_hash1",
+            chain=Chain.ETH,
+            sender="0xChannelAddress123",
+            signature="0x" + "0" * 128,
+            item_type=ItemType.inline,
+            type=MessageType.post,
+            item_content='{"address":"0xChannelAddress123","time":1652126646.5,"type":"blog","content":{}}',
+            content={
+                "address": "0xChannelAddress123",
+                "time": 1652126646.5,
+                "type": "blog",
+                "content": {},
+            },
+            size=100,
+            time=timestamp_to_datetime(1652126646.5),
+            channel=Channel("channel1"),
+        ),
+        MessageDb(
+            item_hash="channel_hash2",
+            chain=Chain.ETH,
+            sender="0xChannelAddress123",
+            signature="0x" + "0" * 128,
+            item_type=ItemType.inline,
+            type=MessageType.post,
+            item_content='{"address":"0xChannelAddress123","time":1652126647.5,"type":"blog","content":{}}',
+            content={
+                "address": "0xChannelAddress123",
+                "time": 1652126647.5,
+                "type": "blog",
+                "content": {},
+            },
+            size=100,
+            time=timestamp_to_datetime(1652126647.5),
+            channel=Channel("channel1"),
+        ),
+        MessageDb(
+            item_hash="channel_hash3",
+            chain=Chain.ETH,
+            sender="0xChannelAddress123",
+            signature="0x" + "0" * 128,
+            item_type=ItemType.inline,
+            type=MessageType.aggregate,
+            item_content='{"address":"0xChannelAddress123","key":"test","time":1652126648.5,"content":{}}',
+            content={
+                "address": "0xChannelAddress123",
+                "key": "test",
+                "time": 1652126648.5,
+                "content": {},
+            },
+            size=100,
+            time=timestamp_to_datetime(1652126648.5),
+            channel=Channel("channel2"),
+        ),
+        MessageDb(
+            item_hash="channel_hash4",
+            chain=Chain.ETH,
+            sender="0xChannelAddress123",
+            signature="0x" + "0" * 128,
+            item_type=ItemType.inline,
+            type=MessageType.store,
+            item_content='{"address":"0xChannelAddress123","time":1652126649.5,"item_hash":"hash123","item_type":"ipfs"}',
+            content={
+                "address": "0xChannelAddress123",
+                "time": 1652126649.5,
+                "item_hash": "hash123",
+                "item_type": "ipfs",
+            },
+            size=100,
+            time=timestamp_to_datetime(1652126649.5),
+            channel=Channel("channel3"),
+        ),
+        # Message with null channel should be filtered out
+        MessageDb(
+            item_hash="channel_hash5",
+            chain=Chain.ETH,
+            sender="0xChannelAddress123",
+            signature="0x" + "0" * 128,
+            item_type=ItemType.inline,
+            type=MessageType.post,
+            item_content='{"address":"0xChannelAddress123","time":1652126650.5,"type":"blog","content":{}}',
+            content={
+                "address": "0xChannelAddress123",
+                "time": 1652126650.5,
+                "type": "blog",
+                "content": {},
+            },
+            size=100,
+            time=timestamp_to_datetime(1652126650.5),
+            channel=None,
+        ),
+        # Message from different address should be filtered out
+        MessageDb(
+            item_hash="channel_hash6",
+            chain=Chain.ETH,
+            sender="0xDifferentAddress",
+            signature="0x" + "0" * 128,
+            item_type=ItemType.inline,
+            type=MessageType.post,
+            item_content='{"address":"0xDifferentAddress","time":1652126651.5,"type":"blog","content":{}}',
+            content={
+                "address": "0xDifferentAddress",
+                "time": 1652126651.5,
+                "type": "blog",
+                "content": {},
+            },
+            size=100,
+            time=timestamp_to_datetime(1652126651.5),
+            channel=Channel("other_channel"),
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_get_distinct_channels_for_address(
+    session_factory: DbSessionFactory,
+    fixture_messages_for_channels: List[MessageDb],
+):
+    """Test getting distinct channels for an address."""
+    address = "0xChannelAddress123"
+
+    # No data test
+    with session_factory() as session:
+        channels = get_distinct_channels_for_address(session, address)
+        assert channels == []
+
+        # Add messages
+        session.add_all(fixture_messages_for_channels)
+        session.commit()
+
+        # Get distinct channels
+        channels = get_distinct_channels_for_address(session, address)
+
+        # Should return distinct channels: channel1, channel2, channel3 (sorted)
+        assert set(channels) == {"channel1", "channel2", "channel3"}
+        assert len(channels) == 3
+        # Should be sorted
+        assert channels == sorted(channels)
+
+        # Test with different address
+        different_address = "0xDifferentAddress"
+        channels = get_distinct_channels_for_address(session, different_address)
+        assert channels == ["other_channel"]
+
+        # Test with address that has no messages
+        empty_address = "0xEmptyAddress"
+        channels = get_distinct_channels_for_address(session, empty_address)
+        assert channels == []
+
+        # Test with address that has only null channels
+        null_channel_address = "0xNullChannelAddress"
+        null_message = MessageDb(
+            item_hash="null_hash",
+            chain=Chain.ETH,
+            sender=null_channel_address,
+            signature="0x" + "0" * 128,
+            item_type=ItemType.inline,
+            type=MessageType.post,
+            item_content=f'{{"address":"{null_channel_address}","time":1652126652.5,"type":"blog","content":{{}}}}',
+            content={
+                "address": null_channel_address,
+                "time": 1652126652.5,
+                "type": "blog",
+                "content": {},
+            },
+            size=100,
+            time=timestamp_to_datetime(1652126652.5),
+            channel=None,
+        )
+        session.add(null_message)
+        session.commit()
+
+        channels = get_distinct_channels_for_address(session, null_channel_address)
+        assert channels == []

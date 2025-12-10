@@ -390,6 +390,20 @@ def get_distinct_post_types_for_address(
     return list(session.execute(select_stmt).scalars())
 
 
+def get_distinct_channels_for_address(
+    session: DbSession, address: str
+) -> list[str]:
+    """Get distinct channels for messages published by an address (all message types, excluding null channels)."""
+    select_stmt = (
+        select(MessageDb.channel)
+        .where(MessageDb.sender == address)
+        .where(MessageDb.channel.isnot(None))
+        .distinct()
+        .order_by(MessageDb.channel)
+    )
+    return [str(channel) for channel in session.execute(select_stmt).scalars()]
+
+
 def get_forgotten_message(
     session: DbSession, item_hash: str
 ) -> Optional[ForgottenMessageDb]:

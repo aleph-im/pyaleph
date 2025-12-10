@@ -21,6 +21,7 @@ from aleph.db.accessors.balances import (
 from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import get_address_files_for_api, get_address_files_stats
 from aleph.db.accessors.messages import (
+    get_distinct_channels_for_address,
     get_distinct_post_types_for_address,
     get_message_stats_by_address,
 )
@@ -33,6 +34,7 @@ from aleph.schemas.api.accounts import (
     GetAccountCreditHistoryResponse,
     GetAccountFilesQueryParams,
     GetAccountFilesResponse,
+    GetAccountChannelsResponse,
     GetAccountFilesResponseItem,
     GetAccountPostTypesResponse,
     GetAccountQueryParams,
@@ -312,6 +314,25 @@ async def get_account_post_types(request: web.Request) -> web.Response:
         response = GetAccountPostTypesResponse(
             address=address,
             post_types=post_types,
+        )
+
+        return web.json_response(text=response.model_dump_json())
+
+
+async def get_account_channels(request: web.Request) -> web.Response:
+    """Returns a list of all distinct channels an account has published messages to."""
+    address = _get_address_from_request(request)
+
+    session_factory: DbSessionFactory = get_session_factory_from_request(request)
+
+    with session_factory() as session:
+        channels = get_distinct_channels_for_address(
+            session=session, address=address
+        )
+
+        response = GetAccountChannelsResponse(
+            address=address,
+            channels=channels,
         )
 
         return web.json_response(text=response.model_dump_json())

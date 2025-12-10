@@ -159,3 +159,8 @@ class GetResourceConsumedCreditsResponse(BaseModel):
 class GetAccountPostTypesResponse(BaseModel):
     address: str
     post_types: List[str]
+
+
+class GetAccountChannelsResponse(BaseModel):
+    address: str
+    channels: List[str]
