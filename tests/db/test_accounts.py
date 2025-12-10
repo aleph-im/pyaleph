@@ -6,6 +6,7 @@ import pytz
 from aleph_message.models import Chain, ItemType, MessageType
 
 from aleph.db.accessors.messages import (
+    get_distinct_post_types_for_address,
     get_message_stats_by_address,
     refresh_address_stats_mat_view,
 )
@@ -96,3 +97,157 @@ async def test_get_message_stats_by_address(
         assert row.address == "0x1234"
         assert row.type == MessageType.aggregate
         assert row.nb_messages == 1
+
+
+@pytest.fixture
+def fixture_post_messages_for_types():
+    """Create POST messages with different post_types for testing."""
+    return [
+        MessageDb(
+            item_hash="post_hash1",
+            chain=Chain.ETH,
+            sender="0xPostAddress123",
+            signature="0x" + "0" * 128,
+            item_type=ItemType.inline,
+            type=MessageType.post,
+            item_content='{"address":"0xPostAddress123","time":1652126646.5,"type":"blog","content":{}}',
+            content={
+                "address": "0xPostAddress123",
+                "time": 1652126646.5,
+                "type": "blog",
+                "content": {},
+            },
+            size=100,
+            time=timestamp_to_datetime(1652126646.5),
+            channel=Channel("TEST"),
+        ),
+        MessageDb(
+            item_hash="post_hash2",
+            chain=Chain.ETH,
+            sender="0xPostAddress123",
+            signature="0x" + "0" * 128,
+            item_type=ItemType.inline,
+            type=MessageType.post,
+            item_content='{"address":"0xPostAddress123","time":1652126647.5,"type":"blog","content":{}}',
+            content={
+                "address": "0xPostAddress123",
+                "time": 1652126647.5,
+                "type": "blog",
+                "content": {},
+            },
+            size=100,
+            time=timestamp_to_datetime(1652126647.5),
+            channel=Channel("TEST"),
+        ),
+        MessageDb(
+            item_hash="post_hash3",
+            chain=Chain.ETH,
+            sender="0xPostAddress123",
+            signature="0x" + "0" * 128,
+            item_type=ItemType.inline,
+            type=MessageType.post,
+            item_content='{"address":"0xPostAddress123","time":1652126648.5,"type":"news","content":{}}',
+            content={
+                "address": "0xPostAddress123",
+                "time": 1652126648.5,
+                "type": "news",
+                "content": {},
+            },
+            size=100,
+            time=timestamp_to_datetime(1652126648.5),
+            channel=Channel("TEST"),
+        ),
+        MessageDb(
+            item_hash="post_hash4",
+            chain=Chain.ETH,
+            sender="0xPostAddress123",
+            signature="0x" + "0" * 128,
+            item_type=ItemType.inline,
+            type=MessageType.post,
+            item_content='{"address":"0xPostAddress123","time":1652126649.5,"type":"tutorial","content":{}}',
+            content={
+                "address": "0xPostAddress123",
+                "time": 1652126649.5,
+                "type": "tutorial",
+                "content": {},
+            },
+            size=100,
+            time=timestamp_to_datetime(1652126649.5),
+            channel=Channel("TEST"),
+        ),
+        # Non-POST message should be filtered out
+        MessageDb(
+            item_hash="agg_hash1",
+            chain=Chain.ETH,
+            sender="0xPostAddress123",
+            signature="0x" + "0" * 128,
+            item_type=ItemType.inline,
+            type=MessageType.aggregate,
+            item_content='{"address":"0xPostAddress123","key":"test","time":1652126650.5,"content":{}}',
+            content={
+                "address": "0xPostAddress123",
+                "key": "test",
+                "time": 1652126650.5,
+                "content": {},
+            },
+            size=100,
+            time=timestamp_to_datetime(1652126650.5),
+            channel=Channel("TEST"),
+        ),
+        # POST message from different address should be filtered out
+        MessageDb(
+            item_hash="post_hash5",
+            chain=Chain.ETH,
+            sender="0xDifferentAddress",
+            signature="0x" + "0" * 128,
+            item_type=ItemType.inline,
+            type=MessageType.post,
+            item_content='{"address":"0xDifferentAddress","time":1652126651.5,"type":"blog","content":{}}',
+            content={
+                "address": "0xDifferentAddress",
+                "time": 1652126651.5,
+                "type": "blog",
+                "content": {},
+            },
+            size=100,
+            time=timestamp_to_datetime(1652126651.5),
+            channel=Channel("TEST"),
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_get_distinct_post_types_for_address(
+    session_factory: DbSessionFactory,
+    fixture_post_messages_for_types: List[MessageDb],
+):
+    """Test getting distinct post_types for an address."""
+    address = "0xPostAddress123"
+
+    # No data test
+    with session_factory() as session:
+        post_types = get_distinct_post_types_for_address(session, address)
+        assert post_types == []
+
+        # Add messages
+        session.add_all(fixture_post_messages_for_types)
+        session.commit()
+
+        # Get distinct post_types
+        post_types = get_distinct_post_types_for_address(session, address)
+
+        # Should return distinct post_types: blog, news, tutorial (sorted)
+        assert set(post_types) == {"blog", "news", "tutorial"}
+        assert len(post_types) == 3
+        # Should be sorted
+        assert post_types == sorted(post_types)
+
+        # Test with different address
+        different_address = "0xDifferentAddress"
+        post_types = get_distinct_post_types_for_address(session, different_address)
+        assert post_types == ["blog"]
+
+        # Test with address that has no POST messages
+        empty_address = "0xEmptyAddress"
+        post_types = get_distinct_post_types_for_address(session, empty_address)
+        assert post_types == []

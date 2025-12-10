@@ -154,3 +154,8 @@ class GetAccountCreditHistoryResponse(BaseModel):
 class GetResourceConsumedCreditsResponse(BaseModel):
     item_hash: str
     consumed_credits: int
+
+
+class GetAccountPostTypesResponse(BaseModel):
+    address: str
+    post_types: List[str]
