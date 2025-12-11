@@ -382,10 +382,14 @@ def get_distinct_post_types_for_address(session: DbSession, address: str) -> lis
         select(MessageDb.content["type"].astext)
         .where(MessageDb.sender == address)
         .where(MessageDb.type == MessageType.post)
+        .where(MessageDb.content["type"].astext.isnot(None))
         .distinct()
         .order_by(MessageDb.content["type"].astext)
     )
-    return list(session.execute(select_stmt).scalars())
+    # Explicitly filter out nulls to keep the return type list[str]
+    return [
+        ptype for ptype in session.execute(select_stmt).scalars() if ptype is not None
+    ]
 
 
 def get_distinct_channels_for_address(session: DbSession, address: str) -> list[str]:
