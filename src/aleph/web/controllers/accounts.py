@@ -30,11 +30,11 @@ from aleph.schemas.api.accounts import (
     AddressCreditBalanceResponse,
     CreditHistoryResponseItem,
     GetAccountBalanceResponse,
+    GetAccountChannelsResponse,
     GetAccountCreditHistoryQueryParams,
     GetAccountCreditHistoryResponse,
     GetAccountFilesQueryParams,
     GetAccountFilesResponse,
-    GetAccountChannelsResponse,
     GetAccountFilesResponseItem,
     GetAccountPostTypesResponse,
     GetAccountQueryParams,
@@ -326,9 +326,7 @@ async def get_account_channels(request: web.Request) -> web.Response:
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
 
     with session_factory() as session:
-        channels = get_distinct_channels_for_address(
-            session=session, address=address
-        )
+        channels = get_distinct_channels_for_address(session=session, address=address)
 
         response = GetAccountChannelsResponse(
             address=address,

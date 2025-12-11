@@ -8,6 +8,7 @@ nuls2:
   explorer_url: https://nuls.world/
   token_contract: NULSd6Hh1FjbnAktH1FFvFnTzfgFnZtgAhYut
 
+
 ethereum:
   enabled: false
   # api_url: {{ ALEPH_ETHEREUM_URL }}
@@ -18,6 +19,7 @@ ethereum:
   token_contract: "0x27702a26126e0B3702af63Ee09aC4d1A084EF628"
   token_start_height: 21614792
 
+
 postgres:
   host: postgres
   port: 5432
@@ -25,10 +27,12 @@ postgres:
   password: decentralize-everything
   name: aleph-test
 
+
 storage:
   store_files: true
   engine: filesystem
   folder: /var/lib/pyaleph
+
 
 ipfs:
   enabled: false
@@ -36,8 +40,10 @@ ipfs:
   port: 5001
   gateway_port: 8080
 
+
 aleph:
   queue_topic: LOCAL-DEV-ALEPH
+
 
 p2p:
   daemon_host: p2p-service
@@ -52,11 +58,13 @@ p2p:
     - LOCAL-DEV-ALIVE
     - LOCAL-DEV-ALEPH
 
+
 rabbitmq:
   host: rabbitmq
   port: 5672
   username: aleph-p2p
   password: decentralize-everything
+
 
 sentry:
   dsn: ""
