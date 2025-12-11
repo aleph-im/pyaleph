@@ -176,6 +176,25 @@ def fixture_post_messages_for_types():
             time=timestamp_to_datetime(1652126649.5),
             channel=Channel("TEST"),
         ),
+        # POST message with null type should be ignored
+        MessageDb(
+            item_hash="post_hash_null_type",
+            chain=Chain.ETH,
+            sender="0xPostAddress123",
+            signature="0x" + "0" * 128,
+            item_type=ItemType.inline,
+            type=MessageType.post,
+            item_content='{"address":"0xPostAddress123","time":1652126650.0,"type":null,"content":{}}',
+            content={
+                "address": "0xPostAddress123",
+                "time": 1652126650.0,
+                "type": None,
+                "content": {},
+            },
+            size=100,
+            time=timestamp_to_datetime(1652126650.0),
+            channel=Channel("TEST"),
+        ),
         # Non-POST message should be filtered out
         MessageDb(
             item_hash="agg_hash1",

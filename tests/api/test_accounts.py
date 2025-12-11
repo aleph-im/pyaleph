@@ -103,6 +103,27 @@ def fixture_post_messages_with_types(
             time=now + dt.timedelta(seconds=3),
             channel=Channel("TEST"),
         ),
+        # POST message with null type should be ignored in distinct list
+        MessageDb(
+            item_hash="hash_null_type",
+            chain=Chain.ETH,
+            sender=TEST_ADDRESS,
+            signature="0x" + "0" * 128,
+            item_type=ItemType.inline,
+            type=MessageType.post,
+            item_content='{"address":"'
+            + TEST_ADDRESS
+            + '","time":1652126650.0,"type":null,"content":{"title":"Missing type"}}',
+            content={
+                "address": TEST_ADDRESS,
+                "time": 1652126650.0,
+                "type": None,
+                "content": {"title": "Missing type"},
+            },
+            size=100,
+            time=now + dt.timedelta(seconds=3, milliseconds=500),
+            channel=Channel("TEST"),
+        ),
         # Add a non-POST message to ensure it's filtered out
         MessageDb(
             item_hash="hash5",
