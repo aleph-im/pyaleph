@@ -10,7 +10,7 @@ nuls2:
 
 
 ethereum:
-  enabled: false
+  enabled: true
   # api_url: {{ ALEPH_ETHEREUM_URL }}
   chain_id: 1
   packing_node: false
@@ -35,14 +35,15 @@ storage:
 
 
 ipfs:
-  enabled: false
+  enabled: true
   host: ipfs
   port: 5001
   gateway_port: 8080
 
 
 aleph:
-  queue_topic: LOCAL-DEV-ALEPH
+  queue_topic: ALEPH-TEST
+
 
 
 p2p:
@@ -52,11 +53,7 @@ p2p:
   control_port: 4030
   listen_port: 4031
   reconnect_delay: 60
-  peers: []
-  alive_topic: LOCAL-DEV-ALIVE
-  topics:
-    - LOCAL-DEV-ALIVE
-    - LOCAL-DEV-ALEPH
+
 
 
 rabbitmq:
