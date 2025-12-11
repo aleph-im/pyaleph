@@ -24,7 +24,7 @@ def test_update_credit_balances_distribution(session_factory: DbSessionFactory):
         {
             "address": "0x123",
             "amount": 1000,
-            "ratio": "0.5",
+            "price": "0.5",
             "tx_hash": "0xabc123",
             "provider": "test_provider",
             "expiration": 1700000000000,  # timestamp in ms
@@ -57,7 +57,7 @@ def test_update_credit_balances_distribution(session_factory: DbSessionFactory):
         assert credit_record is not None
         assert credit_record.address == "0x123"
         assert credit_record.amount == 1000
-        assert credit_record.ratio == Decimal("0.5")
+        assert credit_record.price == Decimal("0.5")
         assert credit_record.tx_hash == "0xabc123"
         assert credit_record.token == "TEST_TOKEN"
         assert credit_record.chain == "ETH"
@@ -102,7 +102,7 @@ def test_update_credit_balances_expense(session_factory: DbSessionFactory):
         assert expense_record is not None
         assert expense_record.address == "0x456"
         assert expense_record.amount == -500
-        assert expense_record.ratio is None
+        assert expense_record.price is None
         assert expense_record.tx_hash is None
         assert expense_record.token is None
         assert expense_record.chain is None
@@ -153,7 +153,7 @@ def test_update_credit_balances_expense_with_new_fields(
         assert expense_record is not None
         assert expense_record.address == "0x456"
         assert expense_record.amount == -500
-        assert expense_record.ratio == Decimal("0.001")  # price mapped to ratio
+        assert expense_record.price == Decimal("0.001")
         assert expense_record.tx_hash == "node_67890"  # node_id mapped to tx_hash
         assert expense_record.token is None
         assert expense_record.chain is None
@@ -209,7 +209,7 @@ def test_update_credit_balances_transfer(session_factory: DbSessionFactory):
         assert recipient_record.provider == "ALEPH"
         assert recipient_record.payment_method == "credit_transfer"
         assert recipient_record.origin == "0xsender"
-        assert recipient_record.ratio is None
+        assert recipient_record.price is None
         assert recipient_record.tx_hash is None
         assert recipient_record.token is None
         assert recipient_record.chain is None
@@ -225,7 +225,7 @@ def test_update_credit_balances_transfer(session_factory: DbSessionFactory):
         assert sender_record.provider == "ALEPH"
         assert sender_record.payment_method == "credit_transfer"
         assert sender_record.origin == "0x789"
-        assert sender_record.ratio is None
+        assert sender_record.price is None
         assert sender_record.tx_hash is None
         assert sender_record.token is None
         assert sender_record.chain is None
@@ -283,7 +283,7 @@ def test_balance_validation_insufficient_credits(session_factory: DbSessionFacto
         {
             "address": "0xlow_balance",
             "amount": 500,
-            "ratio": "1.0",
+            "price": "1.0",
             "tx_hash": "0xinit",
             "provider": "test_provider",
             "expiration": 2000000000000,
@@ -322,7 +322,7 @@ def test_expired_credits_excluded_from_transfers(session_factory: DbSessionFacto
         {
             "address": "0xexpired_user",
             "amount": 800,  # Expired credits
-            "ratio": "1.0",
+            "price": "1.0",
             "tx_hash": "0xexpired",
             "provider": "test_provider",
             "expiration": expired_timestamp,
@@ -330,7 +330,7 @@ def test_expired_credits_excluded_from_transfers(session_factory: DbSessionFacto
         {
             "address": "0xexpired_user",
             "amount": 200,  # Valid credits
-            "ratio": "1.0",
+            "price": "1.0",
             "tx_hash": "0xvalid",
             "provider": "test_provider",
             "expiration": valid_timestamp,
@@ -512,7 +512,7 @@ def test_balance_fix_doesnt_affect_valid_credits(session_factory: DbSessionFacto
         {
             "address": "0xvalid_user",
             "amount": 1000,
-            "ratio": "1.0",
+            "price": "1.0",
             "tx_hash": "0xvalid",
             "provider": "test_provider",
             "expiration": valid_timestamp,
@@ -623,7 +623,7 @@ def test_fifo_scenario_1_non_expiring_first_equals_0_remaining(
             {
                 "address": "0xcorner_case_user",
                 "amount": 1000,
-                "ratio": "1.0",
+                "price": "1.0",
                 "tx_hash": "0xno_expiry",
                 "provider": "test_provider",
             }
@@ -644,7 +644,7 @@ def test_fifo_scenario_1_non_expiring_first_equals_0_remaining(
             {
                 "address": "0xcorner_case_user",
                 "amount": 1000,
-                "ratio": "1.0",
+                "price": "1.0",
                 "tx_hash": "0xwith_expiry",
                 "provider": "test_provider",
                 "expiration": expiration_time,
@@ -723,7 +723,7 @@ def test_fifo_scenario_2_expiring_first_equals_500_remaining(
             {
                 "address": "0xscenario2_user",
                 "amount": 1000,
-                "ratio": "1.0",
+                "price": "1.0",
                 "tx_hash": "0xexpiry_first",
                 "provider": "test_provider",
                 "expiration": expiration_time,
@@ -745,7 +745,7 @@ def test_fifo_scenario_2_expiring_first_equals_500_remaining(
             {
                 "address": "0xscenario2_user",
                 "amount": 1000,
-                "ratio": "1.0",
+                "price": "1.0",
                 "tx_hash": "0xno_expiry_second",
                 "provider": "test_provider",
             }
@@ -822,7 +822,7 @@ def test_cache_invalidation_on_credit_expiration(session_factory: DbSessionFacto
             {
                 "address": "0xcache_bug_user",
                 "amount": 1000,
-                "ratio": "1.0",
+                "price": "1.0",
                 "tx_hash": "0xcache_test",
                 "provider": "test_provider",
                 "expiration": expiration_time,  # Will expire at T3
@@ -997,7 +997,7 @@ def test_get_resource_consumed_credits_filters_by_payment_method(
             {
                 "address": "0xuser1",
                 "amount": 500,
-                "ratio": "1.0",
+                "price": "1.0",
                 "tx_hash": "0xdist",
                 "provider": "test_provider",
                 "expiration": 2000000000000,
