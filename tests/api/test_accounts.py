@@ -6,7 +6,7 @@ from aleph_message.models import Chain, ItemType, MessageType
 
 from aleph.db.models import MessageDb
 from aleph.db.models.messages import MessageStatusDb
-from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
+from aleph.toolkit.timestamp import utc_now
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.message_status import MessageStatus
@@ -30,7 +30,9 @@ def fixture_post_messages_with_types(
             signature="0x" + "0" * 128,
             item_type=ItemType.inline,
             type=MessageType.post,
-            item_content='{"address":"' + TEST_ADDRESS + '","time":1652126646.5,"type":"blog","content":{"title":"Post 1"}}',
+            item_content='{"address":"'
+            + TEST_ADDRESS
+            + '","time":1652126646.5,"type":"blog","content":{"title":"Post 1"}}',
             content={
                 "address": TEST_ADDRESS,
                 "time": 1652126646.5,
@@ -48,7 +50,9 @@ def fixture_post_messages_with_types(
             signature="0x" + "0" * 128,
             item_type=ItemType.inline,
             type=MessageType.post,
-            item_content='{"address":"' + TEST_ADDRESS + '","time":1652126647.5,"type":"blog","content":{"title":"Post 2"}}',
+            item_content='{"address":"'
+            + TEST_ADDRESS
+            + '","time":1652126647.5,"type":"blog","content":{"title":"Post 2"}}',
             content={
                 "address": TEST_ADDRESS,
                 "time": 1652126647.5,
@@ -66,7 +70,9 @@ def fixture_post_messages_with_types(
             signature="0x" + "0" * 128,
             item_type=ItemType.inline,
             type=MessageType.post,
-            item_content='{"address":"' + TEST_ADDRESS + '","time":1652126648.5,"type":"news","content":{"title":"News 1"}}',
+            item_content='{"address":"'
+            + TEST_ADDRESS
+            + '","time":1652126648.5,"type":"news","content":{"title":"News 1"}}',
             content={
                 "address": TEST_ADDRESS,
                 "time": 1652126648.5,
@@ -84,7 +90,9 @@ def fixture_post_messages_with_types(
             signature="0x" + "0" * 128,
             item_type=ItemType.inline,
             type=MessageType.post,
-            item_content='{"address":"' + TEST_ADDRESS + '","time":1652126649.5,"type":"tutorial","content":{"title":"Tutorial 1"}}',
+            item_content='{"address":"'
+            + TEST_ADDRESS
+            + '","time":1652126649.5,"type":"tutorial","content":{"title":"Tutorial 1"}}',
             content={
                 "address": TEST_ADDRESS,
                 "time": 1652126649.5,
@@ -103,7 +111,9 @@ def fixture_post_messages_with_types(
             signature="0x" + "0" * 128,
             item_type=ItemType.inline,
             type=MessageType.aggregate,
-            item_content='{"address":"' + TEST_ADDRESS + '","key":"test","time":1652126650.5,"content":{}}',
+            item_content='{"address":"'
+            + TEST_ADDRESS
+            + '","key":"test","time":1652126650.5,"content":{}}',
             content={
                 "address": TEST_ADDRESS,
                 "key": "test",
@@ -293,7 +303,9 @@ def fixture_messages_with_channels(
             signature="0x" + "0" * 128,
             item_type=ItemType.inline,
             type=MessageType.post,
-            item_content='{"address":"' + TEST_ADDRESS + '","time":1652126646.5,"type":"blog","content":{}}',
+            item_content='{"address":"'
+            + TEST_ADDRESS
+            + '","time":1652126646.5,"type":"blog","content":{}}',
             content={
                 "address": TEST_ADDRESS,
                 "time": 1652126646.5,
@@ -311,7 +323,9 @@ def fixture_messages_with_channels(
             signature="0x" + "0" * 128,
             item_type=ItemType.inline,
             type=MessageType.post,
-            item_content='{"address":"' + TEST_ADDRESS + '","time":1652126647.5,"type":"blog","content":{}}',
+            item_content='{"address":"'
+            + TEST_ADDRESS
+            + '","time":1652126647.5,"type":"blog","content":{}}',
             content={
                 "address": TEST_ADDRESS,
                 "time": 1652126647.5,
@@ -329,7 +343,9 @@ def fixture_messages_with_channels(
             signature="0x" + "0" * 128,
             item_type=ItemType.inline,
             type=MessageType.aggregate,
-            item_content='{"address":"' + TEST_ADDRESS + '","key":"test","time":1652126648.5,"content":{}}',
+            item_content='{"address":"'
+            + TEST_ADDRESS
+            + '","key":"test","time":1652126648.5,"content":{}}',
             content={
                 "address": TEST_ADDRESS,
                 "key": "test",
@@ -347,7 +363,9 @@ def fixture_messages_with_channels(
             signature="0x" + "0" * 128,
             item_type=ItemType.inline,
             type=MessageType.store,
-            item_content='{"address":"' + TEST_ADDRESS + '","time":1652126649.5,"item_hash":"hash123","item_type":"ipfs"}',
+            item_content='{"address":"'
+            + TEST_ADDRESS
+            + '","time":1652126649.5,"item_hash":"hash123","item_type":"ipfs"}',
             content={
                 "address": TEST_ADDRESS,
                 "time": 1652126649.5,
@@ -366,7 +384,9 @@ def fixture_messages_with_channels(
             signature="0x" + "0" * 128,
             item_type=ItemType.inline,
             type=MessageType.post,
-            item_content='{"address":"' + TEST_ADDRESS + '","time":1652126650.5,"type":"blog","content":{}}',
+            item_content='{"address":"'
+            + TEST_ADDRESS
+            + '","time":1652126650.5,"type":"blog","content":{}}',
             content={
                 "address": TEST_ADDRESS,
                 "time": 1652126650.5,
@@ -594,4 +614,3 @@ async def test_get_account_channels_single_channel(
 
     assert data["address"] == address
     assert data["channels"] == ["single_channel"]
-
