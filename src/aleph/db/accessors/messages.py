@@ -130,9 +130,7 @@ def make_matching_messages_query(
             MessageDb.content["item_hash"].astext.in_(content_hashes)
         )
     if content_types:
-        select_stmt = select_stmt.where(
-            MessageDb.content["type"].astext.in_(content_types)
-        )
+        select_stmt = select_stmt.where(MessageDb.content_type.in_(content_types))
     if tags:
         select_stmt = select_stmt.where(
             MessageDb.content["content"]["tags"].has_any(array(tags))
@@ -316,7 +314,7 @@ def get_unconfirmed_messages(
 def make_message_upsert_query(message: MessageDb) -> Insert:
     return (
         insert(MessageDb)
-        .values(message.to_dict())
+        .values(message.to_dict(exclude={"content_type"}))
         .on_conflict_do_update(
             constraint="messages_pkey",
             set_={"time": func.least(MessageDb.time, message.time)},
