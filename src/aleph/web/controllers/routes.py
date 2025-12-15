@@ -74,6 +74,7 @@ def register_routes(app: web.Application):
     )
 
     app.router.add_get("/api/v0/addresses/stats.json", accounts.addresses_stats_view)
+    app.router.add_get("/api/v1/addresses/stats.json", accounts.addresses_stats_view_v2)
     app.router.add_get(
         "/api/v0/addresses/{address}/balance", accounts.get_account_balance
     )

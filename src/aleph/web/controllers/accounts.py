@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal
 from itertools import groupby
 from typing import Any, Dict, List
 
@@ -21,10 +22,13 @@ from aleph.db.accessors.balances import (
 from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import get_address_files_for_api, get_address_files_stats
 from aleph.db.accessors.messages import (
+    fetch_stats_for_addresses,
+    find_matching_addresses,
     get_distinct_channels_for_address,
     get_distinct_post_types_for_address,
     get_message_stats_by_address,
 )
+from aleph.schemas.addresses_query_params import AddressesQueryParams
 from aleph.schemas.api.accounts import (
     AddressBalanceResponse,
     AddressCreditBalanceResponse,
@@ -77,6 +81,56 @@ async def addresses_stats_view(request: web.Request):
 
     output = {"data": stats_dict}
     return web.json_response(output, dumps=lambda v: json.dumps(v))
+
+
+async def addresses_stats_view_v2(request: web.Request):
+    session_factory = get_session_factory_from_request(request)
+
+    try:
+        params = AddressesQueryParams.model_validate(request.query)
+    except ValidationError as e:
+        raise web.HTTPUnprocessableEntity(text=e.json())
+
+    with session_factory() as session:
+
+        # STEP 1 — Only search for addresses if the user provided a filter
+        if params.address_contains:
+            matched_addresses = find_matching_addresses(
+                session=session,
+                address_contains=params.address_contains,
+            )
+        else:
+            matched_addresses = None
+
+        # Fetch data and total count
+        stats, total_count = fetch_stats_for_addresses(
+            session=session,
+            addresses=matched_addresses,
+            sort_by=params.sort_by,
+            sort_order=params.sort_order,
+            filters=params.filters,
+            page=params.page,
+            per_page=params.pagination,
+        )
+
+    # Format the response to match other API endpoints
+    response = {
+        "data": stats,
+        "pagination_page": params.page,
+        "pagination_per_page": params.pagination,
+        "pagination_total": total_count,
+        "pagination_item": "addresses",
+    }
+
+    # Use a custom encoder to handle Decimal values
+    def decimal_encoder(obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+    return web.json_response(
+        response, dumps=lambda v: json.dumps(v, default=decimal_encoder)
+    )
 
 
 def _get_address_from_request(request: web.Request) -> str:
