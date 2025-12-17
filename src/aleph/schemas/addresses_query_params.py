@@ -35,7 +35,7 @@ class AddressesQueryParams(BaseModel):
         alias="sortBy",
         description=(
             "Key used to sort the returned addresses. Available values:\n"
-            "- 'posts': sort by the number of posts\n"
+            "- 'post': sort by the number of post\n"
             "- 'aggregate': sort by aggregate activity\n"
             "- 'store': sort by store activity\n"
             "- 'forget': sort by forget activity\n"
@@ -59,11 +59,11 @@ class AddressesQueryParams(BaseModel):
         description="Minimum values required for each sort category. Example: { 'POST': 3 }",
     )
 
-    # Paginations
+    # Pagination
     pagination: int = Field(
         default=DEFAULT_MESSAGES_PER_PAGE,
         ge=0,
-        description="Maximum number of messages to return. Specifying 0 removes this limit.",
+        description="Maximum number of address to return. Specifying 0 removes this limit.",
     )
     page: int = Field(
         default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."

@@ -5,10 +5,13 @@ from sqlalchemy.sql import Select
 
 from aleph.db.models.address import AddressStats, AddressTotalMessages
 from aleph.schemas.addresses_query_params import SortBy
+from aleph.types.db_session import DbSession
 from aleph.types.sort_order import SortOrder
 
 
-def find_matching_addresses(session, address_contains: str, limit: int = 5000):
+def find_matching_addresses(
+    session: DbSession, address_contains: str, limit: int = 5000
+):
     """
     Find addresses matching a substring pattern using trigram index on the materialized view.
     This ensures we get unique addresses with their total message counts.
@@ -42,7 +45,7 @@ def make_fetch_stats_address_query(
 ) -> Select:
     """
     Make query for address statistics with pagination info.
-    Return Query
+    Returns a SQLAlchemy Select query.
     """
 
     # Base Query
