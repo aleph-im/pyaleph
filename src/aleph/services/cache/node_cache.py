@@ -132,9 +132,12 @@ class NodeCache:
             return int(cached_result.decode())
 
         # Slow query: count grouped addresses
-        # Pass only non-None filters to the query
-        query_args = {} if filters is None else filters
-        stmt = make_fetch_stats_address_query(**query_args)
+        # Convert string keys to SortBy enum keys if needed
+        enum_filters = None
+        if filters is not None:
+            enum_filters = {SortBy(k): v for k, v in filters.items()}
+
+        stmt = make_fetch_stats_address_query(filters=enum_filters)
         count_stmt = select(func.count()).select_from(stmt.subquery())
 
         total = session.execute(count_stmt).scalar_one()
