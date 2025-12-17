@@ -1,5 +1,4 @@
 import json
-from decimal import Decimal
 from itertools import groupby
 from typing import Any, Dict, List
 
@@ -8,6 +7,10 @@ from aleph_message.models import MessageType
 from pydantic import TypeAdapter, ValidationError
 
 import aleph.toolkit.json as aleph_json
+from aleph.db.accessors.address import (
+    find_matching_addresses,
+    make_fetch_stats_address_query,
+)
 from aleph.db.accessors.balances import (
     count_address_credit_history,
     count_balances_by_chain,
@@ -22,8 +25,6 @@ from aleph.db.accessors.balances import (
 from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import get_address_files_for_api, get_address_files_stats
 from aleph.db.accessors.messages import (
-    fetch_stats_for_addresses,
-    find_matching_addresses,
     get_distinct_channels_for_address,
     get_distinct_post_types_for_address,
     get_message_stats_by_address,
@@ -47,7 +48,10 @@ from aleph.schemas.api.accounts import (
     GetResourceConsumedCreditsResponse,
 )
 from aleph.types.db_session import DbSessionFactory
-from aleph.web.controllers.app_state_getters import get_session_factory_from_request
+from aleph.web.controllers.app_state_getters import (
+    get_node_cache_from_request,
+    get_session_factory_from_request,
+)
 from aleph.web.controllers.utils import get_item_hash_str_from_request
 
 
@@ -68,6 +72,21 @@ def make_stats_dict(stats) -> Dict[str, Any]:
     return stats_dict
 
 
+def format_address_stats_response_dict(
+    data: List[Dict[str, Any]],
+    pagination: int,
+    page: int,
+    total: int,
+) -> Dict[str, Any]:
+    return {
+        "data": data,
+        "pagination_per_page": pagination,
+        "pagination_page": page,
+        "pagination_total": total,
+        "pagination_item": "addresses",
+    }
+
+
 async def addresses_stats_view(request: web.Request):
     """Returns the stats of some addresses."""
 
@@ -85,52 +104,58 @@ async def addresses_stats_view(request: web.Request):
 
 async def addresses_stats_view_v2(request: web.Request):
     session_factory = get_session_factory_from_request(request)
+    node_cache = get_node_cache_from_request(request)
 
     try:
-        params = AddressesQueryParams.model_validate(request.query)
+        query_params = AddressesQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json())
 
-    with session_factory() as session:
+    pagination_page = query_params.page
+    pagination_per_page = query_params.pagination
 
-        # STEP 1 — Only search for addresses if the user provided a filter
-        if params.address_contains:
+    with session_factory() as session:
+        if query_params.address_contains:
             matched_addresses = find_matching_addresses(
                 session=session,
-                address_contains=params.address_contains,
+                address_contains=query_params.address_contains,
             )
         else:
             matched_addresses = None
 
-        # Fetch data and total count
-        stats, total_count = fetch_stats_for_addresses(
-            session=session,
+        # build query
+        address_query = make_fetch_stats_address_query(
             addresses=matched_addresses,
-            sort_by=params.sort_by,
-            sort_order=params.sort_order,
-            filters=params.filters,
-            page=params.page,
-            per_page=params.pagination,
+            filters=query_params.filters,
+            sort_by=query_params.sort_by,
+            sort_order=query_params.sort_order,
+            page=pagination_page,
+            per_page=pagination_per_page,
         )
 
-    # Format the response to match other API endpoints
-    response = {
-        "data": stats,
-        "pagination_page": params.page,
-        "pagination_per_page": params.pagination,
-        "pagination_total": total_count,
-        "pagination_item": "addresses",
-    }
+        # Execute the query
+        rows = session.execute(address_query).mappings().all()
 
-    # Use a custom encoder to handle Decimal values
-    def decimal_encoder(obj):
-        if isinstance(obj, Decimal):
-            return float(obj)
-        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+        # Cached count query
+        # Convert SortBy enum keys to strings if needed
+        filters_dict = None
+        if query_params.filters:
+            filters_dict = {str(k.value): v for k, v in query_params.filters.items()}
 
-    return web.json_response(
-        response, dumps=lambda v: json.dumps(v, default=decimal_encoder)
-    )
+        total = await node_cache.count_address_stats(
+            session=session,
+            filters=filters_dict,
+        )
+        # Format response - convert mappings to dicts
+        dict_rows = [dict(row) for row in rows]
+        response = format_address_stats_response_dict(
+            data=dict_rows,
+            pagination=pagination_per_page,
+            page=pagination_page,
+            total=total,
+        )
+
+        return web.json_response(text=aleph_json.dumps(response).decode("utf-8"))
 
 
 def _get_address_from_request(request: web.Request) -> str:
