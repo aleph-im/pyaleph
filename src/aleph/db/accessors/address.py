@@ -32,7 +32,7 @@ def find_matching_addresses(
         .limit(limit)
     )
 
-    return session.execute(address_query).all()
+    return session.execute(address_query).scalars().all()
 
 
 def make_fetch_stats_address_query(
