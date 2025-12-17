@@ -147,7 +147,7 @@ async def test_fetch_stats_for_addresses(session_factory: DbSessionFactory):
         stats, total_count = fetch_stats_for_addresses(
             session=session,
             addresses=None,
-            sort_by=SortBy.MESSAGES,
+            sort_by=SortBy.messages,
             sort_order=SortOrder.DESCENDING,
             filters=None,
             page=1,
@@ -170,7 +170,7 @@ async def test_fetch_stats_for_addresses(session_factory: DbSessionFactory):
         stats, count = fetch_stats_for_addresses(
             session=session,
             addresses=[target_address],
-            sort_by=SortBy.MESSAGES,
+            sort_by=SortBy.messages,
             sort_order=SortOrder.DESCENDING,
             filters=None,
             page=1,
@@ -211,7 +211,7 @@ async def test_fetch_stats_for_addresses(session_factory: DbSessionFactory):
         stats, count = fetch_stats_for_addresses(
             session=session,
             addresses=None,
-            sort_by=SortBy.MESSAGES,
+            sort_by=SortBy.messages,
             sort_order=SortOrder.DESCENDING,
             filters=None,
             page=1,
@@ -247,7 +247,7 @@ async def test_fetch_stats_for_addresses(session_factory: DbSessionFactory):
         filtered_stats, filtered_count = fetch_stats_for_addresses(
             session=session,
             addresses=None,
-            sort_by=SortBy.MESSAGES,
+            sort_by=SortBy.messages,
             sort_order=SortOrder.DESCENDING,
             filters={filter_type: filter_value},
             page=1,
@@ -266,7 +266,7 @@ async def test_fetch_stats_for_addresses(session_factory: DbSessionFactory):
         stats_page1, count = fetch_stats_for_addresses(
             session=session,
             addresses=None,
-            sort_by=SortBy.MESSAGES,
+            sort_by=SortBy.messages,
             sort_order=SortOrder.DESCENDING,
             filters=None,
             page=1,
@@ -277,7 +277,7 @@ async def test_fetch_stats_for_addresses(session_factory: DbSessionFactory):
             stats_page2, _ = fetch_stats_for_addresses(
                 session=session,
                 addresses=None,
-                sort_by=SortBy.MESSAGES,
+                sort_by=SortBy.messages,
                 sort_order=SortOrder.DESCENDING,
                 filters=None,
                 page=2,

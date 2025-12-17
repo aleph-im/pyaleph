@@ -16,7 +16,7 @@ class SortBy(str, Enum):
     program = "PROGRAM"
     instance = "INSTANCE"
     forget = "FORGET"
-    MESSAGES = "messages"
+    messages = "MESSAGES"
 
 
 class AddressesQueryParams(BaseModel):
@@ -31,7 +31,7 @@ class AddressesQueryParams(BaseModel):
 
     # Sorts Results
     sort_by: SortBy = Field(
-        default=SortBy.MESSAGES,
+        default=SortBy.messages,
         alias="sortBy",
         description=(
             "Key used to sort the returned addresses. Available values:\n"
