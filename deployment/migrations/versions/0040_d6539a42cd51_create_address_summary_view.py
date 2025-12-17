@@ -1,7 +1,7 @@
 """create address_summary_view
 
 Revision ID: d6539a42cd51
-Revises: 83a04f64a1db
+Revises: d0e1f2a3b4c5
 Create Date: 2025-11-26 16:09:24.612444
 """
 
