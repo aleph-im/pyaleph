@@ -237,94 +237,6 @@ def count_matching_messages(
     return MessageDb.fast_count(session=session)
 
 
-def fetch_stats_for_addresses(
-    session,
-    addresses: list[str] | None,
-    sort_by,
-    sort_order: SortOrder,
-    filters: dict | None,  # Can use different SortBy types
-    page: int,
-    per_page: int,
-):
-    """
-    Fetch address statistics with pagination info.
-    Returns tuple of (list of address stats, total count of addresses)
-    """
-    # Use the total message stats for address uniqueness, but join with the detailed view
-    # to get type breakdown
-    base_sql = """
-        WITH address_breakdown AS (
-            SELECT 
-                address,
-                SUM(nb_messages) AS messages,
-                SUM(CASE WHEN type = 'POST'      THEN nb_messages ELSE 0 END) AS post,
-                SUM(CASE WHEN type = 'AGGREGATE' THEN nb_messages ELSE 0 END) AS aggregate,
-                SUM(CASE WHEN type = 'STORE'     THEN nb_messages ELSE 0 END) AS store,
-                SUM(CASE WHEN type = 'PROGRAM'   THEN nb_messages ELSE 0 END) AS program,
-                SUM(CASE WHEN type = 'INSTANCE'  THEN nb_messages ELSE 0 END) AS instance,
-                SUM(CASE WHEN type = 'FORGET'    THEN nb_messages ELSE 0 END) AS forget
-            FROM address_stats_mat_view
-            GROUP BY address
-        )
-    """
-
-    # Build WHERE clause
-    where_clause = "WHERE 1=1"
-    params: dict[str, Any] = {}
-
-    # Address filter (optional)
-    if addresses is not None:
-        where_clause += " AND address = ANY(:addr_list)"
-        params["addr_list"] = addresses
-
-    # Filters like { POST: 3, STORE: 1 }
-    if filters:
-        for key, minimum in filters.items():
-            column = str(key.value).lower()
-            where_clause += f" AND {column} >= :min_{column}"
-            params[f"min_{column}"] = minimum
-
-    # Sorting
-    sort_column = str(sort_by.value).lower()
-    direction = "ASC" if sort_order == SortOrder.ASCENDING else "DESC"
-    order_clause = f"ORDER BY {sort_column} {direction}"
-
-    # Count total matching addresses for pagination
-    count_sql = f"""
-        SELECT COUNT(*) FROM (
-            {base_sql}
-            SELECT * FROM address_breakdown
-            {where_clause}
-        ) as count_query
-    """
-
-    total_count = session.execute(text(count_sql), params).scalar()
-
-    # Build the data query with pagination
-    data_sql = f"""
-        {base_sql}
-        SELECT * FROM address_breakdown
-        {where_clause}
-        {order_clause}
-    """
-
-    # Add pagination
-    if per_page > 0:
-        offset = (page - 1) * per_page
-        data_sql += " LIMIT :limit OFFSET :offset"
-        params["limit"] = int(per_page)
-        params["offset"] = int(offset)
-
-    # Execute query
-    result = session.execute(text(data_sql), params)
-
-    # Convert RowMapping objects to regular dictionaries for JSON serialization
-    rows = [dict(row) for row in result.mappings().all()]
-
-    # Return both the data and the total count
-    return rows, total_count
-
-
 def get_matching_messages(
     session: DbSession,
     **kwargs,  # Same as make_matching_messages_query
@@ -334,35 +246,6 @@ def get_matching_messages(
     """
     select_stmt = make_matching_messages_query(**kwargs)
     return (session.execute(select_stmt)).scalars()
-
-
-def find_matching_addresses(session, address_contains: str, limit: int = 5000):
-    """
-    Find addresses matching a substring pattern using trigram index on the materialized view.
-    This ensures we get unique addresses with their total message counts.
-
-    Args:
-        session: Database session
-        address_contains: Substring to search for in addresses (case-insensitive)
-        limit: Maximum number of addresses to return
-
-    Returns:
-        List of matching addresses
-    """
-    sql = """
-        SELECT address
-        FROM address_total_message_stats
-        WHERE lower(address) LIKE :contains
-        ORDER BY total_messages DESC
-        LIMIT :limit
-    """
-
-    params = {"contains": f"%{address_contains.lower()}%", "limit": limit}
-
-    result = session.execute(text(sql), params)
-    addresses = [row.address for row in result]
-
-    return addresses
 
 
 def get_message_stats_by_address(
