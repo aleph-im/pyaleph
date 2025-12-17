@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.address import make_fetch_stats_address_query
 from aleph.db.accessors.messages import count_matching_messages
+from aleph.schemas.addresses_query_params import SortBy
 from aleph.schemas.messages_query_params import MessageQueryParams
 from aleph.types.db_session import DbSession
 
