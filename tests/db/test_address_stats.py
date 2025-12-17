@@ -5,11 +5,11 @@ Tests for address stats functions.
 import pytest
 from aleph_message.models import Chain, ItemType, MessageType
 
-from aleph.db.accessors.messages import (
-    fetch_stats_for_addresses,
+from aleph.db.accessors.address import (
     find_matching_addresses,
-    refresh_address_stats_mat_view,
+    make_fetch_stats_address_query,
 )
+from aleph.db.accessors.messages import refresh_address_stats_mat_view
 from aleph.db.models import MessageDb
 from aleph.schemas.addresses_query_params import SortBy
 from aleph.toolkit.timestamp import timestamp_to_datetime
@@ -133,7 +133,7 @@ async def test_find_matching_addresses(session_factory: DbSessionFactory):
 
 @pytest.mark.asyncio
 async def test_fetch_stats_for_addresses(session_factory: DbSessionFactory):
-    """Test the fetch_stats_for_addresses function with various sorting and filtering options."""
+    """Test the make_fetch_stats_address_query function with various sorting and filtering options."""
     with session_factory() as session:
         test_messages = create_test_messages()
         session.add_all(test_messages)
@@ -144,8 +144,7 @@ async def test_fetch_stats_for_addresses(session_factory: DbSessionFactory):
         session.commit()
 
         # Test with default parameters (sort by total messages, descending)
-        stats, total_count = fetch_stats_for_addresses(
-            session=session,
+        query = make_fetch_stats_address_query(
             addresses=None,
             sort_by=SortBy.messages,
             sort_order=SortOrder.DESCENDING,
@@ -153,6 +152,25 @@ async def test_fetch_stats_for_addresses(session_factory: DbSessionFactory):
             page=1,
             per_page=20,
         )
+
+        # Execute the query
+        result = session.execute(query)
+        stats = [dict(row) for row in result.mappings().all()]
+
+        # Get total count
+        from sqlalchemy import func, select
+
+        count_query = select(func.count()).select_from(
+            make_fetch_stats_address_query(
+                addresses=None,
+                sort_by=SortBy.messages,
+                sort_order=SortOrder.DESCENDING,
+                filters=None,
+                page=1,
+                per_page=0,  # No pagination for count
+            ).subquery()
+        )
+        total_count = session.execute(count_query).scalar_one()
 
         # Check stats structure
         assert isinstance(stats, list)
@@ -167,8 +185,7 @@ async def test_fetch_stats_for_addresses(session_factory: DbSessionFactory):
         # Using an address from our test data
         target_address = "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106"
 
-        stats, count = fetch_stats_for_addresses(
-            session=session,
+        query = make_fetch_stats_address_query(
             addresses=[target_address],
             sort_by=SortBy.messages,
             sort_order=SortOrder.DESCENDING,
@@ -176,13 +193,15 @@ async def test_fetch_stats_for_addresses(session_factory: DbSessionFactory):
             page=1,
             per_page=20,
         )
+        result = session.execute(query)
+        filtered_stats = [dict(row) for row in result.mappings().all()]
 
         # Should have stats for our target address
-        assert len(stats) == 1
-        assert stats[0]["address"] == target_address
+        assert len(filtered_stats) == 1
+        assert filtered_stats[0]["address"] == target_address
 
         # Get the stats for our target address
-        target_stats = stats[0]
+        target_stats = filtered_stats[0]
 
         # Check counts match our test data
         assert (
@@ -193,8 +212,7 @@ async def test_fetch_stats_for_addresses(session_factory: DbSessionFactory):
         assert target_stats["program"] >= 1
 
         # Test sorting by different message type
-        stats, count = fetch_stats_for_addresses(
-            session=session,
+        query = make_fetch_stats_address_query(
             addresses=None,
             sort_by=SortBy.store,
             sort_order=SortOrder.DESCENDING,
@@ -202,14 +220,15 @@ async def test_fetch_stats_for_addresses(session_factory: DbSessionFactory):
             page=1,
             per_page=20,
         )
+        result = session.execute(query)
+        sorted_stats = [dict(row) for row in result.mappings().all()]
 
-        if len(stats) > 1:
+        if len(sorted_stats) > 1:
             # Verify sorting by store count in descending order
-            assert stats[0]["store"] >= stats[1]["store"]
+            assert sorted_stats[0]["store"] >= sorted_stats[1]["store"]
 
-        # Test with filters - first get post types to determine what filter to use
-        stats, count = fetch_stats_for_addresses(
-            session=session,
+        # Test with filters - first get all address stats to determine what filter to use
+        query = make_fetch_stats_address_query(
             addresses=None,
             sort_by=SortBy.messages,
             sort_order=SortOrder.DESCENDING,
@@ -217,6 +236,8 @@ async def test_fetch_stats_for_addresses(session_factory: DbSessionFactory):
             page=1,
             per_page=5,
         )
+        result = session.execute(query)
+        stats = [dict(row) for row in result.mappings().all()]
 
         if not stats:
             pytest.skip("No addresses in database to test filtering")
@@ -234,7 +255,7 @@ async def test_fetch_stats_for_addresses(session_factory: DbSessionFactory):
                 "instance",
                 "forget",
             ]:
-                if stat[msg_type] > 0:
+                if stat.get(msg_type, 0) > 0:
                     filter_type = getattr(SortBy, msg_type)
                     break
             if filter_type:
@@ -244,27 +265,27 @@ async def test_fetch_stats_for_addresses(session_factory: DbSessionFactory):
             pytest.skip("No message types with data to test filtering")
 
         # Now apply the filter
-        filtered_stats, filtered_count = fetch_stats_for_addresses(
-            session=session,
+        query = make_fetch_stats_address_query(
             addresses=None,
             sort_by=SortBy.messages,
             sort_order=SortOrder.DESCENDING,
-            filters={filter_type: filter_value},
+            filters={filter_type: filter_value} if filter_type else None,
             page=1,
             per_page=20,
         )
+        result = session.execute(query)
+        filtered_stats_with_type = [dict(row) for row in result.mappings().all()]
 
         # If we got results, verify the filter worked
-        if filtered_stats:
+        if filtered_stats_with_type:
             if filter_type is not None:
                 filter_column = str(filter_type.value).lower()
-                for address_stat in filtered_stats:
+                for address_stat in filtered_stats_with_type:
                     assert address_stat[filter_column] >= filter_value
 
         # Test pagination
         per_page = 1
-        stats_page1, count = fetch_stats_for_addresses(
-            session=session,
+        query_page1 = make_fetch_stats_address_query(
             addresses=None,
             sort_by=SortBy.messages,
             sort_order=SortOrder.DESCENDING,
@@ -272,10 +293,23 @@ async def test_fetch_stats_for_addresses(session_factory: DbSessionFactory):
             page=1,
             per_page=per_page,
         )
+        result_page1 = session.execute(query_page1)
+        stats_page1 = [dict(row) for row in result_page1.mappings().all()]
+
+        count_query = select(func.count()).select_from(
+            make_fetch_stats_address_query(
+                addresses=None,
+                sort_by=SortBy.messages,
+                sort_order=SortOrder.DESCENDING,
+                filters=None,
+                page=1,
+                per_page=0,  # No pagination for count
+            ).subquery()
+        )
+        count = session.execute(count_query).scalar_one()
 
         if count > per_page:
-            stats_page2, _ = fetch_stats_for_addresses(
-                session=session,
+            query_page2 = make_fetch_stats_address_query(
                 addresses=None,
                 sort_by=SortBy.messages,
                 sort_order=SortOrder.DESCENDING,
@@ -283,6 +317,8 @@ async def test_fetch_stats_for_addresses(session_factory: DbSessionFactory):
                 page=2,
                 per_page=per_page,
             )
+            result_page2 = session.execute(query_page2)
+            stats_page2 = [dict(row) for row in result_page2.mappings().all()]
 
             # Check that pagination works correctly
             assert len(stats_page1) <= per_page
