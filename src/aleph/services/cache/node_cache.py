@@ -121,7 +121,7 @@ class NodeCache:
         filters: Optional[Dict[str, Any]] = None,
     ) -> int:
         """
-        Count matching address stats (grouped by address),
+        Count matching address stats,
         with Redis caching.
         """
         # Use empty dict if filters is None
@@ -138,7 +138,8 @@ class NodeCache:
         if filters is not None:
             enum_filters = {SortBy(k): v for k, v in filters.items()}
 
-        stmt = make_fetch_stats_address_query(filters=enum_filters)
+        # Pass per_page=0 to disable pagination for the count query
+        stmt = make_fetch_stats_address_query(filters=enum_filters, per_page=0)
         count_stmt = select(func.count()).select_from(stmt.subquery())
 
         total = session.execute(count_stmt).scalar_one()
