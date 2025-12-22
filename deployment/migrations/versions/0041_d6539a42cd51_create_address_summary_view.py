@@ -1,7 +1,7 @@
 """create address_summary_view
 
 Revision ID: d6539a42cd51
-Revises: d0e1f2a3b4c5
+Revises: e1f2a3b4c5d6
 Create Date: 2025-11-26 16:09:24.612444
 """
 
@@ -10,7 +10,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "d6539a42cd51"
-down_revision = "d0e1f2a3b4c5"
+down_revision = "e1f2a3b4c5d6"
 branch_labels = None
 depends_on = None
 
