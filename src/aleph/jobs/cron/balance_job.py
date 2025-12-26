@@ -49,8 +49,6 @@ class BalanceCronJob(BaseCronJob):
                 )
 
                 for item_hash, height, cost, _ in hold_costs:
-                    status = get_message_status(session, item_hash)
-
                     LOGGER.info(
                         f"Checking {item_hash} message, with height {height} and cost {cost}"
                     )
