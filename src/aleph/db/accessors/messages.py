@@ -276,8 +276,18 @@ def get_message_stats_by_address(
 
 
 def refresh_address_stats_mat_view(session: DbSession) -> None:
+    """
+    Refresh materialized views for address statistics.
+    First refreshes the base stats view, then the summary view that depends on it.
+    """
+    # Refresh the base stats view
     session.execute(
         text("refresh materialized view concurrently address_stats_mat_view")
+    )
+
+    # Refresh the total stats view that depends on the base stats view
+    session.execute(
+        text("refresh materialized view concurrently address_total_message_stats")
     )
 
 
