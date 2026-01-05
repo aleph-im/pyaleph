@@ -465,19 +465,29 @@ async def get_raw_hash(request):
     storage_service = get_storage_service_from_request(request)
 
     try:
-        content = await storage_service.get_hash_content(
+        content = await storage_service.get_hash_content_iterator(
             item_hash,
             use_network=False,
             use_ipfs=True,
             engine=engine,
-            store_value=False,
             timeout=30,
         )
     except AlephStorageException as e:
         raise web.HTTPNotFound(text="Not found") from e
 
-    response = web.Response(body=content.value)
-    response.enable_compression()
+    response = web.StreamResponse(
+        status=200,
+        reason="OK",
+        headers={
+            "Content-Type": "application/octet-stream",
+            "Content-Length": str(file_metadata.size),
+        },
+    )
+    await response.prepare(request)
+
+    async for chunk in content.value:
+        await response.write(chunk)
+
     return response
 
 

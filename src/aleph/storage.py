@@ -16,7 +16,12 @@ from aleph.db.accessors.files import upsert_file
 from aleph.db.models.pending_messages import PendingMessageDb
 from aleph.exceptions import ContentCurrentlyUnavailable, InvalidContent
 from aleph.schemas.base_messages import AlephBaseMessage
-from aleph.schemas.message_content import ContentSource, MessageContent, RawContent
+from aleph.schemas.message_content import (
+    ContentSource,
+    MessageContent,
+    RawContent,
+    StreamContent,
+)
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.ipfs.common import get_cid_version
@@ -226,6 +231,66 @@ class StorageService:
             await self.storage_engine.write(filename=content_hash, content=content)
 
         return RawContent(hash=content_hash, value=content, source=source)
+
+    async def get_hash_content_iterator(
+        self,
+        content_hash: str,
+        engine: ItemType = ItemType.ipfs,
+        timeout: int = 2,
+        tries: int = 1,
+        use_network: bool = True,
+        use_ipfs: bool = True,
+    ) -> StreamContent:
+        # Try to retrieve the data from the DB, then from IPFS.
+        # P2P retrieval via HTTP does not easily support streaming yet in this codebase
+        # as it fetches JSON with base64 content.
+
+        source = None
+
+        content_iterator = await self.storage_engine.read_iterator(filename=content_hash)
+        if content_iterator is not None:
+            source = ContentSource.DB
+
+        if content_iterator is None:
+            if use_ipfs and engine == ItemType.ipfs:
+                config = get_config()
+                ipfs_enabled = config.ipfs.enabled.value
+                if ipfs_enabled:
+                    content_iterator = await self.ipfs_service.get_ipfs_content_iterator(
+                        content_hash, timeout=timeout, tries=tries
+                    )
+                    source = ContentSource.IPFS
+
+        if content_iterator is None:
+            # Fallback to non-streaming if only P2P is available or if streaming failed
+            # This is a bit suboptimal but keeps it working.
+            # However, for GET /storage/raw/ we really want streaming.
+            # If we reach here and it's not in DB/IPFS, we might have to load it from P2P and then wrap it.
+            try:
+                content = await self.get_hash_content(
+                    content_hash,
+                    engine=engine,
+                    timeout=timeout,
+                    tries=tries,
+                    use_network=use_network,
+                    use_ipfs=use_ipfs,
+                    store_value=True,
+                )
+                source = content.source
+
+                async def _iterator():
+                    yield content.value
+
+                content_iterator = _iterator()
+            except ContentCurrentlyUnavailable:
+                content_iterator = None
+
+        if content_iterator is None:
+            raise ContentCurrentlyUnavailable(
+                f"Could not fetch content for '{content_hash}'."
+            )
+
+        return StreamContent(hash=content_hash, value=content_iterator, source=source)
 
     async def get_json(
         self, content_hash: str, engine=ItemType.ipfs, timeout: int = 2, tries: int = 1

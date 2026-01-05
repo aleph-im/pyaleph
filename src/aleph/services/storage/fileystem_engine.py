@@ -1,5 +1,7 @@
 from pathlib import Path
-from typing import Optional, Union
+from typing import AsyncIterable, Optional, Union
+
+import aiofiles
 
 from .engine import StorageEngine
 
@@ -20,6 +22,24 @@ class FileSystemStorageEngine(StorageEngine):
             return None
 
         return file_path.read_bytes()
+
+    async def read_iterator(
+        self, filename: str, chunk_size: int = 1024 * 1024
+    ) -> Optional[AsyncIterable[bytes]]:
+        file_path = self.folder / filename
+
+        if not file_path.is_file():
+            return None
+
+        async def _read_iterator():
+            async with aiofiles.open(file_path, mode="rb") as f:
+                while True:
+                    chunk = await f.read(chunk_size)
+                    if not chunk:
+                        break
+                    yield chunk
+
+        return _read_iterator()
 
     async def write(self, filename: str, content: bytes):
         file_path = self.folder / filename
