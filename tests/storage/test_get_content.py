@@ -1,5 +1,5 @@
 import json
-from typing import Dict, Optional
+from typing import AsyncIterable, Dict, Optional
 
 import pytest
 
@@ -20,6 +20,19 @@ class MockStorageEngine(StorageEngine):
             return self.files[filename]
         except KeyError:
             return None
+
+    async def read_iterator(
+        self, filename: str, chunk_size: int = 1024 * 1024
+    ) -> Optional[AsyncIterable[bytes]]:
+        content = await self.read(filename)
+        if content is None:
+            return None
+
+        async def _read_iterator():
+            for i in range(0, len(content), chunk_size):
+                yield content[i : i + chunk_size]
+
+        return _read_iterator()
 
     async def write(self, filename: str, content: bytes):
         self.files[filename] = content

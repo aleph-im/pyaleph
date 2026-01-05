@@ -1,7 +1,7 @@
 import datetime as dt
 import json
 from decimal import Decimal
-from typing import Mapping, Optional
+from typing import AsyncIterable, Mapping, Optional
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -131,6 +131,19 @@ class MockStorageEngine(StorageEngine):
 
     async def read(self, filename: str) -> Optional[bytes]:
         return self.files.get(filename)
+
+    async def read_iterator(
+        self, filename: str, chunk_size: int = 1024 * 1024
+    ) -> Optional[AsyncIterable[bytes]]:
+        content = await self.read(filename)
+        if content is None:
+            return None
+
+        async def _read_iterator():
+            for i in range(0, len(content), chunk_size):
+                yield content[i : i + chunk_size]
+
+        return _read_iterator()
 
     async def write(self, filename: str, content: bytes):
         pass

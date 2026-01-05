@@ -8,7 +8,7 @@ import orjson
 import pytest
 import pytest_asyncio
 from aleph_message.models import Chain, ItemHash
-from in_memory_storage_engine import InMemoryStorageEngine
+from helpers.in_memory_storage_engine import InMemoryStorageEngine
 
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.files import get_file
@@ -456,6 +456,7 @@ async def test_get_raw_hash_head(api_client, session_factory: DbSessionFactory, 
     # 2. Test large file (> 100MB)
     large_file_size = MAX_FILE_SIZE + 1024
     large_file_hash = "a" * 64
+    large_file_content = b"a" * large_file_size
     with session_factory() as session:
         upsert_file(
             session=session,
@@ -465,14 +466,20 @@ async def test_get_raw_hash_head(api_client, session_factory: DbSessionFactory, 
         )
         session.commit()
 
+    storage_service = api_client.app[APP_STATE_STORAGE_SERVICE]
+    await storage_service.storage_engine.write(large_file_hash, large_file_content)
+
     # This should succeed for HEAD even if it's over MAX_FILE_SIZE
     response = await api_client.head(f"{GET_STORAGE_RAW_URI}/{large_file_hash}")
     assert response.status == 200
     assert response.headers["Content-Length"] == str(large_file_size)
 
-    # But fail for GET
+    # GET should now work as well (since we added streaming)
     response = await api_client.get(f"{GET_STORAGE_RAW_URI}/{large_file_hash}")
-    assert response.status == 413
+    assert response.status == 200
+    assert response.headers["Content-Length"] == str(large_file_size)
+    assert response.headers["Content-Type"] == "application/octet-stream"
+    assert response.headers["Accept-Ranges"] == "none"
 
     # 3. Verify it doesn't load content for HEAD
     # We can mock storage_service.get_hash_content and ensure it's not called
