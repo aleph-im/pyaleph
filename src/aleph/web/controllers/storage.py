@@ -447,6 +447,19 @@ async def get_raw_hash(request):
 
     session_factory = get_session_factory_from_request(request)
     with session_factory() as session:
+        file_metadata = get_file(session=session, file_hash=item_hash)
+        if not file_metadata:
+            raise web.HTTPNotFound(text="Not found")
+
+        if request.method == "HEAD":
+            return web.Response(
+                status=200,
+                headers={
+                    "Content-Length": str(file_metadata.size),
+                    "Accept-Ranges": "none",
+                },
+            )
+
         assert_file_is_downloadable(session=session, file_hash=item_hash)
 
     storage_service = get_storage_service_from_request(request)
