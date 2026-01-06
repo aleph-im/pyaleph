@@ -1,8 +1,6 @@
 import datetime as dt
 from typing import Optional, Union
 
-import pytz
-
 
 def timestamp_to_datetime(timestamp: float) -> dt.datetime:
     """
