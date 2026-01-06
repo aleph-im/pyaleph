@@ -19,12 +19,3 @@ class AddressStats(Base):
     nb_messages = Column(Integer, nullable=False)
 
     __mapper_args__ = {"confirm_deleted_rows": False}
-
-
-class AddressTotalMessages(Base):
-    __tablename__ = "address_total_message_stats"
-
-    address = Column(String, primary_key=True)
-    total_messages = Column(Integer, nullable=False)
-
-    __mapper_args__ = {"confirm_deleted_rows": False}
