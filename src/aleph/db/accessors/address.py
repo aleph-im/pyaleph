@@ -14,12 +14,10 @@ def make_address_filter_subquery(address_contains: str):
     Subquery defining the set of addresses to include.
     Only used when address filtering is requested.
     """
-    pattern = f"%{address_contains.lower()}%"
-
     return (
         select(AddressStats.address)
         .distinct()
-        .where(func.lower(AddressStats.address).ilike(pattern))
+        .where(func.lower(AddressStats.address).contains(address_contains.lower()))
         .subquery()
     )
 
@@ -63,9 +61,10 @@ def make_fetch_stats_address_query(
     ).group_by(AddressStats.address)
 
     if address_contains:
-        # Create pattern for case-insensitive substring search
-        pattern = f"%{address_contains.lower()}%"
-        base_stmt = base_stmt.where(func.lower(AddressStats.address).like(pattern))
+        address_subquery = make_address_filter_subquery(address_contains)
+        base_stmt = base_stmt.join(
+            address_subquery, AddressStats.address == address_subquery.c.address
+        )
 
     breakdown = base_stmt.subquery()
     stmt = select(breakdown)
@@ -101,8 +100,9 @@ def count_address_stats(
 
     # Apply filter if address_contains is provided
     if address_contains:
-        pattern = f"%{address_contains.lower()}%"
-        base_stmt = base_stmt.where(func.lower(AddressStats.address).like(pattern))
+        base_stmt = base_stmt.where(
+            func.lower(AddressStats.address).contains(address_contains.lower())
+        )
 
     # Count the total number of addresses
     count_stmt = select(func.count()).select_from(base_stmt.subquery())
