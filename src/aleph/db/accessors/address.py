@@ -100,8 +100,9 @@ def count_address_stats(
 
     # Apply filter if address_contains is provided
     if address_contains:
-        base_stmt = base_stmt.where(
-            func.lower(AddressStats.address).contains(address_contains.lower())
+        address_subquery = make_address_filter_subquery(address_contains)
+        base_stmt = base_stmt.join(
+            address_subquery, AddressStats.address == address_subquery.c.address
         )
 
     # Count the total number of addresses
