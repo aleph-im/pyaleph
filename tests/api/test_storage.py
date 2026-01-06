@@ -494,9 +494,11 @@ async def test_get_raw_hash_head(api_client, session_factory: DbSessionFactory, 
 
 
 @pytest.mark.asyncio
-async def test_get_raw_hash_streaming(api_client, session_factory: DbSessionFactory, mocker):
+async def test_get_raw_hash_streaming(
+    api_client, session_factory: DbSessionFactory, mocker
+):
     from aleph.db.accessors.files import upsert_file
-    from aleph.schemas.message_content import StreamContent, ContentSource
+    from aleph.schemas.message_content import ContentSource, StreamContent
 
     file_content = b"Streaming content"
     file_hash = "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f"

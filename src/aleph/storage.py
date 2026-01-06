@@ -247,7 +247,9 @@ class StorageService:
 
         source = None
 
-        content_iterator = await self.storage_engine.read_iterator(filename=content_hash)
+        content_iterator = await self.storage_engine.read_iterator(
+            filename=content_hash
+        )
         if content_iterator is not None:
             source = ContentSource.DB
 
@@ -256,8 +258,10 @@ class StorageService:
                 config = get_config()
                 ipfs_enabled = config.ipfs.enabled.value
                 if ipfs_enabled:
-                    content_iterator = await self.ipfs_service.get_ipfs_content_iterator(
-                        content_hash, timeout=timeout, tries=tries
+                    content_iterator = (
+                        await self.ipfs_service.get_ipfs_content_iterator(
+                            content_hash, timeout=timeout, tries=tries
+                        )
                     )
                     source = ContentSource.IPFS
 
