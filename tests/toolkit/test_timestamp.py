@@ -1,7 +1,6 @@
-import pytz
+import datetime as dt
 
 from aleph.toolkit.timestamp import timestamp_to_datetime
-import datetime as dt
 
 
 def test_timestamp_to_datetime():
