@@ -24,7 +24,7 @@ class AddressesQueryParams(BaseModel):
         alias="addressContains",
         # Our current max address size is 48 (Polkadot). We use 66 as a max size to have 
         # a margin if we ever support a chain with longer addresses (64 characters + 2 for 0x prefix).
-        max_length=64,
+        max_length=66,
         description=(
             "Case-insensitive substring filter for addresses. "
             "Example: addressContains=abc → matches any address containing 'abc'."
