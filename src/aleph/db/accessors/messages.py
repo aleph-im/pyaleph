@@ -285,11 +285,6 @@ def refresh_address_stats_mat_view(session: DbSession) -> None:
         text("refresh materialized view concurrently address_stats_mat_view")
     )
 
-    # Refresh the total stats view that depends on the base stats view
-    session.execute(
-        text("refresh materialized view concurrently address_total_message_stats")
-    )
-
 
 # TODO: declare a type that will match the result (something like UnconfirmedMessageDb)
 #       and translate the time field to epoch.
