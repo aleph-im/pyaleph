@@ -2,12 +2,9 @@ from hashlib import sha256
 from typing import Any, Dict, List, Optional, Set
 
 import redis.asyncio as redis_asyncio
-from sqlalchemy import func, select
 
 import aleph.toolkit.json as aleph_json
-from aleph.db.accessors.address import make_fetch_stats_address_query
 from aleph.db.accessors.messages import count_matching_messages
-from aleph.schemas.addresses_query_params import SortBy
 from aleph.schemas.messages_query_params import MessageQueryParams
 from aleph.types.db_session import DbSession
 
@@ -114,40 +111,3 @@ class NodeCache:
         await self.set(cache_key, n_matches, expiration=self.message_cache_count_ttl)
 
         return n_matches
-
-    async def count_address_stats(
-        self,
-        session: DbSession,
-        filters: Optional[Dict[str, Any]] = None,
-    ) -> int:
-        """
-        Count matching address stats,
-        with Redis caching.
-        """
-        # Use empty dict if filters is None
-        filters_dict = {} if filters is None else filters
-        cache_key = f"address_stats_count:{self._message_filter_id(filters_dict)}"
-
-        cached_result = await self.get(cache_key)
-        if cached_result is not None:
-            return int(cached_result.decode())
-
-        # Slow query: count grouped addresses
-        # Convert string keys to SortBy enum keys if needed
-        enum_filters = None
-        if filters is not None:
-            enum_filters = {SortBy(k): v for k, v in filters.items()}
-
-        # Pass per_page=0 to disable pagination for the count query
-        stmt = make_fetch_stats_address_query(filters=enum_filters, per_page=0)
-        count_stmt = select(func.count()).select_from(stmt.subquery())
-
-        total = session.execute(count_stmt).scalar_one()
-
-        await self.set(
-            cache_key,
-            total,
-            expiration=self.message_cache_count_ttl,
-        )
-
-        return total
