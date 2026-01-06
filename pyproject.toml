@@ -218,7 +218,7 @@ minversion = "6.0"
 pythonpath = [ "src" ]
 addopts = "-vv -m \"not ledger_hardware\""
 filterwarnings = [
-    "ignore:pkg_resources is deprecated as an API:UserWarning",
+  "ignore:pkg_resources is deprecated as an API:UserWarning",
 ]
 norecursedirs = [ "*.egg", "dist", "build", ".tox", ".venv", "*/site-packages/*" ]
 testpaths = [ "tests/unit" ]

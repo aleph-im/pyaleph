@@ -1,4 +1,5 @@
 import importlib.resources
+
 from aiohttp import web
 
 from aleph.web.controllers import (
