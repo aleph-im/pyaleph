@@ -22,7 +22,9 @@ class AddressesQueryParams(BaseModel):
     address_contains: str | None = Field(
         default=None,
         alias="addressContains",
-        max_length=66,
+        # Our current max address size is 48 (Polkadot). We use 64 as a max size to have 
+        # a margin if we ever support a chain with longer addresses.
+        max_length=64,
         description=(
             "Case-insensitive substring filter for addresses. "
             "Example: addressContains=abc → matches any address containing 'abc'."
