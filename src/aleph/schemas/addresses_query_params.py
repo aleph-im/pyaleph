@@ -22,7 +22,7 @@ class AddressesQueryParams(BaseModel):
     address_contains: str | None = Field(
         default=None,
         alias="addressContains",
-        # Our current max address size is 48 (Polkadot). We use 66 as a max size to have 
+        # Our current max address size is 48 (Polkadot). We use 66 as a max size to have
         # a margin if we ever support a chain with longer addresses (64 characters + 2 for 0x prefix).
         max_length=66,
         description=(
