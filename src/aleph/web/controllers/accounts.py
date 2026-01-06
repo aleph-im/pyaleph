@@ -87,7 +87,7 @@ def format_address_stats_response_dict(
     }
 
 
-async def addresses_stats_view(request: web.Request):
+async def addresses_stats_view_v0(request: web.Request):
     """Returns the stats of some addresses."""
 
     addresses: List[str] = request.query.getall("addresses[]", [])
@@ -102,7 +102,7 @@ async def addresses_stats_view(request: web.Request):
     return web.json_response(output, dumps=lambda v: json.dumps(v))
 
 
-async def addresses_stats_view_v2(request: web.Request):
+async def addresses_stats_view_v1(request: web.Request):
     session_factory = get_session_factory_from_request(request)
     node_cache = get_node_cache_from_request(request)
 
