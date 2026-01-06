@@ -1,6 +1,7 @@
 import pytz
 
 from aleph.toolkit.timestamp import timestamp_to_datetime
+import datetime as dt
 
 
 def test_timestamp_to_datetime():
@@ -14,4 +15,4 @@ def test_timestamp_to_datetime():
     assert dt1.minute == 1
     assert dt1.second == 36
 
-    assert dt1.tzinfo == pytz.utc
+    assert dt1.tzinfo == dt.timezone.utc
