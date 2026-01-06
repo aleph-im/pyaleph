@@ -8,7 +8,7 @@ from pydantic import TypeAdapter, ValidationError
 
 import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.address import (
-    find_matching_addresses,
+    count_address_stats,
     make_fetch_stats_address_query,
 )
 from aleph.db.accessors.balances import (
@@ -136,17 +136,11 @@ async def addresses_stats_view_v1(request: web.Request):
         # Execute the query
         rows = session.execute(address_query).mappings().all()
 
-        # Cached count query
-        # Convert SortBy enum keys to strings if needed
-        filters_dict = None
-        if query_params.filters:
-            filters_dict = {str(k.value): v for k, v in query_params.filters.items()}
-
-        total = await node_cache.count_address_stats(
-            session=session,
-            filters=filters_dict,
+        # Get total count using the direct SQL query
+        total = count_address_stats(
+            session=session, address_contains=query_params.address_contains
         )
-        # Format response - convert mappings to dicts
+
         dict_rows = [dict(row) for row in rows]
         response = format_address_stats_response_dict(
             data=dict_rows,

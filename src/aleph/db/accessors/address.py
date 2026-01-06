@@ -97,3 +97,29 @@ def make_fetch_stats_address_query(
         stmt = stmt.limit(per_page).offset((page - 1) * per_page)
 
     return stmt
+
+
+def count_address_stats(
+    session: DbSession, address_contains: Optional[str] = None
+) -> int:
+    """
+    Count the total number of unique addresses in the address stats view.
+
+    Args:
+        session: Database session
+        address_contains: Optional substring filter for addresses
+
+    Returns:
+        Total count of unique addresses matching the filter
+    """
+    # Get the same base query as used in make_fetch_stats_address_query
+    base_stmt = select(AddressStats.address).group_by(AddressStats.address)
+
+    # Apply filter if address_contains is provided
+    if address_contains:
+        pattern = f"%{address_contains.lower()}%"
+        base_stmt = base_stmt.where(func.lower(AddressStats.address).like(pattern))
+
+    # Count the total number of addresses
+    count_stmt = select(func.count()).select_from(base_stmt.subquery())
+    return session.execute(count_stmt).scalar_one()
