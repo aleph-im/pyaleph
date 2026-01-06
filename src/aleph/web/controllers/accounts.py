@@ -48,10 +48,7 @@ from aleph.schemas.api.accounts import (
     GetResourceConsumedCreditsResponse,
 )
 from aleph.types.db_session import DbSessionFactory
-from aleph.web.controllers.app_state_getters import (
-    get_node_cache_from_request,
-    get_session_factory_from_request,
-)
+from aleph.web.controllers.app_state_getters import get_session_factory_from_request
 from aleph.web.controllers.utils import get_item_hash_str_from_request
 
 
@@ -104,7 +101,6 @@ async def addresses_stats_view_v0(request: web.Request):
 
 async def addresses_stats_view_v1(request: web.Request):
     session_factory = get_session_factory_from_request(request)
-    node_cache = get_node_cache_from_request(request)
 
     try:
         query_params = AddressesQueryParams.model_validate(request.query)
@@ -115,18 +111,9 @@ async def addresses_stats_view_v1(request: web.Request):
     pagination_per_page = query_params.pagination
 
     with session_factory() as session:
-        if query_params.address_contains:
-            matched_addresses = find_matching_addresses(
-                session=session,
-                address_contains=query_params.address_contains,
-            )
-        else:
-            matched_addresses = None
-
         # build query
         address_query = make_fetch_stats_address_query(
-            addresses=matched_addresses,
-            filters=query_params.filters,
+            address_contains=query_params.address_contains,
             sort_by=query_params.sort_by,
             sort_order=query_params.sort_order,
             page=pagination_page,

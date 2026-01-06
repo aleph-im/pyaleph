@@ -1,43 +1,31 @@
-from typing import Mapping, Optional, Sequence
+from typing import Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.sql import Select
 
-from aleph.db.models.address import AddressStats, AddressTotalMessages
+from aleph.db.models.address import AddressStats
 from aleph.schemas.addresses_query_params import SortBy
 from aleph.types.db_session import DbSession
 from aleph.types.sort_order import SortOrder
 
 
-def find_matching_addresses(
-    session: DbSession, address_contains: str, limit: int = 5000
-):
+def make_address_filter_subquery(address_contains: str):
     """
-    Find addresses matching a substring pattern using trigram index on the materialized view.
-    This ensures we get unique addresses with their total message counts.
-
-    Args:
-        session: Database session
-        address_contains: Substring to search for in addresses (case-insensitive)
-        limit: Maximum number of addresses to return
-
-    Returns:
-        List of matching addresses
+    Subquery defining the set of addresses to include.
+    Only used when address filtering is requested.
     """
-    pattern = f"%{address_contains}%"
+    pattern = f"%{address_contains.lower()}%"
 
-    address_query = (
-        select(AddressTotalMessages.address)
-        .where(AddressTotalMessages.address.ilike(pattern))
-        .limit(limit)
+    return (
+        select(AddressStats.address)
+        .distinct()
+        .where(func.lower(AddressStats.address).ilike(pattern))
+        .subquery()
     )
-
-    return session.execute(address_query).scalars().all()
 
 
 def make_fetch_stats_address_query(
-    addresses: Optional[Sequence[str]] = None,
-    filters: Optional[Mapping[SortBy, int]] = None,  # Can use different SortBy types
+    address_contains: Optional[str] = None,
     sort_by: SortBy = SortBy.messages,
     sort_order: SortOrder = SortOrder.DESCENDING,
     page: int = 1,
@@ -74,26 +62,22 @@ def make_fetch_stats_address_query(
         ).label("forget"),
     ).group_by(AddressStats.address)
 
-    # Filter by address (list)
-    if addresses:
-        base_stmt = base_stmt.where(AddressStats.address.in_(addresses))
+    if address_contains:
+        # Create pattern for case-insensitive substring search
+        pattern = f"%{address_contains.lower()}%"
+        base_stmt = base_stmt.where(func.lower(AddressStats.address).like(pattern))
 
     breakdown = base_stmt.subquery()
     stmt = select(breakdown)
 
-    # Apply Filter on query
-    if filters:
-        for key, minimum in filters.items():
-            stmt = stmt.where(getattr(breakdown.c, key.value.lower()) >= minimum)
-
-    # Sort Query
     sort_column = getattr(breakdown.c, sort_by.value.lower())
     stmt = stmt.order_by(
-        sort_column.asc() if sort_order == SortOrder.ASCENDING else sort_column.desc()
+        sort_column.asc() if sort_order == SortOrder.ASCENDING else sort_column.desc(),
+        breakdown.c.address.asc(),
     )
 
     # Pagination
-    if per_page:  # Do we want to return all matching result if requested ?
+    if per_page:  # Return all matching results if per_page is 0
         stmt = stmt.limit(per_page).offset((page - 1) * per_page)
 
     return stmt

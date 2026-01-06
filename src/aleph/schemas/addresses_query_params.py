@@ -1,5 +1,4 @@
 from enum import Enum
-from typing import Dict
 
 from pydantic import BaseModel, Field
 
@@ -52,11 +51,6 @@ class AddressesQueryParams(BaseModel):
             "- 1 (ASCENDING): smallest values first\n"
             "- -1 (DESCENDING): largest values first"
         ),
-    )
-    # Minimum count on any of the sort by  elements
-    filters: Dict[SortBy, int] | None = Field(
-        default=None,
-        description="Minimum values required for each sort category. Example: { 'POST': 3 }",
     )
 
     # Pagination
