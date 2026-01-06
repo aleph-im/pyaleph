@@ -20,16 +20,14 @@ def get_version_from_git() -> str | None:
 
 
 def get_version_from_resources() -> str | None:
-    from pkg_resources import DistributionNotFound, get_distribution
+    import importlib.metadata
 
     try:
         # Change here if project is renamed and does not equal the package name
-        dist_name = __name__
-        return get_distribution(dist_name).version
-    except DistributionNotFound:
+        dist_name = "pyaleph"
+        return importlib.metadata.version(dist_name)
+    except importlib.metadata.PackageNotFoundError:
         return get_version_from_git()
-    finally:
-        del get_distribution, DistributionNotFound
 
 
 def get_version() -> str | None:

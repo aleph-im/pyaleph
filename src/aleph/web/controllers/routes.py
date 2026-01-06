@@ -1,4 +1,4 @@
-import pkg_resources
+import importlib.resources
 from aiohttp import web
 
 from aleph.web.controllers import (
@@ -21,7 +21,7 @@ from aleph.web.controllers.programs import get_programs_on_message
 def register_routes(app: web.Application):
     app.router.add_static(
         "/static/",
-        path=pkg_resources.resource_filename("aleph.web", "static/"),
+        path=str(importlib.resources.files("aleph.web") / "static/"),
         name="static",
     )
     app.router.add_get("/", main.index)
