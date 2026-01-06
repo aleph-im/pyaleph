@@ -16,10 +16,18 @@ jobs:
   tests:
     runs-on: ubuntu-24.04
     services:
+      anvil:
+        image: ghcr.io/foundry-rs/foundry:v1.5.1
+        ports:
+          - "127.0.0.1:8545:8545"
+        options: --entrypoint anvil
+        env:
+          ANVIL_IP_ADDR: "0.0.0.0"
+
       postgres:
         image: postgres:15.1
         ports:
-          - 5432:5432
+          - "127.0.0.1:5432:5432"
         env:
           POSTGRES_USER: aleph
           POSTGRES_PASSWORD: decentralize-everything
@@ -27,7 +35,7 @@ jobs:
       redis:
         image: redis:7.0.10
         ports:
-          - 127.0.0.1:6379:6379
+          - "127.0.0.1:6379:6379"
 
     steps:
       - uses: actions/checkout@v4

@@ -86,6 +86,14 @@ services:
     networks:
       - pyaleph
 
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:v1.5.1
+    ports:
+      - "127.0.0.1:8545:8545"
+    networks:
+      - pyaleph
+    entrypoint: ["anvil", "--host", "0.0.0.0"]
+
 
 networks:
   pyaleph:
