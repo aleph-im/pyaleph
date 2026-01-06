@@ -22,6 +22,7 @@ class AddressesQueryParams(BaseModel):
     address_contains: str | None = Field(
         default=None,
         alias="addressContains",
+        max_length=66,
         description=(
             "Case-insensitive substring filter for addresses. "
             "Example: addressContains=abc → matches any address containing 'abc'."
