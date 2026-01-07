@@ -15,6 +15,7 @@ from aleph.db.models import MessageDb
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
+from aleph.types.sort_order import SortOrder
 
 
 @pytest.fixture
@@ -81,23 +82,149 @@ async def test_get_message_stats_by_address(
 
         stats_by_address = {row.address: row for row in stats}
         assert (
-            stats_by_address["0xB68B9D4f3771c246233823ed1D3Add451055F9Ef"].type
-            == MessageType.forget
+            stats_by_address["0xB68B9D4f3771c246233823ed1D3Add451055F9Ef"].forget == 1
         )
-        assert (
-            stats_by_address["0xB68B9D4f3771c246233823ed1D3Add451055F9Ef"].nb_messages
-            == 1
-        )
-        assert stats_by_address["0x1234"].type == MessageType.aggregate
-        assert stats_by_address["0x1234"].nb_messages == 1
+        assert stats_by_address["0xB68B9D4f3771c246233823ed1D3Add451055F9Ef"].total == 1
+        assert stats_by_address["0x1234"].aggregate == 1
+        assert stats_by_address["0x1234"].total == 1
 
         # Filter by address
         stats = get_message_stats_by_address(session, addresses=("0x1234",))
         assert len(stats) == 1
         row = stats[0]
         assert row.address == "0x1234"
-        assert row.type == MessageType.aggregate
-        assert row.nb_messages == 1
+        assert row.aggregate == 1
+        assert row.total == 1
+
+
+@pytest.mark.asyncio
+async def test_get_message_stats_by_address_pattern(
+    session_factory: DbSessionFactory,
+):
+    messages = [
+        MessageDb(
+            item_hash="hash1",
+            chain=Chain.ETH,
+            sender="0x1234567890abcdef",
+            signature="0x" + "0" * 128,
+            item_type=ItemType.inline,
+            type=MessageType.post,
+            content={"address": "0x1234567890abcdef", "time": 1000},
+            size=100,
+            time=timestamp_to_datetime(1000),
+            channel=Channel("TEST"),
+        ),
+        MessageDb(
+            item_hash="hash2",
+            chain=Chain.ETH,
+            sender="0xABCDEF1234567890",
+            signature="0x" + "0" * 128,
+            item_type=ItemType.inline,
+            type=MessageType.post,
+            content={"address": "0xABCDEF1234567890", "time": 1001},
+            size=100,
+            time=timestamp_to_datetime(1001),
+            channel=Channel("TEST"),
+        ),
+    ]
+
+    with session_factory() as session:
+        session.add_all(messages)
+        session.commit()
+        refresh_address_stats_mat_view(session)
+        session.commit()
+
+        # exact match
+        stats = get_message_stats_by_address(
+            session, address_contains="0x1234567890abcdef"
+        )
+        assert len(stats) == 1
+        assert stats[0].address == "0x1234567890abcdef"
+        assert stats[0].post == 1
+        assert stats[0].total == 1
+
+        # match at start of address
+        stats = get_message_stats_by_address(session, address_contains="0x1234")
+        assert len(stats) == 1
+        assert stats[0].address == "0x1234567890abcdef"
+
+        # match at end of address
+        # '67890' is at the end of 0xABCDEF1234567890
+        stats = get_message_stats_by_address(session, address_contains="67890")
+        assert len(stats) == 2
+        addresses = {row.address for row in stats}
+        assert "0x1234567890abcdef" in addresses
+        assert "0xABCDEF1234567890" in addresses
+
+        # Unique end match
+        stats = get_message_stats_by_address(session, address_contains="bcdef")
+        # 'bcdef' matches both 0x1234567890abcdef and 0xABCDEF1234567890 (case-insensitive)
+        assert len(stats) == 2
+
+        # match in middle of address
+        stats = get_message_stats_by_address(session, address_contains="4567")
+        assert len(stats) == 2
+
+        # more specific middle match
+        stats = get_message_stats_by_address(session, address_contains="34567890a")
+        assert len(stats) == 1
+        assert stats[0].address == "0x1234567890abcdef"
+
+        # match but case insensitive
+        # Pattern in lowercase, address in DB has uppercase (0xABCDEF...)
+        stats = get_message_stats_by_address(session, address_contains="abcdef")
+        # Should match both: 0x1234567890abcdef and 0xABCDEF1234567890
+        assert len(stats) == 2
+        addresses = {row.address for row in stats}
+        assert "0x1234567890abcdef" in addresses
+        assert "0xABCDEF1234567890" in addresses
+
+        # Pattern in uppercase, address in DB is mixed or lowercase
+        stats = get_message_stats_by_address(
+            session, address_contains="1234567890ABCDEF"
+        )
+        assert len(stats) == 1
+        assert stats[0].address == "0x1234567890abcdef"
+
+        # no match
+        stats = get_message_stats_by_address(session, address_contains="0x9999")
+        assert len(stats) == 0
+
+        # Sort by post DESC
+        stats = get_message_stats_by_address(
+            session, sort_by=MessageType.post, sort_order=SortOrder.DESCENDING
+        )
+        assert len(stats) == 2
+        # Both have 1 post, so sorted by address ASC
+        assert stats[0].address == "0x1234567890abcdef"
+        assert stats[1].address == "0xABCDEF1234567890"
+
+        # Add another message to change sorting
+        session.add(
+            MessageDb(
+                item_hash="hash3",
+                chain=Chain.ETH,
+                sender="0xABCDEF1234567890",
+                signature="0x" + "0" * 128,
+                item_type=ItemType.inline,
+                type=MessageType.post,
+                content={"address": "0xABCDEF1234567890", "time": 1002},
+                size=100,
+                time=timestamp_to_datetime(1002),
+                channel=Channel("TEST"),
+            )
+        )
+        session.commit()
+        refresh_address_stats_mat_view(session)
+        session.commit()
+
+        stats = get_message_stats_by_address(
+            session, sort_by=MessageType.post, sort_order=SortOrder.DESCENDING
+        )
+        assert stats[0].address == "0xABCDEF1234567890"
+        assert stats[0].post == 2
+        assert stats[1].address == "0x1234567890abcdef"
+        assert stats[1].post == 1
 
 
 @pytest.fixture

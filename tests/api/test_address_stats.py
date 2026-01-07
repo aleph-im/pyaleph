@@ -148,7 +148,7 @@ def fixture_address_stats_messages(
 
 @pytest.mark.asyncio
 async def test_address_stats_endpoint_basic(
-    ccn_api_client, fixture_address_stats_messages
+    ccn_api_client, fixture_address_stats_messages, test_addresses
 ):
     """Test the basic functionality of the addresses stats endpoint."""
     response = await ccn_api_client.get(ADDRESSES_STATS_URI_V1)
@@ -170,19 +170,72 @@ async def test_address_stats_endpoint_basic(
     assert data["pagination_total"] >= 5  # At least our 5 test addresses
 
     # Check stats data
-    assert isinstance(data["data"], list)
+    assert isinstance(data["data"], dict)
     assert len(data["data"]) > 0
 
     # Verify structure of a stats item
-    first_item = data["data"][0]
-    assert "address" in first_item
-    assert "messages" in first_item
+    first_address = next(iter(data["data"]))
+    first_item = data["data"][first_address]
+    assert "total" in first_item
     assert "post" in first_item
     assert "store" in first_item
     assert "program" in first_item
     assert "aggregate" in first_item
     assert "instance" in first_item
     assert "forget" in first_item
+
+    # Verify actual values for all test addresses
+    expected_stats = {
+        test_addresses[0]: {
+            "total": 3,
+            "post": 1,
+            "store": 1,
+            "program": 1,
+            "aggregate": 0,
+            "instance": 0,
+            "forget": 0,
+        },
+        test_addresses[1]: {
+            "total": 1,
+            "post": 1,
+            "store": 0,
+            "program": 0,
+            "aggregate": 0,
+            "instance": 0,
+            "forget": 0,
+        },
+        test_addresses[2]: {
+            "total": 1,
+            "post": 0,
+            "store": 1,
+            "program": 0,
+            "aggregate": 0,
+            "instance": 0,
+            "forget": 0,
+        },
+        test_addresses[3]: {
+            "total": 1,
+            "post": 0,
+            "store": 0,
+            "program": 0,
+            "aggregate": 1,
+            "instance": 0,
+            "forget": 0,
+        },
+        test_addresses[4]: {
+            "total": 1,
+            "post": 0,
+            "store": 0,
+            "program": 0,
+            "aggregate": 0,
+            "instance": 1,
+            "forget": 0,
+        },
+    }
+
+    for address, expected in expected_stats.items():
+        assert address in data["data"]
+        assert data["data"][address] == expected
 
 
 @pytest.mark.asyncio
@@ -223,8 +276,8 @@ async def test_address_stats_pagination(
         assert data_page2["pagination_page"] == page2
 
         # Should not return the same addresses across pages
-        page1_addresses = {item["address"] for item in data_page1["data"]}
-        page2_addresses = {item["address"] for item in data_page2["data"]}
+        page1_addresses = set(data_page1["data"].keys())
+        page2_addresses = set(data_page2["data"].keys())
 
         assert len(page1_addresses.intersection(page2_addresses)) == 0
 
@@ -238,9 +291,9 @@ async def test_address_stats_pagination(
 @pytest.mark.parametrize(
     "sort_by, sort_order, field, comparator",
     [
-        ("messages", -1, "messages", lambda a, b: a >= b),  # DSC Sort
+        ("total", -1, "total", lambda a, b: a >= b),  # DSC Sort
         ("post", -1, "post", lambda a, b: a >= b),  # DSC Sort
-        ("messages", 1, "messages", lambda a, b: a <= b),  # ASC Sort
+        ("total", 1, "total", lambda a, b: a <= b),  # ASC Sort
     ],
 )
 async def test_address_stats_sorting(
@@ -259,7 +312,7 @@ async def test_address_stats_sorting(
     assert response.status == 200
 
     payload = await response.json()
-    data = payload["data"]
+    data = list(payload["data"].values())
 
     if len(data) >= 2:
         assert comparator(data[0][field], data[1][field])
@@ -291,8 +344,8 @@ async def test_address_stats_filtering(
     data = payload["data"]
 
     # All returned addresses must contain the substring (case-insensitive)
-    for item in data:
-        assert address_contains.lower() in item["address"].lower()
+    for address in data:
+        assert address_contains.lower() in address.lower()
 
     # Exact expectations based on fixture
     assert payload["pagination_total"] == expected_count
@@ -310,7 +363,7 @@ async def test_address_stats_filtering(
                 "post": 1,
                 "store": 1,
                 "program": 1,
-                "messages": 3,
+                "total": 3,
             },
         ),
         # Aggregate-only address
@@ -350,10 +403,8 @@ async def test_address_stats_all_message_types(
 
     # Should have exactly one result
     assert len(data) == 1
-    stats = data[0]
-
-    # Verify address
-    assert stats["address"] == address
+    assert address in data
+    stats = data[address]
 
     # Verify expected message type counts
     for field, min_value in expected_fields.items():

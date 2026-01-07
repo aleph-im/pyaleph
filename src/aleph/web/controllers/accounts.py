@@ -1,16 +1,12 @@
 import json
-from itertools import groupby
-from typing import Any, Dict, List
+from enum import Enum
+from typing import Any, Dict, Iterable, List
 
 from aiohttp import web
-from aleph_message.models import MessageType
 from pydantic import TypeAdapter, ValidationError
 
 import aleph.toolkit.json as aleph_json
-from aleph.db.accessors.address import (
-    count_address_stats,
-    make_fetch_stats_address_query,
-)
+from aleph.db.accessors.address import count_address_stats
 from aleph.db.accessors.balances import (
     count_address_credit_history,
     count_balances_by_chain,
@@ -52,34 +48,34 @@ from aleph.web.controllers.app_state_getters import get_session_factory_from_req
 from aleph.web.controllers.utils import get_item_hash_str_from_request
 
 
-def make_stats_dict(stats) -> Dict[str, Any]:
-    stats_dict = {}
-
-    sorted_stats = sorted(stats, key=lambda s: s.address)
-    for address, address_stats in groupby(sorted_stats, key=lambda s: s.address):
-        nb_messages_by_type = {s.type: s.nb_messages for s in address_stats}
-        stats_dict[address] = {
-            "messages": sum(val for val in nb_messages_by_type.values()),
-            "aggregates": nb_messages_by_type.get(MessageType.aggregate, 0),
-            "posts": nb_messages_by_type.get(MessageType.post, 0),
-            "programs": nb_messages_by_type.get(MessageType.program, 0),
-            "stores": nb_messages_by_type.get(MessageType.store, 0),
+def make_stats_dict(rows: Iterable[Any]) -> Dict[str, int]:
+    return {
+        row.address: {
+            "messages": int(row.total),
+            "aggregate": int(row.aggregate),
+            "forget": int(row.forget),
+            "instance": int(row.instance),
+            "post": int(row.post),
+            "program": int(row.program),
+            "store": int(row.store),
         }
+        for row in rows
+    }
 
-    return stats_dict
 
-
-def format_address_stats_response_dict(
-    data: List[Dict[str, Any]],
+def format_paginated_address_stats(
+    rows: Iterable[Any],
     pagination: int,
     page: int,
-    total: int,
+    pagination_total: int,
 ) -> Dict[str, Any]:
+    data = make_stats_dict(rows)
+
     return {
         "data": data,
         "pagination_per_page": pagination,
         "pagination_page": page,
-        "pagination_total": total,
+        "pagination_total": pagination_total,
         "pagination_item": "addresses",
     }
 
@@ -111,32 +107,31 @@ async def addresses_stats_view_v1(request: web.Request):
     pagination_per_page = query_params.pagination
 
     with session_factory() as session:
-        # build query
-        address_query = make_fetch_stats_address_query(
+        # Execute the query
+        rows = get_message_stats_by_address(
+            session=session,
             address_contains=query_params.address_contains,
             sort_by=query_params.sort_by,
             sort_order=query_params.sort_order,
             page=pagination_page,
-            per_page=pagination_per_page,
+            pagination=pagination_per_page,
         )
-
-        # Execute the query
-        rows = session.execute(address_query).mappings().all()
 
         # Get total count using the direct SQL query
         total = count_address_stats(
             session=session, address_contains=query_params.address_contains
         )
 
-        dict_rows = [dict(row) for row in rows]
-        response = format_address_stats_response_dict(
-            data=dict_rows,
+        response = format_paginated_address_stats(
+            rows=rows,
             pagination=pagination_per_page,
             page=pagination_page,
-            total=total,
+            pagination_total=total,
         )
 
-        return web.json_response(text=aleph_json.dumps(response).decode("utf-8"))
+        return web.json_response(
+            text=aleph_json.dumps(response, sort_keys=False).decode("utf-8")
+        )
 
 
 def _get_address_from_request(request: web.Request) -> str:

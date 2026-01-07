@@ -1,21 +1,7 @@
-from enum import Enum
-
 from pydantic import BaseModel, Field
 
 from aleph.schemas.messages_query_params import DEFAULT_MESSAGES_PER_PAGE, DEFAULT_PAGE
-from aleph.types.sort_order import SortOrder
-
-
-class SortBy(str, Enum):
-    """Message types supported by Aleph"""
-
-    post = "POST"
-    aggregate = "AGGREGATE"
-    store = "STORE"
-    program = "PROGRAM"
-    instance = "INSTANCE"
-    forget = "FORGET"
-    messages = "MESSAGES"
+from aleph.types.sort_order import SortByMessageType, SortOrder
 
 
 class AddressesQueryParams(BaseModel):
@@ -32,8 +18,8 @@ class AddressesQueryParams(BaseModel):
     )
 
     # Sorts Results
-    sort_by: SortBy = Field(
-        default=SortBy.messages,
+    sort_by: SortByMessageType = Field(
+        default=SortByMessageType.TOTAL,
         alias="sortBy",
         description=(
             "Key used to sort the returned addresses. Available values:\n"
@@ -43,7 +29,7 @@ class AddressesQueryParams(BaseModel):
             "- 'forget': sort by forget activity\n"
             "- 'program': sort by program activity\n"
             "- 'instance': sort by instance activity\n"
-            "- 'messages': sort by the number of messages"
+            "- 'total': sort by the total number of messages"
         ),
     )
     sort_order: SortOrder = Field(
