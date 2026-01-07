@@ -199,13 +199,14 @@ profile = "black"
 
 [tool.check-sdist]
 git-only = [
-  "tests",
-  "docs",
-  "deployment",
   ".coveragerc",
   ".dockerignore",
-  "shell.nix",
+  "deployment",
+  "docs",
+  "justfile",
   "mypy.ini",
+  "shell.nix",
+  "tests",
 ]
 default-ignore = true
 
