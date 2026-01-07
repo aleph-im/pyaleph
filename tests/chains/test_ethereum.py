@@ -11,8 +11,10 @@ from web3 import Web3
 from web3.middleware.geth_poa import geth_poa_middleware
 
 from aleph.chains.ethereum import EthereumConnector, get_contract
+from aleph.db.accessors.chains import upsert_chain_sync_status
 from aleph.db.models import MessageDb
-from aleph.toolkit.timestamp import timestamp_to_datetime
+from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
+from aleph.types.chain_sync import ChainEventType
 from aleph.types.db_session import DbSessionFactory
 
 
@@ -74,7 +76,12 @@ async def test_broadcast_messages(
     chain_data_service = mocker.AsyncMock()
 
     mock_payload = mocker.MagicMock()
-    mock_payload.json.return_value = '{"test": "data"}'
+    jdata = {
+        "protocol": "on_chain_sync",
+        "version": 1,
+        "content": {"test": "data"},
+    }
+    mock_payload.json.return_value = json.dumps(jdata)
     chain_data_service.prepare_sync_event_payload = mocker.AsyncMock(
         return_value=mock_payload
     )
@@ -118,7 +125,7 @@ async def test_broadcast_messages(
     print(f"Gas used by broadcast_messages: {receipt.gasUsed}")
     print(f"Cost: {receipt.gasUsed * gas_price / 10**18} ETH")
 
-    gas_estimate = deployed_contract.functions.doEmit('{"test": "data"}').estimate_gas(
+    gas_estimate = deployed_contract.functions.doEmit(json.dumps(jdata)).estimate_gas(
         {
             "from": account.address,
         }
@@ -126,3 +133,100 @@ async def test_broadcast_messages(
     print(f"Estimated gas for doEmit: {gas_estimate}")
 
     chain_data_service.prepare_sync_event_payload.assert_called_once()
+
+
+class StopTestException(Exception):
+    pass
+
+
+@pytest.mark.asyncio
+async def test_fetch_ethereum_sync_events(
+    mocker,
+    mock_config: Config,
+    session_factory: DbSessionFactory,
+    web3: Web3,
+    deployed_contract,
+):
+    mock_config.ethereum.chain_id.value = 31337
+    mock_config.ethereum.private_key.value = (
+        "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+    )
+    mock_config.ethereum.sync_contract.value = deployed_contract.address
+    mock_config.ethereum.max_gas_price.value = 100000000000
+    mock_config.ethereum.archive_delay.value = 0.1
+    mock_config.ethereum.message_delay.value = 0.1
+    mock_config.ethereum.client_timeout.value = 1
+
+    account = Account.from_key(HexBytes(mock_config.ethereum.private_key.value))
+    mock_config.ethereum.authorized_emitters.value = [account.address]
+
+    pending_tx_publisher = mocker.AsyncMock()
+    # We want to stop the infinite loop after one call
+    pending_tx_publisher.add_and_publish_pending_tx.side_effect = StopTestException
+
+    chain_data_service = mocker.AsyncMock()
+    mock_payload = mocker.MagicMock()
+    # The expected data structure for SyncEvent message
+    jdata = {
+        "protocol": "on_chain_sync",
+        "version": 1,
+        "content": {"test": "data"},
+    }
+    mock_payload.json.return_value = json.dumps(jdata)
+    chain_data_service.prepare_sync_event_payload = mocker.AsyncMock(
+        return_value=mock_payload
+    )
+
+    connector = EthereumConnector(
+        session_factory=session_factory,
+        pending_tx_publisher=pending_tx_publisher,
+        chain_data_service=chain_data_service,
+    )
+
+    # 1. Broadcast a message to emit SyncEvent
+    messages = [
+        MessageDb(
+            item_hash="hash",
+            type="STORE",
+            chain=Chain.ETH,
+            sender="sender",
+            signature="sig",
+            item_type="inline",
+            item_content="content",
+            content={"address": "sender", "time": 1600000000},
+            time=timestamp_to_datetime(1600000000),
+            size=0,
+        )
+    ]
+
+    response = await connector.broadcast_messages(
+        config=mock_config,
+        web3=web3,
+        contract=deployed_contract,
+        account=account,
+        messages=messages,
+        nonce=web3.eth.get_transaction_count(account.address),
+    )
+    receipt = web3.eth.wait_for_transaction_receipt(response)
+
+    # 0. Set initial height to current to avoid picking up old events
+    # We set it to receipt.blockNumber - 1 so that fetcher picks up the block where we just emitted
+    with session_factory() as session:
+        upsert_chain_sync_status(
+            session=session,
+            chain=Chain.ETH,
+            sync_type=ChainEventType.SYNC,
+            height=receipt.blockNumber - 1,
+            update_datetime=utc_now(),
+        )
+        session.commit()
+
+    # 2. Fetch the event
+    with pytest.raises(StopTestException):
+        await connector.fetch_ethereum_sync_events(config=mock_config)
+
+    # 3. Verify
+    pending_tx_publisher.add_and_publish_pending_tx.assert_called_once()
+    call_args = pending_tx_publisher.add_and_publish_pending_tx.call_args
+    assert call_args.kwargs["tx"].content == jdata["content"]
+    assert call_args.kwargs["tx"].publisher == account.address

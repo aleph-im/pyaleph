@@ -105,9 +105,9 @@ class EthereumConnector(ChainWriter):
         return last_height
 
     @staticmethod
-    async def _get_logs(config, web3: Web3, contract, start_height):
+    async def _get_logs(config, web3: Web3, contract, last_height):
         try:
-            logs = get_logs_query(web3, contract, start_height + 1, "latest")
+            logs = get_logs_query(web3, contract, last_height + 1, "latest")
             for log in logs:
                 yield log
 
@@ -125,6 +125,8 @@ class EthereumConnector(ChainWriter):
             last_block = await asyncio.get_event_loop().run_in_executor(
                 None, web3.eth.get_block_number
             )
+
+            start_height = last_height + 1
             if start_height < config.ethereum.start_height.value:
                 start_height = config.ethereum.start_height.value
 
@@ -163,7 +165,7 @@ class EthereumConnector(ChainWriter):
         TODO: support websocket API.
         """
 
-        logs = self._get_logs(config, web3, contract, start_height + 1)
+        logs = self._get_logs(config, web3, contract, start_height)
 
         async for log in logs:
             try:
