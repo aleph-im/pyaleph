@@ -5,7 +5,7 @@ from aiohttp import web
 from pydantic import TypeAdapter, ValidationError
 
 import aleph.toolkit.json as aleph_json
-from aleph.db.accessors.address import count_address_stats
+from aleph.db.accessors.address_stats import count_address_stats
 from aleph.db.accessors.balances import (
     count_address_credit_history,
     count_balances_by_chain,
@@ -50,6 +50,7 @@ from aleph.web.controllers.utils import get_item_hash_str_from_request
 def make_stats_dict(rows: Sequence[Any]) -> Dict[str, Dict[str, int]]:
     return {
         row.address: {
+            # v0 uses "messages", we keep the same format for v1 despite it not being the clearest name.
             "messages": int(row.total),
             "aggregate": int(row.aggregate),
             "forget": int(row.forget),

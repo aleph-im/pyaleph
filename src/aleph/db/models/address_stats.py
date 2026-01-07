@@ -1,14 +1,6 @@
 from sqlalchemy import Column, Integer, String
-from sqlalchemy.orm import declarative_base
 
-
-# Define the base class
-class ViewBase:
-    pass
-
-
-# Create the base with the class as a template
-Base = declarative_base(cls=ViewBase)
+from aleph.db.models.base import Base
 
 
 class AddressStats(Base):

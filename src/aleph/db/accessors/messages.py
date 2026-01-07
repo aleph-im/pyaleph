@@ -10,7 +10,7 @@ from sqlalchemy.sql import Insert, Select
 from sqlalchemy.sql.elements import literal
 
 from aleph.db.accessors.cost import delete_costs_for_message
-from aleph.db.models.address import AddressStats
+from aleph.db.models.address_stats import AddressStats
 from aleph.toolkit.timestamp import coerce_to_datetime, utc_now
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSession

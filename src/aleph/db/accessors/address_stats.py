@@ -2,7 +2,7 @@ from typing import Optional
 
 from sqlalchemy import func, select
 
-from aleph.db.models.address import AddressStats
+from aleph.db.models.address_stats import AddressStats
 from aleph.types.db_session import DbSession
 
 
