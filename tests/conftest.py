@@ -102,13 +102,12 @@ def session_factory(mock_config):
     run_db_migrations(config=mock_config)
     # Running migrations updates the global config (it needs the mock config, but the only way we can pass it is
     # through the global config object, which is modified when loading config.yml). We must reset it.
-    mock_config()
+    load_config_for_tests()
 
     return make_session_factory(engine)
 
 
-@pytest.fixture
-def mock_config() -> Config:
+def load_config_for_tests() -> Config:
     config: Config = Config(aleph.config.get_defaults())
 
     config_file_path: Path = Path.cwd() / "config.yml"
@@ -134,6 +133,11 @@ def mock_config() -> Config:
     # the mock, which does not work well with configmanager Config objects.
     aleph.config.app_config = config
     return config
+
+
+@pytest.fixture
+def mock_config():
+    return load_config_for_tests()
 
 
 @pytest_asyncio.fixture
