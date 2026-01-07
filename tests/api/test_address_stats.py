@@ -176,7 +176,7 @@ async def test_address_stats_endpoint_basic(
     # Verify structure of a stats item
     first_address = next(iter(data["data"]))
     first_item = data["data"][first_address]
-    assert "total" in first_item
+    assert "messages" in first_item
     assert "post" in first_item
     assert "store" in first_item
     assert "program" in first_item
@@ -187,7 +187,7 @@ async def test_address_stats_endpoint_basic(
     # Verify actual values for all test addresses
     expected_stats = {
         test_addresses[0]: {
-            "total": 3,
+            "messages": 3,
             "post": 1,
             "store": 1,
             "program": 1,
@@ -196,7 +196,7 @@ async def test_address_stats_endpoint_basic(
             "forget": 0,
         },
         test_addresses[1]: {
-            "total": 1,
+            "messages": 1,
             "post": 1,
             "store": 0,
             "program": 0,
@@ -205,7 +205,7 @@ async def test_address_stats_endpoint_basic(
             "forget": 0,
         },
         test_addresses[2]: {
-            "total": 1,
+            "messages": 1,
             "post": 0,
             "store": 1,
             "program": 0,
@@ -214,7 +214,7 @@ async def test_address_stats_endpoint_basic(
             "forget": 0,
         },
         test_addresses[3]: {
-            "total": 1,
+            "messages": 1,
             "post": 0,
             "store": 0,
             "program": 0,
@@ -223,7 +223,7 @@ async def test_address_stats_endpoint_basic(
             "forget": 0,
         },
         test_addresses[4]: {
-            "total": 1,
+            "messages": 1,
             "post": 0,
             "store": 0,
             "program": 0,
