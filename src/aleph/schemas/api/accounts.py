@@ -5,9 +5,9 @@ from typing import Annotated, Dict, List, Optional
 from aleph_message.models import Chain
 from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, field_validator
 
+from aleph.schemas.messages_query_params import DEFAULT_PAGE, LIST_FIELD_SEPARATOR
 from aleph.types.files import FileType
 from aleph.types.sort_order import SortOrder
-from aleph.web.controllers.utils import DEFAULT_PAGE, LIST_FIELD_SEPARATOR
 
 
 class GetAccountQueryParams(BaseModel):
@@ -123,13 +123,27 @@ class GetAccountCreditHistoryQueryParams(BaseModel):
     page: int = Field(
         default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
     )
+    tx_hash: Optional[str] = Field(
+        default=None, description="Filter by transaction hash"
+    )
+    token: Optional[str] = Field(default=None, description="Filter by token")
+    chain: Optional[str] = Field(default=None, description="Filter by chain")
+    provider: Optional[str] = Field(default=None, description="Filter by provider")
+    origin: Optional[str] = Field(default=None, description="Filter by origin")
+    origin_ref: Optional[str] = Field(
+        default=None, description="Filter by origin reference"
+    )
+    payment_method: Optional[str] = Field(
+        default=None, description="Filter by payment method"
+    )
 
 
 class CreditHistoryResponseItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     amount: int
-    ratio: Optional[Decimal] = None
+    price: Optional[Decimal] = None
+    bonus_amount: Optional[int] = None
     tx_hash: Optional[str] = None
     token: Optional[str] = None
     chain: Optional[str] = None
@@ -149,3 +163,18 @@ class GetAccountCreditHistoryResponse(BaseModel):
     pagination_page: int
     pagination_total: int
     pagination_per_page: int
+
+
+class GetResourceConsumedCreditsResponse(BaseModel):
+    item_hash: str
+    consumed_credits: int
+
+
+class GetAccountPostTypesResponse(BaseModel):
+    address: str
+    post_types: List[str]
+
+
+class GetAccountChannelsResponse(BaseModel):
+    address: str
+    channels: List[str]

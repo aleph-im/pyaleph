@@ -1,3 +1,4 @@
+import importlib.resources
 import pprint
 import time
 from datetime import date, datetime, timedelta
@@ -5,7 +6,6 @@ from datetime import date, datetime, timedelta
 import aiohttp_cors
 import aiohttp_jinja2
 import jinja2
-import pkg_resources
 from aiohttp import web
 
 from aleph.web.controllers.routes import register_routes
@@ -34,7 +34,7 @@ def init_cors(app: web.Application):
 def create_aiohttp_app() -> web.Application:
     app = web.Application(client_max_size=1024**2 * 64)
 
-    tpl_path = pkg_resources.resource_filename("aleph.web", "templates")
+    tpl_path = str(importlib.resources.files("aleph.web") / "templates")
     jinja_loader = jinja2.ChoiceLoader(
         [
             jinja2.FileSystemLoader(tpl_path),

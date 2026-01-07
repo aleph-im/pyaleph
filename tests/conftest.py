@@ -55,6 +55,7 @@ from aleph.types.message_status import MessageStatus
 from aleph.web import create_aiohttp_app
 from aleph.web.controllers.app_state_getters import (
     APP_STATE_CONFIG,
+    APP_STATE_NODE_CACHE,
     APP_STATE_P2P_CLIENT,
     APP_STATE_SESSION_FACTORY,
     APP_STATE_STORAGE_SERVICE,
@@ -133,7 +134,9 @@ def mock_config() -> Config:
 @pytest_asyncio.fixture
 async def node_cache(mock_config: Config):
     async with NodeCache(
-        redis_host=mock_config.redis.host.value, redis_port=mock_config.redis.port.value
+        redis_host=mock_config.redis.host.value,
+        redis_port=mock_config.redis.port.value,
+        message_count_cache_ttl=mock_config.perf.message_count_cache_ttl.value,
     ) as node_cache:
         yield node_cache
 
@@ -159,13 +162,14 @@ async def test_storage_service(mock_config: Config, mocker) -> StorageService:
 
 
 @pytest.fixture
-def ccn_test_aiohttp_app(mocker, mock_config, session_factory):
+def ccn_test_aiohttp_app(mocker, mock_config, session_factory, node_cache: NodeCache):
     # Make aiohttp return the stack trace on 500 errors
     event_loop = asyncio.get_event_loop()
     event_loop.set_debug(True)
 
     app = create_aiohttp_app()
     app[APP_STATE_CONFIG] = mock_config
+    app[APP_STATE_NODE_CACHE] = node_cache
     app[APP_STATE_P2P_CLIENT] = mocker.AsyncMock()
     app[APP_STATE_STORAGE_SERVICE] = mocker.AsyncMock()
     app[APP_STATE_SESSION_FACTORY] = session_factory

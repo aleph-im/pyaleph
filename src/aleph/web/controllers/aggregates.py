@@ -8,8 +8,7 @@ from sqlalchemy import select
 
 from aleph.db.accessors.aggregates import get_aggregates_by_owner, refresh_aggregate
 from aleph.db.models import AggregateDb
-
-from .utils import LIST_FIELD_SEPARATOR
+from aleph.schemas.messages_query_params import LIST_FIELD_SEPARATOR
 
 LOGGER = logging.getLogger(__name__)
 

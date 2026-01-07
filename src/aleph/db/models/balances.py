@@ -49,7 +49,8 @@ class AlephCreditHistoryDb(Base):
 
     address: str = Column(String, nullable=False, index=True)
     amount: int = Column(BigInteger, nullable=False)
-    ratio: Optional[Decimal] = Column(DECIMAL, nullable=True)
+    price: Optional[Decimal] = Column(DECIMAL, nullable=True)
+    bonus_amount: Optional[int] = Column(BigInteger, nullable=True)
     tx_hash: Optional[str] = Column(String, nullable=True)
     token: Optional[str] = Column(String, nullable=True)
     chain: Optional[str] = Column(String, nullable=True)

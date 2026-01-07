@@ -5,6 +5,7 @@ Makes swapping between JSON implementations easier.
 
 import json
 from datetime import date, datetime, time
+from decimal import Decimal
 from typing import IO, Any, Union
 
 import orjson
@@ -17,7 +18,6 @@ SerializedJson = bytes
 # to handle all possible cases when using serialized JSON as input in order to make
 # serializer changes easier.
 SerializedJsonInput = Union[bytes, str]
-
 
 # Note: JSONDecodeError is a subclass of ValueError, but the JSON module sometimes throws
 #       raw value errors, including on NaN because of our custom parse_constant.
@@ -51,12 +51,17 @@ def extended_json_encoder(obj: Any) -> Any:
         return obj.hour * 3600 + obj.minute * 60 + obj.second + obj.microsecond / 1e6
     elif isinstance(obj, pydantic.BaseModel):
         return obj.model_dump()
+    elif isinstance(obj, Decimal):
+        return float(obj)
     else:
         raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 
-def dumps(obj: Any) -> bytes:
+def dumps(obj: Any, sort_keys: bool = True) -> bytes:
     try:
-        return orjson.dumps(obj)
+        opts = orjson.OPT_SORT_KEYS | orjson.OPT_NON_STR_KEYS if sort_keys else 0
+        return orjson.dumps(obj, option=opts)
     except TypeError:
-        return json.dumps(obj, default=extended_json_encoder).encode()
+        return json.dumps(
+            obj, default=extended_json_encoder, sort_keys=sort_keys
+        ).encode()

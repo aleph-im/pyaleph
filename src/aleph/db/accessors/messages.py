@@ -10,6 +10,7 @@ from sqlalchemy.sql import Insert, Select
 from sqlalchemy.sql.elements import literal
 
 from aleph.db.accessors.cost import delete_costs_for_message
+from aleph.db.models.address_stats import AddressStats
 from aleph.toolkit.timestamp import coerce_to_datetime, utc_now
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSession
@@ -18,7 +19,7 @@ from aleph.types.message_status import (
     MessageProcessingException,
     MessageStatus,
 )
-from aleph.types.sort_order import SortBy, SortOrder
+from aleph.types.sort_order import SortBy, SortByMessageType, SortOrder
 
 from ..models.chains import ChainTxDb
 from ..models.messages import (
@@ -130,7 +131,9 @@ def make_matching_messages_query(
             MessageDb.content["item_hash"].astext.in_(content_hashes)
         )
     if content_types:
-        select_stmt = select_stmt.where(MessageDb.content_type.in_(content_types))
+        select_stmt = select_stmt.where(
+            MessageDb.content["type"].astext.in_(content_types)
+        )
     if tags:
         select_stmt = select_stmt.where(
             MessageDb.content["content"]["tags"].has_any(array(tags))
@@ -249,31 +252,86 @@ def get_matching_messages(
 def get_message_stats_by_address(
     session: DbSession,
     addresses: Optional[Sequence[str]] = None,
-):
+    address_contains: Optional[str] = None,
+    sort_by: Optional[SortByMessageType] = None,
+    sort_order: SortOrder = SortOrder.DESCENDING,
+    page: int = 1,
+    pagination: int = 0,
+) -> Sequence[Any]:
     """
     Get message stats for user addresses.
 
     :param session: DB session object.
     :param addresses: If specified, restricts the list of results to these addresses.
                       otherwise, results for all addresses are returned.
-    :return: A list of (sender, message_type, count) tuples.
+    :param address_contains: If specified, restricts the list of results to addresses
+                             matching this pattern (SQL LIKE).
+    :param sort_by: Message type to sort by.
+    :param sort_order: Sort order (ASC or DESC).
+    :param page: Page number (starts at 1).
+    :param pagination: Number of results per page. 0 means no pagination.
+    :return: A list of rows containing address and message type counts.
     """
-    parameters = {}
-    select_stmt = "select address, type, nb_messages from address_stats_mat_view"
+
+    # Base Query
+    base_stmt = select(
+        AddressStats.address,
+        func.coalesce(func.sum(AddressStats.nb_messages), 0).label("total"),
+        func.coalesce(
+            func.sum(AddressStats.nb_messages).filter(AddressStats.type == "POST"), 0
+        ).label("post"),
+        func.coalesce(
+            func.sum(AddressStats.nb_messages).filter(AddressStats.type == "AGGREGATE"),
+            0,
+        ).label("aggregate"),
+        func.coalesce(
+            func.sum(AddressStats.nb_messages).filter(AddressStats.type == "STORE"), 0
+        ).label("store"),
+        func.coalesce(
+            func.sum(AddressStats.nb_messages).filter(AddressStats.type == "PROGRAM"), 0
+        ).label("program"),
+        func.coalesce(
+            func.sum(AddressStats.nb_messages).filter(AddressStats.type == "INSTANCE"),
+            0,
+        ).label("instance"),
+        func.coalesce(
+            func.sum(AddressStats.nb_messages).filter(AddressStats.type == "FORGET"), 0
+        ).label("forget"),
+    ).group_by(AddressStats.address)
 
     if addresses:
-        # Tuples are supported as array parameters by SQLAlchemy
-        addresses_tuple = (
-            addresses if isinstance(addresses, tuple) else tuple(addresses)
-        )
+        base_stmt = base_stmt.where(AddressStats.address.in_(addresses))
 
-        select_stmt += " where address in :addresses"
-        parameters = {"addresses": addresses_tuple}
+    if address_contains:
+        base_stmt = base_stmt.where(AddressStats.address.ilike(f"%{address_contains}%"))
 
-    return session.execute(text(select_stmt), parameters).all()
+    subquery = base_stmt.subquery()
+    stmt = select(subquery)
+
+    if sort_by:
+        sort_column_name = sort_by.value.lower()
+    else:
+        # Sort by address by default
+        sort_column_name = "address"
+
+    sort_column = getattr(subquery.c, sort_column_name)
+    if sort_order == SortOrder.ASCENDING:
+        stmt = stmt.order_by(sort_column.asc(), subquery.c.address.asc())
+    else:
+        stmt = stmt.order_by(sort_column.desc(), subquery.c.address.asc())
+
+    if pagination:
+        stmt = stmt.limit(pagination).offset((page - 1) * pagination)
+
+    return session.execute(stmt).all()
 
 
 def refresh_address_stats_mat_view(session: DbSession) -> None:
+    """
+    Refresh materialized views for address statistics.
+    First refreshes the base stats view, then the summary view that depends on it.
+    """
+    # Refresh the base stats view
     session.execute(
         text("refresh materialized view concurrently address_stats_mat_view")
     )
@@ -314,7 +372,7 @@ def get_unconfirmed_messages(
 def make_message_upsert_query(message: MessageDb) -> Insert:
     return (
         insert(MessageDb)
-        .values(message.to_dict(exclude={"content_type"}))
+        .values(message.to_dict())
         .on_conflict_do_update(
             constraint="messages_pkey",
             set_={"time": func.least(MessageDb.time, message.time)},
@@ -372,6 +430,34 @@ def make_message_status_upsert_query(
 def get_distinct_channels(session: DbSession) -> Iterable[Channel]:
     select_stmt = select(MessageDb.channel).distinct().order_by(MessageDb.channel)
     return session.execute(select_stmt).scalars()
+
+
+def get_distinct_post_types_for_address(session: DbSession, address: str) -> list[str]:
+    """Get distinct post_types for POST messages published by an address."""
+    select_stmt = (
+        select(MessageDb.content["type"].astext)
+        .where(MessageDb.sender == address)
+        .where(MessageDb.type == MessageType.post)
+        .where(MessageDb.content["type"].astext.isnot(None))
+        .distinct()
+        .order_by(MessageDb.content["type"].astext)
+    )
+    # Explicitly filter out nulls to keep the return type list[str]
+    return [
+        ptype for ptype in session.execute(select_stmt).scalars() if ptype is not None
+    ]
+
+
+def get_distinct_channels_for_address(session: DbSession, address: str) -> list[str]:
+    """Get distinct channels for messages published by an address (all message types, excluding null channels)."""
+    select_stmt = (
+        select(MessageDb.channel)
+        .where(MessageDb.sender == address)
+        .where(MessageDb.channel.isnot(None))
+        .distinct()
+        .order_by(MessageDb.channel)
+    )
+    return [str(channel) for channel in session.execute(select_stmt).scalars()]
 
 
 def get_forgotten_message(

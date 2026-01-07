@@ -34,16 +34,16 @@ try:  # for Sphinx >= 1.7
 except ImportError:
     from sphinx import apidoc
 
-output_dir = os.path.join(__location__, "api")
-module_dir = os.path.join(__location__, "../src/aleph")
-try:
-    shutil.rmtree(output_dir)
-except FileNotFoundError:
-    pass
-
 try:
     import sphinx
-    from pkg_resources import parse_version
+    from packaging.version import parse as parse_version
+
+    output_dir = os.path.join(__location__, "api")
+    module_dir = os.path.join(__location__, "../src/aleph")
+    try:
+        shutil.rmtree(output_dir)
+    except FileNotFoundError:
+        pass
 
     cmd_line_template = "sphinx-apidoc -e -f -o {outputdir} {moduledir}"
     cmd_line = cmd_line_template.format(outputdir=output_dir, moduledir=module_dir)
@@ -293,5 +293,5 @@ intersphinx_mapping = {
 
 
 rst_epilog = """
-.. |pyaleph_version| replace:: 0.9.0
+.. |pyaleph_version| replace:: 0.9.1
 """

@@ -287,8 +287,7 @@ class StorageService:
         self, session: DbSession, file_content: bytes, engine: ItemType = ItemType.ipfs
     ) -> str:
         if engine == ItemType.ipfs:
-            output = await self.ipfs_service.add_file(file_content)
-            file_hash = output["Hash"]
+            file_hash = await self.ipfs_service.add_bytes(file_content)
 
         elif engine == ItemType.storage:
             file_hash = sha256(file_content).hexdigest()

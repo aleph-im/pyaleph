@@ -213,6 +213,8 @@ def get_defaults():
                 # Timeout for pinning operations (seconds)
                 "timeout": 60,
             },
+            # Timeout for file stat requests (seconds)
+            "stat_timeout": 30,
         },
         "rabbitmq": {
             # Hostname of the RabbitMQ service.
@@ -247,6 +249,10 @@ def get_defaults():
             "dsn": None,
             # Sentry trace sample rate.
             "traces_sample_rate": None,
+        },
+        "perf": {
+            # TTL of the cache in front of DB count queries on the messages table.
+            "message_count_cache_ttl": 300,
         },
     }
 

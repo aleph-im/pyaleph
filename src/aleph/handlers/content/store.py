@@ -115,7 +115,8 @@ class StoreMessageHandler(ContentHandler):
                 try:
                     # The timeout of the aioipfs client does not seem to work, time out manually
                     stats = await asyncio.wait_for(
-                        ipfs_client.files.stat(f"/ipfs/{item_hash}"), 5
+                        ipfs_client.files.stat(f"/ipfs/{item_hash}"),
+                        config.ipfs.stat_timeout.value,
                     )
                 except aioipfs.InvalidCIDError as e:
                     raise UnknownHashError(

@@ -83,6 +83,15 @@ async def api_client(ccn_test_aiohttp_app, mocker, aiohttp_client):
             "Type": "file",
         }
     )
+    ipfs_service.pinning_client.files.stat = mocker.AsyncMock(
+        return_value={
+            "Hash": EXPECTED_FILE_CID,
+            "Size": 34,
+            "CumulativeSize": 42,
+            "Blocks": 0,
+            "Type": "file",
+        }
+    )
 
     ccn_test_aiohttp_app[APP_STATE_STORAGE_SERVICE] = StorageService(
         storage_engine=InMemoryStorageEngine(files={}),
@@ -411,6 +420,63 @@ async def test_storage_add_json(api_client, session_factory: DbSessionFactory):
         json=JSON_CONTENT,
         expected_file_hash=ItemHash(EXPECTED_JSON_FILE_SHA256),
     )
+
+
+@pytest.mark.asyncio
+async def test_get_raw_hash_head(api_client, session_factory: DbSessionFactory, mocker):
+    from aleph.db.accessors.files import upsert_file
+    from aleph.toolkit.constants import MAX_FILE_SIZE
+
+    # 1. Test standard file
+    file_content = b"Some content"
+    file_hash = "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f"
+    with session_factory() as session:
+        upsert_file(
+            session=session,
+            file_hash=file_hash,
+            size=len(file_content),
+            file_type=FileType.FILE,
+        )
+        session.commit()
+
+    response = await api_client.head(f"{GET_STORAGE_RAW_URI}/{file_hash}")
+    assert response.status == 200
+    assert response.headers["Content-Length"] == str(len(file_content))
+    assert response.headers["Accept-Ranges"] == "none"
+    # HEAD response should not have a body
+    assert await response.read() == b""
+
+    # 2. Test large file (> 100MB)
+    large_file_size = MAX_FILE_SIZE + 1024
+    large_file_hash = "a" * 64
+    with session_factory() as session:
+        upsert_file(
+            session=session,
+            file_hash=large_file_hash,
+            size=large_file_size,
+            file_type=FileType.FILE,
+        )
+        session.commit()
+
+    # This should succeed for HEAD even if it's over MAX_FILE_SIZE
+    response = await api_client.head(f"{GET_STORAGE_RAW_URI}/{large_file_hash}")
+    assert response.status == 200
+    assert response.headers["Content-Length"] == str(large_file_size)
+
+    # But fail for GET
+    response = await api_client.get(f"{GET_STORAGE_RAW_URI}/{large_file_hash}")
+    assert response.status == 413
+
+    # 3. Verify it doesn't load content for HEAD
+    # We can mock storage_service.get_hash_content and ensure it's not called
+    storage_service = api_client.app[APP_STATE_STORAGE_SERVICE]
+    mocker.patch.object(storage_service, "get_hash_content", mocker.AsyncMock())
+
+    await api_client.head(f"{GET_STORAGE_RAW_URI}/{file_hash}")
+    storage_service.get_hash_content.assert_not_called()
+
+    await api_client.get(f"{GET_STORAGE_RAW_URI}/{file_hash}")
+    storage_service.get_hash_content.assert_called_once()
 
 
 @pytest.mark.asyncio

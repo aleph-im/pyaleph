@@ -4,11 +4,17 @@ from typing import Any, Mapping
 import pytest
 from message_test_helpers import make_validated_message_from_dict
 
-from aleph.db.models import AggregateDb, AggregateElementDb
+from aleph.chains.signature_verifier import SignatureVerifier
+from aleph.db.models import AggregateDb, AggregateElementDb, PendingMessageDb
+from aleph.db.models.posts import PostDb
+from aleph.handlers.content.post import PostMessageHandler
+from aleph.handlers.message_handler import MessageHandler
 from aleph.permissions import check_sender_authorization
+from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
+from aleph.types.message_status import PermissionDenied
 
 
 @pytest.mark.asyncio
@@ -26,7 +32,7 @@ async def test_owner_is_sender(mocker):
     }
 
     message = make_validated_message_from_dict(
-        message_dict, message_dict["item_content"]
+        message_dict, str(message_dict["item_content"])
     )
 
     is_authorized = await check_sender_authorization(
@@ -52,7 +58,7 @@ async def test_store_unauthorized(mocker):
     }
 
     message = make_validated_message_from_dict(
-        message_dict, message_dict["item_content"]
+        message_dict, str(message_dict["item_content"])
     )
 
     is_authorized = await check_sender_authorization(
@@ -92,7 +98,7 @@ async def test_authorized(mocker):
     )
 
     message = make_validated_message_from_dict(
-        AUTHORIZED_MESSAGE, AUTHORIZED_MESSAGE["item_content"]
+        AUTHORIZED_MESSAGE, str(AUTHORIZED_MESSAGE["item_content"])
     )
 
     is_authorized = await check_sender_authorization(
@@ -123,7 +129,7 @@ async def test_authorized_with_db(session_factory: DbSessionFactory):
         dirty=False,
     )
     message = make_validated_message_from_dict(
-        AUTHORIZED_MESSAGE, AUTHORIZED_MESSAGE["item_content"]
+        AUTHORIZED_MESSAGE, str(AUTHORIZED_MESSAGE["item_content"])
     )
 
     with session_factory() as session:
@@ -145,13 +151,6 @@ async def test_message_processing_should_fail_on_permission(
     An attacker can send a message with victim's address, and it should be rejected
     during message processing, but currently it's accepted due to the bug.
     """
-    import datetime as dt
-
-    from aleph.chains.signature_verifier import SignatureVerifier
-    from aleph.db.models import PendingMessageDb
-    from aleph.handlers.message_handler import MessageHandler
-    from aleph.storage import StorageService
-    from aleph.types.message_status import PermissionDenied
 
     # Mock the storage and signature verification to focus on permission testing
     storage_service = mocker.Mock(spec=StorageService)
@@ -209,3 +208,321 @@ async def test_message_processing_should_fail_on_permission(
         except PermissionDenied:
             # This is the expected behavior - the message should be rejected
             pass
+
+
+@pytest.mark.asyncio
+async def test_delegated_account_amend_permission(
+    mocker, session_factory: DbSessionFactory
+):
+    """
+    Test that when a delegated account tries to amend a post, the system checks
+    permissions against the original post message.
+    """
+
+    # Original post message
+    original_post_dict = {
+        "chain": "ETH",
+        "item_hash": "original123456789012345678901234567890123456789012345678",
+        "sender": "0xOriginalSender12345678901234567890123456789012",
+        "type": "POST",
+        "channel": "TEST",
+        "item_content": '{"address":"0xContentOwner12345678901234567890123456789012","time":1651050219.3481126,"content":{"title":"Original Post","body":"Original content"},"type":"post"}',
+        "item_type": "inline",
+        "signature": "original_signature",
+        "time": 1651050219.3488848,
+    }
+
+    original_message = make_validated_message_from_dict(
+        original_post_dict, str(original_post_dict["item_content"])
+    )
+
+    # Amend message from delegated account
+    amend_post_dict = {
+        "chain": "ETH",
+        "item_hash": "amend123456789012345678901234567890123456789012345678901",
+        "sender": "0xDelegatedAccount12345678901234567890123456789012",  # Different from original sender
+        "type": "POST",
+        "channel": "TEST",
+        "item_content": '{"address":"0xContentOwner12345678901234567890123456789012","time":1651050299.3481126,"content":{"title":"Amended Post","body":"Updated content"},"type":"amend","ref":"original123456789012345678901234567890123456789012345678"}',
+        "item_type": "inline",
+        "signature": "amend_signature",
+        "time": 1651050299.3488848,
+    }
+
+    amend_message = make_validated_message_from_dict(
+        amend_post_dict, str(amend_post_dict["item_content"])
+    )
+
+    # Mock get_message_by_item_hash to return the original message
+    mocker.patch(
+        "aleph.permissions.get_message_by_item_hash", return_value=original_message
+    )
+
+    # Mock security aggregate that authorizes the delegated account for the original post
+    # Note: we don't need to specify "amend" in post_types since amend permissions
+    # are derived from the original post permissions
+    def mock_get_aggregate(session, key, owner):
+        # When checking permissions for the original post's content owner
+        if (
+            key == "security"
+            and owner == "0xContentOwner12345678901234567890123456789012"
+        ):
+            return AggregateDb(
+                owner="0xContentOwner12345678901234567890123456789012",
+                key="security",
+                content={
+                    "authorizations": [
+                        {
+                            "address": "0xDelegatedAccount12345678901234567890123456789012",
+                            "types": ["POST"],
+                            "post_types": [
+                                "post"
+                            ],  # Only need post permission, amend is derived
+                        }
+                    ]
+                },
+                creation_datetime=dt.datetime(2022, 1, 1),
+                last_revision_hash="1234",
+            )
+        return None
+
+    mocker.patch(
+        "aleph.permissions.get_aggregate_by_key", side_effect=mock_get_aggregate
+    )
+
+    # Test that the delegated account is authorized to amend
+    is_authorized = await check_sender_authorization(
+        session=mocker.MagicMock(), message=amend_message
+    )
+    assert is_authorized
+
+
+@pytest.mark.asyncio
+async def test_delegated_account_amend_permission_denied(
+    mocker, session_factory: DbSessionFactory
+):
+    """
+    Test that when a delegated account tries to amend a post but lacks proper
+    permissions, the authorization is denied.
+    """
+
+    # Original post message
+    original_post_dict = {
+        "chain": "ETH",
+        "item_hash": "original123456789012345678901234567890123456789012345678",
+        "sender": "0xOriginalSender12345678901234567890123456789012",
+        "type": "POST",
+        "channel": "TEST",
+        "item_content": '{"address":"0xContentOwner12345678901234567890123456789012","time":1651050219.3481126,"content":{"title":"Original Post","body":"Original content"},"type":"post"}',
+        "item_type": "inline",
+        "signature": "original_signature",
+        "time": 1651050219.3488848,
+    }
+
+    original_message = make_validated_message_from_dict(
+        original_post_dict, str(original_post_dict["item_content"])
+    )
+
+    # Amend message from unauthorized account
+    amend_post_dict = {
+        "chain": "ETH",
+        "item_hash": "amend123456789012345678901234567890123456789012345678901",
+        "sender": "0xUnauthorizedAccount1234567890123456789012345678",  # Not in authorization list
+        "type": "POST",
+        "channel": "TEST",
+        "item_content": '{"address":"0xContentOwner12345678901234567890123456789012","time":1651050299.3481126,"content":{"title":"Amended Post","body":"Updated content"},"type":"amend","ref":"original123456789012345678901234567890123456789012345678"}',
+        "item_type": "inline",
+        "signature": "amend_signature",
+        "time": 1651050299.3488848,
+    }
+
+    amend_message = make_validated_message_from_dict(
+        amend_post_dict, str(amend_post_dict["item_content"])
+    )
+
+    # Mock get_message_by_item_hash to return the original message
+    mocker.patch(
+        "aleph.permissions.get_message_by_item_hash", return_value=original_message
+    )
+
+    # Mock security aggregate that does NOT authorize the account trying to amend
+    def mock_get_aggregate(session, key, owner):
+        # When checking permissions for the original post's content owner
+        if (
+            key == "security"
+            and owner == "0xContentOwner12345678901234567890123456789012"
+        ):
+            return AggregateDb(
+                owner="0xContentOwner12345678901234567890123456789012",
+                key="security",
+                content={
+                    "authorizations": [
+                        {
+                            "address": "0xDelegatedAccount12345678901234567890123456789012",  # Different account than the one trying to amend
+                            "types": ["POST"],
+                            "post_types": ["post"],
+                        }
+                    ]
+                },
+                creation_datetime=dt.datetime(2022, 1, 1),
+                last_revision_hash="1234",
+            )
+        return None
+
+    mocker.patch(
+        "aleph.permissions.get_aggregate_by_key", side_effect=mock_get_aggregate
+    )
+
+    # Test that the unauthorized account is NOT authorized to amend
+    is_authorized = await check_sender_authorization(
+        session=mocker.MagicMock(), message=amend_message
+    )
+    assert not is_authorized
+
+
+@pytest.mark.asyncio
+async def test_amend_with_missing_original_post(
+    mocker, session_factory: DbSessionFactory
+):
+    """
+    Test that when trying to amend a post that doesn't exist, the authorization fails.
+    """
+
+    # Amend message referencing a non-existent original post
+    amend_post_dict = {
+        "chain": "ETH",
+        "item_hash": "amend123456789012345678901234567890123456789012345678901",
+        "sender": "0xDelegatedAccount12345678901234567890123456789012",
+        "type": "POST",
+        "channel": "TEST",
+        "item_content": '{"address":"0xContentOwner12345678901234567890123456789012","time":1651050299.3481126,"content":{"title":"Amended Post","body":"Updated content"},"type":"amend","ref":"nonexistent123456789012345678901234567890123456789012"}',
+        "item_type": "inline",
+        "signature": "amend_signature",
+        "time": 1651050299.3488848,
+    }
+
+    amend_message = make_validated_message_from_dict(
+        amend_post_dict, str(amend_post_dict["item_content"])
+    )
+
+    # Mock get_message_by_item_hash to return None (original post not found)
+    mocker.patch("aleph.permissions.get_message_by_item_hash", return_value=None)
+
+    # Mock security aggregate - this WILL be called since original post doesn't exist
+    # When original post doesn't exist, it falls back to checking permissions for the amend message
+    def mock_get_aggregate(session, key, owner):
+        # When checking permissions for the amend message, it should find authorization
+        if (
+            key == "security"
+            and owner == "0xContentOwner12345678901234567890123456789012"
+        ):
+            return AggregateDb(
+                owner="0xContentOwner12345678901234567890123456789012",
+                key="security",
+                content={
+                    "authorizations": [
+                        {
+                            "address": "0xDelegatedAccount12345678901234567890123456789012",
+                            "types": ["POST"],
+                            "post_types": [
+                                "amend"
+                            ],  # Need amend permission for the fallback case
+                        }
+                    ]
+                },
+                creation_datetime=dt.datetime(2022, 1, 1),
+                last_revision_hash="1234",
+            )
+        return None
+
+    mocker.patch(
+        "aleph.permissions.get_aggregate_by_key", side_effect=mock_get_aggregate
+    )
+
+    # Test that when the original post doesn't exist, authorization falls back to normal check
+    is_authorized = await check_sender_authorization(
+        session=mocker.MagicMock(), message=amend_message
+    )
+    # This should be authorized since the delegated account has permission for the content owner
+    assert is_authorized
+
+
+@pytest.mark.asyncio
+async def test_amend_different_owner_denied(mocker, session_factory: DbSessionFactory):
+    """
+    Test that attempting to amend a post with a different content address is denied.
+    This tests the additional security check in PostMessageHandler.check_permissions.
+    """
+
+    # Original post message with one owner
+    original_post_dict = {
+        "chain": "ETH",
+        "item_hash": "original123456789012345678901234567890123456789012345678",
+        "sender": "0xOriginalSender12345678901234567890123456789012",
+        "type": "POST",
+        "channel": "TEST",
+        "item_content": '{"address":"0xOriginalOwner12345678901234567890123456789012","time":1651050219.3481126,"content":{"title":"Original Post","body":"Original content"},"type":"post"}',
+        "item_type": "inline",
+        "signature": "original_signature",
+        "time": 1651050219.3488848,
+    }
+
+    make_validated_message_from_dict(
+        original_post_dict, str(original_post_dict["item_content"])
+    )
+
+    # Amend message with DIFFERENT owner trying to amend the original post
+    malicious_amend_dict = {
+        "chain": "ETH",
+        "item_hash": "amend123456789012345678901234567890123456789012345678901",
+        "sender": "0xMaliciousAccount12345678901234567890123456789012",
+        "type": "POST",
+        "channel": "TEST",
+        "item_content": '{"address":"0xDifferentOwner12345678901234567890123456789012","time":1651050299.3481126,"content":{"title":"Malicious Amend","body":"Trying to hijack post"},"type":"amend","ref":"original123456789012345678901234567890123456789012345678"}',
+        "item_type": "inline",
+        "signature": "malicious_signature",
+        "time": 1651050299.3488848,
+    }
+
+    malicious_amend_message = make_validated_message_from_dict(
+        malicious_amend_dict, str(malicious_amend_dict["item_content"])
+    )
+
+    mock_original_post = PostDb(
+        item_hash="original123456789012345678901234567890123456789012345678",
+        owner="0xOriginalOwner12345678901234567890123456789012",  # Different from amend owner
+        type="post",
+        ref=None,
+        amends=None,
+        channel=Channel("TEST"),
+        content={"title": "Original Post", "body": "Original content"},
+        creation_datetime=dt.datetime(2022, 1, 1),
+    )
+
+    mocker.patch(
+        "aleph.handlers.content.post.get_original_post", return_value=mock_original_post
+    )
+
+    # Mock the standard permission check to pass (we want to test the additional check)
+    mocker.patch(
+        "aleph.handlers.content.content_handler.ContentHandler.check_permissions",
+        return_value=None,
+    )
+
+    # Create the handler
+    handler = PostMessageHandler([], "", [], [], [])
+
+    # Test that the permission check fails due to owner mismatch
+    with session_factory() as session:
+        try:
+            await handler.check_permissions(
+                session=session, message=malicious_amend_message
+            )
+            # If we reach here, the test failed - the security check didn't work
+            assert False, "Expected PermissionDenied exception but none was raised"
+        except PermissionDenied as e:
+            # This is the expected behavior - check the error message in the errors attribute
+            error_message = str(e.args[0][0]) if e.args and e.args[0] else str(e)
+            assert "does not match original post owner" in error_message
+            assert "0xDifferentOwner12345678901234567890123456789012" in error_message
+            assert "0xOriginalOwner12345678901234567890123456789012" in error_message

@@ -36,6 +36,7 @@ from aleph.web.controllers.app_state_getters import (
     get_session_factory_from_request,
     get_storage_service_from_request,
 )
+from aleph.web.controllers.utils import get_item_hash_from_request
 
 LOGGER = logging.getLogger(__name__)
 
@@ -67,16 +68,10 @@ class MessagePrice(DataClassJsonMixin):
     required_tokens: Optional[Decimal] = None
 
 
-async def get_executable_message(session: DbSession, item_hash_str: str) -> MessageDb:
+async def get_executable_message(session: DbSession, item_hash: ItemHash) -> MessageDb:
     """Attempt to get an executable message from the database.
     Raises an HTTP exception if the message is not found, not processed or is not an executable message.
     """
-
-    # Parse the item_hash_str into an ItemHash object
-    try:
-        item_hash = ItemHash(item_hash_str)
-    except ValueError:
-        raise web.HTTPBadRequest(body=f"Invalid message hash: {item_hash_str}")
 
     # Get the message status from the database
     message_status_db = get_message_status(session=session, item_hash=item_hash)
@@ -85,7 +80,7 @@ async def get_executable_message(session: DbSession, item_hash_str: str) -> Mess
     # Loop through the status_exceptions to find a match and raise the corresponding exception
     if message_status_db.status in MESSAGE_STATUS_EXCEPTIONS:
         exception, error_message = MESSAGE_STATUS_EXCEPTIONS[message_status_db.status]
-        raise exception(body=f"{error_message}: {item_hash_str}")
+        raise exception(body=f"{error_message}: {item_hash}")
     assert message_status_db.status == MessageStatus.PROCESSED
 
     # Get the message from the database
@@ -98,7 +93,7 @@ async def get_executable_message(session: DbSession, item_hash_str: str) -> Mess
         MessageType.store,
     ):
         raise web.HTTPBadRequest(
-            body=f"Message is not an executable or store message: {item_hash_str}"
+            body=f"Message is not an executable or store message: {item_hash}"
         )
 
     return message
@@ -109,7 +104,7 @@ async def message_price(request: web.Request):
 
     session_factory = get_session_factory_from_request(request)
     with session_factory() as session:
-        item_hash = request.match_info["item_hash"]
+        item_hash = get_item_hash_from_request(request)
         message = await get_executable_message(session, item_hash)
         content: ExecutableContent = message.parsed_content
 
@@ -201,7 +196,15 @@ async def recalculate_message_costs(request: web.Request):
         if item_hash_param:
             # Recalculate costs for a specific message
             try:
-                message = await get_executable_message(session, item_hash_param)
+                # Parse the item_hash_param into an ItemHash object
+                try:
+                    item_hash = ItemHash(item_hash_param)
+                except ValueError:
+                    raise web.HTTPBadRequest(
+                        body=f"Invalid message hash: {item_hash_param}"
+                    )
+
+                message = await get_executable_message(session, item_hash)
                 messages_to_recalculate = [message]
             except HTTPException:
                 raise
