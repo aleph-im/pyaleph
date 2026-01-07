@@ -100,6 +100,10 @@ def session_factory(mock_config):
         conn.execute("create schema public")
 
     run_db_migrations(config=mock_config)
+    # Running migrations updates the global config (it needs the mock config, but the only way we can pass it is
+    # through the global config object, which is modified when loading config.yml). We must reset it.
+    mock_config()
+
     return make_session_factory(engine)
 
 

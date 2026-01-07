@@ -2,12 +2,12 @@ from logging.config import fileConfig
 from pathlib import Path
 
 from alembic import context
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
 from aleph.config import get_config
 from aleph.db.connection import make_db_url
 from sqlalchemy import create_engine
 
+# this is the Alembic Config object, which provides
+# access to the values within the .ini file in use.
 config = context.config
 
 # Interpret the config file for Python logging.
@@ -37,7 +37,7 @@ def get_db_url() -> str:
 
     config_file_path: Path
 
-    # intermediat variable to please mypy
+    # intermediate variable to please mypy
     cli_args_config_file = cli_args.get("config_file")
     if cli_args_config_file:
         config_file_path = Path(cli_args_config_file)

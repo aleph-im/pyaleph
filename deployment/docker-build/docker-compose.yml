@@ -2,9 +2,6 @@
 # Starts all the services used by pyaleph, minus pyaleph itself. This is used for local development.
 # Use the docker-compose/docker-compose.yml file for deployment.
 
-version: '2.2'
-
-
 volumes:
   pyaleph-ipfs:
   pyaleph-postgres:
@@ -76,6 +73,11 @@ services:
       POSTGRES_DB: aleph
     networks:
       - pyaleph
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aleph"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     shm_size: "2gb"
 
   redis:
