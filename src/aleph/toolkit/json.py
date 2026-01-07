@@ -5,6 +5,7 @@ Makes swapping between JSON implementations easier.
 
 import json
 from datetime import date, datetime, time
+from decimal import Decimal
 from typing import IO, Any, Union
 
 import orjson
@@ -50,6 +51,8 @@ def extended_json_encoder(obj: Any) -> Any:
         return obj.hour * 3600 + obj.minute * 60 + obj.second + obj.microsecond / 1e6
     elif isinstance(obj, pydantic.BaseModel):
         return obj.model_dump()
+    elif isinstance(obj, Decimal):
+        return float(obj)
     else:
         raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 

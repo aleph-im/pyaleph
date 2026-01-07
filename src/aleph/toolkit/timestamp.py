@@ -1,8 +1,6 @@
 import datetime as dt
 from typing import Optional, Union
 
-import pytz
-
 
 def timestamp_to_datetime(timestamp: float) -> dt.datetime:
     """
@@ -10,7 +8,7 @@ def timestamp_to_datetime(timestamp: float) -> dt.datetime:
     object.
     """
 
-    return pytz.utc.localize(dt.datetime.utcfromtimestamp(timestamp))
+    return dt.datetime.fromtimestamp(timestamp, dt.timezone.utc)
 
 
 def coerce_to_datetime(
@@ -31,4 +29,4 @@ def utc_now() -> dt.datetime:
     Returns the current time as a UTC-localized datetime object.
     This differs from datetime.utcnow() because `utcnow()` is not localized.
     """
-    return pytz.utc.localize(dt.datetime.utcnow())
+    return dt.datetime.now(dt.timezone.utc)
