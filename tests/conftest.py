@@ -109,10 +109,11 @@ def mock_config() -> Config:
 
     config_file_path: Path = Path.cwd() / "config.yml"
 
-    # The postgres/redis hosts use Docker network names in the default config.
+    # The anvil/postgres/redis hosts use Docker network names in the default config.
     # We always use localhost for tests.
     config.postgres.host.value = "127.0.0.1"
     config.redis.host.value = "127.0.0.1"
+    config.ethereum.api_url.value = "http://127.0.0.1:8545"
 
     if config_file_path.exists():
         user_config_raw: str = config_file_path.read_text()

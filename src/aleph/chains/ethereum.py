@@ -20,6 +20,7 @@ from aleph.db.accessors.messages import get_unconfirmed_messages
 from aleph.db.accessors.pending_messages import count_pending_messages
 from aleph.db.accessors.pending_txs import count_pending_txs
 from aleph.db.models.chains import ChainTxDb
+from aleph.exceptions import AlephStorageException
 from aleph.schemas.chains.tx_context import TxContext
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainEventType
@@ -278,10 +279,46 @@ class EthereumConnector(ChainWriter):
                 "chainId": config.ethereum.chain_id.value,
                 "gasPrice": gas_price,
                 "nonce": nonce,
+                "from": account.address,
             }
         )
         signed_tx = account.sign_transaction(tx)
         return web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+
+    async def broadcast_messages(
+        self,
+        config: Config,
+        web3: Web3,
+        contract,
+        account,
+        messages,
+        nonce: int,
+    ) -> HexBytes:
+        gas_price = web3.eth.generate_gas_price() or web3.eth.gas_price
+        if gas_price > config.ethereum.max_gas_price.value:
+            raise AlephStorageException(
+                f"Gas price too high: {gas_price} > {config.ethereum.max_gas_price.value}"
+            )
+
+        with self.session_factory() as session:
+            sync_event_payload = (
+                await self.chain_data_service.prepare_sync_event_payload(
+                    session=session, messages=messages
+                )
+            )
+            session.commit()
+
+        return await run_in_executor(
+            None,
+            self._broadcast_content,
+            config,
+            contract,
+            web3,
+            account,
+            int(gas_price * 1.1),
+            nonce,
+            sync_event_payload.json(),
+        )
 
     async def packer(self, config: Config):
         web3 = await run_in_executor(None, get_web3, config)
@@ -293,7 +330,6 @@ class EthereumConnector(ChainWriter):
 
         LOGGER.info("Ethereum Connector set up with address %s" % address)
         i = 0
-        gas_price = web3.eth.generate_gas_price()
         while True:
             with self.session_factory() as session:
                 # Wait for sync operations to complete
@@ -302,17 +338,10 @@ class EthereumConnector(ChainWriter):
                 ) > 1000:
                     await asyncio.sleep(30)
                     continue
-                gas_price = web3.eth.generate_gas_price()
 
                 if i >= 100:
                     await asyncio.sleep(30)  # wait three (!!) blocks
-                    gas_price = web3.eth.generate_gas_price()
                     i = 0
-
-                if gas_price > config.ethereum.max_gas_price.value:
-                    # gas price too high, wait a bit and retry.
-                    await asyncio.sleep(60)
-                    continue
 
                 nonce = web3.eth.get_transaction_count(account.address)
 
@@ -323,28 +352,20 @@ class EthereumConnector(ChainWriter):
                 )
 
             if messages:
-                LOGGER.info("Chain sync: %d unconfirmed messages")
+                LOGGER.info("Chain sync: %d unconfirmed messages" % len(messages))
 
-                # This function prepares a chain data file and makes it downloadable from the node.
-                sync_event_payload = (
-                    await self.chain_data_service.prepare_sync_event_payload(
-                        session=session, messages=messages
+                try:
+                    response = await self.broadcast_messages(
+                        config=config,
+                        web3=web3,
+                        contract=contract,
+                        account=account,
+                        messages=messages,
+                        nonce=nonce,
                     )
-                )
-                # Required to apply update to the files table in get_chaindata
-                session.commit()
-                response = await run_in_executor(
-                    None,
-                    self._broadcast_content,
-                    config,
-                    contract,
-                    web3,
-                    account,
-                    int(gas_price * 1.1),
-                    nonce,
-                    sync_event_payload.json(),
-                )
-                LOGGER.info("Broadcast %r on %s" % (response, CHAIN_NAME))
+                    LOGGER.info("Broadcast %r on %s" % (response, Chain.ETH.value))
+                except Exception:
+                    LOGGER.exception("Error while broadcasting messages to Ethereum")
 
             await asyncio.sleep(config.ethereum.commit_delay.value)
             i += 1
