@@ -39,10 +39,10 @@ dependencies = [
   "configparser==7.2.0",
   "cosmospy==6",
   "dataclasses-json==0.6.7",
-  "eth-account==0.10",
-  "eth-typing~=4.0",
+  "eth-account==0.13.7",
+  "eth-typing==5.2.1",
   "gunicorn==23.0.0",
-  "hexbytes==0.2.2",
+  "hexbytes==1.3.1",
   "msgpack==1.0.8",                                                                                                        # required by aiocache
   "multiaddr==0.0.9",                                                                                                      # for libp2p-stubs
   "orjson>=3.7.7",                                                                                                         # Minimum version for Python 3.11
@@ -68,7 +68,7 @@ dependencies = [
   "ujson==5.10.0",                                                                                                         # required by aiocache
   "urllib3==2.6.0",
   "uvloop==0.21",
-  "web3==6.11.2",
+  "web3==7.14.0",
 ]
 optional-dependencies.cosmos = [
   "cosmospy",

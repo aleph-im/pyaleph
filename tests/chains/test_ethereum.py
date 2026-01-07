@@ -8,7 +8,7 @@ from configmanager import Config
 from eth_account import Account
 from hexbytes import HexBytes
 from web3 import Web3
-from web3.middleware.geth_poa import geth_poa_middleware
+from web3.middleware import ExtraDataToPOAMiddleware
 
 from aleph.chains.ethereum import EthereumConnector, get_contract
 from aleph.db.accessors.chains import upsert_chain_sync_status
@@ -22,7 +22,7 @@ from aleph.types.db_session import DbSessionFactory
 def web3(mock_config: Config):
     eth_api_url = mock_config.ethereum.api_url.value
     w3 = Web3(Web3.HTTPProvider(eth_api_url))
-    w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+    w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
     return w3
 
 
@@ -65,7 +65,7 @@ async def test_broadcast_messages(
     web3: Web3,
     deployed_contract,
 ):
-    mock_config.ethereum.chain_id.value = 31337
+    mock_config.ethereum.chain_id.value = web3.eth.chain_id
     mock_config.ethereum.private_key.value = (
         "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
     )
@@ -109,7 +109,6 @@ async def test_broadcast_messages(
     ]
 
     gas_price = web3.eth.gas_price
-    print(f"Current gas price: {gas_price}")
 
     response = await connector.broadcast_messages(
         config=mock_config,

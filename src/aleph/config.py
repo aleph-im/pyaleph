@@ -138,7 +138,7 @@ def get_defaults():
             # Whether to fetch transactions from Ethereum.
             "enabled": False,
             # Ethereum RPC node URL.
-            "api_url": "http://anvil:8545",
+            "api_url": "http://127.0.0.1:8545",
             # Whether to enable publishing of messages on Ethereum from this node.
             "packing_node": False,
             # Ethereum chain ID.
