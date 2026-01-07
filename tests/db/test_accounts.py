@@ -81,23 +81,19 @@ async def test_get_message_stats_by_address(
 
         stats_by_address = {row.address: row for row in stats}
         assert (
-            stats_by_address["0xB68B9D4f3771c246233823ed1D3Add451055F9Ef"].type
-            == MessageType.forget
+            stats_by_address["0xB68B9D4f3771c246233823ed1D3Add451055F9Ef"].forget == 1
         )
-        assert (
-            stats_by_address["0xB68B9D4f3771c246233823ed1D3Add451055F9Ef"].nb_messages
-            == 1
-        )
-        assert stats_by_address["0x1234"].type == MessageType.aggregate
-        assert stats_by_address["0x1234"].nb_messages == 1
+        assert stats_by_address["0xB68B9D4f3771c246233823ed1D3Add451055F9Ef"].total == 1
+        assert stats_by_address["0x1234"].aggregate == 1
+        assert stats_by_address["0x1234"].total == 1
 
         # Filter by address
         stats = get_message_stats_by_address(session, addresses=("0x1234",))
         assert len(stats) == 1
         row = stats[0]
         assert row.address == "0x1234"
-        assert row.type == MessageType.aggregate
-        assert row.nb_messages == 1
+        assert row.aggregate == 1
+        assert row.total == 1
 
 
 @pytest.fixture
