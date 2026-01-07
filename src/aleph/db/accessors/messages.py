@@ -308,14 +308,17 @@ def get_message_stats_by_address(
     subquery = base_stmt.subquery()
     stmt = select(subquery)
 
-    if sort_by and sort_order:
+    if sort_by:
         sort_column_name = sort_by.value.lower()
+    else:
+        # Sort by address by default
+        sort_column_name = "address"
 
-        sort_column = getattr(subquery.c, sort_column_name)
-        if sort_order == SortOrder.ASCENDING:
-            stmt = stmt.order_by(sort_column.asc(), subquery.c.address.asc())
-        else:
-            stmt = stmt.order_by(sort_column.desc(), subquery.c.address.asc())
+    sort_column = getattr(subquery.c, sort_column_name)
+    if sort_order == SortOrder.ASCENDING:
+        stmt = stmt.order_by(sort_column.asc(), subquery.c.address.asc())
+    else:
+        stmt = stmt.order_by(sort_column.desc(), subquery.c.address.asc())
 
     if pagination:
         stmt = stmt.limit(pagination).offset((page - 1) * pagination)
