@@ -291,9 +291,9 @@ async def test_address_stats_pagination(
 @pytest.mark.parametrize(
     "sort_by, sort_order, field, comparator",
     [
-        ("total", -1, "total", lambda a, b: a >= b),  # DSC Sort
+        ("total", -1, "messages", lambda a, b: a >= b),  # DSC Sort
         ("post", -1, "post", lambda a, b: a >= b),  # DSC Sort
-        ("total", 1, "total", lambda a, b: a <= b),  # ASC Sort
+        ("total", 1, "messages", lambda a, b: a <= b),  # ASC Sort
     ],
 )
 async def test_address_stats_sorting(
@@ -363,7 +363,7 @@ async def test_address_stats_filtering(
                 "post": 1,
                 "store": 1,
                 "program": 1,
-                "total": 3,
+                "messages": 3,
             },
         ),
         # Aggregate-only address

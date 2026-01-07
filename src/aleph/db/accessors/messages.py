@@ -257,7 +257,7 @@ def get_message_stats_by_address(
     sort_order: SortOrder = SortOrder.DESCENDING,
     page: int = 1,
     pagination: int = 0,
-) -> Iterable[Any]:
+) -> Sequence[Any]:
     """
     Get message stats for user addresses.
 

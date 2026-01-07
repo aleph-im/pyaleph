@@ -1,6 +1,5 @@
 import json
-from enum import Enum
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, List, Sequence
 
 from aiohttp import web
 from pydantic import TypeAdapter, ValidationError
@@ -48,7 +47,7 @@ from aleph.web.controllers.app_state_getters import get_session_factory_from_req
 from aleph.web.controllers.utils import get_item_hash_str_from_request
 
 
-def make_stats_dict(rows: Iterable[Any]) -> Dict[str, int]:
+def make_stats_dict(rows: Sequence[Any]) -> Dict[str, Dict[str, int]]:
     return {
         row.address: {
             "messages": int(row.total),
@@ -64,7 +63,7 @@ def make_stats_dict(rows: Iterable[Any]) -> Dict[str, int]:
 
 
 def format_paginated_address_stats(
-    rows: Iterable[Any],
+    rows: Sequence[Any],
     pagination: int,
     page: int,
     pagination_total: int,
