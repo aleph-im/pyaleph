@@ -2,12 +2,11 @@ from logging.config import fileConfig
 from pathlib import Path
 
 from alembic import context
-from sqlalchemy import create_engine
-
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 from aleph.config import get_config
 from aleph.db.connection import make_db_url
+from sqlalchemy import create_engine
 
 config = context.config
 
@@ -55,6 +54,13 @@ def get_db_url() -> str:
     return make_db_url(driver="psycopg2", config=config)
 
 
+def include_object(obj, name, type_, reflected, compare_to):
+    """Exclude views from Alembic auto-generation."""
+    if type_ == "table" and obj.info.get("is_view"):
+        return False
+    return True
+
+
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.
 
@@ -72,6 +78,7 @@ def run_migrations_offline() -> None:
     context.configure(
         url=db_url,
         target_metadata=target_metadata,
+        include_object=include_object,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
@@ -91,7 +98,11 @@ def run_migrations_online() -> None:
     connectable = create_engine(db_url, echo=False)
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            include_object=include_object,
+        )
 
         with context.begin_transaction():
             context.run_migrations()
