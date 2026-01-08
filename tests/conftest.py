@@ -93,43 +93,75 @@ def run_db_migrations(config: Config):
 
 @pytest.fixture
 def session_factory(mock_config):
-    engine = make_engine(config=mock_config, echo=False, application_name="aleph-tests")
+    # mock_config is the proxy, but we need the actual config for engine creation
+    actual_config = aleph.config.app_config
+    engine = make_engine(
+        config=actual_config, echo=False, application_name="aleph-tests"
+    )
 
     with engine.begin() as conn:
         conn.execute("drop schema public cascade")
         conn.execute("create schema public")
 
-    run_db_migrations(config=mock_config)
+    run_db_migrations(config=actual_config)
+
+    # Running migrations pollutes aleph.config.app_config by loading config.yml.
+    # Replace the global with a completely fresh test config object.
+    aleph.config.app_config = _create_test_config()
+
     return make_session_factory(engine)
 
 
-@pytest.fixture
-def mock_config() -> Config:
+def _create_test_config() -> Config:
+    """Create a fresh config with test-specific values."""
     config: Config = Config(aleph.config.get_defaults())
-
-    config_file_path: Path = Path.cwd() / "config.yml"
 
     # The anvil/postgres/redis hosts use Docker network names in the default config.
     # We always use localhost for tests.
     config.postgres.host.value = "127.0.0.1"
     config.redis.host.value = "127.0.0.1"
     config.ethereum.api_url.value = "http://127.0.0.1:8545"
-
-    if config_file_path.exists():
-        user_config_raw: str = config_file_path.read_text()
-
-        # Little trick to allow empty config files
-        if user_config_raw:
-            config.yaml.loads(user_config_raw)
+    config.ethereum.chain_id.value = 31337
 
     # To test handle_new_storage
     config.storage.store_files.value = True
 
-    # We set the global variable directly instead of patching it because of an issue
-    # with mocker.patch. mocker.patch uses hasattr to determine the properties of
-    # the mock, which does not work well with configmanager Config objects.
-    aleph.config.app_config = config
     return config
+
+
+class _ConfigProxy:
+    """
+    A proxy that always delegates to aleph.config.app_config.
+
+    Running migrations for tests updates the global config values by loading config.yml.
+    The session factory fixture does replace the global object with a fresh config for tests afterward,
+    but if mock_config() returns a Config object directly it will be the one that has been modified.
+    To avoid this, we use a proxy pattern to always return the current global config in mock_config().
+    """
+
+    def __getattr__(self, name):
+        return getattr(aleph.config.app_config, name)
+
+    def __setattr__(self, name, value):
+        setattr(aleph.config.app_config, name, value)
+
+
+# Singleton proxy instance
+_config_proxy = _ConfigProxy()
+
+
+@pytest.fixture
+def mock_config() -> Config:
+    """
+    Returns a proxy to the current global app_config.
+
+    This ensures all tests see the same config, and any updates
+    to aleph.config.app_config (e.g., after migrations) are reflected.
+    """
+    # Ensure we start with a clean test config
+    config = _create_test_config()
+    aleph.config.app_config = config
+    return _config_proxy
 
 
 @pytest_asyncio.fixture
