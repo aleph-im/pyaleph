@@ -91,6 +91,27 @@ def run_db_migrations(config: Config):
         alembic.command.upgrade(alembic_cfg, "head", tag=db_url)
 
 
+@pytest.fixture
+def session_factory(mock_config):
+    # mock_config is the proxy, but we need the actual config for engine creation
+    actual_config = aleph.config.app_config
+    engine = make_engine(
+        config=actual_config, echo=False, application_name="aleph-tests"
+    )
+
+    with engine.begin() as conn:
+        conn.execute("drop schema public cascade")
+        conn.execute("create schema public")
+
+    run_db_migrations(config=actual_config)
+
+    # Running migrations pollutes aleph.config.app_config by loading config.yml.
+    # Replace the global with a completely fresh test config object.
+    aleph.config.app_config = _create_test_config()
+
+    return make_session_factory(engine)
+
+
 def _create_test_config() -> Config:
     """Create a fresh config with test-specific values."""
     config: Config = Config(aleph.config.get_defaults())
@@ -141,27 +162,6 @@ def mock_config() -> Config:
     config = _create_test_config()
     aleph.config.app_config = config
     return _config_proxy
-
-
-@pytest.fixture
-def session_factory(mock_config):
-    # mock_config is the proxy, but we need the actual config for engine creation
-    actual_config = aleph.config.app_config
-    engine = make_engine(
-        config=actual_config, echo=False, application_name="aleph-tests"
-    )
-
-    with engine.begin() as conn:
-        conn.execute("drop schema public cascade")
-        conn.execute("create schema public")
-
-    run_db_migrations(config=actual_config)
-
-    # Running migrations pollutes aleph.config.app_config by loading config.yml.
-    # Replace the global with a completely fresh test config object.
-    aleph.config.app_config = _create_test_config()
-
-    return make_session_factory(engine)
 
 
 @pytest_asyncio.fixture
