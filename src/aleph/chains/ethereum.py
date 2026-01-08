@@ -8,7 +8,7 @@ from aleph_message.models import Chain
 from configmanager import Config
 from eth_account import Account
 from hexbytes import HexBytes
-from web3 import Web3
+from web3 import AsyncHTTPProvider, AsyncWeb3, Web3
 from web3._utils.events import get_event_data
 from web3.exceptions import MismatchedABI
 from web3.gas_strategies.rpc import rpc_gas_price_strategy
@@ -24,7 +24,6 @@ from aleph.schemas.chains.tx_context import TxContext
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainEventType
 from aleph.types.db_session import DbSessionFactory
-from aleph.utils import run_in_executor
 
 from .abc import ChainWriter
 from .chain_data_service import ChainDataService, PendingTxPublisher
@@ -35,9 +34,9 @@ LOGGER = logging.getLogger("chains.ethereum")
 CHAIN_NAME = "ETH"
 
 
-def get_web3(config) -> Web3:
-    web3 = Web3(
-        Web3.HTTPProvider(
+def get_web3(config) -> AsyncWeb3:
+    web3 = AsyncWeb3(
+        AsyncHTTPProvider(
             config.ethereum.api_url.value,
             request_kwargs={"timeout": config.ethereum.client_timeout.value},
         )
@@ -58,14 +57,14 @@ async def get_contract_abi():
         return json.load(f)
 
 
-async def get_contract(config, web3: Web3):
+async def get_contract(config, web3: AsyncWeb3):
     return web3.eth.contract(
         address=config.ethereum.sync_contract.value, abi=await get_contract_abi()
     )
 
 
-def get_logs_query(web3: Web3, contract, start_height, end_height):
-    return web3.eth.get_logs(
+async def get_logs_query(web3: AsyncWeb3, contract, start_height, end_height):
+    return await web3.eth.get_logs(
         {"address": contract.address, "fromBlock": start_height, "toBlock": end_height}
     )
 
@@ -104,9 +103,9 @@ class EthereumConnector(ChainWriter):
         return last_height
 
     @staticmethod
-    async def _get_logs(config, web3: Web3, contract, last_height):
+    async def _get_logs(config, web3: AsyncWeb3, contract, last_height):
         try:
-            logs = get_logs_query(web3, contract, last_height + 1, "latest")
+            logs = await get_logs_query(web3, contract, last_height + 1, "latest")
             for log in logs:
                 yield log
 
@@ -121,9 +120,7 @@ class EthereumConnector(ChainWriter):
             if e.args[0]["code"] != -32005:
                 return
 
-            last_block = await asyncio.get_event_loop().run_in_executor(
-                None, web3.eth.get_block_number
-            )
+            last_block = await web3.eth.get_block_number()
 
             start_height = last_height + 1
             if start_height < config.ethereum.start_height.value:
@@ -133,7 +130,7 @@ class EthereumConnector(ChainWriter):
 
             while True:
                 try:
-                    logs = get_logs_query(web3, contract, start_height, end_height)
+                    logs = await get_logs_query(web3, contract, start_height, end_height)
 
                     for log in logs:
                         yield log
@@ -158,7 +155,7 @@ class EthereumConnector(ChainWriter):
                         raise
 
     async def _request_transactions(
-        self, config, web3: Web3, contract, abi, start_height
+        self, config, web3: AsyncWeb3, contract, abi, start_height
     ) -> AsyncIterator[Tuple[Dict, TxContext]]:
         """Continuously request data from the Ethereum blockchain.
         TODO: support websocket API.
@@ -168,9 +165,7 @@ class EthereumConnector(ChainWriter):
 
         async for log in logs:
             try:
-                event_data = await run_in_executor(
-                    None, get_event_data, web3.codec, abi, log
-                )
+                event_data = get_event_data(web3.codec, abi, log)
             except MismatchedABI:
                 # Ignore message events, they're handled by the indexer reader.
                 continue
@@ -226,23 +221,26 @@ class EthereumConnector(ChainWriter):
 
         LOGGER.info("Last block is #%d" % last_stored_height)
 
-        web3 = await run_in_executor(None, get_web3, config)
-        contract = await get_contract(config, web3)
-        abi = contract.events.SyncEvent._get_event_abi()
+        web3 = get_web3(config)
+        try:
+            contract = await get_contract(config, web3)
+            abi = contract.events.SyncEvent._get_event_abi()
 
-        while True:
-            last_stored_height = await self.get_last_height(
-                sync_type=ChainEventType.SYNC
-            )
-            async for jdata, context in self._request_transactions(
-                config, web3, contract, abi, last_stored_height
-            ):
-                tx = ChainTxDb.from_sync_tx_context(tx_context=context, tx_data=jdata)
-                with self.session_factory() as session:
-                    await self.pending_tx_publisher.add_and_publish_pending_tx(
-                        session=session, tx=tx
-                    )
-                    session.commit()
+            while True:
+                last_stored_height = await self.get_last_height(
+                    sync_type=ChainEventType.SYNC
+                )
+                async for jdata, context in self._request_transactions(
+                    config, web3, contract, abi, last_stored_height
+                ):
+                    tx = ChainTxDb.from_sync_tx_context(tx_context=context, tx_data=jdata)
+                    with self.session_factory() as session:
+                        await self.pending_tx_publisher.add_and_publish_pending_tx(
+                            session=session, tx=tx
+                        )
+                        session.commit()
+        finally:
+            await web3.provider.disconnect()
 
     async def fetch_sync_events_task(self, config: Config):
         while True:
@@ -272,10 +270,10 @@ class EthereumConnector(ChainWriter):
         await asyncio.gather(message_event_task, sync_event_task)
 
     @staticmethod
-    def _broadcast_content(
-        config, contract, web3: Web3, account, gas_price, nonce, content
+    async def _broadcast_content(
+        config, contract, web3: AsyncWeb3, account, gas_price, nonce, content
     ):
-        tx = contract.functions.doEmit(content).build_transaction(
+        tx = await contract.functions.doEmit(content).build_transaction(
             {
                 "chainId": config.ethereum.chain_id.value,
                 "gasPrice": gas_price,
@@ -284,18 +282,21 @@ class EthereumConnector(ChainWriter):
             }
         )
         signed_tx = account.sign_transaction(tx)
-        return web3.eth.send_raw_transaction(signed_tx.raw_transaction)
+        return await web3.eth.send_raw_transaction(signed_tx.raw_transaction)
 
     async def broadcast_messages(
         self,
         config: Config,
-        web3: Web3,
+        web3: AsyncWeb3,
         contract,
         account,
         messages,
         nonce: int,
     ) -> HexBytes:
-        gas_price = web3.eth.generate_gas_price() or web3.eth.gas_price
+        gas_price = web3.eth.generate_gas_price()
+        if gas_price is None:
+            gas_price = await web3.eth.gas_price
+
         if gas_price > config.ethereum.max_gas_price.value:
             raise AlephStorageException(
                 f"Gas price too high: {gas_price} > {config.ethereum.max_gas_price.value}"
@@ -309,9 +310,7 @@ class EthereumConnector(ChainWriter):
             )
             session.commit()
 
-        return await run_in_executor(
-            None,
-            self._broadcast_content,
+        return await self._broadcast_content(
             config,
             contract,
             web3,
@@ -322,51 +321,54 @@ class EthereumConnector(ChainWriter):
         )
 
     async def packer(self, config: Config):
-        web3 = await run_in_executor(None, get_web3, config)
-        contract = await get_contract(config, web3)
+        web3 = get_web3(config)
+        try:
+            contract = await get_contract(config, web3)
 
-        pri_key = HexBytes(config.ethereum.private_key.value)
-        account = Account.from_key(pri_key)
-        address = account.address
+            pri_key = HexBytes(config.ethereum.private_key.value)
+            account = Account.from_key(pri_key)
+            address = account.address
 
-        LOGGER.info("Ethereum Connector set up with address %s" % address)
-        i = 0
-        while True:
-            with self.session_factory() as session:
-                # Wait for sync operations to complete
-                if (count_pending_txs(session=session, chain=Chain.ETH)) or (
-                    count_pending_messages(session=session, chain=Chain.ETH)
-                ) > 1000:
-                    await asyncio.sleep(30)
-                    continue
+            LOGGER.info("Ethereum Connector set up with address %s" % address)
+            i = 0
+            while True:
+                with self.session_factory() as session:
+                    # Wait for sync operations to complete
+                    if (count_pending_txs(session=session, chain=Chain.ETH)) or (
+                        count_pending_messages(session=session, chain=Chain.ETH)
+                    ) > 1000:
+                        await asyncio.sleep(30)
+                        continue
 
-                if i >= 100:
-                    await asyncio.sleep(30)  # wait three (!!) blocks
-                    i = 0
+                    if i >= 100:
+                        await asyncio.sleep(30)  # wait three (!!) blocks
+                        i = 0
 
-                nonce = web3.eth.get_transaction_count(account.address)
+                    nonce = await web3.eth.get_transaction_count(account.address)
 
-                messages = list(
-                    get_unconfirmed_messages(
-                        session=session, limit=10000, chain=Chain.ETH
+                    messages = list(
+                        get_unconfirmed_messages(
+                            session=session, limit=10000, chain=Chain.ETH
+                        )
                     )
-                )
 
-            if messages:
-                LOGGER.info("Chain sync: %d unconfirmed messages" % len(messages))
+                if messages:
+                    LOGGER.info("Chain sync: %d unconfirmed messages" % len(messages))
 
-                try:
-                    response = await self.broadcast_messages(
-                        config=config,
-                        web3=web3,
-                        contract=contract,
-                        account=account,
-                        messages=messages,
-                        nonce=nonce,
-                    )
-                    LOGGER.info("Broadcast %r on %s" % (response, Chain.ETH.value))
-                except Exception:
-                    LOGGER.exception("Error while broadcasting messages to Ethereum")
+                    try:
+                        response = await self.broadcast_messages(
+                            config=config,
+                            web3=web3,
+                            contract=contract,
+                            account=account,
+                            messages=messages,
+                            nonce=nonce,
+                        )
+                        LOGGER.info("Broadcast %r on %s" % (response, Chain.ETH.value))
+                    except Exception:
+                        LOGGER.exception("Error while broadcasting messages to Ethereum")
 
-            await asyncio.sleep(config.ethereum.commit_delay.value)
-            i += 1
+                await asyncio.sleep(config.ethereum.commit_delay.value)
+                i += 1
+        finally:
+            await web3.provider.disconnect()

@@ -7,7 +7,7 @@ from aleph_message.models import Chain
 from configmanager import Config
 from eth_account import Account
 from hexbytes import HexBytes
-from web3 import Web3
+from web3 import AsyncHTTPProvider, AsyncWeb3, Web3
 from web3.middleware import ExtraDataToPOAMiddleware
 
 from aleph.chains.ethereum import EthereumConnector, get_contract
@@ -18,12 +18,13 @@ from aleph.types.chain_sync import ChainEventType
 from aleph.types.db_session import DbSessionFactory
 
 
-@pytest.fixture
-def web3(mock_config: Config):
+@pytest_asyncio.fixture
+async def web3(mock_config: Config):
     eth_api_url = mock_config.ethereum.api_url.value
-    w3 = Web3(Web3.HTTPProvider(eth_api_url))
+    w3 = AsyncWeb3(AsyncHTTPProvider(eth_api_url))
     w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
-    return w3
+    yield w3
+    await w3.provider.disconnect()
 
 
 @pytest.fixture
@@ -41,17 +42,17 @@ ALEPH_SYNC_BYTECODE = "0x608060405234801561001057600080fd5b506004361061003657600
 
 @pytest_asyncio.fixture
 async def deployed_contract(web3, mock_config: Config, ethereum_sc_abi):
-    if not web3.is_connected():
+    if not await web3.is_connected():
         pytest.fail(f"Anvil node not found at {mock_config.ethereum.api_url.value}")
 
     test_address = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
-    web3.provider.make_request("anvil_setCode", [test_address, ALEPH_SYNC_BYTECODE])
+    await web3.provider.make_request("anvil_setCode", [test_address, ALEPH_SYNC_BYTECODE])
 
     return web3.eth.contract(address=test_address, abi=ethereum_sc_abi)
 
 
 @pytest.mark.asyncio
-async def test_get_contract(mock_config: Config, web3: Web3):
+async def test_get_contract(mock_config: Config, web3: AsyncWeb3):
     mock_config.ethereum.sync_contract.value = "0x" + "0" * 40
     contract = await get_contract(config=mock_config, web3=web3)
     assert contract.w3 == web3
@@ -62,10 +63,10 @@ async def test_broadcast_messages(
     mocker,
     mock_config: Config,
     session_factory: DbSessionFactory,
-    web3: Web3,
+    web3: AsyncWeb3,
     deployed_contract,
 ):
-    mock_config.ethereum.chain_id.value = web3.eth.chain_id
+    mock_config.ethereum.chain_id.value = await web3.eth.chain_id
     mock_config.ethereum.private_key.value = (
         "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
     )
@@ -108,7 +109,7 @@ async def test_broadcast_messages(
         )
     ]
 
-    gas_price = web3.eth.gas_price
+    gas_price = await web3.eth.gas_price
 
     response = await connector.broadcast_messages(
         config=mock_config,
@@ -116,15 +117,15 @@ async def test_broadcast_messages(
         contract=deployed_contract,
         account=account,
         messages=messages,
-        nonce=web3.eth.get_transaction_count(account.address),
+        nonce=await web3.eth.get_transaction_count(account.address),
     )
 
-    receipt = web3.eth.wait_for_transaction_receipt(response)
+    receipt = await web3.eth.wait_for_transaction_receipt(response)
     assert receipt.status == 1
     print(f"Gas used by broadcast_messages: {receipt.gasUsed}")
     print(f"Cost: {receipt.gasUsed * gas_price / 10**18} ETH")
 
-    gas_estimate = deployed_contract.functions.doEmit(json.dumps(jdata)).estimate_gas(
+    gas_estimate = await deployed_contract.functions.doEmit(json.dumps(jdata)).estimate_gas(
         {
             "from": account.address,
         }
@@ -143,7 +144,7 @@ async def test_fetch_ethereum_sync_events(
     mocker,
     mock_config: Config,
     session_factory: DbSessionFactory,
-    web3: Web3,
+    web3: AsyncWeb3,
     deployed_contract,
 ):
     mock_config.ethereum.chain_id.value = 31337
@@ -204,9 +205,9 @@ async def test_fetch_ethereum_sync_events(
         contract=deployed_contract,
         account=account,
         messages=messages,
-        nonce=web3.eth.get_transaction_count(account.address),
+        nonce=await web3.eth.get_transaction_count(account.address),
     )
-    receipt = web3.eth.wait_for_transaction_receipt(response)
+    receipt = await web3.eth.wait_for_transaction_receipt(response)
 
     # 0. Set initial height to current to avoid picking up old events
     # We set it to receipt.blockNumber - 1 so that fetcher picks up the block where we just emitted
