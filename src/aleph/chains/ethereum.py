@@ -275,16 +275,21 @@ class EthereumConnector(ChainWriter):
 
     @staticmethod
     async def _broadcast_content(
-        config, contract, web3: AsyncWeb3, account, gas_price, nonce, content
+        config, contract, web3: AsyncWeb3, account, nonce, content,
+        gas_price=None, max_fee_per_gas=None, max_priority_fee_per_gas=None
     ):
-        tx = await contract.functions.doEmit(content).build_transaction(
-            {
-                "chainId": config.ethereum.chain_id.value,
-                "gasPrice": gas_price,
-                "nonce": nonce,
-                "from": account.address,
-            }
-        )
+        tx_params = {
+            "chainId": config.ethereum.chain_id.value,
+            "nonce": nonce,
+            "from": account.address,
+        }
+        if max_fee_per_gas is not None and max_priority_fee_per_gas is not None:
+            tx_params["maxFeePerGas"] = max_fee_per_gas
+            tx_params["maxPriorityFeePerGas"] = max_priority_fee_per_gas
+        else:
+            tx_params["gasPrice"] = gas_price
+
+        tx = await contract.functions.doEmit(content).build_transaction(tx_params)
         signed_tx = account.sign_transaction(tx)
         return await web3.eth.send_raw_transaction(signed_tx.raw_transaction)
 
@@ -297,14 +302,48 @@ class EthereumConnector(ChainWriter):
         messages,
         nonce: int,
     ) -> HexBytes:
-        gas_price = web3.eth.generate_gas_price()
-        if gas_price is None:
-            gas_price = await web3.eth.gas_price
+        # Try to use EIP-1559 fees if available
+        max_fee_per_gas = None
+        max_priority_fee_per_gas = None
+        gas_price = None
 
-        if gas_price > config.ethereum.max_gas_price.value:
-            raise AlephStorageException(
-                f"Gas price too high: {gas_price} > {config.ethereum.max_gas_price.value}"
-            )
+        try:
+            last_block = await web3.eth.get_block("latest")
+            base_fee_per_gas = last_block.get("baseFeePerGas")
+            if base_fee_per_gas is not None:
+                max_priority_fee_per_gas = await web3.eth.max_priority_fee
+                # We use a 2x base fee margin + priority fee to ensure the transaction
+                # is included even if the base fee rises.
+                max_fee_per_gas = (base_fee_per_gas * 2) + max_priority_fee_per_gas
+
+                if max_fee_per_gas > config.ethereum.max_gas_price.value:
+                    raise AlephStorageException(
+                        f"Max fee per gas too high: {max_fee_per_gas} > {config.ethereum.max_gas_price.value}"
+                    )
+            else:
+                # Fallback to legacy gas price
+                gas_price = web3.eth.generate_gas_price()
+                if gas_price is None:
+                    gas_price = await web3.eth.gas_price
+                gas_price = int(gas_price * 1.1)
+
+                if gas_price > config.ethereum.max_gas_price.value:
+                    raise AlephStorageException(
+                        f"Gas price too high: {gas_price} > {config.ethereum.max_gas_price.value}"
+                    )
+        except Exception as e:
+            if isinstance(e, AlephStorageException):
+                raise
+            LOGGER.info(f"Could not get EIP-1559 fees, falling back to legacy: {e}")
+            gas_price = web3.eth.generate_gas_price()
+            if gas_price is None:
+                gas_price = await web3.eth.gas_price
+            gas_price = int(gas_price * 1.1)
+
+            if gas_price > config.ethereum.max_gas_price.value:
+                raise AlephStorageException(
+                    f"Gas price too high: {gas_price} > {config.ethereum.max_gas_price.value}"
+                )
 
         with self.session_factory() as session:
             sync_event_payload = (
@@ -315,13 +354,15 @@ class EthereumConnector(ChainWriter):
             session.commit()
 
         return await self._broadcast_content(
-            config,
-            contract,
-            web3,
-            account,
-            int(gas_price * 1.1),
-            nonce,
-            sync_event_payload.json(),
+            config=config,
+            contract=contract,
+            web3=web3,
+            account=account,
+            nonce=nonce,
+            content=sync_event_payload.json(),
+            gas_price=gas_price,
+            max_fee_per_gas=max_fee_per_gas,
+            max_priority_fee_per_gas=max_priority_fee_per_gas,
         )
 
     async def packer(self, config: Config):
