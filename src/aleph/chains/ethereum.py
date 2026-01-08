@@ -2,7 +2,7 @@ import asyncio
 import importlib.resources
 import json
 import logging
-from typing import AsyncIterator, Dict, Tuple
+from typing import AsyncIterator, Dict, List, Optional, Tuple
 
 from aleph_message.models import Chain
 from configmanager import Config
@@ -293,16 +293,9 @@ class EthereumConnector(ChainWriter):
         signed_tx = account.sign_transaction(tx)
         return await web3.eth.send_raw_transaction(signed_tx.raw_transaction)
 
-    async def broadcast_messages(
-        self,
-        config: Config,
-        web3: AsyncWeb3,
-        contract,
-        account,
-        messages,
-        nonce: int,
-    ) -> HexBytes:
-        # Try to use EIP-1559 fees if available
+    async def _get_gas_fees(
+        self, config: Config, web3: AsyncWeb3
+    ) -> Tuple[Optional[int], Optional[int], Optional[int]]:
         max_fee_per_gas = None
         max_priority_fee_per_gas = None
         gas_price = None
@@ -322,29 +315,28 @@ class EthereumConnector(ChainWriter):
                     )
             else:
                 # Fallback to legacy gas price
-                gas_price = web3.eth.generate_gas_price()
-                if gas_price is None:
-                    gas_price = await web3.eth.gas_price
-                gas_price = int(gas_price * 1.1)
-
-                if gas_price > config.ethereum.max_gas_price.value:
-                    raise AlephStorageException(
-                        f"Gas price too high: {gas_price} > {config.ethereum.max_gas_price.value}"
-                    )
+                gas_price = await self._get_legacy_gas_price(config, web3)
         except Exception as e:
             if isinstance(e, AlephStorageException):
                 raise
             LOGGER.info(f"Could not get EIP-1559 fees, falling back to legacy: {e}")
-            gas_price = web3.eth.generate_gas_price()
-            if gas_price is None:
-                gas_price = await web3.eth.gas_price
-            gas_price = int(gas_price * 1.1)
+            gas_price = await self._get_legacy_gas_price(config, web3)
 
-            if gas_price > config.ethereum.max_gas_price.value:
-                raise AlephStorageException(
-                    f"Gas price too high: {gas_price} > {config.ethereum.max_gas_price.value}"
-                )
+        return max_fee_per_gas, max_priority_fee_per_gas, gas_price
 
+    async def _get_legacy_gas_price(self, config: Config, web3: AsyncWeb3) -> int:
+        gas_price = web3.eth.generate_gas_price()
+        if gas_price is None:
+            gas_price = await web3.eth.gas_price
+        gas_price = int(gas_price * 1.1)
+
+        if gas_price > config.ethereum.max_gas_price.value:
+            raise AlephStorageException(
+                f"Gas price too high: {gas_price} > {config.ethereum.max_gas_price.value}"
+            )
+        return gas_price
+
+    async def _get_sync_event_payload(self, messages) -> str:
         with self.session_factory() as session:
             sync_event_payload = (
                 await self.chain_data_service.prepare_sync_event_payload(
@@ -352,6 +344,21 @@ class EthereumConnector(ChainWriter):
                 )
             )
             session.commit()
+        return sync_event_payload.json()
+
+    async def broadcast_messages(
+        self,
+        config: Config,
+        web3: AsyncWeb3,
+        contract,
+        account,
+        messages,
+        nonce: int,
+    ) -> HexBytes:
+        max_fee_per_gas, max_priority_fee_per_gas, gas_price = await self._get_gas_fees(
+            config, web3
+        )
+        content = await self._get_sync_event_payload(messages)
 
         return await self._broadcast_content(
             config=config,
@@ -359,7 +366,7 @@ class EthereumConnector(ChainWriter):
             web3=web3,
             account=account,
             nonce=nonce,
-            content=sync_event_payload.json(),
+            content=content,
             gas_price=gas_price,
             max_fee_per_gas=max_fee_per_gas,
             max_priority_fee_per_gas=max_priority_fee_per_gas,
