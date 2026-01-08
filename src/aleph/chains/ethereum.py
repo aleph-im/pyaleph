@@ -2,7 +2,7 @@ import asyncio
 import importlib.resources
 import json
 import logging
-from typing import AsyncIterator, Dict, List, Optional, Tuple
+from typing import AsyncIterator, Dict, Optional, Tuple
 
 from aleph_message.models import Chain
 from configmanager import Config
@@ -275,8 +275,15 @@ class EthereumConnector(ChainWriter):
 
     @staticmethod
     async def _broadcast_content(
-        config, contract, web3: AsyncWeb3, account, nonce, content,
-        gas_price=None, max_fee_per_gas=None, max_priority_fee_per_gas=None
+        config,
+        contract,
+        web3: AsyncWeb3,
+        account,
+        nonce,
+        content,
+        gas_price=None,
+        max_fee_per_gas=None,
+        max_priority_fee_per_gas=None,
     ):
         tx_params = {
             "chainId": config.ethereum.chain_id.value,
