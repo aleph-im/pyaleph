@@ -8,7 +8,7 @@ import orjson
 import pytest
 import pytest_asyncio
 from aleph_message.models import Chain, ItemHash
-from helpers.in_memory_storage_engine import InMemoryStorageEngine
+from in_memory_storage_engine import InMemoryStorageEngine
 
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.files import get_file
