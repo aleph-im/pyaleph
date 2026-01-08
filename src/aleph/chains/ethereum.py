@@ -12,8 +12,7 @@ from web3 import Web3
 from web3._utils.events import get_event_data
 from web3.exceptions import MismatchedABI
 from web3.gas_strategies.rpc import rpc_gas_price_strategy
-from web3.middleware.filter import local_filter_middleware
-from web3.middleware.geth_poa import geth_poa_middleware
+from web3.middleware import ExtraDataToPOAMiddleware, LocalFilterMiddleware
 
 from aleph.db.accessors.chains import get_last_height, upsert_chain_sync_status
 from aleph.db.accessors.messages import get_unconfirmed_messages
@@ -44,8 +43,8 @@ def get_web3(config) -> Web3:
         )
     )
     if config.ethereum.chain_id.value == 4:  # rinkeby
-        web3.middleware_onion.inject(geth_poa_middleware, layer=0)
-    web3.middleware_onion.add(local_filter_middleware)
+        web3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
+    web3.middleware_onion.add(LocalFilterMiddleware)
     web3.eth.set_gas_price_strategy(rpc_gas_price_strategy)
 
     return web3
@@ -285,7 +284,7 @@ class EthereumConnector(ChainWriter):
             }
         )
         signed_tx = account.sign_transaction(tx)
-        return web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        return web3.eth.send_raw_transaction(signed_tx.raw_transaction)
 
     async def broadcast_messages(
         self,
