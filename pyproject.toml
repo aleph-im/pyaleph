@@ -46,8 +46,8 @@ dependencies = [
   "msgpack==1.0.8",                                                                                                        # required by aiocache
   "multiaddr==0.0.9",                                                                                                      # for libp2p-stubs
   "orjson>=3.7.7",                                                                                                         # Minimum version for Python 3.11
-  "psycopg2-binary==2.9.10",                                                                                               # Note: psycopg3 is not yet supported by SQLAlchemy
   "protobuf==6.33.2",
+  "psycopg2-binary==2.9.10",                                                                                               # Note: psycopg3 is not yet supported by SQLAlchemy
   "pycryptodome==3.22.0",
   "pydantic==2.11.10",
   "pymultihash==0.8.2",                                                                                                    # for libp2p-stubs
