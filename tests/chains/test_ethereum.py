@@ -7,7 +7,7 @@ from aleph_message.models import Chain
 from configmanager import Config
 from eth_account import Account
 from hexbytes import HexBytes
-from web3 import AsyncHTTPProvider, AsyncWeb3, Web3
+from web3 import AsyncHTTPProvider, AsyncWeb3
 from web3.middleware import ExtraDataToPOAMiddleware
 
 from aleph.chains.ethereum import EthereumConnector, get_contract
@@ -46,7 +46,9 @@ async def deployed_contract(web3, mock_config: Config, ethereum_sc_abi):
         pytest.fail(f"Anvil node not found at {mock_config.ethereum.api_url.value}")
 
     test_address = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
-    await web3.provider.make_request("anvil_setCode", [test_address, ALEPH_SYNC_BYTECODE])
+    await web3.provider.make_request(
+        "anvil_setCode", [test_address, ALEPH_SYNC_BYTECODE]
+    )
 
     return web3.eth.contract(address=test_address, abi=ethereum_sc_abi)
 
@@ -125,7 +127,9 @@ async def test_broadcast_messages(
     print(f"Gas used by broadcast_messages: {receipt.gasUsed}")
     print(f"Cost: {receipt.gasUsed * gas_price / 10**18} ETH")
 
-    gas_estimate = await deployed_contract.functions.doEmit(json.dumps(jdata)).estimate_gas(
+    gas_estimate = await deployed_contract.functions.doEmit(
+        json.dumps(jdata)
+    ).estimate_gas(
         {
             "from": account.address,
         }

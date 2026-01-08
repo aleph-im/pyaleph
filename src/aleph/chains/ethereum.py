@@ -8,7 +8,7 @@ from aleph_message.models import Chain
 from configmanager import Config
 from eth_account import Account
 from hexbytes import HexBytes
-from web3 import AsyncHTTPProvider, AsyncWeb3, Web3
+from web3 import AsyncHTTPProvider, AsyncWeb3
 from web3._utils.events import get_event_data
 from web3.exceptions import MismatchedABI
 from web3.gas_strategies.rpc import rpc_gas_price_strategy
@@ -130,7 +130,9 @@ class EthereumConnector(ChainWriter):
 
             while True:
                 try:
-                    logs = await get_logs_query(web3, contract, start_height, end_height)
+                    logs = await get_logs_query(
+                        web3, contract, start_height, end_height
+                    )
 
                     for log in logs:
                         yield log
@@ -233,7 +235,9 @@ class EthereumConnector(ChainWriter):
                 async for jdata, context in self._request_transactions(
                     config, web3, contract, abi, last_stored_height
                 ):
-                    tx = ChainTxDb.from_sync_tx_context(tx_context=context, tx_data=jdata)
+                    tx = ChainTxDb.from_sync_tx_context(
+                        tx_context=context, tx_data=jdata
+                    )
                     with self.session_factory() as session:
                         await self.pending_tx_publisher.add_and_publish_pending_tx(
                             session=session, tx=tx
@@ -366,7 +370,9 @@ class EthereumConnector(ChainWriter):
                         )
                         LOGGER.info("Broadcast %r on %s" % (response, Chain.ETH.value))
                     except Exception:
-                        LOGGER.exception("Error while broadcasting messages to Ethereum")
+                        LOGGER.exception(
+                            "Error while broadcasting messages to Ethereum"
+                        )
 
                 await asyncio.sleep(config.ethereum.commit_delay.value)
                 i += 1
