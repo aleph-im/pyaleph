@@ -111,8 +111,6 @@ async def test_broadcast_messages(
         )
     ]
 
-    gas_price = await web3.eth.gas_price
-
     response = await connector.broadcast_messages(
         config=mock_config,
         web3=web3,
@@ -124,8 +122,15 @@ async def test_broadcast_messages(
 
     receipt = await web3.eth.wait_for_transaction_receipt(response)
     assert receipt.status == 1
+
+    tx = await web3.eth.get_transaction(response)
+    assert tx["type"] == 2  # EIP-1559
+    assert "maxFeePerGas" in tx
+    assert "maxPriorityFeePerGas" in tx
+
     print(f"Gas used by broadcast_messages: {receipt.gasUsed}")
-    print(f"Cost: {receipt.gasUsed * gas_price / 10**18} ETH")
+    actual_cost = receipt.gasUsed * receipt.effectiveGasPrice / 10**18
+    print(f"Cost: {actual_cost} ETH")
 
     gas_estimate = await deployed_contract.functions.doEmit(
         json.dumps(jdata)
