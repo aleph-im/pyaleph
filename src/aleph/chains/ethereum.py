@@ -53,8 +53,6 @@ def make_web3_client(rpc_url: URI, chain_id: int, timeout: int) -> AsyncWeb3:
             request_kwargs={"timeout": timeout},
         )
     )
-    if chain_id == 4:  # rinkeby
-        web3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
     web3.middleware_onion.add(LocalFilterMiddleware)
     web3.eth.set_gas_price_strategy(rpc_gas_price_strategy)
 
