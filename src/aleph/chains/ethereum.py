@@ -14,7 +14,7 @@ from web3._utils.events import get_event_data
 from web3.contract import AsyncContract
 from web3.exceptions import MismatchedABI, Web3RPCError
 from web3.gas_strategies.rpc import rpc_gas_price_strategy
-from web3.middleware import ExtraDataToPOAMiddleware, LocalFilterMiddleware
+from web3.middleware import LocalFilterMiddleware
 from web3.types import ENS, LogReceipt
 
 from aleph.db.accessors.chains import get_last_height, upsert_chain_sync_status
@@ -53,8 +53,6 @@ def make_web3_client(rpc_url: URI, chain_id: int, timeout: int) -> AsyncWeb3:
             request_kwargs={"timeout": timeout},
         )
     )
-    if chain_id == 4:  # rinkeby
-        web3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
     web3.middleware_onion.add(LocalFilterMiddleware)
     web3.eth.set_gas_price_strategy(rpc_gas_price_strategy)
 
