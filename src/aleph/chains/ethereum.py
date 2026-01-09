@@ -7,7 +7,7 @@ from typing import Any, AsyncIterator, Dict, List, Literal, Self, Tuple, Union
 from aleph_message.models import Chain
 from configmanager import Config
 from eth_account import Account
-from eth_typing import Address, BlockNumber, ChecksumAddress, URI, ABIEvent
+from eth_typing import URI, ABIEvent, Address, BlockNumber, ChecksumAddress
 from hexbytes import HexBytes
 from web3 import AsyncHTTPProvider, AsyncWeb3
 from web3._utils.events import get_event_data
@@ -103,7 +103,6 @@ class EthereumConnector(ChainWriter):
         self.session_factory = session_factory
         self.pending_tx_publisher = pending_tx_publisher
         self.chain_data_service = chain_data_service
-
 
         self.indexer_reader = AlephIndexerReader(
             chain=Chain.ETH,
