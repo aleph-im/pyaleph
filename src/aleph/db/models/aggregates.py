@@ -1,4 +1,5 @@
 import datetime as dt
+import typing
 from typing import Any
 
 from sqlalchemy import TIMESTAMP, Boolean, Column, ForeignKey, Index, String
@@ -19,13 +20,11 @@ class AggregateElementDb(Base):
 
     __tablename__ = "aggregate_elements"
 
-    item_hash: Column[str] = Column(String, primary_key=True)
-    key: Column[str] = Column(String, nullable=False)
-    owner: Column[str] = Column(String, nullable=False)
-    content: Column[Any] = Column(JSONB, nullable=False)
-    creation_datetime: Column[dt.datetime] = Column(
-        TIMESTAMP(timezone=True), nullable=False
-    )
+    item_hash: str = Column(String, primary_key=True)
+    key: str = Column(String, nullable=False)
+    owner: str = Column(String, nullable=False)
+    content: Any = Column(JSONB, nullable=False)
+    creation_datetime: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
 
     __table_args__ = (
         Index("ix_time_desc", creation_datetime.desc()),
@@ -42,16 +41,14 @@ class AggregateDb(Base):
 
     __tablename__ = "aggregates"
 
-    key: Column[str] = Column(String, primary_key=True)
-    owner: Column[str] = Column(String, primary_key=True)
-    content: Column[Any] = Column(JSONB, nullable=False)
-    creation_datetime: Column[dt.datetime] = Column(
-        TIMESTAMP(timezone=True), nullable=False
-    )
-    last_revision_hash: Column[str] = Column(
+    key: str = Column(String, primary_key=True)
+    owner: str = Column(String, primary_key=True)
+    content: Any = Column(JSONB, nullable=False)
+    creation_datetime: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
+    last_revision_hash: str = Column(
         ForeignKey(AggregateElementDb.item_hash), nullable=False
     )
-    dirty: Column[bool] = Column(Boolean, nullable=False)
+    dirty = Column(Boolean, nullable=False)
 
     __table_args__ = (Index("ix_aggregates_owner", owner),)
 
