@@ -299,3 +299,37 @@ async def test_get_aggregates_list_sort(
     aggregates = data["aggregates"]
     for i in range(len(aggregates) - 1):
         assert aggregates[i]["last_updated"] >= aggregates[i + 1]["last_updated"]
+
+@pytest.mark.asyncio
+async def test_get_aggregates_list_pagination_limits(
+    ccn_api_client, fixture_aggregate_messages: Sequence[MessageDb]
+):
+    """
+    Tests pagination limits on the aggregates list endpoint.
+    """
+    assert fixture_aggregate_messages
+
+    # pagination=0 should be forbidden
+    params = {"pagination": 0}
+    response = await ccn_api_client.get(AGGREGATES_LIST_URI, params=params)
+    assert response.status == 422
+
+    # pagination=501 should be forbidden
+    params = {"pagination": 501}
+    response = await ccn_api_client.get(AGGREGATES_LIST_URI, params=params)
+    assert response.status == 422
+
+    # pagination=1 should be allowed
+    params = {"pagination": 1}
+    response = await ccn_api_client.get(AGGREGATES_LIST_URI, params=params)
+    assert response.status == 200
+
+    # pagination=500 should be allowed
+    params = {"pagination": 500}
+    response = await ccn_api_client.get(AGGREGATES_LIST_URI, params=params)
+    assert response.status == 200
+
+    # page=0 should be forbidden
+    params = {"page": 0}
+    response = await ccn_api_client.get(AGGREGATES_LIST_URI, params=params)
+    assert response.status == 422

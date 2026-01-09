@@ -45,8 +45,10 @@ class AggregatesListQueryParams(BaseModel):
         default=SortByAggregate.LAST_MODIFIED, alias="sortBy"
     )
     sort_order: SortOrder = Field(default=SortOrder.DESCENDING, alias="sortOrder")
-    pagination: int = Field(default=DEFAULT_MESSAGES_PER_PAGE, alias="pagination")
-    page: int = Field(default=1, alias="page")
+    pagination: int = Field(
+        default=DEFAULT_MESSAGES_PER_PAGE, ge=1, le=500, alias="pagination"
+    )
+    page: int = Field(default=1, ge=1, alias="page")
 
     @field_validator("keys", "addresses", mode="before")
     def split_str(cls, v):
