@@ -23,3 +23,12 @@ class SortByMessageType(str, Enum):
     PROGRAM = "program"
     STORE = "store"
     TOTAL = "total"
+
+
+class SortByAggregate(str, Enum):
+    """
+    Determines by which field aggregates should be sorted.
+    """
+
+    CREATION_TIME = "creation_time"
+    LAST_MODIFIED = "last_modified"

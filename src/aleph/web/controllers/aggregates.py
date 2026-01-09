@@ -3,12 +3,22 @@ import logging
 from typing import Dict, List, Optional
 
 from aiohttp import web
-from pydantic import BaseModel, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy import select
 
-from aleph.db.accessors.aggregates import get_aggregates_by_owner, refresh_aggregate
+from aleph.db.accessors.aggregates import (
+    count_aggregates,
+    get_aggregates,
+    get_aggregates_by_owner,
+    refresh_aggregate,
+)
 from aleph.db.models import AggregateDb
-from aleph.schemas.messages_query_params import LIST_FIELD_SEPARATOR
+from aleph.schemas.messages_query_params import (
+    DEFAULT_MESSAGES_PER_PAGE,
+    LIST_FIELD_SEPARATOR,
+)
+from aleph.types.sort_order import SortByAggregate, SortOrder
+from aleph.web.controllers.app_state_getters import get_session_factory_from_request
 
 LOGGER = logging.getLogger(__name__)
 
@@ -18,10 +28,29 @@ DEFAULT_LIMIT = 1000
 class AggregatesQueryParams(BaseModel):
     keys: Optional[List[str]] = None
     limit: int = DEFAULT_LIMIT
-    with_info: bool = False
-    value_only: bool = False
+    with_info: bool = Field(default=False, alias="with_info")
+    value_only: bool = Field(default=False, alias="value_only")
 
     @field_validator("keys", mode="before")
+    def split_str(cls, v):
+        if isinstance(v, str):
+            return v.split(LIST_FIELD_SEPARATOR)
+        return v
+
+
+class AggregatesListQueryParams(BaseModel):
+    keys: Optional[List[str]] = None
+    addresses: Optional[List[str]] = None
+    sort_by: SortByAggregate = Field(
+        default=SortByAggregate.LAST_MODIFIED, alias="sortBy"
+    )
+    sort_order: SortOrder = Field(default=SortOrder.DESCENDING, alias="sortOrder")
+    pagination: int = Field(
+        default=DEFAULT_MESSAGES_PER_PAGE, ge=1, le=500, alias="pagination"
+    )
+    page: int = Field(default=1, ge=1, alias="page")
+
+    @field_validator("keys", "addresses", mode="before")
     def split_str(cls, v):
         if isinstance(v, str):
             return v.split(LIST_FIELD_SEPARATOR)
@@ -108,5 +137,51 @@ async def address_aggregate(request: web.Request) -> web.Response:
 
     output["data"] = data
     output["info"] = info
+
+    return web.json_response(output)
+
+
+async def view_aggregates_list(request: web.Request) -> web.Response:
+    try:
+        query_params = AggregatesListQueryParams.model_validate(request.query)
+    except ValidationError as e:
+        raise web.HTTPUnprocessableEntity(
+            text=e.json(), content_type="application/json"
+        )
+
+    session_factory = get_session_factory_from_request(request)
+    with session_factory() as session:
+        aggregates = get_aggregates(
+            session=session,
+            keys=query_params.keys,
+            addresses=query_params.addresses,
+            sort_by=query_params.sort_by,
+            sort_order=query_params.sort_order,
+            page=query_params.page,
+            pagination=query_params.pagination,
+        )
+
+        total_aggregates = count_aggregates(
+            session=session,
+            keys=query_params.keys,
+            addresses=query_params.addresses,
+        )
+
+        output = {
+            "aggregates": [
+                {
+                    "address": aggregate.owner,
+                    "key": aggregate.key,
+                    "content": aggregate.content,
+                    "created": aggregate.creation_datetime.isoformat(),
+                    "last_updated": aggregate.last_revision.creation_datetime.isoformat(),
+                }
+                for aggregate in aggregates
+            ],
+            "pagination_per_page": query_params.pagination,
+            "pagination_page": query_params.page,
+            "pagination_total": total_aggregates,
+            "pagination_item": "aggregates",
+        }
 
     return web.json_response(output)
