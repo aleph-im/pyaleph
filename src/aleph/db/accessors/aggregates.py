@@ -19,7 +19,7 @@ from sqlalchemy.orm import defer, selectinload
 from aleph.cache import cache
 from aleph.db.models import AggregateDb, AggregateElementDb
 from aleph.types.db_session import DbSession
-from aleph.types.sort_order import SortOrder, SortByAggregate
+from aleph.types.sort_order import SortByAggregate, SortOrder
 
 logger = logging.getLogger(__name__)
 
@@ -347,7 +347,9 @@ def get_aggregates(
         .offset((page - 1) * pagination)
     )
 
-    return (session.execute(query.options(selectinload(AggregateDb.last_revision)))).scalars()
+    return (
+        session.execute(query.options(selectinload(AggregateDb.last_revision)))
+    ).scalars()
 
 
 def count_aggregates(

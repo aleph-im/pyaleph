@@ -288,7 +288,7 @@ async def test_get_aggregates_list_sort(
 
     aggregates = data["aggregates"]
     for i in range(len(aggregates) - 1):
-        assert aggregates[i]["created"] <= aggregates[i+1]["created"]
+        assert aggregates[i]["created"] <= aggregates[i + 1]["created"]
 
     # Sort by last_modified DESC
     params = {"sortBy": "last_modified", "sortOrder": -1}
@@ -298,4 +298,4 @@ async def test_get_aggregates_list_sort(
 
     aggregates = data["aggregates"]
     for i in range(len(aggregates) - 1):
-        assert aggregates[i]["last_updated"] >= aggregates[i+1]["last_updated"]
+        assert aggregates[i]["last_updated"] >= aggregates[i + 1]["last_updated"]

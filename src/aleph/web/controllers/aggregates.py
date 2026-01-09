@@ -7,17 +7,17 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy import select
 
 from aleph.db.accessors.aggregates import (
+    count_aggregates,
+    get_aggregates,
     get_aggregates_by_owner,
     refresh_aggregate,
-    get_aggregates,
-    count_aggregates,
 )
 from aleph.db.models import AggregateDb
 from aleph.schemas.messages_query_params import (
-    LIST_FIELD_SEPARATOR,
     DEFAULT_MESSAGES_PER_PAGE,
+    LIST_FIELD_SEPARATOR,
 )
-from aleph.types.sort_order import SortOrder, SortByAggregate
+from aleph.types.sort_order import SortByAggregate, SortOrder
 from aleph.web.controllers.app_state_getters import get_session_factory_from_request
 
 LOGGER = logging.getLogger(__name__)
@@ -41,7 +41,9 @@ class AggregatesQueryParams(BaseModel):
 class AggregatesListQueryParams(BaseModel):
     keys: Optional[List[str]] = None
     addresses: Optional[List[str]] = None
-    sort_by: SortByAggregate = Field(default=SortByAggregate.LAST_MODIFIED, alias="sortBy")
+    sort_by: SortByAggregate = Field(
+        default=SortByAggregate.LAST_MODIFIED, alias="sortBy"
+    )
     sort_order: SortOrder = Field(default=SortOrder.DESCENDING, alias="sortOrder")
     pagination: int = Field(default=DEFAULT_MESSAGES_PER_PAGE, alias="pagination")
     page: int = Field(default=1, alias="page")
