@@ -1,5 +1,4 @@
 import datetime as dt
-import typing
 from typing import Any
 
 from sqlalchemy import TIMESTAMP, Boolean, Column, ForeignKey, Index, String
