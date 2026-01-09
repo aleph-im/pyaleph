@@ -300,6 +300,7 @@ async def test_get_aggregates_list_sort(
     for i in range(len(aggregates) - 1):
         assert aggregates[i]["last_updated"] >= aggregates[i + 1]["last_updated"]
 
+
 @pytest.mark.asyncio
 async def test_get_aggregates_list_pagination_limits(
     ccn_api_client, fixture_aggregate_messages: Sequence[MessageDb]
