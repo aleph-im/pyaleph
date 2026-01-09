@@ -1,12 +1,13 @@
 import datetime as dt
 import random
 import time
+from dataclasses import dataclass
 from decimal import Decimal
 from io import StringIO
 from typing import Any, Dict, Mapping, Optional, Sequence
 
 from aleph_message.models import Chain
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.sql import Select
 
 from aleph.db.models import AlephBalanceDb, AlephCreditBalanceDb, AlephCreditHistoryDb
@@ -88,7 +89,7 @@ def get_total_detailed_balance(
     include_dapps: bool = False,
 ) -> tuple[Decimal, Dict[str, Decimal]]:
     if chain is not None:
-        query = (
+        balance_on_chain_query = (
             select(func.sum(AlephBalanceDb.balance))
             .where(
                 (AlephBalanceDb.address == address)
@@ -98,10 +99,10 @@ def get_total_detailed_balance(
             .group_by(AlephBalanceDb.address)
         )
 
-        result = session.execute(query).first()
+        result = session.execute(balance_on_chain_query).first()
         return result[0] if result is not None else Decimal(0), {}
 
-    query = (
+    balance_by_chain_query = (
         select(AlephBalanceDb.chain, func.sum(AlephBalanceDb.balance).label("balance"))
         .where(
             (AlephBalanceDb.address == address)
@@ -112,10 +113,10 @@ def get_total_detailed_balance(
 
     balances_by_chain = {
         row.chain: row.balance or Decimal(0)
-        for row in session.execute(query).fetchall()
+        for row in session.execute(balance_by_chain_query).fetchall()
     }
 
-    query = (
+    total_balance_query = (
         select(func.sum(AlephBalanceDb.balance))
         .where(
             (AlephBalanceDb.address == address)
@@ -124,7 +125,7 @@ def get_total_detailed_balance(
         .group_by(AlephBalanceDb.address)
     )
 
-    result = session.execute(query).first()
+    result = session.execute(total_balance_query).first()
     return result[0] if result is not None else Decimal(0), balances_by_chain
 
 
@@ -147,7 +148,9 @@ def update_balances(
     last_update = utc_now()
 
     session.execute(
-        "CREATE TEMPORARY TABLE temp_balances AS SELECT * FROM balances WITH NO DATA"  # type: ignore[arg-type]
+        text(
+            "CREATE TEMPORARY TABLE temp_balances AS SELECT * FROM balances WITH NO DATA"
+        )
     )
 
     conn = session.connection().connection
@@ -167,19 +170,21 @@ def update_balances(
         csv_balances,
     )
     session.execute(
-        """
+        text(
+            """
         INSERT INTO balances(address, chain, dapp, balance, eth_height, last_update)
             (SELECT address, chain, dapp, balance, eth_height, last_update FROM temp_balances)
             ON CONFLICT ON CONSTRAINT balances_address_chain_dapp_uindex DO UPDATE
             SET balance = excluded.balance, eth_height = excluded.eth_height, last_update = (CASE WHEN excluded.balance <> balances.balance THEN excluded.last_update ELSE balances.last_update END)
             WHERE excluded.eth_height > balances.eth_height
-        """  # type: ignore[arg-type]
+        """
+        )
     )
 
     # Temporary tables are dropped at the same time as the connection, but SQLAlchemy
     # tends to reuse connections. Dropping the table here guarantees it will not be present
     # on the next run.
-    session.execute("DROP TABLE temp_balances")  # type: ignore[arg-type]
+    session.execute(text("DROP TABLE temp_balances"))
 
 
 def get_updated_balance_accounts(session: DbSession, last_update: dt.datetime):
@@ -189,6 +194,20 @@ def get_updated_balance_accounts(session: DbSession, last_update: dt.datetime):
         .distinct()
     )
     return (session.execute(select_stmt)).scalars().all()
+
+
+@dataclass
+class PositiveCredit:
+    amount: int
+    expiration_date: Optional[dt.datetime]
+    timestamp: dt.datetime
+    remaining: int
+
+
+@dataclass
+class NegativeAmount:
+    amount: int
+    timestamp: dt.datetime
 
 
 def _calculate_credit_balance_fifo(
@@ -225,21 +244,21 @@ def _calculate_credit_balance_fifo(
     for record in records:
         if record.amount > 0:
             positive_credits.append(
-                {
-                    "amount": record.amount,
-                    "expiration_date": record.expiration_date,
-                    "timestamp": record.message_timestamp,
-                    "remaining": record.amount,  # Track remaining balance
-                }
+                PositiveCredit(
+                    amount=record.amount,
+                    expiration_date=record.expiration_date,
+                    timestamp=record.message_timestamp,
+                    remaining=record.amount,
+                )
             )
         else:
             negative_amounts.append(
-                {"amount": abs(record.amount), "timestamp": record.message_timestamp}
+                NegativeAmount(amount=abs(record.amount), timestamp=record.message_timestamp)
             )
 
     # Apply negative amounts using FIFO strategy
     for expense in negative_amounts:
-        remaining_expense = expense["amount"]
+        remaining_expense = expense.amount
 
         # Consume from oldest credits first
         for credit in positive_credits:
@@ -250,20 +269,20 @@ def _calculate_credit_balance_fifo(
             # If credit has no expiration (None), expense can always consume
             # If credit has expiration, expense must have occurred before expiration
             expense_valid = (
-                credit["expiration_date"] is None
-                or expense["timestamp"] < credit["expiration_date"]
+                credit.expiration_date is None
+                or expense.timestamp < credit.expiration_date
             )
 
-            if expense_valid and credit["remaining"] > 0:
-                consumed = min(credit["remaining"], remaining_expense)
-                credit["remaining"] -= consumed
+            if expense_valid and credit.remaining > 0:
+                consumed = min(credit.remaining, remaining_expense)
+                credit.remaining -= consumed
                 remaining_expense -= consumed
 
     # Sum remaining balances from currently non-expired credits
     total_balance = 0
     for credit in positive_credits:
-        if credit["expiration_date"] is None or credit["expiration_date"] > now:
-            total_balance += credit["remaining"]
+        if credit.expiration_date is None or credit.expiration_date > now:
+            total_balance += credit.remaining
 
     return max(0, total_balance)
 
@@ -398,10 +417,12 @@ def _bulk_insert_credit_history(
     temp_table_name = f"temp_credit_history_{timestamp}_{random_suffix}"
 
     # Drop the temporary table if it exists from a previous operation
-    session.execute(f"DROP TABLE IF EXISTS {temp_table_name}")  # type: ignore[arg-type]
+    session.execute(text(f"DROP TABLE IF EXISTS {temp_table_name}"))
 
     session.execute(
-        f"CREATE TEMPORARY TABLE {temp_table_name} AS SELECT * FROM credit_history WITH NO DATA"  # type: ignore[arg-type]
+        text(
+            f"CREATE TEMPORARY TABLE {temp_table_name} AS SELECT * FROM credit_history WITH NO DATA"
+        )
     )
 
     conn = session.connection().connection
@@ -418,16 +439,18 @@ def _bulk_insert_credit_history(
     )
 
     # Insert query for credit history
-    insert_query = f"""
+    insert_query = text(
+        f"""
         INSERT INTO credit_history({copy_columns})
             (SELECT {copy_columns} FROM {temp_table_name})
             ON CONFLICT ON CONSTRAINT credit_history_pkey DO NOTHING
         """
+    )
 
-    session.execute(insert_query)  # type: ignore[arg-type]
+    session.execute(insert_query)
 
     # Drop the temporary table
-    session.execute(f"DROP TABLE {temp_table_name}")  # type: ignore[arg-type]
+    session.execute(text(f"DROP TABLE {temp_table_name}"))
 
 
 def get_updated_credit_balance_accounts(session: DbSession, last_update: dt.datetime):

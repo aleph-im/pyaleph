@@ -82,17 +82,15 @@ def query_metric_ccn(
         start_date = end_date - 60 * 60 * 24 * 14
 
     select_stmt = select(
-        [
-            text("item_hash"),
-            text("measured_at"),
-            text("base_latency"),
-            text("base_latency_ipv4"),
-            text("metrics_latency"),
-            text("aggregate_latency"),
-            text("file_download_latency"),
-            text("pending_messages"),
-            text("eth_height_remaining"),
-        ]
+        text("item_hash"),
+        text("measured_at"),
+        text("base_latency"),
+        text("base_latency_ipv4"),
+        text("metrics_latency"),
+        text("aggregate_latency"),
+        text("file_download_latency"),
+        text("pending_messages"),
+        text("eth_height_remaining"),
     ).select_from(text("ccn_metric_view"))
 
     select_stmt = _build_metric_filter(
@@ -122,14 +120,12 @@ def query_metric_crn(
         start_date = end_date - 60 * 60 * 24 * 14
 
     select_stmt = select(
-        [
-            text("item_hash"),
-            text("measured_at"),
-            text("base_latency"),
-            text("base_latency_ipv4"),
-            text("full_check_latency"),
-            text("diagnostic_vm_latency"),
-        ]
+        text("item_hash"),
+        text("measured_at"),
+        text("base_latency"),
+        text("base_latency_ipv4"),
+        text("full_check_latency"),
+        text("diagnostic_vm_latency"),
     ).select_from(text("crn_metric_view"))
 
     select_stmt = _build_metric_filter(

@@ -1,7 +1,8 @@
 import datetime as dt
 from enum import Enum
 
-from sqlalchemy import TIMESTAMP, Column, String
+from sqlalchemy import TIMESTAMP, String
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy_utils.types.choice import ChoiceType
 
 from .base import Base
@@ -16,8 +17,10 @@ class PeerType(str, Enum):
 class PeerDb(Base):
     __tablename__ = "peers"
 
-    peer_id = Column(String, primary_key=True)
-    peer_type: PeerType = Column(ChoiceType(PeerType), primary_key=True)
-    address = Column(String, nullable=False)
-    source: PeerType = Column(ChoiceType(PeerType), nullable=False)
-    last_seen: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
+    peer_id: Mapped[str] = mapped_column(String, primary_key=True)
+    peer_type: Mapped[PeerType] = mapped_column(ChoiceType(PeerType), primary_key=True)
+    address: Mapped[str] = mapped_column(String, nullable=False)
+    source: Mapped[PeerType] = mapped_column(ChoiceType(PeerType), nullable=False)
+    last_seen: Mapped[dt.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )

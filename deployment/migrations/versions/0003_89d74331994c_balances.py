@@ -5,9 +5,10 @@ Revises: 7365b4898472
 Create Date: 2022-12-29 01:55:43.413214
 
 """
+
 from alembic import op
 import sqlalchemy as sa
-
+from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
 revision = "89d74331994c"
@@ -31,10 +32,12 @@ def upgrade() -> None:
 
     op.create_index(op.f("ix_balances_address"), "balances", ["address"], unique=False)
     op.execute(
-        """
+        text(
+            """
         ALTER TABLE balances ADD CONSTRAINT balances_address_chain_dapp_uindex 
         UNIQUE NULLS NOT DISTINCT (address, chain, dapp)
     """
+        )
     )
 
     # ### end Alembic commands ###

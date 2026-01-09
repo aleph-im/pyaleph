@@ -78,6 +78,3 @@ def make_async_engine(
 def make_session_factory(engine: Engine) -> DbSessionFactory:
     return sessionmaker(engine, expire_on_commit=False)
 
-
-def make_async_session_factory(engine: AsyncEngine) -> AsyncDbSessionFactory:
-    return sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)

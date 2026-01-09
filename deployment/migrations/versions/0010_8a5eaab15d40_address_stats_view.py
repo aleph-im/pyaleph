@@ -5,26 +5,34 @@ Revises: 8edf69c47884
 Create Date: 2023-03-06 17:27:14.514803
 
 """
-from alembic import op
 
+from alembic import op
+from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
-revision = '8a5eaab15d40'
-down_revision = '8edf69c47884'
+revision = "8a5eaab15d40"
+down_revision = "8edf69c47884"
 branch_labels = None
 depends_on = None
 
 
 def upgrade() -> None:
     op.execute(
-        """
+        text(
+            """
         create materialized view address_stats_mat_view as 
             select sender as address, type, count(*) as nb_messages
                 from messages
                 group by sender, type
-        """)
-    op.execute("create unique index ix_address_type on address_stats_mat_view(address, type)")
+        """
+        )
+    )
+    op.execute(
+        text(
+            "create unique index ix_address_type on address_stats_mat_view(address, type)"
+        )
+    )
 
 
 def downgrade() -> None:
-    op.execute("drop materialized view address_stats_mat_view")
+    op.execute(text("drop materialized view address_stats_mat_view"))

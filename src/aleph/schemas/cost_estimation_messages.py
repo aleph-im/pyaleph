@@ -1,4 +1,15 @@
-from typing import Any, Dict, Generic, List, Literal, Optional, Type, TypeAlias, Union
+from typing import (
+    Any,
+    Dict,
+    Generic,
+    List,
+    Literal,
+    Optional,
+    Type,
+    TypeAlias,
+    Union,
+    Sequence,
+)
 
 from aiohttp import web
 from aleph_message.models import (
@@ -37,7 +48,8 @@ CostEstimationMachineVolume = Union[
 
 
 class CostEstimationInstanceContent(InstanceContent):
-    volumes: List[CostEstimationMachineVolume] = Field(
+    # Type should be defined as Sequence instead of List in aleph-message
+    volumes: Sequence[CostEstimationMachineVolume] = Field(  # type: ignore[assignment]
         default=[], description="Volumes to mount on the filesystem"
     )
 
@@ -62,7 +74,8 @@ class CostEstimationProgramContent(ProgramContent):
     data: Optional[CostEstimationDataContent] = Field(
         default=None, description="Data to use during computation"
     )
-    volumes: List[CostEstimationMachineVolume] = Field(
+    # Type should be defined as Sequence instead of List in aleph-message
+    volumes: Sequence[CostEstimationMachineVolume] = Field( # type: ignore[assignment]
         default=[], description="Volumes to mount on the filesystem"
     )
 
@@ -85,18 +98,24 @@ class BaseCostEstimationMessage(AlephBaseMessage, Generic[MType, ContentType]):
 
 
 class CostEstimationInstanceMessage(
-    BaseCostEstimationMessage[Literal[MessageType.instance], CostEstimationInstanceContent]  # type: ignore
+    BaseCostEstimationMessage[
+        Literal[MessageType.instance], CostEstimationInstanceContent
+    ]
 ):
     pass
 
 
 class CostEstimationProgramMessage(
-    BaseCostEstimationMessage[Literal[MessageType.program], CostEstimationProgramContent]  # type: ignore
+    BaseCostEstimationMessage[
+        Literal[MessageType.program], CostEstimationProgramContent
+    ]
 ):
     pass
 
 
-class CostEstimationStoreMessage(BaseCostEstimationMessage[Literal[MessageType.store], CostEstimationStoreContent]):  # type: ignore
+class CostEstimationStoreMessage(
+    BaseCostEstimationMessage[Literal[MessageType.store], CostEstimationStoreContent]
+):
     pass
 
 

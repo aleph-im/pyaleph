@@ -25,6 +25,7 @@ from aleph_message.models import (
 )
 from aleph_message.models.execution.volume import ImmutableVolume
 from configmanager import Config
+from sqlalchemy import text
 
 import aleph.config
 from aleph.db.accessors.files import insert_message_file_pin, upsert_file_tag
@@ -100,8 +101,8 @@ def session_factory(mock_config):
     )
 
     with engine.begin() as conn:
-        conn.execute("drop schema public cascade")
-        conn.execute("create schema public")
+        conn.execute(text("drop schema public cascade"))
+        conn.execute(text("create schema public"))
 
     run_db_migrations(config=actual_config)
 

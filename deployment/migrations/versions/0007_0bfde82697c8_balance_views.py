@@ -5,19 +5,21 @@ Revises: 7b547d707a2f
 Create Date: 2023-01-20 17:18:01.145689
 
 """
-from alembic import op
 
+from alembic import op
+from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
-revision = '0bfde82697c8'
-down_revision = '7b547d707a2f'
+revision = "0bfde82697c8"
+down_revision = "7b547d707a2f"
 branch_labels = None
 depends_on = None
 
 
 def upgrade() -> None:
     op.execute(
-        """
+        text(
+            """
         create view program_volumes_files_view(program_hash, ref, use_latest, type, latest, original, volume_to_use) as
         SELECT volume.program_hash,
                volume.ref,
@@ -75,9 +77,11 @@ def upgrade() -> None:
                  LEFT OUTER JOIN file_tags tags ON volume.ref = tags.tag
                  JOIN file_pins originals ON volume.ref = originals.item_hash
         """
+        )
     )
     op.execute(
-        """
+        text(
+            """
         create view program_costs_view as
             SELECT program_versions.program_hash,
                    program_versions.owner,
@@ -129,9 +133,10 @@ def upgrade() -> None:
                                   1000000::double precision AS disk_price) adp,
                  LATERAL ( SELECT cpm.compute_unit_price + adp.disk_price AS total_price) tp
         """
+        )
     )
     op.execute(
-        """
+        text("""
         create view costs_view as
         SELECT coalesce(program_prices.owner, storage.owner) address,
                total_program_cost,
@@ -147,10 +152,10 @@ def upgrade() -> None:
              LATERAL (SELECT coalesce(program_prices.total_program_cost, 0) +
                              coalesce(total_storage_cost, 0) AS total_cost ) tc;
         """
-    )
+    ))
 
 
 def downgrade() -> None:
-    op.execute("drop view costs_view")
-    op.execute("drop view program_costs_view")
-    op.execute("drop view program_volumes_files_view")
+    op.execute(text("drop view costs_view"))
+    op.execute(text("drop view program_costs_view"))
+    op.execute(text("drop view program_volumes_files_view"))

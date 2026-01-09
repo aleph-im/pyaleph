@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import logging
+import math
 import os
 import tempfile
 from typing import Optional
@@ -237,7 +238,7 @@ async def _check_and_add_file(
             message_content = CostEstimationStoreContent.model_validate_json(
                 message.item_content
             )
-            message_content.estimated_size_mib = uploaded_file.size / MiB
+            message_content.estimated_size_mib = math.ceil((uploaded_file.size / MiB))
 
             if message_content.item_hash != file_hash:
                 raise web.HTTPUnprocessableEntity(
@@ -305,6 +306,11 @@ async def storage_add_file(request: web.Request):
         if request.content_type == "multipart/form-data":
             reader = await request.multipart()
             async for part in reader:
+                if part is None:
+                    raise web.HTTPBadRequest(reason="No file field in multipart request")
+                if not isinstance(part, BodyPartReader):
+                    raise web.HTTPBadRequest(text="Invalid multipart structure")
+
                 if part.name == "file":
                     uploaded_file = MultipartUploadedFile(part, MAX_FILE_SIZE)
                     await uploaded_file.read_and_validate()

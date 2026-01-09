@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from aiohttp import web
 from aiohttp.web_exceptions import HTTPException
@@ -191,7 +191,7 @@ async def recalculate_message_costs(request: web.Request):
     item_hash_param = request.match_info.get("item_hash")
 
     with session_factory() as session:
-        messages_to_recalculate: List[MessageDb] = []
+        messages_to_recalculate: Sequence[MessageDb] = []
 
         if item_hash_param:
             # Recalculate costs for a specific message

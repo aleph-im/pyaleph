@@ -5,18 +5,20 @@ Revises: 08602db6c78f
 Create Date: 2023-11-27 18:19:35.782198
 
 """
+
 from alembic import op
+from sqlalchemy import text
 
-
-revision = 'e682fc8f9506'
-down_revision = '08602db6c78f'
+revision = "e682fc8f9506"
+down_revision = "08602db6c78f"
 branch_labels = None
 depends_on = None
 
 
 def upgrade() -> None:
     op.execute(
-        """
+        text(
+            """
         create or replace view vm_costs_view as
             SELECT vm_versions.vm_hash,
                vm_versions.owner,
@@ -78,12 +80,14 @@ def upgrade() -> None:
 
 
         """
+        )
     )
 
 
 def downgrade() -> None:
     op.execute(
-        """
+        text(
+            """
         create or replace view vm_costs_view as
             SELECT vm_versions.vm_hash,
                vm_versions.owner,
@@ -142,4 +146,5 @@ def downgrade() -> None:
 
 
         """
+        )
     )

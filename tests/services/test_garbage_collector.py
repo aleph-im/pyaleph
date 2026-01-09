@@ -142,9 +142,10 @@ async def test_garbage_collector_collect(
             else:
                 pins = fixture_file.pins
                 # Files with an outdated grace period pin should be deleted
-                if (
-                    all(isinstance(pin, GracePeriodFilePinDb) for pin in pins)
-                    and max(pin.delete_by for pin in pins) < gc_run_datetime  # type: ignore[attr-defined]
+                if all(
+                    isinstance(pin, GracePeriodFilePinDb)
+                    and pin.delete_by < gc_run_datetime
+                    for pin in pins
                 ):
                     await assert_file_is_deleted(
                         session, storage_engine, fixture_file.hash
