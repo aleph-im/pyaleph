@@ -164,7 +164,8 @@ async def main(args: List[str]) -> None:
             storage_service=storage_service,
         )
         pending_tx_publisher = await PendingTxPublisher.new(config=config)
-        chain_connector = ChainConnector(
+        chain_connector = await ChainConnector.new(
+            config=config,
             session_factory=session_factory,
             pending_tx_publisher=pending_tx_publisher,
             chain_data_service=chain_data_service,

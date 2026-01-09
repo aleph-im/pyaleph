@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Dict, Union
+from typing import Dict, Self, Union
 
 from aleph_message.models import Chain
 from configmanager import Config
@@ -40,7 +40,21 @@ class ChainConnector:
         self.readers = {}
         self.writers = {}
 
-        self._register_chains()
+    @classmethod
+    async def new(
+        cls,
+        config: Config,
+        session_factory: DbSessionFactory,
+        pending_tx_publisher: PendingTxPublisher,
+        chain_data_service: ChainDataService,
+    ) -> Self:
+        connector = cls(
+            session_factory=session_factory,
+            pending_tx_publisher=pending_tx_publisher,
+            chain_data_service=chain_data_service,
+        )
+        await connector._register_chains(config=config)
+        return connector
 
     async def chain_reader_task(self, chain: Chain, config: Config):
         connector = self.readers[chain]
@@ -100,7 +114,7 @@ class ChainConnector:
         if isinstance(connector, ChainWriter):
             self.writers[chain] = connector
 
-    def _register_chains(self):
+    async def _register_chains(self, config: Config):
         self._add_chain(
             Chain.BSC,
             BscConnector(
@@ -118,7 +132,8 @@ class ChainConnector:
         )
         self._add_chain(
             Chain.ETH,
-            EthereumConnector(
+            await EthereumConnector.new(
+                config=config,
                 session_factory=self._session_factory,
                 pending_tx_publisher=self.pending_tx_publisher,
                 chain_data_service=self._chain_data_service,
