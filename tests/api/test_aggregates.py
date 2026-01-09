@@ -6,6 +6,7 @@ import pytest
 from aleph.db.models import MessageDb
 
 AGGREGATES_URI = "/api/v0/aggregates/{address}.json"
+AGGREGATES_LIST_URI = "/api/v0/aggregates.json"
 
 # An address with three aggregates
 ADDRESS_1 = "0x720F319A9c3226dCDd7D8C49163D79EDa1084E98"
@@ -184,3 +185,117 @@ async def test_get_aggregates_return_value_only(
     )
     assert address not in aggregates
     assert aggregates == EXPECTED_AGGREGATES[address][key]
+
+
+@pytest.mark.asyncio
+async def test_get_aggregates_list(
+    ccn_api_client, fixture_aggregate_messages: Sequence[MessageDb]
+):
+    """
+    Tests the GET /api/v0/aggregates endpoint.
+    """
+    assert fixture_aggregate_messages
+
+    response = await ccn_api_client.get(AGGREGATES_LIST_URI)
+    assert response.status == 200
+    data = await response.json()
+
+    assert "aggregates" in data
+    assert len(data["aggregates"]) == 4  # 3 from ADDRESS_1, 1 from ADDRESS_2
+    assert data["pagination_total"] == 4
+    assert data["pagination_per_page"] == 20
+    assert data["pagination_page"] == 1
+
+
+@pytest.mark.asyncio
+async def test_get_aggregates_list_filter_keys(
+    ccn_api_client, fixture_aggregate_messages: Sequence[MessageDb]
+):
+    """
+    Tests filtering by keys on the aggregates list endpoint.
+    """
+    assert fixture_aggregate_messages
+
+    params = {"keys": "test_reference"}
+    response = await ccn_api_client.get(AGGREGATES_LIST_URI, params=params)
+    assert response.status == 200
+    data = await response.json()
+
+    assert len(data["aggregates"]) == 2  # One for each address
+    for aggregate in data["aggregates"]:
+        assert aggregate["key"] == "test_reference"
+
+
+@pytest.mark.asyncio
+async def test_get_aggregates_list_filter_addresses(
+    ccn_api_client, fixture_aggregate_messages: Sequence[MessageDb]
+):
+    """
+    Tests filtering by addresses on the aggregates list endpoint.
+    """
+    assert fixture_aggregate_messages
+
+    params = {"addresses": ADDRESS_2}
+    response = await ccn_api_client.get(AGGREGATES_LIST_URI, params=params)
+    assert response.status == 200
+    data = await response.json()
+
+    assert len(data["aggregates"]) == 1
+    assert data["aggregates"][0]["address"] == ADDRESS_2
+
+
+@pytest.mark.asyncio
+async def test_get_aggregates_list_pagination(
+    ccn_api_client, fixture_aggregate_messages: Sequence[MessageDb]
+):
+    """
+    Tests pagination on the aggregates list endpoint.
+    """
+    assert fixture_aggregate_messages
+
+    params = {"pagination": 2, "page": 1}
+    response = await ccn_api_client.get(AGGREGATES_LIST_URI, params=params)
+    assert response.status == 200
+    data = await response.json()
+
+    assert len(data["aggregates"]) == 2
+    assert data["pagination_total"] == 4
+    assert data["pagination_page"] == 1
+
+    params = {"pagination": 2, "page": 2}
+    response = await ccn_api_client.get(AGGREGATES_LIST_URI, params=params)
+    assert response.status == 200
+    data = await response.json()
+
+    assert len(data["aggregates"]) == 2
+    assert data["pagination_page"] == 2
+
+
+@pytest.mark.asyncio
+async def test_get_aggregates_list_sort(
+    ccn_api_client, fixture_aggregate_messages: Sequence[MessageDb]
+):
+    """
+    Tests sorting on the aggregates list endpoint.
+    """
+    assert fixture_aggregate_messages
+
+    # Sort by creation_time ASC
+    params = {"sortBy": "creation_time", "sortOrder": 1}
+    response = await ccn_api_client.get(AGGREGATES_LIST_URI, params=params)
+    assert response.status == 200
+    data = await response.json()
+
+    aggregates = data["aggregates"]
+    for i in range(len(aggregates) - 1):
+        assert aggregates[i]["created"] <= aggregates[i+1]["created"]
+
+    # Sort by last_modified DESC
+    params = {"sortBy": "last_modified", "sortOrder": -1}
+    response = await ccn_api_client.get(AGGREGATES_LIST_URI, params=params)
+    assert response.status == 200
+    data = await response.json()
+
+    aggregates = data["aggregates"]
+    for i in range(len(aggregates) - 1):
+        assert aggregates[i]["last_updated"] >= aggregates[i+1]["last_updated"]

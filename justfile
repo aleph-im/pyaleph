@@ -29,6 +29,9 @@ upgrade-db: start-db
 downgrade-db revision: start-db
     alembic downgrade {{revision}}
 
+run-tests: start-dev-env
+    pytest -v .
+
 run: start-dev-env
     python3 -m aleph.commands
 

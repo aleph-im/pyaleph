@@ -19,6 +19,7 @@ from sqlalchemy.orm import defer, selectinload
 from aleph.cache import cache
 from aleph.db.models import AggregateDb, AggregateElementDb
 from aleph.types.db_session import DbSession
+from aleph.types.sort_order import SortOrder, SortByAggregate
 
 logger = logging.getLogger(__name__)
 
@@ -306,3 +307,59 @@ def delete_aggregate_element(session: DbSession, item_hash: str) -> None:
         AggregateElementDb.item_hash == item_hash
     )
     session.execute(delete_element_stmt)
+
+
+def get_aggregates(
+    session: DbSession,
+    keys: Optional[Sequence[str]] = None,
+    addresses: Optional[Sequence[str]] = None,
+    sort_by: SortByAggregate = SortByAggregate.LAST_MODIFIED,
+    sort_order: SortOrder = SortOrder.DESCENDING,
+    page: int = 1,
+    pagination: int = 100,
+) -> Iterable[AggregateDb]:
+    where_clause = []
+    if keys:
+        where_clause.append(AggregateDb.key.in_(keys))
+    if addresses:
+        where_clause.append(AggregateDb.owner.in_(addresses))
+
+    if sort_by == SortByAggregate.CREATION_TIME:
+        order_by_column = AggregateDb.creation_datetime
+    else:
+        # last_modified
+        order_by_column = AggregateElementDb.creation_datetime
+
+    if sort_order == SortOrder.DESCENDING:
+        order_by_column = order_by_column.desc()
+    else:
+        order_by_column = order_by_column.asc()
+
+    query = (
+        select(AggregateDb)
+        .join(
+            AggregateElementDb,
+            AggregateDb.last_revision_hash == AggregateElementDb.item_hash,
+        )
+        .where(*where_clause)
+        .order_by(order_by_column)
+        .limit(pagination)
+        .offset((page - 1) * pagination)
+    )
+
+    return (session.execute(query.options(selectinload(AggregateDb.last_revision)))).scalars()
+
+
+def count_aggregates(
+    session: DbSession,
+    keys: Optional[Sequence[str]] = None,
+    addresses: Optional[Sequence[str]] = None,
+) -> int:
+    where_clause = []
+    if keys:
+        where_clause.append(AggregateDb.key.in_(keys))
+    if addresses:
+        where_clause.append(AggregateDb.owner.in_(addresses))
+
+    query = select(func.count()).select_from(AggregateDb).where(*where_clause)
+    return session.execute(query).scalar() or 0

@@ -36,6 +36,8 @@ def register_routes(app: web.Application):
     app.router.add_get(
         "/api/v0/aggregates/{address}.json", aggregates.address_aggregate
     )
+    app.router.add_get("/api/v0/aggregates", aggregates.view_aggregates_list)
+    app.router.add_get("/api/v0/aggregates.json", aggregates.view_aggregates_list)
 
     app.router.add_get("/api/v0/channels/list.json", channels.used_channels)
 
