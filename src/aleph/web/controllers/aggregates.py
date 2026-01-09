@@ -157,12 +157,6 @@ async def view_aggregates_list(request: web.Request) -> web.Response:
             pagination=query_params.pagination,
         )
 
-        # We don't have a count_aggregates accessor yet, but we can't easily count
-        # without repeating the filters. For now, let's just return the aggregates.
-        # However, the requirement says "following the same format as other paginated endpoints"
-        # which includes pagination_total.
-
-        # Let's see if we can get the total count.
         total_aggregates = count_aggregates(
             session=session,
             keys=query_params.keys,
