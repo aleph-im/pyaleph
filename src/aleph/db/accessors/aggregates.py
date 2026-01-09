@@ -9,6 +9,7 @@ from typing import (
     Sequence,
     Tuple,
     Union,
+    cast,
     overload,
 )
 
@@ -113,7 +114,7 @@ def get_aggregate_by_key(
     options = []
 
     if not with_content:
-        options.append(defer(AggregateDb.content))
+        options.append(defer(cast(Any, AggregateDb.content)))
 
     select_stmt = select(AggregateDb).where(
         (AggregateDb.owner == owner) & (AggregateDb.key == key)
@@ -218,8 +219,8 @@ def count_aggregate_elements(session: DbSession, owner: str, key: str) -> int:
     return session.execute(select(func.count()).select_from(select_stmt)).scalar_one()
 
 
-def merge_aggregate_elements(elements: Iterable[AggregateElementDb]) -> Dict:
-    content = {}
+def merge_aggregate_elements(elements: Iterable[AggregateElementDb]) -> Dict[str, Any]:
+    content: Dict[str, Any] = {}
     for element in elements:
         content.update(element.content)
     return content
@@ -325,7 +326,7 @@ def get_aggregates(
         where_clause.append(AggregateDb.owner.in_(addresses))
 
     if sort_by == SortByAggregate.CREATION_TIME:
-        order_by_column = AggregateDb.creation_datetime
+        order_by_column: Any = AggregateDb.creation_datetime
     else:
         # last_modified
         order_by_column = AggregateElementDb.creation_datetime
