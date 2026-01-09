@@ -4,7 +4,6 @@ import pytest
 from aleph_message.models import ItemType, MessageType
 
 from aleph.chains.common import get_verification_buffer
-from aleph.chains.connector import ChainConnector
 from aleph.db.models import PendingMessageDb
 from aleph.handlers.message_handler import MessageHandler
 from aleph.schemas.pending_messages import BasePendingMessage, parse_message
@@ -42,7 +41,9 @@ async def test_incoming_inline(mocker):
 
     MagicMock.__await__ = lambda x: async_magic().__await__()
 
-    message_processor = MessageHandler(chain_service=ChainConnector())
+    message_processor = MessageHandler(
+        signature_verifier=MagicMock(), config=MagicMock()
+    )
 
     mocker.patch("aleph.model.db")
 

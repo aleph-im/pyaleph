@@ -148,11 +148,13 @@ def get_defaults():
             # Address of the aleph.im smart contract on Ethereum.
             "sync_contract": None,
             # Ethereum block height to start from when fetching sync events.
-            "start_height": 11400000,
+            "start_height": 11_400_000,
+            # Largest range of blocks used when synchronizing messages in batches.
+            "max_block_range": 100_000,
             # Delay in seconds between publication attempts.
             "commit_delay": 35,
             # Maximum gas price accepted when publishing to Ethereum.
-            "max_gas_price": 150000000000,
+            "max_gas_price": 150_000_000_000,
             # Authorized publishers for sync events.
             "authorized_emitters": ["0x23eC28598DCeB2f7082Cc3a9D670592DfEd6e0dC"],
             # Delay in seconds between archive checks.

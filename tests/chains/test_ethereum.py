@@ -19,10 +19,17 @@ from aleph.types.db_session import DbSessionFactory
 
 
 @pytest_asyncio.fixture
-async def web3(mock_config: Config):
+async def web3_client(mock_config: Config):
     eth_api_url = mock_config.ethereum.api_url.value
     w3 = AsyncWeb3(AsyncHTTPProvider(eth_api_url))
     w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
+
+    mock_config.ethereum.chain_id.value = await w3.eth.chain_id
+    # Anvil funds 10 addresses by default, this is one of them
+    mock_config.ethereum.private_key.value = (
+        "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+    )
+
     yield w3
     await w3.provider.disconnect()
 
@@ -41,23 +48,28 @@ ALEPH_SYNC_BYTECODE = "0x608060405234801561001057600080fd5b506004361061003657600
 
 
 @pytest_asyncio.fixture
-async def deployed_contract(web3, mock_config: Config, ethereum_sc_abi):
-    if not await web3.is_connected():
+async def deployed_contract(
+    web3_client: AsyncWeb3, mock_config: Config, ethereum_sc_abi
+):
+    if not await web3_client.is_connected():
         pytest.fail(f"Anvil node not found at {mock_config.ethereum.api_url.value}")
 
     test_address = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
-    await web3.provider.make_request(
+    await web3_client.provider.make_request(
         "anvil_setCode", [test_address, ALEPH_SYNC_BYTECODE]
     )
 
-    return web3.eth.contract(address=test_address, abi=ethereum_sc_abi)
+    mock_config.ethereum.sync_contract.value = test_address
+    return web3_client.eth.contract(address=test_address, abi=ethereum_sc_abi)
 
 
 @pytest.mark.asyncio
-async def test_get_contract(mock_config: Config, web3: AsyncWeb3):
-    mock_config.ethereum.sync_contract.value = "0x" + "0" * 40
-    contract = await get_contract(config=mock_config, web3=web3)
-    assert contract.w3 == web3
+async def test_get_contract(web3_client: AsyncWeb3):
+    contract_address = "0x" + "0" * 40
+    contract = await get_contract(
+        web3_client=web3_client, contract_address=contract_address
+    )
+    assert contract.w3 == web3_client
 
 
 @pytest.mark.asyncio
@@ -65,15 +77,10 @@ async def test_broadcast_messages(
     mocker,
     mock_config: Config,
     session_factory: DbSessionFactory,
-    web3: AsyncWeb3,
+    web3_client: AsyncWeb3,
     deployed_contract,
 ):
-    mock_config.ethereum.chain_id.value = await web3.eth.chain_id
-    mock_config.ethereum.private_key.value = (
-        "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-    )
-    mock_config.ethereum.sync_contract.value = deployed_contract.address
-    mock_config.ethereum.max_gas_price.value = 100000000000
+    mock_config.ethereum.max_gas_price.value = 100_000_000_000
 
     pending_tx_publisher = mocker.AsyncMock()
     chain_data_service = mocker.AsyncMock()
@@ -89,7 +96,8 @@ async def test_broadcast_messages(
         return_value=mock_payload
     )
 
-    connector = EthereumConnector(
+    connector = await EthereumConnector.new(
+        config=mock_config,
         session_factory=session_factory,
         pending_tx_publisher=pending_tx_publisher,
         chain_data_service=chain_data_service,
@@ -111,18 +119,15 @@ async def test_broadcast_messages(
         )
     ]
 
-    gas_price = await web3.eth.gas_price
+    gas_price = await web3_client.eth.gas_price
 
     response = await connector.broadcast_messages(
-        config=mock_config,
-        web3=web3,
-        contract=deployed_contract,
         account=account,
         messages=messages,
-        nonce=await web3.eth.get_transaction_count(account.address),
+        nonce=await web3_client.eth.get_transaction_count(account.address),
     )
 
-    receipt = await web3.eth.wait_for_transaction_receipt(response)
+    receipt = await web3_client.eth.wait_for_transaction_receipt(response)
     assert receipt.status == 1
     print(f"Gas used by broadcast_messages: {receipt.gasUsed}")
     print(f"Cost: {receipt.gasUsed * gas_price / 10**18} ETH")
@@ -148,15 +153,10 @@ async def test_fetch_ethereum_sync_events(
     mocker,
     mock_config: Config,
     session_factory: DbSessionFactory,
-    web3: AsyncWeb3,
+    web3_client: AsyncWeb3,
     deployed_contract,
 ):
-    mock_config.ethereum.chain_id.value = 31337
-    mock_config.ethereum.private_key.value = (
-        "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-    )
-    mock_config.ethereum.sync_contract.value = deployed_contract.address
-    mock_config.ethereum.max_gas_price.value = 100000000000
+    mock_config.ethereum.max_gas_price.value = 100_000_000_000
     mock_config.ethereum.archive_delay.value = 0.1
     mock_config.ethereum.message_delay.value = 0.1
     mock_config.ethereum.client_timeout.value = 1
@@ -181,7 +181,8 @@ async def test_fetch_ethereum_sync_events(
         return_value=mock_payload
     )
 
-    connector = EthereumConnector(
+    connector = await EthereumConnector.new(
+        config=mock_config,
         session_factory=session_factory,
         pending_tx_publisher=pending_tx_publisher,
         chain_data_service=chain_data_service,
@@ -204,14 +205,11 @@ async def test_fetch_ethereum_sync_events(
     ]
 
     response = await connector.broadcast_messages(
-        config=mock_config,
-        web3=web3,
-        contract=deployed_contract,
         account=account,
         messages=messages,
-        nonce=await web3.eth.get_transaction_count(account.address),
+        nonce=await web3_client.eth.get_transaction_count(account.address),
     )
-    receipt = await web3.eth.wait_for_transaction_receipt(response)
+    receipt = await web3_client.eth.wait_for_transaction_receipt(response)
 
     # 0. Set initial height to current to avoid picking up old events
     # We set it to receipt.blockNumber - 1 so that fetcher picks up the block where we just emitted
@@ -227,10 +225,338 @@ async def test_fetch_ethereum_sync_events(
 
     # 2. Fetch the event
     with pytest.raises(StopTestException):
-        await connector.fetch_ethereum_sync_events(config=mock_config)
+        await connector.fetch_ethereum_sync_events()
 
     # 3. Verify
     pending_tx_publisher.add_and_publish_pending_tx.assert_called_once()
     call_args = pending_tx_publisher.add_and_publish_pending_tx.call_args
     assert call_args.kwargs["tx"].content == jdata["content"]
     assert call_args.kwargs["tx"].publisher == account.address
+
+
+@pytest.mark.asyncio
+async def test_fetch_ethereum_sync_events_repeated_sync(
+    mocker,
+    mock_config: Config,
+    session_factory: DbSessionFactory,
+    web3_client: AsyncWeb3,
+    deployed_contract,
+):
+    mock_config.ethereum.max_gas_price.value = 100_000_000_000
+    mock_config.ethereum.archive_delay.value = 0.1
+    mock_config.ethereum.message_delay.value = 0.1
+    mock_config.ethereum.client_timeout.value = 1
+
+    account = Account.from_key(HexBytes(mock_config.ethereum.private_key.value))
+    mock_config.ethereum.authorized_emitters.value = [account.address]
+
+    pending_tx_publisher = mocker.AsyncMock()
+
+    chain_data_service = mocker.AsyncMock()
+    mock_payload = mocker.MagicMock()
+    # The expected data structure for SyncEvent message
+    jdata = {
+        "protocol": "on_chain_sync",
+        "version": 1,
+        "content": {"test": "data"},
+    }
+    mock_payload.json.return_value = json.dumps(jdata)
+    chain_data_service.prepare_sync_event_payload = mocker.AsyncMock(
+        return_value=mock_payload
+    )
+
+    connector = await EthereumConnector.new(
+        config=mock_config,
+        session_factory=session_factory,
+        pending_tx_publisher=pending_tx_publisher,
+        chain_data_service=chain_data_service,
+    )
+
+    messages = [
+        MessageDb(
+            item_hash="hash",
+            type="STORE",
+            chain=Chain.ETH,
+            sender="sender",
+            signature="sig",
+            item_type="inline",
+            item_content="content",
+            content={"address": "sender", "time": 1600000000},
+            time=timestamp_to_datetime(1600000000),
+            size=0,
+        )
+    ]
+
+    # 1. First sync
+    response = await connector.broadcast_messages(
+        account=account,
+        messages=messages,
+        nonce=await web3_client.eth.get_transaction_count(account.address),
+    )
+    receipt = await web3_client.eth.wait_for_transaction_receipt(response)
+
+    # Set initial height
+    with session_factory() as session:
+        upsert_chain_sync_status(
+            session=session,
+            chain=Chain.ETH,
+            sync_type=ChainEventType.SYNC,
+            height=receipt.blockNumber - 1,
+            update_datetime=utc_now(),
+        )
+        session.commit()
+
+    # We want to stop the infinite loop after one call
+    pending_tx_publisher.add_and_publish_pending_tx.side_effect = StopTestException
+    with pytest.raises(StopTestException):
+        await connector.fetch_ethereum_sync_events()
+
+    assert pending_tx_publisher.add_and_publish_pending_tx.call_count == 1
+    pending_tx_publisher.add_and_publish_pending_tx.reset_mock()
+
+    # Update sync status in DB then move on to next block for next sync message
+    with session_factory() as session:
+        upsert_chain_sync_status(
+            session=session,
+            chain=Chain.ETH,
+            sync_type=ChainEventType.SYNC,
+            height=receipt.blockNumber,
+            update_datetime=utc_now(),
+        )
+        session.commit()
+
+    await web3_client.provider.make_request("anvil_mine", [1])
+
+    # 2. Second sync
+    jdata2 = {
+        "protocol": "on_chain_sync",
+        "version": 1,
+        "content": {"test": "data2"},
+    }
+    mock_payload2 = mocker.MagicMock()
+    mock_payload2.json.return_value = json.dumps(jdata2)
+    chain_data_service.prepare_sync_event_payload.return_value = mock_payload2
+
+    messages2 = [
+        MessageDb(
+            item_hash="hash2",
+            type="STORE",
+            chain=Chain.ETH,
+            sender="sender",
+            signature="sig2",
+            item_type="inline",
+            item_content="content2",
+            content={"address": "sender", "time": 1600000001},
+            time=timestamp_to_datetime(1600000001),
+            size=0,
+        )
+    ]
+
+    _ = await connector.broadcast_messages(
+        account=account,
+        messages=messages2,
+        nonce=await web3_client.eth.get_transaction_count(account.address),
+    )
+
+    pending_tx_publisher.add_and_publish_pending_tx.side_effect = StopTestException
+    with pytest.raises(StopTestException):
+        await connector.fetch_ethereum_sync_events()
+
+    assert pending_tx_publisher.add_and_publish_pending_tx.call_count == 1
+    call_args = pending_tx_publisher.add_and_publish_pending_tx.call_args
+    assert call_args.kwargs["tx"].content == jdata2["content"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_ethereum_sync_events_sync_failure(
+    mocker,
+    mock_config: Config,
+    session_factory: DbSessionFactory,
+    web3_client: AsyncWeb3,
+    deployed_contract,
+):
+    mock_config.ethereum.max_gas_price.value = 100_000_000_000
+    mock_config.ethereum.archive_delay.value = 0.1
+    mock_config.ethereum.message_delay.value = 0.1
+    mock_config.ethereum.client_timeout.value = 1
+
+    account = Account.from_key(HexBytes(mock_config.ethereum.private_key.value))
+    mock_config.ethereum.authorized_emitters.value = [account.address]
+
+    pending_tx_publisher = mocker.AsyncMock()
+
+    chain_data_service = mocker.AsyncMock()
+    mock_payload = mocker.MagicMock()
+    jdata = {
+        "protocol": "on_chain_sync",
+        "version": 1,
+        "content": {"test": "data"},
+    }
+    mock_payload.json.return_value = json.dumps(jdata)
+    chain_data_service.prepare_sync_event_payload = mocker.AsyncMock(
+        return_value=mock_payload
+    )
+
+    connector = await EthereumConnector.new(
+        config=mock_config,
+        session_factory=session_factory,
+        pending_tx_publisher=pending_tx_publisher,
+        chain_data_service=chain_data_service,
+    )
+
+    # 1. Sync one message successfully
+    messages = [
+        MessageDb(
+            item_hash="hash",
+            type="STORE",
+            chain=Chain.ETH,
+            sender="sender",
+            signature="sig",
+            item_type="inline",
+            item_content="content",
+            content={"address": "sender", "time": 1600000000},
+            time=timestamp_to_datetime(1600000000),
+            size=0,
+        )
+    ]
+    response = await connector.broadcast_messages(
+        account=account,
+        messages=messages,
+        nonce=await web3_client.eth.get_transaction_count(account.address),
+    )
+    receipt = await web3_client.eth.wait_for_transaction_receipt(response)
+
+    with session_factory() as session:
+        upsert_chain_sync_status(
+            session=session,
+            chain=Chain.ETH,
+            sync_type=ChainEventType.SYNC,
+            height=receipt.blockNumber - 1,
+            update_datetime=utc_now(),
+        )
+        session.commit()
+
+    pending_tx_publisher.add_and_publish_pending_tx.side_effect = StopTestException
+    with pytest.raises(StopTestException):
+        await connector.fetch_ethereum_sync_events()
+
+    assert pending_tx_publisher.add_and_publish_pending_tx.call_count == 1
+    pending_tx_publisher.add_and_publish_pending_tx.reset_mock()
+
+    # Now last_synced_height in DB should be receipt.blockNumber - 1
+    # because we stopped before _request_transactions could update the height in DB
+    last_height = await connector.get_last_height(ChainEventType.SYNC)
+    assert last_height == receipt.blockNumber - 1
+
+    # 2. Trigger an exception in fetch_ethereum_sync_events
+    # We can mock _request_transactions to raise an exception
+    with mocker.patch.object(
+        connector, "_request_transactions", side_effect=Exception("RPC Error")
+    ):
+        # fetch_sync_events_task calls fetch_ethereum_sync_events and catches Exception
+        # We need to mock asyncio.sleep to avoid waiting 10 seconds
+        with mocker.patch("asyncio.sleep", side_effect=StopTestException):
+            with pytest.raises(StopTestException):
+                await connector.fetch_sync_events_task(poll_interval=1)
+
+    # 3. Verify it would restart from last_height
+    # Check that it still has the correct height in DB
+    assert await connector.get_last_height(ChainEventType.SYNC) == last_height
+
+
+@pytest.mark.asyncio
+async def test_fetch_ethereum_sync_events_batching(
+    mocker,
+    mock_config: Config,
+    session_factory: DbSessionFactory,
+    web3_client: AsyncWeb3,
+    deployed_contract,
+):
+    mock_config.ethereum.chain_id.value = 31337
+    mock_config.ethereum.private_key.value = (
+        "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+    )
+    mock_config.ethereum.max_gas_price.value = 100_000_000_000
+    mock_config.ethereum.archive_delay.value = 0.1
+    mock_config.ethereum.message_delay.value = 0.1
+    mock_config.ethereum.client_timeout.value = 1
+
+    account = Account.from_key(HexBytes(mock_config.ethereum.private_key.value))
+    mock_config.ethereum.authorized_emitters.value = [account.address]
+
+    pending_tx_publisher = mocker.AsyncMock()
+    chain_data_service = mocker.AsyncMock()
+
+    # Create 3 messages
+    jdatas = [
+        {"protocol": "on_chain_sync", "version": 1, "content": {"test": f"data{i}"}}
+        for i in range(3)
+    ]
+
+    async def mock_prepare_sync_event_payload(session, messages):
+        m = mocker.MagicMock()
+        # Find which message we are preparing
+        for jdata in jdatas:
+            if jdata["content"]["test"] == messages[0].item_hash:
+                m.json.return_value = json.dumps(jdata)
+                return m
+        return m
+
+    chain_data_service.prepare_sync_event_payload.side_effect = (
+        mock_prepare_sync_event_payload
+    )
+
+    connector = await EthereumConnector.new(
+        config=mock_config,
+        session_factory=session_factory,
+        pending_tx_publisher=pending_tx_publisher,
+        chain_data_service=chain_data_service,
+    )
+    # Set max_block_range to 1 to force the connector to sync in multiple iterations
+    connector.max_block_range = 1
+
+    start_height = await web3_client.eth.block_number
+
+    for i in range(3):
+        messages = [
+            MessageDb(
+                item_hash=f"data{i}",
+                type="STORE",
+                chain=Chain.ETH,
+                sender="sender",
+                signature=f"sig{i}",
+                item_type="inline",
+                item_content=f"content{i}",
+                content={"address": "sender", "time": 1600000000 + i},
+                time=timestamp_to_datetime(1600000000 + i),
+                size=0,
+            )
+        ]
+        response = await connector.broadcast_messages(
+            account=account,
+            messages=messages,
+            nonce=await web3_client.eth.get_transaction_count(account.address),
+        )
+        await web3_client.eth.wait_for_transaction_receipt(response)
+
+    with session_factory() as session:
+        upsert_chain_sync_status(
+            session=session,
+            chain=Chain.ETH,
+            sync_type=ChainEventType.SYNC,
+            height=start_height,
+            update_datetime=utc_now(),
+        )
+        session.commit()
+
+    # We expect 3 calls to add_and_publish_pending_tx, then StopTestException
+    pending_tx_publisher.add_and_publish_pending_tx.side_effect = [
+        None,
+        None,
+        StopTestException,
+    ]
+
+    with pytest.raises(StopTestException):
+        await connector.fetch_ethereum_sync_events()
+
+    assert pending_tx_publisher.add_and_publish_pending_tx.call_count == 3

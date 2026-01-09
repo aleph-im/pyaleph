@@ -11,12 +11,17 @@ reset-dev-env:
 generate-migration:
     alembic revision --autogenerate
 
+format:
+    hatch run linting:fmt
+
+check-typing:
+    hatch run linting:typing
+
 start-db:
     #!/bin/bash
     if ! docker compose -f deployment/docker-build/docker-compose.yml ps postgres | grep -q "running"; then
         docker compose -f deployment/docker-build/docker-compose.yml up -d postgres
     fi
-
 
 upgrade-db: start-db
     alembic upgrade head
