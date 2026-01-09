@@ -1,14 +1,16 @@
-from typing import Any, Dict, Iterable, Optional, Set
+from typing import Any, Dict, Iterable, Optional, Set, Union
 
-from sqlalchemy import Column, Table, exists, func, select, text
-from sqlalchemy.orm import declarative_base
+from sqlalchemy import Column, func, select, text
+from sqlalchemy.orm import DeclarativeBase, InstrumentedAttribute
+from sqlalchemy.sql import exists as sql_exists
 
 from aleph.types.db_session import DbSession
 
 
-class AugmentedBase:
-    __tablename__: str
-    __table__: Table
+class Base(DeclarativeBase):
+    """
+    Augmented declarative base providing utility methods for all models.
+    """
 
     def to_dict(self, exclude: Optional[Set[str]] = None) -> Dict[str, Any]:
         exclude_set = exclude if exclude is not None else set()
@@ -61,15 +63,16 @@ class AugmentedBase:
     # TODO: set type of "where" to the SQLA boolean expression class
     @classmethod
     def exists(cls, session: DbSession, where) -> bool:
-
-        exists_stmt = exists(text("1")).select().where(where)
+        exists_stmt = sql_exists(text("1")).select().where(where)
         result = (session.execute(exists_stmt)).scalar()
         return result is not None
 
     @classmethod
-    def jsonb_keys(cls, session: DbSession, column: Column, where) -> Iterable[str]:
+    def jsonb_keys(
+        cls,
+        session: DbSession,
+        column: Union[Column[Any], InstrumentedAttribute[Any]],
+        where,
+    ) -> Iterable[str]:
         select_stmt = select(func.jsonb_object_keys(column)).where(where)
         return session.execute(select_stmt).scalars()
-
-
-Base = declarative_base(cls=AugmentedBase)

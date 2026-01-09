@@ -222,7 +222,7 @@ async def test_delegated_account_amend_permission(
     # Original post message
     original_post_dict = {
         "chain": "ETH",
-        "item_hash": "original123456789012345678901234567890123456789012345678",
+        "item_hash": "1" * 64,
         "sender": "0xOriginalSender12345678901234567890123456789012",
         "type": "POST",
         "channel": "TEST",
@@ -239,11 +239,11 @@ async def test_delegated_account_amend_permission(
     # Amend message from delegated account
     amend_post_dict = {
         "chain": "ETH",
-        "item_hash": "amend123456789012345678901234567890123456789012345678901",
+        "item_hash": "2" * 64,
         "sender": "0xDelegatedAccount12345678901234567890123456789012",  # Different from original sender
         "type": "POST",
         "channel": "TEST",
-        "item_content": '{"address":"0xContentOwner12345678901234567890123456789012","time":1651050299.3481126,"content":{"title":"Amended Post","body":"Updated content"},"type":"amend","ref":"original123456789012345678901234567890123456789012345678"}',
+        "item_content": f'{{"address":"0xContentOwner12345678901234567890123456789012","time":1651050299.3481126,"content":{{"title":"Amended Post","body":"Updated content"}},"type":"amend","ref":"{'1'*64}"}}',
         "item_type": "inline",
         "signature": "amend_signature",
         "time": 1651050299.3488848,
@@ -309,7 +309,7 @@ async def test_delegated_account_amend_permission_denied(
     # Original post message
     original_post_dict = {
         "chain": "ETH",
-        "item_hash": "original123456789012345678901234567890123456789012345678",
+        "item_hash": "1" * 64,
         "sender": "0xOriginalSender12345678901234567890123456789012",
         "type": "POST",
         "channel": "TEST",
@@ -326,11 +326,11 @@ async def test_delegated_account_amend_permission_denied(
     # Amend message from unauthorized account
     amend_post_dict = {
         "chain": "ETH",
-        "item_hash": "amend123456789012345678901234567890123456789012345678901",
+        "item_hash": "2" * 64,
         "sender": "0xUnauthorizedAccount1234567890123456789012345678",  # Not in authorization list
         "type": "POST",
         "channel": "TEST",
-        "item_content": '{"address":"0xContentOwner12345678901234567890123456789012","time":1651050299.3481126,"content":{"title":"Amended Post","body":"Updated content"},"type":"amend","ref":"original123456789012345678901234567890123456789012345678"}',
+        "item_content": f'{{"address":"0xContentOwner12345678901234567890123456789012","time":1651050299.3481126,"content":{{"title":"Amended Post","body":"Updated content"}},"type":"amend","ref":"{'1'*64}"}}',
         "item_type": "inline",
         "signature": "amend_signature",
         "time": 1651050299.3488848,
@@ -391,11 +391,11 @@ async def test_amend_with_missing_original_post(
     # Amend message referencing a non-existent original post
     amend_post_dict = {
         "chain": "ETH",
-        "item_hash": "amend123456789012345678901234567890123456789012345678901",
+        "item_hash": "1" * 64,
         "sender": "0xDelegatedAccount12345678901234567890123456789012",
         "type": "POST",
         "channel": "TEST",
-        "item_content": '{"address":"0xContentOwner12345678901234567890123456789012","time":1651050299.3481126,"content":{"title":"Amended Post","body":"Updated content"},"type":"amend","ref":"nonexistent123456789012345678901234567890123456789012"}',
+        "item_content": f'{{"address":"0xContentOwner12345678901234567890123456789012","time":1651050299.3481126,"content":{{"title":"Amended Post","body":"Updated content"}},"type":"amend","ref":"{'0'*64}"}}',
         "item_type": "inline",
         "signature": "amend_signature",
         "time": 1651050299.3488848,

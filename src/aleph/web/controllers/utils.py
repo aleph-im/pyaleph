@@ -44,7 +44,7 @@ def file_field_to_io(multi_dict: bytes) -> BytesIO: ...
 
 
 @overload
-def file_field_to_io(multi_dict: str) -> StringIO: ...  # type: ignore[misc]
+def file_field_to_io(multi_dict: str) -> StringIO: ...
 
 
 @overload

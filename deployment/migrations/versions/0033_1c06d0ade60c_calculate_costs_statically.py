@@ -11,11 +11,16 @@ from alembic import op
 import sqlalchemy as sa
 import logging
 
-from aleph_message.models import StoreContent, ProgramContent,InstanceContent
+from aleph_message.models import StoreContent, ProgramContent, InstanceContent
+from sqlalchemy import text
 
 from aleph.db.accessors.cost import make_costs_upsert_query
 from aleph.db.accessors.messages import get_message_by_item_hash
-from aleph.services.cost import _is_confidential_vm, get_detailed_costs, CostComputableContent
+from aleph.services.cost import (
+    _is_confidential_vm,
+    get_detailed_costs,
+    CostComputableContent,
+)
 from aleph.services.pricing_utils import build_default_pricing_model
 from aleph.types.cost import ProductPriceType
 from aleph.types.db_session import DbSession
@@ -30,24 +35,24 @@ branch_labels = None
 depends_on = None
 
 
-def _get_product_instance_type(
-    content: InstanceContent
-) -> ProductPriceType:
+def _get_product_instance_type(content: InstanceContent) -> ProductPriceType:
     if _is_confidential_vm(content):
         return ProductPriceType.INSTANCE_CONFIDENTIAL
 
     return ProductPriceType.INSTANCE
 
 
-def _get_product_price_type(
-    content: CostComputableContent
-) -> ProductPriceType:
+def _get_product_price_type(content: CostComputableContent) -> ProductPriceType:
     if isinstance(content, StoreContent):
         return ProductPriceType.STORAGE
-    
+
     if isinstance(content, ProgramContent):
         is_on_demand = not content.on.persistent
-        return ProductPriceType.PROGRAM if is_on_demand else ProductPriceType.PROGRAM_PERSISTENT
+        return (
+            ProductPriceType.PROGRAM
+            if is_on_demand
+            else ProductPriceType.PROGRAM_PERSISTENT
+        )
 
     return _get_product_instance_type(content)
 
@@ -57,13 +62,15 @@ def do_calculate_costs() -> None:
 
     msg_item_hashes = (
         session.execute(
-           """
+            text(
+                """
            SELECT m.item_hash
                 FROM messages m
                 INNER JOIN message_status ms on (m.item_hash = ms.item_hash)
                 WHERE ms.status = 'processed' and (m.type = 'INSTANCE' or m.type = 'PROGRAM' or m.type = 'STORE')
            """
             )
+        )
         .scalars()
         .all()
     )
@@ -85,16 +92,15 @@ def do_calculate_costs() -> None:
                 insert_stmt = make_costs_upsert_query(costs)
                 session.execute(insert_stmt)
 
-
     logger.debug("FINISH: CALCULATE COSTS (%d)", len(msg_item_hashes))
     session.close()
 
 
 def upgrade() -> None:
 
-    op.execute("drop view costs_view")
-    op.execute("drop view vm_costs_view")
-    op.execute("drop view vm_volumes_files_view")
+    op.execute(text("drop view costs_view"))
+    op.execute(text("drop view vm_costs_view"))
+    op.execute(text("drop view vm_volumes_files_view"))
 
     op.create_table(
         "account_costs",
@@ -117,12 +123,12 @@ def upgrade() -> None:
     do_calculate_costs()
 
 
-
 def downgrade() -> None:
     op.drop_table("account_costs")
 
     op.execute(
-        """
+        text(
+            """
         create or replace view vm_volumes_files_view as
             SELECT volume.program_hash AS vm_hash,
                volume.ref,
@@ -180,10 +186,12 @@ def downgrade() -> None:
                  LEFT JOIN file_tags tags ON volume.ref::text = tags.tag::text
                  JOIN file_pins originals ON volume.ref::text = originals.item_hash::text
         """
+        )
     )
 
     op.execute(
-        """
+        text(
+            """
         CREATE OR REPLACE VIEW vm_costs_view AS
         SELECT vm_versions.vm_hash,
                vm_versions.owner,
@@ -253,10 +261,12 @@ def downgrade() -> None:
              LATERAL ( SELECT cpm.compute_unit_price + adp.disk_price AS total_price) tp
              where ms.ms_status = 'processed'
         """
+        )
     )
 
     op.execute(
-        """
+        text(
+            """
         create or replace view costs_view as
             SELECT COALESCE(vm_prices.owner, storage.owner) AS address,
                    vm_prices.total_vm_cost,
@@ -276,4 +286,5 @@ def downgrade() -> None:
                  LATERAL ( SELECT COALESCE(vm_prices.total_vm_cost, 0::double precision) +
                                   COALESCE(sc.total_storage_cost, 0::numeric)::double precision AS total_cost) tc
         """
+        )
     )

@@ -5,9 +5,10 @@ Revises: 8a5eaab15d40
 Create Date: 2023-03-08 14:48:26.581627
 
 """
+
 from alembic import op
 import sqlalchemy as sa
-
+from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
 revision = "b8e019bf7710"
@@ -22,8 +23,12 @@ def upgrade() -> None:
     # Add the new type column
     op.add_column("chains_sync_status", sa.Column("type", sa.String(), nullable=True))
     # We only support message events on Tezos, every other chain connector fetches sync events
-    op.execute("update chains_sync_status set type = 'sync' where chain != 'TEZOS'")
-    op.execute("update chains_sync_status set type = 'message' where chain = 'TEZOS'")
+    op.execute(
+        text("update chains_sync_status set type = 'sync' where chain != 'TEZOS'")
+    )
+    op.execute(
+        text("update chains_sync_status set type = 'message' where chain = 'TEZOS'")
+    )
     op.alter_column("chains_sync_status", "type", nullable=False)
 
     # Recreate the primary key
