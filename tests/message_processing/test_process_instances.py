@@ -2,7 +2,7 @@ import datetime as dt
 import itertools
 import json
 from decimal import Decimal
-from typing import List, Union
+from typing import List, Union, cast
 
 import pytest
 import pytz
@@ -456,6 +456,10 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
     created = pytz.utc.localize(dt.datetime(2023, 1, 1))
 
     for volume in volumes:
+        # There is a typing issue in aleph-message where refs for data/immutable volumes are optional.
+        # Check https://github.com/aleph-im/aleph-message/pull/137
+        assert volume.ref is not None
+
         # Note: we use the reversed ref to generate the file hash for style points,
         # but it could be set to any valid hash.
         file_hash = volume.ref[::-1]
@@ -553,7 +557,9 @@ async def test_process_instance(
         assert len(volumes_by_type[PersistentVolumeDb]) == 3
         assert len(volumes_by_type[ImmutableVolumeDb]) == 1
 
-        ephemeral_volume: EphemeralVolumeDb = one(volumes_by_type[EphemeralVolumeDb])
+        ephemeral_volume: EphemeralVolumeDb = cast(
+            EphemeralVolumeDb, one(volumes_by_type[EphemeralVolumeDb])
+        )
         assert ephemeral_volume.mount == "/var/cache"
         assert ephemeral_volume.size_mib == 5
 
@@ -793,6 +799,7 @@ async def test_compare_account_cost_with_cost_legacy_payg_funct(
     )  # Parse again
 
     with session_factory() as session:
+        assert content.payment, "The message should have a payment field"
         assert content.payment.type == PaymentType.superfluid
         cost, details = get_total_and_detailed_costs(
             session=session,
@@ -834,6 +841,7 @@ async def test_compare_account_cost_with_cost_payg_funct(
     )  # Parse again
 
     with session_factory() as session:
+        assert content.payment, "The message should have a payment field"
         assert content.payment.type == PaymentType.superfluid
         cost, details = get_total_and_detailed_costs(
             session=session,
