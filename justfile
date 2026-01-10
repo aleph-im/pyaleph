@@ -37,3 +37,13 @@ run: start-dev-env
 
 run-api: start-dev-env
     python3 -m aleph.api_entrypoint
+
+build-docker-image:
+    #!/usr/bin/env bash
+    commit_hash=$(git rev-parse --short HEAD)
+    tag=$(git describe --tags --exact-match 2>/dev/null)
+    if [ -z "$tag" ]; then
+        latest_release=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
+        tag="${latest_release}-${commit_hash}"
+    fi
+    docker build -f deployment/docker-build/pyaleph.dockerfile -t alephim/pyaleph-node:$tag .

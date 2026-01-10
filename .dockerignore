@@ -24,6 +24,7 @@ data*
 .settings
 .idea
 tags
+justfile
 
 # Package files
 *.egg
