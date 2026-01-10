@@ -153,7 +153,6 @@ cov = [
 ]
 
 [tool.hatch.envs.linting]
-detached = true
 dependencies = [
   "black==24.2.0",
   "mypy==1.19.1",
@@ -161,7 +160,6 @@ dependencies = [
   "ruff==0.4.8",
   "isort==5.13.2",
   "check-sdist==0.1.3",
-  "sqlalchemy[mypy]==2.0.45",
   "yamlfix==1.17.0",
   "pyproject-fmt==2.2.1",
   "types-aiofiles",
