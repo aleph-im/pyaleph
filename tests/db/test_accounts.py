@@ -54,7 +54,9 @@ def fixture_messages():
             },
             item_type=ItemType.inline,
             size=2000,
-            time=pytz.utc.localize(dt.datetime.utcfromtimestamp(1664999872)),
+            time=pytz.utc.localize(
+                dt.datetime.fromtimestamp(1664999872, dt.timezone.utc)
+            ),
             channel=Channel("CHANEL-N5"),
         ),
     ]

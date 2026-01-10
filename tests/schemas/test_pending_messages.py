@@ -27,7 +27,7 @@ def check_basic_message_fields(pending_message: BasePendingMessage, message_dict
     assert pending_message.signature == message_dict["signature"]
     assert pending_message.channel == message_dict["channel"]
     assert pending_message.time == pytz.utc.localize(
-        dt.datetime.utcfromtimestamp(message_dict["time"])
+        dt.datetime.fromtimestamp(message_dict["time"], dt.timezone.utc)
     )
 
 
