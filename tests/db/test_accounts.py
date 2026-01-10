@@ -2,7 +2,6 @@ import datetime as dt
 from typing import List
 
 import pytest
-import pytz
 from aleph_message.models import Chain, ItemType, MessageType
 
 from aleph.db.accessors.messages import (

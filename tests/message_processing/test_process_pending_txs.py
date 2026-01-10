@@ -2,7 +2,6 @@ import datetime as dt
 from typing import Dict, List, Set
 
 import pytest
-import pytz
 from aleph_message.models import Chain, MessageType, PostContent
 from configmanager import Config
 from sqlalchemy import select
