@@ -2,7 +2,6 @@ import datetime as dt
 from typing import Dict, List, Set
 
 import pytest
-import pytz
 from aleph_message.models import Chain, MessageType, PostContent
 from configmanager import Config
 from sqlalchemy import select
@@ -56,7 +55,7 @@ async def test_process_pending_tx_on_chain_protocol(
     chain_tx = ChainTxDb(
         hash="0xf49cb176c1ce4f6eb7b9721303994b05074f8fadc37b5f41ac6f78bdf4b14b6c",
         chain=Chain.ETH,
-        datetime=pytz.utc.localize(dt.datetime.utcfromtimestamp(1632835747)),
+        datetime=dt.datetime.fromtimestamp(1632835747, dt.timezone.utc),
         height=13314512,
         publisher="0x23eC28598DCeB2f7082Cc3a9D670592DfEd6e0dC",
         protocol=ChainSyncProtocol.ON_CHAIN_SYNC,
