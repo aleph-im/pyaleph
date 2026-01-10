@@ -6,15 +6,37 @@ from aleph.db.models.address_stats import AddressStats
 from aleph.types.db_session import DbSession
 
 
+def escape_like_pattern(pattern: str) -> str:
+    """
+    Escape SQL LIKE/ILIKE wildcard characters to prevent pattern injection.
+
+    This function escapes the special characters %, _, and \\ that have special
+    meaning in SQL LIKE patterns, preventing users from injecting wildcards
+    that could enumerate or match unintended data.
+
+    Args:
+        pattern: The user-provided search pattern
+
+    Returns:
+        The pattern with LIKE special characters escaped using backslash
+    """
+    # Escape backslash first (since it's the escape character)
+    # then escape % and _
+    return pattern.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def make_address_filter_subquery(address_contains: str):
     """
     Subquery defining the set of addresses to include.
     Only used when address filtering is requested.
     """
+    escaped_pattern = escape_like_pattern(address_contains.lower())
     return (
         select(AddressStats.address)
         .distinct()
-        .where(func.lower(AddressStats.address).contains(address_contains.lower()))
+        .where(
+            func.lower(AddressStats.address).like(f"%{escaped_pattern}%", escape="\\")
+        )
         .subquery()
     )
 
