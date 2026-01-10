@@ -329,7 +329,7 @@ class EthereumConnector(ChainWriter):
     async def _broadcast_content(self, account, gas_price: int, nonce, content):
         # Type hints require a fully typed TxParams, but reality works with a minimal dict
         tx = await self.contract.functions.doEmit(content).build_transaction(
-            { # type: ignore[arg-type]
+            {  # type: ignore[arg-type]
                 "chainId": await self.web3_client.eth.chain_id,
                 "gasPrice": gas_price,
                 "nonce": nonce,

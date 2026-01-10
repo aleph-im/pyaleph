@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence
 
 from aiohttp import web
 from aiohttp.web_exceptions import HTTPException

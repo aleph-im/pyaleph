@@ -89,8 +89,7 @@ def _map_content_to_db_model(
 # This seems linked to multiple inheritance of Pydantic base models, a deeper investigation
 # is required.
 @overload
-def _map_content_to_db_model(item_hash: str, content: ProgramContent) -> ProgramDb:
-    ...
+def _map_content_to_db_model(item_hash: str, content: ProgramContent) -> ProgramDb: ...
 
 
 def _map_content_to_db_model(item_hash, content):

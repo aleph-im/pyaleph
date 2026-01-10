@@ -1,7 +1,7 @@
 import datetime as dt
-from typing import Collection, Iterable, Optional, Tuple, Union, Any
+from typing import Any, Collection, Iterable, Optional, Tuple, Union
 
-from sqlalchemy import delete, func, select, UnaryExpression
+from sqlalchemy import UnaryExpression, delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import Row
 

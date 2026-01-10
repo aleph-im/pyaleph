@@ -55,7 +55,9 @@ async def deployed_contract(
     if not await web3_client.is_connected():
         pytest.fail(f"Anvil node not found at {mock_config.ethereum.api_url.value}")
 
-    test_address = AsyncWeb3.to_checksum_address("0x5FbDB2315678afecb367f032d93F642f64180aa3")
+    test_address = AsyncWeb3.to_checksum_address(
+        "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+    )
     await web3_client.provider.make_request(
         RPCEndpoint("anvil_setCode"), [test_address, ALEPH_SYNC_BYTECODE]
     )
@@ -131,7 +133,7 @@ async def test_broadcast_messages(
     receipt = await web3_client.eth.wait_for_transaction_receipt(response)
     assert receipt["status"] == 1
     print(f"Gas used by broadcast_messages: {receipt['gasUsed']}")
-    print(f"Cost: {receipt["gasUsed"] * gas_price / 10**18} ETH")
+    print(f"Cost: {receipt['gasUsed'] * gas_price / 10**18} ETH")
 
     gas_estimate = await deployed_contract.functions.doEmit(
         json.dumps(jdata)
@@ -324,7 +326,7 @@ async def test_fetch_ethereum_sync_events_repeated_sync(
         )
         session.commit()
 
-    await web3_client.provider.make_request("anvil_mine", [1])
+    await web3_client.provider.make_request(RPCEndpoint("anvil_mine"), [1])
 
     # 2. Second sync
     jdata2 = {
