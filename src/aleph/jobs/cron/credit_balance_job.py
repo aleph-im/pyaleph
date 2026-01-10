@@ -2,7 +2,7 @@ import datetime as dt
 import logging
 from typing import List
 
-from aleph_message.models import MessageType, PaymentType, ItemHash
+from aleph_message.models import ItemHash, MessageType, PaymentType
 
 from aleph.db.accessors.balances import (
     get_credit_balance,

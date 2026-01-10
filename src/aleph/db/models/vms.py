@@ -9,6 +9,7 @@ from sqlalchemy.orm import Mapped, declared_attr, mapped_column, relationship
 from sqlalchemy_utils import ChoiceType
 
 from aleph.types.vms import CpuArchitecture, VmType, VmVersion
+
 from .base import Base
 
 

@@ -77,8 +77,12 @@ class MessageStatusDb(Base):
     __tablename__ = "message_status"
 
     item_hash: Mapped[str] = mapped_column(String, primary_key=True)
-    status: Mapped[MessageStatus] = mapped_column(ChoiceType(MessageStatus), nullable=False)
-    reception_time: Mapped[dt.datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    status: Mapped[MessageStatus] = mapped_column(
+        ChoiceType(MessageStatus), nullable=False
+    )
+    reception_time: Mapped[dt.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
 
 
 class MessageDb(Base):

@@ -269,7 +269,7 @@ exclude_lines = [
 [tool.mypy]
 python_version = 3.12
 mypy_path = "src"
-plugins = ["sqlalchemy.ext.mypy.plugin"]
+plugins = [ "sqlalchemy.ext.mypy.plugin" ]
 exclude = [
   "conftest.py",
 ]

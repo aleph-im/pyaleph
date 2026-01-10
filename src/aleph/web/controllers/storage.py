@@ -307,7 +307,9 @@ async def storage_add_file(request: web.Request):
             reader = await request.multipart()
             async for part in reader:
                 if part is None:
-                    raise web.HTTPBadRequest(reason="No file field in multipart request")
+                    raise web.HTTPBadRequest(
+                        reason="No file field in multipart request"
+                    )
                 if not isinstance(part, BodyPartReader):
                     raise web.HTTPBadRequest(text="Invalid multipart structure")
 

@@ -1,4 +1,4 @@
-from aleph_message.models import MessageType, PostContent, ItemHash
+from aleph_message.models import ItemHash, MessageType, PostContent
 
 from aleph.db.accessors.aggregates import get_aggregate_by_key
 from aleph.db.accessors.messages import get_message_by_item_hash

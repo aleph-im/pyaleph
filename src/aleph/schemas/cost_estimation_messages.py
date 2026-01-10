@@ -2,13 +2,12 @@ from typing import (
     Any,
     Dict,
     Generic,
-    List,
     Literal,
     Optional,
+    Sequence,
     Type,
     TypeAlias,
     Union,
-    Sequence,
 )
 
 from aiohttp import web
@@ -75,7 +74,7 @@ class CostEstimationProgramContent(ProgramContent):
         default=None, description="Data to use during computation"
     )
     # Type should be defined as Sequence instead of List in aleph-message
-    volumes: Sequence[CostEstimationMachineVolume] = Field( # type: ignore[assignment]
+    volumes: Sequence[CostEstimationMachineVolume] = Field(  # type: ignore[assignment]
         default=[], description="Volumes to mount on the filesystem"
     )
 

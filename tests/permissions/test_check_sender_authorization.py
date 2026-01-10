@@ -243,7 +243,7 @@ async def test_delegated_account_amend_permission(
         "sender": "0xDelegatedAccount12345678901234567890123456789012",  # Different from original sender
         "type": "POST",
         "channel": "TEST",
-        "item_content": f'{{"address":"0xContentOwner12345678901234567890123456789012","time":1651050299.3481126,"content":{{"title":"Amended Post","body":"Updated content"}},"type":"amend","ref":"{'1'*64}"}}',
+        "item_content": f'{{"address":"0xContentOwner12345678901234567890123456789012","time":1651050299.3481126,"content":{{"title":"Amended Post","body":"Updated content"}},"type":"amend","ref":"{"1"*64}"}}',
         "item_type": "inline",
         "signature": "amend_signature",
         "time": 1651050299.3488848,
@@ -330,7 +330,7 @@ async def test_delegated_account_amend_permission_denied(
         "sender": "0xUnauthorizedAccount1234567890123456789012345678",  # Not in authorization list
         "type": "POST",
         "channel": "TEST",
-        "item_content": f'{{"address":"0xContentOwner12345678901234567890123456789012","time":1651050299.3481126,"content":{{"title":"Amended Post","body":"Updated content"}},"type":"amend","ref":"{'1'*64}"}}',
+        "item_content": f'{{"address":"0xContentOwner12345678901234567890123456789012","time":1651050299.3481126,"content":{{"title":"Amended Post","body":"Updated content"}},"type":"amend","ref":"{"1"*64}"}}',
         "item_type": "inline",
         "signature": "amend_signature",
         "time": 1651050299.3488848,
@@ -395,7 +395,7 @@ async def test_amend_with_missing_original_post(
         "sender": "0xDelegatedAccount12345678901234567890123456789012",
         "type": "POST",
         "channel": "TEST",
-        "item_content": f'{{"address":"0xContentOwner12345678901234567890123456789012","time":1651050299.3481126,"content":{{"title":"Amended Post","body":"Updated content"}},"type":"amend","ref":"{'0'*64}"}}',
+        "item_content": f'{{"address":"0xContentOwner12345678901234567890123456789012","time":1651050299.3481126,"content":{{"title":"Amended Post","body":"Updated content"}},"type":"amend","ref":"{"0"*64}"}}',
         "item_type": "inline",
         "signature": "amend_signature",
         "time": 1651050299.3488848,

@@ -1,5 +1,5 @@
 import datetime as dt
-from typing import List, Optional, Sequence
+from typing import Optional, Sequence
 
 from sqlalchemy import delete, select, update
 

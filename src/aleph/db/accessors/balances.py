@@ -253,7 +253,9 @@ def _calculate_credit_balance_fifo(
             )
         else:
             negative_amounts.append(
-                NegativeAmount(amount=abs(record.amount), timestamp=record.message_timestamp)
+                NegativeAmount(
+                    amount=abs(record.amount), timestamp=record.message_timestamp
+                )
             )
 
     # Apply negative amounts using FIFO strategy
