@@ -9,6 +9,7 @@ from sqlalchemy.orm import contains_eager, load_only, selectinload
 from sqlalchemy.sql import Insert, Select
 from sqlalchemy.sql.elements import literal
 
+from aleph.db.accessors.address_stats import escape_like_pattern
 from aleph.db.accessors.cost import delete_costs_for_message
 from aleph.db.models.address_stats import AddressStats
 from aleph.toolkit.timestamp import coerce_to_datetime, utc_now
@@ -303,7 +304,10 @@ def get_message_stats_by_address(
         base_stmt = base_stmt.where(AddressStats.address.in_(addresses))
 
     if address_contains:
-        base_stmt = base_stmt.where(AddressStats.address.ilike(f"%{address_contains}%"))
+        escaped_pattern = escape_like_pattern(address_contains)
+        base_stmt = base_stmt.where(
+            AddressStats.address.ilike(f"%{escaped_pattern}%", escape="\\")
+        )
 
     subquery = base_stmt.subquery()
     stmt = select(subquery)
