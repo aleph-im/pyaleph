@@ -33,7 +33,7 @@ jobs:
           POSTGRES_PASSWORD: decentralize-everything
           POSTGRES_DATABASE: aleph
       redis:
-        image: redis:7.0.10
+        image: redis:8.4.0
         ports:
           - "127.0.0.1:6379:6379"
 

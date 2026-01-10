@@ -82,7 +82,7 @@ services:
 
   redis:
     restart: always
-    image: redis:7.0.10
+    image: redis:8.4.0
     ports:
       - "127.0.0.1:6379:6379"
     networks:
