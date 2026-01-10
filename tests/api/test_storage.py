@@ -1,6 +1,7 @@
 import base64
 import json
 from decimal import Decimal
+from io import BytesIO
 from typing import Any, Optional
 
 import aiohttp
@@ -152,7 +153,7 @@ async def add_file(
     expected_file_hash: str,
 ):
     form_data = aiohttp.FormData()
-    form_data.add_field("file", file_content)
+    form_data.add_field("file", BytesIO(file_content))
 
     post_response = await api_client.post(uri, data=form_data)
     response_text = await post_response.text()
@@ -208,7 +209,7 @@ async def add_file_with_message(
 
     form_data = aiohttp.FormData()
 
-    form_data.add_field("file", file_content)
+    form_data.add_field("file", BytesIO(file_content))
     data = {
         "message": MESSAGE_DICT,
         "sync": True,
@@ -250,7 +251,7 @@ async def add_file_with_message_202(
 
     form_data = aiohttp.FormData()
 
-    form_data.add_field("file", file_content)
+    form_data.add_field("file", BytesIO(file_content))
 
     data = {
         "message": MESSAGE_DICT,
