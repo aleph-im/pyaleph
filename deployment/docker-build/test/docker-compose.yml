@@ -39,7 +39,7 @@ services:
 
   redis:
     restart: always
-    image: redis:7.0.10
+    image: redis:8.4.0
     networks:
       - pyaleph
 
