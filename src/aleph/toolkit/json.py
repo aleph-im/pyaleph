@@ -52,7 +52,7 @@ def extended_json_encoder(obj: Any) -> Any:
     elif isinstance(obj, pydantic.BaseModel):
         return obj.model_dump()
     elif isinstance(obj, Decimal):
-        return float(obj)
+        return str(obj)
     else:
         raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
