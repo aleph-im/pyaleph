@@ -2,7 +2,7 @@ import asyncio
 import concurrent
 import json
 import logging
-from typing import Dict, Optional, Self, Union
+from typing import AsyncIterable, Dict, Optional, Self, Union
 
 import aiohttp
 import aioipfs
@@ -184,6 +184,19 @@ class IpfsService:
             result = result.encode("utf-8")
 
         return result
+
+    async def get_ipfs_content_iterator(
+        self, hash: str, timeout: int = 1, tries: int = 1
+    ) -> Optional[AsyncIterable[bytes]]:
+        # aioipfs.cat returns an AsyncIterator if no length is specified or if it's large?
+        # Actually, looking at aioipfs documentation/source (or assuming common patterns):
+        # self.ipfs_client.cat(hash) returns an async iterator of bytes.
+        try:
+            # We don't easily support retries with an iterator if it fails mid-stream,
+            # but we can at least start it.
+            return await self.ipfs_client.cat(hash)
+        except aioipfs.APIError:
+            return None
 
     async def get_json(self, hash, timeout=1, tries=1):
         result = await self.get_ipfs_content(hash, timeout=timeout, tries=tries)

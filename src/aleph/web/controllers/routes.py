@@ -43,8 +43,6 @@ def register_routes(app: web.Application):
 
     app.router.add_get("/api/v0/info/public.json", info.public_multiaddress)
 
-    app.router.add_post("/api/v0/ipfs/add_file", ipfs.ipfs_add_file)
-
     app.router.add_get("/api/v0/messages.json", messages.view_messages_list)
     # Note that this endpoint is implemented in the p2p module out of simplicity because
     # of the large amount of code shared with pub_json.
@@ -98,9 +96,10 @@ def register_routes(app: web.Application):
         accounts.get_resource_consumed_credits_controller,
     )
 
+    app.router.add_post("/api/v0/ipfs/add_file", ipfs.ipfs_add_file)
     app.router.add_post("/api/v0/ipfs/add_json", storage.add_ipfs_json_controller)
-    app.router.add_post("/api/v0/storage/add_json", storage.add_storage_json_controller)
     app.router.add_post("/api/v0/storage/add_file", storage.storage_add_file)
+    app.router.add_post("/api/v0/storage/add_json", storage.add_storage_json_controller)
     app.router.add_get("/api/v0/storage/{hash}", storage.get_hash)
     app.router.add_get("/api/v0/storage/raw/{hash}", storage.get_raw_hash)
     app.router.add_get("/api/v0/storage/count/{hash}", storage.get_file_pins_count)

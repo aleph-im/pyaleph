@@ -451,33 +451,47 @@ async def get_raw_hash(request):
         if not file_metadata:
             raise web.HTTPNotFound(text="Not found")
 
-        if request.method == "HEAD":
-            return web.Response(
-                status=200,
-                headers={
-                    "Content-Length": str(file_metadata.size),
-                    "Accept-Ranges": "none",
-                },
-            )
+        # For raw downloads, we can support files larger than MAX_FILE_SIZE
+        # because we are streaming them.
+        # But we still check if the file is known to the DB.
+        size = file_metadata.size
 
-        assert_file_is_downloadable(session=session, file_hash=item_hash)
+    if request.method == "HEAD":
+        return web.Response(
+            status=200,
+            headers={
+                "Content-Length": str(size),
+                "Content-Type": "application/octet-stream",
+                "Accept-Ranges": "none",
+            },
+        )
 
     storage_service = get_storage_service_from_request(request)
 
     try:
-        content = await storage_service.get_hash_content(
+        content = await storage_service.get_hash_content_iterator(
             item_hash,
             use_network=False,
             use_ipfs=True,
             engine=engine,
-            store_value=False,
             timeout=30,
         )
     except AlephStorageException as e:
         raise web.HTTPNotFound(text="Not found") from e
 
-    response = web.Response(body=content.value)
-    response.enable_compression()
+    response = web.StreamResponse(
+        status=200,
+        reason="OK",
+    )
+    response.content_type = "application/octet-stream"
+    response.content_length = size
+    response.headers["Accept-Ranges"] = "none"
+
+    await response.prepare(request)
+
+    async for chunk in content.value:
+        await response.write(chunk)
+
     return response
 
 

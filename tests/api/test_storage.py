@@ -74,6 +74,13 @@ async def api_client(ccn_test_aiohttp_app, mocker, aiohttp_client):
         }
     )
     ipfs_service.get_ipfs_content = mocker.AsyncMock(return_value=FILE_CONTENT)
+
+    async def _mock_ipfs_content_iterator(*args, **kwargs):
+        yield FILE_CONTENT
+
+    ipfs_service.get_ipfs_content_iterator = mocker.AsyncMock(
+        return_value=_mock_ipfs_content_iterator()
+    )
     ipfs_service.ipfs_client.files.stat = mocker.AsyncMock(
         return_value={
             "Hash": EXPECTED_FILE_CID,
@@ -449,6 +456,7 @@ async def test_get_raw_hash_head(api_client, session_factory: DbSessionFactory, 
     # 2. Test large file (> 100MB)
     large_file_size = MAX_FILE_SIZE + 1024
     large_file_hash = "a" * 64
+    large_file_content = b"a" * large_file_size
     with session_factory() as session:
         upsert_file(
             session=session,
@@ -458,14 +466,20 @@ async def test_get_raw_hash_head(api_client, session_factory: DbSessionFactory, 
         )
         session.commit()
 
+    storage_service = api_client.app[APP_STATE_STORAGE_SERVICE]
+    await storage_service.storage_engine.write(large_file_hash, large_file_content)
+
     # This should succeed for HEAD even if it's over MAX_FILE_SIZE
     response = await api_client.head(f"{GET_STORAGE_RAW_URI}/{large_file_hash}")
     assert response.status == 200
     assert response.headers["Content-Length"] == str(large_file_size)
 
-    # But fail for GET
+    # GET should now work as well (since we added streaming)
     response = await api_client.get(f"{GET_STORAGE_RAW_URI}/{large_file_hash}")
-    assert response.status == 413
+    assert response.status == 200
+    assert response.headers["Content-Length"] == str(large_file_size)
+    assert response.headers["Content-Type"] == "application/octet-stream"
+    assert response.headers["Accept-Ranges"] == "none"
 
     # 3. Verify it doesn't load content for HEAD
     # We can mock storage_service.get_hash_content and ensure it's not called
@@ -477,6 +491,49 @@ async def test_get_raw_hash_head(api_client, session_factory: DbSessionFactory, 
 
     await api_client.get(f"{GET_STORAGE_RAW_URI}/{file_hash}")
     storage_service.get_hash_content.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_raw_hash_streaming(
+    api_client, session_factory: DbSessionFactory, mocker
+):
+    from aleph.db.accessors.files import upsert_file
+    from aleph.schemas.message_content import ContentSource, StreamContent
+
+    file_content = b"Streaming content"
+    file_hash = "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f"
+
+    with session_factory() as session:
+        upsert_file(
+            session=session,
+            file_hash=file_hash,
+            size=len(file_content),
+            file_type=FileType.FILE,
+        )
+        session.commit()
+
+    async def mock_iterator():
+        # yield in chunks
+        yield file_content[:5]
+        yield file_content[5:]
+
+    storage_service = api_client.app[APP_STATE_STORAGE_SERVICE]
+    mocker.patch.object(
+        storage_service,
+        "get_hash_content_iterator",
+        mocker.AsyncMock(
+            return_value=StreamContent(
+                hash=file_hash, value=mock_iterator(), source=ContentSource.DB
+            )
+        ),
+    )
+
+    response = await api_client.get(f"{GET_STORAGE_RAW_URI}/{file_hash}")
+    assert response.status == 200
+    assert response.headers["Content-Length"] == str(len(file_content))
+    assert await response.read() == file_content
+
+    storage_service.get_hash_content_iterator.assert_called_once()
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Optional, Union
+from typing import Any, AsyncIterable, Optional, Union
 
 
 class ContentSource(str, Enum):
@@ -29,6 +29,11 @@ class RawContent(StoredContent):
 
     def __len__(self):
         return len(self.value)
+
+
+@dataclass
+class StreamContent(StoredContent):
+    value: AsyncIterable[bytes]
 
 
 @dataclass
