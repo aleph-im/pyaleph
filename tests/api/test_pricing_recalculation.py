@@ -22,7 +22,7 @@ def sample_messages(session_factory):
 
     # Create sample instance message
     instance_message = MessageDb(
-        item_hash="instance_msg_1",
+        item_hash="6e46535560b4372551e39a531e2ec24f6869766624921631e84e56598c8942b1",
         type=MessageType.instance,
         chain="ETH",
         sender="0xTest1",
@@ -30,7 +30,10 @@ def sample_messages(session_factory):
         content={
             "time": (base_time + dt.timedelta(hours=1)).timestamp(),
             "rootfs": {
-                "parent": {"ref": "test_ref", "use_latest": True},
+                "parent": {
+                    "ref": "6e46535560b4372551e39a531e2ec24f6869766624921631e84e56598c8942b1",
+                    "use_latest": True,
+                },
                 "size_mib": 20480,
                 "persistence": "host",
             },
@@ -47,21 +50,26 @@ def sample_messages(session_factory):
 
     # Create sample program message
     program_message = MessageDb(
-        item_hash="program_msg_1",
+        item_hash="5369766624921631e84e56598c8942b16e46535560b4372551e39a531e2ec24f",
         type=MessageType.program,
         chain="ETH",
         sender="0xTest2",
         item_type="inline",
         content={
             "time": (base_time + dt.timedelta(hours=2)).timestamp(),
+            "type": "vm-function",
             "on": {"http": True, "persistent": False},
             "code": {
-                "ref": "code_ref",
+                "ref": "5369766624921631e84e56598c8942b16e46535560b4372551e39a531e2ec24f",
                 "encoding": "zip",
                 "entrypoint": "main:app",
                 "use_latest": True,
             },
-            "runtime": {"ref": "runtime_ref", "use_latest": True},
+            "runtime": {
+                "ref": "1e84e56598c8942b16e46535560b4372551e39a531e2ec24f536976662492163",
+                "use_latest": True,
+                "comment": "test runtime",
+            },
             "address": "0xTest2",
             "resources": {"vcpus": 1, "memory": 128, "seconds": 30},
             "allow_amend": False,
@@ -73,7 +81,7 @@ def sample_messages(session_factory):
 
     # Create sample store message
     store_message = MessageDb(
-        item_hash="store_msg_1",
+        item_hash="1e84e56598c8942b16e46535560b4372551e39a531e2ec24f536976662492163",
         type=MessageType.store,
         chain="ETH",
         sender="0xTest3",
@@ -81,7 +89,7 @@ def sample_messages(session_factory):
         content={
             "time": (base_time + dt.timedelta(hours=3)).timestamp(),
             "item_type": "storage",
-            "item_hash": "stored_file_hash",
+            "item_hash": "1e84e56598c8942b16e46535560b4372551e39a531e2ec24f536976662492163",
             "address": "0xTest3",
         },
         time=base_time + dt.timedelta(hours=3),
@@ -92,11 +100,26 @@ def sample_messages(session_factory):
         session.add(instance_message)
         session.add(program_message)
         session.add(store_message)
+
+        # Add MessageStatusDb entries as well, since get_executable_message checks for them
+        from aleph.db.models import MessageStatusDb
+        from aleph.types.message_status import MessageStatus
+
+        for msg in [instance_message, program_message, store_message]:
+            status = MessageStatusDb(
+                item_hash=msg.item_hash,
+                status=MessageStatus.PROCESSED,
+                reception_time=msg.time,
+            )
+            session.add(status)
+
         session.commit()
         session.refresh(instance_message)
         session.refresh(program_message)
         session.refresh(store_message)
 
+    # Return refreshed messages from a new session to ensure they are bound to a session if needed
+    # but the fixture generally returns them detached or ready to be used.
     return [instance_message, program_message, store_message]
 
 
@@ -198,27 +221,50 @@ class TestRecalculateMessageCosts:
         """Factory to create mock requests."""
 
         def _create_mock_request(match_info=None):
-            request = web.Request.__new__(web.Request)
-            request._match_info = match_info or {}
+            from unittest.mock import MagicMock
 
-            # Mock the session factory getter
-            def get_session_factory():
-                return session_factory
+            from multidict import CIMultiDict
 
-            request._session_factory = get_session_factory
+            from aleph.web.controllers.app_state_getters import (
+                APP_STATE_SESSION_FACTORY,
+            )
+
+            # Create a more robust mock request
+            request = MagicMock(spec=web.Request)
+            request.match_info = MagicMock()
+            request.match_info.get.side_effect = lambda key, default=None: (
+                match_info.get(key, default) if match_info else default
+            )
+
+            # Mock headers for auth token
+            request.headers = CIMultiDict({"X-Auth-Token": "test-token"})
+
+            # Mock the app state
+            request.app = {APP_STATE_SESSION_FACTORY: session_factory}
+
             return request
 
         return _create_mock_request
 
+    @pytest.mark.asyncio
     @patch("aleph.web.controllers.prices.get_session_factory_from_request")
     async def test_recalculate_all_messages_empty_db(
         self, mock_get_session, session_factory, mock_request_factory
     ):
         """Test recalculation when no messages exist."""
         mock_get_session.return_value = session_factory
+
+        # Ensure the DB is empty for this test
+        with session_factory() as session:
+            from aleph.db.models import MessageDb, MessageStatusDb
+
+            session.query(MessageStatusDb).delete()
+            session.query(MessageDb).delete()
+            session.commit()
+
         request = mock_request_factory()
 
-        response = await recalculate_message_costs(request)
+        response = await recalculate_message_costs.__wrapped__(request)
 
         assert response.status == 200
         response_data = json.loads(response.text)
@@ -226,6 +272,7 @@ class TestRecalculateMessageCosts:
         assert response_data["total_messages"] == 0
         assert "No messages found" in response_data["message"]
 
+    @pytest.mark.asyncio
     @patch("aleph.web.controllers.prices.get_session_factory_from_request")
     @patch("aleph.web.controllers.prices.get_executable_message")
     async def test_recalculate_specific_message(
@@ -240,12 +287,16 @@ class TestRecalculateMessageCosts:
         mock_get_session.return_value = session_factory
         mock_get_executable.return_value = sample_messages[0]  # Return first message
 
-        request = mock_request_factory({"item_hash": "instance_msg_1"})
+        request = mock_request_factory(
+            {
+                "item_hash": "6e46535560b4372551e39a531e2ec24f6869766624921631e84e56598c8942b1"
+            }
+        )
 
         with patch("aleph.web.controllers.prices.get_detailed_costs") as mock_get_costs:
             mock_get_costs.return_value = []  # Mock empty costs
 
-            response = await recalculate_message_costs(request)
+            response = await recalculate_message_costs.__wrapped__(request)
 
             assert response.status == 200
             response_data = json.loads(response.text)
@@ -256,6 +307,7 @@ class TestRecalculateMessageCosts:
             # Should have called get_detailed_costs once
             assert mock_get_costs.call_count == 1
 
+    @pytest.mark.asyncio
     @patch("aleph.web.controllers.prices.get_session_factory_from_request")
     async def test_recalculate_all_messages_with_timeline(
         self,
@@ -274,7 +326,7 @@ class TestRecalculateMessageCosts:
         with patch("aleph.web.controllers.prices.get_detailed_costs") as mock_get_costs:
             mock_get_costs.return_value = []  # Mock empty costs
 
-            response = await recalculate_message_costs(request)
+            response = await recalculate_message_costs.__wrapped__(request)
 
             assert response.status == 200
             response_data = json.loads(response.text)
@@ -290,6 +342,7 @@ class TestRecalculateMessageCosts:
             remaining_costs = session.query(AccountCostsDb).all()
             assert len(remaining_costs) == 0  # All old costs should be deleted
 
+    @pytest.mark.asyncio
     @patch("aleph.web.controllers.prices.get_session_factory_from_request")
     async def test_recalculate_with_pricing_timeline_application(
         self,
@@ -315,7 +368,7 @@ class TestRecalculateMessageCosts:
             "aleph.web.controllers.prices.get_detailed_costs",
             side_effect=mock_get_costs,
         ):
-            response = await recalculate_message_costs(request)
+            response = await recalculate_message_costs.__wrapped__(request)
 
             assert response.status == 200
 
@@ -324,10 +377,20 @@ class TestRecalculateMessageCosts:
 
             # Verify the correct pricing types were used (based on message content and timeline)
             item_hashes = [call[0] for call in pricing_calls]
-            assert "instance_msg_1" in item_hashes
-            assert "program_msg_1" in item_hashes
-            assert "store_msg_1" in item_hashes
+            assert (
+                "6e46535560b4372551e39a531e2ec24f6869766624921631e84e56598c8942b1"
+                in item_hashes
+            )
+            assert (
+                "5369766624921631e84e56598c8942b16e46535560b4372551e39a531e2ec24f"
+                in item_hashes
+            )
+            assert (
+                "1e84e56598c8942b16e46535560b4372551e39a531e2ec24f536976662492163"
+                in item_hashes
+            )
 
+    @pytest.mark.asyncio
     @patch("aleph.web.controllers.prices.get_session_factory_from_request")
     async def test_recalculate_with_errors(
         self, mock_get_session, session_factory, sample_messages, mock_request_factory
@@ -338,7 +401,10 @@ class TestRecalculateMessageCosts:
         request = mock_request_factory()
 
         def mock_get_costs_with_error(session, content, item_hash, pricing):
-            if item_hash == "program_msg_1":
+            if (
+                item_hash
+                == "5369766624921631e84e56598c8942b16e46535560b4372551e39a531e2ec24f"
+            ):
                 raise ValueError("Test error for program message")
             return []
 
@@ -346,7 +412,7 @@ class TestRecalculateMessageCosts:
             "aleph.web.controllers.prices.get_detailed_costs",
             side_effect=mock_get_costs_with_error,
         ):
-            response = await recalculate_message_costs(request)
+            response = await recalculate_message_costs.__wrapped__(request)
 
             assert response.status == 200
             response_data = json.loads(response.text)
@@ -356,9 +422,13 @@ class TestRecalculateMessageCosts:
             assert response_data["total_messages"] == 3
             assert "errors" in response_data
             assert len(response_data["errors"]) == 1
-            assert response_data["errors"][0]["item_hash"] == "program_msg_1"
+            assert (
+                response_data["errors"][0]["item_hash"]
+                == "5369766624921631e84e56598c8942b16e46535560b4372551e39a531e2ec24f"
+            )
             assert "Test error" in response_data["errors"][0]["error"]
 
+    @pytest.mark.asyncio
     @patch("aleph.web.controllers.prices.get_session_factory_from_request")
     @patch("aleph.web.controllers.prices.get_executable_message")
     async def test_recalculate_specific_message_not_found(
@@ -372,11 +442,16 @@ class TestRecalculateMessageCosts:
         mock_get_session.return_value = session_factory
         mock_get_executable.side_effect = web.HTTPNotFound(body="Message not found")
 
-        request = mock_request_factory({"item_hash": "nonexistent_hash"})
+        request = mock_request_factory(
+            {
+                "item_hash": "6e46535560b4372551e39a531e2ec24f6869766624921631e84e56598c8942b2"
+            }
+        )
 
         with pytest.raises(web.HTTPNotFound):
-            await recalculate_message_costs(request)
+            await recalculate_message_costs.__wrapped__(request)
 
+    @pytest.mark.asyncio
     @patch("aleph.web.controllers.prices.get_session_factory_from_request")
     async def test_chronological_processing_order(
         self, mock_get_session, session_factory, sample_messages, mock_request_factory
@@ -396,12 +471,16 @@ class TestRecalculateMessageCosts:
             "aleph.web.controllers.prices.get_detailed_costs",
             side_effect=mock_get_costs,
         ):
-            response = await recalculate_message_costs(request)
+            response = await recalculate_message_costs.__wrapped__(request)
 
             assert response.status == 200
 
             # Should have processed in chronological order based on message.time
-            expected_order = ["instance_msg_1", "program_msg_1", "store_msg_1"]
+            expected_order = [
+                "6e46535560b4372551e39a531e2ec24f6869766624921631e84e56598c8942b1",
+                "5369766624921631e84e56598c8942b16e46535560b4372551e39a531e2ec24f",
+                "1e84e56598c8942b16e46535560b4372551e39a531e2ec24f536976662492163",
+            ]
             assert processed_order == expected_order
 
 
@@ -413,18 +492,32 @@ class TestPricingTimelineIntegration:
         """Factory to create mock requests."""
 
         def _create_mock_request(match_info=None):
-            request = web.Request.__new__(web.Request)
-            request._match_info = match_info or {}
+            from unittest.mock import MagicMock
 
-            # Mock the session factory getter
-            def get_session_factory():
-                return session_factory
+            from multidict import CIMultiDict
 
-            request._session_factory = get_session_factory
+            from aleph.web.controllers.app_state_getters import (
+                APP_STATE_SESSION_FACTORY,
+            )
+
+            # Create a more robust mock request
+            request = MagicMock(spec=web.Request)
+            request.match_info = MagicMock()
+            request.match_info.get.side_effect = lambda key, default=None: (
+                match_info.get(key, default) if match_info else default
+            )
+
+            # Mock headers for auth token
+            request.headers = CIMultiDict({"X-Auth-Token": "test-token"})
+
+            # Mock the app state
+            request.app = {APP_STATE_SESSION_FACTORY: session_factory}
+
             return request
 
         return _create_mock_request
 
+    @pytest.mark.asyncio
     @patch("aleph.web.controllers.prices.get_session_factory_from_request")
     async def test_end_to_end_historical_pricing(
         self,
@@ -454,7 +547,7 @@ class TestPricingTimelineIntegration:
             "aleph.web.controllers.prices.get_detailed_costs",
             side_effect=mock_get_costs,
         ):
-            response = await recalculate_message_costs(request)
+            response = await recalculate_message_costs.__wrapped__(request)
 
             assert response.status == 200
             response_data = json.loads(response.text)

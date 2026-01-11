@@ -227,6 +227,7 @@ async def recalculate_message_costs(request: web.Request):
                 {
                     "message": "No messages found for cost recalculation",
                     "recalculated_count": 0,
+                    "total_messages": 0,
                 }
             )
 
