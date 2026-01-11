@@ -18,7 +18,9 @@ from sqlalchemy import (
     ARRAY,
     TIMESTAMP,
     Column,
+    Computed,
     ForeignKey,
+    Index,
     Integer,
     String,
     Table,
@@ -99,6 +101,14 @@ class MessageDb(Base):
     time: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False, index=True)
     channel: Optional[Channel] = Column(String, nullable=True, index=True)
     size: int = Column(Integer, nullable=False)
+    content_type: Optional[str] = Column(
+        String, Computed("content->>'type'", persisted=True)
+    )
+
+    __table_args__ = (
+        Index("ix_messages_content_type", content_type),
+        Index("ix_messages_sender_content_type", sender, content_type),
+    )
 
     confirmations: "List[ChainTxDb]" = relationship(
         "ChainTxDb", secondary=message_confirmations
