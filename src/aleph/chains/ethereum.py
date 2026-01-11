@@ -4,6 +4,7 @@ import json
 import logging
 from typing import Any, AsyncIterator, Dict, List, Literal, Self, Tuple, Union
 
+from aiohttp import ClientResponseError
 from aleph_message.models import Chain
 from configmanager import Config
 from eth_account import Account
@@ -46,7 +47,13 @@ class TooManyLogsInRange(GetLogsException):
     end_block: BlockNumber | Literal["latest"]
 
 
-def make_web3_client(rpc_url: URI, chain_id: int, timeout: int) -> AsyncWeb3:
+class PaymentRequired(GetLogsException):
+    """Raised when the RPC provider returns HTTP 402 Payment Required."""
+
+    pass
+
+
+def make_web3_client(rpc_url: URI, timeout: int) -> AsyncWeb3:
     web3 = AsyncWeb3(
         AsyncHTTPProvider(
             rpc_url,
@@ -164,6 +171,12 @@ class EthereumConnector(ChainWriter):
                 }
             )
             return logs
+        except ClientResponseError as e:
+            if e.status == 402:
+                raise PaymentRequired(
+                    "RPC credits exhausted (HTTP 402 Payment Required)"
+                ) from e
+            raise
         except Web3RPCError as e:
             # Handle limit exceptions
             if rpc_response := e.rpc_response:
@@ -305,6 +318,10 @@ class EthereumConnector(ChainWriter):
                             session=session, tx=tx
                         )
                         session.commit()
+        except PaymentRequired:
+            LOGGER.warning(
+                "RPC provider credits exhausted (HTTP 402). Sync blocked until credits are restored."
+            )
         finally:
             await self.web3_client.provider.disconnect()
 
