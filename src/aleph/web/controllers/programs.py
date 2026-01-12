@@ -14,7 +14,7 @@ class GetProgramQueryFields(BaseModel):
 
 async def get_programs_on_message(request: web.Request) -> web.Response:
     try:
-        query = GetProgramQueryFields(**request.query)
+        query = GetProgramQueryFields.model_validate(request.query)
     except ValidationError as error:
         return web.json_response(
             data=error.json(), status=web.HTTPBadRequest.status_code

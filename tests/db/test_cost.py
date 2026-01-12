@@ -69,6 +69,7 @@ def insert_volume_refs(session: DbSession, message: MessageDb):
         for volume in volumes:
             # Note: we use the reversed ref to generate the file hash for style points,
             # but it could be set to any valid hash.
+            assert volume.ref is not None
             file_hash = volume.ref[::-1]
 
             session.add(

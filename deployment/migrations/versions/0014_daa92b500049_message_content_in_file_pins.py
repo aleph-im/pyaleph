@@ -5,8 +5,9 @@ Revises: 7ab62bd0a3b1
 Create Date: 2023-04-12 14:33:55.891990
 
 """
-from alembic import op
 
+from alembic import op
+from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
 revision = "daa92b500049"
@@ -25,14 +26,17 @@ def upgrade() -> None:
     )
 
     op.execute(
-        """
+        text(
+            """
         INSERT INTO files(hash, size, type) 
             SELECT messages.item_hash, messages.size, 'file' 
             FROM messages WHERE item_type != 'inline'
         """
+        )
     )
     op.execute(
-        """
+        text(
+            """
         INSERT INTO file_pins(file_hash, created, type, tx_hash, owner, item_hash, ref)
         SELECT  messages.item_hash,
                 to_timestamp((messages.content ->> 'time')::float),
@@ -44,13 +48,16 @@ def upgrade() -> None:
         FROM messages
         WHERE item_type != 'inline'
         """
+        )
     )
 
 
 def downgrade() -> None:
-    op.execute("DELETE FROM file_pins WHERE type = 'content'")
+    op.execute(text("DELETE FROM file_pins WHERE type = 'content'"))
     op.execute(
-        "DELETE FROM files WHERE EXISTS (SELECT 1 FROM messages WHERE messages.item_hash = hash)"
+        text(
+            "DELETE FROM files WHERE EXISTS (SELECT 1 FROM messages WHERE messages.item_hash = hash)"
+        )
     )
     op.drop_constraint("file_pins_item_hash_type_key", "file_pins", type_="unique")
     op.create_unique_constraint("file_pins_item_hash_key", "file_pins", ["item_hash"])

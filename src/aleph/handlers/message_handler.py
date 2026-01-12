@@ -306,7 +306,7 @@ class MessageHandler(BaseMessageHandler):
     async def verify_signature(self, pending_message: PendingMessageDb):
         if pending_message.check_message:
             # TODO: remove type: ignore by deciding the pending message type
-            await self._signature_verifier.verify_signature(pending_message)  # type: ignore
+            await self._signature_verifier.verify_signature(pending_message)  # type: ignore[arg-type]
 
     @staticmethod
     async def confirm_existing_message(

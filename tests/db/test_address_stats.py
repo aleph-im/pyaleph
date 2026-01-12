@@ -94,7 +94,7 @@ async def test_make_address_filter_subquery():
     # Test with a simple pattern
     subquery = make_address_filter_subquery("0x123")
 
-    assert subquery.element.froms[0].name == "address_stats_mat_view"
+    assert subquery.element.get_final_froms()[0].name == "address_stats_mat_view"
     assert "lower(address_stats_mat_view.address)" in str(subquery.element)
 
     # Test with a more complex pattern
@@ -368,7 +368,7 @@ async def test_get_address_stats_by_address_pattern(
 
         # Sort by post DESC
         stats = get_message_stats_by_address(
-            session, sort_by=MessageType.post, sort_order=SortOrder.DESCENDING
+            session, sort_by=SortByMessageType.POST, sort_order=SortOrder.DESCENDING
         )
         assert len(stats) == 2
         # Both have 1 post, so sorted by address ASC
@@ -395,7 +395,7 @@ async def test_get_address_stats_by_address_pattern(
         session.commit()
 
         stats = get_message_stats_by_address(
-            session, sort_by=MessageType.post, sort_order=SortOrder.DESCENDING
+            session, sort_by=SortByMessageType.POST, sort_order=SortOrder.DESCENDING
         )
         assert stats[0].address == "0xABCDEF1234567890"
         assert stats[0].post == 2

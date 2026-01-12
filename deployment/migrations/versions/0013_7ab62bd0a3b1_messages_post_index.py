@@ -5,8 +5,9 @@ Revises: 8a5eaab15d40
 Create Date: 2023-03-23 12:48:36.687433
 
 """
-from alembic import op
 
+from alembic import op
+from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
 revision = "7ab62bd0a3b1"
@@ -17,10 +18,12 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute(
-        """
+        text(
+            """
         CREATE INDEX ix_messages_posts_type_tags 
         ON messages((content->>'type'),(content->'content'->>'tags')) WHERE type = 'POST'
     """
+        )
     )
 
 

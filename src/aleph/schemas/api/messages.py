@@ -73,33 +73,23 @@ class BaseMessage(BaseModel, Generic[MType, ContentType]):
 
 
 class AggregateMessage(
-    BaseMessage[Literal[MessageType.aggregate], AggregateContent]  # type: ignore
+    BaseMessage[Literal[MessageType.aggregate], AggregateContent]
 ): ...
 
 
-class ForgetMessage(
-    BaseMessage[Literal[MessageType.forget], ForgetContent]  # type: ignore
-): ...
+class ForgetMessage(BaseMessage[Literal[MessageType.forget], ForgetContent]): ...
 
 
-class InstanceMessage(
-    BaseMessage[Literal[MessageType.instance], InstanceContent]  # type: ignore
-): ...
+class InstanceMessage(BaseMessage[Literal[MessageType.instance], InstanceContent]): ...
 
 
-class PostMessage(
-    BaseMessage[Literal[MessageType.post], PostContent]  # type: ignore
-): ...
+class PostMessage(BaseMessage[Literal[MessageType.post], PostContent]): ...
 
 
-class ProgramMessage(
-    BaseMessage[Literal[MessageType.program], ProgramContent]  # type: ignore
-): ...
+class ProgramMessage(BaseMessage[Literal[MessageType.program], ProgramContent]): ...
 
 
-class StoreMessage(
-    BaseMessage[Literal[MessageType.store], StoreContent]  # type: ignore
-): ...
+class StoreMessage(BaseMessage[Literal[MessageType.store], StoreContent]): ...
 
 
 MESSAGE_CLS_DICT: Dict[

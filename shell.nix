@@ -32,8 +32,7 @@ pkgs.mkShell {
     echo "Setting up PostgreSQL environment..."
     export PGDATA=$(mktemp -d)
     PG_SOCKET_DIR=$(mktemp -d)
-    # avoid coliding with possible existing PostgreSQL instance
-    PG_PORT=5434
+    PG_PORT=5432
     echo "Initializing database..."
     initdb $PGDATA
 

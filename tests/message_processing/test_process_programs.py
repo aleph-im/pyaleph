@@ -2,7 +2,7 @@ import datetime as dt
 import itertools
 import json
 from decimal import Decimal
-from typing import List
+from typing import List, cast
 
 import pytest
 import pytz
@@ -230,7 +230,9 @@ async def test_process_program(
         assert len(volumes_by_type[PersistentVolumeDb]) == 1
         assert len(volumes_by_type[ImmutableVolumeDb]) == 2
 
-        persistent_volume: PersistentVolumeDb = one(volumes_by_type[PersistentVolumeDb])
+        persistent_volume: PersistentVolumeDb = cast(
+            PersistentVolumeDb, one(volumes_by_type[PersistentVolumeDb])
+        )
         assert persistent_volume.name == "data"
         assert persistent_volume.mount == "/data"
         assert persistent_volume.size_mib == 128

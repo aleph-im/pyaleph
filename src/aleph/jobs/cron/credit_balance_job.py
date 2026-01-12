@@ -2,7 +2,7 @@ import datetime as dt
 import logging
 from typing import List
 
-from aleph_message.models import MessageType, PaymentType
+from aleph_message.models import ItemHash, MessageType, PaymentType
 
 from aleph.db.accessors.balances import (
     get_credit_balance,
@@ -90,7 +90,7 @@ class CreditBalanceCronJob(BaseCronJob):
 
                 session.commit()
 
-    async def delete_messages(self, session: DbSession, messages: List[str]):
+    async def delete_messages(self, session: DbSession, messages: List[ItemHash]):
         for item_hash in messages:
             message = get_message_by_item_hash(session, item_hash)
 
@@ -126,7 +126,7 @@ class CreditBalanceCronJob(BaseCronJob):
                 )
             )
 
-    async def recover_messages(self, session: DbSession, messages: List[str]):
+    async def recover_messages(self, session: DbSession, messages: List[ItemHash]):
         for item_hash in messages:
             message = get_message_by_item_hash(session, item_hash)
             if message is None:

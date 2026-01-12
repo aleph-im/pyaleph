@@ -1,6 +1,7 @@
 import datetime as dt
 
-from sqlalchemy import TIMESTAMP, Column, Integer, String
+from sqlalchemy import TIMESTAMP, Integer, String
+from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
 
@@ -8,7 +9,9 @@ from .base import Base
 class CronJobDb(Base):
     __tablename__ = "cron_jobs"
 
-    id: str = Column(String, primary_key=True)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
     # Interval is specified in seconds
-    interval: int = Column(Integer, nullable=False)
-    last_run: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
+    interval: Mapped[int] = mapped_column(Integer, nullable=False)
+    last_run: Mapped[dt.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )

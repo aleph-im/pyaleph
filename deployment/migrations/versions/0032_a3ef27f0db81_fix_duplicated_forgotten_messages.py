@@ -11,6 +11,7 @@ from threading import Thread
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
 from aleph.types.db_session import DbSession
 
@@ -69,12 +70,14 @@ def do_delete_vms(session: DbSession) -> None:
 
     vm_hashes = (
         session.execute(
-            """
-        SELECT m.item_hash
-            FROM messages m
-            INNER JOIN forgotten_messages fm on (m.item_hash = fm.item_hash)
-            WHERE m.type = 'INSTANCE' or m.type = 'PROGRAM'
-        """
+            text(
+                """
+                SELECT m.item_hash
+                    FROM messages m
+                    INNER JOIN forgotten_messages fm on (m.item_hash = fm.item_hash)
+                    WHERE m.type = 'INSTANCE' or m.type = 'PROGRAM'
+                """
+            )
         )
         .scalars()
         .all()
@@ -83,27 +86,32 @@ def do_delete_vms(session: DbSession) -> None:
     logger.debug("DELETE VMS: %r", vm_hashes)
 
     session.execute(
-        """
-        DELETE
-            FROM vms v
-            WHERE v.item_hash in 
-                (SELECT m.item_hash
-                    FROM messages m
-                    INNER JOIN forgotten_messages fm on (m.item_hash = fm.item_hash)
-                    WHERE m.type = 'INSTANCE' or m.type = 'PROGRAM')
-        """
+        text(
+            """
+            DELETE
+                FROM vms v
+                WHERE v.item_hash in 
+                    (SELECT m.item_hash
+                        FROM messages m
+                        INNER JOIN forgotten_messages fm on (m.item_hash = fm.item_hash)
+                        WHERE m.type = 'INSTANCE' or m.type = 'PROGRAM')
+            """
+        )
     )
 
     session.execute(
-        """
-        DELETE
+        text(
+            """
+            DELETE
             FROM vms v
-            WHERE v.replaces in 
-                (SELECT m.item_hash
-                    FROM messages m
-                    INNER JOIN forgotten_messages fm on (m.item_hash = fm.item_hash)
-                    WHERE m.type = 'INSTANCE' or m.type = 'PROGRAM')
-        """
+            WHERE v.replaces in
+                  (SELECT m.item_hash
+                   FROM messages m
+                            INNER JOIN forgotten_messages fm on (m.item_hash = fm.item_hash)
+                   WHERE m.type = 'INSTANCE'
+                      or m.type = 'PROGRAM')
+            """
+        )
     )
 
     for item_hash in vm_hashes:
@@ -114,7 +122,8 @@ def do_delete_store(session: DbSession) -> None:
     # DELETE STORE
 
     session.execute(
-        """
+        text(
+            """
         DELETE
         FROM file_pins fp
 	    WHERE fp.item_hash in (
@@ -124,10 +133,12 @@ def do_delete_store(session: DbSession) -> None:
 		    WHERE m.type = 'STORE'
 	    )
         """
+        )
     )
 
     session.execute(
-        """
+        text(
+            """
         DELETE
         FROM file_tags ft
 	    WHERE ft.tag in (
@@ -137,6 +148,7 @@ def do_delete_store(session: DbSession) -> None:
 		    WHERE m.type = 'STORE'
 	    )
         """
+        )
     )
 
 
@@ -144,21 +156,25 @@ def do_delete_messages(session: DbSession) -> None:
     # DELETE MESSAGES
 
     session.execute(
-        """
+        text(
+            """
         DELETE
 	        FROM message_confirmations mc
 	        using forgotten_messages fm 
 	        WHERE mc.item_hash = fm.item_hash
         """
+        )
     )
 
     session.execute(
-        """
+        text(
+            """
         DELETE
 	        FROM messages m
 	        using forgotten_messages fm 
 	        WHERE m.item_hash = fm.item_hash
         """
+        )
     )
 
 
@@ -170,10 +186,12 @@ def do_delete(session: DbSession) -> None:
     """
 
     op.execute(
-        """
+        text(
+            """
         INSERT INTO error_codes(code, description) VALUES 
             (504, 'Cannot process a forgotten message')
         """
+        )
     )
 
     do_delete_vms(session)

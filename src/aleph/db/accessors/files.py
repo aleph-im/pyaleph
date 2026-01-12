@@ -1,7 +1,7 @@
 import datetime as dt
-from typing import Collection, Iterable, Optional, Tuple, Union
+from typing import Any, Collection, Iterable, Optional, Tuple, Union
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import UnaryExpression, delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import Row
 
@@ -251,7 +251,7 @@ def get_address_files_for_api(
         select_stmt = select_stmt.limit(pagination).offset((page - 1) * pagination)
 
     if sort_order == SortOrder.DESCENDING:
-        order_by_columns = (
+        order_by_columns: Tuple[UnaryExpression[Any], UnaryExpression[Any]] = (
             MessageFilePinDb.created.desc(),
             MessageFilePinDb.item_hash.asc(),
         )
