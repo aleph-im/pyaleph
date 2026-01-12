@@ -9,7 +9,7 @@ from pydantic import BaseModel, ValidationError
 
 from aleph.db.accessors.metrics import query_metric_ccn, query_metric_crn
 from aleph.types.db_session import DbSessionFactory
-from aleph.types.sort_order import SortOrder, SortOrderForMetrics
+from aleph.types.sort_order import SortOrderForMetrics
 from aleph.version import __version__
 from aleph.web.controllers.app_state_getters import (
     get_node_cache_from_request,
