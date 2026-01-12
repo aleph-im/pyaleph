@@ -16,8 +16,10 @@ else
   DOCKER_COMMAND=docker
 fi
 
-VERSION=$(git describe --tags)
+# Sets IMAGE_TAG
+source "${SCRIPT_DIR}/get_version.sh"
+get_version
 
-$DOCKER_COMMAND tag pyaleph-node:$VERSION alephim/pyaleph-node:$VERSION
-$DOCKER_COMMAND push alephim/pyaleph-node:$VERSION
-echo docker.io/alephim/pyaleph-node:$VERSION
+DOCKER_IMAGE="alephim/pyaleph-node:${IMAGE_TAG}"
+$DOCKER_COMMAND push "${DOCKER_IMAGE}"
+echo "Successfully published ${DOCKER_IMAGE}"
