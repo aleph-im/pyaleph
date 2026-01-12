@@ -157,8 +157,6 @@ def get_defaults():
             "max_gas_price": 150_000_000_000,
             # Authorized publishers for sync events.
             "authorized_emitters": ["0x23eC28598DCeB2f7082Cc3a9D670592DfEd6e0dC"],
-            # Delay in seconds between archive checks.
-            "archive_delay": 30,
             # Delay in seconds between blockchain message checks.
             "message_delay": 30,
             # http client timeout, default 60s
