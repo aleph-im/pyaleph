@@ -16,6 +16,8 @@ pkgs.mkShell {
     pkgs.hatch
     pkgs.rustup
 
+    pkgs.curl  # needed for foundryup
+
     pkgs.python312
     pkgs.python312Packages.virtualenv
     pkgs.python312Packages.pip
@@ -32,8 +34,7 @@ pkgs.mkShell {
     echo "Setting up PostgreSQL environment..."
     export PGDATA=$(mktemp -d)
     PG_SOCKET_DIR=$(mktemp -d)
-    # avoid coliding with possible existing PostgreSQL instance
-    PG_PORT=5434
+    PG_PORT=5432
     echo "Initializing database..."
     initdb $PGDATA
 
@@ -58,8 +59,23 @@ pkgs.mkShell {
     ipfs daemon &
     echo "IPFS Kubo started. Data directory is $IPFS_PATH"
 
+    # Install Foundry (anvil, forge, cast, chisel) if not already installed
+    export FOUNDRY_DIR="$HOME/.foundry"
+    export PATH="$FOUNDRY_DIR/bin:$PATH"
+    if ! command -v anvil &> /dev/null; then
+      echo "Installing Foundry..."
+      curl -L https://foundry.paradigm.xyz | bash
+      foundryup
+    fi
+
+    # Start Anvil (local Ethereum node)
+    export ANVIL_PORT=8545
+    anvil --port $ANVIL_PORT &
+    ANVIL_PID=$!
+    echo "Anvil started on port $ANVIL_PORT (PID: $ANVIL_PID)"
+
     # Trap the EXIT signal to stop services when exiting the shell
-    trap 'echo "Stopping PostgreSQL..."; pg_ctl -D "$PGDATA" stop; echo "Stopping Redis..."; redis-cli -p 6379 shutdown; echo "Stopping IPFS Kubo..."; ipfs shutdown; deactivate' EXIT
+    trap 'echo "Stopping PostgreSQL..."; pg_ctl -D "$PGDATA" stop; echo "Stopping Redis..."; redis-cli -p 6379 shutdown; echo "Stopping IPFS Kubo..."; ipfs shutdown; echo "Stopping Anvil..."; kill $ANVIL_PID 2>/dev/null; deactivate' EXIT
 
     # Create a virtual environment in the current directory if it doesn't exist
     if [ ! -d "venv" ]; then
@@ -80,9 +96,11 @@ pkgs.mkShell {
     echo "PostgreSQL started. Data directory is $PGDATA, Socket directory is $PG_SOCKET_DIR" | sed 's/./=/g'
     echo "PostgreSQL started. Data directory is $PGDATA, Socket directory is $PG_SOCKET_DIR"
     echo "Redis started. Data directory is $REDIS_DATA_DIR"
+    echo "Anvil started on port $ANVIL_PORT"
     echo "Use 'psql -h $PG_SOCKET_DIR -p $PG_PORT -U aleph aleph' to connect to the database."
     echo "Use 'redis-cli -p 6379' to connect to the Redis server."
-    echo "To stop PostgreSQL: 'pg_ctl -D $PGDATA -o "-p $PG_PORT" stop'"
+    echo "Use 'cast' or connect to http://127.0.0.1:$ANVIL_PORT for Anvil."
+    echo "To stop PostgreSQL: 'pg_ctl -D $PGDATA -o \"-p $PG_PORT\" stop'"
     echo "To manually stop Redis: 'redis-cli -p 6379 shutdown'"
     echo "PostgreSQL started. Data directory is $PGDATA, Socket directory is $PG_SOCKET_DIR" | sed 's/./=/g'
     echo -e "\033[0m"

@@ -47,12 +47,10 @@ ENV PATH="/opt/venv/bin:${PATH}"
 
 RUN mkdir --parents /opt/pyaleph
 WORKDIR /opt/pyaleph
-COPY alembic.ini pyproject.toml ./
-COPY LICENSE.txt README.md ./
-COPY deployment/migrations ./deployment/migrations
-COPY deployment/scripts ./deployment/scripts
-COPY .git ./.git
-COPY src ./src
+COPY . .
+RUN git config --global --add safe.directory /opt/pyaleph
+ARG VERSION
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=$VERSION
 RUN pip install -e .
 
 

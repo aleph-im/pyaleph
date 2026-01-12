@@ -46,4 +46,4 @@ build-docker-image:
         latest_release=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
         tag="${latest_release}-${commit_hash}"
     fi
-    docker build -f deployment/docker-build/pyaleph.dockerfile -t alephim/pyaleph-node:$tag .
+    docker build -f deployment/docker-build/pyaleph.dockerfile -t alephim/pyaleph-node:$tag --build-arg VERSION=$tag .
