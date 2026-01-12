@@ -1,5 +1,5 @@
 from enum import Enum, IntEnum
-from typing import Any, Annotated
+from typing import Annotated, Any
 
 from pydantic import BeforeValidator
 
