@@ -16,4 +16,12 @@ else
   DOCKER_COMMAND=docker
 fi
 
-$DOCKER_COMMAND  build -t pyaleph-node:0.9.1 -f "$SCRIPT_DIR/pyaleph.dockerfile" .
+# Sets IMAGE_TAG and PEP440_VERSION
+source "${SCRIPT_DIR}/get_version.sh"
+get_version
+
+${DOCKER_COMMAND} build \
+  -f "${SCRIPT_DIR}/pyaleph.dockerfile" \
+  -t "alephim/pyaleph-node:${IMAGE_TAG}" \
+  --build-arg "VERSION=${PEP440_VERSION}" \
+  .
