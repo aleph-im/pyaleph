@@ -157,7 +157,6 @@ async def test_fetch_ethereum_sync_events(
     deployed_contract,
 ):
     mock_config.ethereum.max_gas_price.value = 100_000_000_000
-    mock_config.ethereum.archive_delay.value = 0.1
     mock_config.ethereum.message_delay.value = 0.1
     mock_config.ethereum.client_timeout.value = 1
 
@@ -243,7 +242,6 @@ async def test_fetch_ethereum_sync_events_repeated_sync(
     deployed_contract,
 ):
     mock_config.ethereum.max_gas_price.value = 100_000_000_000
-    mock_config.ethereum.archive_delay.value = 0.1
     mock_config.ethereum.message_delay.value = 0.1
     mock_config.ethereum.client_timeout.value = 1
 
@@ -376,7 +374,6 @@ async def test_fetch_ethereum_sync_events_sync_failure(
     deployed_contract,
 ):
     mock_config.ethereum.max_gas_price.value = 100_000_000_000
-    mock_config.ethereum.archive_delay.value = 0.1
     mock_config.ethereum.message_delay.value = 0.1
     mock_config.ethereum.client_timeout.value = 1
 
@@ -477,7 +474,6 @@ async def test_fetch_ethereum_sync_events_batching(
         "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
     )
     mock_config.ethereum.max_gas_price.value = 100_000_000_000
-    mock_config.ethereum.archive_delay.value = 0.1
     mock_config.ethereum.message_delay.value = 0.1
     mock_config.ethereum.client_timeout.value = 1
 
