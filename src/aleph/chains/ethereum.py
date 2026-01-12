@@ -155,6 +155,7 @@ class EthereumConnector(ChainWriter):
         Retrieves logs from the Aleph message sync contract and handles RPC-specific exceptions.
         """
 
+        LOGGER.info(f"Fetching logs in range {start_block}..{end_block}")
         try:
             logs = await self.web3_client.eth.get_logs(
                 {
@@ -186,7 +187,6 @@ class EthereumConnector(ChainWriter):
             # Note: the range in get_logs is [start, end].
             end_block = min(last_eth_block, BlockNumber(start_block + block_range - 1))
 
-            LOGGER.info(f"Fetching logs in range {start_block}..{end_block}")
             try:
                 for log in await self._get_logs_in_block_range(start_block, end_block):
                     yield log
@@ -227,9 +227,7 @@ class EthereumConnector(ChainWriter):
         TODO: support websocket API.
         """
 
-        logs = self._get_logs(start_block=start_block)
-
-        async for log in logs:
+        async for log in self._get_logs(start_block=start_block):
             try:
                 event_data = get_event_data(self.web3_client.codec, abi, log)
             except MismatchedABI:
@@ -284,29 +282,19 @@ class EthereumConnector(ChainWriter):
 
     async def fetch_ethereum_sync_events(self):
         last_synced_height = await self.get_last_height(sync_type=ChainEventType.SYNC)
+        LOGGER.info("Last synced block is #%d" % last_synced_height)
 
-        LOGGER.info("Last block is #%d" % last_synced_height)
+        abi = self.contract.events.SyncEvent._get_event_abi()
 
-        try:
-            abi = self.contract.events.SyncEvent._get_event_abi()
-
-            while True:
-                last_synced_height = await self.get_last_height(
-                    sync_type=ChainEventType.SYNC
+        async for jdata, context in self._request_transactions(
+            abi=abi, start_block=BlockNumber(last_synced_height + 1)
+        ):
+            tx = ChainTxDb.from_sync_tx_context(tx_context=context, tx_data=jdata)
+            with self.session_factory() as session:
+                await self.pending_tx_publisher.add_and_publish_pending_tx(
+                    session=session, tx=tx
                 )
-                async for jdata, context in self._request_transactions(
-                    abi=abi, start_block=BlockNumber(last_synced_height + 1)
-                ):
-                    tx = ChainTxDb.from_sync_tx_context(
-                        tx_context=context, tx_data=jdata
-                    )
-                    with self.session_factory() as session:
-                        await self.pending_tx_publisher.add_and_publish_pending_tx(
-                            session=session, tx=tx
-                        )
-                        session.commit()
-        finally:
-            await self.web3_client.provider.disconnect()
+                session.commit()
 
     async def fetch_sync_events_task(self, poll_interval: int):
         while True:
@@ -315,12 +303,13 @@ class EthereumConnector(ChainWriter):
             except Exception:
                 LOGGER.exception(
                     "An unexpected exception occurred, "
-                    "relaunching Ethereum message sync in 10 seconds"
+                    f"relaunching Ethereum message sync in {poll_interval} seconds"
                 )
             else:
                 LOGGER.info(
                     f"Processed all transactions, waiting {poll_interval} seconds."
                 )
+
             await asyncio.sleep(poll_interval)
 
     async def fetcher(self, config: Config):
