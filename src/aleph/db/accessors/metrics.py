@@ -6,7 +6,7 @@ from sqlalchemy.orm.session import Session
 from sqlalchemy.sql import Select
 
 from aleph.types.db_session import DbSession
-from aleph.types.sort_order import SortOrder
+from aleph.types.sort_order import SortOrder, SortOrderForMetrics
 
 
 def _parse_ccn_result(result):
@@ -113,7 +113,7 @@ def query_metric_crn(
     node_id: str,
     start_date: Optional[float] = None,
     end_date: Optional[float] = None,
-    sort_order: Optional[SortOrder] = None,
+    sort_order: Optional[SortOrderForMetrics] = None,
 ):
     # Default to the last 2 weeks from now, or 2 weeks before the `end_date`.
     if not start_date and not end_date:
