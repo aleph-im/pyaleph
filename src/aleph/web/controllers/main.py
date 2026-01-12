@@ -5,10 +5,11 @@ from typing import Dict, Optional
 
 import aiohttp_jinja2
 from aiohttp import web
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from aleph.db.accessors.metrics import query_metric_ccn, query_metric_crn
 from aleph.types.db_session import DbSessionFactory
+from aleph.types.sort_order import SortOrderForMetrics
 from aleph.version import __version__
 from aleph.web.controllers.app_state_getters import (
     get_node_cache_from_request,
@@ -84,10 +85,10 @@ async def metrics_json(request: web.Request) -> web.Response:
         )
 
 
-class Metrics(BaseModel):
+class MetricsQueryParams(BaseModel):
     start_date: Optional[float] = None
     end_date: Optional[float] = None
-    sort: Optional[str] = None
+    sort: Optional[SortOrderForMetrics] = None
 
 
 def _get_node_id_from_request(request: web.Request) -> str:
@@ -101,7 +102,10 @@ async def ccn_metric(request: web.Request) -> web.Response:
     """Fetch metrics for CCN node id"""
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
-    query_params = Metrics.model_validate(request.query)
+    try:
+        query_params = MetricsQueryParams.model_validate(request.query)
+    except ValidationError as e:
+        raise web.HTTPUnprocessableEntity(text=e.json())
 
     node_id = _get_node_id_from_request(request)
 
@@ -127,7 +131,10 @@ async def crn_metric(request: web.Request) -> web.Response:
     """Fetch Metric for crn."""
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
-    query_params = Metrics.model_validate(request.query)
+    try:
+        query_params = MetricsQueryParams.model_validate(request.query)
+    except ValidationError as e:
+        raise web.HTTPUnprocessableEntity(text=e.json())
 
     node_id = _get_node_id_from_request(request)
 
