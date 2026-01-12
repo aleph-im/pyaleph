@@ -12,7 +12,7 @@ You can build the Docker image simply using:
 
 or by running the Docker build command from the root of the repository:
 ```shell script
-docker build -t alephim/pyaleph-node:0.5.7 -f deployment/docker-build/pyaleph.dockerfile .
+docker build -t alephim/pyaleph-node:latest -f deployment/docker-build/pyaleph.dockerfile .
 ```
 
 ## Configure the CCN
@@ -31,5 +31,5 @@ https://pyaleph.readthedocs.io/en/latest/guides/install.html#node-secret-keys
 
 ## Start the dev environment
 
-Please refer to the installtation documentation for that:
+Please refer to the installation documentation for that:
 https://pyaleph.readthedocs.io/en/latest/guides/install.html#run-the-node-with-docker-compose

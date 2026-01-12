@@ -25,6 +25,7 @@ data*
 .idea
 tags
 justfile
+.claude/
 
 # Package files
 *.egg
