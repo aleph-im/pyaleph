@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from aleph.db.accessors.metrics import query_metric_ccn, query_metric_crn
 from aleph.types.db_session import DbSessionFactory
+from aleph.types.sort_order import SortOrder
 from aleph.version import __version__
 from aleph.web.controllers.app_state_getters import (
     get_node_cache_from_request,
@@ -84,10 +85,10 @@ async def metrics_json(request: web.Request) -> web.Response:
         )
 
 
-class Metrics(BaseModel):
+class MetricsQueryParams(BaseModel):
     start_date: Optional[float] = None
     end_date: Optional[float] = None
-    sort: Optional[str] = None
+    sort: Optional[SortOrder] = None
 
 
 def _get_node_id_from_request(request: web.Request) -> str:
@@ -101,7 +102,7 @@ async def ccn_metric(request: web.Request) -> web.Response:
     """Fetch metrics for CCN node id"""
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
-    query_params = Metrics.model_validate(request.query)
+    query_params = MetricsQueryParams.model_validate(request.query)
 
     node_id = _get_node_id_from_request(request)
 
@@ -127,7 +128,7 @@ async def crn_metric(request: web.Request) -> web.Response:
     """Fetch Metric for crn."""
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
-    query_params = Metrics.model_validate(request.query)
+    query_params = MetricsQueryParams.model_validate(request.query)
 
     node_id = _get_node_id_from_request(request)
 

@@ -5,6 +5,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm.session import Session
 
 from aleph.types.db_session import DbSession
+from aleph.types.sort_order import SortOrder
 
 
 def _parse_ccn_result(result):
@@ -42,7 +43,7 @@ def _parse_crn_result(result):
     return result_dict
 
 
-def _build_metric_filter(select_stmt, node_id, start_date, end_date, sort_order):
+def _build_metric_filter(select_stmt, node_id, start_date, end_date, sort_order: SortOrder):
     if node_id:
         select_stmt = select_stmt.where(text("node_id = :node_id")).params(
             node_id=node_id
@@ -56,7 +57,7 @@ def _build_metric_filter(select_stmt, node_id, start_date, end_date, sort_order)
             end_date=end_date
         )
     if sort_order:
-        select_stmt = select_stmt.order_by(text(f"measured_at {sort_order}"))
+        select_stmt = select_stmt.order_by(text(f"measured_at {sort_order.to_sql()}"))
     return select_stmt
 
 
@@ -65,7 +66,7 @@ def query_metric_ccn(
     node_id: Optional[str] = None,
     start_date: Optional[float] = None,
     end_date: Optional[float] = None,
-    sort_order: Optional[str] = None,
+    sort_order: Optional[SortOrder] = None,
 ):
     # Default to the last 2 weeks from now, or 2 weeks before the `end_date`.
     if not start_date and not end_date:
