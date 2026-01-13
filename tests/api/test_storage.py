@@ -1,4 +1,5 @@
 import base64
+import datetime as dt
 import json
 from decimal import Decimal
 from io import BytesIO
@@ -12,12 +13,13 @@ from aleph_message.models import Chain, ItemHash
 from in_memory_storage_engine import InMemoryStorageEngine
 
 from aleph.chains.signature_verifier import SignatureVerifier
-from aleph.db.accessors.files import get_file
+from aleph.db.accessors.files import get_file, upsert_file, upsert_file_tag
 from aleph.db.models import AlephBalanceDb
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSessionFactory
-from aleph.types.files import FileType
+from aleph.types.files import FileTag, FileType
 from aleph.types.message_status import MessageStatus
+from aleph.utils import make_file_tag
 from aleph.web.controllers.app_state_getters import (
     APP_STATE_SIGNATURE_VERIFIER,
     APP_STATE_STORAGE_SERVICE,
@@ -548,3 +550,106 @@ async def test_ipfs_add_json(api_client, session_factory: DbSessionFactory):
         # creating a second fixture.
         expected_file_hash=ItemHash(EXPECTED_FILE_CID),
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ref",
+    [
+        "my-file",  # Custom string
+        "b" * 64,  # Item hash
+    ],
+)
+async def test_get_file_by_ref(api_client, session_factory: DbSessionFactory, ref: str):
+    owner = "0x1234567890123456789012345678901234567890"
+    file_hash = "a" * 64
+    file_content = b"hello aleph"
+
+    tag = make_file_tag(owner, ref, file_hash)
+
+    # Setup: Insert file and tag in DB
+    with session_factory() as session:
+        upsert_file(session, file_hash, size=len(file_content), file_type=FileType.FILE)
+        upsert_file_tag(
+            session,
+            tag,
+            owner,
+            file_hash,
+            last_updated=dt.datetime.now(dt.timezone.utc),
+        )
+        session.commit()
+
+    # Mock storage service to return our content
+    storage_service = api_client.app[APP_STATE_STORAGE_SERVICE]
+    await storage_service.storage_engine.write(file_hash, file_content)
+
+    # Test GET
+    url = f"/api/v0/storage/by-ref/{tag}"
+    async with api_client.get(url) as response:
+        assert response.status == 200
+        data = await response.json()
+        assert data["ref"] == ref
+        assert data["owner"] == owner
+        assert data["file_hash"] == file_hash
+        assert data["download_url"] == f"/api/v0/storage/raw/{file_hash}"
+        assert data["size"] == len(file_content)
+
+    # Test HEAD
+    async with api_client.head(url) as response:
+        assert response.status == 200
+        # HEAD on JSON response returns headers for the JSON body, not the file.
+        assert response.headers["Content-Type"] == "application/json; charset=utf-8"
+        body = await response.read()
+        assert body == b""
+
+
+@pytest.mark.asyncio
+async def test_get_file_by_tag_updates(api_client, session_factory: DbSessionFactory):
+    owner = "0x1234567890123456789012345678901234567890"
+    ref = "my-file"
+    tag = FileTag(f"{owner}/{ref}")
+
+    storage_service = api_client.app[APP_STATE_STORAGE_SERVICE]
+
+    # Version 1
+    file_hash_v1 = "1" * 64
+    file_content_v1 = b"version 1"
+    with session_factory() as session:
+        upsert_file(
+            session, file_hash_v1, size=len(file_content_v1), file_type=FileType.FILE
+        )
+        upsert_file_tag(
+            session,
+            tag,
+            owner,
+            file_hash_v1,
+            last_updated=dt.datetime.now(dt.timezone.utc),
+        )
+        session.commit()
+    await storage_service.storage_engine.write(file_hash_v1, file_content_v1)
+
+    # Version 2
+    file_hash_v2 = "2" * 64
+    file_content_v2 = b"version 2"
+    with session_factory() as session:
+        upsert_file(
+            session, file_hash_v2, size=len(file_content_v2), file_type=FileType.FILE
+        )
+        upsert_file_tag(
+            session,
+            tag,
+            owner,
+            file_hash_v2,
+            last_updated=dt.datetime.now(dt.timezone.utc)
+            + dt.timedelta(seconds=1),  # Ensure it's later
+        )
+        session.commit()
+    await storage_service.storage_engine.write(file_hash_v2, file_content_v2)
+
+    # Test GET - should return version 2
+    url = f"/api/v0/storage/by-ref/{owner}/{ref}"
+    async with api_client.get(url) as response:
+        assert response.status == 200
+        data = await response.json()
+        assert data["file_hash"] == file_hash_v2
+        assert data["size"] == len(file_content_v2)
