@@ -2,7 +2,17 @@ import asyncio
 import importlib.resources
 import json
 import logging
-from typing import Any, AsyncIterator, Dict, List, Literal, Self, Tuple, TypedDict, Union
+from typing import (
+    Any,
+    AsyncIterator,
+    Dict,
+    List,
+    Literal,
+    Self,
+    Tuple,
+    TypedDict,
+    Union,
+)
 
 from aleph_message.models import Chain
 from configmanager import Config
@@ -15,7 +25,7 @@ from web3.contract import AsyncContract
 from web3.exceptions import MismatchedABI, Web3RPCError
 from web3.gas_strategies.rpc import rpc_gas_price_strategy
 from web3.middleware import LocalFilterMiddleware
-from web3.types import ENS, LogReceipt, TxParams
+from web3.types import ENS, LogReceipt, TxParams, Nonce
 
 from aleph.db.accessors.chains import get_last_height, upsert_chain_sync_status
 from aleph.db.accessors.messages import get_unconfirmed_messages
@@ -382,7 +392,7 @@ class EthereumConnector(ChainWriter):
             return FeeEstimate(gasPrice=gas_price)
 
     async def _broadcast_content(
-        self, account, fee_estimate: FeeEstimate, nonce: int, content: str
+        self, account, fee_estimate: FeeEstimate, nonce: Nonce, content: str
     ):
         # Type hints require a fully typed TxParams, but reality works with a minimal dict
         tx_params: TxParams = {
@@ -390,13 +400,13 @@ class EthereumConnector(ChainWriter):
             "nonce": nonce,
             "from": account.address,
         }
-        tx_params.update(fee_estimate)  # type: ignore[redefinition]
+        tx_params.update(fee_estimate)
 
         # Estimate gas ourselves to avoid build_transaction failing to await it
         if "gas" not in tx_params:
-            gas_estimate = await self.contract.functions.doEmit(
-                content
-            ).estimate_gas({"from": account.address})
+            gas_estimate = await self.contract.functions.doEmit(content).estimate_gas(
+                {"from": account.address}
+            )
             while asyncio.iscoroutine(gas_estimate):
                 gas_estimate = await gas_estimate
             tx_params["gas"] = gas_estimate
@@ -425,7 +435,7 @@ class EthereumConnector(ChainWriter):
         self,
         account,
         messages,
-        nonce: int,
+        nonce: Nonce,
     ) -> HexBytes:
         # Type hints are wrong on this method, for some reason it's typed as sync - ignore until fixed
         fee_estimate = await self._get_fee_estimates()
