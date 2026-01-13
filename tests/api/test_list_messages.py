@@ -5,7 +5,9 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 import aiohttp
 import pytest
+import pytest_asyncio
 from aleph_message.models import Chain, InstanceContent, ItemHash, ItemType, MessageType
+from aleph_message.models import PostMessage as AlephPostMessage
 from aleph_message.models.execution.environment import (
     InstanceEnvironment,
     MachineResources,
@@ -20,10 +22,12 @@ from aleph_message.models.execution.volume import (
 
 from aleph.db.models import MessageDb, PostDb
 from aleph.db.models.messages import MessageStatusDb
+from aleph.schemas.messages_query_params import WsMessageQueryParams
 from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.message_status import MessageStatus
+from aleph.web.controllers.messages import message_matches_filters
 
 from .utils import get_messages_by_keys
 
@@ -582,3 +586,149 @@ async def test_get_instance(
 
     message = messages[0]
     assert message["item_hash"] == message_db.item_hash
+
+
+@pytest_asyncio.fixture
+async def owners_test_messages(session_factory: DbSessionFactory):
+    # item_hash must match sha256(item_content) for AlephPostMessage validation
+    # item_content: {"address": "owner1", "time": 1000, "type": "test"}
+    # SHA256 is c89ce02ceeb781be2079e02c35f96d7f4155b20a1029081ac82f9f2aa5a62b9c
+    h1 = "c89ce02ceeb781be2079e02c35f96d7f4155b20a1029081ac82f9f2aa5a62b9c"
+
+    # item_content: {"address": "owner1", "time": 1001, "type": "test"}
+    # SHA256 is 1121d15c7936a536f90f23019f9f87427181c9b63a92e105e94b2a8d30e38a2e
+    h2 = "1121d15c7936a536f90f23019f9f87427181c9b63a92e105e94b2a8d30e38a2e"
+
+    # item_content: {"address": "owner2", "time": 1002, "type": "test"}
+    # SHA256 is cb1b651292a4712930b9957ca8b7d294bd80e81e51c8777d7fedf83c6e344ac5
+    h3 = "cb1b651292a4712930b9957ca8b7d294bd80e81e51c8777d7fedf83c6e344ac5"
+
+    messages = [
+        MessageDb(
+            item_hash=h1,
+            type=MessageType.post,
+            chain=Chain.ETH,
+            sender="sender1",
+            signature="sig1",
+            item_type="inline",
+            item_content='{"address": "owner1", "time": 1000, "type": "test"}',
+            content={"address": "owner1", "time": 1000, "type": "test"},
+            time=timestamp_to_datetime(1000),
+            size=0,
+        ),
+        MessageDb(
+            item_hash=h2,
+            type=MessageType.post,
+            chain=Chain.ETH,
+            sender="sender2",
+            signature="sig2",
+            item_type="inline",
+            item_content='{"address": "owner1", "time": 1001, "type": "test"}',
+            content={"address": "owner1", "time": 1001, "type": "test"},
+            time=timestamp_to_datetime(1001),
+            size=0,
+        ),
+        MessageDb(
+            item_hash=h3,
+            type=MessageType.post,
+            chain=Chain.ETH,
+            sender="owner1",
+            signature="sig3",
+            item_type="inline",
+            item_content='{"address": "owner2", "time": 1002, "type": "test"}',
+            content={"address": "owner2", "time": 1002, "type": "test"},
+            time=timestamp_to_datetime(1002),
+            size=0,
+        ),
+    ]
+
+    with session_factory() as session:
+        for msg in messages:
+            session.add(msg)
+            session.add(
+                MessageStatusDb(
+                    item_hash=msg.item_hash,
+                    status=MessageStatus.PROCESSED,
+                    reception_time=msg.time,
+                )
+            )
+        session.commit()
+    return messages
+
+
+@pytest.mark.asyncio
+async def test_owners_filter(owners_test_messages, ccn_api_client):
+    h1 = owners_test_messages[0].item_hash
+    h2 = owners_test_messages[1].item_hash
+    h3 = owners_test_messages[2].item_hash
+
+    # Filter by owners=owner1
+    # Should return hash1 and hash2
+    response = await ccn_api_client.get(MESSAGES_URI, params={"owners": "owner1"})
+    assert response.status == 200
+    data = await response.json()
+    hashes = [m["item_hash"] for m in data["messages"]]
+    assert len(hashes) == 2
+    assert h1 in hashes
+    assert h2 in hashes
+    assert h3 not in hashes
+
+    # Filter by owners=owner2
+    # Should return hash3
+    response = await ccn_api_client.get(MESSAGES_URI, params={"owners": "owner2"})
+    assert response.status == 200
+    data = await response.json()
+    hashes = [m["item_hash"] for m in data["messages"]]
+    assert len(hashes) == 1
+    assert h3 in hashes
+
+    # Filter by addresses=owner1 (sender filter)
+    # Should return hash3
+    response = await ccn_api_client.get(MESSAGES_URI, params={"addresses": "owner1"})
+    assert response.status == 200
+    data = await response.json()
+    hashes = [m["item_hash"] for m in data["messages"]]
+    assert len(hashes) == 1
+    assert h3 in hashes
+
+    # Filter by both
+    response = await ccn_api_client.get(
+        MESSAGES_URI, params={"owners": "owner1", "addresses": "sender1"}
+    )
+    assert response.status == 200
+    data = await response.json()
+    hashes = [m["item_hash"] for m in data["messages"]]
+    assert len(hashes) == 1
+    assert h1 in hashes
+
+
+@pytest.mark.asyncio
+async def test_owners_filter_ws_logic(owners_test_messages):
+    # Test the logic used by WebSocket filtering
+    # hash1: sender1, owner1
+    # hash3: owner1, owner2
+
+    msg1_db = owners_test_messages[0]
+    msg1_dict = msg1_db.to_dict()
+    msg1_dict["time"] = msg1_db.time.timestamp()
+    msg1_aleph = AlephPostMessage.model_validate(msg1_dict)
+
+    msg3_db = owners_test_messages[2]
+    msg3_dict = msg3_db.to_dict()
+    msg3_dict["time"] = msg3_db.time.timestamp()
+    msg3_aleph = AlephPostMessage.model_validate(msg3_dict)
+
+    # Case 1: owners=owner1
+    query = WsMessageQueryParams(owners=["owner1"])
+    assert message_matches_filters(msg1_aleph, query) is True
+    assert message_matches_filters(msg3_aleph, query) is False
+
+    # Case 2: owners=owner2
+    query = WsMessageQueryParams(owners=["owner2"])
+    assert message_matches_filters(msg1_aleph, query) is False
+    assert message_matches_filters(msg3_aleph, query) is True
+
+    # Case 3: addresses=owner1
+    query = WsMessageQueryParams(addresses=["owner1"])
+    assert message_matches_filters(msg1_aleph, query) is False
+    assert message_matches_filters(msg3_aleph, query) is True

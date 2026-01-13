@@ -42,6 +42,9 @@ class BaseMessageQueryParams(BaseModel):
     addresses: Optional[List[str]] = Field(
         default=None, description="Accepted values for the 'sender' field."
     )
+    owners: Optional[List[str]] = Field(
+        default=None, description="Accepted values for the 'content.address' field."
+    )
     refs: Optional[List[str]] = Field(
         default=None, description="Accepted values for the 'content.ref' field."
     )
@@ -119,6 +122,7 @@ class BaseMessageQueryParams(BaseModel):
     @field_validator(
         "hashes",
         "addresses",
+        "owners",
         "refs",
         "content_hashes",
         "content_keys",
