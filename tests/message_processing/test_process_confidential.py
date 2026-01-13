@@ -199,6 +199,10 @@ def insert_volume_refs(session: DbSession, message: PendingMessageDb):
     created = pytz.utc.localize(dt.datetime(2023, 1, 1))
 
     for volume in volumes:
+        # There is a typing issue in aleph-message where refs for data/immutable volumes are optional.
+        # Check https://github.com/aleph-im/aleph-message/pull/137
+        assert volume.ref is not None
+
         file_hash = volume.ref[::-1]
         existing_file = session.query(StoredFileDb).filter_by(hash=file_hash).first()
         if not existing_file:

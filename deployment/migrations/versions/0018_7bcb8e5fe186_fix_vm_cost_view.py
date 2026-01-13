@@ -7,7 +7,7 @@ Create Date: 2023-08-04 15:14:39.082370
 """
 
 from alembic import op
-
+from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
 revision = "7bcb8e5fe186"
@@ -18,7 +18,8 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute(
-        """
+        text(
+            """
         create or replace view vm_volumes_files_view as
             SELECT volume.program_hash AS vm_hash,
                volume.ref,
@@ -76,9 +77,11 @@ def upgrade() -> None:
                  LEFT JOIN file_tags tags ON volume.ref::text = tags.tag::text
                  JOIN file_pins originals ON volume.ref::text = originals.item_hash::text
         """
+        )
     )
     op.execute(
-        """
+        text(
+            """
         create or replace view costs_view as
             SELECT COALESCE(vm_prices.owner, storage.owner) AS address,
                    vm_prices.total_vm_cost,
@@ -98,9 +101,11 @@ def upgrade() -> None:
                  LATERAL ( SELECT COALESCE(vm_prices.total_vm_cost, 0::double precision) +
                                   COALESCE(sc.total_storage_cost, 0::numeric)::double precision AS total_cost) tc
         """
+        )
     )
     op.execute(
-        """
+        text(
+            """
         create or replace view vm_costs_view as
             SELECT vm_versions.vm_hash,
                vm_versions.owner,
@@ -159,16 +164,19 @@ def upgrade() -> None:
          
         
         """
+        )
     )
     op.execute(
-        """
+        text(
+            """
         INSERT INTO error_codes(code, description) VALUES 
             (5, 'Insufficient balance')
         """
+        )
     )
 
 
 def downgrade() -> None:
-    op.execute("drop view costs_view")
-    op.execute("drop view vm_costs_view")
-    op.execute("drop view vm_volumes_files_view")
+    op.execute(text("drop view costs_view"))
+    op.execute(text("drop view vm_costs_view"))
+    op.execute(text("drop view vm_volumes_files_view"))

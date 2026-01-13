@@ -9,6 +9,7 @@ from eth_account import Account
 from hexbytes import HexBytes
 from web3 import AsyncHTTPProvider, AsyncWeb3
 from web3.middleware import ExtraDataToPOAMiddleware
+from web3.types import RPCEndpoint
 
 from aleph.chains.ethereum import EthereumConnector, get_contract
 from aleph.db.accessors.chains import upsert_chain_sync_status
@@ -54,9 +55,11 @@ async def deployed_contract(
     if not await web3_client.is_connected():
         pytest.fail(f"Anvil node not found at {mock_config.ethereum.api_url.value}")
 
-    test_address = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+    test_address = AsyncWeb3.to_checksum_address(
+        "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+    )
     await web3_client.provider.make_request(
-        "anvil_setCode", [test_address, ALEPH_SYNC_BYTECODE]
+        RPCEndpoint("anvil_setCode"), [test_address, ALEPH_SYNC_BYTECODE]
     )
 
     mock_config.ethereum.sync_contract.value = test_address
@@ -65,7 +68,7 @@ async def deployed_contract(
 
 @pytest.mark.asyncio
 async def test_get_contract(web3_client: AsyncWeb3):
-    contract_address = "0x" + "0" * 40
+    contract_address = AsyncWeb3.to_checksum_address("0x" + "0" * 40)
     contract = await get_contract(
         web3_client=web3_client, contract_address=contract_address
     )
@@ -128,9 +131,9 @@ async def test_broadcast_messages(
     )
 
     receipt = await web3_client.eth.wait_for_transaction_receipt(response)
-    assert receipt.status == 1
-    print(f"Gas used by broadcast_messages: {receipt.gasUsed}")
-    print(f"Cost: {receipt.gasUsed * gas_price / 10**18} ETH")
+    assert receipt["status"] == 1
+    print(f"Gas used by broadcast_messages: {receipt['gasUsed']}")
+    print(f"Cost: {receipt['gasUsed'] * gas_price / 10**18} ETH")
 
     gas_estimate = await deployed_contract.functions.doEmit(
         json.dumps(jdata)
@@ -217,7 +220,7 @@ async def test_fetch_ethereum_sync_events(
             session=session,
             chain=Chain.ETH,
             sync_type=ChainEventType.SYNC,
-            height=receipt.blockNumber - 1,
+            height=receipt["blockNumber"] - 1,
             update_datetime=utc_now(),
         )
         session.commit()
@@ -299,7 +302,7 @@ async def test_fetch_ethereum_sync_events_repeated_sync(
             session=session,
             chain=Chain.ETH,
             sync_type=ChainEventType.SYNC,
-            height=receipt.blockNumber - 1,
+            height=receipt["blockNumber"] - 1,
             update_datetime=utc_now(),
         )
         session.commit()
@@ -318,12 +321,12 @@ async def test_fetch_ethereum_sync_events_repeated_sync(
             session=session,
             chain=Chain.ETH,
             sync_type=ChainEventType.SYNC,
-            height=receipt.blockNumber,
+            height=receipt["blockNumber"],
             update_datetime=utc_now(),
         )
         session.commit()
 
-    await web3_client.provider.make_request("anvil_mine", [1])
+    await web3_client.provider.make_request(RPCEndpoint("anvil_mine"), [1])
 
     # 2. Second sync
     jdata2 = {
@@ -428,7 +431,7 @@ async def test_fetch_ethereum_sync_events_sync_failure(
             session=session,
             chain=Chain.ETH,
             sync_type=ChainEventType.SYNC,
-            height=receipt.blockNumber - 1,
+            height=receipt["blockNumber"] - 1,
             update_datetime=utc_now(),
         )
         session.commit()
@@ -443,7 +446,7 @@ async def test_fetch_ethereum_sync_events_sync_failure(
     # Now last_synced_height in DB should be receipt.blockNumber - 1
     # because we stopped before _request_transactions could update the height in DB
     last_height = await connector.get_last_height(ChainEventType.SYNC)
-    assert last_height == receipt.blockNumber - 1
+    assert last_height == receipt["blockNumber"] - 1
 
     # 2. Trigger an exception in fetch_ethereum_sync_events
     # We can mock _request_transactions to raise an exception

@@ -11,8 +11,12 @@ from aleph.web.controllers.app_state_getters import get_session_factory_from_req
 
 @cached(ttl=60 * 120, cache=SimpleMemoryCache, timeout=120)
 async def get_channels(session: DbSession) -> List[Channel]:
-    channels = get_distinct_channels(session)
-    return list(channels)
+    # Filter out None
+    return [
+        channel
+        for channel in get_distinct_channels(session=session)
+        if channel is not None
+    ]
 
 
 async def used_channels(request: web.Request) -> web.Response:

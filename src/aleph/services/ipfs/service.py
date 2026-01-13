@@ -2,7 +2,7 @@ import asyncio
 import concurrent
 import json
 import logging
-from typing import AsyncIterable, Dict, Optional, Self, Union
+from typing import AsyncIterable, Dict, Optional, Self, Union, cast
 
 import aiohttp
 import aioipfs
@@ -160,8 +160,11 @@ class IpfsService:
         while (result is None) and (try_count < tries):
             try_count += 1
             try:
-                result = await asyncio.wait_for(
-                    self.ipfs_client.cat(hash, length=MAX_LEN), timeout=timeout
+                result = cast(
+                    bytes,
+                    await asyncio.wait_for(
+                        self.ipfs_client.cat(hash, length=MAX_LEN), timeout=timeout
+                    ),
                 )
                 if len(result) == MAX_LEN:
                     result = None

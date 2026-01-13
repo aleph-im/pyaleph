@@ -25,7 +25,7 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy_utils.types.choice import ChoiceType
 
 from aleph.toolkit.timestamp import timestamp_to_datetime
@@ -76,9 +76,13 @@ def validate_message_content(
 class MessageStatusDb(Base):
     __tablename__ = "message_status"
 
-    item_hash: str = Column(String, primary_key=True)
-    status: MessageStatus = Column(ChoiceType(MessageStatus), nullable=False)
-    reception_time: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
+    item_hash: Mapped[str] = mapped_column(String, primary_key=True)
+    status: Mapped[MessageStatus] = mapped_column(
+        ChoiceType(MessageStatus), nullable=False
+    )
+    reception_time: Mapped[dt.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
 
 
 class MessageDb(Base):
@@ -88,30 +92,36 @@ class MessageDb(Base):
 
     __tablename__ = "messages"
 
-    item_hash: str = Column(String, primary_key=True)
-    type: MessageType = Column(ChoiceType(MessageType), nullable=False)
-    chain: Chain = Column(ChoiceType(Chain), nullable=False)
-    sender: str = Column(String, nullable=False, index=True)
-    signature: Optional[str] = Column(String, nullable=True)
-    item_type: ItemType = Column(ChoiceType(ItemType), nullable=False)
-    item_content: Optional[str] = Column(String, nullable=True)
-    content: Any = Column(JSONB, nullable=False)
-    time: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False, index=True)
-    channel: Optional[Channel] = Column(String, nullable=True, index=True)
-    size: int = Column(Integer, nullable=False)
+    item_hash: Mapped[str] = mapped_column(String, primary_key=True)
+    type: Mapped[MessageType] = mapped_column(ChoiceType(MessageType), nullable=False)
+    chain: Mapped[Chain] = mapped_column(ChoiceType(Chain), nullable=False)
+    sender: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    signature: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    item_type: Mapped[ItemType] = mapped_column(ChoiceType(ItemType), nullable=False)
+    item_content: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    content: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    time: Mapped[dt.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, index=True
+    )
+    channel: Mapped[Optional[Channel]] = mapped_column(
+        String, nullable=True, index=True
+    )
+    size: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    confirmations: "List[ChainTxDb]" = relationship(
+    confirmations: Mapped[List[ChainTxDb]] = relationship(
         "ChainTxDb", secondary=message_confirmations
     )
 
-    status: Optional["MessageStatusDb"] = relationship(
+    status: Mapped[Optional["MessageStatusDb"]] = relationship(
         "MessageStatusDb",
         primaryjoin="MessageDb.item_hash == MessageStatusDb.item_hash",
         foreign_keys=MessageStatusDb.item_hash,
         uselist=False,  # Critical: Makes it one-to-one
     )
 
-    _parsed_content: Optional[BaseContent] = None
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._parsed_content: Optional[BaseContent] = None
 
     @property
     def confirmed(self) -> bool:
@@ -119,7 +129,7 @@ class MessageDb(Base):
 
     @property
     def parsed_content(self):
-        if self._parsed_content is None:
+        if getattr(self, "_parsed_content", None) is None:
             self._parsed_content = validate_message_content(self.type, self.content)
         return self._parsed_content
 
@@ -187,32 +197,38 @@ class MessageDb(Base):
 class ForgottenMessageDb(Base):
     __tablename__ = "forgotten_messages"
 
-    item_hash: str = Column(String, primary_key=True)
-    type: MessageType = Column(ChoiceType(MessageType), nullable=False)
-    chain: Chain = Column(ChoiceType(Chain), nullable=False)
-    sender: str = Column(String, nullable=False, index=True)
-    signature: Optional[str] = Column(String, nullable=True)
-    item_type: ItemType = Column(ChoiceType(ItemType), nullable=False)
-    time: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False, index=True)
-    channel: Optional[Channel] = Column(String, nullable=True, index=True)
-    forgotten_by: List[str] = Column(ARRAY(String), nullable=False)  # type: ignore
+    item_hash: Mapped[str] = mapped_column(String, primary_key=True)
+    type: Mapped[MessageType] = mapped_column(ChoiceType(MessageType), nullable=False)
+    chain: Mapped[Chain] = mapped_column(ChoiceType(Chain), nullable=False)
+    sender: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    signature: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    item_type: Mapped[ItemType] = mapped_column(ChoiceType(ItemType), nullable=False)
+    time: Mapped[dt.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, index=True
+    )
+    channel: Mapped[Optional[Channel]] = mapped_column(
+        String, nullable=True, index=True
+    )
+    forgotten_by: Mapped[List[str]] = mapped_column(ARRAY(String), nullable=False)
 
 
 class ErrorCodeDb(Base):
     __tablename__ = "error_codes"
 
-    code: int = Column(Integer, primary_key=True)
-    description: str = Column(String, nullable=False)
+    code: Mapped[int] = mapped_column(Integer, primary_key=True)
+    description: Mapped[str] = mapped_column(String, nullable=False)
 
 
 class RejectedMessageDb(Base):
     __tablename__ = "rejected_messages"
 
-    item_hash: str = Column(String, primary_key=True)
-    message: Mapping[str, Any] = Column(JSONB, nullable=False)
-    error_code: ErrorCode = Column(
+    item_hash: Mapped[str] = mapped_column(String, primary_key=True)
+    message: Mapped[Mapping[str, Any]] = mapped_column(JSONB, nullable=False)
+    error_code: Mapped[ErrorCode] = mapped_column(
         ChoiceType(ErrorCode, impl=Integer()), nullable=False
     )
-    details: Optional[Dict[str, Any]] = Column(JSONB, nullable=True)
-    traceback: Optional[str] = Column(String, nullable=True)
-    tx_hash: Optional[str] = Column(ForeignKey("chain_txs.hash"), nullable=True)
+    details: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    traceback: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    tx_hash: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("chain_txs.hash"), nullable=True
+    )

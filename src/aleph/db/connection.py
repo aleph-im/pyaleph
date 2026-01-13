@@ -3,11 +3,11 @@ from typing import Optional
 from configmanager import Config
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from aleph.config import get_config
-from aleph.types.db_session import AsyncDbSessionFactory, DbSessionFactory
+from aleph.types.db_session import DbSessionFactory
 
 
 def make_db_url(
@@ -77,7 +77,3 @@ def make_async_engine(
 
 def make_session_factory(engine: Engine) -> DbSessionFactory:
     return sessionmaker(engine, expire_on_commit=False)
-
-
-def make_async_session_factory(engine: AsyncEngine) -> AsyncDbSessionFactory:
-    return sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)

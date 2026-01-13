@@ -191,7 +191,7 @@ class EthereumConnector(ChainWriter):
                 for log in await self._get_logs_in_block_range(start_block, end_block):
                     yield log
 
-                start_block = end_block + 1
+                start_block = BlockNumber(end_block + 1)
                 # On success, reset the range size.
                 block_range = self.max_block_range
             except TooManyLogsInRange:
@@ -327,8 +327,9 @@ class EthereumConnector(ChainWriter):
         await asyncio.gather(message_event_task, sync_event_task)
 
     async def _broadcast_content(self, account, gas_price: int, nonce, content):
+        # Type hints require a fully typed TxParams, but reality works with a minimal dict
         tx = await self.contract.functions.doEmit(content).build_transaction(
-            {
+            {  # type: ignore[arg-type]
                 "chainId": await self.web3_client.eth.chain_id,
                 "gasPrice": gas_price,
                 "nonce": nonce,
@@ -346,7 +347,8 @@ class EthereumConnector(ChainWriter):
         messages,
         nonce: int,
     ) -> HexBytes:
-        gas_price = await self.web3_client.eth.generate_gas_price()
+        # Type hints are wrong on this method, for some reason it's typed as sync - ignore until fixed
+        gas_price = await self.web3_client.eth.generate_gas_price()  # type: ignore[misc]
         if gas_price is None:
             gas_price = await self.web3_client.eth.gas_price
 

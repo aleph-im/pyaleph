@@ -1,5 +1,5 @@
 import datetime as dt
-from typing import List, Optional
+from typing import Optional, Sequence
 
 from sqlalchemy import delete, select, update
 
@@ -7,7 +7,7 @@ from aleph.db.models.cron_jobs import CronJobDb
 from aleph.types.db_session import DbSession
 
 
-def get_cron_jobs(session: DbSession) -> List[CronJobDb]:
+def get_cron_jobs(session: DbSession) -> Sequence[CronJobDb]:
     select_stmt = select(CronJobDb)
 
     return (session.execute(select_stmt)).scalars().all()

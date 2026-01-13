@@ -216,7 +216,9 @@ def count_aggregate_elements(session: DbSession, owner: str, key: str) -> int:
     select_stmt = select(AggregateElementDb).where(
         (AggregateElementDb.key == key) & (AggregateElementDb.owner == owner)
     )
-    return session.execute(select(func.count()).select_from(select_stmt)).scalar_one()
+    return session.execute(
+        select(func.count()).select_from(select_stmt.subquery())
+    ).scalar_one()
 
 
 def merge_aggregate_elements(elements: Iterable[AggregateElementDb]) -> Dict[str, Any]:

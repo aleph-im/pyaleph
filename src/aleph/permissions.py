@@ -1,4 +1,4 @@
-from aleph_message.models import MessageType, PostContent
+from aleph_message.models import ItemHash, MessageType, PostContent
 
 from aleph.db.accessors.aggregates import get_aggregate_by_key
 from aleph.db.accessors.messages import get_message_by_item_hash
@@ -104,10 +104,10 @@ async def check_sender_authorization(session: DbSession, message: MessageDb) -> 
     ):
         # For amends, we need to check if the current sender has permissions for the original post's address
         if content.ref is not None:
-            ref_item_hash = (
+            ref_item_hash: ItemHash = (
                 content.ref.item_hash
                 if hasattr(content.ref, "item_hash")
-                else str(content.ref)
+                else ItemHash(content.ref)
             )
             original_message = get_message_by_item_hash(
                 session=session, item_hash=ref_item_hash

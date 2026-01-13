@@ -1,17 +1,16 @@
 import datetime as dt
 from enum import Enum
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import (
     TIMESTAMP,
     BigInteger,
-    Column,
     ForeignKey,
     Index,
     String,
     UniqueConstraint,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy_utils import ChoiceType
 
 from aleph.types.files import FileTag, FileType
@@ -35,7 +34,7 @@ class StoredFileDb(Base):
 
     # id: int = Column(BigInteger, primary_key=True)
 
-    hash: str = Column(String, nullable=False, primary_key=True)
+    hash: Mapped[str] = mapped_column(String, nullable=False, primary_key=True)
 
     # TODO: compute hash equivalences
     # TODO: unique index for sha256
@@ -46,50 +45,59 @@ class StoredFileDb(Base):
 
     # size: int = Column(BigInteger, nullable=False)
     # TODO: compute the size from local storage
-    size: int = Column(BigInteger, nullable=False)
-    type: FileType = Column(ChoiceType(FileType), nullable=False)
+    size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    type: Mapped[FileType] = mapped_column(ChoiceType(FileType), nullable=False)
 
-    pins: List["FilePinDb"] = relationship("FilePinDb", back_populates="file")
-    tags: List["FileTagDb"] = relationship("FileTagDb", back_populates="file")
+    pins: Mapped[List["FilePinDb"]] = relationship("FilePinDb", back_populates="file")
+    tags: Mapped[List["FileTagDb"]] = relationship("FileTagDb", back_populates="file")
 
 
 class FileTagDb(Base):
     __tablename__ = "file_tags"
 
-    tag: FileTag = Column(String, primary_key=True)
-    owner: str = Column(String, nullable=False)
-    file_hash: str = Column(ForeignKey(StoredFileDb.hash), nullable=False, index=True)
-    last_updated: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
+    tag: Mapped[FileTag] = mapped_column(String, primary_key=True)
+    owner: Mapped[str] = mapped_column(String, nullable=False)
+    file_hash: Mapped[str] = mapped_column(
+        ForeignKey(StoredFileDb.hash), nullable=False, index=True
+    )
+    last_updated: Mapped[dt.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
 
-    file: StoredFileDb = relationship(StoredFileDb, back_populates="tags")
+    file: Mapped[StoredFileDb] = relationship(StoredFileDb, back_populates="tags")
 
 
 class FilePinDb(Base):
     __tablename__ = "file_pins"
 
-    id: int = Column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
 
-    file_hash: str = Column(ForeignKey(StoredFileDb.hash), nullable=False)
-    created: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=False)
-    type: str = Column(String, nullable=False)
+    file_hash: Mapped[str] = mapped_column(
+        ForeignKey(StoredFileDb.hash), nullable=False
+    )
+    created: Mapped[dt.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
+    type: Mapped[str] = mapped_column(String, nullable=False)
     # TODO: these columns should be defined on Message/ContentFilePinDb instead with `use_existing`.
     #       This field is only available since SQLA 2.0.
-    owner = Column(String, nullable=True, index=True)
-    item_hash = Column(String, nullable=True)
+    owner: Mapped[str] = mapped_column(String, nullable=True, index=True)
+    item_hash: Mapped[str] = mapped_column(String, nullable=True)
 
     # Allow to recover MESSAGE pins refs marked for removing from grace period entries
-    ref = Column(String, nullable=True)
+    ref: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
-    file: StoredFileDb = relationship(StoredFileDb, back_populates="pins")
+    file: Mapped[StoredFileDb] = relationship(StoredFileDb, back_populates="pins")
 
     __mapper_args__: Dict[str, Any] = {
         "polymorphic_on": type,
+        "polymorphic_identity": "file_pin",
     }
     __table_args__ = (UniqueConstraint("item_hash", "type"),)
 
 
 class TxFilePinDb(FilePinDb):
-    tx_hash = Column(String, nullable=True)
+    tx_hash: Mapped[str] = mapped_column(String, nullable=True)
 
     __mapper_args__ = {
         "polymorphic_identity": FilePinType.TX.value,
@@ -112,7 +120,9 @@ class ContentFilePinDb(FilePinDb):
 
 
 class GracePeriodFilePinDb(FilePinDb):
-    delete_by: dt.datetime = Column(TIMESTAMP(timezone=True), nullable=True)
+    delete_by: Mapped[dt.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
 
     __mapper_args__ = {
         "polymorphic_identity": FilePinType.GRACE_PERIOD.value,

@@ -115,7 +115,8 @@ def _get_product_instance_type(
     if _is_confidential_vm(content):
         return ProductPriceType.INSTANCE_CONFIDENTIAL
 
-    if not _is_gpu_vm(content):
+    gpu_requirements = content.requirements.gpu if content.requirements else []
+    if not gpu_requirements:
         return ProductPriceType.INSTANCE
 
     # TODO: Improve the way to compare tiers
@@ -127,7 +128,7 @@ def _get_product_instance_type(
     )
 
     # TODO: Allow to get more than one GPU
-    selected_gpu = content.requirements.gpu[0]
+    selected_gpu = gpu_requirements[0]
 
     gpu_model = next(
         compatible_gpu.model
@@ -340,6 +341,9 @@ def _get_execution_volumes_costs(
             )
 
         if content.data:
+            # This assert is a workaround to a typing mistake in aleph-vm where the data volume ref is optional
+            # Check https://github.com/aleph-im/aleph-message/pull/137
+            assert content.data.ref is not None
             if (
                 isinstance(content, CostEstimationProgramContent)
                 and content.data.estimated_size_mib
@@ -352,11 +356,12 @@ def _get_execution_volumes_costs(
                     )
                 )
             else:
+                use_latest = content.data.use_latest or False
                 volumes.append(
                     RefVolume(
                         CostType.EXECUTION_PROGRAM_VOLUME_DATA,
                         content.data.ref,
-                        content.data.use_latest,
+                        use_latest,
                     ),
                 )
 
@@ -383,6 +388,9 @@ def _get_execution_volumes_costs(
                     ),
                 )
             else:
+                # This assert is a workaround to a typing mistake in aleph-vm where immutable volume refs are optional
+                # Check https://github.com/aleph-im/aleph-message/pull/137
+                assert volume.ref is not None
                 volumes.append(
                     RefVolume(
                         CostType.EXECUTION_VOLUME_INMUTABLE,

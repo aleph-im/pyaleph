@@ -1,5 +1,5 @@
-from sqlalchemy import Column, ForeignKey
-from sqlalchemy.orm import relationship
+from sqlalchemy import ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
 from .chains import ChainTxDb
@@ -8,6 +8,6 @@ from .chains import ChainTxDb
 class PendingTxDb(Base):
     __tablename__ = "pending_txs"
 
-    tx_hash: str = Column(ForeignKey("chain_txs.hash"), primary_key=True)
+    tx_hash: Mapped[str] = mapped_column(ForeignKey("chain_txs.hash"), primary_key=True)
 
-    tx: "ChainTxDb" = relationship("ChainTxDb")
+    tx: Mapped["ChainTxDb"] = relationship("ChainTxDb")

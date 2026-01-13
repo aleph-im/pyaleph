@@ -54,7 +54,7 @@ def message_exists(session: DbSession, item_hash: str) -> bool:
 
 def get_one_message_by_item_hash(
     session: DbSession, item_hash: str
-) -> Optional[RejectedMessageDb]:
+) -> Optional[MessageDb]:
     select_stmt = select(MessageDb).where(MessageDb.item_hash == item_hash)
     return session.execute(select_stmt).scalar_one_or_none()
 
@@ -431,7 +431,7 @@ def make_message_status_upsert_query(
     )
 
 
-def get_distinct_channels(session: DbSession) -> Iterable[Channel]:
+def get_distinct_channels(session: DbSession) -> Iterable[Optional[Channel]]:
     select_stmt = select(MessageDb.channel).distinct().order_by(MessageDb.channel)
     return session.execute(select_stmt).scalars()
 
@@ -851,7 +851,7 @@ def count_matching_hashes(
     session: DbSession,
     pagination: int = 0,
     **kwargs,
-) -> Select:
+) -> int:
     select_stmt = make_matching_hashes_query(pagination=0, **kwargs).subquery()
     select_count_stmt = select(func.count()).select_from(select_stmt)
     return session.execute(select_count_stmt).scalar_one()

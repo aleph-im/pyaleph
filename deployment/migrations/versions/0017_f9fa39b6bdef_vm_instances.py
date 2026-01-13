@@ -8,6 +8,7 @@ Create Date: 2023-05-17 11:59:42.783630
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy import text
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
@@ -19,7 +20,8 @@ depends_on = None
 
 def reprocess_failed_instance_messages():
     op.execute(
-        """
+        text(
+            """
     INSERT INTO pending_messages(item_hash, type, chain, sender, signature, item_type, item_content, time, channel,
                              reception_time, check_message, retries, tx_hash, fetched, next_attempt)
     (SELECT rm.item_hash,
@@ -41,27 +43,33 @@ def reprocess_failed_instance_messages():
               JOIN message_status ms on rm.item_hash = ms.item_hash
      WHERE message ->> 'type' = 'INSTANCE')
     """
+        )
     )
     op.execute(
-        """
+        text(
+            """
         UPDATE message_status
           SET status = 'pending'
           FROM aleph.public.rejected_messages rm
           WHERE message_status.item_hash = rm.item_hash
             AND rm.message ->> 'type' = 'INSTANCE'
         """
+        )
     )
-    op.execute("DELETE FROM rejected_messages WHERE message->>'type' = 'INSTANCE'")
+    op.execute(
+        text("DELETE FROM rejected_messages WHERE message->>'type' = 'INSTANCE'")
+    )
 
 
 def recreate_cost_views():
-    op.execute("DROP VIEW costs_view")
-    op.execute("DROP VIEW program_costs_view")
-    op.execute("DROP VIEW program_volumes_files_view")
+    op.execute(text("DROP VIEW costs_view"))
+    op.execute(text("DROP VIEW program_costs_view"))
+    op.execute(text("DROP VIEW program_volumes_files_view"))
 
     # Recreate the views using `vm` instead of `program` wherever necessary
     op.execute(
-        """
+        text(
+            """
         create view vm_volumes_files_view(vm_hash, ref, use_latest, type, latest, original, volume_to_use) as
         SELECT volume.program_hash AS vm_hash,
                volume.ref,
@@ -119,67 +127,71 @@ def recreate_cost_views():
                  LEFT OUTER JOIN file_tags tags ON volume.ref = tags.tag
                  JOIN file_pins originals ON volume.ref = originals.item_hash
         """
+        )
     )
     op.execute(
-        """
-        create view vm_costs_view as
-            SELECT vm_versions.vm_hash,
-                   vm_versions.owner,
-                   vms.resources_vcpus,
-                   vms.resources_memory,
-                   file_volumes_size.file_volumes_size,
-                   other_volumes_size.other_volumes_size,
-                   used_disk.required_disk_space,
-                   cu.compute_units_required,
-                   bcp.base_compute_unit_price,
-                   m.compute_unit_price_multiplier,
-                   cpm.compute_unit_price,
-                   free_disk.included_disk_space,
-                   additional_disk.additional_disk_space,
-                   adp.disk_price,
-                   tp.total_price
-            FROM vm_versions
-                     JOIN vms on vm_versions.current_version = vms.item_hash
-                     JOIN (SELECT volume.vm_hash,
-                                  sum(files.size) AS file_volumes_size
-                           FROM vm_volumes_files_view volume
-                                    LEFT JOIN files ON volume.volume_to_use = files.hash
-                           GROUP BY volume.vm_hash) file_volumes_size
-                          ON vm_versions.current_version = file_volumes_size.vm_hash
-                     JOIN (SELECT instance_hash, size_mib * 1024 * 1024 rootfs_size FROM instance_rootfs) rootfs_size
-                     ON vm_versions.vm_hash = rootfs_size.instance_hash
-                     JOIN (SELECT vm_hash, SUM(size_mib) * 1024 * 1024 other_volumes_size
-                           FROM vm_machine_volumes
-                           GROUP BY vm_hash) other_volumes_size
-                          ON vm_versions.current_version = other_volumes_size.vm_hash,
-                 LATERAL (SELECT file_volumes_size + other_volumes_size AS required_disk_space) used_disk,
-                 LATERAL ( SELECT ceil(GREATEST(ceil(vms.resources_vcpus / 1),
-                                                vms.resources_memory / 2000)) AS compute_units_required) cu,
-                 LATERAL ( SELECT CASE
-                                      WHEN vms.persistent
-                                          THEN 20000000000 * cu.compute_units_required
-                                      ELSE 2000000000 * cu.compute_units_required
-                                      END AS included_disk_space) free_disk,
-                 LATERAL ( SELECT GREATEST(file_volumes_size.file_volumes_size +
-                                           rootfs_size.rootfs_size + 
-                                           other_volumes_size.other_volumes_size -
-                                           free_disk.included_disk_space,
-                                           0) AS additional_disk_space) additional_disk,
-                 LATERAL ( SELECT CASE
-                                      WHEN vms.persistent THEN 2000
-                                      ELSE 200
-                                      END AS base_compute_unit_price) bcp,
-                 LATERAL ( SELECT 1 + vms.environment_internet::integer AS compute_unit_price_multiplier) m,
-                 LATERAL ( SELECT cu.compute_units_required * m.compute_unit_price_multiplier::double precision *
-                                  bcp.base_compute_unit_price::double precision *
-                                  m.compute_unit_price_multiplier AS compute_unit_price) cpm,
-                 LATERAL ( SELECT additional_disk.additional_disk_space * 20::double precision /
-                                  1000000::double precision AS disk_price) adp,
-                 LATERAL ( SELECT cpm.compute_unit_price + adp.disk_price AS total_price) tp
-        """
+        text(
+            """
+             create view vm_costs_view as
+             SELECT vm_versions.vm_hash,
+                    vm_versions.owner,
+                    vms.resources_vcpus,
+                    vms.resources_memory,
+                    file_volumes_size.file_volumes_size,
+                    other_volumes_size.other_volumes_size,
+                    used_disk.required_disk_space,
+                    cu.compute_units_required,
+                    bcp.base_compute_unit_price,
+                    m.compute_unit_price_multiplier,
+                    cpm.compute_unit_price,
+                    free_disk.included_disk_space,
+                    additional_disk.additional_disk_space,
+                    adp.disk_price,
+                    tp.total_price
+             FROM vm_versions
+                      JOIN vms on vm_versions.current_version = vms.item_hash
+                      JOIN (SELECT volume.vm_hash,
+                                   sum(files.size) AS file_volumes_size
+                            FROM vm_volumes_files_view volume
+                                     LEFT JOIN files ON volume.volume_to_use = files.hash
+                            GROUP BY volume.vm_hash) file_volumes_size
+                           ON vm_versions.current_version = file_volumes_size.vm_hash
+                      JOIN (SELECT instance_hash, size_mib * 1024 * 1024 rootfs_size FROM instance_rootfs) rootfs_size
+                           ON vm_versions.vm_hash = rootfs_size.instance_hash
+                      JOIN (SELECT vm_hash, SUM(size_mib) * 1024 * 1024 other_volumes_size
+                            FROM vm_machine_volumes
+                            GROUP BY vm_hash) other_volumes_size
+                           ON vm_versions.current_version = other_volumes_size.vm_hash,
+                  LATERAL (SELECT file_volumes_size + other_volumes_size AS required_disk_space) used_disk,
+                  LATERAL ( SELECT ceil(GREATEST(ceil(vms.resources_vcpus / 1),
+                                                 vms.resources_memory / 2000)) AS compute_units_required) cu,
+                  LATERAL ( SELECT CASE
+                                       WHEN vms.persistent
+                                           THEN 20000000000 * cu.compute_units_required
+                                       ELSE 2000000000 * cu.compute_units_required
+                                       END AS included_disk_space) free_disk,
+                  LATERAL ( SELECT GREATEST(file_volumes_size.file_volumes_size +
+                                            rootfs_size.rootfs_size +
+                                            other_volumes_size.other_volumes_size -
+                                            free_disk.included_disk_space,
+                                            0) AS additional_disk_space) additional_disk,
+                  LATERAL ( SELECT CASE
+                                       WHEN vms.persistent THEN 2000
+                                       ELSE 200
+                                       END AS base_compute_unit_price) bcp,
+                  LATERAL ( SELECT 1 + vms.environment_internet::integer AS compute_unit_price_multiplier) m,
+                  LATERAL ( SELECT cu.compute_units_required * m.compute_unit_price_multiplier::double precision *
+                                   bcp.base_compute_unit_price::double precision *
+                                   m.compute_unit_price_multiplier AS compute_unit_price) cpm,
+                  LATERAL ( SELECT additional_disk.additional_disk_space * 20::double precision /
+                                   1000000::double precision AS disk_price) adp,
+                  LATERAL ( SELECT cpm.compute_unit_price + adp.disk_price AS total_price) tp
+             """
+        )
     )
     op.execute(
-        """
+        text(
+            """
         create view costs_view as
         SELECT coalesce(vm_prices.owner, storage.owner) address,
                total_vm_cost,
@@ -195,6 +207,7 @@ def recreate_cost_views():
              LATERAL (SELECT coalesce(vm_prices.total_vm_cost, 0) +
                              coalesce(total_storage_cost, 0) AS total_cost ) tc;
         """
+        )
     )
 
 
@@ -210,9 +223,11 @@ def upgrade() -> None:
 
     # Rename indexes
     op.execute(
-        "ALTER INDEX ix_program_machine_volumes_program_hash RENAME TO ix_vm_machine_volumes_vm_hash"
+        text(
+            "ALTER INDEX ix_program_machine_volumes_program_hash RENAME TO ix_vm_machine_volumes_vm_hash"
+        )
     )
-    op.execute("ALTER INDEX ix_programs_owner RENAME TO ix_vms_owner")
+    op.execute(text("ALTER INDEX ix_programs_owner RENAME TO ix_vms_owner"))
 
     # Create the instance rootfs table
     op.create_table(
@@ -257,19 +272,29 @@ def upgrade() -> None:
 
     # Update error codes
     op.execute(
-        "UPDATE error_codes SET description = 'VM reference not found' WHERE code = 300"
+        text(
+            "UPDATE error_codes SET description = 'VM reference not found' WHERE code = 300"
+        )
     )
     op.execute(
-        "UPDATE error_codes SET description = 'VM volume reference(s) not found' WHERE code = 301"
+        text(
+            "UPDATE error_codes SET description = 'VM volume reference(s) not found' WHERE code = 301"
+        )
     )
     op.execute(
-        "UPDATE error_codes SET description = 'VM update not allowed' WHERE code = 302"
+        text(
+            "UPDATE error_codes SET description = 'VM update not allowed' WHERE code = 302"
+        )
     )
     op.execute(
-        "UPDATE error_codes SET description = 'VM update not targeting the original version of the VM' WHERE code = 303"
+        text(
+            "UPDATE error_codes SET description = 'VM update not targeting the original version of the VM' WHERE code = 303"
+        )
     )
     op.execute(
-        "INSERT INTO error_codes(code, description) VALUES (304, 'VM volume parent is larger than the child volume')"
+        text(
+            "INSERT INTO error_codes(code, description) VALUES (304, 'VM volume parent is larger than the child volume')"
+        )
     )
 
     reprocess_failed_instance_messages()
@@ -277,12 +302,12 @@ def upgrade() -> None:
 
 
 def downgrade_cost_views():
-    op.execute("DROP VIEW costs_view")
-    op.execute("DROP VIEW vm_costs_view")
-    op.execute("DROP VIEW vm_volumes_files_view")
+    op.execute(text("DROP VIEW costs_view"))
+    op.execute(text("DROP VIEW vm_costs_view"))
+    op.execute(text("DROP VIEW vm_volumes_files_view"))
 
     # Copied from 0007_0bfde82697c8_balance_views.py
-    op.execute(
+    op.execute(   text(
         """
         create view program_volumes_files_view(program_hash, ref, use_latest, type, latest, original, volume_to_use) as
         SELECT volume.program_hash,
@@ -341,62 +366,62 @@ def downgrade_cost_views():
                  LEFT OUTER JOIN file_tags tags ON volume.ref = tags.tag
                  JOIN file_pins originals ON volume.ref = originals.item_hash
         """
-    )
-    op.execute(
+    )     )
+    op.execute(   text(
         """
         create view program_costs_view as
-            SELECT program_versions.program_hash,
-                   program_versions.owner,
-                   programs.resources_vcpus,
-                   programs.resources_memory,
-                   file_volumes_size.file_volumes_size,
-                   other_volumes_size.other_volumes_size,
-                   used_disk.required_disk_space,
-                   cu.compute_units_required,
-                   bcp.base_compute_unit_price,
-                   m.compute_unit_price_multiplier,
-                   cpm.compute_unit_price,
-                   free_disk.included_disk_space,
-                   additional_disk.additional_disk_space,
-                   adp.disk_price,
-                   tp.total_price
-            FROM program_versions
-                     JOIN programs on program_versions.current_version = programs.item_hash
-                     JOIN (SELECT volume.program_hash,
-                                  sum(files.size) AS file_volumes_size
-                           FROM program_volumes_files_view volume
-                                    LEFT JOIN files ON volume.volume_to_use = files.hash
-                           GROUP BY volume.program_hash) file_volumes_size
-                          ON program_versions.current_version = file_volumes_size.program_hash
-                     JOIN (SELECT program_hash, SUM(size_mib) * 1024 * 1024 other_volumes_size
-                           FROM program_machine_volumes
-                           GROUP BY program_hash) other_volumes_size
-                          ON program_versions.current_version = other_volumes_size.program_hash,
-                 LATERAL (SELECT file_volumes_size + other_volumes_size AS required_disk_space) used_disk,
-                 LATERAL ( SELECT ceil(GREATEST(ceil(programs.resources_vcpus / 1),
-                                                programs.resources_memory / 2000)) AS compute_units_required) cu,
-                 LATERAL ( SELECT CASE
-                                      WHEN programs.persistent
-                                          THEN 20000000000 * cu.compute_units_required
-                                      ELSE 2000000000 * cu.compute_units_required
-                                      END AS included_disk_space) free_disk,
-                 LATERAL ( SELECT GREATEST(file_volumes_size.file_volumes_size + other_volumes_size.other_volumes_size -
-                                           free_disk.included_disk_space,
-                                           0) AS additional_disk_space) additional_disk,
-                 LATERAL ( SELECT CASE
-                                      WHEN programs.persistent THEN 2000
-                                      ELSE 200
-                                      END AS base_compute_unit_price) bcp,
-                 LATERAL ( SELECT 1 + programs.environment_internet::integer AS compute_unit_price_multiplier) m,
-                 LATERAL ( SELECT cu.compute_units_required * m.compute_unit_price_multiplier::double precision *
-                                  bcp.base_compute_unit_price::double precision *
-                                  m.compute_unit_price_multiplier AS compute_unit_price) cpm,
-                 LATERAL ( SELECT additional_disk.additional_disk_space * 20::double precision /
-                                  1000000::double precision AS disk_price) adp,
-                 LATERAL ( SELECT cpm.compute_unit_price + adp.disk_price AS total_price) tp
+        SELECT program_versions.program_hash,
+               program_versions.owner,
+               programs.resources_vcpus,
+               programs.resources_memory,
+               file_volumes_size.file_volumes_size,
+               other_volumes_size.other_volumes_size,
+               used_disk.required_disk_space,
+               cu.compute_units_required,
+               bcp.base_compute_unit_price,
+               m.compute_unit_price_multiplier,
+               cpm.compute_unit_price,
+               free_disk.included_disk_space,
+               additional_disk.additional_disk_space,
+               adp.disk_price,
+               tp.total_price
+        FROM program_versions
+                 JOIN programs on program_versions.current_version = programs.item_hash
+                 JOIN (SELECT volume.program_hash,
+                              sum(files.size) AS file_volumes_size
+                       FROM program_volumes_files_view volume
+                                LEFT JOIN files ON volume.volume_to_use = files.hash
+                       GROUP BY volume.program_hash) file_volumes_size
+                      ON program_versions.current_version = file_volumes_size.program_hash
+                 JOIN (SELECT program_hash, SUM(size_mib) * 1024 * 1024 other_volumes_size
+                       FROM program_machine_volumes
+                       GROUP BY program_hash) other_volumes_size
+                      ON program_versions.current_version = other_volumes_size.program_hash,
+             LATERAL (SELECT file_volumes_size + other_volumes_size AS required_disk_space) used_disk,
+             LATERAL ( SELECT ceil(GREATEST(ceil(programs.resources_vcpus / 1),
+                                            programs.resources_memory / 2000)) AS compute_units_required) cu,
+             LATERAL ( SELECT CASE
+                                  WHEN programs.persistent
+                                      THEN 20000000000 * cu.compute_units_required
+                                  ELSE 2000000000 * cu.compute_units_required
+                                  END AS included_disk_space) free_disk,
+             LATERAL ( SELECT GREATEST(file_volumes_size.file_volumes_size + other_volumes_size.other_volumes_size -
+                                       free_disk.included_disk_space,
+                                       0) AS additional_disk_space) additional_disk,
+             LATERAL ( SELECT CASE
+                                  WHEN programs.persistent THEN 2000
+                                  ELSE 200
+                                  END AS base_compute_unit_price) bcp,
+             LATERAL ( SELECT 1 + programs.environment_internet::integer AS compute_unit_price_multiplier) m,
+             LATERAL ( SELECT cu.compute_units_required * m.compute_unit_price_multiplier::double precision *
+                              bcp.base_compute_unit_price::double precision *
+                              m.compute_unit_price_multiplier AS compute_unit_price) cpm,
+             LATERAL ( SELECT additional_disk.additional_disk_space * 20::double precision /
+                              1000000::double precision AS disk_price) adp,
+             LATERAL ( SELECT cpm.compute_unit_price + adp.disk_price AS total_price) tp
         """
-    )
-    op.execute(
+    )         )
+    op.execute(text(
         """
         create view costs_view as
         SELECT coalesce(program_prices.owner, storage.owner) address,
@@ -413,7 +438,7 @@ def downgrade_cost_views():
              LATERAL (SELECT coalesce(program_prices.total_program_cost, 0) +
                              coalesce(total_storage_cost, 0) AS total_cost ) tc;
         """
-    )
+    )       )
 
 
 def downgrade() -> None:
@@ -430,9 +455,9 @@ def downgrade() -> None:
 
     # Rename indexes
     op.execute(
-        "ALTER INDEX ix_vm_machine_volumes_vm_hash RENAME TO ix_program_machine_volumes_program_hash"
-    )
-    op.execute("ALTER INDEX ix_vms_owner RENAME TO ix_programs_owner")
+        text("ALTER INDEX ix_vm_machine_volumes_vm_hash RENAME TO ix_program_machine_volumes_program_hash"
+    )  )
+    op.execute(text("ALTER INDEX ix_vms_owner RENAME TO ix_programs_owner"))
 
     op.drop_column("programs", "program_type")
     op.drop_column("programs", "authorized_keys")
@@ -456,18 +481,18 @@ def downgrade() -> None:
 
     # Revert error codes
     op.execute(
-        "UPDATE error_codes SET description = 'Program reference not found' WHERE code = 300"
-    )
+        text("UPDATE error_codes SET description = 'Program reference not found' WHERE code = 300"
+    )    )
     op.execute(
-        "UPDATE error_codes SET description = 'Program volume reference(s) not found' WHERE code = 301"
-    )
+        text("UPDATE error_codes SET description = 'Program volume reference(s) not found' WHERE code = 301"
+    )        )
     op.execute(
-        "UPDATE error_codes SET description = 'Program update not allowed' WHERE code = 302"
-    )
+        text("UPDATE error_codes SET description = 'Program update not allowed' WHERE code = 302"
+    )        )
     op.execute(
-        "UPDATE error_codes "
+        text("UPDATE error_codes "
         "SET description = 'Program update not targeting the original version of the program' WHERE code = 303"
-    )
-    op.execute("DELETE FROM error_codes WHERE code = 304")
+    )       )
+    op.execute(text("DELETE FROM error_codes WHERE code = 304")    )
 
     # ### end Alembic commands ###

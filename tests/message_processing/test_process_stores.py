@@ -24,6 +24,7 @@ from aleph.toolkit.constants import (
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
+from aleph.types.message_processing_result import ProcessedMessage
 from aleph.types.message_status import InsufficientBalanceException, MessageStatus
 
 
@@ -182,14 +183,16 @@ async def test_process_store(
     )
 
     with session_factory() as session:
-        await message_handler.process(
+        processed_message = await message_handler.process(
             session=session, pending_message=fixture_store_message
         )
         session.commit()
+        assert isinstance(processed_message, ProcessedMessage)
+        store_content = StoreContent.model_validate(processed_message.message.content)
 
         cost, _ = get_total_and_detailed_costs_from_db(
             session=session,
-            content=fixture_store_message.content,
+            content=store_content,
             item_hash=fixture_store_message.item_hash,
         )
 
@@ -720,7 +723,7 @@ async def test_pre_check_balance_with_existing_costs(
             address=address,
             time=STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1,
             item_type=ItemType.ipfs,
-            item_hash="QmacDVDroxPVY1enhckVco1rTBziwC8hjf731apEKr3QoG",
+            item_hash=ItemHash("QmacDVDroxPVY1enhckVco1rTBziwC8hjf731apEKr3QoG"),
         )
         message.parsed_content = content
         message.item_hash = (
