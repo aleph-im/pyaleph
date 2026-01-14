@@ -17,7 +17,12 @@ from pydantic import ValidationError
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.balances import get_total_balance
 from aleph.db.accessors.cost import get_total_cost_for_address
-from aleph.db.accessors.files import count_file_pins, get_file, get_file_tag
+from aleph.db.accessors.files import (
+    count_file_pins,
+    get_file,
+    get_file_tag,
+    get_message_file_pin,
+)
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.schemas.cost_estimation_messages import CostEstimationStoreContent
 from aleph.schemas.pending_messages import (
@@ -510,6 +515,36 @@ class FileMetadataResponse(pydantic.BaseModel):
     file_hash: str
     download_url: str
     size: int
+
+
+async def get_file_metadata_by_message_hash(request: web.Request) -> web.Response:
+    """
+    Returns the file metadata for a specific STORE message.
+    Avoids fetching the full message from the client to determine the file hash.
+    """
+
+    message_hash_str = request.match_info.get("message_hash")
+    try:
+        message_hash = ItemHash(message_hash_str)
+    except ValueError:
+        raise web.HTTPBadRequest(text="Invalid hash provided")
+
+    session_factory = get_session_factory_from_request(request)
+    with session_factory() as session:
+        file_pin = get_message_file_pin(session=session, item_hash=message_hash)
+        if not file_pin:
+            raise web.HTTPNotFound(text=f"No file found for message {message_hash}")
+        size = file_pin.file.size
+
+    return web.json_response(
+        data=FileMetadataResponse(
+            ref=file_pin.ref,
+            owner=file_pin.owner,
+            file_hash=file_pin.file_hash,
+            download_url=f"/api/v0/storage/raw/{file_pin.file_hash}",
+            size=size,
+        ).model_dump()
+    )
 
 
 async def get_file_metadata_by_ref(request: web.Request) -> web.Response:
