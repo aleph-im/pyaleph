@@ -405,7 +405,7 @@ def prepare_content(content):
 
 
 async def get_hash(request):
-    item_hash = request.match_info.get("hash", None)
+    item_hash = request.match_info.get("file_hash", None)
     if item_hash is None:
         raise web.HTTPBadRequest(text="No hash provided")
     try:
