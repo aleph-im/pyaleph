@@ -53,7 +53,7 @@ dependencies = [
   "pymultihash==0.8.2",                                                                                                    # for libp2p-stubs
   "pynacl==1.6.2",
   "pytezos-crypto==3.13.4.1",
-  "python-dateutil==2.9.0",
+  "python-dateutil==2.9.0.post0",
   "pytz==2025.2",
   "pyyaml==6.0.1",
   "redis[hiredis]==7.1.0",
