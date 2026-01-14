@@ -100,9 +100,12 @@ def register_routes(app: web.Application):
     app.router.add_post("/api/v0/ipfs/add_json", storage.add_ipfs_json_controller)
     app.router.add_post("/api/v0/storage/add_file", storage.storage_add_file)
     app.router.add_post("/api/v0/storage/add_json", storage.add_storage_json_controller)
-    app.router.add_get("/api/v0/storage/{hash}", storage.get_hash)
-    app.router.add_get("/api/v0/storage/raw/{hash}", storage.get_raw_hash)
-    app.router.add_get("/api/v0/storage/count/{hash}", storage.get_file_pins_count)
+    app.router.add_get("/api/v0/storage/{file_hash}", storage.get_hash)
+    app.router.add_get("/api/v0/storage/raw/{file_hash}", storage.get_raw_hash)
+    app.router.add_get("/api/v0/storage/by-ref/{ref}", storage.get_file_metadata_by_ref)
+    app.router.add_get(
+        "/api/v0/storage/by-ref/{address}/{ref}", storage.get_file_metadata_by_ref
+    )
 
     app.router.add_get("/version", version.version)
     app.router.add_get("/api/v0/version", version.version)

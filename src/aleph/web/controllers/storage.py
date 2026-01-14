@@ -11,13 +11,13 @@ import aiofiles
 import pydantic
 from aiohttp import BodyPartReader, web
 from aiohttp.web_request import FileField
-from aleph_message.models import ItemType
+from aleph_message.models import ItemHash, ItemType
 from pydantic import ValidationError
 
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.balances import get_total_balance
 from aleph.db.accessors.cost import get_total_cost_for_address
-from aleph.db.accessors.files import count_file_pins, get_file
+from aleph.db.accessors.files import count_file_pins, get_file, get_file_tag
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.schemas.cost_estimation_messages import CostEstimationStoreContent
 from aleph.schemas.pending_messages import (
@@ -33,6 +33,7 @@ from aleph.toolkit.constants import (
     MiB,
 )
 from aleph.types.db_session import DbSession
+from aleph.types.files import FileTag
 from aleph.types.message_status import InvalidSignature
 from aleph.utils import item_type_from_hash, run_in_executor
 from aleph.web.controllers.app_state_getters import (
@@ -402,24 +403,24 @@ def prepare_content(content):
 
 
 async def get_hash(request):
-    item_hash = request.match_info.get("hash", None)
-    if item_hash is None:
-        return web.HTTPBadRequest(text="No hash provided")
+    file_hash = request.match_info.get("file_hash", None)
+    if file_hash is None:
+        raise web.HTTPBadRequest(text="No hash provided")
     try:
-        engine = item_type_from_hash(item_hash)
+        engine = item_type_from_hash(file_hash)
     except UnknownHashError as e:
         logger.warning(e.args[0])
-        return web.HTTPBadRequest(text="Invalid hash provided")
+        raise web.HTTPBadRequest(text="Invalid hash provided")
 
     session_factory = get_session_factory_from_request(request)
     with session_factory() as session:
-        assert_file_is_downloadable(session=session, file_hash=item_hash)
+        assert_file_is_downloadable(session=session, file_hash=file_hash)
 
     storage_service = get_storage_service_from_request(request)
 
     try:
         hash_content = await storage_service.get_hash_content(
-            item_hash,
+            file_hash,
             use_network=False,
             use_ipfs=True,
             engine=engine,
@@ -427,12 +428,12 @@ async def get_hash(request):
             timeout=30,
         )
     except AlephStorageException:
-        return web.HTTPNotFound(text=f"No file found for hash {item_hash}")
+        raise web.HTTPNotFound(text=f"No file found for hash {file_hash}")
 
     content = await run_in_executor(None, prepare_content, hash_content.value)
     result = {
         "status": "success",
-        "hash": item_hash,
+        "hash": file_hash,
         "engine": engine,
         "content": content,
     }
@@ -443,19 +444,19 @@ async def get_hash(request):
 
 
 async def get_raw_hash(request):
-    item_hash = request.match_info.get("hash", None)
+    file_hash = request.match_info.get("file_hash", None)
 
-    if item_hash is None:
+    if file_hash is None:
         raise web.HTTPBadRequest(text="No hash provided")
 
     try:
-        engine = item_type_from_hash(item_hash)
+        engine = item_type_from_hash(file_hash)
     except UnknownHashError:
         raise web.HTTPBadRequest(text="Invalid hash")
 
     session_factory = get_session_factory_from_request(request)
     with session_factory() as session:
-        file_metadata = get_file(session=session, file_hash=item_hash)
+        file_metadata = get_file(session=session, file_hash=file_hash)
         if not file_metadata:
             raise web.HTTPNotFound(text="Not found")
 
@@ -478,7 +479,7 @@ async def get_raw_hash(request):
 
     try:
         content = await storage_service.get_hash_content_iterator(
-            item_hash,
+            file_hash,
             use_network=False,
             use_ipfs=True,
             engine=engine,
@@ -501,6 +502,62 @@ async def get_raw_hash(request):
         await response.write(chunk)
 
     return response
+
+
+class FileMetadataResponse(pydantic.BaseModel):
+    ref: str
+    owner: str
+    file_hash: str
+    download_url: str
+    size: int
+
+
+async def get_file_metadata_by_ref(request: web.Request) -> web.Response:
+    """
+    Returns the latest version of a file using its ref. Handles both /storage/by-ref/{address}/{ref}
+    and /storage/by-ref/{item_hash} endpoints.
+    """
+
+    ref = request.match_info.get("ref")
+    if ref is None:
+        raise web.HTTPBadRequest(text="ref is required")
+
+    try:
+        item_hash = ItemHash(ref)
+        tag = FileTag(item_hash)
+    except ValueError:
+        owner = request.match_info.get("address")
+        if owner is None:
+            raise web.HTTPBadRequest(text="address is required for user-defined ref")
+
+        tag = FileTag(f"{owner}/{ref}")
+
+    session_factory = get_session_factory_from_request(request)
+    with session_factory() as session:
+        file_tag = get_file_tag(session=session, tag=tag)
+        if not file_tag:
+            raise web.HTTPNotFound(text=f"No file found for tag {tag}")
+
+        file_hash = file_tag.file_hash
+        owner = file_tag.owner
+        size = file_tag.file.size
+
+    # The tag can be either an item hash or <owner>/<ref>
+    # We want to return the original ref if possible.
+    if "/" in tag:
+        ref = tag.split("/", 1)[1]
+    else:
+        ref = tag
+
+    return web.json_response(
+        data=FileMetadataResponse(
+            ref=ref,
+            owner=owner,
+            file_hash=file_hash,
+            download_url=f"/api/v0/storage/raw/{file_hash}",
+            size=size,
+        ).model_dump()
+    )
 
 
 async def get_file_pins_count(request: web.Request) -> web.Response:
