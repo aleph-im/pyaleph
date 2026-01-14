@@ -653,3 +653,55 @@ async def test_get_file_by_ref_updates(api_client, session_factory: DbSessionFac
         data = await response.json()
         assert data["file_hash"] == file_hash_v2
         assert data["size"] == len(file_content_v2)
+
+
+@pytest.mark.asyncio
+async def test_get_file_metadata_by_message_hash(
+    api_client, session_factory: DbSessionFactory
+):
+    from aleph.db.accessors.files import insert_message_file_pin
+
+    message_hash = "1" * 64
+    file_hash = "2" * 64
+    owner = "0x1234567890123456789012345678901234567890"
+    ref = "my-ref"
+    file_size = 1024
+
+    with session_factory() as session:
+        upsert_file(
+            session=session,
+            file_hash=file_hash,
+            size=file_size,
+            file_type=FileType.FILE,
+        )
+        insert_message_file_pin(
+            session=session,
+            file_hash=file_hash,
+            owner=owner,
+            item_hash=message_hash,
+            ref=ref,
+            created=dt.datetime.now(dt.timezone.utc),
+        )
+        session.commit()
+
+    # 1. Test successful retrieval
+    url = f"/api/v0/storage/by-message-hash/{message_hash}"
+    async with api_client.get(url) as response:
+        assert response.status == 200
+        data = await response.json()
+        assert data["ref"] == ref
+        assert data["owner"] == owner
+        assert data["file_hash"] == file_hash
+        assert data["download_url"] == f"/api/v0/storage/raw/{file_hash}"
+        assert data["size"] == file_size
+
+    # 2. Test 404 for non-existent message
+    other_hash = "3" * 64
+    url_404 = f"/api/v0/storage/by-message-hash/{other_hash}"
+    async with api_client.get(url_404) as response:
+        assert response.status == 404
+
+    # 3. Test 400 for invalid hash
+    url_400 = "/api/v0/storage/by-message-hash/invalid-hash"
+    async with api_client.get(url_400) as response:
+        assert response.status == 400

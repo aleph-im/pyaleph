@@ -524,6 +524,9 @@ async def get_file_metadata_by_message_hash(request: web.Request) -> web.Respons
     """
 
     message_hash_str = request.match_info.get("message_hash")
+    if not message_hash_str:
+        raise web.HTTPBadRequest(text="No hash provided")
+
     try:
         message_hash = ItemHash(message_hash_str)
     except ValueError:
@@ -536,9 +539,11 @@ async def get_file_metadata_by_message_hash(request: web.Request) -> web.Respons
             raise web.HTTPNotFound(text=f"No file found for message {message_hash}")
         size = file_pin.file.size
 
+    ref = file_pin.ref if file_pin.ref is not None else message_hash_str
+
     return web.json_response(
         data=FileMetadataResponse(
-            ref=file_pin.ref,
+            ref=ref,
             owner=file_pin.owner,
             file_hash=file_pin.file_hash,
             download_url=f"/api/v0/storage/raw/{file_pin.file_hash}",
