@@ -586,7 +586,7 @@ async def test_get_file_by_ref(api_client, session_factory: DbSessionFactory, re
     # Test GET
     url = f"/api/v0/storage/by-ref/{tag}"
     async with api_client.get(url) as response:
-        assert response.status == 200
+        assert response.status == 200, await response.read()
         data = await response.json()
         assert data["ref"] == ref
         assert data["owner"] == owner
@@ -604,7 +604,7 @@ async def test_get_file_by_ref(api_client, session_factory: DbSessionFactory, re
 
 
 @pytest.mark.asyncio
-async def test_get_file_by_tag_updates(api_client, session_factory: DbSessionFactory):
+async def test_get_file_by_ref_updates(api_client, session_factory: DbSessionFactory):
     owner = "0x1234567890123456789012345678901234567890"
     ref = "my-file"
     tag = FileTag(f"{owner}/{ref}")

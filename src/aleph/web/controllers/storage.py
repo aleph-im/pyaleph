@@ -403,24 +403,24 @@ def prepare_content(content):
 
 
 async def get_hash(request):
-    item_hash = request.match_info.get("file_hash", None)
-    if item_hash is None:
+    file_hash = request.match_info.get("file_hash", None)
+    if file_hash is None:
         raise web.HTTPBadRequest(text="No hash provided")
     try:
-        engine = item_type_from_hash(item_hash)
+        engine = item_type_from_hash(file_hash)
     except UnknownHashError as e:
         logger.warning(e.args[0])
         raise web.HTTPBadRequest(text="Invalid hash provided")
 
     session_factory = get_session_factory_from_request(request)
     with session_factory() as session:
-        assert_file_is_downloadable(session=session, file_hash=item_hash)
+        assert_file_is_downloadable(session=session, file_hash=file_hash)
 
     storage_service = get_storage_service_from_request(request)
 
     try:
         hash_content = await storage_service.get_hash_content(
-            item_hash,
+            file_hash,
             use_network=False,
             use_ipfs=True,
             engine=engine,
@@ -428,12 +428,12 @@ async def get_hash(request):
             timeout=30,
         )
     except AlephStorageException:
-        raise web.HTTPNotFound(text=f"No file found for hash {item_hash}")
+        raise web.HTTPNotFound(text=f"No file found for hash {file_hash}")
 
     content = await run_in_executor(None, prepare_content, hash_content.value)
     result = {
         "status": "success",
-        "hash": item_hash,
+        "hash": file_hash,
         "engine": engine,
         "content": content,
     }
@@ -444,19 +444,19 @@ async def get_hash(request):
 
 
 async def get_raw_hash(request):
-    item_hash = request.match_info.get("hash", None)
+    file_hash = request.match_info.get("file_hash", None)
 
-    if item_hash is None:
+    if file_hash is None:
         raise web.HTTPBadRequest(text="No hash provided")
 
     try:
-        engine = item_type_from_hash(item_hash)
+        engine = item_type_from_hash(file_hash)
     except UnknownHashError:
         raise web.HTTPBadRequest(text="Invalid hash")
 
     session_factory = get_session_factory_from_request(request)
     with session_factory() as session:
-        file_metadata = get_file(session=session, file_hash=item_hash)
+        file_metadata = get_file(session=session, file_hash=file_hash)
         if not file_metadata:
             raise web.HTTPNotFound(text="Not found")
 
@@ -479,7 +479,7 @@ async def get_raw_hash(request):
 
     try:
         content = await storage_service.get_hash_content_iterator(
-            item_hash,
+            file_hash,
             use_network=False,
             use_ipfs=True,
             engine=engine,
@@ -512,14 +512,33 @@ class FileMetadataResponse(pydantic.BaseModel):
     size: int
 
 
-async def get_file_metadata_by_ref(request: web.Request, tag: FileTag) -> web.Response:
+async def get_file_metadata_by_ref(request: web.Request) -> web.Response:
+    """
+    Returns the latest version of a file using its ref. Handles both /storage/by-ref/{address}/{ref}
+    and /storage/by-ref/{item_hash} endpoints.
+    """
+
+    ref = request.match_info.get("ref")
+    if ref is None:
+        raise web.HTTPBadRequest(text="ref is required")
+
+    try:
+        item_hash = ItemHash(ref)
+        tag = FileTag(item_hash)
+    except ValueError:
+        owner = request.match_info.get("address")
+        if owner is None:
+            raise web.HTTPBadRequest(text="address is required for user-defined ref")
+
+        tag = FileTag(f"{owner}/{ref}")
+
     session_factory = get_session_factory_from_request(request)
     with session_factory() as session:
         file_tag = get_file_tag(session=session, tag=tag)
         if not file_tag:
             raise web.HTTPNotFound(text=f"No file found for tag {tag}")
 
-        item_hash = file_tag.file_hash
+        file_hash = file_tag.file_hash
         owner = file_tag.owner
         size = file_tag.file.size
 
@@ -534,46 +553,11 @@ async def get_file_metadata_by_ref(request: web.Request, tag: FileTag) -> web.Re
         data=FileMetadataResponse(
             ref=ref,
             owner=owner,
-            file_hash=item_hash,
-            download_url=f"/api/v0/storage/raw/{item_hash}",
+            file_hash=file_hash,
+            download_url=f"/api/v0/storage/raw/{file_hash}",
             size=size,
         ).model_dump()
     )
-
-
-async def get_file_by_message_hash_ref(request: web.Request) -> web.Response:
-    """
-    Returns the latest version of a file using its message hash ref.
-    """
-    ref = request.match_info.get("ref")
-    if ref is None:
-        raise web.HTTPBadRequest(text="ref is required")
-
-    try:
-        item_hash = ItemHash(ref)
-    except UnknownHashError:
-        raise web.HTTPBadRequest(text="Invalid hash")
-
-    tag = FileTag(item_hash)
-    return await get_file_metadata_by_ref(request, tag)
-
-
-async def get_file_by_user_defined_ref(request: web.Request) -> web.Response:
-    """
-    Returns the latest version of a file using its user-defined ref.
-    As user-defined refs can be ambiguous between users, this endpoint requires the owner address to be specified.
-    """
-
-    owner = request.match_info.get("address")
-    ref = request.match_info.get("ref")
-
-    if owner is None:
-        raise web.HTTPBadRequest(text="address is required")
-    if ref is None:
-        raise web.HTTPBadRequest(text="ref is required")
-
-    tag = FileTag(f"{owner}/{ref}")
-    return await get_file_metadata_by_ref(request, tag)
 
 
 async def get_file_pins_count(request: web.Request) -> web.Response:
