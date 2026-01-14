@@ -62,6 +62,7 @@ def get_one_message_by_item_hash(
 def make_matching_messages_query(
     hashes: Optional[Sequence[ItemHash]] = None,
     addresses: Optional[Sequence[str]] = None,
+    owners: Optional[Sequence[str]] = None,
     refs: Optional[Sequence[str]] = None,
     chains: Optional[Sequence[Chain]] = None,
     message_type: Optional[MessageType] = None,
@@ -115,6 +116,8 @@ def make_matching_messages_query(
         select_stmt = select_stmt.where(MessageDb.item_hash.in_(hashes))
     if addresses:
         select_stmt = select_stmt.where(MessageDb.sender.in_(addresses))
+    if owners:
+        select_stmt = select_stmt.where(MessageDb.content["address"].astext.in_(owners))
     if chains:
         select_stmt = select_stmt.where(MessageDb.chain.in_(chains))
     if message_types:

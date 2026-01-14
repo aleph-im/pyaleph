@@ -172,6 +172,11 @@ def message_matches_filters(
         "channel": "channels",
     }
 
+    if owners := query_params.owners:
+        content_address = getattr(message.content, "address", None)
+        if content_address not in owners:
+            return False
+
     for message_field, query_field in filters_by_message_field.items():
         if user_filters := getattr(query_params, query_field):
             if not isinstance(user_filters, list):
