@@ -8,7 +8,6 @@ from typing import Optional
 
 import aio_pika
 import aiofiles
-import aiohttp
 import pydantic
 from aiohttp import BodyPartReader, web
 from aiohttp.web_request import FileField
@@ -19,7 +18,6 @@ from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.balances import get_total_balance
 from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import count_file_pins, get_file, get_file_tag
-from aleph.db.models import StoredFileDb
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.schemas.cost_estimation_messages import CostEstimationStoreContent
 from aleph.schemas.pending_messages import (
@@ -445,13 +443,27 @@ async def get_hash(request):
     return response
 
 
-async def get_file_by_hash(
-    item_hash: ItemHash, file_metadata: StoredFileDb, request: aiohttp.web.Request
-) -> web.StreamResponse:
-    # For raw downloads, we can support files larger than MAX_FILE_SIZE
-    # because we are streaming them.
-    # But we still check if the file is known to the DB.
-    size = file_metadata.size
+async def get_raw_hash(request):
+    item_hash = request.match_info.get("hash", None)
+
+    if item_hash is None:
+        raise web.HTTPBadRequest(text="No hash provided")
+
+    try:
+        engine = item_type_from_hash(item_hash)
+    except UnknownHashError:
+        raise web.HTTPBadRequest(text="Invalid hash")
+
+    session_factory = get_session_factory_from_request(request)
+    with session_factory() as session:
+        file_metadata = get_file(session=session, file_hash=item_hash)
+        if not file_metadata:
+            raise web.HTTPNotFound(text="Not found")
+
+        # For raw downloads, we can support files larger than MAX_FILE_SIZE
+        # because we are streaming them.
+        # But we still check if the file is known to the DB.
+        size = file_metadata.size
 
     if request.method == "HEAD":
         return web.Response(
@@ -470,7 +482,7 @@ async def get_file_by_hash(
             item_hash,
             use_network=False,
             use_ipfs=True,
-            engine=item_hash.item_type,
+            engine=engine,
             timeout=30,
         )
     except AlephStorageException as e:
@@ -490,28 +502,6 @@ async def get_file_by_hash(
         await response.write(chunk)
 
     return response
-
-
-async def get_raw_hash(request):
-    file_hash = request.match_info.get("file_hash", None)
-
-    if file_hash is None:
-        raise web.HTTPBadRequest(text="No hash provided")
-
-    try:
-        file_hash = ItemHash(file_hash)
-    except UnknownHashError:
-        raise web.HTTPBadRequest(text="Invalid hash")
-
-    session_factory = get_session_factory_from_request(request)
-    with session_factory() as session:
-        file_metadata = get_file(session=session, file_hash=file_hash)
-        if not file_metadata:
-            raise web.HTTPNotFound(text="Not found")
-
-    return await get_file_by_hash(
-        item_hash=file_hash, file_metadata=file_metadata, request=request
-    )
 
 
 class FileMetadataResponse(pydantic.BaseModel):
