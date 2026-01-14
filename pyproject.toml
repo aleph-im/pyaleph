@@ -48,7 +48,7 @@ dependencies = [
   "orjson>=3.7.7",                                                                                                         # Minimum version for Python 3.11
   "protobuf==6.33.2",
   "psycopg2-binary==2.9.11",                                                                                               # Note: psycopg3 is not yet supported by SQLAlchemy
-  "pycryptodome==3.22.0",
+  "pycryptodome==3.23.0",
   "pydantic==2.12.5",
   "pymultihash==0.8.2",                                                                                                    # for libp2p-stubs
   "pynacl==1.6.2",
