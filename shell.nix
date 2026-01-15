@@ -83,11 +83,11 @@ pkgs.mkShell {
     # Trap the EXIT signal to stop services when exiting the shell
     trap 'echo "Stopping PostgreSQL..."; pg_ctl -D "$PGDATA" stop; echo "Stopping Redis..."; redis-cli -p 6379 shutdown; echo "Stopping IPFS Kubo..."; ipfs shutdown; echo "Stopping Anvil..."; kill $ANVIL_PID 2>/dev/null; deactivate' EXIT
 
-    # Set up library paths for native dependencies
-    export LD_LIBRARY_PATH=${pkgs.libsodium}/lib:${pkgs.gmp}/lib:${pkgs.postgresql.lib}/lib:$LD_LIBRARY_PATH
-    export LIBRARY_PATH=${pkgs.libsodium}/lib:${pkgs.gmp}/lib:$LIBRARY_PATH
-    export C_INCLUDE_PATH=${pkgs.libsodium.dev}/include:${pkgs.gmp.dev}/include:$C_INCLUDE_PATH
-    export CPATH=${pkgs.libsodium.dev}/include:${pkgs.gmp.dev}/include:$CPATH
+    # Set up library paths for native dependencies (use default empty string if not set)
+    export LD_LIBRARY_PATH=${pkgs.libsodium}/lib:${pkgs.gmp}/lib:${pkgs.postgresql.lib}/lib:''${LD_LIBRARY_PATH:-}
+    export LIBRARY_PATH=${pkgs.libsodium}/lib:${pkgs.gmp}/lib:''${LIBRARY_PATH:-}
+    export C_INCLUDE_PATH=${pkgs.libsodium.dev}/include:${pkgs.gmp.dev}/include:''${C_INCLUDE_PATH:-}
+    export CPATH=${pkgs.libsodium.dev}/include:${pkgs.gmp.dev}/include:''${CPATH:-}
 
     # Create a virtual environment in the current directory if it doesn't exist
     if [ ! -d "venv" ]; then
