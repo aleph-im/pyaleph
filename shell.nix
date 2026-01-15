@@ -1,6 +1,6 @@
 { }:
 let
-  pkgs = import (fetchTarball "https://nixos.org/channels/nixos-25.05/nixexprs.tar.xz") {};
+  pkgs = import (fetchTarball "https://nixos.org/channels/nixos-25.11/nixexprs.tar.xz") {};
 in
 pkgs.mkShell {
   buildInputs = [
