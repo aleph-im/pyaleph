@@ -16,6 +16,12 @@ pkgs.mkShell {
     pkgs.hatch
     pkgs.rustup
 
+    pkgs.libsodium.dev
+    pkgs.gmp.dev
+    pkgs.libsodium
+    pkgs.gmp
+    pkgs.pkg-config
+
     pkgs.curl  # needed for foundryup
 
     pkgs.python312
@@ -26,8 +32,6 @@ pkgs.mkShell {
 
     pkgs.python312Packages.fastecdsa
     pkgs.python312Packages.libnacl
-    pkgs.libsodium
-    pkgs.gmp
     pkgs.python312Packages.greenlet
   ];
 
@@ -79,6 +83,12 @@ pkgs.mkShell {
     # Trap the EXIT signal to stop services when exiting the shell
     trap 'echo "Stopping PostgreSQL..."; pg_ctl -D "$PGDATA" stop; echo "Stopping Redis..."; redis-cli -p 6379 shutdown; echo "Stopping IPFS Kubo..."; ipfs shutdown; echo "Stopping Anvil..."; kill $ANVIL_PID 2>/dev/null; deactivate' EXIT
 
+    # Set up library paths for native dependencies
+    export LD_LIBRARY_PATH=${pkgs.libsodium}/lib:${pkgs.gmp}/lib:${pkgs.postgresql.lib}/lib:$LD_LIBRARY_PATH
+    export LIBRARY_PATH=${pkgs.libsodium}/lib:${pkgs.gmp}/lib:$LIBRARY_PATH
+    export C_INCLUDE_PATH=${pkgs.libsodium.dev}/include:${pkgs.gmp.dev}/include:$C_INCLUDE_PATH
+    export CPATH=${pkgs.libsodium.dev}/include:${pkgs.gmp.dev}/include:$CPATH
+
     # Create a virtual environment in the current directory if it doesn't exist
     if [ ! -d "venv" ]; then
       python3 -m virtualenv venv
@@ -110,8 +120,5 @@ pkgs.mkShell {
 
     # Activate the virtual environment
     source venv/bin/activate
-
-    # Ensure libpq.so.5 can be found. 
-    export LD_LIBRARY_PATH=${pkgs.postgresql.lib}/lib:$LD_LIBRARY_PATH
   '';
 }
