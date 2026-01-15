@@ -26,6 +26,8 @@ pkgs.mkShell {
 
     pkgs.python312Packages.fastecdsa
     pkgs.python312Packages.libnacl
+    pkgs.libsodium
+    pkgs.gmp
     pkgs.python312Packages.greenlet
   ];
 
