@@ -25,13 +25,19 @@ async def _fix_file_sizes(
     for file in files_with_negative_size:
         file_hash = ItemHash(file.hash)
         LOGGER.info("Fixing file %s", file_hash)
-        file_content = await storage_service.get_hash_content(
-            content_hash=file_hash,
-            engine=file_hash.item_type,
-            use_network=True,
-            use_ipfs=True,
-            store_value=store_files,
-        )
+
+        try:
+            file_content = await storage_service.get_hash_content(
+                content_hash=file_hash,
+                engine=file_hash.item_type,
+                use_network=True,
+                use_ipfs=True,
+                store_value=store_files,
+            )
+        except Exception:
+            LOGGER.exception("Failed to fetch file %s", file_hash)
+            continue
+
         upsert_file(
             session=session,
             file_hash=file_hash,
