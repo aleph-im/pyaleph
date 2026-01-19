@@ -1,6 +1,4 @@
 ---
-version: '2.2'
-
 
 volumes:
   pyaleph-ipfs:
