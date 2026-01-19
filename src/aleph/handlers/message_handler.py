@@ -25,11 +25,7 @@ from aleph.db.accessors.pending_messages import delete_pending_message
 from aleph.db.models import MessageDb, MessageStatusDb, PendingMessageDb
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.db.models.messages import ForgottenMessageDb
-from aleph.exceptions import (
-    ContentCurrentlyUnavailable,
-    InvalidContent,
-    UnknownHashError,
-)
+from aleph.exceptions import ContentCurrentlyUnavailable, InvalidContent
 from aleph.handlers.content.aggregate import AggregateMessageHandler
 from aleph.handlers.content.content_handler import ContentHandler
 from aleph.handlers.content.forget import ForgetMessageHandler
@@ -124,18 +120,6 @@ class BaseMessageHandler:
             raise InvalidMessageFormat(errors=e.errors()) from e
 
         return validated_message
-
-    async def fetch_related_content(self, session: DbSession, message: MessageDb):
-        content_handler = self.get_content_handler(message.type)
-
-        try:
-            await content_handler.fetch_related_content(
-                session=session, message=message
-            )
-        except UnknownHashError as e:
-            raise InvalidMessageFormat(
-                f"Invalid IPFS hash for message {message.item_hash}"
-            ) from e
 
     async def load_fetched_content(
         self, session: DbSession, pending_message: PendingMessageDb
