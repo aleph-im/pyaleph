@@ -8,6 +8,7 @@ TODO:
 import asyncio
 import datetime as dt
 import logging
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import List, Set
 
@@ -37,6 +38,7 @@ from aleph.services.cost import (
     get_total_and_detailed_costs,
 )
 from aleph.services.cost_validation import validate_balance_for_payment
+from aleph.services.ipfs import IpfsService
 from aleph.storage import StorageService
 from aleph.toolkit.constants import MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE, MiB
 from aleph.toolkit.costs import are_store_and_program_free
@@ -64,6 +66,73 @@ def _get_store_content(message: MessageDb) -> StoreContent:
     return content
 
 
+@dataclass
+class IpfsFileStats:
+    size: int
+    file_type: FileType
+
+
+async def _get_file_stats_from_ipfs(
+    cid: ItemHash, ipfs_service: IpfsService, stat_timeout: int
+) -> IpfsFileStats:
+    ipfs_client = ipfs_service.ipfs_client
+
+    try:
+        try:
+            # The timeout of the aioipfs client does not seem to work, time out manually
+            stats = await asyncio.wait_for(
+                ipfs_client.files.stat(f"/ipfs/{cid}"),
+                stat_timeout,
+            )
+        except aioipfs.InvalidCIDError as e:
+            raise UnknownHashError(f"Invalid IPFS hash from API: '{cid}'") from e
+        if stats is None:
+            raise FileUnavailable("Could not retrieve IPFS file stats at this time")
+
+        if stats["Type"] == "file":
+            is_folder = False
+            size = stats["Size"]
+        else:
+            is_folder = True
+            # Size is 0 for folders, use cumulative size instead
+            size = stats["CumulativeSize"]
+
+        return IpfsFileStats(
+            size=size, file_type=FileType.DIRECTORY if is_folder else FileType.FILE
+        )
+
+    except asyncio.TimeoutError as error:
+        LOGGER.warning(
+            "Timeout (%ds) while retrieving stats of hash %s: %s",
+            stat_timeout,
+            cid,
+            getattr(error, "message", None),
+        )
+        raise FileUnavailable(
+            f"Timeout ({stat_timeout}s) while retrieving stats of hash {cid}: {getattr(error, 'message', None)}"
+        )
+
+    except aioipfs.APIError as error:
+        LOGGER.exception(
+            "Error retrieving stats of hash %s: %s",
+            cid,
+            getattr(error, "message", None),
+        )
+        raise
+
+
+def _should_pin_on_ipfs(
+    file_stats: IpfsFileStats,
+    min_file_size_for_pinning: int,
+) -> bool:
+    if file_stats.file_type == FileType.DIRECTORY:
+        # Always pin directories
+        return True
+    else:
+        # Only pin on IPFS if the file size is over the threshold size
+        return file_stats.size > min_file_size_for_pinning
+
+
 class StoreMessageHandler(ContentHandler):
     def __init__(self, storage_service: StorageService, grace_period: int):
         self.storage_service = storage_service
@@ -81,104 +150,69 @@ class StoreMessageHandler(ContentHandler):
     async def fetch_related_content(
         self, session: DbSession, message: MessageDb
     ) -> None:
-        # TODO: simplify this function, it's overly complicated for no good reason.
+        config = get_config()
 
         # This check is essential to ensure that files are not added to the system
         # or the current node when the configuration disables storing of files.
-        config = get_config()
-        content = message.parsed_content
-        assert isinstance(content, StoreContent)
-
-        engine = content.item_type
-
-        is_folder = False
-        item_hash = content.item_hash
-
         ipfs_enabled = config.ipfs.enabled.value
-        do_standard_lookup = True
 
-        # Sentinel value, the code below always sets a value but mypy does not see it.
-        # otherwise if config.storage.store_files is False, this will be the database value
-        size: int = -1
+        content = message.parsed_content
+        file_hash = content.item_hash
+        item_type = content.item_type
 
-        if engine == ItemType.ipfs and ipfs_enabled:
-            if item_type_from_hash(item_hash) != ItemType.ipfs:
-                LOGGER.warning("Invalid IPFS hash: '%s'", item_hash)
-                raise InvalidMessageFormat(
-                    f"Item hash is not an IPFS CID: '{item_hash}'"
-                )
+        # Basic sanity checks
+        assert isinstance(content, StoreContent)
+        if item_type_from_hash(file_hash) != item_type:
+            LOGGER.warning(
+                "Item hash '%s' is not of the expected type ('%s')",
+                file_hash,
+                item_type,
+            )
+            raise InvalidMessageFormat(
+                f"Item hash '{file_hash}' is not of the expected type ('{item_type}')"
+            )
 
+        # For CIDs, pin directories and files > 1MiB
+        if item_type == ItemType.ipfs:
             ipfs_service = self.storage_service.ipfs_service
-            ipfs_client = ipfs_service.ipfs_client
 
-            try:
-                try:
-                    # The timeout of the aioipfs client does not seem to work, time out manually
-                    stats = await asyncio.wait_for(
-                        ipfs_client.files.stat(f"/ipfs/{item_hash}"),
-                        config.ipfs.stat_timeout.value,
-                    )
-                except aioipfs.InvalidCIDError as e:
-                    raise UnknownHashError(
-                        f"Invalid IPFS hash from API: '{item_hash}'"
-                    ) from e
-                if stats is None:
-                    raise FileUnavailable(
-                        "Could not retrieve IPFS content at this time"
-                    )
-
-                if stats["Type"] == "file":
-                    is_folder = False
-                    size = stats["Size"]
-                    do_standard_lookup = size < 1024**2 and len(item_hash) == 46
-                else:
-                    is_folder = True
-                    # Size is 0 for folders, use cumulative size instead
-                    size = stats["CumulativeSize"]
-                    do_standard_lookup = False
-
-                # Pin folders and files larger than 1MB
-                if not do_standard_lookup:
-                    await ipfs_service.pin_add(cid=item_hash)
-
-            except asyncio.TimeoutError as error:
-                LOGGER.warning(
-                    f"Timeout while retrieving stats of hash {item_hash}: {getattr(error, 'message', None)}"
+            file_stats = await _get_file_stats_from_ipfs(
+                cid=file_hash,
+                ipfs_service=ipfs_service,
+                stat_timeout=config.ipfs.stat_timeout.value,
+            )
+            if ipfs_enabled and _should_pin_on_ipfs(
+                file_stats=file_stats, min_file_size_for_pinning=1024 * 1024
+            ):
+                await ipfs_service.pin_add(cid=file_hash)
+                upsert_file(
+                    session=session,
+                    file_hash=file_hash,
+                    file_type=file_stats.file_type,
+                    size=file_stats.size,
                 )
-                do_standard_lookup = True
+                return
 
-            except aioipfs.APIError as error:
-                LOGGER.exception(
-                    f"Error retrieving stats of hash {item_hash}: {getattr(error, 'message', None)}"
-                )
-                do_standard_lookup = True
-
-        if do_standard_lookup:
-            if config.storage.store_files.value:
-                try:
-                    file_content = await self.storage_service.get_hash_content(
-                        item_hash,
-                        engine=engine,
-                        tries=4,
-                        timeout=15,  # We only end up here for files < 1MB, a short timeout is okay
-                        use_network=True,
-                        use_ipfs=True,
-                        store_value=True,
-                    )
-                except AlephStorageException:
-                    raise FileUnavailable(
-                        "Could not retrieve file from storage at this time"
-                    )
-
-                size = len(file_content)
-            else:
-                size = -1
+        # Otherwise, fetch content directly from the Aleph network storage API
+        try:
+            file_content = await self.storage_service.get_hash_content(
+                file_hash,
+                engine=item_type,
+                tries=4,
+                timeout=15,  # We only end up here for files < 1MB, a short timeout is okay
+                use_network=True,
+                use_ipfs=True,
+                store_value=config.storage.store_files.value,
+            )
+        except AlephStorageException:
+            raise FileUnavailable("Could not retrieve file from storage at this time")
 
         upsert_file(
             session=session,
-            file_hash=item_hash,
-            file_type=FileType.DIRECTORY if is_folder else FileType.FILE,
-            size=size,
+            file_hash=file_hash,
+            # Directories are handled above and pinned by force
+            file_type=FileType.FILE,
+            size=len(file_content),
         )
 
     async def pre_check_balance(self, session: DbSession, message: MessageDb):
