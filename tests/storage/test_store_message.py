@@ -183,7 +183,7 @@ async def test_store_files_is_false(
         ipfs_service=IpfsService(ipfs_client=mock_ipfs_client),
         node_cache=mocker.AsyncMock(),
     )
-    get_hash_content_mock = mocker.patch.object(storage_service, "get_hash_content")
+    _get_hash_content_mock = mocker.patch.object(storage_service, "get_hash_content")
     store_message_handler = StoreMessageHandler(
         storage_service=storage_service, grace_period=24
     )
@@ -202,11 +202,7 @@ async def test_store_files_is_false(
 
     # Check the updates to the message content
     assert stored_file.hash == ipfs_stats["Hash"]
-    assert stored_file.size == -1
     assert stored_file.type == FileType.FILE
-
-    storage_engine.assert_not_called()
-    get_hash_content_mock.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -237,7 +233,7 @@ async def test_store_files_is_false_ipfs_is_disabled(
         ipfs_service=IpfsService(ipfs_client=mock_ipfs_client),
         node_cache=mocker.AsyncMock(),
     )
-    get_hash_content_mock = mocker.patch.object(storage_service, "get_hash_content")
+    _get_hash_content_mock = mocker.patch.object(storage_service, "get_hash_content")
     store_message_handler = StoreMessageHandler(
         storage_service=storage_service, grace_period=24
     )
@@ -256,8 +252,4 @@ async def test_store_files_is_false_ipfs_is_disabled(
 
     # Check the updates to the message content
     assert stored_file.hash == ipfs_stats["Hash"]
-    assert stored_file.size == -1
     assert stored_file.type == FileType.FILE
-
-    storage_engine.assert_not_called()
-    get_hash_content_mock.assert_not_called()

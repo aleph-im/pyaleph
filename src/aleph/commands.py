@@ -20,7 +20,6 @@ from typing import Coroutine, List
 import alembic.command
 import alembic.config
 import sentry_sdk
-from aleph.repair import repair_node
 from configmanager import Config
 
 import aleph.config
@@ -34,6 +33,7 @@ from aleph.jobs.cron.balance_job import BalanceCronJob
 from aleph.jobs.cron.credit_balance_job import CreditBalanceCronJob
 from aleph.jobs.cron.cron_job import CronJob, cron_job_task
 from aleph.network import listener_tasks
+from aleph.repair import repair_node
 from aleph.services import p2p
 from aleph.services.cache.materialized_views import refresh_cache_materialized_views
 from aleph.services.cache.node_cache import NodeCache
@@ -170,7 +170,9 @@ async def main(args: List[str]) -> None:
             chain_data_service=chain_data_service,
         )
 
-        await repair_node(storage_service=storage_service, session_factory=session_factory)
+        await repair_node(
+            storage_service=storage_service, session_factory=session_factory
+        )
 
         set_start_method("spawn")
 

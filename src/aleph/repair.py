@@ -1,12 +1,12 @@
 import logging
 
-from aleph.db.accessors.files import upsert_file
-from aleph.db.models import StoredFileDb
-from aleph.storage import StorageService
-from aleph.types.db_session import DbSessionFactory, DbSession
 from aleph_message.models import ItemHash
 from sqlalchemy import select
 
+from aleph.db.accessors.files import upsert_file
+from aleph.db.models import StoredFileDb
+from aleph.storage import StorageService
+from aleph.types.db_session import DbSession, DbSessionFactory
 
 LOGGER = logging.getLogger(__name__)
 

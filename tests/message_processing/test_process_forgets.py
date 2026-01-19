@@ -503,7 +503,7 @@ async def test_forget_store_message_dependent(
         reception_time=dt.datetime(2022, 1, 1),
     )
 
-    runtime_hash = "QmXb4khKJJazpEuGVzchSy6yeJubGf8gy9Qjd4ZGSY6hXZ"
+    runtime_hash = "deadbeef" * 8
     runtime_message = PendingMessageDb(
         item_hash="63f07193e6ee9d207b7d1fcf8286f9aee34e6f12f101d2ec77c1229f92964696",
         chain=Chain.ETH,
@@ -512,7 +512,7 @@ async def test_forget_store_message_dependent(
         type=MessageType.store,
         time=timestamp_to_datetime(1713798108.26326),
         item_type=ItemType.inline,
-        item_content='{"address":"0x101d8D16372dBf5f1614adaE95Ee5CCE61998Fc9","time":1713798108.26326,"item_type":"storage","item_hash":"QmXb4khKJJazpEuGVzchSy6yeJubGf8gy9Qjd4ZGSY6hXZ"}',
+        item_content='{"address":"0x101d8D16372dBf5f1614adaE95Ee5CCE61998Fc9","time":1713798108.26326,"item_type":"storage","item_hash":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"}',
         channel=None,
         retries=0,
         next_attempt=dt.datetime(2023, 1, 1),
@@ -575,16 +575,16 @@ async def test_forget_store_message_dependent(
         )
         assert isinstance(target_message_result, ProcessedMessage)
 
-        target_message_result1 = one(
+        runtime_message_result = one(
             await process_pending_messages(
                 message_processor=message_processor,
                 pending_messages=[runtime_message],
                 session=session,
             )
         )
-        assert isinstance(target_message_result1, ProcessedMessage)
+        assert isinstance(runtime_message_result, ProcessedMessage)
 
-        target_message_result2 = one(
+        program_message_result = one(
             await process_pending_messages(
                 message_processor=message_processor,
                 pending_messages=[program_message],
@@ -592,7 +592,7 @@ async def test_forget_store_message_dependent(
             )
         )
 
-        assert isinstance(target_message_result2, ProcessedMessage)
+        assert isinstance(program_message_result, ProcessedMessage)
 
         # Sanity check
         nb_references = count_file_pins(session=session, file_hash=file_hash)

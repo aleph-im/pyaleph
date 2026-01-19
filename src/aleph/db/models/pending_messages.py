@@ -55,7 +55,7 @@ class PendingMessageDb(Base):
     sender: Mapped[str] = mapped_column(String, nullable=False)
     signature: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     item_type: Mapped[ItemType] = mapped_column(ChoiceType(ItemType), nullable=False)
-    item_content: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    item_content: Mapped[str] = mapped_column(String, nullable=True)
     content: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     time: Mapped[dt.datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, index=True

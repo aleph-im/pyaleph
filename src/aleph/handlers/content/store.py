@@ -10,10 +10,9 @@ import datetime as dt
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import List, Set, Optional
+from typing import List, Set
 
 import aioipfs
-from aleph.services.ipfs import IpfsService
 from aleph_message.models import ItemHash, ItemType, StoreContent
 
 from aleph.config import get_config
@@ -39,6 +38,7 @@ from aleph.services.cost import (
     get_total_and_detailed_costs,
 )
 from aleph.services.cost_validation import validate_balance_for_payment
+from aleph.services.ipfs import IpfsService
 from aleph.storage import StorageService
 from aleph.toolkit.constants import MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE, MiB
 from aleph.toolkit.costs import are_store_and_program_free
@@ -103,7 +103,7 @@ async def _get_file_stats_from_ipfs(
 
     except asyncio.TimeoutError as error:
         LOGGER.warning(
-            f"Timeout (%ds) while retrieving stats of hash %s: %s",
+            "Timeout (%ds) while retrieving stats of hash %s: %s",
             stat_timeout,
             cid,
             getattr(error, "message", None),
@@ -114,7 +114,7 @@ async def _get_file_stats_from_ipfs(
 
     except aioipfs.APIError as error:
         LOGGER.exception(
-            f"Error retrieving stats of hash %s: %s",
+            "Error retrieving stats of hash %s: %s",
             cid,
             getattr(error, "message", None),
         )
@@ -205,9 +205,7 @@ class StoreMessageHandler(ContentHandler):
                 store_value=config.storage.store_files.value,
             )
         except AlephStorageException:
-            raise FileUnavailable(
-                "Could not retrieve file from storage at this time"
-            )
+            raise FileUnavailable("Could not retrieve file from storage at this time")
 
         upsert_file(
             session=session,
