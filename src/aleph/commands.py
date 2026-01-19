@@ -20,6 +20,7 @@ from typing import Coroutine, List
 import alembic.command
 import alembic.config
 import sentry_sdk
+from aleph.repair import repair_node
 from configmanager import Config
 
 import aleph.config
@@ -134,8 +135,6 @@ async def main(args: List[str]) -> None:
     )
     session_factory = make_session_factory(engine)
 
-    setup_logging(args.loglevel)
-
     mq_conn = await make_mq_conn(config)
     mq_channel = await mq_conn.channel()
 
@@ -170,6 +169,8 @@ async def main(args: List[str]) -> None:
             pending_tx_publisher=pending_tx_publisher,
             chain_data_service=chain_data_service,
         )
+
+        await repair_node(storage_service=storage_service, session_factory=session_factory)
 
         set_start_method("spawn")
 

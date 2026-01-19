@@ -270,7 +270,9 @@ def upsert_file(session: DbSession, file_hash: str, size: int, file_type: FileTy
     upsert_file_stmt = (
         insert(StoredFileDb)
         .values(hash=file_hash, size=size, type=file_type)
-        .on_conflict_do_nothing(constraint="files_pkey")
+        .on_conflict_do_update(
+            constraint="files_pkey", set_={"size": size, "type": file_type}
+        )
     )
     session.execute(upsert_file_stmt)
 
