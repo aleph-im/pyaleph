@@ -58,6 +58,7 @@ async def test_process_aggregate_first_element(
         session.commit()
 
     # Check the aggregate
+    assert pending_message.item_content is not None, "Expected inline message content"
     content = json.loads(pending_message.item_content)
 
     expected_key = content["key"]
