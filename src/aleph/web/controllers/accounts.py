@@ -265,7 +265,7 @@ async def get_account_files(request: web.Request) -> web.Response:
             raise web.HTTPNotFound()
 
         files_adapter = TypeAdapter(list[GetAccountFilesResponseItem])
-        file_pins_list = [dict(row) for row in file_pins]
+        file_pins_list = [row._asdict() for row in file_pins]
 
         response = GetAccountFilesResponse(
             address=address,
