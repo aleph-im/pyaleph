@@ -221,7 +221,8 @@ async def get_credit_balances_handler(request: web.Request) -> web.Response:
         credit_balances = get_credit_balances(session, **find_filters)
 
         formatted_credit_balances = [
-            AddressCreditBalanceResponse.model_validate(b) for b in credit_balances
+            AddressCreditBalanceResponse(address=b[0], credits=b[1])
+            for b in credit_balances
         ]
 
         total_credit_balances = count_credit_balances(session, **find_filters)
