@@ -221,10 +221,13 @@ async def get_credit_balances_handler(request: web.Request) -> web.Response:
         credit_balances = get_credit_balances(session, **find_filters)
 
         formatted_credit_balances = [
-            AddressCreditBalanceResponse.model_validate(b) for b in credit_balances
+            AddressCreditBalanceResponse(address=address, credits=credits)
+            for address, credits in credit_balances
         ]
 
-        total_credit_balances = count_credit_balances(session, **find_filters)
+        total_credit_balances = count_credit_balances(
+            session, find_filters.get("min_balance", 0)
+        )
 
         pagination_page = query_params.page
         pagination_per_page = query_params.pagination
