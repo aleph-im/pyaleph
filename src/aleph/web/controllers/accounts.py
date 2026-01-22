@@ -225,7 +225,9 @@ async def get_credit_balances_handler(request: web.Request) -> web.Response:
             for b in credit_balances
         ]
 
-        total_credit_balances = count_credit_balances(session, **find_filters)
+        total_credit_balances = count_credit_balances(
+            session, find_filters.get("min_balance", 0)
+        )
 
         pagination_page = query_params.page
         pagination_per_page = query_params.pagination

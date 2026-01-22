@@ -367,8 +367,7 @@ def get_credit_balances(
     page: int = 1,
     pagination: int = 100,
     min_balance: int = 0,
-    **kwargs,
-):
+) -> list[tuple[str, int]]:
     """
     Get paginated credit balances for all addresses.
     Uses the cached balances from the credit_balances table.
@@ -388,7 +387,7 @@ def get_credit_balances(
     return [(row.address, row.balance) for row in results]
 
 
-def count_credit_balances(session: DbSession, min_balance: int = 0, **kwargs):
+def count_credit_balances(session: DbSession, min_balance: int = 0) -> int:
     """
     Count addresses with credit balances.
     Uses the cached balances from the credit_balances table.
