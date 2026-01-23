@@ -110,6 +110,7 @@ def register_routes(app: web.Application):
     app.router.add_get(
         "/api/v0/storage/by-ref/{address}/{ref}", storage.get_file_metadata_by_ref
     )
+    app.router.add_get("/api/v0/storage/count/{hash}", storage.get_file_pins_count)
 
     app.router.add_get("/version", version.version)
     app.router.add_get("/api/v0/version", version.version)
