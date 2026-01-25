@@ -191,13 +191,13 @@ class IpfsService:
     async def get_ipfs_content_iterator(
         self, hash: str, timeout: int = 1, tries: int = 1
     ) -> Optional[AsyncIterable[bytes]]:
-        # aioipfs.cat returns an AsyncIterator if no length is specified or if it's large?
-        # Actually, looking at aioipfs documentation/source (or assuming common patterns):
-        # self.ipfs_client.cat(hash) returns an async iterator of bytes.
         try:
-            # We don't easily support retries with an iterator if it fails mid-stream,
-            # but we can at least start it.
-            return await self.ipfs_client.cat(hash)
+            content = await self.ipfs_client.cat(hash)
+
+            async def _iterator():
+                yield content
+
+            return _iterator()
         except aioipfs.APIError:
             return None
 
