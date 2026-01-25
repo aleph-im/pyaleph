@@ -37,7 +37,6 @@ async def fetch_raw_cid_streamed(
             yield chunk
 
 
-
 class IpfsService:
     def __init__(
         self,
