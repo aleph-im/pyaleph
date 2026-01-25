@@ -259,9 +259,7 @@ class StorageService:
                 ipfs_enabled = config.ipfs.enabled.value
                 if ipfs_enabled:
                     content_iterator = (
-                        await self.ipfs_service.get_ipfs_content_iterator(
-                            content_hash, timeout=timeout, tries=tries
-                        )
+                        await self.ipfs_service.get_ipfs_content_iterator(content_hash)
                     )
                     source = ContentSource.IPFS
 
