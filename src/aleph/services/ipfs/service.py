@@ -19,19 +19,19 @@ MAX_LEN = 1024 * 1024 * 100
 
 
 async def fetch_raw_cid_streamed(
-    aioipfs_client: aioipfs.apis.SubAPI,
+    aioipfs_client: aioipfs.AsyncIPFS,
     url,
     params: Optional[Dict] = None,
     chunk_size: int = 8192,
 ) -> AsyncIterable[bytes]:
-    driver = aioipfs_client.driver
+    driver = aioipfs_client.core.driver
     params = params or {}
 
     async with driver.session.post(url, params=params, auth=driver.auth) as response:
         while True:
             status, data = response.status, await response.read(chunk_size)
             if status in aioipfs.apis.HTTP_ERROR_CODES:
-                aioipfs_client.handle_error(response, data)
+                aioipfs_client.core.handle_error(response, data)
 
             yield data
 
