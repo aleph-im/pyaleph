@@ -216,8 +216,8 @@ class MessagePublisher(BaseMessageHandler):
                 session.commit()
                 return None
 
-            # Check if there are an already existing record
-            existing_message = (
+            # Check if there are an already existing record in pending_messages
+            existing_pending = (
                 session.query(PendingMessageDb)
                 .filter_by(
                     sender=pending_message.sender,
@@ -226,8 +226,44 @@ class MessagePublisher(BaseMessageHandler):
                 )
                 .one_or_none()
             )
-            if existing_message:
-                return existing_message
+            if existing_pending:
+                return existing_pending
+
+            # Check if the message was already processed
+            processed_message = get_message_by_item_hash(
+                session, ItemHash(pending_message.item_hash)
+            )
+            if processed_message:
+                # Message already processed - just add confirmation if we have a tx_hash
+                if tx_hash:
+                    session.execute(
+                        make_confirmation_upsert_query(
+                            item_hash=pending_message.item_hash, tx_hash=tx_hash
+                        )
+                    )
+                    session.commit()
+                    LOGGER.debug(
+                        "Message %s already processed, added confirmation for tx %s",
+                        pending_message.item_hash,
+                        tx_hash,
+                    )
+                else:
+                    LOGGER.debug(
+                        "Message %s already processed, skipping",
+                        pending_message.item_hash,
+                    )
+                return None
+
+            # Check if the message was forgotten
+            forgotten_message = get_forgotten_message(
+                session, ItemHash(pending_message.item_hash)
+            )
+            if forgotten_message:
+                LOGGER.debug(
+                    "Message %s was forgotten, skipping",
+                    pending_message.item_hash,
+                )
+                return None
 
             upsert_message_status_stmt = make_message_status_upsert_query(
                 item_hash=pending_message.item_hash,
