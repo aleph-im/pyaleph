@@ -234,7 +234,8 @@ class MessagePublisher(BaseMessageHandler):
                 session, ItemHash(pending_message.item_hash)
             )
             if processed_message:
-                # Message already processed - just add confirmation if we have a tx_hash
+                # Message already processed - just record the on-chain confirmation.
+                # A message can have multiple confirmations from different chains/transactions.
                 if tx_hash:
                     session.execute(
                         make_confirmation_upsert_query(
