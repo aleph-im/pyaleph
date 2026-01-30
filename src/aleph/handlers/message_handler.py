@@ -217,18 +217,16 @@ class MessagePublisher(BaseMessageHandler):
                 session.commit()
                 return None
 
-            # Check if there are an already existing record in pending_messages
-            existing_pending = (
-                session.query(PendingMessageDb)
-                .filter_by(
-                    sender=pending_message.sender,
-                    item_hash=pending_message.item_hash,
-                    signature=pending_message.signature,
+            # Check if item_hash already exists in pending_messages
+            if PendingMessageDb.exists(
+                session=session,
+                where=PendingMessageDb.item_hash == pending_message.item_hash,
+            ):
+                LOGGER.debug(
+                    "Message %s already in pending queue, skipping",
+                    pending_message.item_hash,
                 )
-                .one_or_none()
-            )
-            if existing_pending:
-                return existing_pending
+                return None
 
             # Check message status - skip if already processed/forgotten/removed
             message_status = get_message_status(
