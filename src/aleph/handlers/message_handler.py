@@ -16,6 +16,7 @@ from aleph.db.accessors.files import insert_content_file_pin, upsert_file
 from aleph.db.accessors.messages import (
     get_forgotten_message,
     get_message_by_item_hash,
+    get_message_status,
     make_confirmation_upsert_query,
     make_message_status_upsert_query,
     make_message_upsert_query,
@@ -229,14 +230,17 @@ class MessagePublisher(BaseMessageHandler):
             if existing_pending:
                 return existing_pending
 
-            # Check if the message was already processed
-            processed_message = get_message_by_item_hash(
+            # Check message status - skip if already processed/forgotten/removed
+            message_status = get_message_status(
                 session, ItemHash(pending_message.item_hash)
             )
-            if processed_message:
-                # Message already processed - just record the on-chain confirmation.
-                # A message can have multiple confirmations from different chains/transactions.
-                if tx_hash:
+            if message_status and message_status.status not in (
+                MessageStatus.PENDING,
+                MessageStatus.REJECTED,
+            ):
+                if message_status.status == MessageStatus.PROCESSED and tx_hash:
+                    # Message already processed - just record the on-chain confirmation.
+                    # A message can have multiple confirmations from different chains/txs.
                     session.execute(
                         make_confirmation_upsert_query(
                             item_hash=pending_message.item_hash, tx_hash=tx_hash
@@ -250,20 +254,10 @@ class MessagePublisher(BaseMessageHandler):
                     )
                 else:
                     LOGGER.debug(
-                        "Message %s already processed, skipping",
+                        "Message %s has status %s, skipping",
                         pending_message.item_hash,
+                        message_status.status.value,
                     )
-                return None
-
-            # Check if the message was forgotten
-            forgotten_message = get_forgotten_message(
-                session, ItemHash(pending_message.item_hash)
-            )
-            if forgotten_message:
-                LOGGER.debug(
-                    "Message %s was forgotten, skipping",
-                    pending_message.item_hash,
-                )
                 return None
 
             upsert_message_status_stmt = make_message_status_upsert_query(
