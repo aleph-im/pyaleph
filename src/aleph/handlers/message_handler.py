@@ -217,28 +217,18 @@ class MessagePublisher(BaseMessageHandler):
                 session.commit()
                 return None
 
-            # Check if item_hash already exists in pending_messages
-            if PendingMessageDb.exists(
-                session=session,
-                where=PendingMessageDb.item_hash == pending_message.item_hash,
-            ):
-                LOGGER.debug(
-                    "Message %s already in pending queue, skipping",
-                    pending_message.item_hash,
-                )
-                return None
-
-            # Check message status - skip if already processed/forgotten/removed
+            # Check message status - only proceed if REJECTED (retry) or no status (new)
+            # PENDING = already in queue, PROCESSED/FORGOTTEN/etc = already handled
             message_status = get_message_status(
                 session, ItemHash(pending_message.item_hash)
             )
-            if message_status and message_status.status not in (
-                MessageStatus.PENDING,
-                MessageStatus.REJECTED,
-            ):
-                if message_status.status == MessageStatus.PROCESSED and tx_hash:
-                    # Message already processed - just record the on-chain confirmation.
-                    # A message can have multiple confirmations from different chains/txs.
+            if message_status and message_status.status != MessageStatus.REJECTED:
+                if message_status.status in (
+                    MessageStatus.PROCESSED,
+                    MessageStatus.REMOVING,
+                ) and tx_hash:
+                    # Message already processed (or being removed but could go back to processed).
+                    # Record the on-chain confirmation - a message can have multiple confirmations.
                     session.execute(
                         make_confirmation_upsert_query(
                             item_hash=pending_message.item_hash, tx_hash=tx_hash
@@ -246,8 +236,9 @@ class MessagePublisher(BaseMessageHandler):
                     )
                     session.commit()
                     LOGGER.debug(
-                        "Message %s already processed, added confirmation for tx %s",
+                        "Message %s has status %s, added confirmation for tx %s",
                         pending_message.item_hash,
+                        message_status.status.value,
                         tx_hash,
                     )
                 else:
