@@ -223,10 +223,14 @@ class MessagePublisher(BaseMessageHandler):
                 session, ItemHash(pending_message.item_hash)
             )
             if message_status and message_status.status != MessageStatus.REJECTED:
-                if message_status.status in (
-                    MessageStatus.PROCESSED,
-                    MessageStatus.REMOVING,
-                ) and tx_hash:
+                if (
+                    message_status.status
+                    in (
+                        MessageStatus.PROCESSED,
+                        MessageStatus.REMOVING,
+                    )
+                    and tx_hash
+                ):
                     # Message already processed (or being removed but could go back to processed).
                     # Record the on-chain confirmation - a message can have multiple confirmations.
                     session.execute(
