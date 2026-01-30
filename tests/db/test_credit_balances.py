@@ -56,7 +56,7 @@ def test_update_credit_balances_distribution(session_factory: DbSessionFactory):
 
         assert credit_record is not None
         assert credit_record.address == "0x123"
-        assert credit_record.amount == 1000
+        assert credit_record.amount == 10000000  # 1000 * 10000 multiplier
         assert credit_record.price == Decimal("0.5")
         assert credit_record.tx_hash == "0xabc123"
         assert credit_record.token == "TEST_TOKEN"
@@ -101,7 +101,7 @@ def test_update_credit_balances_expense(session_factory: DbSessionFactory):
 
         assert expense_record is not None
         assert expense_record.address == "0x456"
-        assert expense_record.amount == -500
+        assert expense_record.amount == -5000000  # -500 * 10000 multiplier
         assert expense_record.price is None
         assert expense_record.tx_hash is None
         assert expense_record.token is None
@@ -152,7 +152,7 @@ def test_update_credit_balances_expense_with_new_fields(
 
         assert expense_record is not None
         assert expense_record.address == "0x456"
-        assert expense_record.amount == -500
+        assert expense_record.amount == -5000000  # -500 * 10000 multiplier
         assert expense_record.price == Decimal("0.001")
         assert expense_record.tx_hash == "node_67890"  # node_id mapped to tx_hash
         assert expense_record.token is None
@@ -202,9 +202,11 @@ def test_update_credit_balances_transfer(session_factory: DbSessionFactory):
         )  # One for sender (negative) and one for recipient (positive)
 
         # Find recipient record (positive amount)
-        recipient_record = next(r for r in records if r.amount == 250)
+        recipient_record = next(
+            r for r in records if r.amount == 2500000
+        )  # 250 * 10000
         assert recipient_record.address == "0x789"
-        assert recipient_record.amount == 250
+        assert recipient_record.amount == 2500000  # 250 * 10000 multiplier
         assert recipient_record.expiration_date is not None
         assert recipient_record.provider == "ALEPH"
         assert recipient_record.payment_method == "credit_transfer"
@@ -218,9 +220,9 @@ def test_update_credit_balances_transfer(session_factory: DbSessionFactory):
         assert recipient_record.credit_index == 0
 
         # Find sender record (negative amount)
-        sender_record = next(r for r in records if r.amount == -250)
+        sender_record = next(r for r in records if r.amount == -2500000)  # -250 * 10000
         assert sender_record.address == "0xsender"
-        assert sender_record.amount == -250
+        assert sender_record.amount == -2500000  # -250 * 10000 multiplier
         assert sender_record.expiration_date is None
         assert sender_record.provider == "ALEPH"
         assert sender_record.payment_method == "credit_transfer"
@@ -268,7 +270,7 @@ def test_whitelisted_sender_transfer(session_factory: DbSessionFactory):
 
         recipient_record = records[0]
         assert recipient_record.address == "0xrecipient"
-        assert recipient_record.amount == 500
+        assert recipient_record.amount == 5000000  # 500 * 10000 multiplier
         assert recipient_record.origin == "0xwhitelisted"
         assert recipient_record.provider == "ALEPH"
         assert recipient_record.payment_method == "credit_transfer"
@@ -303,13 +305,13 @@ def test_balance_validation_insufficient_credits(session_factory: DbSessionFacto
         )
         session.commit()
 
-        # Should pass for amounts <= 500
-        assert validate_credit_transfer_balance(session, "0xlow_balance", 500)
-        assert validate_credit_transfer_balance(session, "0xlow_balance", 400)
+        # Should pass for amounts <= 5000000 (500 * 10000 multiplier)
+        assert validate_credit_transfer_balance(session, "0xlow_balance", 5000000)
+        assert validate_credit_transfer_balance(session, "0xlow_balance", 4000000)
 
-        # Should fail for amounts > 500
-        assert not validate_credit_transfer_balance(session, "0xlow_balance", 600)
-        assert not validate_credit_transfer_balance(session, "0xlow_balance", 1000)
+        # Should fail for amounts > 5000000
+        assert not validate_credit_transfer_balance(session, "0xlow_balance", 6000000)
+        assert not validate_credit_transfer_balance(session, "0xlow_balance", 10000000)
 
 
 def test_expired_credits_excluded_from_transfers(session_factory: DbSessionFactory):
@@ -350,14 +352,14 @@ def test_expired_credits_excluded_from_transfers(session_factory: DbSessionFacto
         )
         session.commit()
 
-        # Total balance should only be 200 (expired credits excluded)
+        # Total balance should only be 2000000 (200 * 10000, expired credits excluded)
         balance = get_credit_balance(session, "0xexpired_user")
-        assert balance == 200
+        assert balance == 2000000
 
-        # Transfer validation should only consider valid credits (200)
+        # Transfer validation should only consider valid credits (2000000)
 
-        assert validate_credit_transfer_balance(session, "0xexpired_user", 200)
-        assert not validate_credit_transfer_balance(session, "0xexpired_user", 300)
+        assert validate_credit_transfer_balance(session, "0xexpired_user", 2000000)
+        assert not validate_credit_transfer_balance(session, "0xexpired_user", 3000000)
 
 
 def test_multiple_recipients_single_transfer(session_factory: DbSessionFactory):
@@ -406,9 +408,9 @@ def test_multiple_recipients_single_transfer(session_factory: DbSessionFactory):
         assert len(positive_records) == 3
 
         amounts = {r.address: r.amount for r in positive_records}
-        assert amounts["0xrecipient1"] == 300
-        assert amounts["0xrecipient2"] == 200
-        assert amounts["0xrecipient3"] == 150
+        assert amounts["0xrecipient1"] == 3000000  # 300 * 10000 multiplier
+        assert amounts["0xrecipient2"] == 2000000  # 200 * 10000 multiplier
+        assert amounts["0xrecipient3"] == 1500000  # 150 * 10000 multiplier
 
         # Check all negative records (sender debits)
         negative_records = [r for r in records if r.amount < 0]
@@ -416,7 +418,11 @@ def test_multiple_recipients_single_transfer(session_factory: DbSessionFactory):
 
         for neg_record in negative_records:
             assert neg_record.address == "0xmulti_sender"
-            assert neg_record.amount in [-300, -200, -150]
+            assert neg_record.amount in [
+                -3000000,
+                -2000000,
+                -1500000,
+            ]  # Multiplied by 10000
 
 
 def test_zero_amount_edge_case(session_factory: DbSessionFactory):
@@ -494,8 +500,8 @@ def test_self_transfer_edge_case(session_factory: DbSessionFactory):
         assert len(records) == 2
 
         amounts = [r.amount for r in records]
-        assert 250 in amounts  # Positive entry
-        assert -250 in amounts  # Negative entry
+        assert 2500000 in amounts  # Positive entry (250 * 10000 multiplier)
+        assert -2500000 in amounts  # Negative entry (-250 * 10000 multiplier)
 
         # Both records should have same address
         for record in records:
@@ -532,9 +538,9 @@ def test_balance_fix_doesnt_affect_valid_credits(session_factory: DbSessionFacto
         )
         session.commit()
 
-        # Balance should be 1000
+        # Balance should be 10000000 (1000 * 10000 multiplier)
         balance = get_credit_balance(session, "0xvalid_user")
-        assert balance == 1000
+        assert balance == 10000000
 
         # Add some expenses
         expense_credits = [
@@ -555,9 +561,9 @@ def test_balance_fix_doesnt_affect_valid_credits(session_factory: DbSessionFacto
         )
         session.commit()
 
-        # Balance should be 700 (1000 - 300)
+        # Balance should be 7000000 (700 * 10000 multiplier: 10000000 - 3000000)
         balance = get_credit_balance(session, "0xvalid_user")
-        assert balance == 700
+        assert balance == 7000000
 
         # Add a transfer (user sends 200 to someone else)
         transfer_credits = [
@@ -580,9 +586,9 @@ def test_balance_fix_doesnt_affect_valid_credits(session_factory: DbSessionFacto
         )
         session.commit()
 
-        # Balance should be 500 (700 - 200)
+        # Balance should be 5000000 (500 * 10000 multiplier: 7000000 - 2000000)
         balance = get_credit_balance(session, "0xvalid_user")
-        assert balance == 500
+        assert balance == 5000000
 
         # Verify the fix doesn't interfere with normal positive balances
         assert balance > 0
@@ -781,8 +787,8 @@ def test_fifo_scenario_2_expiring_first_equals_500_remaining(
         # Check final balance (expiring credits have already expired)
         balance_after_expiration = get_credit_balance(session, "0xscenario2_user")
 
-        # Expected: 500 remaining (expiring consumed and expired, non-expiring remainder survives)
-        expected_balance = 500
+        # Expected: 5000000 remaining (500 * 10000 multiplier - expiring consumed and expired, non-expiring remainder survives)
+        expected_balance = 5000000
         assert (
             balance_after_expiration == expected_balance
         ), f"Scenario 2: Expected {expected_balance} remaining credits, got {balance_after_expiration}"
@@ -846,8 +852,8 @@ def test_cache_invalidation_on_credit_expiration(session_factory: DbSessionFacto
         )
         session.commit()
 
-        # Verify that at T2, the balance was 1000 (credit not yet expired)
-        assert balance_before_expiration == 1000
+        # Verify that at T2, the balance was 10000000 (1000 * 10000 multiplier, credit not yet expired)
+        assert balance_before_expiration == 10000000
 
         # Verify that a cache entry was created and manually update its timestamp
         # to simulate it being created at T2 (cache_time)
@@ -859,7 +865,7 @@ def test_cache_invalidation_on_credit_expiration(session_factory: DbSessionFacto
         ).scalar_one_or_none()
 
         assert cached_balance is not None
-        assert cached_balance.balance == 1000
+        assert cached_balance.balance == 10000000
         assert cached_balance.last_update == cache_time
 
         # Step 3: Now check balance at current time (T3, after expiration)
@@ -921,7 +927,7 @@ def test_get_resource_consumed_credits_single_record(session_factory: DbSessionF
         consumed_credits = get_resource_consumed_credits(
             session=session, item_hash="resource_123"
         )
-        assert consumed_credits == 150
+        assert consumed_credits == 1500000  # 150 * 10000 multiplier
 
 
 def test_get_resource_consumed_credits_multiple_records(
@@ -980,8 +986,8 @@ def test_get_resource_consumed_credits_multiple_records(
         consumed_credits = get_resource_consumed_credits(
             session=session, item_hash="resource_456"
         )
-        # Total: 100 + 250 + 75 = 425
-        assert consumed_credits == 425
+        # Total: (100 + 250 + 75) * 10000 = 4250000
+        assert consumed_credits == 4250000
 
 
 def test_get_resource_consumed_credits_filters_by_payment_method(
@@ -1045,8 +1051,8 @@ def test_get_resource_consumed_credits_filters_by_payment_method(
         consumed_credits = get_resource_consumed_credits(
             session=session, item_hash="resource_789"
         )
-        # Only the expense (150) should be counted, not distribution or transfer
-        assert consumed_credits == 150
+        # Only the expense (150 * 10000) should be counted, not distribution or transfer
+        assert consumed_credits == 1500000
 
 
 def test_get_resource_consumed_credits_filters_by_origin(
@@ -1099,17 +1105,17 @@ def test_get_resource_consumed_credits_filters_by_origin(
 
         session.commit()
 
-        # Test resource_aaa (should get 100 + 300 = 400)
+        # Test resource_aaa (should get 100 + 300 = 400, multiplied by 10000)
         consumed_credits_a = get_resource_consumed_credits(
             session=session, item_hash="resource_aaa"
         )
-        assert consumed_credits_a == 400
+        assert consumed_credits_a == 4000000
 
-        # Test resource_bbb (should get 200)
+        # Test resource_bbb (should get 200, multiplied by 10000)
         consumed_credits_b = get_resource_consumed_credits(
             session=session, item_hash="resource_bbb"
         )
-        assert consumed_credits_b == 200
+        assert consumed_credits_b == 2000000
 
         # Test nonexistent resource (should get 0)
         consumed_credits_none = get_resource_consumed_credits(
@@ -1150,10 +1156,12 @@ def test_get_resource_consumed_credits_uses_absolute_values(
                 AlephCreditHistoryDb.credit_ref == "expense_msg"
             )
         ).scalar_one()
-        assert expense_record.amount == -250  # Expenses are stored as negative
+        assert (
+            expense_record.amount == -2500000
+        )  # Expenses are stored as negative (multiplied by 10000)
 
         # But get_resource_consumed_credits should return the absolute value
         consumed_credits = get_resource_consumed_credits(
             session=session, item_hash="resource_abs"
         )
-        assert consumed_credits == 250
+        assert consumed_credits == 2500000

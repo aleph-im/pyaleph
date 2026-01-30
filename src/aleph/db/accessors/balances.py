@@ -11,8 +11,27 @@ from sqlalchemy import func, select, text
 from sqlalchemy.sql import Select
 
 from aleph.db.models import AlephBalanceDb, AlephCreditBalanceDb, AlephCreditHistoryDb
-from aleph.toolkit.timestamp import utc_now
+from aleph.toolkit.constants import (
+    CREDIT_PRECISION_CUTOFF_TIMESTAMP,
+    CREDIT_PRECISION_MULTIPLIER,
+)
+from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.db_session import DbSession
+
+
+def _apply_credit_precision_multiplier(
+    amount: int, message_timestamp: dt.datetime
+) -> int:
+    """
+    Apply the credit precision multiplier for messages before the cutoff.
+
+    Old messages (before cutoff) have amounts in old format (100 credits = 1 USD)
+    and need to be multiplied by 10,000 to match new format (1,000,000 credits = 1 USD).
+    """
+    cutoff_datetime = timestamp_to_datetime(CREDIT_PRECISION_CUTOFF_TIMESTAMP)
+    if message_timestamp < cutoff_datetime:
+        return amount * CREDIT_PRECISION_MULTIPLIER
+    return amount
 
 
 def get_balance_by_chain(
@@ -486,7 +505,8 @@ def update_credit_balances_distribution(
 
     for index, credit_entry in enumerate(credits_list):
         address = credit_entry["address"]
-        amount = abs(int(credit_entry["amount"]))
+        raw_amount = abs(int(credit_entry["amount"]))
+        amount = _apply_credit_precision_multiplier(raw_amount, message_timestamp)
         price = Decimal(credit_entry["price"])
         tx_hash = credit_entry["tx_hash"]
         provider = credit_entry["provider"]
@@ -535,7 +555,8 @@ def update_credit_balances_expense(
 
     for index, credit_entry in enumerate(credits_list):
         address = credit_entry["address"]
-        amount = -abs(int(credit_entry["amount"]))
+        raw_amount = abs(int(credit_entry["amount"]))
+        amount = -_apply_credit_precision_multiplier(raw_amount, message_timestamp)
         origin_ref = credit_entry.get("ref", "")
 
         # Map new fields
@@ -575,7 +596,8 @@ def update_credit_balances_transfer(
 
     for credit_entry in credits_list:
         recipient_address = credit_entry["address"]
-        amount = abs(int(credit_entry["amount"]))
+        raw_amount = abs(int(credit_entry["amount"]))
+        amount = _apply_credit_precision_multiplier(raw_amount, message_timestamp)
         expiration_timestamp = credit_entry.get("expiration", "")
 
         # Convert expiration timestamp to datetime
