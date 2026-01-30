@@ -20,9 +20,9 @@ branch_labels = None
 depends_on = None
 
 MULTIPLIER = 10000
-# Must match CREDIT_PRECISION_CUTOFF_TIMESTAMP in constants.py (1738368000)
+# Must match CREDIT_PRECISION_CUTOFF_TIMESTAMP in constants.py (1769990400)
 # Format: 'YYYY-MM-DD HH:MM:SS+00' (UTC timezone)
-CUTOFF_TIMESTAMP = "2025-02-01 00:00:00+00"
+CUTOFF_TIMESTAMP = "2026-02-02 00:00:00+00"
 
 
 def upgrade() -> None:
