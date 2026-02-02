@@ -46,6 +46,7 @@ from aleph.schemas.messages_query_params import (
 from aleph.toolkit.shield import shielded
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_status import MessageStatus, RemovedMessageReason
+from aleph.types.sort_order import SortOrder
 from aleph.web.controllers.app_state_getters import (
     get_config_from_request,
     get_mq_ws_channel_from_request,
@@ -150,6 +151,7 @@ async def _send_history_to_ws(
             session=session,
             pagination=history,
             include_confirmations=True,
+            sort_order=SortOrder.ASCENDING,
             **query_params.model_dump(exclude_none=True),
         )
         for message in messages:
