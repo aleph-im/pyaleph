@@ -609,9 +609,13 @@ def test_fifo_scenario_1_non_expiring_first_equals_0_remaining(
     Final Balance: 0 (non-expiring remaining) + 500 (expiring remaining but expired) = 0
     """
 
-    # Set up timestamps - expiration between expense and now
-    base_time = time.time()
-    expiration_time = int((base_time - 300) * 1000)  # Expired 5 minutes ago
+    # Use fixed timestamps before the credit precision cutoff (2026-02-02)
+    # to ensure the 10000x multiplier is applied consistently
+    # Base time: 2023-06-15 12:00:00 UTC
+    base_time = 1686830400
+
+    # Expiration: 2023-06-15 11:55:00 UTC (5 minutes before base_time, so expired)
+    expiration_time = int((base_time - 300) * 1000)
 
     message_timestamp_1 = dt.datetime.fromtimestamp(
         base_time - 3600, tz=dt.timezone.utc
@@ -622,6 +626,9 @@ def test_fifo_scenario_1_non_expiring_first_equals_0_remaining(
     expense_timestamp = dt.datetime.fromtimestamp(
         base_time - 600, tz=dt.timezone.utc
     )  # Expense (BEFORE expiration at -300)
+
+    # The "now" time for balance calculation (after expiration)
+    now_time = dt.datetime.fromtimestamp(base_time, tz=dt.timezone.utc)
 
     with session_factory() as session:
         # Add 1000 non-expiring credits (FIRST chronologically)
@@ -685,7 +692,10 @@ def test_fifo_scenario_1_non_expiring_first_equals_0_remaining(
         session.commit()
 
         # Check final balance (expiring credits have already expired)
-        balance_after_expiration = get_credit_balance(session, "0xcorner_case_user")
+        # Pass the fixed "now" time so the test is deterministic
+        balance_after_expiration = get_credit_balance(
+            session, "0xcorner_case_user", now_time
+        )
 
         # Expected: 0 remaining (all non-expiring consumed, expiring remainder expired)
         expected_balance = 0
@@ -709,9 +719,13 @@ def test_fifo_scenario_2_expiring_first_equals_500_remaining(
     Final Balance: 0 (expiring remaining but expired) + 500 (non-expiring remaining) = 500
     """
 
-    # Set up timestamps - expiration between expense and now
-    base_time = time.time()
-    expiration_time = int((base_time - 300) * 1000)  # Expired 5 minutes ago
+    # Use fixed timestamps before the credit precision cutoff (2026-02-02)
+    # to ensure the 10000x multiplier is applied consistently
+    # Base time: 2023-06-15 12:00:00 UTC
+    base_time = 1686830400
+
+    # Expiration: 2023-06-15 11:55:00 UTC (5 minutes before base_time, so expired)
+    expiration_time = int((base_time - 300) * 1000)
 
     message_timestamp_1 = dt.datetime.fromtimestamp(
         base_time - 3600, tz=dt.timezone.utc
@@ -722,6 +736,9 @@ def test_fifo_scenario_2_expiring_first_equals_500_remaining(
     expense_timestamp = dt.datetime.fromtimestamp(
         base_time - 600, tz=dt.timezone.utc
     )  # Expense (BEFORE expiration at -300)
+
+    # The "now" time for balance calculation (after expiration)
+    now_time = dt.datetime.fromtimestamp(base_time, tz=dt.timezone.utc)
 
     with session_factory() as session:
         # Add 1000 expiring credits (FIRST chronologically)
@@ -785,7 +802,10 @@ def test_fifo_scenario_2_expiring_first_equals_500_remaining(
         session.commit()
 
         # Check final balance (expiring credits have already expired)
-        balance_after_expiration = get_credit_balance(session, "0xscenario2_user")
+        # Pass the fixed "now" time so the test is deterministic
+        balance_after_expiration = get_credit_balance(
+            session, "0xscenario2_user", now_time
+        )
 
         # Expected: 5000000 remaining (500 * 10000 multiplier - expiring consumed and expired, non-expiring remainder survives)
         expected_balance = 5000000
@@ -809,18 +829,22 @@ def test_cache_invalidation_on_credit_expiration(session_factory: DbSessionFacto
     5. With the fix, balance is recalculated because credit expired after cache update
     """
 
-    base_time = time.time()
+    # Use fixed timestamps before the credit precision cutoff (2026-02-02)
+    # to ensure the 10000x multiplier is applied consistently
+    # Base time (T3): 2023-06-15 12:00:00 UTC
+    base_time = 1686830400
 
-    # Time T1: Add credit
-    credit_time = dt.datetime.fromtimestamp(
-        base_time - 3600, tz=dt.timezone.utc
-    )  # 1 hour ago
+    # Time T1: Add credit (1 hour before base_time)
+    credit_time = dt.datetime.fromtimestamp(base_time - 3600, tz=dt.timezone.utc)
 
-    # Time T2: Cache calculation time (30 minutes ago, before expiration)
+    # Time T2: Cache calculation time (30 minutes before base_time, before expiration)
     cache_time = dt.datetime.fromtimestamp(base_time - 1800, tz=dt.timezone.utc)
 
-    # Time X: Credit expiration (between cache time and now)
-    expiration_time = int((base_time - 300) * 1000)  # Expired 5 minutes ago
+    # Time X: Credit expiration (5 minutes before base_time, between cache time and T3)
+    expiration_time = int((base_time - 300) * 1000)
+
+    # Time T3: Current time for final balance check (after expiration)
+    now_time = dt.datetime.fromtimestamp(base_time, tz=dt.timezone.utc)
 
     with session_factory() as session:
         # Step 1: Add credit with expiration date
@@ -870,7 +894,9 @@ def test_cache_invalidation_on_credit_expiration(session_factory: DbSessionFacto
 
         # Step 3: Now check balance at current time (T3, after expiration)
         # The fix should detect that credit expired after cache update and recalculate
-        balance_after_expiration = get_credit_balance(session, "0xcache_bug_user")
+        balance_after_expiration = get_credit_balance(
+            session, "0xcache_bug_user", now_time
+        )
 
         # Expected: 0 (credit has expired)
         assert balance_after_expiration == 0
@@ -878,7 +904,7 @@ def test_cache_invalidation_on_credit_expiration(session_factory: DbSessionFacto
         # Verify that cache was updated (should have a newer timestamp)
         session.refresh(cached_balance)
         assert cached_balance.balance == 0
-        assert cached_balance.last_update > cache_time
+        assert cached_balance.last_update == now_time
 
 
 def test_get_resource_consumed_credits_no_records(session_factory: DbSessionFactory):
