@@ -152,7 +152,7 @@ async def _send_history_to_ws(
             pagination=history,
             include_confirmations=True,
             sort_order=SortOrder.ASCENDING,
-            **query_params.model_dump(exclude_none=True),
+            **query_params.model_dump(exclude_none=True, exclude={"sort_order"}),
         )
         for message in messages:
             await ws.send_str(format_message(message).model_dump_json())
