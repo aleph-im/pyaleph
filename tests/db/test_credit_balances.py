@@ -835,7 +835,9 @@ def test_cache_invalidation_on_credit_expiration(session_factory: DbSessionFacto
     base_time = 1686830400
 
     # Time T1: Add credit (1 hour before base_time)
-    credit_time = dt.datetime.fromtimestamp(base_time - 3600, tz=dt.timezone.utc)
+    credit_time = dt.datetime.fromtimestamp(
+        base_time - 3600, tz=dt.timezone.utc
+    )
 
     # Time T2: Cache calculation time (30 minutes before base_time, before expiration)
     cache_time = dt.datetime.fromtimestamp(base_time - 1800, tz=dt.timezone.utc)
