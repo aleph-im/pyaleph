@@ -34,16 +34,15 @@ async def test_duplicated_pending_message(
     )
     assert test1
 
+    # Second call with same message should return None (duplicate detected via status)
     test2 = await message_publisher.add_pending_message(
         message_dict=message,
         reception_time=utc_now(),
         origin=MessageOrigin.P2P,
     )
-    assert test2
+    assert test2 is None
 
-    assert test2.content == test1.content
-    assert test2.reception_time == test1.reception_time
-
+    # Only one pending message should exist
     with session_factory() as session:
         pending_messages = session.query(PendingMessageDb).count()
         assert pending_messages == 1
