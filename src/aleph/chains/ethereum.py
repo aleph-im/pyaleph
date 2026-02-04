@@ -397,19 +397,34 @@ class EthereumConnector(ChainWriter):
                         account.address
                     )
 
-                    messages = list(
-                        get_unconfirmed_messages(
-                            session=session, limit=10000, chain=Chain.ETH
+                    # Collect all unconfirmed messages using pagination
+                    all_messages = []
+                    offset = 0
+                    while True:
+                        batch = list(
+                            get_unconfirmed_messages(
+                                session=session,
+                                limit=500,
+                                offset=offset,
+                                chain=Chain.ETH,
+                            )
                         )
-                    )
+                        if not batch:
+                            break
+                        all_messages.extend(batch)
+                        offset += len(batch)
+                        if len(batch) < 500:
+                            break
 
-                if messages:
-                    LOGGER.info("Chain sync: %d unconfirmed messages" % len(messages))
+                if all_messages:
+                    LOGGER.info(
+                        "Chain sync: %d unconfirmed messages" % len(all_messages)
+                    )
 
                     try:
                         response = await self.broadcast_messages(
                             account=account,
-                            messages=messages,
+                            messages=all_messages,
                             nonce=nonce,
                         )
                         LOGGER.info("Broadcast %r on %s" % (response, Chain.ETH.value))
