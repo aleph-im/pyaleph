@@ -85,6 +85,11 @@ def _get_settings(session: DbSession) -> Settings:
 
 
 def get_payment_type(content: CostComputableContent) -> PaymentType:
+    """
+    Determine the payment type for a message content.
+
+    Uses the payment field from content if available, otherwise defaults to hold.
+    """
     if hasattr(content, "payment") and content.payment and content.payment.is_credit:
         return PaymentType.credit
     elif hasattr(content, "payment") and content.payment and content.payment.is_stream:

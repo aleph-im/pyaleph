@@ -37,7 +37,8 @@ from pydantic import ValidationError, field_validator, model_validator
 import aleph.toolkit.json as aleph_json
 from aleph.exceptions import UnknownHashError
 from aleph.schemas.base_messages import AlephBaseMessage, ContentType, MType
-from aleph.toolkit.timestamp import timestamp_to_datetime
+from aleph.toolkit.constants import MAX_MESSAGE_TIME_FUTURE, MAX_MESSAGE_TIME_PAST
+from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.message_status import InvalidMessageFormat
 from aleph.utils import item_type_from_hash
 
@@ -90,15 +91,37 @@ def base_pending_message_load_content(values):
 
 def base_pending_message_validator_check_time(v, values):
     """
-    Parses the time field as a UTC datetime. Contrary to the default datetime
-    validator, this implementation raises an exception if the time field is
-    too far in the future.
+    Parses the time field as a UTC datetime and validates it is within
+    acceptable bounds.
+
+    Raises an exception if the time field is:
+    - Too far in the future (more than MAX_MESSAGE_TIME_FUTURE seconds)
+    - Too far in the past (more than MAX_MESSAGE_TIME_PAST seconds)
+
+    This prevents users from faking timestamps to bypass time-based validations
+    (e.g., credit-only cutoff for STORE messages).
     """
-
     if isinstance(v, dt.datetime):
-        return v
+        message_time = v
+    else:
+        message_time = timestamp_to_datetime(v)
 
-    return timestamp_to_datetime(v)
+    now = utc_now()
+    time_diff = (message_time - now).total_seconds()
+
+    if time_diff > MAX_MESSAGE_TIME_FUTURE:
+        raise ValueError(
+            f"Message timestamp is too far in the future "
+            f"(max {MAX_MESSAGE_TIME_FUTURE} seconds allowed)"
+        )
+
+    if time_diff < -MAX_MESSAGE_TIME_PAST:
+        raise ValueError(
+            f"Message timestamp is too far in the past "
+            f"(max {MAX_MESSAGE_TIME_PAST} seconds allowed)"
+        )
+
+    return message_time
 
 
 class BasePendingMessage(AlephBaseMessage, Generic[MType, ContentType]):

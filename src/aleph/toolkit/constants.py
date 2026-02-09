@@ -300,6 +300,11 @@ DEFAULT_SETTINGS_AGGREGATE = {
 STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT = 22196000
 STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP = 1743775079
 
+# Cutoff for STORE messages requiring credit-only payment
+# After this timestamp, STORE messages must use credit payment (no holding tier)
+# and the 25MB free file exception no longer applies
+STORE_CREDIT_ONLY_CUTOFF_TIMESTAMP = 1770681600 # 2026-02-10 00:00:00 UTC
+
 # Credit precision change: 1 USD = 1,000,000 credits (previously 100 credits)
 # Messages before this timestamp have amounts in old format (need 10,000x multiplier)
 CREDIT_PRECISION_CUTOFF_TIMESTAMP = 1769990400  # 2026-02-02 00:00:00 UTC
@@ -308,3 +313,10 @@ CREDIT_PRECISION_MULTIPLIER = 10000
 MAX_FILE_SIZE = 100 * MiB
 MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE = 25 * MiB
 # MAX_UPLOAD_FILE_SIZE = 1000 * MiB (not used?)
+
+# Maximum allowed time drift for message timestamps (in seconds)
+# Messages with timestamps too far in the past or future will be rejected
+# 5 minutes tolerance for future timestamps (clock drift)
+MAX_MESSAGE_TIME_FUTURE = 5 * 60  # 5 minutes
+# 24 hours tolerance for past timestamps
+MAX_MESSAGE_TIME_PAST = 24 * 60 * 60  # 24 hours

@@ -10,7 +10,13 @@ from configmanager import Config
 
 from aleph.db.accessors.files import get_message_file_pin
 from aleph.db.accessors.messages import get_message_by_item_hash
-from aleph.db.models import AlephBalanceDb, MessageDb, MessageStatusDb, PendingMessageDb
+from aleph.db.models import (
+    AlephBalanceDb,
+    AlephCreditBalanceDb,
+    MessageDb,
+    MessageStatusDb,
+    PendingMessageDb,
+)
 from aleph.handlers.content.store import StoreMessageHandler
 from aleph.handlers.message_handler import MessageHandler
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
@@ -20,12 +26,17 @@ from aleph.storage import StorageService
 from aleph.toolkit.constants import (
     MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP,
+    STORE_CREDIT_ONLY_CUTOFF_TIMESTAMP,
 )
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.message_processing_result import ProcessedMessage
-from aleph.types.message_status import InsufficientBalanceException, MessageStatus
+from aleph.types.message_status import (
+    InsufficientBalanceException,
+    InsufficientCreditException,
+    MessageStatus,
+)
 
 
 @pytest.fixture()
@@ -774,3 +785,223 @@ async def test_pre_check_balance_with_existing_costs(
             ipfs_service.get_ipfs_size.assert_called_once_with(
                 "QmacDVDroxPVY1enhckVco1rTBziwC8hjf731apEKr3QoG"
             )
+
+
+# Tests for credit-only STORE messages (after STORE_CREDIT_ONLY_CUTOFF_TIMESTAMP)
+
+
+@pytest.mark.asyncio
+async def test_new_store_message_requires_credits(
+    mocker,
+    session_factory,
+    mock_config,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """Test that new STORE messages (after cutoff) automatically use credit payment and require credits."""
+    small_file_size = int(MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.5)  # 50% of max
+
+    ipfs_service = mocker.AsyncMock()
+    ipfs_service.get_ipfs_size = AsyncMock(return_value=small_file_size)
+
+    storage_service = StorageService(
+        storage_engine=mocker.AsyncMock(),
+        ipfs_service=ipfs_service,
+        node_cache=mocker.AsyncMock(),
+    )
+    store_handler = StoreMessageHandler(
+        storage_service=storage_service,
+        grace_period=24,
+    )
+
+    with session_factory() as session:
+        address = "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106"
+        # Create a message after the credit-only cutoff
+        message = mocker.MagicMock(spec=MessageDb)
+        message.time = timestamp_to_datetime(STORE_CREDIT_ONLY_CUTOFF_TIMESTAMP + 1)
+        message.confirmations = []
+        message.item_hash = "test-hash"
+        content = StoreContent(
+            address=address,
+            time=STORE_CREDIT_ONLY_CUTOFF_TIMESTAMP + 1,
+            item_type=ItemType.ipfs,
+            item_hash="QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ",
+        )
+        message.parsed_content = content
+
+        # Should raise InsufficientCreditException (no credits available)
+        with pytest.raises(InsufficientCreditException):
+            await store_handler.pre_check_balance(session, message)
+
+
+@pytest.mark.asyncio
+async def test_new_store_message_with_sufficient_credits(
+    mocker,
+    session_factory,
+    mock_config,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """Test that new STORE messages with sufficient credits pass."""
+    small_file_size = int(MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.5)  # 50% of max
+
+    ipfs_service = mocker.AsyncMock()
+    ipfs_service.get_ipfs_size = AsyncMock(return_value=small_file_size)
+
+    storage_service = StorageService(
+        storage_engine=mocker.AsyncMock(),
+        ipfs_service=ipfs_service,
+        node_cache=mocker.AsyncMock(),
+    )
+    store_handler = StoreMessageHandler(
+        storage_service=storage_service,
+        grace_period=24,
+    )
+
+    with session_factory() as session:
+        address = "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106"
+        # Create a message after the credit-only cutoff
+        message = mocker.MagicMock(spec=MessageDb)
+        message.time = timestamp_to_datetime(STORE_CREDIT_ONLY_CUTOFF_TIMESTAMP + 1)
+        message.confirmations = []
+        message.item_hash = "test-hash"
+        content = StoreContent(
+            address=address,
+            time=STORE_CREDIT_ONLY_CUTOFF_TIMESTAMP + 1,
+            item_type=ItemType.ipfs,
+            item_hash="QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ",
+        )
+        message.parsed_content = content
+
+        # Add sufficient credit balance (enough for 1 day of storage)
+        session.add(
+            AlephCreditBalanceDb(
+                address=address,
+                balance=1000000000,  # Large enough to cover 1 day of storage
+            )
+        )
+        session.commit()
+
+        # Should pass the balance check
+        result = await store_handler.pre_check_balance(session, message)
+        assert result is None
+
+
+@pytest.mark.asyncio
+async def test_legacy_store_message_uses_hold_payment(
+    mocker, session_factory, mock_config
+):
+    """Test that legacy STORE messages (before cutoff) use hold payment with 25MB exception."""
+    small_file_size = int(MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.5)  # 50% of max
+
+    ipfs_service = mocker.AsyncMock()
+    ipfs_service.get_ipfs_size = AsyncMock(return_value=small_file_size)
+
+    storage_service = StorageService(
+        storage_engine=mocker.AsyncMock(),
+        ipfs_service=ipfs_service,
+        node_cache=mocker.AsyncMock(),
+    )
+    store_handler = StoreMessageHandler(
+        storage_service=storage_service,
+        grace_period=24,
+    )
+
+    with session_factory() as session:
+        # Create a message BEFORE the credit-only cutoff (legacy message)
+        message = mocker.MagicMock(spec=MessageDb)
+        message.time = timestamp_to_datetime(STORE_CREDIT_ONLY_CUTOFF_TIMESTAMP - 1)
+        message.confirmations = []
+        content = StoreContent(
+            address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
+            time=STORE_CREDIT_ONLY_CUTOFF_TIMESTAMP - 1,
+            item_type=ItemType.ipfs,
+            item_hash="QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ",
+        )
+        message.parsed_content = content
+
+        # Should pass (legacy messages use hold and small file exception applies)
+        result = await store_handler.pre_check_balance(session, message)
+        assert result is None
+
+
+@pytest.mark.asyncio
+async def test_new_store_small_file_still_requires_credits(
+    mocker,
+    session_factory,
+    mock_config,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """Test that new STORE messages with small files still require credits (no free exception)."""
+    small_file_size = int(MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.5)  # 50% of max
+
+    ipfs_service = mocker.AsyncMock()
+    ipfs_service.get_ipfs_size = AsyncMock(return_value=small_file_size)
+
+    storage_service = StorageService(
+        storage_engine=mocker.AsyncMock(),
+        ipfs_service=ipfs_service,
+        node_cache=mocker.AsyncMock(),
+    )
+    store_handler = StoreMessageHandler(
+        storage_service=storage_service,
+        grace_period=24,
+    )
+
+    with session_factory() as session:
+        address = "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106"
+        # Create a message after the credit-only cutoff with a small file
+        message = mocker.MagicMock(spec=MessageDb)
+        message.time = timestamp_to_datetime(STORE_CREDIT_ONLY_CUTOFF_TIMESTAMP + 1)
+        message.confirmations = []
+        message.item_hash = "test-hash"
+        content = StoreContent(
+            address=address,
+            time=STORE_CREDIT_ONLY_CUTOFF_TIMESTAMP + 1,
+            item_type=ItemType.ipfs,
+            item_hash="QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ",
+        )
+        message.parsed_content = content
+
+        # Should raise InsufficientCreditException even for small files (no free exception after cutoff)
+        with pytest.raises(InsufficientCreditException):
+            await store_handler.pre_check_balance(session, message)
+
+
+@pytest.mark.asyncio
+async def test_legacy_store_small_file_no_balance_required(
+    mocker, session_factory, mock_config
+):
+    """Test that legacy STORE messages with small files don't require balance (25MB exception)."""
+    small_file_size = int(MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.9)  # 90% of max
+
+    ipfs_service = mocker.AsyncMock()
+    ipfs_service.get_ipfs_size = AsyncMock(return_value=small_file_size)
+
+    storage_service = StorageService(
+        storage_engine=mocker.AsyncMock(),
+        ipfs_service=ipfs_service,
+        node_cache=mocker.AsyncMock(),
+    )
+    store_handler = StoreMessageHandler(
+        storage_service=storage_service,
+        grace_period=24,
+    )
+
+    with session_factory() as session:
+        # Create a legacy message with a small file
+        message = mocker.MagicMock(spec=MessageDb)
+        message.time = timestamp_to_datetime(STORE_CREDIT_ONLY_CUTOFF_TIMESTAMP - 1)
+        message.confirmations = []
+        content = StoreContent(
+            address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
+            time=STORE_CREDIT_ONLY_CUTOFF_TIMESTAMP - 1,
+            item_type=ItemType.ipfs,
+            item_hash="QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ",
+        )
+        message.parsed_content = content
+
+        # Should pass without checking balance (25MB exception applies for legacy)
+        result = await store_handler.pre_check_balance(session, message)
+        assert result is None
