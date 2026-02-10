@@ -2,7 +2,7 @@ import datetime as dt
 import traceback
 from typing import Any, Iterable, Mapping, Optional, Sequence, Tuple, Union, overload
 
-from aleph_message.models import Chain, ItemHash, MessageType
+from aleph_message.models import Chain, ItemHash, MessageType, PaymentType
 from sqlalchemy import delete, func, nullsfirst, nullslast, select, text, update
 from sqlalchemy.dialects.postgresql import array, insert
 from sqlalchemy.orm import contains_eager, load_only, selectinload
@@ -22,6 +22,7 @@ from aleph.types.message_status import (
 )
 from aleph.types.sort_order import SortBy, SortByMessageType, SortOrder
 
+from ..models.account_costs import AccountCostsDb
 from ..models.chains import ChainTxDb
 from ..models.messages import (
     ForgottenMessageDb,
@@ -76,6 +77,7 @@ def make_matching_messages_query(
     content_types: Optional[Sequence[str]] = None,
     tags: Optional[Sequence[str]] = None,
     channels: Optional[Sequence[str]] = None,
+    payment_types: Optional[Sequence[PaymentType]] = None,
     sort_by: SortBy = SortBy.TIME,
     sort_order: SortOrder = SortOrder.DESCENDING,
     page: int = 1,
@@ -144,6 +146,10 @@ def make_matching_messages_query(
         )
     if channels:
         select_stmt = select_stmt.where(MessageDb.channel.in_(channels))
+    if payment_types:
+        select_stmt = select_stmt.join(
+            AccountCostsDb, MessageDb.item_hash == AccountCostsDb.item_hash
+        ).where(AccountCostsDb.payment_type.in_(payment_types))
 
     order_by_columns: Tuple = ()  # For mypy to leave us alone until SQLA2
 
