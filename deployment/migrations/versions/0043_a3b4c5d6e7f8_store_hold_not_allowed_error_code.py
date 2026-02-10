@@ -1,6 +1,6 @@
 """Add STORE_HOLD_NOT_ALLOWED error code
 
-Revision ID: g3h4i5j6k7l8
+Revision ID: a3b4c5d6e7f8
 Revises: f2a3b4c5d6e7
 Create Date: 2026-02-09
 
@@ -12,7 +12,7 @@ from alembic import op
 from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
-revision = "g3h4i5j6k7l8"
+revision = "a3b4c5d6e7f8"
 down_revision = "f2a3b4c5d6e7"
 branch_labels = None
 depends_on = None
