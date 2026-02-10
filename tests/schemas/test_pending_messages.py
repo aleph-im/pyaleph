@@ -1,6 +1,7 @@
 import datetime as dt
 import json
 from typing import Dict
+from unittest.mock import patch
 
 import pytest
 from aleph_message.models import ItemType
@@ -14,6 +15,7 @@ from aleph.schemas.pending_messages import (
     PendingStoreMessage,
     parse_message,
 )
+from aleph.toolkit.constants import MAX_MESSAGE_TIME_FUTURE, MAX_MESSAGE_TIME_PAST
 from aleph.types.message_status import InvalidMessageException
 
 
@@ -314,72 +316,101 @@ def test_message_timestamp_valid():
     """Test that a message with a valid timestamp (current time) is accepted."""
     import time
 
-    current_time = time.time()
-    message_dict = {
-        "chain": "ETH",
-        "item_hash": "c6c9df8d5b5dcd5cf74562c9d383308c354a5238d3b0d9db10d931b250490600",
-        "sender": "0x989Cfa25243C07b90Bedc673Fe6Df69B5B0D675C",
-        "type": "AGGREGATE",
-        "channel": "TEST",
-        "item_type": "storage",
-        "signature": "0x63e9dd351ff6735bb41c2658d95828bd0dbc14fc64eee119114fd7e84fa737f157c3b38ae7c5ca30a73c03e3794f35c94282b5fc9379d31b43f913d1c18300ca01",
-        "time": current_time,
-    }
+    # Re-enable real timestamp validation for this test
+    with (
+        patch(
+            "aleph.schemas.pending_messages.MAX_MESSAGE_TIME_PAST",
+            MAX_MESSAGE_TIME_PAST,
+        ),
+        patch(
+            "aleph.schemas.pending_messages.MAX_MESSAGE_TIME_FUTURE",
+            MAX_MESSAGE_TIME_FUTURE,
+        ),
+    ):
+        current_time = time.time()
+        message_dict = {
+            "chain": "ETH",
+            "item_hash": "c6c9df8d5b5dcd5cf74562c9d383308c354a5238d3b0d9db10d931b250490600",
+            "sender": "0x989Cfa25243C07b90Bedc673Fe6Df69B5B0D675C",
+            "type": "AGGREGATE",
+            "channel": "TEST",
+            "item_type": "storage",
+            "signature": "0x63e9dd351ff6735bb41c2658d95828bd0dbc14fc64eee119114fd7e84fa737f157c3b38ae7c5ca30a73c03e3794f35c94282b5fc9379d31b43f913d1c18300ca01",
+            "time": current_time,
+        }
 
-    # Should not raise an exception
-    message = parse_message(message_dict)
-    assert message is not None
+        # Should not raise an exception
+        message = parse_message(message_dict)
+        assert message is not None
 
 
 def test_message_timestamp_too_far_in_future():
     """Test that a message with a timestamp too far in the future is rejected."""
     import time
 
-    from aleph.toolkit.constants import MAX_MESSAGE_TIME_FUTURE
+    # Re-enable real timestamp validation for this test
+    with (
+        patch(
+            "aleph.schemas.pending_messages.MAX_MESSAGE_TIME_PAST",
+            MAX_MESSAGE_TIME_PAST,
+        ),
+        patch(
+            "aleph.schemas.pending_messages.MAX_MESSAGE_TIME_FUTURE",
+            MAX_MESSAGE_TIME_FUTURE,
+        ),
+    ):
+        # Set timestamp 10 minutes in the future (exceeds MAX_MESSAGE_TIME_FUTURE of 5 minutes)
+        future_time = time.time() + MAX_MESSAGE_TIME_FUTURE + 600
+        message_dict = {
+            "chain": "ETH",
+            "item_hash": "c6c9df8d5b5dcd5cf74562c9d383308c354a5238d3b0d9db10d931b250490600",
+            "sender": "0x989Cfa25243C07b90Bedc673Fe6Df69B5B0D675C",
+            "type": "AGGREGATE",
+            "channel": "TEST",
+            "item_type": "storage",
+            "signature": "0x63e9dd351ff6735bb41c2658d95828bd0dbc14fc64eee119114fd7e84fa737f157c3b38ae7c5ca30a73c03e3794f35c94282b5fc9379d31b43f913d1c18300ca01",
+            "time": future_time,
+        }
 
-    # Set timestamp 10 minutes in the future (exceeds MAX_MESSAGE_TIME_FUTURE of 5 minutes)
-    future_time = time.time() + MAX_MESSAGE_TIME_FUTURE + 600
-    message_dict = {
-        "chain": "ETH",
-        "item_hash": "c6c9df8d5b5dcd5cf74562c9d383308c354a5238d3b0d9db10d931b250490600",
-        "sender": "0x989Cfa25243C07b90Bedc673Fe6Df69B5B0D675C",
-        "type": "AGGREGATE",
-        "channel": "TEST",
-        "item_type": "storage",
-        "signature": "0x63e9dd351ff6735bb41c2658d95828bd0dbc14fc64eee119114fd7e84fa737f157c3b38ae7c5ca30a73c03e3794f35c94282b5fc9379d31b43f913d1c18300ca01",
-        "time": future_time,
-    }
+        with pytest.raises(InvalidMessageException) as exc_info:
+            _ = parse_message(message_dict)
 
-    with pytest.raises(InvalidMessageException) as exc_info:
-        _ = parse_message(message_dict)
-
-    exc_details = exc_info.value.details()
-    assert "time" in exc_details["errors"][0]["loc"]
-    assert "future" in str(exc_details["errors"][0]["msg"]).lower()
+        exc_details = exc_info.value.details()
+        assert "time" in exc_details["errors"][0]["loc"]
+        assert "future" in str(exc_details["errors"][0]["msg"]).lower()
 
 
 def test_message_timestamp_too_far_in_past():
     """Test that a message with a timestamp too far in the past is rejected."""
     import time
 
-    from aleph.toolkit.constants import MAX_MESSAGE_TIME_PAST
+    # Re-enable real timestamp validation for this test
+    with (
+        patch(
+            "aleph.schemas.pending_messages.MAX_MESSAGE_TIME_PAST",
+            MAX_MESSAGE_TIME_PAST,
+        ),
+        patch(
+            "aleph.schemas.pending_messages.MAX_MESSAGE_TIME_FUTURE",
+            MAX_MESSAGE_TIME_FUTURE,
+        ),
+    ):
+        # Set timestamp 48 hours in the past (exceeds MAX_MESSAGE_TIME_PAST of 24 hours)
+        past_time = time.time() - MAX_MESSAGE_TIME_PAST - 86400
+        message_dict = {
+            "chain": "ETH",
+            "item_hash": "c6c9df8d5b5dcd5cf74562c9d383308c354a5238d3b0d9db10d931b250490600",
+            "sender": "0x989Cfa25243C07b90Bedc673Fe6Df69B5B0D675C",
+            "type": "AGGREGATE",
+            "channel": "TEST",
+            "item_type": "storage",
+            "signature": "0x63e9dd351ff6735bb41c2658d95828bd0dbc14fc64eee119114fd7e84fa737f157c3b38ae7c5ca30a73c03e3794f35c94282b5fc9379d31b43f913d1c18300ca01",
+            "time": past_time,
+        }
 
-    # Set timestamp 48 hours in the past (exceeds MAX_MESSAGE_TIME_PAST of 24 hours)
-    past_time = time.time() - MAX_MESSAGE_TIME_PAST - 86400
-    message_dict = {
-        "chain": "ETH",
-        "item_hash": "c6c9df8d5b5dcd5cf74562c9d383308c354a5238d3b0d9db10d931b250490600",
-        "sender": "0x989Cfa25243C07b90Bedc673Fe6Df69B5B0D675C",
-        "type": "AGGREGATE",
-        "channel": "TEST",
-        "item_type": "storage",
-        "signature": "0x63e9dd351ff6735bb41c2658d95828bd0dbc14fc64eee119114fd7e84fa737f157c3b38ae7c5ca30a73c03e3794f35c94282b5fc9379d31b43f913d1c18300ca01",
-        "time": past_time,
-    }
+        with pytest.raises(InvalidMessageException) as exc_info:
+            _ = parse_message(message_dict)
 
-    with pytest.raises(InvalidMessageException) as exc_info:
-        _ = parse_message(message_dict)
-
-    exc_details = exc_info.value.details()
-    assert "time" in exc_details["errors"][0]["loc"]
-    assert "past" in str(exc_details["errors"][0]["msg"]).lower()
+        exc_details = exc_info.value.details()
+        assert "time" in exc_details["errors"][0]["loc"]
+        assert "past" in str(exc_details["errors"][0]["msg"]).lower()

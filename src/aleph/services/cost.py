@@ -38,12 +38,12 @@ from aleph.toolkit.constants import (
     SETTINGS_AGGREGATE_KEY,
     SETTINGS_AGGREGATE_OWNER,
     MiB,
+    ProductPriceType,
 )
 from aleph.toolkit.costs import format_cost
 from aleph.types.cost import (
     CostType,
     ProductComputeUnit,
-    ProductPriceType,
     ProductPricing,
     RefVolume,
     SizedVolume,

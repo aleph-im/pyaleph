@@ -9,6 +9,7 @@ import sys
 from decimal import Decimal
 from pathlib import Path
 from typing import List, Protocol
+from unittest.mock import patch
 
 import alembic.command
 import alembic.config
@@ -76,6 +77,31 @@ def change_dir(directory: Path):
         yield
     finally:
         os.chdir(current_directory)
+
+
+@pytest.fixture(autouse=True)
+def mock_timestamp_validation_for_tests():
+    """
+    Disable timestamp validation in the pending_messages module to allow tests
+    with hardcoded timestamps from the past to pass validation.
+
+    This fixture patches MAX_MESSAGE_TIME_PAST and MAX_MESSAGE_TIME_FUTURE
+    to very large values, effectively disabling the timestamp validation
+    for all tests by default.
+
+    Tests that specifically want to test timestamp validation should use
+    their own patches to restore realistic values.
+    """
+    # 100 years in seconds - effectively disables the check
+    very_large_time = 100 * 365 * 24 * 60 * 60
+
+    with (
+        patch("aleph.schemas.pending_messages.MAX_MESSAGE_TIME_PAST", very_large_time),
+        patch(
+            "aleph.schemas.pending_messages.MAX_MESSAGE_TIME_FUTURE", very_large_time
+        ),
+    ):
+        yield
 
 
 def run_db_migrations(config: Config):
