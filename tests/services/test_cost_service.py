@@ -562,13 +562,13 @@ def fixture_multiple_same_gpu_instance_message() -> InstanceContent:
                     "vendor": "NVIDIA",
                     "device_name": "GA100 [A100 SXM4 80GB]",
                     "device_class": "0300",
-                    "device_id": "10de:20b0",
+                    "device_id": "10de:20b2",
                 },
                 {
                     "vendor": "NVIDIA",
                     "device_name": "GA100 [A100 SXM4 80GB]",
                     "device_class": "0300",
-                    "device_id": "10de:20b0",
+                    "device_id": "10de:20b2",
                 },
             ]
         },
@@ -660,7 +660,7 @@ def fixture_mixed_tier_gpu_instance_message() -> InstanceContent:
                     "vendor": "NVIDIA",
                     "device_name": "GA100 [A100 SXM4 80GB]",
                     "device_class": "0300",
-                    "device_id": "10de:20b0",
+                    "device_id": "10de:20b2",
                 },
                 {
                     "vendor": "NVIDIA",

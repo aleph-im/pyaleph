@@ -90,7 +90,7 @@ DEFAULT_PRICE_AGGREGATE: Dict[Union[ProductPriceType, str], dict] = {
     ProductPriceType.INSTANCE_GPU_PREMIUM: {
         "price": {
             "storage": {"payg": "0.000000977", "credit": "0.205078125"},
-            "compute_unit": {"payg": "0.56", "credit": "86250"},
+            "compute_unit": {"payg": "0.56", "holding": "560", "credit": "86250"},
         },
         "tiers": [
             {
@@ -138,7 +138,7 @@ DEFAULT_PRICE_AGGREGATE: Dict[Union[ProductPriceType, str], dict] = {
     ProductPriceType.INSTANCE_GPU_STANDARD: {
         "price": {
             "storage": {"payg": "0.000000977", "credit": "0.205078125"},
-            "compute_unit": {"payg": "0.28", "credit": "43125"},
+            "compute_unit": {"payg": "0.28", "holding": "280", "credit": "43125"},
         },
         "tiers": [
             {
