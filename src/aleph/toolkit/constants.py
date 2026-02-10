@@ -77,7 +77,10 @@ DEFAULT_PRICE_AGGREGATE: Dict[Union[ProductPriceType, str], dict] = {
         },
     },
     ProductPriceType.WEB3_HOSTING: {
-        "price": {"fixed": 50, "storage": {"holding": "0.333333333", "credit": "0.17967489030626108"}}
+        "price": {
+            "fixed": 50,
+            "storage": {"holding": "0.333333333", "credit": "0.17967489030626108"},
+        }
     },
     ProductPriceType.PROGRAM_PERSISTENT: {
         "price": {
