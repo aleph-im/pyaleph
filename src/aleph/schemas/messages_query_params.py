@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from aleph_message.models import Chain, ItemHash, MessageType
+from aleph_message.models import Chain, ItemHash, MessageType, PaymentType
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from aleph.types.message_status import MessageStatus
@@ -75,6 +75,11 @@ class BaseMessageQueryParams(BaseModel):
     hashes: Optional[List[ItemHash]] = Field(
         default=None, description="Accepted values for the 'item_hash' field."
     )
+    payment_types: Optional[List[PaymentType]] = Field(
+        default=None,
+        alias="paymentTypes",
+        description="Accepted values for payment type (e.g., 'hold', 'superfluid', 'credit').",
+    )
 
     start_date: float = Field(
         default=0,
@@ -132,6 +137,7 @@ class BaseMessageQueryParams(BaseModel):
         "message_types",
         "message_statuses",
         "tags",
+        "payment_types",
         mode="before",
     )
     def split_str(cls, v):
