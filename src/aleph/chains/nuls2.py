@@ -195,6 +195,7 @@ class Nuls2Connector(ChainWriter):
                     i = 0
 
                 # Collect all unconfirmed messages using pagination
+                max_unconfirmed = config.aleph.jobs.max_unconfirmed_messages.value
                 all_messages = []
                 offset = 0
                 while True:
@@ -207,8 +208,9 @@ class Nuls2Connector(ChainWriter):
                         break
                     all_messages.extend(batch)
                     offset += len(batch)
-                    if len(batch) < 500:
+                    if len(batch) < 500 or len(all_messages) >= max_unconfirmed:
                         break
+                all_messages = all_messages[:max_unconfirmed]
 
             if all_messages:
                 LOGGER.info("Chain sync: %d unconfirmed messages" % len(all_messages))
