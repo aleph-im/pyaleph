@@ -5,7 +5,11 @@ name: Test nix-shell
 on:
   push:
     branches:
-      - '*'
+      - dev
+      - main
+  pull_request:
+    branches:
+      - "*"
 
 
 jobs:
@@ -27,8 +31,8 @@ jobs:
       - name: Set up Nix
         uses: cachix/install-nix-action@v27
         with:
-            # Use channel nixos-23.11 for Linux and nixpkgs-23.11-darwin for macOS
-          nix_path: nixpkgs=channel:${{ matrix.os == 'macos-latest' && 'nixpkgs-24.05-darwin' || 'nixos-24.05' }}
+            # Use channel nixos-25.11 for Linux and nixpkgs-25.11-darwin for macOS
+          nix_path: nixpkgs=channel:${{ matrix.os == 'macos-latest' && 'nixpkgs-25.11-darwin' || 'nixos-25.11' }}
 
       - name: Disable incompatible dependency of `nuls2`
         run: |
