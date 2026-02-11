@@ -43,7 +43,20 @@ class FileSystemStorageEngine(StorageEngine):
 
     async def write(self, filename: str, content: bytes):
         file_path = self.folder / filename
-        file_path.write_bytes(content)
+        temp_path = self.folder / f"{filename}.tmp"
+
+        try:
+            # Write to temporary file first
+            temp_path.write_bytes(content)
+
+            # Atomic rename - this operation is atomic on POSIX systems
+            # If crash happens before this, temp file exists but target doesn't
+            temp_path.replace(file_path)
+
+        except Exception:
+            # Clean up temp file if write failed
+            temp_path.unlink(missing_ok=True)
+            raise
 
     async def delete(self, filename: str):
         file_path = self.folder / filename
