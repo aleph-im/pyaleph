@@ -201,6 +201,7 @@ profile = "black"
 git-only = [
   ".coveragerc",
   ".dockerignore",
+  "CLAUDE.md",
   "deployment",
   "docs",
   "justfile",
