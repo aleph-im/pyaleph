@@ -72,6 +72,7 @@ def register_routes(app: web.Application):
     app.router.add_post(
         "/api/v0/price/{item_hash}/recalculate", prices.recalculate_message_costs
     )
+    app.router.add_get("/api/v0/costs", prices.get_costs)
 
     app.router.add_get("/api/v0/addresses/stats.json", accounts.addresses_stats_view_v0)
     app.router.add_get("/api/v1/addresses/stats.json", accounts.addresses_stats_view_v1)
