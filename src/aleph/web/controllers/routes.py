@@ -40,8 +40,20 @@ def register_routes(app: web.Application, swagger: SwaggerDocs):
     app.router.add_get("/api/v1/posts/page/{page}.json", posts.view_posts_list_v1)
     app.router.add_post("/api/v0/p2p/pubsub/pub", p2p.pub_json)
     app.router.add_post(
-        "/api/v0/price/{item_hash}/recalculate",
-        prices.recalculate_message_costs,
+        "/api/v0/price/{item_hash}/recalculate", prices.recalculate_message_costs
+    )
+    app.router.add_get("/api/v0/costs", prices.get_costs)
+
+    app.router.add_get("/api/v0/addresses/stats.json", accounts.addresses_stats_view_v0)
+    app.router.add_get("/api/v1/addresses/stats.json", accounts.addresses_stats_view_v1)
+    app.router.add_get(
+        "/api/v0/addresses/{address}/balance", accounts.get_account_balance
+    )
+    app.router.add_get("/api/v0/balances", accounts.get_chain_balances)
+    app.router.add_get("/api/v0/credit_balances", accounts.get_credit_balances_handler)
+    app.router.add_get("/api/v0/addresses/{address}/files", accounts.get_account_files)
+    app.router.add_get(
+        "/api/v0/addresses/{address}/post_types", accounts.get_account_post_types
     )
     app.router.add_get(
         "/api/v0/storage/by-ref/{address}/{ref}",
