@@ -160,7 +160,11 @@ def _get_gpu_tier_breakdown(
     """
     tier_compute_units: dict[ProductPriceType, int] = {}
 
-    for gpu in content.requirements.gpu:
+    gpus = content.requirements.gpu or []
+    premium_tiers = premium_pricing.tiers or []
+    standard_tiers = standard_pricing.tiers or []
+
+    for gpu in gpus:
         # Look up GPU model from device_id
         gpu_model = None
         for compatible_gpu in settings.compatible_gpus:
@@ -177,7 +181,7 @@ def _get_gpu_tier_breakdown(
         found_tier = False
 
         # Check premium tier
-        for tier in premium_pricing.tiers:
+        for tier in premium_tiers:
             if tier.model == gpu_model:
                 tier_type = ProductPriceType.INSTANCE_GPU_PREMIUM
                 compute_units = tier.compute_units
@@ -189,7 +193,7 @@ def _get_gpu_tier_breakdown(
 
         # Check standard tier if not found in premium
         if not found_tier:
-            for tier in standard_pricing.tiers:
+            for tier in standard_tiers:
                 if tier.model == gpu_model:
                     tier_type = ProductPriceType.INSTANCE_GPU_STANDARD
                     compute_units = tier.compute_units
