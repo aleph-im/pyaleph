@@ -14,6 +14,7 @@ from aleph.services.cost import (
     _get_settings_aggregate,
     get_total_and_detailed_costs,
 )
+from aleph.types.cost import CostType
 from aleph.types.db_session import DbSessionFactory
 
 
@@ -521,7 +522,7 @@ def fixture_single_gpu_instance_message() -> InstanceContent:
                     "device_class": "0300",
                     "device_id": "10de:2684",
                 }
-            ]
+            ],
         },
         "allow_amend": False,
         "environment": {
@@ -570,7 +571,7 @@ def fixture_multiple_same_gpu_instance_message() -> InstanceContent:
                     "device_class": "0300",
                     "device_id": "10de:20b2",
                 },
-            ]
+            ],
         },
         "allow_amend": False,
         "environment": {
@@ -619,7 +620,7 @@ def fixture_mixed_same_tier_gpu_instance_message() -> InstanceContent:
                     "device_class": "0300",
                     "device_id": "10de:26b9",
                 },
-            ]
+            ],
         },
         "allow_amend": False,
         "environment": {
@@ -668,7 +669,7 @@ def fixture_mixed_tier_gpu_instance_message() -> InstanceContent:
                     "device_class": "0300",
                     "device_id": "10de:2684",
                 },
-            ]
+            ],
         },
         "allow_amend": False,
         "environment": {
@@ -711,7 +712,7 @@ def fixture_unknown_gpu_instance_message() -> InstanceContent:
                     "device_class": "0300",
                     "device_id": "ffff:ffff",  # Invalid device ID
                 }
-            ]
+            ],
         },
         "allow_amend": False,
         "environment": {
@@ -748,7 +749,7 @@ def test_compute_cost_single_gpu_standard(
         assert cost == Decimal("1680")
 
         # Should have execution cost entries (GPU + storage)
-        execution_costs = [d for d in details if d.type == "execution"]
+        execution_costs = [d for d in details if d.type == CostType.EXECUTION]
         assert len(execution_costs) == 1
         assert execution_costs[0].name == "instance_gpu_standard"
 
@@ -772,7 +773,7 @@ def test_compute_cost_multiple_same_gpu_premium(
         assert cost == Decimal("17920")
 
         # Should have one execution cost entry for premium tier
-        execution_costs = [d for d in details if d.type == "execution"]
+        execution_costs = [d for d in details if d.type == CostType.EXECUTION]
         assert len(execution_costs) == 1
         assert execution_costs[0].name == "instance_gpu_premium"
 
@@ -796,7 +797,7 @@ def test_compute_cost_multiple_different_gpu_same_tier(
         assert cost == Decimal("5040")
 
         # Should have one execution cost entry for standard tier
-        execution_costs = [d for d in details if d.type == "execution"]
+        execution_costs = [d for d in details if d.type == CostType.EXECUTION]
         assert len(execution_costs) == 1
         assert execution_costs[0].name == "instance_gpu_standard"
 
@@ -821,7 +822,7 @@ def test_compute_cost_mixed_tier_gpu(
         assert cost == Decimal("10640")
 
         # Should have TWO execution cost entries (one per tier)
-        execution_costs = [d for d in details if d.type == "execution"]
+        execution_costs = [d for d in details if d.type == CostType.EXECUTION]
         assert len(execution_costs) == 2
 
         # Verify both tiers are present
