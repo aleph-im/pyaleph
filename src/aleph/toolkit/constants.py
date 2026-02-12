@@ -321,7 +321,7 @@ STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP = 1743775079
 # Cutoff for STORE messages requiring credit-only payment
 # After this timestamp, STORE messages must use credit payment (no holding tier)
 # and the 25MB free file exception no longer applies
-STORE_CREDIT_ONLY_CUTOFF_TIMESTAMP = 1771200000  # 2026-02-16 00:00:00 UTC
+STORE_CREDIT_ONLY_CUTOFF_TIMESTAMP = 1798761600  # 2027-01-01 00:00:00 UTC
 
 # Credit precision change: 1 USD = 1,000,000 credits (previously 100 credits)
 # Messages before this timestamp have amounts in old format (need 10,000x multiplier)
