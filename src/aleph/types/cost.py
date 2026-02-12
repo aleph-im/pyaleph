@@ -3,17 +3,7 @@ from enum import Enum
 from typing import List, Optional, Union
 
 from aleph.db.models import AggregateDb
-
-
-class ProductPriceType(str, Enum):
-    STORAGE = "storage"
-    WEB3_HOSTING = "web3_hosting"
-    PROGRAM = "program"
-    PROGRAM_PERSISTENT = "program_persistent"
-    INSTANCE = "instance"
-    INSTANCE_GPU_PREMIUM = "instance_gpu_premium"
-    INSTANCE_CONFIDENTIAL = "instance_confidential"
-    INSTANCE_GPU_STANDARD = "instance_gpu_standard"
+from aleph.toolkit.constants import ProductPriceType
 
 
 class ProductPriceOptions:

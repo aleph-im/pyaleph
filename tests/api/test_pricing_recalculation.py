@@ -10,8 +10,11 @@ from aleph_message.models import MessageType
 from aleph.db.models import MessageDb
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.db.models.aggregates import AggregateElementDb
-from aleph.toolkit.constants import PRICE_AGGREGATE_KEY, PRICE_AGGREGATE_OWNER
-from aleph.types.cost import ProductPriceType
+from aleph.toolkit.constants import (
+    PRICE_AGGREGATE_KEY,
+    PRICE_AGGREGATE_OWNER,
+    ProductPriceType,
+)
 from aleph.web.controllers.prices import recalculate_message_costs
 
 

@@ -19,7 +19,11 @@ from aleph.db.models.cron_jobs import CronJobDb
 from aleph.db.models.messages import MessageStatusDb
 from aleph.jobs.cron.cron_job import BaseCronJob
 from aleph.services.cost import calculate_storage_size
-from aleph.toolkit.constants import MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE, MiB
+from aleph.toolkit.constants import (
+    MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+    STORE_CREDIT_ONLY_CUTOFF_TIMESTAMP,
+    MiB,
+)
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_status import MessageStatus
@@ -102,8 +106,16 @@ class CreditBalanceCronJob(BaseCronJob):
                     session, message.parsed_content
                 )
 
-                if storage_size_mib and storage_size_mib <= (
-                    MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE / MiB
+                # Small file exception only applies to messages before credit-only cutoff
+                message_timestamp = message.time.timestamp()
+                is_legacy_message = (
+                    message_timestamp < STORE_CREDIT_ONLY_CUTOFF_TIMESTAMP
+                )
+
+                if (
+                    is_legacy_message
+                    and storage_size_mib
+                    and storage_size_mib <= (MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE / MiB)
                 ):
                     continue
 

@@ -11,8 +11,12 @@ from aleph.services.pricing_utils import (
     get_pricing_aggregate_history,
     get_pricing_timeline,
 )
-from aleph.toolkit.constants import PRICE_AGGREGATE_KEY, PRICE_AGGREGATE_OWNER
-from aleph.types.cost import ProductPriceType, ProductPricing
+from aleph.toolkit.constants import (
+    PRICE_AGGREGATE_KEY,
+    PRICE_AGGREGATE_OWNER,
+    ProductPriceType,
+)
+from aleph.types.cost import ProductPricing
 
 
 @pytest.fixture

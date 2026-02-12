@@ -38,12 +38,12 @@ from aleph.toolkit.constants import (
     SETTINGS_AGGREGATE_KEY,
     SETTINGS_AGGREGATE_OWNER,
     MiB,
+    ProductPriceType,
 )
 from aleph.toolkit.costs import format_cost
 from aleph.types.cost import (
     CostType,
     ProductComputeUnit,
-    ProductPriceType,
     ProductPricing,
     RefVolume,
     SizedVolume,
@@ -85,6 +85,11 @@ def _get_settings(session: DbSession) -> Settings:
 
 
 def get_payment_type(content: CostComputableContent) -> PaymentType:
+    """
+    Determine the payment type for a message content.
+
+    Uses the payment field from content if available, otherwise defaults to hold.
+    """
     if hasattr(content, "payment") and content.payment and content.payment.is_credit:
         return PaymentType.credit
     elif hasattr(content, "payment") and content.payment and content.payment.is_stream:
