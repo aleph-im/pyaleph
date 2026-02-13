@@ -14,6 +14,37 @@ from aleph.web.controllers.utils import add_grace_period_for_file
 
 
 async def ipfs_add_file(request: web.Request):
+    """
+    Upload a file to IPFS.
+
+    ---
+    summary: Add file to IPFS
+    tags:
+      - IPFS
+    requestBody:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            required:
+              - file
+            properties:
+              file:
+                type: string
+                format: binary
+    responses:
+      '200':
+        description: Upload result with IPFS CID
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IpfsAddFileResponse'
+      '403':
+        description: IPFS is disabled on this node
+      '422':
+        description: Invalid file field
+    """
     config = get_config_from_request(request)
     grace_period = config.storage.grace_period.value
 

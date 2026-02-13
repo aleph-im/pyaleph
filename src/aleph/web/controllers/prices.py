@@ -119,7 +119,29 @@ async def get_executable_message(session: DbSession, item_hash: ItemHash) -> Mes
 
 
 async def message_price(request: web.Request):
-    """Returns the price of an executable message."""
+    """
+    Returns the price of an executable message.
+
+    ---
+    summary: Get message price
+    tags:
+      - Prices
+    parameters:
+      - name: item_hash
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Estimated costs for the message
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstimatedCostsResponse'
+      '404':
+        description: Message not found
+    """
 
     session_factory = get_session_factory_from_request(request)
     with session_factory() as session:
@@ -154,7 +176,34 @@ class PubMessageRequest(BaseModel):
 
 
 async def message_price_estimate(request: web.Request):
-    """Returns the estimated price of an executable message passed on the body."""
+    """
+    Returns the estimated price of an executable message passed in the body.
+
+    ---
+    summary: Estimate message price
+    tags:
+      - Prices
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - message
+            properties:
+              message:
+                type: object
+    responses:
+      '200':
+        description: Estimated costs
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstimatedCostsResponse'
+      '404':
+        description: Pricing error
+    """
 
     session_factory = get_session_factory_from_request(request)
     storage_service = get_storage_service_from_request(request)
@@ -191,17 +240,20 @@ async def message_price_estimate(request: web.Request):
 
 @require_auth_token
 async def recalculate_message_costs(request: web.Request):
-    """Force recalculation of message costs in chronological order with historical pricing.
+    """
+    Force recalculation of message costs with historical pricing. Requires auth token.
 
-    This endpoint will:
-    1. Get all messages that need cost recalculation (if item_hash provided, just that message)
-    2. Get the pricing timeline to track price changes over time
-    3. Sort messages chronologically (oldest first)
-    4. For each message, use the pricing model that was active when the message was created
-    5. Delete existing cost entries and recalculate with historical pricing
-    6. Store the new cost calculations
-
-    Requires authentication via X-Auth-Token header.
+    ---
+    summary: Recalculate message costs
+    tags:
+      - Prices
+    responses:
+      '200':
+        description: Recalculation result
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecalculateCostsResponse'
     """
 
     session_factory = get_session_factory_from_request(request)

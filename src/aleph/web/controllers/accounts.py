@@ -81,7 +81,28 @@ def format_paginated_address_stats(
 
 
 async def addresses_stats_view_v0(request: web.Request):
-    """Returns the stats of some addresses."""
+    """
+    Returns the stats of some addresses (v0).
+
+    ---
+    summary: Address stats (v0)
+    tags:
+      - Accounts
+    parameters:
+      - name: addresses[]
+        in: query
+        schema:
+          type: array
+          items:
+            type: string
+    responses:
+      '200':
+        description: Address statistics
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddressStatsV0'
+    """
 
     addresses: List[str] = request.query.getall("addresses[]", [])
     session_factory: DbSessionFactory = request.app["session_factory"]
@@ -96,6 +117,54 @@ async def addresses_stats_view_v0(request: web.Request):
 
 
 async def addresses_stats_view_v1(request: web.Request):
+    """
+    Returns paginated address stats (v1).
+
+    ---
+    summary: Address stats (v1)
+    tags:
+      - Accounts
+    parameters:
+      - name: addressContains
+        in: query
+        schema:
+          type: string
+          maxLength: 66
+        description: Case-insensitive substring filter for addresses
+      - name: sortBy
+        in: query
+        schema:
+          type: string
+          enum: [post, aggregate, store, forget, program, instance, total]
+          default: total
+      - name: sortOrder
+        in: query
+        schema:
+          type: integer
+          enum: [-1, 1]
+          default: -1
+      - name: pagination
+        in: query
+        schema:
+          type: integer
+          default: 20
+          minimum: 0
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+    responses:
+      '200':
+        description: Paginated address statistics
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddressStatsV1'
+      '422':
+        description: Validation error
+    """
     session_factory = get_session_factory_from_request(request)
 
     try:
@@ -149,6 +218,34 @@ def _get_chain_from_request(request: web.Request) -> str:
 
 
 async def get_account_balance(request: web.Request):
+    """
+    Get the balance of an address.
+
+    ---
+    summary: Get account balance
+    tags:
+      - Accounts
+    parameters:
+      - name: address
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: chain
+        in: query
+        schema:
+          type: string
+        description: Filter by EVM chain
+    responses:
+      '200':
+        description: Account balance details
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetAccountBalanceResponse'
+      '422':
+        description: Validation error
+    """
     address = _get_address_from_request(request)
 
     try:
@@ -177,6 +274,47 @@ async def get_account_balance(request: web.Request):
 
 
 async def get_chain_balances(request: web.Request) -> web.Response:
+    """
+    Get balances grouped by chain.
+
+    ---
+    summary: Get chain balances
+    tags:
+      - Accounts
+    parameters:
+      - name: chains
+        in: query
+        schema:
+          type: string
+        description: Comma-separated list of chains
+      - name: pagination
+        in: query
+        schema:
+          type: integer
+          default: 100
+          minimum: 0
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+      - name: min_balance
+        in: query
+        schema:
+          type: integer
+          default: 0
+          minimum: 1
+    responses:
+      '200':
+        description: Paginated chain balances
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaginatedBalances'
+      '422':
+        description: Validation error
+    """
     try:
         query_params = GetBalancesChainsQueryParams.model_validate(request.query)
     except ValidationError as e:
@@ -209,6 +347,42 @@ async def get_chain_balances(request: web.Request) -> web.Response:
 
 
 async def get_credit_balances_handler(request: web.Request) -> web.Response:
+    """
+    Get credit balances.
+
+    ---
+    summary: Get credit balances
+    tags:
+      - Accounts
+    parameters:
+      - name: pagination
+        in: query
+        schema:
+          type: integer
+          default: 100
+          minimum: 0
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+      - name: min_balance
+        in: query
+        schema:
+          type: integer
+          default: 0
+          minimum: 1
+    responses:
+      '200':
+        description: Paginated credit balances
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaginatedCreditBalances'
+      '422':
+        description: Validation error
+    """
     try:
         query_params = GetCreditBalancesQueryParams.model_validate(request.query)
     except ValidationError as e:
@@ -243,6 +417,49 @@ async def get_credit_balances_handler(request: web.Request) -> web.Response:
 
 
 async def get_account_files(request: web.Request) -> web.Response:
+    """
+    Get files owned by an address.
+
+    ---
+    summary: Get account files
+    tags:
+      - Accounts
+    parameters:
+      - name: address
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: pagination
+        in: query
+        schema:
+          type: integer
+          default: 100
+          minimum: 0
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+      - name: sort_order
+        in: query
+        schema:
+          type: integer
+          enum: [-1, 1]
+          default: -1
+    responses:
+      '200':
+        description: Account files
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetAccountFilesResponse'
+      '404':
+        description: No files found
+      '422':
+        description: Validation error
+    """
     address = _get_address_from_request(request)
 
     try:
@@ -282,7 +499,71 @@ async def get_account_files(request: web.Request) -> web.Response:
 
 
 async def get_account_credit_history(request: web.Request) -> web.Response:
-    """Returns the credit history of an account, ordered from newest to oldest."""
+    """
+    Returns the credit history of an account, ordered from newest to oldest.
+
+    ---
+    summary: Get account credit history
+    tags:
+      - Accounts
+    parameters:
+      - name: address
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: pagination
+        in: query
+        schema:
+          type: integer
+          default: 0
+          minimum: 0
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+      - name: tx_hash
+        in: query
+        schema:
+          type: string
+      - name: token
+        in: query
+        schema:
+          type: string
+      - name: chain
+        in: query
+        schema:
+          type: string
+      - name: provider
+        in: query
+        schema:
+          type: string
+      - name: origin
+        in: query
+        schema:
+          type: string
+      - name: origin_ref
+        in: query
+        schema:
+          type: string
+      - name: payment_method
+        in: query
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Account credit history
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetAccountCreditHistoryResponse'
+      '404':
+        description: No credit history found
+      '422':
+        description: Validation error
+    """
     address = _get_address_from_request(request)
 
     try:
@@ -358,7 +639,27 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
 async def get_resource_consumed_credits_controller(
     request: web.Request,
 ) -> web.Response:
-    """Returns the total credits consumed by a specific resource (item_hash)."""
+    """
+    Returns the total credits consumed by a specific resource (item_hash).
+
+    ---
+    summary: Get resource consumed credits
+    tags:
+      - Accounts
+    parameters:
+      - name: item_hash
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Consumed credits for the resource
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetResourceConsumedCreditsResponse'
+    """
     item_hash = get_item_hash_str_from_request(request)
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
@@ -377,7 +678,27 @@ async def get_resource_consumed_credits_controller(
 
 
 async def get_account_post_types(request: web.Request) -> web.Response:
-    """Returns a list of all distinct post_types an account has published messages with."""
+    """
+    Returns a list of all distinct post_types an account has published messages with.
+
+    ---
+    summary: Get account post types
+    tags:
+      - Accounts
+    parameters:
+      - name: address
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: List of post types for the address
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetAccountPostTypesResponse'
+    """
     address = _get_address_from_request(request)
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
@@ -396,7 +717,27 @@ async def get_account_post_types(request: web.Request) -> web.Response:
 
 
 async def get_account_channels(request: web.Request) -> web.Response:
-    """Returns a list of all distinct channels an account has published messages to."""
+    """
+    Returns a list of all distinct channels an account has published messages to.
+
+    ---
+    summary: Get account channels
+    tags:
+      - Accounts
+    parameters:
+      - name: address
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: List of channels for the address
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetAccountChannelsResponse'
+    """
     address = _get_address_from_request(request)
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
