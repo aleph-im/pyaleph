@@ -194,37 +194,55 @@ class Nuls2Connector(ChainWriter):
                     nonce = await get_nonce(server, address, chain_id)
                     i = 0
 
-                messages = list(
-                    get_unconfirmed_messages(
-                        session=session, limit=10000, chain=Chain.ETH
+                # Collect all unconfirmed messages using pagination
+                max_unconfirmed = config.aleph.jobs.max_unconfirmed_messages.value
+                all_messages = []
+                offset = 0
+                while True:
+                    batch = list(
+                        get_unconfirmed_messages(
+                            session=session, limit=500, offset=offset, chain=Chain.NULS2
+                        )
                     )
-                )
+                    if not batch:
+                        break
+                    all_messages.extend(batch)
+                    offset += len(batch)
+                    if len(batch) < 500 or len(all_messages) >= max_unconfirmed:
+                        break
+                all_messages = all_messages[:max_unconfirmed]
 
-            if len(messages):
-                # This function prepares a chain data file and makes it downloadable from the node.
-                sync_event_payload = (
-                    await self.chain_data_service.prepare_sync_event_payload(
-                        session=session, messages=messages
+            if all_messages:
+                LOGGER.info("Chain sync: %d unconfirmed messages" % len(all_messages))
+
+                try:
+                    # This function prepares a chain data file and makes it downloadable from the node.
+                    with self.session_factory() as session:
+                        sync_event_payload = (
+                            await self.chain_data_service.prepare_sync_event_payload(
+                                session=session, messages=all_messages
+                            )
+                        )
+                        # Required to apply update to the files table in get_chaindata
+                        session.commit()
+
+                    content = sync_event_payload.json()
+                    tx = await prepare_transfer_tx(
+                        address,
+                        [(target_addr, CHEAP_UNIT_FEE)],
+                        nonce,
+                        chain_id=chain_id,
+                        asset_id=1,
+                        raw_tx_data=content.encode("utf-8"),
+                        remark=remark,
                     )
-                )
-                # Required to apply update to the files table in get_chaindata
-                session.commit()
-
-                content = sync_event_payload.json()
-                tx = await prepare_transfer_tx(
-                    address,
-                    [(target_addr, CHEAP_UNIT_FEE)],
-                    nonce,
-                    chain_id=chain_id,
-                    asset_id=1,
-                    raw_tx_data=content.encode("utf-8"),
-                    remark=remark,
-                )
-                await tx.sign_tx(pri_key)
-                tx_hex = (await tx.serialize(update_data=False)).hex()
-                ret = await broadcast(server, tx_hex, chain_id=chain_id)
-                LOGGER.info("Broadcasted %r on %s" % (ret["hash"], CHAIN_NAME))
-                nonce = ret["hash"][-16:]
+                    await tx.sign_tx(pri_key)
+                    tx_hex = (await tx.serialize(update_data=False)).hex()
+                    ret = await broadcast(server, tx_hex, chain_id=chain_id)
+                    LOGGER.info("Broadcasted %r on %s" % (ret["hash"], CHAIN_NAME))
+                    nonce = ret["hash"][-16:]
+                except Exception:
+                    LOGGER.exception("Error while broadcasting messages to NULS2")
 
             await asyncio.sleep(config.nuls2.commit_delay.value)
             i += 1
