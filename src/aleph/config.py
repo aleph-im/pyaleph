@@ -58,6 +58,8 @@ def get_defaults():
                     # Maximum number of chain/sync events processed at the same time.
                     "max_concurrency": 20,
                 },
+                # Maximum number of unconfirmed messages collected per packing cycle.
+                "max_unconfirmed_messages": 10000,
                 "cron": {
                     # Interval between cron job trackers runs, expressed in hours.
                     "period": 0.5,  # 30 mins
