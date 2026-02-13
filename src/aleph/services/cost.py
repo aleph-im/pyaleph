@@ -160,7 +160,7 @@ def _get_gpu_tier_breakdown(
     """
     tier_compute_units: dict[ProductPriceType, int] = {}
 
-    gpus = content.requirements.gpu or []
+    gpus = (content.requirements.gpu if content.requirements else None) or []
     premium_tiers = premium_pricing.tiers or []
     standard_tiers = standard_pricing.tiers or []
 
