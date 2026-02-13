@@ -4,9 +4,20 @@ from aleph.web.controllers.app_state_getters import get_node_cache_from_request
 
 
 async def public_multiaddress(request):
-    """Broadcast public node addresses
+    """
+    Get the public multiaddresses of this node.
 
-    According to multiaddr spec https://multiformats.io/multiaddr/
+    ---
+    summary: Get public multiaddresses
+    tags:
+      - Info
+    responses:
+      '200':
+        description: Node multiaddresses
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeMultiAddressResponse'
     """
 
     node_cache = get_node_cache_from_request(request)

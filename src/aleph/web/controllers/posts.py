@@ -183,6 +183,85 @@ def get_query_params(request: web.Request) -> PostQueryParams:
 
 
 async def view_posts_list_v0(request: web.Request) -> web.Response:
+    """
+    List posts (v0 legacy format).
+
+    ---
+    summary: List posts (v0)
+    tags:
+      - Posts
+    parameters:
+      - name: addresses
+        in: query
+        schema:
+          type: string
+        description: Comma-separated sender addresses
+      - name: hashes
+        in: query
+        schema:
+          type: string
+        description: Comma-separated item hashes
+      - name: refs
+        in: query
+        schema:
+          type: string
+      - name: types
+        in: query
+        schema:
+          type: string
+        description: Comma-separated post types
+      - name: tags
+        in: query
+        schema:
+          type: string
+      - name: channels
+        in: query
+        schema:
+          type: string
+      - name: startDate
+        in: query
+        schema:
+          type: number
+          default: 0
+      - name: endDate
+        in: query
+        schema:
+          type: number
+          default: 0
+      - name: pagination
+        in: query
+        schema:
+          type: integer
+          default: 20
+          minimum: 0
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+      - name: sortBy
+        in: query
+        schema:
+          type: string
+          enum: [time, tx-time]
+          default: time
+      - name: sortOrder
+        in: query
+        schema:
+          type: integer
+          enum: [-1, 1]
+          default: -1
+    responses:
+      '200':
+        description: Paginated list of posts (v0 format)
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaginatedPosts'
+      '422':
+        description: Validation error
+    """
     query_string = request.query_string
     query_params = get_query_params(request)
 
@@ -224,7 +303,85 @@ async def view_posts_list_v0(request: web.Request) -> web.Response:
 
 
 async def view_posts_list_v1(request) -> web.Response:
-    """Posts list view with filters"""
+    """
+    List posts (v1 format).
+
+    ---
+    summary: List posts (v1)
+    tags:
+      - Posts
+    parameters:
+      - name: addresses
+        in: query
+        schema:
+          type: string
+        description: Comma-separated sender addresses
+      - name: hashes
+        in: query
+        schema:
+          type: string
+        description: Comma-separated item hashes
+      - name: refs
+        in: query
+        schema:
+          type: string
+      - name: types
+        in: query
+        schema:
+          type: string
+        description: Comma-separated post types
+      - name: tags
+        in: query
+        schema:
+          type: string
+      - name: channels
+        in: query
+        schema:
+          type: string
+      - name: startDate
+        in: query
+        schema:
+          type: number
+          default: 0
+      - name: endDate
+        in: query
+        schema:
+          type: number
+          default: 0
+      - name: pagination
+        in: query
+        schema:
+          type: integer
+          default: 20
+          minimum: 0
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+      - name: sortBy
+        in: query
+        schema:
+          type: string
+          enum: [time, tx-time]
+          default: time
+      - name: sortOrder
+        in: query
+        schema:
+          type: integer
+          enum: [-1, 1]
+          default: -1
+    responses:
+      '200':
+        description: Paginated list of posts (v1 format)
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaginatedPosts'
+      '422':
+        description: Validation error
+    """
 
     query_string = request.query_string
 
