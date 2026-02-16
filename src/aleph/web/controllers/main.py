@@ -26,10 +26,11 @@ async def index(request: web.Request) -> Dict:
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
     node_cache = get_node_cache_from_request(request)
-    with session_factory() as session:
-        model = asdict(await get_metrics(session=session, node_cache=node_cache))
-        model["version"] = __version__
-        return model
+    model = asdict(
+        await get_metrics(session_factory=session_factory, node_cache=node_cache)
+    )
+    model["version"] = __version__
+    return model
 
 
 async def status_ws(request: web.Request) -> web.WebSocketResponse:
@@ -41,8 +42,9 @@ async def status_ws(request: web.Request) -> web.WebSocketResponse:
 
     previous_status = None
     while True:
-        with session_factory() as session:
-            status = await get_metrics(session=session, node_cache=node_cache)
+        status = await get_metrics(
+            session_factory=session_factory, node_cache=node_cache
+        )
 
         if status != previous_status:
             try:
@@ -75,12 +77,11 @@ async def metrics(request: web.Request) -> web.Response:
     session_factory = get_session_factory_from_request(request)
     node_cache = get_node_cache_from_request(request)
 
-    with session_factory() as session:
-        return web.Response(
-            text=format_dataclass_for_prometheus(
-                await get_metrics(session=session, node_cache=node_cache)
-            )
+    return web.Response(
+        text=format_dataclass_for_prometheus(
+            await get_metrics(session_factory=session_factory, node_cache=node_cache)
         )
+    )
 
 
 async def metrics_json(request: web.Request) -> web.Response:
@@ -102,11 +103,12 @@ async def metrics_json(request: web.Request) -> web.Response:
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
     node_cache = get_node_cache_from_request(request)
 
-    with session_factory() as session:
-        return web.Response(
-            text=(await get_metrics(session=session, node_cache=node_cache)).to_json(),
-            content_type="application/json",
-        )
+    return web.Response(
+        text=(
+            await get_metrics(session_factory=session_factory, node_cache=node_cache)
+        ).to_json(),
+        content_type="application/json",
+    )
 
 
 class MetricsQueryParams(BaseModel):
