@@ -60,6 +60,8 @@ def make_engine(
         ),
         echo=echo,
         pool_size=config.postgres.pool_size.value,
+        pool_pre_ping=config.postgres.pool_pre_ping.value,
+        pool_recycle=config.postgres.pool_recycle.value,
     )
 
 
