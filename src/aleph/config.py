@@ -185,6 +185,10 @@ def get_defaults():
             "password": "decentralize-everything",
             # Maximum number of concurrent connections to the local PostgreSQL database.
             "pool_size": 50,
+            # Check if DB connections are still alive before reusing them.
+            "pool_pre_ping": True,
+            # Recycle DB connections after this many seconds of inactivity.
+            "pool_recycle": 3600,
         },
         "ipfs": {
             # Whether to enable storage and communication on IPFS.
