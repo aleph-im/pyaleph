@@ -20,12 +20,6 @@ class BaseMessageQueryParams(BaseModel):
         "'time' uses the message time field. "
         "'tx-time' uses the first on-chain confirmation time.",
     )
-    sort_order: SortOrder = Field(
-        default=SortOrder.DESCENDING,
-        alias="sortOrder",
-        description="Order in which messages should be listed: "
-        "-1 means most recent messages first, 1 means older messages first.",
-    )
     message_type: Optional[MessageType] = Field(
         default=None,
         alias="msgType",
@@ -156,6 +150,12 @@ class MessageQueryParams(BaseMessageQueryParams):
     )
     page: int = Field(
         default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
+    )
+    sort_order: SortOrder = Field(
+        default=SortOrder.DESCENDING,
+        alias="sortOrder",
+        description="Order in which messages should be listed: "
+        "-1 means most recent messages first, 1 means older messages first.",
     )
 
 
