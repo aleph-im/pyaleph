@@ -268,8 +268,8 @@ async def _send_history_to_ws(
                 **query_params.model_dump(exclude_none=True),
             )
         )
-        for message in reversed(messages):
-            await ws.send_str(format_message(message).model_dump_json())
+    for message in reversed(messages):
+        await ws.send_str(format_message(message).model_dump_json())
 
 
 def message_matches_filters(
