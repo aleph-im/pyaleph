@@ -104,7 +104,121 @@ def format_response(
 
 
 async def view_messages_list(request: web.Request) -> web.Response:
-    """Messages list view with filters"""
+    """
+    List messages with filters.
+
+    ---
+    summary: List messages
+    tags:
+      - Messages
+    parameters:
+      - name: sortBy
+        in: query
+        schema:
+          type: string
+          enum: [time, tx-time]
+          default: time
+      - name: sortOrder
+        in: query
+        schema:
+          type: integer
+          enum: [-1, 1]
+          default: -1
+      - name: msgType
+        in: query
+        schema:
+          type: string
+          enum: [POST, AGGREGATE, STORE, PROGRAM, INSTANCE, FORGET]
+      - name: msgTypes
+        in: query
+        schema:
+          type: string
+      - name: msgStatuses
+        in: query
+        schema:
+          type: string
+      - name: addresses
+        in: query
+        schema:
+          type: string
+      - name: owners
+        in: query
+        schema:
+          type: string
+      - name: refs
+        in: query
+        schema:
+          type: string
+      - name: contentHashes
+        in: query
+        schema:
+          type: string
+      - name: contentKeys
+        in: query
+        schema:
+          type: string
+      - name: contentTypes
+        in: query
+        schema:
+          type: string
+      - name: chains
+        in: query
+        schema:
+          type: string
+      - name: channels
+        in: query
+        schema:
+          type: string
+      - name: tags
+        in: query
+        schema:
+          type: string
+      - name: hashes
+        in: query
+        schema:
+          type: string
+      - name: startDate
+        in: query
+        schema:
+          type: number
+          default: 0
+      - name: endDate
+        in: query
+        schema:
+          type: number
+          default: 0
+      - name: startBlock
+        in: query
+        schema:
+          type: integer
+          default: 0
+      - name: endBlock
+        in: query
+        schema:
+          type: integer
+          default: 0
+      - name: pagination
+        in: query
+        schema:
+          type: integer
+          default: 20
+          minimum: 0
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+    responses:
+      '200':
+        description: Paginated list of messages
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaginatedMessages'
+      '422':
+        description: Validation error
+    """
 
     try:
         query_params = MessageQueryParams.model_validate(request.query)
@@ -418,6 +532,29 @@ def _get_message_with_status(
 
 
 async def view_message(request: web.Request):
+    """
+    Get a single message by item hash.
+
+    ---
+    summary: Get message
+    tags:
+      - Messages
+    parameters:
+      - name: item_hash
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Message with status
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageWithStatus'
+      '404':
+        description: Message not found
+    """
     item_hash = get_item_hash_from_request(request)
 
     session_factory: DbSessionFactory = request.app["session_factory"]
@@ -433,6 +570,31 @@ async def view_message(request: web.Request):
 
 
 async def view_message_content(request: web.Request):
+    """
+    Get the content of a POST message by item hash.
+
+    ---
+    summary: Get message content
+    tags:
+      - Messages
+    parameters:
+      - name: item_hash
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Message content (JSON)
+        content:
+          application/json:
+            schema:
+              type: object
+      '404':
+        description: Message not found
+      '422':
+        description: Invalid message type or status
+    """
     item_hash = get_item_hash_from_request(request)
 
     session_factory: DbSessionFactory = request.app["session_factory"]
@@ -465,6 +627,29 @@ async def view_message_content(request: web.Request):
 
 
 async def view_message_status(request: web.Request):
+    """
+    Get the processing status of a message.
+
+    ---
+    summary: Get message status
+    tags:
+      - Messages
+    parameters:
+      - name: item_hash
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Message status info
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageStatusInfo'
+      '404':
+        description: Message not found
+    """
     item_hash = get_item_hash_from_request(request)
 
     session_factory: DbSessionFactory = request.app["session_factory"]
@@ -478,6 +663,61 @@ async def view_message_status(request: web.Request):
 
 
 async def view_message_hashes(request: web.Request):
+    """
+    List message hashes with filters.
+
+    ---
+    summary: List message hashes
+    tags:
+      - Messages
+    parameters:
+      - name: status
+        in: query
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+      - name: pagination
+        in: query
+        schema:
+          type: integer
+          default: 20
+          minimum: 0
+      - name: startDate
+        in: query
+        schema:
+          type: number
+          default: 0
+      - name: endDate
+        in: query
+        schema:
+          type: number
+          default: 0
+      - name: sortOrder
+        in: query
+        schema:
+          type: integer
+          enum: [-1, 1]
+          default: -1
+      - name: hash_only
+        in: query
+        schema:
+          type: boolean
+          default: true
+    responses:
+      '200':
+        description: Paginated list of message hashes
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageHashes'
+      '422':
+        description: Validation error
+    """
     try:
         query_params = MessageHashesQueryParams.model_validate(request.query)
     except ValidationError as e:

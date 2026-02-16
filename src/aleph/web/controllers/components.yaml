@@ -1,0 +1,401 @@
+---
+components:
+  schemas:
+    PaginatedMessages:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            type: object
+        pagination_per_page:
+          type: integer
+        pagination_page:
+          type: integer
+        pagination_total:
+          type: integer
+        pagination_item:
+          type: string
+
+    PaginatedPosts:
+      type: object
+      properties:
+        posts:
+          type: array
+          items:
+            type: object
+        pagination_per_page:
+          type: integer
+        pagination_page:
+          type: integer
+        pagination_total:
+          type: integer
+        pagination_item:
+          type: string
+
+    PaginatedAggregates:
+      type: object
+      properties:
+        aggregates:
+          type: array
+          items:
+            type: object
+        pagination_per_page:
+          type: integer
+        pagination_page:
+          type: integer
+        pagination_total:
+          type: integer
+        pagination_item:
+          type: string
+
+    AddressAggregate:
+      type: object
+      properties:
+        address:
+          type: string
+        data:
+          type: object
+        info:
+          type: object
+
+    MessageWithStatus:
+      type: object
+      properties:
+        status:
+          type: string
+        item_hash:
+          type: string
+        reception_time:
+          type: string
+          format: date-time
+
+    MessageStatusInfo:
+      type: object
+      properties:
+        status:
+          type: string
+        item_hash:
+          type: string
+        reception_time:
+          type: string
+          format: date-time
+
+    MessageHashes:
+      type: object
+      properties:
+        hashes:
+          type: array
+          items:
+            type: string
+        pagination_per_page:
+          type: integer
+        pagination_page:
+          type: integer
+        pagination_total:
+          type: integer
+        pagination_item:
+          type: string
+
+    PublicationStatus:
+      type: object
+      properties:
+        status:
+          type: string
+        failed:
+          type: array
+          items:
+            type: string
+
+    BroadcastStatus:
+      type: object
+      properties:
+        status:
+          type: string
+
+    FileUploadResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        hash:
+          type: string
+
+    StorageHashResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        hash:
+          type: string
+        engine:
+          type: string
+        content:
+          type: string
+
+    FileMetadataResponse:
+      type: object
+      properties:
+        ref:
+          type: string
+        owner:
+          type: string
+        file_hash:
+          type: string
+        download_url:
+          type: string
+        size:
+          type: integer
+
+    EstimatedCostsResponse:
+      type: object
+      properties:
+        required_tokens:
+          type: number
+        payment_type:
+          type: string
+        cost:
+          type: string
+        detail:
+          type: object
+        charged_address:
+          type: string
+
+    GetAccountBalanceResponse:
+      type: object
+      properties:
+        address:
+          type: string
+        balance:
+          type: number
+        details:
+          type: object
+          nullable: true
+        locked_amount:
+          type: number
+        credit_balance:
+          type: integer
+
+    GetAccountFilesResponse:
+      type: object
+      properties:
+        address:
+          type: string
+        total_size:
+          type: integer
+        files:
+          type: array
+          items:
+            type: object
+            properties:
+              file_hash:
+                type: string
+              size:
+                type: integer
+              type:
+                type: string
+              created:
+                type: string
+                format: date-time
+              item_hash:
+                type: string
+        pagination_page:
+          type: integer
+        pagination_total:
+          type: integer
+        pagination_per_page:
+          type: integer
+
+    GetAccountCreditHistoryResponse:
+      type: object
+      properties:
+        address:
+          type: string
+        credit_history:
+          type: array
+          items:
+            type: object
+        pagination_page:
+          type: integer
+        pagination_total:
+          type: integer
+        pagination_per_page:
+          type: integer
+
+    GetResourceConsumedCreditsResponse:
+      type: object
+      properties:
+        item_hash:
+          type: string
+        consumed_credits:
+          type: integer
+
+    GetAccountPostTypesResponse:
+      type: object
+      properties:
+        address:
+          type: string
+        post_types:
+          type: array
+          items:
+            type: string
+
+    GetAccountChannelsResponse:
+      type: object
+      properties:
+        address:
+          type: string
+        channels:
+          type: array
+          items:
+            type: string
+
+    AddressStatsV0:
+      type: object
+      properties:
+        data:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              messages:
+                type: integer
+              aggregate:
+                type: integer
+              forget:
+                type: integer
+              instance:
+                type: integer
+              post:
+                type: integer
+              program:
+                type: integer
+              store:
+                type: integer
+
+    AddressStatsV1:
+      type: object
+      properties:
+        data:
+          type: object
+        pagination_per_page:
+          type: integer
+        pagination_page:
+          type: integer
+        pagination_total:
+          type: integer
+        pagination_item:
+          type: string
+
+    PaginatedBalances:
+      type: object
+      properties:
+        balances:
+          type: array
+          items:
+            type: object
+            properties:
+              address:
+                type: string
+              balance:
+                type: number
+              chain:
+                type: string
+        pagination_per_page:
+          type: integer
+        pagination_page:
+          type: integer
+        pagination_total:
+          type: integer
+        pagination_item:
+          type: string
+
+    PaginatedCreditBalances:
+      type: object
+      properties:
+        credit_balances:
+          type: array
+          items:
+            type: object
+            properties:
+              address:
+                type: string
+              credits:
+                type: integer
+        pagination_per_page:
+          type: integer
+        pagination_page:
+          type: integer
+        pagination_total:
+          type: integer
+        pagination_item:
+          type: string
+
+    VersionResponse:
+      type: object
+      properties:
+        version:
+          type: string
+
+    ChannelsResponse:
+      type: object
+      properties:
+        channels:
+          type: array
+          items:
+            type: string
+
+    NodeMultiAddressResponse:
+      type: object
+      properties:
+        node_multi_addresses:
+          type: array
+          items:
+            type: string
+
+    MetricsResponse:
+      type: object
+
+    NodeMetricsResponse:
+      type: object
+      properties:
+        metrics:
+          type: object
+
+    RecalculateCostsResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        recalculated_count:
+          type: integer
+        total_messages:
+          type: integer
+        pricing_changes_found:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: object
+
+    IpfsAddFileResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        hash:
+          type: string
+        name:
+          type: string
+        size:
+          type: integer
+
+    ProgramsOnMessageResponse:
+      type: array
+      items:
+        type: object
+        properties:
+          item_hash:
+            type: string
+          content:
+            type: object

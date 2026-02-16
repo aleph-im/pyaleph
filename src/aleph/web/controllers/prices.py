@@ -7,14 +7,33 @@ from aiohttp import web
 from aiohttp.web_exceptions import HTTPException
 from aleph_message.models import ExecutableContent, ItemHash, MessageType
 from dataclasses_json import DataClassJsonMixin
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 
 import aleph.toolkit.json as aleph_json
-from aleph.db.accessors.cost import delete_costs_for_message, make_costs_upsert_query
+from aleph.db.accessors.balances import (
+    get_consumed_credits_by_resource,
+    get_total_consumed_credits,
+)
+from aleph.db.accessors.cost import (
+    count_resources_with_costs,
+    delete_costs_for_message,
+    get_costs_summary,
+    get_message_costs,
+    get_resources_with_costs,
+    make_costs_upsert_query,
+)
 from aleph.db.accessors.messages import get_message_by_item_hash, get_message_status
 from aleph.db.models import MessageDb
-from aleph.schemas.api.costs import EstimatedCostsResponse
+from aleph.schemas.api.costs import (
+    CostComponentDetail,
+    CostsFiltersResponse,
+    CostsSummaryResponse,
+    EstimatedCostsResponse,
+    GetCostsQueryParams,
+    GetCostsResponse,
+    ResourceCostItem,
+)
 from aleph.schemas.cost_estimation_messages import (
     validate_cost_estimation_message_content,
     validate_cost_estimation_message_dict,
@@ -100,7 +119,29 @@ async def get_executable_message(session: DbSession, item_hash: ItemHash) -> Mes
 
 
 async def message_price(request: web.Request):
-    """Returns the price of an executable message."""
+    """
+    Returns the price of an executable message.
+
+    ---
+    summary: Get message price
+    tags:
+      - Prices
+    parameters:
+      - name: item_hash
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Estimated costs for the message
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstimatedCostsResponse'
+      '404':
+        description: Message not found
+    """
 
     session_factory = get_session_factory_from_request(request)
     with session_factory() as session:
@@ -135,7 +176,34 @@ class PubMessageRequest(BaseModel):
 
 
 async def message_price_estimate(request: web.Request):
-    """Returns the estimated price of an executable message passed on the body."""
+    """
+    Returns the estimated price of an executable message passed in the body.
+
+    ---
+    summary: Estimate message price
+    tags:
+      - Prices
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - message
+            properties:
+              message:
+                type: object
+    responses:
+      '200':
+        description: Estimated costs
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstimatedCostsResponse'
+      '404':
+        description: Pricing error
+    """
 
     session_factory = get_session_factory_from_request(request)
     storage_service = get_storage_service_from_request(request)
@@ -172,17 +240,20 @@ async def message_price_estimate(request: web.Request):
 
 @require_auth_token
 async def recalculate_message_costs(request: web.Request):
-    """Force recalculation of message costs in chronological order with historical pricing.
+    """
+    Force recalculation of message costs with historical pricing. Requires auth token.
 
-    This endpoint will:
-    1. Get all messages that need cost recalculation (if item_hash provided, just that message)
-    2. Get the pricing timeline to track price changes over time
-    3. Sort messages chronologically (oldest first)
-    4. For each message, use the pricing model that was active when the message was created
-    5. Delete existing cost entries and recalculate with historical pricing
-    6. Store the new cost calculations
-
-    Requires authentication via X-Auth-Token header.
+    ---
+    summary: Recalculate message costs
+    tags:
+      - Prices
+    responses:
+      '200':
+        description: Recalculation result
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecalculateCostsResponse'
     """
 
     session_factory = get_session_factory_from_request(request)
@@ -307,3 +378,134 @@ async def recalculate_message_costs(request: web.Request):
             response_data["errors"] = errors
 
         return web.json_response(response_data)
+
+
+async def get_costs(request: web.Request) -> web.Response:
+    """
+    Get aggregated costs with optional filtering.
+
+    Returns a summary of costs (total_cost_hold, total_cost_stream, total_cost_credit,
+    total_consumed_credits, resource_count) with optional filtering by address, item_hash,
+    and payment_type.
+
+    Query parameters:
+    - address: Filter by owner address
+    - item_hash: Filter by specific resource
+    - payment_type: Filter by payment type (hold, superfluid, credit)
+    - include_details: Detail level (0=summary only, 1=resource list, 2=resource list with breakdown)
+    - pagination: Items per page for resource list
+    - page: Page number (1-indexed)
+    """
+    try:
+        query_params = GetCostsQueryParams.model_validate(request.query)
+    except ValidationError as e:
+        raise web.HTTPUnprocessableEntity(text=e.json())
+
+    session_factory = get_session_factory_from_request(request)
+
+    with session_factory() as session:
+        # Get cost summary
+        cost_summary = get_costs_summary(
+            session=session,
+            address=query_params.address,
+            item_hash=query_params.item_hash,
+            payment_type=query_params.payment_type,
+        )
+
+        # Get total consumed credits
+        total_consumed_credits = get_total_consumed_credits(
+            session=session,
+            address=query_params.address,
+            item_hash=query_params.item_hash,
+        )
+
+        summary = CostsSummaryResponse(
+            total_consumed_credits=total_consumed_credits,
+            total_cost_hold=cost_summary["total_cost_hold"],
+            total_cost_stream=cost_summary["total_cost_stream"],
+            total_cost_credit=cost_summary["total_cost_credit"],
+            resource_count=cost_summary["resource_count"],
+        )
+
+        filters = CostsFiltersResponse(
+            address=query_params.address,
+            item_hash=query_params.item_hash,
+            payment_type=(
+                query_params.payment_type.value if query_params.payment_type else None
+            ),
+        )
+
+        response_data: dict = {
+            "summary": summary,
+            "filters": filters,
+        }
+
+        # Include resource list if requested (include_details >= 1)
+        if query_params.include_details >= 1:
+            resources_data = get_resources_with_costs(
+                session=session,
+                address=query_params.address,
+                item_hash=query_params.item_hash,
+                payment_type=query_params.payment_type,
+                page=query_params.page,
+                pagination=query_params.pagination,
+            )
+
+            # Get consumed credits only for the item_hashes in the current page
+            item_hashes = [row.item_hash for row in resources_data]
+            consumed_credits_map = get_consumed_credits_by_resource(
+                session=session,
+                item_hashes=item_hashes,
+            )
+
+            resources = []
+            for row in resources_data:
+                resource_item = {
+                    "item_hash": row.item_hash,
+                    "owner": row.owner,
+                    "payment_type": (
+                        row.payment_type.value
+                        if hasattr(row.payment_type, "value")
+                        else str(row.payment_type)
+                    ),
+                    "consumed_credits": consumed_credits_map.get(row.item_hash, 0),
+                    "cost_hold": row.cost_hold,
+                    "cost_stream": row.cost_stream,
+                    "cost_credit": row.cost_credit,
+                }
+
+                # Include detailed breakdown if requested (include_details == 2)
+                if query_params.include_details >= 2:
+                    cost_details = get_message_costs(session, row.item_hash)
+                    resource_item["detail"] = [
+                        CostComponentDetail(
+                            type=(
+                                cost.type.value
+                                if hasattr(cost.type, "value")
+                                else str(cost.type)
+                            ),
+                            name=cost.name,
+                            cost_hold=str(cost.cost_hold),
+                            cost_stream=str(cost.cost_stream),
+                            cost_credit=str(cost.cost_credit),
+                        )
+                        for cost in cost_details
+                    ]
+
+                resources.append(ResourceCostItem.model_validate(resource_item))
+
+            total_resources = count_resources_with_costs(
+                session=session,
+                address=query_params.address,
+                item_hash=query_params.item_hash,
+                payment_type=query_params.payment_type,
+            )
+
+            response_data["resources"] = resources
+            response_data["pagination_page"] = query_params.page
+            response_data["pagination_total"] = total_resources
+            response_data["pagination_per_page"] = query_params.pagination
+            response_data["pagination_item"] = "resources"
+
+        response = GetCostsResponse.model_validate(response_data)
+        return web.json_response(text=response.model_dump_json())

@@ -20,9 +20,20 @@ async def get_channels(session: DbSession) -> List[Channel]:
 
 
 async def used_channels(request: web.Request) -> web.Response:
-    """All used channels list
+    """
+    List all used channels.
 
-    TODO: do we need pagination?
+    ---
+    summary: List channels
+    tags:
+      - Channels
+    responses:
+      '200':
+        description: List of channels
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChannelsResponse'
     """
 
     session_factory = get_session_factory_from_request(request)

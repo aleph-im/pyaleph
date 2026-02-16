@@ -353,7 +353,7 @@ def refresh_address_stats_mat_view(session: DbSession) -> None:
 # TODO: declare a type that will match the result (something like UnconfirmedMessageDb)
 #       and translate the time field to epoch.
 def get_unconfirmed_messages(
-    session: DbSession, limit: int = 100, chain: Optional[Chain] = None
+    session: DbSession, limit: int = 100, offset: int = 0, chain: Optional[Chain] = None
 ) -> Iterable[MessageDb]:
 
     if chain is None:
@@ -379,7 +379,7 @@ def get_unconfirmed_messages(
         .order_by(MessageStatusDb.reception_time.asc())
     )
 
-    return (session.execute(select_stmt.limit(limit))).scalars()
+    return (session.execute(select_stmt.limit(limit).offset(offset))).scalars()
 
 
 def make_message_upsert_query(message: MessageDb) -> Insert:

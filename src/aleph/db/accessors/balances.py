@@ -755,6 +755,37 @@ def count_address_credit_history(
     return session.execute(query).scalar_one()
 
 
+def get_total_consumed_credits(
+    session: DbSession,
+    address: Optional[str] = None,
+    item_hash: Optional[str] = None,
+) -> int:
+    """
+    Calculate total credits consumed, optionally filtered by address or item_hash.
+
+    Aggregates all credit_history entries where payment_method = 'credit_expense'.
+
+    Args:
+        session: Database session
+        address: Optional filter by address
+        item_hash: Optional filter by resource (origin)
+
+    Returns:
+        Total credits consumed
+    """
+    query = select(func.sum(func.abs(AlephCreditHistoryDb.amount))).where(
+        AlephCreditHistoryDb.payment_method == "credit_expense"
+    )
+
+    if address:
+        query = query.where(AlephCreditHistoryDb.address == address)
+    if item_hash:
+        query = query.where(AlephCreditHistoryDb.origin == item_hash)
+
+    result = session.execute(query).scalar()
+    return result or 0
+
+
 def get_resource_consumed_credits(
     session: DbSession,
     item_hash: str,
@@ -762,9 +793,8 @@ def get_resource_consumed_credits(
     """
     Calculate the total credits consumed by a specific resource.
 
-    Aggregates all credit_history entries where:
-    - payment_method = 'credit_expense'
-    - origin = item_hash (the resource identifier)
+    This is a convenience wrapper around get_total_consumed_credits
+    for filtering by a single item_hash.
 
     Args:
         session: Database session
@@ -773,10 +803,37 @@ def get_resource_consumed_credits(
     Returns:
         Total credits consumed by the resource
     """
-    query = select(func.sum(func.abs(AlephCreditHistoryDb.amount))).where(
-        (AlephCreditHistoryDb.payment_method == "credit_expense")
-        & (AlephCreditHistoryDb.origin == item_hash)
+    return get_total_consumed_credits(session=session, item_hash=item_hash)
+
+
+def get_consumed_credits_by_resource(
+    session: DbSession,
+    item_hashes: Optional[list[str]] = None,
+) -> dict[str, int]:
+    """
+    Get consumed credits grouped by resource (origin).
+
+    Args:
+        session: Database session
+        item_hashes: List of item hashes to filter by (required for efficiency)
+
+    Returns:
+        Dictionary mapping item_hash to consumed_credits
+    """
+    if not item_hashes:
+        return {}
+
+    query = (
+        select(
+            AlephCreditHistoryDb.origin,
+            func.sum(func.abs(AlephCreditHistoryDb.amount)).label("consumed_credits"),
+        )
+        .where(
+            (AlephCreditHistoryDb.payment_method == "credit_expense")
+            & (AlephCreditHistoryDb.origin.in_(item_hashes))
+        )
+        .group_by(AlephCreditHistoryDb.origin)
     )
 
-    result = session.execute(query).scalar()
-    return result or 0
+    results = session.execute(query).all()
+    return {row.origin: row.consumed_credits for row in results}
