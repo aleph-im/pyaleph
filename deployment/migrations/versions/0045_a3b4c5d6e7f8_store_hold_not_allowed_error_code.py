@@ -1,7 +1,7 @@
 """Add STORE_HOLD_NOT_ALLOWED error code
 
 Revision ID: a3b4c5d6e7f8
-Revises: a1b2c3d4e5f7
+Revises: b2c3d4e5f6a7
 Create Date: 2026-02-09
 
 Adds error code 202 for STORE messages that attempt to use hold payment
@@ -13,7 +13,7 @@ from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
 revision = "a3b4c5d6e7f8"
-down_revision = "a1b2c3d4e5f7"
+down_revision = "b2c3d4e5f6a7"
 branch_labels = None
 depends_on = None
 
