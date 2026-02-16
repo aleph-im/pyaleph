@@ -243,14 +243,15 @@ async def view_messages_list(request: web.Request) -> web.Response:
             include_confirmations=True, **find_filters
         )
         messages = (session.execute(messages_query)).scalars()
-        total_msgs = await node_cache.count_messages(session, query_params)
 
-        return format_response(
-            messages,
-            pagination=pagination_per_page,
-            page=pagination_page,
-            total_messages=total_msgs,
-        )
+    total_msgs = await node_cache.count_messages(session_factory, query_params)
+
+    return format_response(
+        messages,
+        pagination=pagination_per_page,
+        page=pagination_page,
+        total_messages=total_msgs,
+    )
 
 
 async def _send_history_to_ws(
