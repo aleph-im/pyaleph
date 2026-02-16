@@ -33,17 +33,18 @@ from aleph.toolkit.constants import (
     DEFAULT_PRICE_AGGREGATE,
     DEFAULT_SETTINGS_AGGREGATE,
     HOUR,
+    MIN_STORE_COST_MIB,
     PRICE_AGGREGATE_KEY,
     PRICE_AGGREGATE_OWNER,
     SETTINGS_AGGREGATE_KEY,
     SETTINGS_AGGREGATE_OWNER,
     MiB,
+    ProductPriceType,
 )
 from aleph.toolkit.costs import format_cost
 from aleph.types.cost import (
     CostType,
     ProductComputeUnit,
-    ProductPriceType,
     ProductPricing,
     RefVolume,
     SizedVolume,
@@ -85,6 +86,11 @@ def _get_settings(session: DbSession) -> Settings:
 
 
 def get_payment_type(content: CostComputableContent) -> PaymentType:
+    """
+    Determine the payment type for a message content.
+
+    Uses the payment field from content if available, otherwise defaults to hold.
+    """
     if hasattr(content, "payment") and content.payment and content.payment.is_credit:
         return PaymentType.credit
     elif hasattr(content, "payment") and content.payment and content.payment.is_stream:
@@ -563,6 +569,10 @@ def _calculate_storage_costs(
 
     if not storage_mib:
         return []
+
+    # Apply minimum of 25 MiB for pure STORE messages when using credit payment
+    if payment_type == PaymentType.credit and storage_mib < MIN_STORE_COST_MIB:
+        storage_mib = Decimal(MIN_STORE_COST_MIB)
 
     volume = SizedVolume(CostType.STORAGE, storage_mib, item_hash)
 

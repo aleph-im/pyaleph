@@ -14,8 +14,9 @@ from aleph.toolkit.constants import (
     DEFAULT_PRICE_AGGREGATE,
     PRICE_AGGREGATE_KEY,
     PRICE_AGGREGATE_OWNER,
+    ProductPriceType,
 )
-from aleph.types.cost import ProductPriceType, ProductPricing
+from aleph.types.cost import ProductPricing
 from aleph.types.db_session import DbSession
 
 

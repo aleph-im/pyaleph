@@ -13,7 +13,7 @@ from decimal import Decimal
 from typing import List, Set
 
 import aioipfs
-from aleph_message.models import ItemHash, ItemType, StoreContent
+from aleph_message.models import ItemHash, ItemType, PaymentType, StoreContent
 
 from aleph.config import get_config
 from aleph.db.accessors.files import (
@@ -41,7 +41,10 @@ from aleph.services.cost_validation import validate_balance_for_payment
 from aleph.services.ipfs import IpfsService
 from aleph.storage import StorageService
 from aleph.toolkit.constants import MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE, MiB
-from aleph.toolkit.costs import are_store_and_program_free
+from aleph.toolkit.costs import (
+    are_store_and_program_free,
+    is_store_credit_only_required,
+)
 from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileType
@@ -50,6 +53,7 @@ from aleph.types.message_status import (
     InvalidMessageFormat,
     PermissionDenied,
     StoreCannotUpdateStoreWithRef,
+    StoreHoldNotAllowed,
     StoreRefNotFound,
 )
 from aleph.utils import item_type_from_hash, make_file_tag
@@ -222,6 +226,12 @@ class StoreMessageHandler(ContentHandler):
         if are_store_and_program_free(message):
             return None
 
+        payment_type = get_payment_type(content)
+
+        # After the cutoff, STORE messages must use credit payment (no holding tier)
+        if is_store_credit_only_required(message) and payment_type == PaymentType.hold:
+            raise StoreHoldNotAllowed()
+
         # This check is essential to ensure that files are not added to the system
         # on the current node when the configuration disables storing of files.
         config = get_config()
@@ -236,13 +246,10 @@ class StoreMessageHandler(ContentHandler):
             if ipfs_byte_size:
                 storage_mib = Decimal(ipfs_byte_size / MiB)
 
-                # Allow users to pin small files
-                if storage_mib and storage_mib <= (
+                # Allow users to pin small files (only for hold payment type, before cutoff)
+                if payment_type == PaymentType.hold and storage_mib <= (
                     MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE / MiB
                 ):
-                    LOGGER.debug(
-                        f"Cost for {message.item_hash} supposed to be free as size is {storage_mib}"
-                    )
                     return None
 
                 computable_content_data = {
@@ -261,8 +268,6 @@ class StoreMessageHandler(ContentHandler):
         else:
             message_cost = Decimal(0)
 
-        # Use reusable validation for all payment types including credit
-        payment_type = get_payment_type(content)
         validate_balance_for_payment(
             session=session,
             address=content.address,
@@ -284,16 +289,22 @@ class StoreMessageHandler(ContentHandler):
         if are_store_and_program_free(message):
             return costs
 
+        payment_type = get_payment_type(content)
+
+        # After the cutoff, STORE messages must use credit payment (no holding tier)
+        if is_store_credit_only_required(message) and payment_type == PaymentType.hold:
+            raise StoreHoldNotAllowed()
+
         storage_size_mib = calculate_storage_size(session, content)
 
-        if storage_size_mib and storage_size_mib <= (
-            MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE / MiB
+        # Allow users to pin small files (only for hold payment type, before cutoff)
+        if (
+            payment_type == PaymentType.hold
+            and storage_size_mib
+            and storage_size_mib <= (MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE / MiB)
         ):
             return costs
 
-        payment_type = get_payment_type(content)
-
-        # Use reusable validation for all payment types
         validate_balance_for_payment(
             session=session,
             address=content.address,
