@@ -75,6 +75,7 @@ def register_routes(app: web.Application, swagger: SwaggerDocs):
             web.post("/api/v0/ipfs/pubsub/pub", p2p.pub_json),
             web.get("/api/v0/posts.json", posts.view_posts_list_v0),
             web.get("/api/v1/posts.json", posts.view_posts_list_v1),
+            web.get("/api/v0/costs", prices.get_costs),
             web.get("/api/v0/price/{item_hash}", prices.message_price),
             web.post("/api/v0/price/estimate", prices.message_price_estimate),
             web.post(
