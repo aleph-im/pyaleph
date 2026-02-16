@@ -22,6 +22,7 @@ from aleph.db.accessors.files import (
     get_file,
     get_file_tag,
     get_message_file_pin,
+    upsert_file,
 )
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.schemas.cost_estimation_messages import CostEstimationStoreContent
@@ -37,8 +38,8 @@ from aleph.toolkit.constants import (
     MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     MiB,
 )
-from aleph.types.db_session import DbSession
-from aleph.types.files import FileTag
+from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.files import FileTag, FileType
 from aleph.types.message_status import InvalidSignature
 from aleph.utils import item_type_from_hash, run_in_executor
 from aleph.web.controllers.app_state_getters import (
@@ -153,7 +154,7 @@ async def _verify_message_signature(
         raise web.HTTPForbidden()
 
 
-async def _verify_user_balance(
+def _verify_user_balance(
     session: DbSession, content: CostEstimationStoreContent
 ) -> None:
     if content.estimated_size_mib and content.estimated_size_mib > (
@@ -264,7 +265,7 @@ class RawUploadedFile(UploadedFile):
 
 
 async def _check_and_add_file(
-    session: DbSession,
+    session_factory: DbSessionFactory,
     signature_verifier: SignatureVerifier,
     storage_service: StorageService,
     message: Optional[PendingStoreMessage],
@@ -295,7 +296,8 @@ async def _check_and_add_file(
                 reason=f"Invalid store message content: {e.json()}"
             )
 
-        await _verify_user_balance(session=session, content=message_content)
+        with session_factory() as session:
+            _verify_user_balance(session=session, content=message_content)
     else:
         message_content = None
 
@@ -312,15 +314,25 @@ async def _check_and_add_file(
         )
 
     await storage_service.add_file_content_to_local_storage(
-        session=session, file_content=file_bytes, file_hash=file_hash
+        file_content=file_bytes, file_hash=file_hash
     )
     await uploaded_file.cleanup()
-
-    # For files uploaded without authenticated upload, add a grace period of 1 day.
-    if message_content is None:
-        add_grace_period_for_file(
-            session=session, file_hash=file_hash, hours=grace_period
+    with session_factory() as session:
+        upsert_file(
+            session=session,
+            file_hash=file_hash,
+            size=len(file_content),
+            file_type=FileType.FILE,
         )
+
+        # For files uploaded without authenticated upload, add a grace period of 1 day.
+        if message_content is None:
+            add_grace_period_for_file(
+                session=session, file_hash=file_hash, hours=grace_period
+            )
+
+        session.commit()
+
     return file_hash
 
 
@@ -441,16 +453,14 @@ async def storage_add_file(request: web.Request):
             message = None
             sync = False
 
-        with session_factory() as session:
-            file_hash = await _check_and_add_file(
-                session=session,
-                signature_verifier=signature_verifier,
-                storage_service=storage_service,
-                message=message,
-                uploaded_file=uploaded_file,
-                grace_period=grace_period,
-            )
-            session.commit()
+        file_hash = await _check_and_add_file(
+            session_factory=session_factory,
+            signature_verifier=signature_verifier,
+            storage_service=storage_service,
+            message=message,
+            uploaded_file=uploaded_file,
+            grace_period=grace_period,
+        )
         if message:
             broadcast_status = await broadcast_and_process_message(
                 pending_message=message, sync=sync, request=request, logger=logger

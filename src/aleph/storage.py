@@ -340,15 +340,9 @@ class StorageService:
         return chash
 
     async def add_file_content_to_local_storage(
-        self, session: DbSession, file_content: bytes, file_hash: str
+        self, file_content: bytes, file_hash: str
     ) -> None:
         await self.storage_engine.write(filename=file_hash, content=file_content)
-        upsert_file(
-            session=session,
-            file_hash=file_hash,
-            size=len(file_content),
-            file_type=FileType.FILE,
-        )
 
     async def add_file(
         self, session: DbSession, file_content: bytes, engine: ItemType = ItemType.ipfs
@@ -363,7 +357,13 @@ class StorageService:
             raise ValueError(f"Unsupported item type: {engine}")
 
         await self.add_file_content_to_local_storage(
-            session=session, file_content=file_content, file_hash=file_hash
+            file_content=file_content, file_hash=file_hash
+        )
+        upsert_file(
+            session=session,
+            file_hash=file_hash,
+            size=len(file_content),
+            file_type=FileType.FILE,
         )
 
         return file_hash
