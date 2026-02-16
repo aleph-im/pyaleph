@@ -29,6 +29,7 @@ from aleph.schemas.api.costs import (
     CostComponentDetail,
     CostsFiltersResponse,
     CostsSummaryResponse,
+    EstimatedCostDetailResponse,
     EstimatedCostsResponse,
     GetCostsQueryParams,
     GetCostsResponse,
@@ -41,6 +42,7 @@ from aleph.schemas.cost_estimation_messages import (
 from aleph.services.cost import (
     _get_product_price_type,
     _get_settings,
+    get_cost_component_size_mib,
     get_detailed_costs,
     get_payment_type,
     get_total_and_detailed_costs,
@@ -158,11 +160,30 @@ async def message_price(request: web.Request):
         except RuntimeError as e:
             raise web.HTTPNotFound(reason=str(e))
 
+        # Enrich detail with size information
+        detail_list = []
+        for cost in costs:
+            size_mib = get_cost_component_size_mib(session, cost, content)
+            detail_list.append(
+                EstimatedCostDetailResponse(
+                    type=(
+                        cost.type.value
+                        if hasattr(cost.type, "value")
+                        else str(cost.type)
+                    ),
+                    name=cost.name,
+                    cost_hold=str(cost.cost_hold),
+                    cost_stream=str(cost.cost_stream),
+                    cost_credit=str(cost.cost_credit),
+                    size_mib=size_mib,
+                )
+            )
+
     model = {
         "required_tokens": float(required_tokens),
         "payment_type": payment_type,
         "cost": format_cost_str(required_tokens),
-        "detail": costs,
+        "detail": detail_list,
         "charged_address": content.address,
     }
 
@@ -225,11 +246,30 @@ async def message_price_estimate(request: web.Request):
         except RuntimeError as e:
             raise web.HTTPNotFound(reason=str(e))
 
+        # Enrich detail with size information
+        detail_list = []
+        for cost in costs:
+            size_mib = get_cost_component_size_mib(session, cost, content)
+            detail_list.append(
+                EstimatedCostDetailResponse(
+                    type=(
+                        cost.type.value
+                        if hasattr(cost.type, "value")
+                        else str(cost.type)
+                    ),
+                    name=cost.name,
+                    cost_hold=str(cost.cost_hold),
+                    cost_stream=str(cost.cost_stream),
+                    cost_credit=str(cost.cost_credit),
+                    size_mib=size_mib,
+                )
+            )
+
     model = {
         "required_tokens": float(required_tokens),
         "payment_type": payment_type,
         "cost": format_cost_str(required_tokens),
-        "detail": costs,
+        "detail": detail_list,
         "charged_address": content.address,
     }
 
@@ -477,20 +517,26 @@ async def get_costs(request: web.Request) -> web.Response:
                 # Include detailed breakdown if requested (include_details == 2)
                 if query_params.include_details >= 2:
                     cost_details = get_message_costs(session, row.item_hash)
-                    resource_item["detail"] = [
-                        CostComponentDetail(
-                            type=(
-                                cost.type.value
-                                if hasattr(cost.type, "value")
-                                else str(cost.type)
-                            ),
-                            name=cost.name,
-                            cost_hold=str(cost.cost_hold),
-                            cost_stream=str(cost.cost_stream),
-                            cost_credit=str(cost.cost_credit),
+                    detail_list = []
+                    for cost in cost_details:
+                        # Get size for STORAGE components
+                        size_mib = get_cost_component_size_mib(session, cost)
+
+                        detail_list.append(
+                            CostComponentDetail(
+                                type=(
+                                    cost.type.value
+                                    if hasattr(cost.type, "value")
+                                    else str(cost.type)
+                                ),
+                                name=cost.name,
+                                cost_hold=str(cost.cost_hold),
+                                cost_stream=str(cost.cost_stream),
+                                cost_credit=str(cost.cost_credit),
+                                size_mib=size_mib,
+                            )
                         )
-                        for cost in cost_details
-                    ]
+                    resource_item["detail"] = detail_list
 
                 resources.append(ResourceCostItem.model_validate(resource_item))
 

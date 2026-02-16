@@ -608,6 +608,47 @@ def calculate_storage_size(
     return storage_mib
 
 
+def get_cost_component_size_mib(
+    session: DbSession,
+    cost: AccountCostsDb,
+    content: Optional[CostComputableContent] = None,
+) -> Optional[float]:
+    """
+    Retrieve the size in MiB for a cost component.
+
+    Only returns size for STORAGE-type components. For other types, returns None.
+
+    Args:
+        session: Database session
+        cost: Cost component from database
+        content: Optional message content (for estimation with estimated_size_mib)
+
+    Returns:
+        Size in MiB as float, or None if not applicable/unavailable
+    """
+    # Only calculate for STORAGE-type components
+    if cost.type != CostType.STORAGE:
+        return None
+
+    # For estimation: check if content has estimated size
+    if content and isinstance(content, CostEstimationStoreContent):
+        if content.estimated_size_mib:
+            return float(content.estimated_size_mib)
+
+    # For actual messages: retrieve from file system
+    # Use cost.ref (stores the file_hash) or fall back to cost.item_hash
+    file_hash = cost.ref or cost.item_hash
+    if not file_hash:
+        return None
+
+    file = get_file(session, file_hash)
+    if not file:
+        return None
+
+    # Convert bytes to MiB (float for precision)
+    return float(Decimal(file.size) / MiB)
+
+
 def get_detailed_costs(
     session: DbSession,
     content: CostComputableContent,

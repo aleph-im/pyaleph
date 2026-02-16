@@ -68,6 +68,10 @@ class CostComponentDetail(BaseModel):
     cost_hold: str = Field(description="Hold cost for this component")
     cost_stream: str = Field(description="Streaming cost for this component")
     cost_credit: str = Field(description="Credit cost for this component")
+    size_mib: Optional[float] = Field(
+        default=None,
+        description="Storage size in MiB (only populated for STORAGE-type components)",
+    )
 
     @field_validator("cost_hold", "cost_stream", "cost_credit", mode="before")
     def check_format_price(cls, v):
@@ -121,6 +125,10 @@ class EstimatedCostDetailResponse(BaseModel):
     cost_hold: str
     cost_stream: str
     cost_credit: str
+    size_mib: Optional[float] = Field(
+        default=None,
+        description="Storage size in MiB (only populated for STORAGE-type components)",
+    )
 
     @field_validator("cost_hold", "cost_stream", "cost_credit", mode="before")
     def check_format_price(cls, v):
