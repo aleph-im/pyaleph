@@ -33,6 +33,7 @@ from aleph.toolkit.constants import (
     DEFAULT_PRICE_AGGREGATE,
     DEFAULT_SETTINGS_AGGREGATE,
     HOUR,
+    MIN_STORE_COST_MIB,
     PRICE_AGGREGATE_KEY,
     PRICE_AGGREGATE_OWNER,
     SETTINGS_AGGREGATE_KEY,
@@ -568,6 +569,10 @@ def _calculate_storage_costs(
 
     if not storage_mib:
         return []
+
+    # Apply minimum of 25 MiB for pure STORE messages when using credit payment
+    if payment_type == PaymentType.credit and storage_mib < MIN_STORE_COST_MIB:
+        storage_mib = Decimal(MIN_STORE_COST_MIB)
 
     volume = SizedVolume(CostType.STORAGE, storage_mib, item_hash)
 
