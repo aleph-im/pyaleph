@@ -51,11 +51,12 @@ from aleph.db.models.account_costs import AccountCostsDb
 from aleph.handlers.content.content_handler import ContentHandler
 from aleph.services.cost import get_payment_type, get_total_and_detailed_costs
 from aleph.services.cost_validation import validate_balance_for_payment
-from aleph.toolkit.costs import are_store_and_program_free
+from aleph.toolkit.costs import are_store_and_program_free, is_credit_only_required
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag
 from aleph.types.message_status import (
+    CreditOnlyRequired,
     InternalError,
     InvalidMessageFormat,
     VmCannotUpdateUpdate,
@@ -350,6 +351,10 @@ class VmMessageHandler(ContentHandler):
             return costs
 
         payment_type = get_payment_type(content)
+
+        # After the cutoff, VM messages must use credit payment only
+        if is_credit_only_required(message) and payment_type != PaymentType.credit:
+            raise CreditOnlyRequired()
 
         # NOTE: For now allow to create anything that is being paid with STREAM for free, but generate a cost depending on the content.payment prop (HOLD / STREAM / CREDIT)
         if payment_type == PaymentType.superfluid:
