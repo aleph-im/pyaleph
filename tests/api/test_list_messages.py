@@ -708,13 +708,26 @@ async def test_owners_filter_ws_logic(owners_test_messages):
     # hash1: sender1, owner1
     # hash3: owner1, owner2
 
+    _denorm_cols = {
+        "status",
+        "reception_time",
+        "owner",
+        "content_type",
+        "content_ref",
+        "content_key",
+        "first_confirmed_at",
+        "first_confirmed_height",
+        "forgotten_by",
+        "payment_type",
+    }
+
     msg1_db = owners_test_messages[0]
-    msg1_dict = msg1_db.to_dict()
+    msg1_dict = {k: v for k, v in msg1_db.to_dict().items() if k not in _denorm_cols}
     msg1_dict["time"] = msg1_db.time.timestamp()
     msg1_aleph = AlephPostMessage.model_validate(msg1_dict)
 
     msg3_db = owners_test_messages[2]
-    msg3_dict = msg3_db.to_dict()
+    msg3_dict = {k: v for k, v in msg3_db.to_dict().items() if k not in _denorm_cols}
     msg3_dict["time"] = msg3_db.time.timestamp()
     msg3_aleph = AlephPostMessage.model_validate(msg3_dict)
 

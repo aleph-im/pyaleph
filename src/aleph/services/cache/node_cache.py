@@ -4,7 +4,10 @@ from typing import Any, Dict, List, Optional, Set
 import redis.asyncio as redis_asyncio
 
 import aleph.toolkit.json as aleph_json
-from aleph.db.accessors.messages import count_matching_messages
+from aleph.db.accessors.messages import (
+    count_matching_messages,
+    count_matching_messages_fast,
+)
 from aleph.schemas.messages_query_params import MessageQueryParams
 from aleph.types.db_session import DbSessionFactory
 
@@ -95,9 +98,81 @@ class NodeCache:
         filters_json = aleph_json.dumps(filters, sort_keys=True)
         return sha256(filters_json).hexdigest()
 
+    @staticmethod
+    def _try_fast_count(
+        session_factory: DbSessionFactory, query_params: MessageQueryParams
+    ) -> Optional[int]:
+        """
+        Try an O(1) lookup from message_counts for simple queries.
+        Returns None if the query has filters that cannot be answered
+        by the counter table (date ranges, hashes, refs, etc.).
+        """
+        # Fast path only works when no non-dimension filters are set
+        if (
+            query_params.hashes
+            or query_params.refs
+            or query_params.content_hashes
+            or query_params.content_keys
+            or query_params.content_types
+            or query_params.chains
+            or query_params.channels
+            or query_params.tags
+            or query_params.payment_types
+            or query_params.start_date
+            or query_params.end_date
+            or query_params.start_block
+            or query_params.end_block
+        ):
+            return None
+
+        # Fast path only supports single-value dimensions
+        if query_params.addresses and len(query_params.addresses) > 1:
+            return None
+        if query_params.owners and len(query_params.owners) > 1:
+            return None
+        message_types = query_params.message_types or (
+            [query_params.message_type] if query_params.message_type else None
+        )
+        if message_types and len(message_types) > 1:
+            return None
+
+        sender = query_params.addresses[0] if query_params.addresses else None
+        owner = query_params.owners[0] if query_params.owners else None
+        msg_type = message_types[0].value if message_types else None
+        statuses = query_params.message_statuses or []
+
+        with session_factory() as session:
+            total = 0
+            for status in statuses:
+                result = count_matching_messages_fast(
+                    session,
+                    message_type=msg_type,
+                    status=status.value,
+                    sender=sender,
+                    owner=owner,
+                )
+                if result is None:
+                    return None
+                total += result
+            # If no statuses filter, query with no status filter
+            if not statuses:
+                result = count_matching_messages_fast(
+                    session, message_type=msg_type, sender=sender, owner=owner
+                )
+                if result is None:
+                    return None
+                total = result
+        return total
+
     async def count_messages(
         self, session_factory: DbSessionFactory, query_params: MessageQueryParams
     ) -> int:
+        # Try O(1) lookup from message_counts table
+        fast_result = self._try_fast_count(session_factory, query_params)
+        if fast_result is not None:
+            return fast_result
+
+        # Fall back to Redis-cached COUNT(*)
         filters = query_params.model_dump(exclude_none=True)
         cache_key = f"message_count:{self._message_filter_id(filters)}"
 

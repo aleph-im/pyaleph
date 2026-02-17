@@ -9,10 +9,7 @@ from aleph.db.accessors.address_stats import (
     count_address_stats,
     make_address_filter_subquery,
 )
-from aleph.db.accessors.messages import (
-    get_message_stats_by_address,
-    refresh_address_stats_mat_view,
-)
+from aleph.db.accessors.messages import get_message_stats_by_address
 from aleph.db.models import MessageDb
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
@@ -119,8 +116,6 @@ async def test_count_address_stats(session_factory: DbSessionFactory):
         session.commit()
 
         # Refresh views to ensure we have updated stats
-        refresh_address_stats_mat_view(session)
-        session.commit()
 
         # Count all addresses
         total_count = count_address_stats(session)
@@ -146,8 +141,6 @@ async def test_fetch_stats_address_query(session_factory: DbSessionFactory):
         session.commit()
 
         # Refresh materialized views to ensure we have updated stats
-        refresh_address_stats_mat_view(session)
-        session.commit()
 
         # Test with default parameters (sort by total messages, descending)
         stats = get_message_stats_by_address(
@@ -254,8 +247,6 @@ async def test_zero_per_page_returns_all(session_factory: DbSessionFactory):
         session.commit()
 
         # Refresh materialized views to ensure we have updated stats
-        refresh_address_stats_mat_view(session)
-        session.commit()
 
         # Count total addresses
         total_count = count_address_stats(session)
@@ -306,8 +297,6 @@ async def test_get_address_stats_by_address_pattern(
 
     with session_factory() as session:
         session.add_all(messages)
-        session.commit()
-        refresh_address_stats_mat_view(session)
         session.commit()
 
         # exact match
@@ -390,8 +379,6 @@ async def test_get_address_stats_by_address_pattern(
                 channel=Channel("TEST"),
             )
         )
-        session.commit()
-        refresh_address_stats_mat_view(session)
         session.commit()
 
         stats = get_message_stats_by_address(

@@ -3,6 +3,7 @@ from .balances import *  # noqa
 from .base import Base  # noqa
 from .chains import *  # noqa
 from .files import *  # noqa
+from .message_counts import *  # noqa
 from .messages import *  # noqa
 from .peers import *  # noqa
 from .pending_messages import *  # noqa

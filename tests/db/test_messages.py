@@ -379,11 +379,14 @@ async def test_forget_message(
         assert message_status
         assert message_status.status == MessageStatus.FORGOTTEN
 
-        # Assert that the message is not present in messages anymore
+        # Assert that the message is still present but with status FORGOTTEN and no content
         message = get_message_by_item_hash(
             session=session, item_hash=ItemHash(fixture_message.item_hash)
         )
-        assert message is None
+        assert message is not None
+        assert message.status_value == MessageStatus.FORGOTTEN
+        assert message.content is None
+        assert message.forgotten_by == [forget_message_hash]
 
         # Assert that the metadata was inserted properly in forgotten_messages
         forgotten_message = get_forgotten_message(

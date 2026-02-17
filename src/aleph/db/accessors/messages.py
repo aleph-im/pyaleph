@@ -3,15 +3,26 @@ import traceback
 from typing import Any, Iterable, Mapping, Optional, Sequence, Tuple, Union, overload
 
 from aleph_message.models import Chain, ItemHash, MessageType, PaymentType
-from sqlalchemy import delete, func, nullsfirst, nullslast, select, text, update
+from sqlalchemy import (
+    ARRAY,
+    String,
+    delete,
+    func,
+    nullsfirst,
+    nullslast,
+    select,
+    text,
+    update,
+)
 from sqlalchemy.dialects.postgresql import array, insert
-from sqlalchemy.orm import contains_eager, load_only, selectinload
+from sqlalchemy.orm import load_only, selectinload
 from sqlalchemy.sql import Insert, Select
 from sqlalchemy.sql.elements import literal
 
 from aleph.db.accessors.address_stats import escape_like_pattern
 from aleph.db.accessors.cost import delete_costs_for_message
-from aleph.db.models.address_stats import AddressStats
+from aleph.db.models.message_counts import MessageCountsDb
+from aleph.toolkit.cursor import decode_cursor
 from aleph.toolkit.timestamp import coerce_to_datetime, utc_now
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSession
@@ -22,7 +33,6 @@ from aleph.types.message_status import (
 )
 from aleph.types.sort_order import SortBy, SortByMessageType, SortOrder
 
-from ..models.account_costs import AccountCostsDb
 from ..models.chains import ChainTxDb
 from ..models.messages import (
     ForgottenMessageDb,
@@ -83,28 +93,17 @@ def make_matching_messages_query(
     page: int = 1,
     pagination: int = 20,
     include_confirmations: bool = False,
+    cursor: Optional[str] = None,
     # TODO: remove once all filters are supported
     **kwargs,
 ) -> Select:
     select_stmt = select(MessageDb)
 
+    # Status filtering — direct column, no JOIN
     if message_statuses:
-        select_stmt = (
-            select_stmt.join(
-                MessageStatusDb, MessageDb.item_hash == MessageStatusDb.item_hash
-            )
-            .where(MessageStatusDb.status.in_(message_statuses))
-            .options(
-                contains_eager(MessageDb.status).options(
-                    load_only(MessageStatusDb.status)
-                )
-            )
-        )
+        select_stmt = select_stmt.where(MessageDb.status_value.in_(message_statuses))
 
     if include_confirmations:
-        # Note: we assume this is only used for the API, so we only load the fields
-        # returned by the API. If additional fields are required, add them here to
-        # avoid additional queries.
         select_stmt = select_stmt.options(
             selectinload(MessageDb.confirmations).options(
                 load_only(ChainTxDb.hash, ChainTxDb.chain, ChainTxDb.height)
@@ -118,8 +117,9 @@ def make_matching_messages_query(
         select_stmt = select_stmt.where(MessageDb.item_hash.in_(hashes))
     if addresses:
         select_stmt = select_stmt.where(MessageDb.sender.in_(addresses))
+    # Owner — direct column, no JSONB
     if owners:
-        select_stmt = select_stmt.where(MessageDb.content["address"].astext.in_(owners))
+        select_stmt = select_stmt.where(MessageDb.owner.in_(owners))
     if chains:
         select_stmt = select_stmt.where(MessageDb.chain.in_(chains))
     if message_types:
@@ -130,72 +130,52 @@ def make_matching_messages_query(
         select_stmt = select_stmt.where(MessageDb.time >= start_datetime)
     if end_datetime:
         select_stmt = select_stmt.where(MessageDb.time < end_datetime)
+    # Ref — direct column, no JSONB
     if refs:
-        select_stmt = select_stmt.where(MessageDb.content["ref"].astext.in_(refs))
+        select_stmt = select_stmt.where(MessageDb.content_ref.in_(refs))
     if content_hashes:
         select_stmt = select_stmt.where(
             MessageDb.content["item_hash"].astext.in_(content_hashes)
         )
+    # Content types — direct column, no JSONB
     if content_types:
-        select_stmt = select_stmt.where(
-            MessageDb.content["type"].astext.in_(content_types)
-        )
+        select_stmt = select_stmt.where(MessageDb.content_type.in_(content_types))
     if tags:
         select_stmt = select_stmt.where(
             MessageDb.content["content"]["tags"].has_any(array(tags))
         )
     if channels:
         select_stmt = select_stmt.where(MessageDb.channel.in_(channels))
+    # Payment types — direct column, no JOIN to account_costs
     if payment_types:
-        select_stmt = select_stmt.join(
-            AccountCostsDb, MessageDb.item_hash == AccountCostsDb.item_hash
-        ).where(AccountCostsDb.payment_type.in_(payment_types))
-
-    order_by_columns: Tuple = ()  # For mypy to leave us alone until SQLA2
-
-    if sort_by == SortBy.TX_TIME or start_block or end_block:
-        select_earliest_confirmation = (
-            select(
-                message_confirmations.c.item_hash,
-                func.min(ChainTxDb.datetime).label("earliest_confirmation"),
-                ChainTxDb.height,
-            )
-            .join(ChainTxDb, message_confirmations.c.tx_hash == ChainTxDb.hash)
-            .group_by(message_confirmations.c.item_hash, ChainTxDb.height)
-        ).subquery()
-        select_stmt = select_stmt.join(
-            select_earliest_confirmation,
-            MessageDb.item_hash == select_earliest_confirmation.c.item_hash,
-            isouter=True,
+        select_stmt = select_stmt.where(
+            MessageDb.payment_type.in_([pt.value for pt in payment_types])
         )
+
+    order_by_columns: Tuple = ()
+
+    # TX_TIME sort — direct column, no subquery!
+    if sort_by == SortBy.TX_TIME or start_block or end_block:
         if start_block:
             select_stmt = select_stmt.where(
-                select_earliest_confirmation.c.height.is_(None)
-                | (select_earliest_confirmation.c.height >= start_block)
+                MessageDb.first_confirmed_height >= start_block
             )
         if end_block:
             select_stmt = select_stmt.where(
-                select_earliest_confirmation.c.height < end_block
+                MessageDb.first_confirmed_height < end_block
             )
 
-        sort_by = SortBy.TX_TIME
-        if sort_by == SortBy.TX_TIME:
+        if sort_order == SortOrder.DESCENDING:
             order_by_columns = (
-                (
-                    nullsfirst(
-                        select_earliest_confirmation.c.earliest_confirmation.desc()
-                    ),
-                    MessageDb.time.desc(),
-                    MessageDb.item_hash.asc(),
-                )
-                if sort_order == SortOrder.DESCENDING
-                else (
-                    nullslast(
-                        select_earliest_confirmation.c.earliest_confirmation.asc()
-                    ),
-                    MessageDb.time.asc(),
-                    MessageDb.item_hash.asc(),
-                )
+                nullsfirst(MessageDb.first_confirmed_at.desc()),
+                MessageDb.time.desc(),
+                MessageDb.item_hash.asc(),
+            )
+        else:
+            order_by_columns = (
+                nullslast(MessageDb.first_confirmed_at.asc()),
+                MessageDb.time.asc(),
+                MessageDb.item_hash.asc(),
             )
     else:
         if sort_order == SortOrder.DESCENDING:
@@ -203,19 +183,35 @@ def make_matching_messages_query(
                 MessageDb.time.desc(),
                 MessageDb.item_hash.asc(),
             )
-        else:  # ASCENDING
+        else:
             order_by_columns = (
                 MessageDb.time.asc(),
                 MessageDb.item_hash.asc(),
             )
 
-    select_stmt = select_stmt.order_by(*order_by_columns).offset(
-        (page - 1) * pagination
-    )
+    # Cursor pagination (if cursor provided, ignore page)
+    if cursor:
+        time_val, hash_val = decode_cursor(cursor)
+        cursor_time = coerce_to_datetime(time_val)
+        if sort_order == SortOrder.DESCENDING:
+            select_stmt = select_stmt.where(
+                (MessageDb.time < cursor_time)
+                | ((MessageDb.time == cursor_time) & (MessageDb.item_hash > hash_val))
+            )
+        else:
+            select_stmt = select_stmt.where(
+                (MessageDb.time > cursor_time)
+                | ((MessageDb.time == cursor_time) & (MessageDb.item_hash > hash_val))
+            )
+    elif page > 1:
+        select_stmt = select_stmt.offset((page - 1) * pagination)
+
+    select_stmt = select_stmt.order_by(*order_by_columns)
 
     # If pagination == 0, return all matching results
     if pagination:
-        select_stmt = select_stmt.limit(pagination)
+        # Fetch +1 for has_more detection when using cursor
+        select_stmt = select_stmt.limit(pagination + 1 if cursor else pagination)
 
     return select_stmt
 
@@ -259,6 +255,28 @@ def get_matching_messages(
     return (session.execute(select_stmt)).scalars()
 
 
+def count_matching_messages_fast(
+    session: DbSession,
+    message_type: Optional[str] = None,
+    status: Optional[str] = None,
+    sender: Optional[str] = None,
+    owner: Optional[str] = None,
+) -> Optional[int]:
+    """
+    O(1) count lookup from the message_counts table.
+    Returns None if no matching row exists.
+    """
+    select_stmt = select(MessageCountsDb.count).where(
+        MessageCountsDb.type == (message_type or ""),
+        MessageCountsDb.status == (status or ""),
+        MessageCountsDb.sender == (sender or ""),
+        MessageCountsDb.owner == (owner or ""),
+        MessageCountsDb.channel == "",
+        MessageCountsDb.payment_type == "",
+    )
+    return session.execute(select_stmt).scalar_one_or_none()
+
+
 def get_message_stats_by_address(
     session: DbSession,
     addresses: Optional[Sequence[str]] = None,
@@ -269,53 +287,65 @@ def get_message_stats_by_address(
     pagination: int = 0,
 ) -> Sequence[Any]:
     """
-    Get message stats for user addresses.
-
-    :param session: DB session object.
-    :param addresses: If specified, restricts the list of results to these addresses.
-                      otherwise, results for all addresses are returned.
-    :param address_contains: If specified, restricts the list of results to addresses
-                             matching this pattern (SQL LIKE).
-    :param sort_by: Message type to sort by.
-    :param sort_order: Sort order (ASC or DESC).
-    :param page: Page number (starts at 1).
-    :param pagination: Number of results per page. 0 means no pagination.
-    :return: A list of rows containing address and message type counts.
+    Get message stats for user addresses using the message_counts table.
     """
 
-    # Base Query
-    base_stmt = select(
-        AddressStats.address,
-        func.coalesce(func.sum(AddressStats.nb_messages), 0).label("total"),
-        func.coalesce(
-            func.sum(AddressStats.nb_messages).filter(AddressStats.type == "POST"), 0
-        ).label("post"),
-        func.coalesce(
-            func.sum(AddressStats.nb_messages).filter(AddressStats.type == "AGGREGATE"),
-            0,
-        ).label("aggregate"),
-        func.coalesce(
-            func.sum(AddressStats.nb_messages).filter(AddressStats.type == "STORE"), 0
-        ).label("store"),
-        func.coalesce(
-            func.sum(AddressStats.nb_messages).filter(AddressStats.type == "PROGRAM"), 0
-        ).label("program"),
-        func.coalesce(
-            func.sum(AddressStats.nb_messages).filter(AddressStats.type == "INSTANCE"),
-            0,
-        ).label("instance"),
-        func.coalesce(
-            func.sum(AddressStats.nb_messages).filter(AddressStats.type == "FORGET"), 0
-        ).label("forget"),
-    ).group_by(AddressStats.address)
+    # Query message_counts for per-(sender, type, status=processed) rows
+    base_stmt = (
+        select(
+            MessageCountsDb.sender.label("address"),
+            func.coalesce(func.sum(MessageCountsDb.count), 0).label("total"),
+            func.coalesce(
+                func.sum(MessageCountsDb.count).filter(MessageCountsDb.type == "POST"),
+                0,
+            ).label("post"),
+            func.coalesce(
+                func.sum(MessageCountsDb.count).filter(
+                    MessageCountsDb.type == "AGGREGATE"
+                ),
+                0,
+            ).label("aggregate"),
+            func.coalesce(
+                func.sum(MessageCountsDb.count).filter(MessageCountsDb.type == "STORE"),
+                0,
+            ).label("store"),
+            func.coalesce(
+                func.sum(MessageCountsDb.count).filter(
+                    MessageCountsDb.type == "PROGRAM"
+                ),
+                0,
+            ).label("program"),
+            func.coalesce(
+                func.sum(MessageCountsDb.count).filter(
+                    MessageCountsDb.type == "INSTANCE"
+                ),
+                0,
+            ).label("instance"),
+            func.coalesce(
+                func.sum(MessageCountsDb.count).filter(
+                    MessageCountsDb.type == "FORGET"
+                ),
+                0,
+            ).label("forget"),
+        )
+        .where(
+            MessageCountsDb.status == "processed",
+            MessageCountsDb.owner == "",
+            MessageCountsDb.channel == "",
+            MessageCountsDb.payment_type == "",
+            MessageCountsDb.sender != "",
+            MessageCountsDb.type != "",
+        )
+        .group_by(MessageCountsDb.sender)
+    )
 
     if addresses:
-        base_stmt = base_stmt.where(AddressStats.address.in_(addresses))
+        base_stmt = base_stmt.where(MessageCountsDb.sender.in_(addresses))
 
     if address_contains:
         escaped_pattern = escape_like_pattern(address_contains)
         base_stmt = base_stmt.where(
-            AddressStats.address.ilike(f"%{escaped_pattern}%", escape="\\")
+            MessageCountsDb.sender.ilike(f"%{escaped_pattern}%", escape="\\")
         )
 
     subquery = base_stmt.subquery()
@@ -324,7 +354,6 @@ def get_message_stats_by_address(
     if sort_by:
         sort_column_name = sort_by.value.lower()
     else:
-        # Sort by address by default
         sort_column_name = "address"
 
     sort_column = getattr(subquery.c, sort_column_name)
@@ -337,17 +366,6 @@ def get_message_stats_by_address(
         stmt = stmt.limit(pagination).offset((page - 1) * pagination)
 
     return session.execute(stmt).all()
-
-
-def refresh_address_stats_mat_view(session: DbSession) -> None:
-    """
-    Refresh materialized views for address statistics.
-    First refreshes the base stats view, then the summary view that depends on it.
-    """
-    # Refresh the base stats view
-    session.execute(
-        text("refresh materialized view concurrently address_stats_mat_view")
-    )
 
 
 # TODO: declare a type that will match the result (something like UnconfirmedMessageDb)
@@ -372,11 +390,10 @@ def get_unconfirmed_messages(
 
     select_stmt = (
         select(MessageDb)
-        .join(MessageStatusDb, MessageStatusDb.item_hash == MessageDb.item_hash)
         .where(
             MessageDb.signature.isnot(None) & (~select_message_confirmations.exists())
         )
-        .order_by(MessageStatusDb.reception_time.asc())
+        .order_by(MessageDb.reception_time.asc())
     )
 
     return (session.execute(select_stmt.limit(limit).offset(offset))).scalars()
@@ -448,14 +465,13 @@ def get_distinct_channels(session: DbSession) -> Iterable[Optional[Channel]]:
 def get_distinct_post_types_for_address(session: DbSession, address: str) -> list[str]:
     """Get distinct post_types for POST messages published by an address."""
     select_stmt = (
-        select(MessageDb.content["type"].astext)
+        select(MessageDb.content_type)
         .where(MessageDb.sender == address)
         .where(MessageDb.type == MessageType.post)
-        .where(MessageDb.content["type"].astext.isnot(None))
+        .where(MessageDb.content_type.isnot(None))
         .distinct()
-        .order_by(MessageDb.content["type"].astext)
+        .order_by(MessageDb.content_type)
     )
-    # Explicitly filter out nulls to keep the return type list[str]
     return [
         ptype for ptype in session.execute(select_stmt).scalars() if ptype is not None
     ]
@@ -495,6 +511,7 @@ def forget_message(
     :param forget_message_hash: Hash of the forget message.
     """
 
+    # Copy to forgotten_messages for backward compat during transition
     copy_row_stmt = insert(ForgottenMessageDb).from_select(
         [
             "item_hash",
@@ -520,17 +537,36 @@ def forget_message(
         ).where(MessageDb.item_hash == item_hash),
     )
     session.execute(copy_row_stmt)
+
+    # Update inline status + purge content (trigger handles message_counts)
+    session.execute(
+        update(MessageDb)
+        .where(MessageDb.item_hash == item_hash)
+        .values(
+            status_value=MessageStatus.FORGOTTEN,
+            content=None,
+            forgotten_by=func.array_append(
+                func.coalesce(
+                    MessageDb.forgotten_by,
+                    func.cast(literal("{}"), ARRAY(String)),
+                ),
+                forget_message_hash,
+            ),
+        )
+    )
+
+    # Dual-write to message_status during transition
     session.execute(
         update(MessageStatusDb)
         .values(status=MessageStatus.FORGOTTEN)
         .where(MessageStatusDb.item_hash == item_hash)
     )
+
     session.execute(
         delete(message_confirmations).where(
             message_confirmations.c.item_hash == item_hash
         )
     )
-    session.execute(delete(MessageDb).where(MessageDb.item_hash == item_hash))
 
     delete_costs_for_message(
         session=session,
@@ -810,38 +846,40 @@ def make_matching_hashes_query(
     pagination: int = 20,
     hash_only: bool = True,
 ) -> Select:
-    select_stmt = select(MessageStatusDb.item_hash if hash_only else MessageStatusDb)
+    if hash_only:
+        select_stmt = select(MessageDb.item_hash)
+    else:
+        select_stmt = select(
+            MessageDb.item_hash, MessageDb.status_value, MessageDb.reception_time
+        )
 
     start_datetime = coerce_to_datetime(start_date)
     end_datetime = coerce_to_datetime(end_date)
 
     if start_datetime:
-        select_stmt = select_stmt.where(
-            MessageStatusDb.reception_time >= start_datetime
-        )
+        select_stmt = select_stmt.where(MessageDb.reception_time >= start_datetime)
     if end_datetime:
-        select_stmt = select_stmt.where(MessageStatusDb.reception_time < end_datetime)
+        select_stmt = select_stmt.where(MessageDb.reception_time < end_datetime)
     if status:
-        select_stmt = select_stmt.where(MessageStatusDb.status == status)
+        select_stmt = select_stmt.where(MessageDb.status_value == status)
 
     order_by_columns: Tuple = ()
 
     if sort_order == SortOrder.DESCENDING:
         order_by_columns = (
-            MessageStatusDb.reception_time.desc(),
-            MessageStatusDb.item_hash.asc(),
+            MessageDb.reception_time.desc(),
+            MessageDb.item_hash.asc(),
         )
-    else:  # ASCENDING
+    else:
         order_by_columns = (
-            MessageStatusDb.reception_time.asc(),
-            MessageStatusDb.item_hash.asc(),
+            MessageDb.reception_time.asc(),
+            MessageDb.item_hash.asc(),
         )
 
     select_stmt = select_stmt.order_by(*order_by_columns)
 
     select_stmt = select_stmt.offset((page - 1) * pagination)
 
-    # If pagination == 0, return all matching results
     if pagination:
         select_stmt = select_stmt.limit(pagination)
 

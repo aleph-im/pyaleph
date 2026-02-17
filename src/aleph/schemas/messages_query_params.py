@@ -157,6 +157,12 @@ class MessageQueryParams(BaseMessageQueryParams):
     page: int = Field(
         default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
     )
+    cursor: Optional[str] = Field(
+        default=None,
+        description="Opaque cursor for cursor-based pagination. "
+        "When provided, 'page' is ignored and responses include "
+        "'has_more' + 'next_cursor' instead of 'pagination_total'.",
+    )
 
 
 class WsMessageQueryParams(BaseMessageQueryParams):

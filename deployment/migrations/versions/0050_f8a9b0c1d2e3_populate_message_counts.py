@@ -1,0 +1,75 @@
+"""Populate message_counts from existing data
+
+Revision ID: f8a9b0c1d2e3
+Revises: e7f8a9b0c1d2
+Create Date: 2026-02-18
+
+Aggregates existing messages into the message_counts table for all dimension
+combinations (global by status, per type+status, per sender+status,
+per owner+status), then re-enables the trigger.
+"""
+
+from alembic import op
+from sqlalchemy import text
+
+# revision identifiers, used by Alembic.
+revision = "f8a9b0c1d2e3"
+down_revision = "e7f8a9b0c1d2"
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    op.execute(
+        text(
+            """
+        -- Clear any stale data (safety)
+        TRUNCATE message_counts;
+
+        -- Global: by status only
+        INSERT INTO message_counts (status, count)
+        SELECT COALESCE(status, ''), COUNT(*)
+        FROM messages
+        GROUP BY status;
+
+        -- Per (type, status)
+        INSERT INTO message_counts (type, status, count)
+        SELECT COALESCE(type, ''), COALESCE(status, ''), COUNT(*)
+        FROM messages
+        GROUP BY type, status;
+
+        -- Per (sender, status)
+        INSERT INTO message_counts (sender, status, count)
+        SELECT COALESCE(sender, ''), COALESCE(status, ''), COUNT(*)
+        FROM messages
+        GROUP BY sender, status;
+
+        -- Per (sender, type, status) — for per-address stats
+        INSERT INTO message_counts (sender, type, status, count)
+        SELECT COALESCE(sender, ''), COALESCE(type, ''), COALESCE(status, ''), COUNT(*)
+        FROM messages
+        GROUP BY sender, type, status;
+
+        -- Per (owner, status)
+        INSERT INTO message_counts (owner, status, count)
+        SELECT owner, COALESCE(status, ''), COUNT(*)
+        FROM messages
+        WHERE owner IS NOT NULL AND owner != ''
+        GROUP BY owner, status;
+
+        -- Re-enable trigger: all future changes are tracked automatically
+        ALTER TABLE messages ENABLE TRIGGER trg_message_counts;
+        """
+        )
+    )
+
+
+def downgrade() -> None:
+    op.execute(
+        text(
+            """
+        ALTER TABLE messages DISABLE TRIGGER trg_message_counts;
+        TRUNCATE message_counts;
+        """
+        )
+    )

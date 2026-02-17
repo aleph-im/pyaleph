@@ -156,16 +156,19 @@ class ForgetMessageHandler(ContentHandler):
     async def _forget_message(
         self, session: DbSession, message: MessageDb, forgotten_by: MessageDb
     ):
-        # Mark the message as forgotten
+        # Perform type-specific cleanup BEFORE nullifying content,
+        # because forget_message() sets content=None on the row.
+        additional_messages_to_forget = await self._forget_by_message_type(
+            session=session, message=message
+        )
+
+        # Mark the message as forgotten (sets content=None)
         forget_message(
             session=session,
             item_hash=message.item_hash,
             forget_message_hash=forgotten_by.item_hash,
         )
 
-        additional_messages_to_forget = await self._forget_by_message_type(
-            session=session, message=message
-        )
         for item_hash in additional_messages_to_forget:
             forget_message(
                 session=session,

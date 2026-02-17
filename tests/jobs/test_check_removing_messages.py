@@ -46,6 +46,7 @@ async def fixture_removing_messages(session_factory: DbSessionFactory):
             "item_hash": store_message_file_hash,
             "item_type": ItemType.ipfs.value,
         },
+        status_value=MessageStatus.REMOVING,
     )
 
     # Create file reference
@@ -81,6 +82,7 @@ async def fixture_removing_messages(session_factory: DbSessionFactory):
             "item_hash": pinned_file_hash,
             "item_type": ItemType.ipfs.value,
         },
+        status_value=MessageStatus.REMOVING,
     )
 
     # Create file with pins
