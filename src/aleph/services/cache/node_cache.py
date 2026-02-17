@@ -6,7 +6,7 @@ import redis.asyncio as redis_asyncio
 import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.messages import count_matching_messages
 from aleph.schemas.messages_query_params import MessageQueryParams
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import DbSessionFactory
 
 CacheKey = Any
 CacheValue = bytes
@@ -96,7 +96,7 @@ class NodeCache:
         return sha256(filters_json).hexdigest()
 
     async def count_messages(
-        self, session: DbSession, query_params: MessageQueryParams
+        self, session_factory: DbSessionFactory, query_params: MessageQueryParams
     ) -> int:
         filters = query_params.model_dump(exclude_none=True)
         cache_key = f"message_count:{self._message_filter_id(filters)}"
@@ -106,7 +106,8 @@ class NodeCache:
             return int(cached_result.decode())
 
         # Slow, can take a few seconds
-        n_matches = count_matching_messages(session, **filters)
+        with session_factory() as session:
+            n_matches = count_matching_messages(session, **filters)
 
         await self.set(cache_key, n_matches, expiration=self.message_cache_count_ttl)
 

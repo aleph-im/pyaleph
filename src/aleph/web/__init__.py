@@ -32,19 +32,21 @@ def init_cors(app: web.Application):
             cors.add(route)
 
 
-def create_aiohttp_app() -> web.Application:
+def create_aiohttp_app(with_swagger: bool = True) -> web.Application:
     app = web.Application(client_max_size=1024**2 * 64)
 
-    components_path = str(
-        importlib.resources.files("aleph.web.controllers") / "components.yaml"
-    )
-    swagger = SwaggerDocs(
-        app,
-        info=SwaggerInfo(title="Aleph CCN API", version="0.9.3"),
-        swagger_ui_settings=SwaggerUiSettings(path="/api/docs"),
-        components=components_path,
-        validate=False,
-    )
+    swagger = None
+    if with_swagger:
+        components_path = str(
+            importlib.resources.files("aleph.web.controllers") / "components.yaml"
+        )
+        swagger = SwaggerDocs(
+            app,
+            info=SwaggerInfo(title="Aleph CCN API", version="0.9.3"),
+            swagger_ui_settings=SwaggerUiSettings(path="/api/docs"),
+            components=components_path,
+            validate=False,
+        )
 
     tpl_path = str(importlib.resources.files("aleph.web") / "templates")
     jinja_loader = jinja2.ChoiceLoader(

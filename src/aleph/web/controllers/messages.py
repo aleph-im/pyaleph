@@ -238,12 +238,13 @@ async def view_messages_list(request: web.Request) -> web.Response:
     session_factory = get_session_factory_from_request(request)
     node_cache = get_node_cache_from_request(request)
 
+    total_msgs = await node_cache.count_messages(session_factory, query_params)
+
     with session_factory() as session:
         messages_query = make_matching_messages_query(
             include_confirmations=True, **find_filters
         )
         messages = (session.execute(messages_query)).scalars()
-        total_msgs = await node_cache.count_messages(session, query_params)
 
         return format_response(
             messages,
