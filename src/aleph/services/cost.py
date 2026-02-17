@@ -125,8 +125,22 @@ def _get_product_instance_type(
     if not gpu_requirements:
         return ProductPriceType.INSTANCE
 
-    # For GPU VMs, return marker (actual tier calculation happens in cost calculation)
-    # This supports multi-tier GPU mixing by handling tier logic separately
+    # Determine the actual GPU tier(s) for this instance
+    premium_pricing = ProductPricing.from_aggregate(
+        ProductPriceType.INSTANCE_GPU_PREMIUM, price_aggregate
+    )
+    standard_pricing = ProductPricing.from_aggregate(
+        ProductPriceType.INSTANCE_GPU_STANDARD, price_aggregate
+    )
+    tier_breakdown = _get_gpu_tier_breakdown(
+        content, settings, premium_pricing, standard_pricing
+    )
+
+    tiers_used = set(tier_breakdown.keys())
+    if tiers_used == {ProductPriceType.INSTANCE_GPU_STANDARD}:
+        return ProductPriceType.INSTANCE_GPU_STANDARD
+
+    # Premium-only or mixed: return premium (storage pricing baseline)
     return ProductPriceType.INSTANCE_GPU_PREMIUM
 
 
