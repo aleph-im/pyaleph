@@ -125,30 +125,104 @@ def _get_product_instance_type(
     if not gpu_requirements:
         return ProductPriceType.INSTANCE
 
-    # TODO: Improve the way to compare tiers
-    premium_gpu_price = ProductPricing.from_aggregate(
+    # Determine the actual GPU tier(s) for this instance
+    premium_pricing = ProductPricing.from_aggregate(
         ProductPriceType.INSTANCE_GPU_PREMIUM, price_aggregate
     )
-    standard_gpu_price = ProductPricing.from_aggregate(
+    standard_pricing = ProductPricing.from_aggregate(
         ProductPriceType.INSTANCE_GPU_STANDARD, price_aggregate
     )
-
-    # TODO: Allow to get more than one GPU
-    selected_gpu = gpu_requirements[0]
-
-    gpu_model = next(
-        compatible_gpu.model
-        for compatible_gpu in settings.compatible_gpus
-        if compatible_gpu.device_id == selected_gpu.device_id
+    tier_breakdown = _get_gpu_tier_breakdown(
+        content, settings, premium_pricing, standard_pricing
     )
 
-    if gpu_model in [tier.model for tier in premium_gpu_price.tiers]:
-        return ProductPriceType.INSTANCE_GPU_PREMIUM
-    else:
-        if gpu_model in [tier.model for tier in standard_gpu_price.tiers]:
-            return ProductPriceType.INSTANCE_GPU_STANDARD
-        else:
-            raise ValueError(f"GPU model {gpu_model} not supported")
+    tiers_used = set(tier_breakdown.keys())
+    if tiers_used == {ProductPriceType.INSTANCE_GPU_STANDARD}:
+        return ProductPriceType.INSTANCE_GPU_STANDARD
+
+    # Premium-only or mixed: return premium (storage pricing baseline)
+    return ProductPriceType.INSTANCE_GPU_PREMIUM
+
+
+def _get_gpu_tier_breakdown(
+    content: InstanceContent | CostEstimationInstanceContent,
+    settings: Settings,
+    premium_pricing: ProductPricing,
+    standard_pricing: ProductPricing,
+) -> dict[ProductPriceType, int]:
+    """
+    Calculate GPU compute units grouped by tier (premium/standard).
+
+    Supports mixing GPUs from different tiers in a single instance.
+    For each GPU, looks up its model and tier, then sums compute units per tier.
+
+    Args:
+        content: Instance content with GPU requirements
+        settings: Settings containing compatible GPU definitions
+        premium_pricing: Premium GPU pricing with tiers
+        standard_pricing: Standard GPU pricing with tiers
+
+    Returns:
+        Dictionary mapping ProductPriceType to total compute units for that tier.
+        Example: {ProductPriceType.INSTANCE_GPU_PREMIUM: 16,
+                  ProductPriceType.INSTANCE_GPU_STANDARD: 6}
+        Only includes tiers that have GPUs (empty dict keys omitted).
+
+    Raises:
+        ValueError: If GPU device_id not found in compatible GPUs
+        ValueError: If GPU model not found in any pricing tier
+    """
+    tier_compute_units: dict[ProductPriceType, int] = {}
+
+    gpus = (content.requirements.gpu if content.requirements else None) or []
+    premium_tiers = premium_pricing.tiers or []
+    standard_tiers = standard_pricing.tiers or []
+
+    for gpu in gpus:
+        # Look up GPU model from device_id
+        gpu_model = None
+        for compatible_gpu in settings.compatible_gpus:
+            if compatible_gpu.device_id == gpu.device_id:
+                gpu_model = compatible_gpu.model
+                break
+
+        if gpu_model is None:
+            raise ValueError(
+                f"GPU device_id {gpu.device_id} not found in compatible GPUs"
+            )
+
+        # Find which tier this GPU belongs to and get its compute units
+        found_tier = False
+
+        # Check premium tier
+        for tier in premium_tiers:
+            if tier.model == gpu_model:
+                tier_type = ProductPriceType.INSTANCE_GPU_PREMIUM
+                compute_units = tier.compute_units
+                tier_compute_units[tier_type] = (
+                    tier_compute_units.get(tier_type, 0) + compute_units
+                )
+                found_tier = True
+                break
+
+        # Check standard tier if not found in premium
+        if not found_tier:
+            for tier in standard_tiers:
+                if tier.model == gpu_model:
+                    tier_type = ProductPriceType.INSTANCE_GPU_STANDARD
+                    compute_units = tier.compute_units
+                    tier_compute_units[tier_type] = (
+                        tier_compute_units.get(tier_type, 0) + compute_units
+                    )
+                    found_tier = True
+                    break
+
+        if not found_tier:
+            raise ValueError(
+                f"GPU model {gpu_model} not found in any pricing tier (premium or standard)"
+            )
+
+    return tier_compute_units
 
 
 def _get_product_price_type(
@@ -494,6 +568,89 @@ def _get_additional_storage_price(
     return costs
 
 
+def _calculate_multi_tier_gpu_execution_cost(
+    session: DbSession,
+    content: InstanceContent | CostEstimationInstanceContent,
+    settings: Settings,
+    price_aggregate: Union[AggregateDb, dict],
+    payment_type: PaymentType,
+    item_hash: str,
+) -> List[AccountCostsDb]:
+    """
+    Calculate execution costs for multi-tier GPU instances.
+
+    Supports instances with GPUs from different tiers (premium + standard).
+    Creates separate cost entries for each tier used.
+
+    Args:
+        session: Database session
+        content: Instance content with GPU requirements
+        settings: Settings with compatible GPU definitions
+        price_aggregate: Price aggregate data
+        payment_type: Payment type (hold/superfluid/credit)
+        item_hash: Message hash
+
+    Returns:
+        List of AccountCostsDb entries, one per GPU tier used.
+        For example, mixed-tier instance creates two entries: one for premium, one for standard.
+    """
+    # Get premium and standard pricing
+    premium_pricing = ProductPricing.from_aggregate(
+        ProductPriceType.INSTANCE_GPU_PREMIUM, price_aggregate
+    )
+    standard_pricing = ProductPricing.from_aggregate(
+        ProductPriceType.INSTANCE_GPU_STANDARD, price_aggregate
+    )
+
+    # Get tier breakdown (compute units per tier)
+    tier_breakdown = _get_gpu_tier_breakdown(
+        content, settings, premium_pricing, standard_pricing
+    )
+
+    costs = []
+    compute_unit_multiplier = _get_compute_unit_multiplier(content)
+
+    # Calculate cost for each tier
+    for price_type, compute_units in tier_breakdown.items():
+        # Select appropriate pricing for this tier
+        if price_type == ProductPriceType.INSTANCE_GPU_PREMIUM:
+            pricing = premium_pricing
+        else:
+            pricing = standard_pricing
+
+        # Get pricing rates for this tier
+        compute_unit_cost = pricing.price.compute_unit.holding
+        compute_unit_cost_second = pricing.price.compute_unit.payg / HOUR
+        compute_unit_cost_credit = pricing.price.compute_unit.credit / HOUR
+
+        # Calculate costs: compute_units × multiplier × rate
+        cost_hold = format_cost(
+            compute_units * compute_unit_multiplier * compute_unit_cost
+        )
+        cost_stream = format_cost(
+            compute_units * compute_unit_multiplier * compute_unit_cost_second
+        )
+        cost_credit = format_cost(
+            compute_units * compute_unit_multiplier * compute_unit_cost_credit
+        )
+
+        # Create cost entry for this tier
+        costs.append(
+            AccountCostsDb(
+                owner=content.address,
+                item_hash=item_hash,
+                type=CostType.EXECUTION,
+                name=price_type,  # "instance_gpu_premium" or "instance_gpu_standard"
+                payment_type=payment_type,
+                cost_hold=cost_hold,
+                cost_stream=cost_stream,
+                cost_credit=cost_credit,
+            )
+        )
+
+    return costs
+
+
 def _calculate_executable_costs(
     session: DbSession,
     content: CostComputableExecutableContent,
@@ -501,7 +658,30 @@ def _calculate_executable_costs(
     item_hash: str,
 ) -> List[AccountCostsDb]:
     payment_type = get_payment_type(content)
+    settings = _get_settings(session)
+    price_aggregate = _get_price_aggregate(session)
 
+    # GPU INSTANCES: Use multi-tier GPU cost calculation
+    if isinstance(
+        content, (InstanceContent, CostEstimationInstanceContent)
+    ) and _is_gpu_vm(content):
+        # Calculate GPU execution costs (handles multi-tier)
+        execution_costs = _calculate_multi_tier_gpu_execution_cost(
+            session, content, settings, price_aggregate, payment_type, item_hash
+        )
+
+        # Calculate storage costs (same as non-GPU instances)
+        # For storage, we need to pick one pricing tier - use premium as baseline
+        storage_pricing = ProductPricing.from_aggregate(
+            ProductPriceType.INSTANCE_GPU_PREMIUM, price_aggregate
+        )
+        storage_costs = _get_additional_storage_price(
+            session, content, storage_pricing, payment_type, item_hash
+        )
+
+        return execution_costs + storage_costs
+
+    # NON-GPU INSTANCES: Use existing logic
     if not pricing.compute_unit:
         logger.warning(
             "compute_unit not defined for type '{}' in pricing aggregate".format(
@@ -516,7 +696,7 @@ def _calculate_executable_costs(
             )
         )
 
-    # EXECUTION COST
+    # EXECUTION COST (existing logic for non-GPU)
     compute_units_required = _get_nb_compute_units(content, pricing.compute_unit)
     compute_unit_multiplier = _get_compute_unit_multiplier(content)
 

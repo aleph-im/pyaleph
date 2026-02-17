@@ -14,6 +14,7 @@ from aleph.services.cost import (
     _get_settings_aggregate,
     get_total_and_detailed_costs,
 )
+from aleph.types.cost import CostType
 from aleph.types.db_session import DbSessionFactory
 
 
@@ -488,3 +489,370 @@ def test_default_price_aggregates_db(
     with session_factory() as session:
         price_aggregate = _get_price_aggregate(session=session)
         assert isinstance(price_aggregate, AggregateDb)
+
+
+# GPU Test Fixtures
+
+
+@pytest.fixture
+def fixture_single_gpu_instance_message() -> InstanceContent:
+    """Single GPU instance with RTX 4090 (Standard tier, 6 compute units)."""
+    content = {
+        "time": 1701099523.849,
+        "rootfs": {
+            "parent": {
+                "ref": "6e30de68c6cedfa6b45240c2b51e52495ac6fb1bd4b36457b3d5ca307594d595",
+                "use_latest": True,
+            },
+            "size_mib": 20480,
+            "persistence": "host",
+        },
+        "address": "0xA07B1214bAe0D5ccAA25449C3149c0aC83658874",
+        "volumes": [],
+        "metadata": {"name": "Single GPU Test"},
+        "resources": {"vcpus": 8, "memory": 16384, "seconds": 30},
+        "requirements": {
+            "node": {
+                "node_hash": "dc3d1d194a990b5c54380c3c0439562fefa42f5a46807cba1c500ec3affecf04",
+            },
+            "gpu": [
+                {
+                    "vendor": "NVIDIA",
+                    "device_name": "AD102 [GeForce RTX 4090]",
+                    "device_class": "0300",
+                    "device_id": "10de:2684",
+                }
+            ],
+        },
+        "allow_amend": False,
+        "environment": {
+            "internet": True,
+            "aleph_api": True,
+            "reproducible": False,
+            "shared_cache": False,
+            "hypervisor": "qemu",
+        },
+        "authorized_keys": [],
+    }
+    return InstanceContent.model_validate(content)
+
+
+@pytest.fixture
+def fixture_multiple_same_gpu_instance_message() -> InstanceContent:
+    """Multiple same GPU instance with 2x A100 (Premium tier, 32 compute units total)."""
+    content = {
+        "time": 1701099523.849,
+        "rootfs": {
+            "parent": {
+                "ref": "6e30de68c6cedfa6b45240c2b51e52495ac6fb1bd4b36457b3d5ca307594d595",
+                "use_latest": True,
+            },
+            "size_mib": 20480,
+            "persistence": "host",
+        },
+        "address": "0xA07B1214bAe0D5ccAA25449C3149c0aC83658874",
+        "volumes": [],
+        "metadata": {"name": "Multi Same GPU Test"},
+        "resources": {"vcpus": 16, "memory": 32768, "seconds": 30},
+        "requirements": {
+            "node": {
+                "node_hash": "dc3d1d194a990b5c54380c3c0439562fefa42f5a46807cba1c500ec3affecf04",
+            },
+            "gpu": [
+                {
+                    "vendor": "NVIDIA",
+                    "device_name": "GA100 [A100 SXM4 80GB]",
+                    "device_class": "0300",
+                    "device_id": "10de:20b2",
+                },
+                {
+                    "vendor": "NVIDIA",
+                    "device_name": "GA100 [A100 SXM4 80GB]",
+                    "device_class": "0300",
+                    "device_id": "10de:20b2",
+                },
+            ],
+        },
+        "allow_amend": False,
+        "environment": {
+            "internet": True,
+            "aleph_api": True,
+            "reproducible": False,
+            "shared_cache": False,
+            "hypervisor": "qemu",
+        },
+        "authorized_keys": [],
+    }
+    return InstanceContent.model_validate(content)
+
+
+@pytest.fixture
+def fixture_mixed_same_tier_gpu_instance_message() -> InstanceContent:
+    """Mixed same-tier GPU instance with RTX 4090 + L40S (Standard tier, 18 compute units total)."""
+    content = {
+        "time": 1701099523.849,
+        "rootfs": {
+            "parent": {
+                "ref": "6e30de68c6cedfa6b45240c2b51e52495ac6fb1bd4b36457b3d5ca307594d595",
+                "use_latest": True,
+            },
+            "size_mib": 20480,
+            "persistence": "host",
+        },
+        "address": "0xA07B1214bAe0D5ccAA25449C3149c0aC83658874",
+        "volumes": [],
+        "metadata": {"name": "Mixed Same Tier GPU Test"},
+        "resources": {"vcpus": 12, "memory": 24576, "seconds": 30},
+        "requirements": {
+            "node": {
+                "node_hash": "dc3d1d194a990b5c54380c3c0439562fefa42f5a46807cba1c500ec3affecf04",
+            },
+            "gpu": [
+                {
+                    "vendor": "NVIDIA",
+                    "device_name": "AD102 [GeForce RTX 4090]",
+                    "device_class": "0300",
+                    "device_id": "10de:2684",
+                },
+                {
+                    "vendor": "NVIDIA",
+                    "device_name": "AD102 [L40S]",
+                    "device_class": "0300",
+                    "device_id": "10de:26b9",
+                },
+            ],
+        },
+        "allow_amend": False,
+        "environment": {
+            "internet": True,
+            "aleph_api": True,
+            "reproducible": False,
+            "shared_cache": False,
+            "hypervisor": "qemu",
+        },
+        "authorized_keys": [],
+    }
+    return InstanceContent.model_validate(content)
+
+
+@pytest.fixture
+def fixture_mixed_tier_gpu_instance_message() -> InstanceContent:
+    """Mixed-tier GPU instance with A100 + RTX 4090 (Premium + Standard, 22 compute units total)."""
+    content = {
+        "time": 1701099523.849,
+        "rootfs": {
+            "parent": {
+                "ref": "6e30de68c6cedfa6b45240c2b51e52495ac6fb1bd4b36457b3d5ca307594d595",
+                "use_latest": True,
+            },
+            "size_mib": 20480,
+            "persistence": "host",
+        },
+        "address": "0xA07B1214bAe0D5ccAA25449C3149c0aC83658874",
+        "volumes": [],
+        "metadata": {"name": "Mixed Tier GPU Test"},
+        "resources": {"vcpus": 12, "memory": 24576, "seconds": 30},
+        "requirements": {
+            "node": {
+                "node_hash": "dc3d1d194a990b5c54380c3c0439562fefa42f5a46807cba1c500ec3affecf04",
+            },
+            "gpu": [
+                {
+                    "vendor": "NVIDIA",
+                    "device_name": "GA100 [A100 SXM4 80GB]",
+                    "device_class": "0300",
+                    "device_id": "10de:20b2",
+                },
+                {
+                    "vendor": "NVIDIA",
+                    "device_name": "AD102 [GeForce RTX 4090]",
+                    "device_class": "0300",
+                    "device_id": "10de:2684",
+                },
+            ],
+        },
+        "allow_amend": False,
+        "environment": {
+            "internet": True,
+            "aleph_api": True,
+            "reproducible": False,
+            "shared_cache": False,
+            "hypervisor": "qemu",
+        },
+        "authorized_keys": [],
+    }
+    return InstanceContent.model_validate(content)
+
+
+@pytest.fixture
+def fixture_unknown_gpu_instance_message() -> InstanceContent:
+    """GPU instance with unknown device_id."""
+    content = {
+        "time": 1701099523.849,
+        "rootfs": {
+            "parent": {
+                "ref": "6e30de68c6cedfa6b45240c2b51e52495ac6fb1bd4b36457b3d5ca307594d595",
+                "use_latest": True,
+            },
+            "size_mib": 20480,
+            "persistence": "host",
+        },
+        "address": "0xA07B1214bAe0D5ccAA25449C3149c0aC83658874",
+        "volumes": [],
+        "metadata": {"name": "Unknown GPU Test"},
+        "resources": {"vcpus": 8, "memory": 16384, "seconds": 30},
+        "requirements": {
+            "node": {
+                "node_hash": "dc3d1d194a990b5c54380c3c0439562fefa42f5a46807cba1c500ec3affecf04",
+            },
+            "gpu": [
+                {
+                    "vendor": "NVIDIA",
+                    "device_name": "Unknown GPU",
+                    "device_class": "0300",
+                    "device_id": "ffff:ffff",  # Invalid device ID
+                }
+            ],
+        },
+        "allow_amend": False,
+        "environment": {
+            "internet": True,
+            "aleph_api": True,
+            "reproducible": False,
+            "shared_cache": False,
+            "hypervisor": "qemu",
+        },
+        "authorized_keys": [],
+    }
+    return InstanceContent.model_validate(content)
+
+
+# GPU Test Cases
+
+
+def test_compute_cost_single_gpu_standard(
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+    fixture_single_gpu_instance_message,
+):
+    """Test cost calculation for single GPU (RTX 4090)."""
+    with session_factory() as session:
+        cost, details = get_total_and_detailed_costs(
+            session=session,
+            content=fixture_single_gpu_instance_message,
+            item_hash="gpu_single",
+        )
+
+        # RTX 4090: 6 compute units × $0.28/hour = $1.68/hour
+        # Expected hold cost: $1680 (in smallest unit)
+        assert cost == Decimal("1680")
+
+        # Should have execution cost entries (GPU + storage)
+        execution_costs = [d for d in details if d.type == CostType.EXECUTION]
+        assert len(execution_costs) == 1
+        assert execution_costs[0].name == "instance_gpu_standard"
+
+
+def test_compute_cost_multiple_same_gpu_premium(
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+    fixture_multiple_same_gpu_instance_message,
+):
+    """Test cost calculation for multiple same GPUs (2x A100)."""
+    with session_factory() as session:
+        cost, details = get_total_and_detailed_costs(
+            session=session,
+            content=fixture_multiple_same_gpu_instance_message,
+            item_hash="gpu_multi_same",
+        )
+
+        # 2x A100: 2 × 16 = 32 compute units × $0.56/hour = $17.92/hour
+        # Expected hold cost: $17920 (in smallest unit)
+        assert cost == Decimal("17920")
+
+        # Should have one execution cost entry for premium tier
+        execution_costs = [d for d in details if d.type == CostType.EXECUTION]
+        assert len(execution_costs) == 1
+        assert execution_costs[0].name == "instance_gpu_premium"
+
+
+def test_compute_cost_multiple_different_gpu_same_tier(
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+    fixture_mixed_same_tier_gpu_instance_message,
+):
+    """Test cost calculation for different GPUs in same tier (RTX 4090 + L40S)."""
+    with session_factory() as session:
+        cost, details = get_total_and_detailed_costs(
+            session=session,
+            content=fixture_mixed_same_tier_gpu_instance_message,
+            item_hash="gpu_mixed_same_tier",
+        )
+
+        # RTX 4090 (6 CU) + L40S (12 CU) = 18 CU × $0.28/hour = $5.04/hour
+        # Expected hold cost: $5040 (in smallest unit)
+        assert cost == Decimal("5040")
+
+        # Should have one execution cost entry for standard tier
+        execution_costs = [d for d in details if d.type == CostType.EXECUTION]
+        assert len(execution_costs) == 1
+        assert execution_costs[0].name == "instance_gpu_standard"
+
+
+def test_compute_cost_mixed_tier_gpu(
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+    fixture_mixed_tier_gpu_instance_message,
+):
+    """Test multi-tier GPU cost calculation (A100 + RTX 4090)."""
+    with session_factory() as session:
+        cost, details = get_total_and_detailed_costs(
+            session=session,
+            content=fixture_mixed_tier_gpu_instance_message,
+            item_hash="gpu_mixed_tier",
+        )
+
+        # A100: 16 CU × $0.56 = $8.96/hour
+        # RTX 4090: 6 CU × $0.28 = $1.68/hour
+        # Total: $10.64/hour = $10640 (in smallest unit)
+        assert cost == Decimal("10640")
+
+        # Should have TWO execution cost entries (one per tier)
+        execution_costs = [d for d in details if d.type == CostType.EXECUTION]
+        assert len(execution_costs) == 2
+
+        # Verify both tiers are present
+        tier_names = {ec.name for ec in execution_costs}
+        assert "instance_gpu_premium" in tier_names
+        assert "instance_gpu_standard" in tier_names
+
+        # Verify individual tier costs
+        premium_cost = next(
+            ec for ec in execution_costs if ec.name == "instance_gpu_premium"
+        )
+        standard_cost = next(
+            ec for ec in execution_costs if ec.name == "instance_gpu_standard"
+        )
+
+        assert premium_cost.cost_hold == Decimal("8960")  # 16 × $0.56
+        assert standard_cost.cost_hold == Decimal("1680")  # 6 × $0.28
+
+
+def test_compute_cost_unknown_gpu_raises_error(
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+    fixture_unknown_gpu_instance_message,
+):
+    """Test that unknown GPU device_id raises ValueError."""
+    with session_factory() as session:
+        with pytest.raises(ValueError, match="not found in compatible GPUs"):
+            get_total_and_detailed_costs(
+                session=session,
+                content=fixture_unknown_gpu_instance_message,
+                item_hash="gpu_unknown",
+            )
