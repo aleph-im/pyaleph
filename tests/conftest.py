@@ -201,7 +201,7 @@ def ccn_test_aiohttp_app(mocker, mock_config, session_factory, node_cache: NodeC
     event_loop = asyncio.get_event_loop()
     event_loop.set_debug(True)
 
-    app = create_aiohttp_app()
+    app = create_aiohttp_app(with_swagger=False)
     app[APP_STATE_CONFIG] = mock_config
     app[APP_STATE_NODE_CACHE] = node_cache
     app[APP_STATE_P2P_CLIENT] = mocker.AsyncMock()
