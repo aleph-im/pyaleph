@@ -332,3 +332,6 @@ MAX_FILE_SIZE = 100 * MiB
 MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE = 25 * MiB
 # MAX_UPLOAD_FILE_SIZE = 1000 * MiB (not used?)
 MIN_STORE_COST_MIB = 25  # Minimum MiB cost for pure STORE messages
+MIN_CREDIT_COST_PER_HOUR = (
+    1  # Minimum cost per hour in credits for instances and volumes
+)

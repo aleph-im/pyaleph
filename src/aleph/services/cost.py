@@ -33,6 +33,7 @@ from aleph.toolkit.constants import (
     DEFAULT_PRICE_AGGREGATE,
     DEFAULT_SETTINGS_AGGREGATE,
     HOUR,
+    MIN_CREDIT_COST_PER_HOUR,
     MIN_STORE_COST_MIB,
     PRICE_AGGREGATE_KEY,
     PRICE_AGGREGATE_OWNER,
@@ -269,6 +270,13 @@ def _get_volumes_costs(
             storage_mib * price_per_mib_second,
         )
         cost_credit = format_cost(storage_mib * price_per_mib_credit)
+
+        # Ensure minimum cost per hour for credit payments
+        if payment_type == PaymentType.credit:
+            min_credit_cost_per_second = Decimal(MIN_CREDIT_COST_PER_HOUR) / Decimal(
+                HOUR
+            )
+            cost_credit = max(cost_credit, format_cost(min_credit_cost_per_second))
 
         costs.append(
             AccountCostsDb(
@@ -537,6 +545,11 @@ def _calculate_executable_costs(
     cost_hold = format_cost(compute_unit_price)
     cost_stream = format_cost(compute_unit_price_stream)
     cost_credit = format_cost(compute_unit_price_credit)
+
+    # Ensure minimum cost per hour for credit payments
+    if payment_type == PaymentType.credit:
+        min_credit_cost_per_second = Decimal(MIN_CREDIT_COST_PER_HOUR) / Decimal(HOUR)
+        cost_credit = max(cost_credit, format_cost(min_credit_cost_per_second))
 
     execution_cost = AccountCostsDb(
         owner=content.address,
