@@ -70,7 +70,7 @@ class CostComponentDetail(BaseModel):
     cost_credit: str = Field(description="Credit cost for this component")
     size_mib: Optional[float] = Field(
         default=None,
-        description="Storage size in MiB (only populated for STORAGE-type components)",
+        description="Storage size in MiB (populated for volume/storage-related components: STORAGE, EXECUTION_INSTANCE_VOLUME_ROOTFS, EXECUTION_PROGRAM_VOLUME_CODE, EXECUTION_PROGRAM_VOLUME_RUNTIME, EXECUTION_PROGRAM_VOLUME_DATA, EXECUTION_VOLUME_PERSISTENT, EXECUTION_VOLUME_INMUTABLE)",
     )
 
     @field_validator("cost_hold", "cost_stream", "cost_credit", mode="before")
@@ -127,7 +127,7 @@ class EstimatedCostDetailResponse(BaseModel):
     cost_credit: str
     size_mib: Optional[float] = Field(
         default=None,
-        description="Storage size in MiB (only populated for STORAGE-type components)",
+        description="Storage size in MiB (populated for volume/storage-related components: STORAGE, EXECUTION_INSTANCE_VOLUME_ROOTFS, EXECUTION_PROGRAM_VOLUME_CODE, EXECUTION_PROGRAM_VOLUME_RUNTIME, EXECUTION_PROGRAM_VOLUME_DATA, EXECUTION_VOLUME_PERSISTENT, EXECUTION_VOLUME_INMUTABLE)",
     )
 
     @field_validator("cost_hold", "cost_stream", "cost_credit", mode="before")
