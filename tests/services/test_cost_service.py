@@ -1,3 +1,4 @@
+import datetime as dt
 from decimal import Decimal
 from math import ceil
 from unittest.mock import Mock
@@ -12,6 +13,7 @@ from aleph_message.models import (
 
 from aleph.db.models import AggregateDb
 from aleph.db.models.account_costs import AccountCostsDb
+from aleph.db.models.files import MessageFilePinDb
 from aleph.db.models.files import StoredFileDb as StoredFileDbActual
 from aleph.schemas.cost_estimation_messages import (
     CostEstimationProgramContent,
@@ -509,6 +511,7 @@ def test_get_cost_component_size_mib_for_storage(session_factory: DbSessionFacto
     with session_factory() as session:
         # Create a test file with known size (150 MiB = 157286400 bytes)
         file_hash = "test_file_hash_123"
+        store_msg_hash = "test_store_msg_hash_123"
         file_size = 150 * MiB
         test_file = StoredFileDbActual(
             hash=file_hash,
@@ -516,15 +519,24 @@ def test_get_cost_component_size_mib_for_storage(session_factory: DbSessionFacto
             type="file",
         )
         session.add(test_file)
+
+        # Link the store message hash to the file via MessageFilePinDb
+        pin = MessageFilePinDb(
+            file_hash=file_hash,
+            item_hash=store_msg_hash,
+            created=dt.datetime.now(tz=dt.timezone.utc),
+            owner="0xTestAddress",
+        )
+        session.add(pin)
         session.flush()
 
-        # Create a STORAGE-type cost component with ref pointing to the file
+        # Create a STORAGE-type cost component with ref pointing to the store message
         cost = AccountCostsDb(
             owner="0xTestAddress",
             item_hash="test_item_hash",
             type=CostType.STORAGE,
             name="Storage",
-            ref=file_hash,
+            ref=store_msg_hash,
             payment_type=PaymentType.hold,
             cost_hold=Decimal("0.5"),
             cost_stream=Decimal("0.0000001"),

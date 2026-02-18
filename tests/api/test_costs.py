@@ -44,7 +44,7 @@ async def test_get_costs_with_resources(
     pipeline = message_processor.make_pipeline()
     _ = [message async for message in pipeline]
 
-    response = await ccn_api_client.get(COSTS_URI)
+    response = await ccn_api_client.get(f"{COSTS_URI}?payment_type=hold")
     assert response.status == 200, await response.text()
     data = await response.json()
 

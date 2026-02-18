@@ -1,11 +1,13 @@
 """Tests for volume size calculation in cost service."""
 
+import datetime as dt
 from decimal import Decimal
 
 import pytest
 from aleph_message.models import InstanceContent, PaymentType
 
 from aleph.db.models.account_costs import AccountCostsDb
+from aleph.db.models.files import MessageFilePinDb
 from aleph.db.models.files import StoredFileDb as StoredFileDbActual
 from aleph.schemas.cost_estimation_messages import CostEstimationProgramContent
 from aleph.services.cost import get_cost_component_size_mib
@@ -220,6 +222,7 @@ def test_get_size_mib_for_execution_program_volume_code(
     with session_factory() as session:
         # Create a test file for code volume
         file_hash = "cafecafecafecafecafecafecafecafecafecafecafecafecafecafecafecafe"
+        store_msg_hash = "code_store_msg_hash_0001"
         file_size = 200 * MiB  # 200 MiB
         test_file = StoredFileDbActual(
             hash=file_hash,
@@ -227,6 +230,15 @@ def test_get_size_mib_for_execution_program_volume_code(
             type="file",
         )
         session.add(test_file)
+
+        # Link the store message hash to the file via MessageFilePinDb
+        pin = MessageFilePinDb(
+            file_hash=file_hash,
+            item_hash=store_msg_hash,
+            created=dt.datetime.now(tz=dt.timezone.utc),
+            owner="0xTestAddress",
+        )
+        session.add(pin)
         session.flush()
 
         # Create cost component for code volume
@@ -235,7 +247,7 @@ def test_get_size_mib_for_execution_program_volume_code(
             item_hash="test_item_hash",
             type=CostType.EXECUTION_PROGRAM_VOLUME_CODE,
             name="EXECUTION_PROGRAM_VOLUME_CODE",
-            ref=file_hash,
+            ref=store_msg_hash,
             payment_type=PaymentType.hold,
             cost_hold=Decimal("0.5"),
             cost_stream=Decimal("0.0000001"),
@@ -283,6 +295,7 @@ def test_get_size_mib_for_execution_volume_inmutable_from_file(
     with session_factory() as session:
         # Create a test file for immutable volume
         file_hash = "immutable_volume_hash_123"
+        store_msg_hash = "immutable_store_msg_hash_0001"
         file_size = 512 * MiB  # 512 MiB
         test_file = StoredFileDbActual(
             hash=file_hash,
@@ -290,6 +303,15 @@ def test_get_size_mib_for_execution_volume_inmutable_from_file(
             type="file",
         )
         session.add(test_file)
+
+        # Link the store message hash to the file via MessageFilePinDb
+        pin = MessageFilePinDb(
+            file_hash=file_hash,
+            item_hash=store_msg_hash,
+            created=dt.datetime.now(tz=dt.timezone.utc),
+            owner="0xTestAddress",
+        )
+        session.add(pin)
         session.flush()
 
         # Create cost component for immutable volume
@@ -298,7 +320,7 @@ def test_get_size_mib_for_execution_volume_inmutable_from_file(
             item_hash="test_item_hash",
             type=CostType.EXECUTION_VOLUME_INMUTABLE,
             name="#0:/mount1",
-            ref=file_hash,
+            ref=store_msg_hash,
             payment_type=PaymentType.hold,
             cost_hold=Decimal("0.5"),
             cost_stream=Decimal("0.0000001"),
@@ -347,6 +369,7 @@ def test_get_size_mib_prioritizes_real_file_over_estimation(
     with session_factory() as session:
         # Create a test file with DIFFERENT size than estimated
         file_hash = "cafecafecafecafecafecafecafecafecafecafecafecafecafecafecafecafe"
+        store_msg_hash = "priority_store_msg_hash_0001"
         file_size = 3000 * MiB  # 3000 MiB (different from estimated 2048)
         test_file = StoredFileDbActual(
             hash=file_hash,
@@ -354,6 +377,15 @@ def test_get_size_mib_prioritizes_real_file_over_estimation(
             type="file",
         )
         session.add(test_file)
+
+        # Link the store message hash to the file via MessageFilePinDb
+        pin = MessageFilePinDb(
+            file_hash=file_hash,
+            item_hash=store_msg_hash,
+            created=dt.datetime.now(tz=dt.timezone.utc),
+            owner="0xTestAddress",
+        )
+        session.add(pin)
         session.flush()
 
         # Create cost component for code volume
@@ -362,7 +394,7 @@ def test_get_size_mib_prioritizes_real_file_over_estimation(
             item_hash="test_item_hash",
             type=CostType.EXECUTION_PROGRAM_VOLUME_CODE,
             name="EXECUTION_PROGRAM_VOLUME_CODE",
-            ref=file_hash,
+            ref=store_msg_hash,
             payment_type=PaymentType.hold,
             cost_hold=Decimal("0.5"),
             cost_stream=Decimal("0.0000001"),
