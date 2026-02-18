@@ -108,7 +108,7 @@ DEFAULT_PRICE_AGGREGATE: Dict[Union[ProductPriceType, str], dict] = {
     ProductPriceType.INSTANCE_GPU_PREMIUM: {
         "price": {
             "storage": {"payg": "0.000000977", "credit": "0.17967489030626108"},
-            "compute_unit": {"payg": "0.56", "credit": "86250"},
+            "compute_unit": {"payg": "0.56", "holding": "560", "credit": "86250"},
         },
         "tiers": [
             {
@@ -156,7 +156,7 @@ DEFAULT_PRICE_AGGREGATE: Dict[Union[ProductPriceType, str], dict] = {
     ProductPriceType.INSTANCE_GPU_STANDARD: {
         "price": {
             "storage": {"payg": "0.000000977", "credit": "0.17967489030626108"},
-            "compute_unit": {"payg": "0.28", "credit": "43125"},
+            "compute_unit": {"payg": "0.28", "holding": "280", "credit": "43125"},
         },
         "tiers": [
             {
@@ -321,7 +321,7 @@ STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP = 1743775079
 # Cutoff for STORE messages requiring credit-only payment
 # After this timestamp, STORE messages must use credit payment (no holding tier)
 # and the 25MB free file exception no longer applies
-STORE_CREDIT_ONLY_CUTOFF_TIMESTAMP = 1798761600  # 2027-01-01 00:00:00 UTC
+CREDIT_ONLY_CUTOFF_TIMESTAMP = 1798761600  # 2027-01-01 00:00:00 UTC
 
 # Credit precision change: 1 USD = 1,000,000 credits (previously 100 credits)
 # Messages before this timestamp have amounts in old format (need 10,000x multiplier)
@@ -332,3 +332,6 @@ MAX_FILE_SIZE = 100 * MiB
 MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE = 25 * MiB
 # MAX_UPLOAD_FILE_SIZE = 1000 * MiB (not used?)
 MIN_STORE_COST_MIB = 25  # Minimum MiB cost for pure STORE messages
+MIN_CREDIT_COST_PER_HOUR = (
+    1  # Minimum cost per hour in credits for instances and volumes
+)

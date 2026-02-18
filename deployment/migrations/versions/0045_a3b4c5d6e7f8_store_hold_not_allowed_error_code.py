@@ -1,10 +1,10 @@
-"""Add STORE_HOLD_NOT_ALLOWED error code
+"""Add INVALID_PAYMENT_METHOD error code
 
 Revision ID: a3b4c5d6e7f8
 Revises: b2c3d4e5f6a7
 Create Date: 2026-02-09
 
-Adds error code 202 for STORE messages that attempt to use hold payment
+Adds error code 202 for messages that attempt to use non-credit payment
 after the cutoff timestamp.
 """
 
@@ -23,7 +23,7 @@ def upgrade() -> None:
         text(
             """
         INSERT INTO error_codes(code, description) VALUES
-            (202, 'STORE messages with hold payment type are no longer allowed after the cutoff')
+            (202, 'Messages with non-credit payment types are no longer allowed')
         """
         )
     )
