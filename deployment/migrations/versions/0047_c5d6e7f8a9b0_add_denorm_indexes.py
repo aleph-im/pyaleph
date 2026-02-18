@@ -31,6 +31,35 @@ INDEXES = [
 ]
 
 
+TRIGGER_SQL = """
+CREATE OR REPLACE FUNCTION update_first_confirmed()
+RETURNS TRIGGER AS $$
+DECLARE
+    tx_dt TIMESTAMPTZ;
+    tx_ht BIGINT;
+BEGIN
+    SELECT datetime, height INTO tx_dt, tx_ht
+    FROM chain_txs
+    WHERE hash = NEW.tx_hash;
+
+    IF tx_dt IS NOT NULL THEN
+        UPDATE messages
+        SET first_confirmed_at = LEAST(COALESCE(first_confirmed_at, tx_dt), tx_dt),
+            first_confirmed_height = LEAST(COALESCE(first_confirmed_height, tx_ht), tx_ht)
+        WHERE item_hash = NEW.item_hash;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_update_first_confirmed
+    AFTER INSERT ON message_confirmations
+    FOR EACH ROW
+    EXECUTE FUNCTION update_first_confirmed();
+"""
+
+
 def upgrade() -> None:
     # CONCURRENTLY requires autocommit (no transaction)
     connection = op.get_bind()
@@ -44,8 +73,20 @@ def upgrade() -> None:
     if was_in_transaction:
         connection.execute(text("BEGIN"))
 
+    # Trigger to keep first_confirmed_at/height in sync
+    op.execute(text(TRIGGER_SQL))
+
 
 def downgrade() -> None:
+    op.execute(
+        text(
+            """
+        DROP TRIGGER IF EXISTS trg_update_first_confirmed ON message_confirmations;
+        DROP FUNCTION IF EXISTS update_first_confirmed();
+        """
+        )
+    )
+
     connection = op.get_bind()
     was_in_transaction = connection.in_transaction()
     if was_in_transaction:
