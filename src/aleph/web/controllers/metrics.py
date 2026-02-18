@@ -20,7 +20,7 @@ from aleph.db.models import FilePinDb, PeerDb, PendingMessageDb, PendingTxDb
 from aleph.services.cache.node_cache import NodeCache
 from aleph.types.chain_sync import ChainEventType
 from aleph.types.db_session import DbSessionFactory
-from aleph.types.message_status import MessageStatus
+
 from aleph.version import __version__
 
 LOGGER = getLogger("WEB.metrics")
@@ -159,12 +159,7 @@ async def get_metrics(
         n_pending_messages = PendingMessageDb.count(session=session)
         n_pending_txs = PendingTxDb.count(session=session)
         # Use message_counts for O(1) lookup instead of COUNT(*)
-        n_synced_messages: int = (
-            count_matching_messages_fast(
-                session, statuses=[MessageStatus.PROCESSED.value]
-            )
-            or 0
-        )
+        n_synced_messages: int = count_matching_messages_fast(session) or 0
         n_peers = PeerDb.count(session=session)
         n_file_pins = FilePinDb.count(session=session)
         eth_last_committed_height = get_last_height(
