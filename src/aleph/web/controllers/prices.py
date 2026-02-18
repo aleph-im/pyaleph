@@ -53,6 +53,7 @@ from aleph.services.pricing_utils import get_pricing_timeline
 from aleph.toolkit.constants import MiB
 from aleph.toolkit.costs import format_cost_str
 from aleph.toolkit.ecdsa import require_auth_token
+from aleph.types.cost import CostType
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import MessageStatus
 from aleph.web.controllers.app_state_getters import (
@@ -62,6 +63,11 @@ from aleph.web.controllers.app_state_getters import (
 from aleph.web.controllers.utils import get_item_hash_from_request
 
 LOGGER = logging.getLogger(__name__)
+
+# Cost types whose size must come from message content (not the file-pin DB join).
+_CONTENT_SIZED_COST_TYPES = frozenset(
+    [CostType.EXECUTION_INSTANCE_VOLUME_ROOTFS, CostType.EXECUTION_VOLUME_PERSISTENT]
+)
 
 
 # This is not defined in aiohttp.web_exceptions
@@ -447,7 +453,8 @@ async def get_costs(request: web.Request) -> web.Response:
     - address: Filter by owner address
     - item_hash: Filter by specific resource
     - payment_type: Filter by payment type (hold, superfluid, credit)
-    - include_details: Detail level (0=summary only, 1=resource list, 2=resource list with breakdown)
+    - include_details: Detail level (0=summary only, 1=resource list, 2=resource list with breakdown).
+      Note: include_details=2 requires at least one of 'address' or 'item_hash' filters.
     - pagination: Items per page for resource list
     - page: Page number (1-indexed)
     """
@@ -455,6 +462,13 @@ async def get_costs(request: web.Request) -> web.Response:
         query_params = GetCostsQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json())
+
+    if query_params.include_details >= 2 and not (
+        query_params.address or query_params.item_hash
+    ):
+        raise web.HTTPUnprocessableEntity(
+            text="include_details=2 requires at least one of 'address' or 'item_hash' filters to avoid fetching breakdowns for all resources"
+        )
 
     session_factory = get_session_factory_from_request(request)
 
@@ -542,11 +556,30 @@ async def get_costs(request: web.Request) -> web.Response:
                         ]
 
                     detail_list = []
+                    # Lazy-load message content — only fetched if a content-based
+                    # cost type (ROOTFS, PERSISTENT) is actually present.
+                    _message_content = None
+                    _content_loaded = False
                     for cost, file_size_bytes in cost_items:
                         if file_size_bytes is not None:
                             size_mib: Optional[float] = float(file_size_bytes / MiB)
                         elif query_params.include_size:
-                            size_mib = get_cost_component_size_mib(session, cost)
+                            if (
+                                cost.type in _CONTENT_SIZED_COST_TYPES
+                                and not _content_loaded
+                            ):
+                                _content_loaded = True
+                                message_db = get_message_by_item_hash(
+                                    session, row.item_hash
+                                )
+                                if message_db:
+                                    try:
+                                        _message_content = message_db.parsed_content
+                                    except Exception:
+                                        pass
+                            size_mib = get_cost_component_size_mib(
+                                session, cost, _message_content
+                            )
                         else:
                             size_mib = None
 

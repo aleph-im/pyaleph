@@ -155,7 +155,9 @@ async def test_get_costs_with_details_level_2(
     pipeline = message_processor.make_pipeline()
     _ = [message async for message in pipeline]
 
-    response = await ccn_api_client.get(f"{COSTS_URI}?include_details=2")
+    response = await ccn_api_client.get(
+        f"{COSTS_URI}?include_details=2&address=0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba"
+    )
     assert response.status == 200, await response.text()
     data = await response.json()
 
@@ -217,6 +219,33 @@ async def test_get_costs_pagination_above_maximum(ccn_api_client):
         f"{COSTS_URI}?include_details=1&pagination=2000"
     )
     assert response.status == 422  # Unprocessable Entity
+
+
+@pytest.mark.asyncio
+async def test_get_costs_details_2_requires_filter(ccn_api_client):
+    """Test that include_details=2 without address or item_hash returns 422."""
+    response = await ccn_api_client.get(f"{COSTS_URI}?include_details=2")
+    assert response.status == 422
+    text = await response.text()
+    assert "address" in text or "item_hash" in text
+
+
+@pytest.mark.asyncio
+async def test_get_costs_details_2_allowed_with_address(ccn_api_client):
+    """Test that include_details=2 with address filter is accepted."""
+    response = await ccn_api_client.get(
+        f"{COSTS_URI}?include_details=2&address=0xSomeAddress"
+    )
+    assert response.status == 200
+
+
+@pytest.mark.asyncio
+async def test_get_costs_details_2_allowed_with_item_hash(ccn_api_client):
+    """Test that include_details=2 with item_hash filter is accepted."""
+    response = await ccn_api_client.get(
+        f"{COSTS_URI}?include_details=2&item_hash=nonexistent_hash"
+    )
+    assert response.status == 200
 
 
 @pytest.mark.asyncio
@@ -421,7 +450,9 @@ async def test_get_costs_detail_breakdown_types(
     pipeline = message_processor.make_pipeline()
     _ = [message async for message in pipeline]
 
-    response = await ccn_api_client.get(f"{COSTS_URI}?include_details=2")
+    response = await ccn_api_client.get(
+        f"{COSTS_URI}?include_details=2&address=0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba"
+    )
     assert response.status == 200, await response.text()
     data = await response.json()
 
@@ -479,7 +510,9 @@ async def test_get_costs_detail_size_mib_null_for_execution(
     pipeline = message_processor.make_pipeline()
     _ = [message async for message in pipeline]
 
-    response = await ccn_api_client.get(f"{COSTS_URI}?include_details=2")
+    response = await ccn_api_client.get(
+        f"{COSTS_URI}?include_details=2&address=0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba"
+    )
     assert response.status == 200, await response.text()
     data = await response.json()
 
