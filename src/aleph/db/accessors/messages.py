@@ -3,7 +3,7 @@ import traceback
 from typing import Any, Iterable, Mapping, Optional, Sequence, Tuple, Union, overload
 
 from aleph_message.models import Chain, ItemHash, MessageType, PaymentType
-from sqlalchemy import String, delete, func, nullsfirst, nullslast, select, text, update
+from sqlalchemy import delete, func, nullsfirst, nullslast, select, text, update
 from sqlalchemy.dialects.postgresql import array, insert
 from sqlalchemy.orm import load_only, selectinload
 from sqlalchemy.sql import Insert, Select

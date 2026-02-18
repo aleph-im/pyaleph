@@ -251,10 +251,14 @@ async def view_messages_list(request: web.Request) -> web.Response:
 
     if cursor:
         # Cursor mode: no count needed
-        with session_factory() as session:
+        try:
             messages_query = make_matching_messages_query(
                 include_confirmations=True, cursor=cursor, **find_filters
             )
+        except ValueError as e:
+            raise web.HTTPUnprocessableEntity(text=str(e))
+
+        with session_factory() as session:
             messages = list(session.execute(messages_query).scalars())
 
         has_more = len(messages) > pagination_per_page

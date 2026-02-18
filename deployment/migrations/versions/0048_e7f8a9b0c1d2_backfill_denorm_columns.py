@@ -74,6 +74,22 @@ def upgrade() -> None:
         """,
     )
 
+    # Step 1b: Default orphan messages (no message_status row) to PROCESSED
+    logger.info("Step 1b/4: Defaulting orphan messages...")
+    connection.execute(text("BEGIN"))
+    result = connection.execute(
+        text(
+            """
+        UPDATE messages
+        SET status = 'processed',
+            reception_time = COALESCE(reception_time, time)
+        WHERE status IS NULL
+        """
+        )
+    )
+    connection.execute(text("COMMIT"))
+    logger.info(f"  Defaulted {result.rowcount} orphan messages to PROCESSED")
+
     # Step 2: Backfill promoted JSONB fields
     logger.info("Step 2/4: Backfilling JSONB fields...")
     _batched_update(
@@ -86,7 +102,7 @@ def upgrade() -> None:
             LIMIT {BATCH_SIZE}
         )
         UPDATE messages
-        SET owner = content->>'address',
+        SET owner = COALESCE(content->>'address', ''),
             content_type = content->>'type',
             content_ref = content->>'ref',
             content_key = content->>'key'

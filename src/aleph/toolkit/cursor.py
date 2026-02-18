@@ -10,10 +10,16 @@ def encode_cursor(time: float, item_hash: str) -> str:
 
 
 def decode_cursor(cursor: str) -> Tuple[float, str]:
-    """Decode an opaque cursor string into a (time, item_hash) pair."""
-    # Re-add padding
-    padding = 4 - len(cursor) % 4
-    if padding != 4:
-        cursor += "=" * padding
-    payload = json.loads(base64.urlsafe_b64decode(cursor))
-    return payload["t"], payload["h"]
+    """Decode an opaque cursor string into a (time, item_hash) pair.
+
+    Raises ValueError if the cursor is malformed.
+    """
+    try:
+        # Re-add padding
+        padding = 4 - len(cursor) % 4
+        if padding != 4:
+            cursor += "=" * padding
+        payload = json.loads(base64.urlsafe_b64decode(cursor))
+        return float(payload["t"]), str(payload["h"])
+    except (json.JSONDecodeError, KeyError, ValueError, Exception) as e:
+        raise ValueError(f"Invalid cursor: {e}") from e
