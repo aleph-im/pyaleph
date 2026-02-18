@@ -717,7 +717,6 @@ async def test_owners_filter_ws_logic(owners_test_messages):
         "content_key",
         "first_confirmed_at",
         "first_confirmed_height",
-        "forgotten_by",
         "payment_type",
     }
 

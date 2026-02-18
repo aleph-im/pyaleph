@@ -3,17 +3,7 @@ import traceback
 from typing import Any, Iterable, Mapping, Optional, Sequence, Tuple, Union, overload
 
 from aleph_message.models import Chain, ItemHash, MessageType, PaymentType
-from sqlalchemy import (
-    ARRAY,
-    String,
-    delete,
-    func,
-    nullsfirst,
-    nullslast,
-    select,
-    text,
-    update,
-)
+from sqlalchemy import String, delete, func, nullsfirst, nullslast, select, text, update
 from sqlalchemy.dialects.postgresql import array, insert
 from sqlalchemy.orm import load_only, selectinload
 from sqlalchemy.sql import Insert, Select
@@ -577,22 +567,8 @@ def forget_message(
     )
     session.execute(copy_row_stmt)
 
-    # Update inline status + purge content (trigger handles message_counts)
-    session.execute(
-        update(MessageDb)
-        .where(MessageDb.item_hash == item_hash)
-        .values(
-            status_value=MessageStatus.FORGOTTEN,
-            content=None,
-            forgotten_by=func.array_append(
-                func.coalesce(
-                    MessageDb.forgotten_by,
-                    func.cast(literal("{}"), ARRAY(String)),
-                ),
-                forget_message_hash,
-            ),
-        )
-    )
+    # Delete the message from the messages table
+    session.execute(delete(MessageDb).where(MessageDb.item_hash == item_hash))
 
     # Dual-write to message_status during transition
     session.execute(

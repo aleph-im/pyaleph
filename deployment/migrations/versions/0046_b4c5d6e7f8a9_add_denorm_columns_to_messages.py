@@ -5,9 +5,8 @@ Revises: a3b4c5d6e7f8
 Create Date: 2026-02-18
 
 Adds status, reception_time, owner, content_type, content_ref, content_key,
-first_confirmed_at, first_confirmed_height, forgotten_by, and payment_type
-columns to the messages table. Makes content column nullable for forgotten
-messages.
+first_confirmed_at, first_confirmed_height, and payment_type
+columns to the messages table.
 """
 
 from alembic import op
@@ -32,9 +31,7 @@ def upgrade() -> None:
         ALTER TABLE messages ADD COLUMN content_key VARCHAR;
         ALTER TABLE messages ADD COLUMN first_confirmed_at TIMESTAMPTZ;
         ALTER TABLE messages ADD COLUMN first_confirmed_height BIGINT;
-        ALTER TABLE messages ADD COLUMN forgotten_by VARCHAR[];
         ALTER TABLE messages ADD COLUMN payment_type VARCHAR;
-        ALTER TABLE messages ALTER COLUMN content DROP NOT NULL;
         """
         )
     )
@@ -44,9 +41,7 @@ def downgrade() -> None:
     op.execute(
         text(
             """
-        ALTER TABLE messages ALTER COLUMN content SET NOT NULL;
         ALTER TABLE messages DROP COLUMN IF EXISTS payment_type;
-        ALTER TABLE messages DROP COLUMN IF EXISTS forgotten_by;
         ALTER TABLE messages DROP COLUMN IF EXISTS first_confirmed_height;
         ALTER TABLE messages DROP COLUMN IF EXISTS first_confirmed_at;
         ALTER TABLE messages DROP COLUMN IF EXISTS content_key;

@@ -5,7 +5,7 @@ Revises: d6e7f8a9b0c1
 Create Date: 2026-02-18
 
 Populates the new denormalized columns from message_status, JSONB content,
-account_costs, message_confirmations, and forgotten_messages.
+account_costs, and message_confirmations.
 Enforces NOT NULL on status and reception_time after backfill.
 
 Uses batched UPDATEs with intermediate COMMITs to avoid WAL bloat,
@@ -57,7 +57,7 @@ def upgrade() -> None:
     connection.execute(text("COMMIT"))
 
     # Step 1: Backfill status + reception_time from message_status
-    logger.info("Step 1/5: Backfilling status + reception_time...")
+    logger.info("Step 1/4: Backfilling status + reception_time...")
     _batched_update(
         connection,
         "status",
@@ -75,7 +75,7 @@ def upgrade() -> None:
     )
 
     # Step 2: Backfill promoted JSONB fields
-    logger.info("Step 2/5: Backfilling JSONB fields...")
+    logger.info("Step 2/4: Backfilling JSONB fields...")
     _batched_update(
         connection,
         "jsonb",
@@ -95,7 +95,7 @@ def upgrade() -> None:
     )
 
     # Step 3: Backfill payment_type from account_costs
-    logger.info("Step 3/5: Backfilling payment_type...")
+    logger.info("Step 3/4: Backfilling payment_type...")
     _batched_update(
         connection,
         "payment_type",
@@ -115,7 +115,7 @@ def upgrade() -> None:
     )
 
     # Step 4: Backfill first_confirmed_at + first_confirmed_height
-    logger.info("Step 4/5: Backfilling confirmation timestamps...")
+    logger.info("Step 4/4: Backfilling confirmation timestamps...")
     _batched_update(
         connection,
         "confirmed",
@@ -142,24 +142,6 @@ def upgrade() -> None:
         """,
     )
 
-    # Step 5: Backfill forgotten messages (typically 0 rows — forgotten messages
-    # are currently DELETEd from the messages table, not kept)
-    logger.info("Step 5/5: Backfilling forgotten messages...")
-    connection.execute(text("BEGIN"))
-    connection.execute(
-        text(
-            """
-        UPDATE messages m
-        SET status = 'forgotten',
-            forgotten_by = fm.forgotten_by
-        FROM forgotten_messages fm
-        WHERE m.item_hash = fm.item_hash
-          AND m.status IS DISTINCT FROM 'forgotten'
-        """
-        )
-    )
-    connection.execute(text("COMMIT"))
-
     # Enforce NOT NULL constraints
     logger.info("Setting NOT NULL constraints...")
     connection.execute(text("BEGIN"))
@@ -184,8 +166,7 @@ def downgrade() -> None:
         UPDATE messages SET status = NULL, reception_time = NULL,
             owner = NULL, content_type = NULL, content_ref = NULL,
             content_key = NULL, first_confirmed_at = NULL,
-            first_confirmed_height = NULL, forgotten_by = NULL,
-            payment_type = NULL;
+            first_confirmed_height = NULL, payment_type = NULL;
 
         ALTER TABLE messages ENABLE TRIGGER trg_message_counts;
         """

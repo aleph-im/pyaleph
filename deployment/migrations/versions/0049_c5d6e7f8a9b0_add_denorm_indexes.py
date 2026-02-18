@@ -5,14 +5,12 @@ Revises: e7f8a9b0c1d2
 Create Date: 2026-02-18
 
 Creates indexes on denormalized columns using CONCURRENTLY (no table lock).
-Indexes are built in parallel to minimize wall-clock time.
 
-Execution order: runs AFTER the backfill (0049) so that indexes are built
+Execution order: runs AFTER the backfill (0048) so that indexes are built
 on already-populated columns in a single pass, rather than being maintained
 incrementally during the backfill.
 """
 
-import concurrent.futures
 import logging
 
 from alembic import op
@@ -25,8 +23,6 @@ branch_labels = None
 depends_on = None
 
 logger = logging.getLogger("alembic.runtime.migration")
-
-MAX_PARALLEL_INDEX_BUILDS = 4
 
 INDEXES = [
     "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_messages_type_status_time ON messages (type, status, time DESC)",
@@ -75,30 +71,21 @@ def upgrade() -> None:
     connection = op.get_bind()
     engine = connection.engine
 
-    # CONCURRENTLY requires no active transaction
+    # CONCURRENTLY requires no active transaction — use AUTOCOMMIT
     was_in_transaction = connection.in_transaction()
     if was_in_transaction:
         connection.execute(text("COMMIT"))
 
-    # Build indexes in parallel using separate connections
-    def build_index(idx_sql):
+    # Build indexes sequentially (parallel CONCURRENTLY builds on the same
+    # table deadlock on ShareUpdateExclusiveLock in PostgreSQL)
+    logger.info(f"Building {len(INDEXES)} indexes...")
+    for idx_sql in INDEXES:
         idx_name = idx_sql.split("IF NOT EXISTS ")[1].split(" ON")[0]
         logger.info(f"  Building {idx_name}...")
         with engine.connect() as conn:
             conn = conn.execution_options(isolation_level="AUTOCOMMIT")
             conn.execute(text(idx_sql))
         logger.info(f"  Completed {idx_name}")
-
-    logger.info(
-        f"Building {len(INDEXES)} indexes in parallel "
-        f"(max {MAX_PARALLEL_INDEX_BUILDS} workers)..."
-    )
-    with concurrent.futures.ThreadPoolExecutor(
-        max_workers=MAX_PARALLEL_INDEX_BUILDS
-    ) as executor:
-        futures = {executor.submit(build_index, sql): sql for sql in INDEXES}
-        for future in concurrent.futures.as_completed(futures):
-            future.result()  # Re-raise any exceptions
 
     logger.info("All indexes created.")
 

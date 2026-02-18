@@ -10,7 +10,7 @@ from aleph.handlers.message_handler import MessageHandler
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.message_processing_result import ProcessedMessage, RejectedMessage
-from aleph.types.message_status import ErrorCode, MessageStatus
+from aleph.types.message_status import ErrorCode
 
 from .load_fixtures import load_fixture_message_list
 
@@ -64,14 +64,9 @@ async def test_duplicated_forgotten_message(
         )
         assert isinstance(test2, ProcessedMessage)
 
-        res2 = cast(
-            MessageDb,
-            session.query(MessageDb).where(MessageDb.item_hash == post_hash).first(),
-        )
-        # Message stays with FORGOTTEN status and null content
-        assert res2 is not None
-        assert res2.status_value == MessageStatus.FORGOTTEN
-        assert res2.content is None
+        res2 = session.query(MessageDb).where(MessageDb.item_hash == post_hash).first()
+        # Message is deleted from messages table
+        assert res2 is None
 
         # 3) process post message confirmation (discarding it)
         test3 = await message_handler.process(
@@ -81,13 +76,9 @@ async def test_duplicated_forgotten_message(
         assert isinstance(test3, RejectedMessage)
         assert test3.error_code == ErrorCode.FORGOTTEN_DUPLICATE
 
-        res3 = cast(
-            MessageDb,
-            session.query(MessageDb).where(MessageDb.item_hash == post_hash).first(),
-        )
-        # Message still present with FORGOTTEN status
-        assert res3 is not None
-        assert res3.status_value == MessageStatus.FORGOTTEN
+        res3 = session.query(MessageDb).where(MessageDb.item_hash == post_hash).first()
+        # Message still deleted
+        assert res3 is None
 
         res4 = cast(
             ForgottenMessageDb,

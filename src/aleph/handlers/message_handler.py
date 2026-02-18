@@ -439,22 +439,6 @@ class MessageHandler(BaseMessageHandler):
             session=session, item_hash=ItemHash(pending_message.item_hash)
         )
         if existing_message:
-            # If the existing message is forgotten, treat as forgotten duplicate
-            if existing_message.status_value == MessageStatus.FORGOTTEN:
-                forgotten_message = get_forgotten_message(
-                    session=session, item_hash=ItemHash(pending_message.item_hash)
-                )
-                if forgotten_message:
-                    await self.confirm_existing_forgotten_message(
-                        session=session,
-                        forgotten_message=forgotten_message,
-                        pending_message=pending_message,
-                    )
-                return RejectedMessage(
-                    pending_message=pending_message,
-                    error_code=ErrorCode.FORGOTTEN_DUPLICATE,
-                )
-
             await self.confirm_existing_message(
                 session=session,
                 existing_message=existing_message,

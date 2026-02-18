@@ -100,7 +100,7 @@ class MessageDb(Base):
     signature: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     item_type: Mapped[ItemType] = mapped_column(ChoiceType(ItemType), nullable=False)
     item_content: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    content: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
+    content: Mapped[Any] = mapped_column(JSONB, nullable=False)
     time: Mapped[dt.datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, index=True
     )
@@ -130,9 +130,6 @@ class MessageDb(Base):
     )
     first_confirmed_height: Mapped[Optional[int]] = mapped_column(
         BigInteger, nullable=True
-    )
-    forgotten_by: Mapped[Optional[List[str]]] = mapped_column(
-        ARRAY(String), nullable=True
     )
     payment_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
