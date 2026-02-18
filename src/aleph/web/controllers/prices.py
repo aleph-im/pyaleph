@@ -20,6 +20,7 @@ from aleph.db.accessors.cost import (
     delete_costs_for_message,
     get_costs_summary,
     get_message_costs,
+    get_message_costs_with_file_sizes,
     get_resources_with_costs,
     make_costs_upsert_query,
 )
@@ -29,6 +30,7 @@ from aleph.schemas.api.costs import (
     CostComponentDetail,
     CostsFiltersResponse,
     CostsSummaryResponse,
+    EstimatedCostDetailResponse,
     EstimatedCostsResponse,
     GetCostsQueryParams,
     GetCostsResponse,
@@ -41,14 +43,17 @@ from aleph.schemas.cost_estimation_messages import (
 from aleph.services.cost import (
     _get_product_price_type,
     _get_settings,
+    get_cost_component_size_mib,
     get_detailed_costs,
     get_payment_type,
     get_total_and_detailed_costs,
     get_total_and_detailed_costs_from_db,
 )
 from aleph.services.pricing_utils import get_pricing_timeline
+from aleph.toolkit.constants import MiB
 from aleph.toolkit.costs import format_cost_str
 from aleph.toolkit.ecdsa import require_auth_token
+from aleph.types.cost import CostType
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import MessageStatus
 from aleph.web.controllers.app_state_getters import (
@@ -58,6 +63,11 @@ from aleph.web.controllers.app_state_getters import (
 from aleph.web.controllers.utils import get_item_hash_from_request
 
 LOGGER = logging.getLogger(__name__)
+
+# Cost types whose size must come from message content (not the file-pin DB join).
+_CONTENT_SIZED_COST_TYPES = frozenset(
+    [CostType.EXECUTION_INSTANCE_VOLUME_ROOTFS, CostType.EXECUTION_VOLUME_PERSISTENT]
+)
 
 
 # This is not defined in aiohttp.web_exceptions
@@ -143,6 +153,8 @@ async def message_price(request: web.Request):
         description: Message not found
     """
 
+    include_size = request.query.get("include_size", "false").lower() == "true"
+
     session_factory = get_session_factory_from_request(request)
     with session_factory() as session:
         item_hash = get_item_hash_from_request(request)
@@ -158,11 +170,41 @@ async def message_price(request: web.Request):
         except RuntimeError as e:
             raise web.HTTPNotFound(reason=str(e))
 
+        # Optionally enrich detail with file sizes (single joined query).
+        # Falls back to content-based sizes (PERSISTENT) when DB join yields nothing.
+        if include_size:
+            costs_with_sizes = get_message_costs_with_file_sizes(session, item_hash)
+        else:
+            costs_with_sizes = [(cost, None) for cost in costs]
+
+        detail_list = []
+        for cost, file_size_bytes in costs_with_sizes:
+            if file_size_bytes is not None:
+                size_mib: Optional[float] = float(file_size_bytes / MiB)
+            elif include_size:
+                size_mib = get_cost_component_size_mib(session, cost, content)
+            else:
+                size_mib = None
+            detail_list.append(
+                EstimatedCostDetailResponse(
+                    type=(
+                        cost.type.value
+                        if hasattr(cost.type, "value")
+                        else str(cost.type)
+                    ),
+                    name=cost.name,
+                    cost_hold=str(cost.cost_hold),
+                    cost_stream=str(cost.cost_stream),
+                    cost_credit=str(cost.cost_credit),
+                    size_mib=size_mib,
+                )
+            )
+
     model = {
         "required_tokens": float(required_tokens),
         "payment_type": payment_type,
         "cost": format_cost_str(required_tokens),
-        "detail": costs,
+        "detail": detail_list,
         "charged_address": content.address,
     }
 
@@ -225,11 +267,30 @@ async def message_price_estimate(request: web.Request):
         except RuntimeError as e:
             raise web.HTTPNotFound(reason=str(e))
 
+        # Enrich detail with size information
+        detail_list = []
+        for cost in costs:
+            size_mib = get_cost_component_size_mib(session, cost, content)
+            detail_list.append(
+                EstimatedCostDetailResponse(
+                    type=(
+                        cost.type.value
+                        if hasattr(cost.type, "value")
+                        else str(cost.type)
+                    ),
+                    name=cost.name,
+                    cost_hold=str(cost.cost_hold),
+                    cost_stream=str(cost.cost_stream),
+                    cost_credit=str(cost.cost_credit),
+                    size_mib=size_mib,
+                )
+            )
+
     model = {
         "required_tokens": float(required_tokens),
         "payment_type": payment_type,
         "cost": format_cost_str(required_tokens),
-        "detail": costs,
+        "detail": detail_list,
         "charged_address": content.address,
     }
 
@@ -392,7 +453,8 @@ async def get_costs(request: web.Request) -> web.Response:
     - address: Filter by owner address
     - item_hash: Filter by specific resource
     - payment_type: Filter by payment type (hold, superfluid, credit)
-    - include_details: Detail level (0=summary only, 1=resource list, 2=resource list with breakdown)
+    - include_details: Detail level (0=summary only, 1=resource list, 2=resource list with breakdown).
+      Note: include_details=2 requires at least one of 'address' or 'item_hash' filters.
     - pagination: Items per page for resource list
     - page: Page number (1-indexed)
     """
@@ -400,6 +462,13 @@ async def get_costs(request: web.Request) -> web.Response:
         query_params = GetCostsQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json())
+
+    if query_params.include_details >= 2 and not (
+        query_params.address or query_params.item_hash
+    ):
+        raise web.HTTPUnprocessableEntity(
+            text="include_details=2 requires at least one of 'address' or 'item_hash' filters to avoid fetching breakdowns for all resources"
+        )
 
     session_factory = get_session_factory_from_request(request)
 
@@ -476,21 +545,59 @@ async def get_costs(request: web.Request) -> web.Response:
 
                 # Include detailed breakdown if requested (include_details == 2)
                 if query_params.include_details >= 2:
-                    cost_details = get_message_costs(session, row.item_hash)
-                    resource_item["detail"] = [
-                        CostComponentDetail(
-                            type=(
-                                cost.type.value
-                                if hasattr(cost.type, "value")
-                                else str(cost.type)
-                            ),
-                            name=cost.name,
-                            cost_hold=str(cost.cost_hold),
-                            cost_stream=str(cost.cost_stream),
-                            cost_credit=str(cost.cost_credit),
+                    if query_params.include_size:
+                        cost_items = get_message_costs_with_file_sizes(
+                            session, row.item_hash
                         )
-                        for cost in cost_details
-                    ]
+                    else:
+                        cost_items = [
+                            (cost, None)
+                            for cost in get_message_costs(session, row.item_hash)
+                        ]
+
+                    detail_list = []
+                    # Lazy-load message content — only fetched if a content-based
+                    # cost type (ROOTFS, PERSISTENT) is actually present.
+                    _message_content = None
+                    _content_loaded = False
+                    for cost, file_size_bytes in cost_items:
+                        if file_size_bytes is not None:
+                            size_mib: Optional[float] = float(file_size_bytes / MiB)
+                        elif query_params.include_size:
+                            if (
+                                cost.type in _CONTENT_SIZED_COST_TYPES
+                                and not _content_loaded
+                            ):
+                                _content_loaded = True
+                                message_db = get_message_by_item_hash(
+                                    session, row.item_hash
+                                )
+                                if message_db:
+                                    try:
+                                        _message_content = message_db.parsed_content
+                                    except Exception:
+                                        pass
+                            size_mib = get_cost_component_size_mib(
+                                session, cost, _message_content
+                            )
+                        else:
+                            size_mib = None
+
+                        detail_list.append(
+                            CostComponentDetail(
+                                type=(
+                                    cost.type.value
+                                    if hasattr(cost.type, "value")
+                                    else str(cost.type)
+                                ),
+                                name=cost.name,
+                                cost_hold=str(cost.cost_hold),
+                                cost_stream=str(cost.cost_stream),
+                                cost_credit=str(cost.cost_credit),
+                                size_mib=size_mib,
+                            )
+                        )
+                    resource_item["detail"] = detail_list
 
                 resources.append(ResourceCostItem.model_validate(resource_item))
 

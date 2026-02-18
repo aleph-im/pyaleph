@@ -1,3 +1,4 @@
+import datetime as dt
 from decimal import Decimal
 from math import ceil
 from unittest.mock import Mock
@@ -11,16 +12,23 @@ from aleph_message.models import (
 )
 
 from aleph.db.models import AggregateDb
-from aleph.schemas.cost_estimation_messages import CostEstimationProgramContent
+from aleph.db.models.account_costs import AccountCostsDb
+from aleph.db.models.files import MessageFilePinDb
+from aleph.db.models.files import StoredFileDb as StoredFileDbActual
+from aleph.schemas.cost_estimation_messages import (
+    CostEstimationProgramContent,
+    CostEstimationStoreContent,
+)
 from aleph.services.cost import (
     _get_additional_storage_price,
     _get_price_aggregate,
     _get_product_price,
     _get_settings,
     _get_settings_aggregate,
+    get_cost_component_size_mib,
     get_total_and_detailed_costs,
 )
-from aleph.toolkit.constants import HOUR, MIN_CREDIT_COST_PER_HOUR
+from aleph.toolkit.constants import HOUR, MIN_CREDIT_COST_PER_HOUR, MiB
 from aleph.types.cost import CostType
 from aleph.types.db_session import DbSessionFactory
 
@@ -496,6 +504,131 @@ def test_default_price_aggregates_db(
     with session_factory() as session:
         price_aggregate = _get_price_aggregate(session=session)
         assert isinstance(price_aggregate, AggregateDb)
+
+
+def test_get_cost_component_size_mib_for_storage(session_factory: DbSessionFactory):
+    """Test that size_mib is correctly retrieved for STORAGE-type cost components."""
+    with session_factory() as session:
+        # Create a test file with known size (150 MiB = 157286400 bytes)
+        file_hash = "test_file_hash_123"
+        store_msg_hash = "test_store_msg_hash_123"
+        file_size = 150 * MiB
+        test_file = StoredFileDbActual(
+            hash=file_hash,
+            size=file_size,
+            type="file",
+        )
+        session.add(test_file)
+
+        # Link the store message hash to the file via MessageFilePinDb
+        pin = MessageFilePinDb(
+            file_hash=file_hash,
+            item_hash=store_msg_hash,
+            created=dt.datetime.now(tz=dt.timezone.utc),
+            owner="0xTestAddress",
+        )
+        session.add(pin)
+        session.flush()
+
+        # Create a STORAGE-type cost component with ref pointing to the store message
+        cost = AccountCostsDb(
+            owner="0xTestAddress",
+            item_hash="test_item_hash",
+            type=CostType.STORAGE,
+            name="Storage",
+            ref=store_msg_hash,
+            payment_type=PaymentType.hold,
+            cost_hold=Decimal("0.5"),
+            cost_stream=Decimal("0.0000001"),
+            cost_credit=Decimal("0.1"),
+        )
+
+        # Get size using the helper function
+        size_mib = get_cost_component_size_mib(session, cost)
+
+        # Assert size is correct (should be 150.0 MiB)
+        assert size_mib == 150.0
+
+
+def test_get_cost_component_size_mib_for_execution_returns_none(
+    session_factory: DbSessionFactory,
+):
+    """Test that size_mib returns None for non-STORAGE cost components."""
+    with session_factory() as session:
+        # Create an EXECUTION-type cost component
+        cost = AccountCostsDb(
+            owner="0xTestAddress",
+            item_hash="test_item_hash",
+            type=CostType.EXECUTION,
+            name="Execution",
+            ref=None,
+            payment_type=PaymentType.hold,
+            cost_hold=Decimal("0.5"),
+            cost_stream=Decimal("0.0000001"),
+            cost_credit=Decimal("0.1"),
+        )
+
+        # Get size using the helper function
+        size_mib = get_cost_component_size_mib(session, cost)
+
+        # Assert size is None for non-STORAGE types
+        assert size_mib is None
+
+
+def test_get_cost_component_size_mib_missing_file_returns_none(
+    session_factory: DbSessionFactory,
+):
+    """Test that size_mib returns None when the file is not found in the database."""
+    with session_factory() as session:
+        # Create a STORAGE-type cost component with ref pointing to non-existent file
+        cost = AccountCostsDb(
+            owner="0xTestAddress",
+            item_hash="test_item_hash",
+            type=CostType.STORAGE,
+            name="Storage",
+            ref="non_existent_file_hash",
+            payment_type=PaymentType.hold,
+            cost_hold=Decimal("0.5"),
+            cost_stream=Decimal("0.0000001"),
+            cost_credit=Decimal("0.1"),
+        )
+
+        # Get size using the helper function
+        size_mib = get_cost_component_size_mib(session, cost)
+
+        # Assert size is None when file is missing
+        assert size_mib is None
+
+
+def test_get_cost_component_size_mib_with_estimated_size():
+    """Test that size_mib uses estimated_size_mib from content when available."""
+    # Create a CostEstimationStoreContent with estimated_size_mib
+    content = CostEstimationStoreContent(
+        address="0xTestAddress",
+        item_type="storage",
+        item_hash="734a1287a2b7b5be060312ff5b05ad1bcf838950492e3428f2ac6437a1acad26",
+        time=1234567890,
+        estimated_size_mib=75,
+    )
+
+    # Create a STORAGE-type cost component
+    cost = AccountCostsDb(
+        owner="0xTestAddress",
+        item_hash="734a1287a2b7b5be060312ff5b05ad1bcf838950492e3428f2ac6437a1acad26",
+        type=CostType.STORAGE,
+        name="Storage",
+        ref="c25b0525bc308797d3e35763faf5c560f2974dab802cb4a734ae4e9d1040319e",
+        payment_type=PaymentType.hold,
+        cost_hold=Decimal("0.5"),
+        cost_stream=Decimal("0.0000001"),
+        cost_credit=Decimal("0.1"),
+    )
+
+    # Get size using the helper function (no session needed for estimation path)
+    size_mib = get_cost_component_size_mib(None, cost, content)
+
+    # Assert size is from estimated_size_mib
+    assert size_mib == 75.0
 
 
 def test_minimum_credit_cost_per_hour_for_small_volume(

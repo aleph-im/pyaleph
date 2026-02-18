@@ -1,15 +1,17 @@
 from decimal import Decimal
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Optional, Tuple
 
 from aleph_message.models import PaymentType
-from sqlalchemy import asc, delete, func, select
+from sqlalchemy import and_, asc, delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.sql import Insert
 
 from aleph.db.models import ChainTxDb, message_confirmations
 from aleph.db.models.account_costs import AccountCostsDb
+from aleph.db.models.files import FilePinDb, FilePinType, StoredFileDb
 from aleph.db.models.messages import MessageStatusDb
 from aleph.toolkit.costs import format_cost, format_cost_str
+from aleph.types.cost import CostType
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import MessageStatus
 
@@ -78,6 +80,50 @@ def get_total_costs_for_address_grouped_by_message(
 def get_message_costs(session: DbSession, item_hash: str) -> Iterable[AccountCostsDb]:
     select_stmt = select(AccountCostsDb).where(AccountCostsDb.item_hash == item_hash)
     return (session.execute(select_stmt)).scalars().all()
+
+
+# Types where the file size comes from the DB (via file_pins → files).
+# For these, account_costs.ref is the item_hash of the linked STORE message,
+# and file_pins.item_hash resolves to the actual file content hash.
+# EXECUTION_INSTANCE_VOLUME_ROOTFS is intentionally excluded: its ref points to
+# the parent base image STORE message, but the billed size is the allocated
+# rootfs disk size (content.rootfs.size_mib), which must come from the message content.
+_DB_SIZED_COST_TYPES = [
+    CostType.STORAGE,
+    CostType.EXECUTION_PROGRAM_VOLUME_CODE,
+    CostType.EXECUTION_PROGRAM_VOLUME_RUNTIME,
+    CostType.EXECUTION_PROGRAM_VOLUME_DATA,
+    CostType.EXECUTION_VOLUME_INMUTABLE,
+]
+
+
+def get_message_costs_with_file_sizes(
+    session: DbSession, item_hash: str
+) -> List[Tuple[AccountCostsDb, Optional[int]]]:
+    """Return cost rows for a message with file sizes (bytes) resolved in a single query.
+
+    Joins account_costs → file_pins → files for the types listed in
+    ``_DB_SIZED_COST_TYPES``.  For all other types (EXECUTION, PERSISTENT,
+    ROOTFS, DISCOUNT) ``file_size`` is ``None``; callers should fall back to
+    the message content for ROOTFS and PERSISTENT.
+    """
+    stmt = (
+        select(
+            AccountCostsDb,
+            StoredFileDb.size.label("file_size"),
+        )
+        .outerjoin(
+            FilePinDb,
+            and_(
+                FilePinDb.item_hash == AccountCostsDb.ref,
+                FilePinDb.type == FilePinType.MESSAGE.value,
+                AccountCostsDb.type.in_(_DB_SIZED_COST_TYPES),
+            ),
+        )
+        .outerjoin(StoredFileDb, StoredFileDb.hash == FilePinDb.file_hash)
+        .where(AccountCostsDb.item_hash == item_hash)
+    )
+    return [(row.AccountCostsDb, row.file_size) for row in session.execute(stmt).all()]
 
 
 def make_costs_upsert_query(costs: List[AccountCostsDb]) -> Insert:

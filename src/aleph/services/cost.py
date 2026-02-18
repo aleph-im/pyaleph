@@ -801,6 +801,157 @@ def calculate_storage_size(
     return storage_mib
 
 
+def _get_size_from_file_ref(session: DbSession, file_hash: str) -> Optional[float]:
+    """Get file size in MiB from file hash."""
+    file = get_file(session, file_hash)
+    if not file:
+        return None
+    return float(Decimal(file.size) / MiB)
+
+
+def _get_estimated_size_from_content(
+    cost: AccountCostsDb, content: CostComputableContent
+) -> Optional[float]:
+    """Get estimated size from content based on cost type."""
+    if cost.type == CostType.STORAGE:
+        if isinstance(content, CostEstimationStoreContent):
+            if content.estimated_size_mib:
+                return float(content.estimated_size_mib)
+
+    elif cost.type == CostType.EXECUTION_PROGRAM_VOLUME_CODE:
+        if isinstance(content, CostEstimationProgramContent):
+            if content.code.estimated_size_mib:
+                return float(content.code.estimated_size_mib)
+
+    elif cost.type == CostType.EXECUTION_PROGRAM_VOLUME_RUNTIME:
+        if isinstance(content, CostEstimationProgramContent):
+            if content.runtime.estimated_size_mib:
+                return float(content.runtime.estimated_size_mib)
+
+    elif cost.type == CostType.EXECUTION_PROGRAM_VOLUME_DATA:
+        if isinstance(content, CostEstimationProgramContent):
+            if content.data and content.data.estimated_size_mib:
+                return float(content.data.estimated_size_mib)
+
+    elif cost.type == CostType.EXECUTION_VOLUME_INMUTABLE:
+        if isinstance(
+            content,
+            (
+                InstanceContent,
+                CostEstimationInstanceContent,
+                ProgramContent,
+                CostEstimationProgramContent,
+            ),
+        ):
+            # Extract volume index from name (format: "#0:/mount/path")
+            try:
+                if cost.name and ":" in cost.name:
+                    index_str = cost.name.split(":")[0].replace("#", "")
+                    volume_index = int(index_str)
+                    if volume_index < len(content.volumes):
+                        volume = content.volumes[volume_index]
+                        if (
+                            isinstance(volume, CostEstimationImmutableVolume)
+                            and volume.estimated_size_mib
+                        ):
+                            return float(volume.estimated_size_mib)
+            except (ValueError, IndexError):
+                pass
+
+    return None
+
+
+def get_cost_component_size_mib(
+    session: DbSession,
+    cost: AccountCostsDb,
+    content: Optional[CostComputableContent] = None,
+) -> Optional[float]:
+    """
+    Retrieve the size in MiB for a cost component.
+
+    Returns size for volume/storage-related cost types:
+    - STORAGE
+    - EXECUTION_INSTANCE_VOLUME_ROOTFS
+    - EXECUTION_PROGRAM_VOLUME_CODE
+    - EXECUTION_PROGRAM_VOLUME_RUNTIME
+    - EXECUTION_PROGRAM_VOLUME_DATA
+    - EXECUTION_VOLUME_PERSISTENT
+    - EXECUTION_VOLUME_INMUTABLE
+
+    Priority: Real file size first, then estimated size from content as fallback.
+
+    Args:
+        session: Database session
+        cost: Cost component from database
+        content: Optional message content (for estimation and content-based sizes)
+
+    Returns:
+        Size in MiB as float, or None if not applicable/unavailable
+    """
+    # EXECUTION_INSTANCE_VOLUME_ROOTFS: always from content
+    if cost.type == CostType.EXECUTION_INSTANCE_VOLUME_ROOTFS:
+        if content and isinstance(
+            content, (InstanceContent, CostEstimationInstanceContent)
+        ):
+            return float(content.rootfs.size_mib)
+        return None
+
+    # EXECUTION_VOLUME_PERSISTENT: always from content
+    if cost.type == CostType.EXECUTION_VOLUME_PERSISTENT:
+        if content and isinstance(
+            content,
+            (
+                InstanceContent,
+                CostEstimationInstanceContent,
+                ProgramContent,
+                CostEstimationProgramContent,
+            ),
+        ):
+            # Extract volume index from name (format: "#0:/mount/path")
+            try:
+                if cost.name and ":" in cost.name:
+                    index_str = cost.name.split(":")[0].replace("#", "")
+                    volume_index = int(index_str)
+                    if volume_index < len(content.volumes):
+                        volume = content.volumes[volume_index]
+                        if hasattr(volume, "size_mib"):
+                            return float(volume.size_mib)
+            except (ValueError, IndexError):
+                pass
+        return None
+
+    # For ref-based types: try real file size first, then estimated size
+    ref_based_types = {
+        CostType.STORAGE,
+        CostType.EXECUTION_PROGRAM_VOLUME_CODE,
+        CostType.EXECUTION_PROGRAM_VOLUME_RUNTIME,
+        CostType.EXECUTION_PROGRAM_VOLUME_DATA,
+        CostType.EXECUTION_VOLUME_INMUTABLE,
+    }
+
+    if cost.type in ref_based_types:
+        # Try to get real size from file (only if session is available).
+        # cost.ref (and cost.item_hash for STORAGE) is the item_hash of the linked
+        # STORE message, not the file content hash.  Resolve through file_pins first.
+        if session:
+            store_msg_hash = cost.ref or (
+                cost.item_hash if cost.type == CostType.STORAGE else None
+            )
+            if store_msg_hash:
+                pin = get_message_file_pin(session, store_msg_hash)
+                if pin:
+                    size = _get_size_from_file_ref(session, pin.file_hash)
+                    if size is not None:
+                        return size
+
+        # Fall back to estimated size from content
+        if content:
+            return _get_estimated_size_from_content(cost, content)
+
+    # For all other types (EXECUTION, EXECUTION_VOLUME_DISCOUNT), return None
+    return None
+
+
 def get_detailed_costs(
     session: DbSession,
     content: CostComputableContent,
