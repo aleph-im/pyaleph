@@ -56,7 +56,7 @@ from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag
 from aleph.types.message_status import (
-    CreditOnlyRequired,
+    InvalidPaymentMethod,
     InternalError,
     InvalidMessageFormat,
     VmCannotUpdateUpdate,
@@ -354,7 +354,7 @@ class VmMessageHandler(ContentHandler):
 
         # After the cutoff, VM messages must use credit payment only
         if is_credit_only_required(message) and payment_type != PaymentType.credit:
-            raise CreditOnlyRequired()
+            raise InvalidPaymentMethod()
 
         # NOTE: For now allow to create anything that is being paid with STREAM for free, but generate a cost depending on the content.payment prop (HOLD / STREAM / CREDIT)
         if payment_type == PaymentType.superfluid:

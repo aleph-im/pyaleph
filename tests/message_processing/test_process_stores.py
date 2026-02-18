@@ -1029,7 +1029,7 @@ async def test_legacy_store_small_file_no_balance_required(
 @pytest.mark.asyncio
 async def test_new_store_hold_payment_rejected(mocker, session_factory, mock_config):
     """Test that new STORE messages (after cutoff) with hold payment are rejected."""
-    from aleph.types.message_status import CreditOnlyRequired
+    from aleph.types.message_status import InvalidPaymentMethod
 
     small_file_size = int(MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.5)  # 50% of max
 
@@ -1063,7 +1063,7 @@ async def test_new_store_hold_payment_rejected(mocker, session_factory, mock_con
         message.parsed_content = content
 
         # Should raise CreditOnlyRequired (only credit payment allowed after cutoff)
-        with pytest.raises(CreditOnlyRequired):
+        with pytest.raises(InvalidPaymentMethod):
             await store_handler.pre_check_balance(session, message)
 
 

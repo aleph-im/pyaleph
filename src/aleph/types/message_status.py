@@ -47,7 +47,7 @@ class ErrorCode(IntEnum):
     POST_AMEND_AMEND = 102
     STORE_REF_NOT_FOUND = 200
     STORE_UPDATE_UPDATE = 201
-    CREDIT_ONLY_REQUIRED = 202
+    INVALID_PAYMENT_METHOD = 202
     VM_REF_NOT_FOUND = 300
     VM_VOLUME_NOT_FOUND = 301
     VM_AMEND_NOT_ALLOWED = 302
@@ -237,13 +237,13 @@ class StoreCannotUpdateStoreWithRef(InvalidMessageException):
     error_code = ErrorCode.STORE_UPDATE_UPDATE
 
 
-class CreditOnlyRequired(InvalidMessageException):
+class InvalidPaymentMethod(InvalidMessageException):
     """
     Messages with non-credit payment types are no longer allowed after the cutoff.
     Only credit payment is supported for STORE, INSTANCE, and PROGRAM messages.
     """
 
-    error_code = ErrorCode.CREDIT_ONLY_REQUIRED
+    error_code = ErrorCode.INVALID_PAYMENT_METHOD
 
 
 class ForgetNotAllowed(InvalidMessageException):

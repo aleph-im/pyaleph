@@ -46,7 +46,7 @@ from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileType
 from aleph.types.message_status import (
-    CreditOnlyRequired,
+    InvalidPaymentMethod,
     FileUnavailable,
     InvalidMessageFormat,
     PermissionDenied,
@@ -227,7 +227,7 @@ class StoreMessageHandler(ContentHandler):
 
         # After the cutoff, STORE messages must use credit payment only
         if is_credit_only_required(message) and payment_type != PaymentType.credit:
-            raise CreditOnlyRequired()
+            raise InvalidPaymentMethod()
 
         # This check is essential to ensure that files are not added to the system
         # on the current node when the configuration disables storing of files.
@@ -290,7 +290,7 @@ class StoreMessageHandler(ContentHandler):
 
         # After the cutoff, STORE messages must use credit payment only
         if is_credit_only_required(message) and payment_type != PaymentType.credit:
-            raise CreditOnlyRequired()
+            raise InvalidPaymentMethod()
 
         storage_size_mib = calculate_storage_size(session, content)
 
