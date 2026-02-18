@@ -164,6 +164,14 @@ class MessageQueryParams(BaseMessageQueryParams):
         "'has_more' + 'next_cursor' instead of 'pagination_total'.",
     )
 
+    @model_validator(mode="after")
+    def validate_cursor_sort(self):
+        if self.cursor and self.sort_by == SortBy.TX_TIME:
+            raise ValueError(
+                "Cursor pagination is not supported with tx-time sort order."
+            )
+        return self
+
 
 class WsMessageQueryParams(BaseMessageQueryParams):
     history: Optional[int] = Field(

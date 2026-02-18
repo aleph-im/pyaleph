@@ -100,7 +100,7 @@ def make_matching_messages_query(
 ) -> Select:
     select_stmt = select(MessageDb)
 
-    # Status filtering — direct column, no JOIN
+    # Status filtering - direct column, no JOIN
     if message_statuses:
         select_stmt = select_stmt.where(MessageDb.status_value.in_(message_statuses))
 
@@ -118,7 +118,7 @@ def make_matching_messages_query(
         select_stmt = select_stmt.where(MessageDb.item_hash.in_(hashes))
     if addresses:
         select_stmt = select_stmt.where(MessageDb.sender.in_(addresses))
-    # Owner — direct column, no JSONB
+    # Owner - direct column, no JSONB
     if owners:
         select_stmt = select_stmt.where(MessageDb.owner.in_(owners))
     if chains:
@@ -131,17 +131,17 @@ def make_matching_messages_query(
         select_stmt = select_stmt.where(MessageDb.time >= start_datetime)
     if end_datetime:
         select_stmt = select_stmt.where(MessageDb.time < end_datetime)
-    # Ref — direct column, no JSONB
+    # Ref - direct column, no JSONB
     if refs:
         select_stmt = select_stmt.where(MessageDb.content_ref.in_(refs))
     if content_hashes:
         select_stmt = select_stmt.where(
             MessageDb.content["item_hash"].astext.in_(content_hashes)
         )
-    # Content types — direct column, no JSONB
+    # Content types - direct column, no JSONB
     if content_types:
         select_stmt = select_stmt.where(MessageDb.content_type.in_(content_types))
-    # Content keys — direct column, no JSONB
+    # Content keys - direct column, no JSONB
     if content_keys:
         select_stmt = select_stmt.where(MessageDb.content_key.in_(content_keys))
     if tags:
@@ -150,7 +150,7 @@ def make_matching_messages_query(
         )
     if channels:
         select_stmt = select_stmt.where(MessageDb.channel.in_(channels))
-    # Payment types — direct column, no JOIN to account_costs
+    # Payment types - direct column, no JOIN to account_costs
     if payment_types:
         select_stmt = select_stmt.where(
             MessageDb.payment_type.in_([pt.value for pt in payment_types])
@@ -158,15 +158,17 @@ def make_matching_messages_query(
 
     order_by_columns: Tuple = ()
 
-    # TX_TIME sort — direct column, no subquery!
+    # TX_TIME sort - direct column, no subquery!
     if sort_by == SortBy.TX_TIME or start_block or end_block:
         if start_block:
             select_stmt = select_stmt.where(
-                MessageDb.first_confirmed_height >= start_block
+                MessageDb.first_confirmed_height.is_(None)
+                | (MessageDb.first_confirmed_height >= start_block)
             )
         if end_block:
             select_stmt = select_stmt.where(
-                MessageDb.first_confirmed_height < end_block
+                MessageDb.first_confirmed_height.is_(None)
+                | (MessageDb.first_confirmed_height < end_block)
             )
 
         if sort_order == SortOrder.DESCENDING:
