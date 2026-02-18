@@ -65,7 +65,6 @@ class ForgetMessageHandler(ContentHandler):
             dependent_volumes = get_vms_dependent_volumes(
                 session=session, volume_hash=item_hash
             )
-            print(dependent_volumes, item_hash)
             if dependent_volumes is not None:
                 raise ForgetNotAllowed(
                     file_hash=item_hash, vm_hash=dependent_volumes.item_hash

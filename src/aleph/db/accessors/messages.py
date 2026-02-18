@@ -277,10 +277,7 @@ def count_matching_messages_fast(
     if owner and message_type:
         return None
 
-    filters = [
-        MessageCountsDb.channel == "",
-        MessageCountsDb.payment_type == "",
-    ]
+    filters = []
 
     if message_type:
         filters.append(MessageCountsDb.type == message_type)
@@ -369,8 +366,6 @@ def get_message_stats_by_address(
         .where(
             MessageCountsDb.status == "processed",
             MessageCountsDb.owner == "",
-            MessageCountsDb.channel == "",
-            MessageCountsDb.payment_type == "",
             MessageCountsDb.sender != "",
             MessageCountsDb.type != "",
         )

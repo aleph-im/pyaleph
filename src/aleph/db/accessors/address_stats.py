@@ -53,8 +53,6 @@ def count_address_stats(
         .where(
             MessageCountsDb.status == "processed",
             MessageCountsDb.owner == "",
-            MessageCountsDb.channel == "",
-            MessageCountsDb.payment_type == "",
             MessageCountsDb.sender != "",
             MessageCountsDb.type != "",
         )
