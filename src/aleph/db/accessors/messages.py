@@ -266,7 +266,7 @@ def count_matching_messages_fast(
     O(1) count lookup from the message_counts table.
     Returns None if no matching row exists.
     """
-    select_stmt = select(MessageCountsDb.count).where(
+    select_stmt = select(MessageCountsDb.row_count).where(
         MessageCountsDb.type == (message_type or ""),
         MessageCountsDb.status == (status or ""),
         MessageCountsDb.sender == (sender or ""),
@@ -294,35 +294,39 @@ def get_message_stats_by_address(
     base_stmt = (
         select(
             MessageCountsDb.sender.label("address"),
-            func.coalesce(func.sum(MessageCountsDb.count), 0).label("total"),
+            func.coalesce(func.sum(MessageCountsDb.row_count), 0).label("total"),
             func.coalesce(
-                func.sum(MessageCountsDb.count).filter(MessageCountsDb.type == "POST"),
+                func.sum(MessageCountsDb.row_count).filter(
+                    MessageCountsDb.type == "POST"
+                ),
                 0,
             ).label("post"),
             func.coalesce(
-                func.sum(MessageCountsDb.count).filter(
+                func.sum(MessageCountsDb.row_count).filter(
                     MessageCountsDb.type == "AGGREGATE"
                 ),
                 0,
             ).label("aggregate"),
             func.coalesce(
-                func.sum(MessageCountsDb.count).filter(MessageCountsDb.type == "STORE"),
+                func.sum(MessageCountsDb.row_count).filter(
+                    MessageCountsDb.type == "STORE"
+                ),
                 0,
             ).label("store"),
             func.coalesce(
-                func.sum(MessageCountsDb.count).filter(
+                func.sum(MessageCountsDb.row_count).filter(
                     MessageCountsDb.type == "PROGRAM"
                 ),
                 0,
             ).label("program"),
             func.coalesce(
-                func.sum(MessageCountsDb.count).filter(
+                func.sum(MessageCountsDb.row_count).filter(
                     MessageCountsDb.type == "INSTANCE"
                 ),
                 0,
             ).label("instance"),
             func.coalesce(
-                func.sum(MessageCountsDb.count).filter(
+                func.sum(MessageCountsDb.row_count).filter(
                     MessageCountsDb.type == "FORGET"
                 ),
                 0,
@@ -847,7 +851,7 @@ def make_matching_hashes_query(
     hash_only: bool = True,
 ) -> Select:
     if hash_only:
-        select_stmt = select(MessageDb.item_hash)
+        select_stmt: Select = select(MessageDb.item_hash)
     else:
         select_stmt = select(
             MessageDb.item_hash, MessageDb.status_value, MessageDb.reception_time

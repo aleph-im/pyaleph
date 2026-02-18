@@ -288,7 +288,7 @@ async def view_messages_list(request: web.Request) -> web.Response:
             messages_query = make_matching_messages_query(
                 include_confirmations=True, **find_filters
             )
-            messages = (session.execute(messages_query)).scalars()
+            messages = list(session.execute(messages_query).scalars())
 
             return format_response(
                 messages,

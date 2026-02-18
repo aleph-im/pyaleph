@@ -13,4 +13,6 @@ class MessageCountsDb(Base):
     owner: Mapped[str] = mapped_column(String, primary_key=True, default="")
     channel: Mapped[str] = mapped_column(String, primary_key=True, default="")
     payment_type: Mapped[str] = mapped_column(String, primary_key=True, default="")
-    count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    row_count: Mapped[int] = mapped_column(
+        "count", BigInteger, nullable=False, default=0
+    )
