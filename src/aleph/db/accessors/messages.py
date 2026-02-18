@@ -87,6 +87,7 @@ def make_matching_messages_query(
     content_types: Optional[Sequence[str]] = None,
     tags: Optional[Sequence[str]] = None,
     channels: Optional[Sequence[str]] = None,
+    content_keys: Optional[Sequence[str]] = None,
     payment_types: Optional[Sequence[PaymentType]] = None,
     sort_by: SortBy = SortBy.TIME,
     sort_order: SortOrder = SortOrder.DESCENDING,
@@ -140,6 +141,9 @@ def make_matching_messages_query(
     # Content types — direct column, no JSONB
     if content_types:
         select_stmt = select_stmt.where(MessageDb.content_type.in_(content_types))
+    # Content keys — direct column, no JSONB
+    if content_keys:
+        select_stmt = select_stmt.where(MessageDb.content_key.in_(content_keys))
     if tags:
         select_stmt = select_stmt.where(
             MessageDb.content["content"]["tags"].has_any(array(tags))
@@ -364,7 +368,7 @@ def get_message_stats_by_address(
             ).label("forget"),
         )
         .where(
-            MessageCountsDb.status == "processed",
+            MessageCountsDb.status == MessageStatus.PROCESSED.value,
             MessageCountsDb.owner == "",
             MessageCountsDb.sender != "",
             MessageCountsDb.type != "",

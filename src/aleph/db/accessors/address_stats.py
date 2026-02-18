@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from aleph.db.models.address_stats import AddressStats
 from aleph.db.models.message_counts import MessageCountsDb
 from aleph.types.db_session import DbSession
+from aleph.types.message_status import MessageStatus
 
 
 def escape_like_pattern(pattern: str) -> str:
@@ -51,7 +52,7 @@ def count_address_stats(
     base_stmt = (
         select(MessageCountsDb.sender)
         .where(
-            MessageCountsDb.status == "processed",
+            MessageCountsDb.status == MessageStatus.PROCESSED.value,
             MessageCountsDb.owner == "",
             MessageCountsDb.sender != "",
             MessageCountsDb.type != "",
