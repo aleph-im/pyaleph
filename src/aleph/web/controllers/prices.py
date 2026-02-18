@@ -20,6 +20,7 @@ from aleph.db.accessors.cost import (
     delete_costs_for_message,
     get_costs_summary,
     get_message_costs,
+    get_message_costs_with_file_sizes,
     get_resources_with_costs,
     make_costs_upsert_query,
 )
@@ -49,6 +50,7 @@ from aleph.services.cost import (
     get_total_and_detailed_costs_from_db,
 )
 from aleph.services.pricing_utils import get_pricing_timeline
+from aleph.toolkit.constants import MiB
 from aleph.toolkit.costs import format_cost_str
 from aleph.toolkit.ecdsa import require_auth_token
 from aleph.types.db_session import DbSession
@@ -145,6 +147,8 @@ async def message_price(request: web.Request):
         description: Message not found
     """
 
+    include_size = request.query.get("include_size", "false").lower() == "true"
+
     session_factory = get_session_factory_from_request(request)
     with session_factory() as session:
         item_hash = get_item_hash_from_request(request)
@@ -160,10 +164,21 @@ async def message_price(request: web.Request):
         except RuntimeError as e:
             raise web.HTTPNotFound(reason=str(e))
 
-        # Enrich detail with size information
+        # Optionally enrich detail with file sizes (single joined query).
+        # Falls back to content-based sizes (PERSISTENT) when DB join yields nothing.
+        if include_size:
+            costs_with_sizes = get_message_costs_with_file_sizes(session, item_hash)
+        else:
+            costs_with_sizes = [(cost, None) for cost in costs]
+
         detail_list = []
-        for cost in costs:
-            size_mib = get_cost_component_size_mib(session, cost, content)
+        for cost, file_size_bytes in costs_with_sizes:
+            if file_size_bytes is not None:
+                size_mib: Optional[float] = float(file_size_bytes / MiB)
+            elif include_size:
+                size_mib = get_cost_component_size_mib(session, cost, content)
+            else:
+                size_mib = None
             detail_list.append(
                 EstimatedCostDetailResponse(
                     type=(
@@ -516,11 +531,24 @@ async def get_costs(request: web.Request) -> web.Response:
 
                 # Include detailed breakdown if requested (include_details == 2)
                 if query_params.include_details >= 2:
-                    cost_details = get_message_costs(session, row.item_hash)
+                    if query_params.include_size:
+                        cost_items = get_message_costs_with_file_sizes(
+                            session, row.item_hash
+                        )
+                    else:
+                        cost_items = [
+                            (cost, None)
+                            for cost in get_message_costs(session, row.item_hash)
+                        ]
+
                     detail_list = []
-                    for cost in cost_details:
-                        # Get size for STORAGE components
-                        size_mib = get_cost_component_size_mib(session, cost)
+                    for cost, file_size_bytes in cost_items:
+                        if file_size_bytes is not None:
+                            size_mib: Optional[float] = float(file_size_bytes / MiB)
+                        elif query_params.include_size:
+                            size_mib = get_cost_component_size_mib(session, cost)
+                        else:
+                            size_mib = None
 
                         detail_list.append(
                             CostComponentDetail(

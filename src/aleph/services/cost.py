@@ -737,15 +737,19 @@ def get_cost_component_size_mib(
     }
 
     if cost.type in ref_based_types:
-        # Try to get real size from file (only if session is available)
+        # Try to get real size from file (only if session is available).
+        # cost.ref (and cost.item_hash for STORAGE) is the item_hash of the linked
+        # STORE message, not the file content hash.  Resolve through file_pins first.
         if session:
-            file_hash = cost.ref or (
+            store_msg_hash = cost.ref or (
                 cost.item_hash if cost.type == CostType.STORAGE else None
             )
-            if file_hash:
-                size = _get_size_from_file_ref(session, file_hash)
-                if size is not None:
-                    return size
+            if store_msg_hash:
+                pin = get_message_file_pin(session, store_msg_hash)
+                if pin:
+                    size = _get_size_from_file_ref(session, pin.file_hash)
+                    if size is not None:
+                        return size
 
         # Fall back to estimated size from content
         if content:

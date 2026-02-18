@@ -24,7 +24,7 @@ async def test_get_costs_empty_db(ccn_api_client):
     assert "filters" in data
     assert data["filters"]["address"] is None
     assert data["filters"]["item_hash"] is None
-    assert data["filters"]["payment_type"] is None
+    assert data["filters"]["payment_type"] == "credit"
 
     # No resources list without include_details
     assert data.get("resources") is None

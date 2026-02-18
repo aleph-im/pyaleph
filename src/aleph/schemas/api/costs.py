@@ -14,14 +14,19 @@ class GetCostsQueryParams(BaseModel):
     item_hash: Optional[str] = Field(
         default=None, description="Filter by specific resource item_hash"
     )
-    payment_type: Optional[PaymentType] = Field(
-        default=None, description="Filter by payment type (hold, superfluid, credit)"
+    payment_type: PaymentType = Field(
+        default=PaymentType.credit,
+        description="Filter by payment type (hold, superfluid, credit)",
     )
     include_details: int = Field(
         default=0,
         ge=0,
         le=2,
         description="Detail level: 0=summary only, 1=include resource list, 2=include resource list with cost breakdown per component",
+    )
+    include_size: bool = Field(
+        default=False,
+        description="Include size_mib in cost component details (requires include_details=2 for /costs or applies to /price/:hash). Adds a file_pins+files join; disabled by default for performance.",
     )
     pagination: int = Field(
         default=100,
