@@ -1,8 +1,14 @@
 from decimal import Decimal
+from math import ceil
 from unittest.mock import Mock
 
 import pytest
-from aleph_message.models import ExecutableContent, InstanceContent, PaymentType
+from aleph_message.models import (
+    ExecutableContent,
+    InstanceContent,
+    Payment,
+    PaymentType,
+)
 
 from aleph.db.models import AggregateDb
 from aleph.schemas.cost_estimation_messages import CostEstimationProgramContent
@@ -14,6 +20,7 @@ from aleph.services.cost import (
     _get_settings_aggregate,
     get_total_and_detailed_costs,
 )
+from aleph.toolkit.constants import HOUR, MIN_CREDIT_COST_PER_HOUR
 from aleph.types.cost import CostType
 from aleph.types.db_session import DbSessionFactory
 
@@ -489,6 +496,59 @@ def test_default_price_aggregates_db(
     with session_factory() as session:
         price_aggregate = _get_price_aggregate(session=session)
         assert isinstance(price_aggregate, AggregateDb)
+
+
+def test_minimum_credit_cost_per_hour_for_small_volume(
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """Test that small volume costs meet minimum 1 credit per hour."""
+    content = {
+        "time": 1701099523.849,
+        "rootfs": {
+            "parent": {
+                "ref": "6e30de68c6cedfa6b45240c2b51e52495ac6fb1bd4b36457b3d5ca307594d595",
+                "use_latest": True,
+            },
+            "size_mib": 1,  # Very small volume
+            "persistence": "host",
+        },
+        "address": "0xA07B1214bAe0D5ccAA25449C3149c0aC83658874",
+        "volumes": [],
+        "metadata": {"name": "Test Debian 12"},
+        "resources": {"vcpus": 1, "memory": 2048, "seconds": 30},
+        "allow_amend": False,
+        "environment": {
+            "internet": True,
+            "aleph_api": True,
+            "reproducible": False,
+            "shared_cache": False,
+        },
+        "payment": Payment(type=PaymentType.credit),
+        "authorized_keys": [
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHlGJRaIv/EzNT0eNqNB5DiGEbii28Fb2zCjuO/bMu7y nesitor@gmail.com"
+        ],
+    }
+
+    instance_content = InstanceContent.model_validate(content)
+
+    with session_factory() as session:
+        _, details = get_total_and_detailed_costs(
+            session=session, content=instance_content, item_hash="test_hash"
+        )
+
+        # Find the rootfs volume cost
+        rootfs_cost = next(
+            (d for d in details if d.type == "EXECUTION_INSTANCE_VOLUME_ROOTFS"), None
+        )
+        assert rootfs_cost is not None
+
+        # Verify the cost per hour rounds up to at least MIN_CREDIT_COST_PER_HOUR
+        cost_per_hour = Decimal(rootfs_cost.cost_credit) * Decimal(HOUR)
+        assert ceil(cost_per_hour) >= MIN_CREDIT_COST_PER_HOUR
+        # Ensure it doesn't exceed MIN_CREDIT_COST_PER_HOUR (would ceil to 2)
+        assert cost_per_hour <= Decimal(MIN_CREDIT_COST_PER_HOUR)
 
 
 # GPU Test Fixtures

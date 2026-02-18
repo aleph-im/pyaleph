@@ -4,10 +4,10 @@ from typing import Optional
 
 from aleph.db.models.messages import MessageDb
 from aleph.toolkit.constants import (
+    CREDIT_ONLY_CUTOFF_TIMESTAMP,
     PRICE_PRECISION,
     STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT,
     STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP,
-    STORE_CREDIT_ONLY_CUTOFF_TIMESTAMP,
 )
 from aleph.toolkit.timestamp import timestamp_to_datetime
 
@@ -33,12 +33,12 @@ def are_store_and_program_free(message: MessageDb) -> bool:
         return date < timestamp_to_datetime(STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP)
 
 
-def is_store_credit_only_required(message: MessageDb) -> bool:
+def is_credit_only_required(message: MessageDb) -> bool:
     """
-    Check if a STORE message requires credit-only payment.
+    Check if a message requires credit-only payment.
 
-    After the cutoff, STORE messages must use credit payment (no holding tier)
-    and the 25MB free file exception no longer applies.
+    After the cutoff, all paid messages (STORE, INSTANCE, PROGRAM) must use
+    credit payment (no holding tier). Free messages/features are not affected.
 
     Messages before the cutoff can still use holding tier payment.
 
@@ -46,4 +46,4 @@ def is_store_credit_only_required(message: MessageDb) -> bool:
     the cutoff will be set to a future date. Message timestamps are validated
     during message processing to prevent faking.
     """
-    return message.time >= timestamp_to_datetime(STORE_CREDIT_ONLY_CUTOFF_TIMESTAMP)
+    return message.time >= timestamp_to_datetime(CREDIT_ONLY_CUTOFF_TIMESTAMP)

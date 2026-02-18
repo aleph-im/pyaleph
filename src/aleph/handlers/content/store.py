@@ -41,19 +41,16 @@ from aleph.services.cost_validation import validate_balance_for_payment
 from aleph.services.ipfs import IpfsService
 from aleph.storage import StorageService
 from aleph.toolkit.constants import MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE, MiB
-from aleph.toolkit.costs import (
-    are_store_and_program_free,
-    is_store_credit_only_required,
-)
+from aleph.toolkit.costs import are_store_and_program_free, is_credit_only_required
 from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileType
 from aleph.types.message_status import (
     FileUnavailable,
     InvalidMessageFormat,
+    InvalidPaymentMethod,
     PermissionDenied,
     StoreCannotUpdateStoreWithRef,
-    StoreHoldNotAllowed,
     StoreRefNotFound,
 )
 from aleph.utils import item_type_from_hash, make_file_tag
@@ -228,9 +225,9 @@ class StoreMessageHandler(ContentHandler):
 
         payment_type = get_payment_type(content)
 
-        # After the cutoff, STORE messages must use credit payment (no holding tier)
-        if is_store_credit_only_required(message) and payment_type == PaymentType.hold:
-            raise StoreHoldNotAllowed()
+        # After the cutoff, STORE messages must use credit payment only
+        if is_credit_only_required(message) and payment_type != PaymentType.credit:
+            raise InvalidPaymentMethod()
 
         # This check is essential to ensure that files are not added to the system
         # on the current node when the configuration disables storing of files.
@@ -291,9 +288,9 @@ class StoreMessageHandler(ContentHandler):
 
         payment_type = get_payment_type(content)
 
-        # After the cutoff, STORE messages must use credit payment (no holding tier)
-        if is_store_credit_only_required(message) and payment_type == PaymentType.hold:
-            raise StoreHoldNotAllowed()
+        # After the cutoff, STORE messages must use credit payment only
+        if is_credit_only_required(message) and payment_type != PaymentType.credit:
+            raise InvalidPaymentMethod()
 
         storage_size_mib = calculate_storage_size(session, content)
 

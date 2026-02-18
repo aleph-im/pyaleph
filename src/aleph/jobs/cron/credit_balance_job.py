@@ -20,8 +20,8 @@ from aleph.db.models.messages import MessageStatusDb
 from aleph.jobs.cron.cron_job import BaseCronJob
 from aleph.services.cost import calculate_storage_size
 from aleph.toolkit.constants import (
+    CREDIT_ONLY_CUTOFF_TIMESTAMP,
     MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
-    STORE_CREDIT_ONLY_CUTOFF_TIMESTAMP,
     MiB,
 )
 from aleph.toolkit.timestamp import utc_now
@@ -108,9 +108,7 @@ class CreditBalanceCronJob(BaseCronJob):
 
                 # Small file exception only applies to messages before credit-only cutoff
                 message_timestamp = message.time.timestamp()
-                is_legacy_message = (
-                    message_timestamp < STORE_CREDIT_ONLY_CUTOFF_TIMESTAMP
-                )
+                is_legacy_message = message_timestamp < CREDIT_ONLY_CUTOFF_TIMESTAMP
 
                 if (
                     is_legacy_message
