@@ -56,9 +56,9 @@ from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag
 from aleph.types.message_status import (
-    InvalidPaymentMethod,
     InternalError,
     InvalidMessageFormat,
+    InvalidPaymentMethod,
     VmCannotUpdateUpdate,
     VmRefNotFound,
     VmUpdateNotAllowed,

@@ -46,9 +46,9 @@ from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileType
 from aleph.types.message_status import (
-    InvalidPaymentMethod,
     FileUnavailable,
     InvalidMessageFormat,
+    InvalidPaymentMethod,
     PermissionDenied,
     StoreCannotUpdateStoreWithRef,
     StoreRefNotFound,
