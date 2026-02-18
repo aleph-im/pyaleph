@@ -139,30 +139,27 @@ class NodeCache:
         sender = query_params.addresses[0] if query_params.addresses else None
         owner = query_params.owners[0] if query_params.owners else None
         msg_type = message_types[0].value if message_types else None
-        statuses = query_params.message_statuses or []
+        statuses = (
+            [s.value for s in query_params.message_statuses]
+            if query_params.message_statuses
+            else None
+        )
+
+        # The trigger only maintains specific dimension combos.
+        # Reject combinations it doesn't track.
+        if sender and owner:
+            return None
+        if owner and msg_type:
+            return None
 
         with session_factory() as session:
-            total = 0
-            for status in statuses:
-                result = count_matching_messages_fast(
-                    session,
-                    message_type=msg_type,
-                    status=status.value,
-                    sender=sender,
-                    owner=owner,
-                )
-                if result is None:
-                    return None
-                total += result
-            # If no statuses filter, query with no status filter
-            if not statuses:
-                result = count_matching_messages_fast(
-                    session, message_type=msg_type, sender=sender, owner=owner
-                )
-                if result is None:
-                    return None
-                total = result
-        return total
+            return count_matching_messages_fast(
+                session,
+                message_type=msg_type,
+                statuses=statuses,
+                sender=sender,
+                owner=owner,
+            )
 
     async def count_messages(
         self, session_factory: DbSessionFactory, query_params: MessageQueryParams

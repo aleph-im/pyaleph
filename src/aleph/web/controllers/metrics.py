@@ -159,7 +159,7 @@ async def get_metrics(
         n_pending_txs = PendingTxDb.count(session=session)
         # Use message_counts for O(1) lookup instead of COUNT(*)
         n_synced_messages: int = (
-            count_matching_messages_fast(session, status="processed") or 0
+            count_matching_messages_fast(session, statuses=["processed"]) or 0
         )
         n_peers = PeerDb.count(session=session)
         n_file_pins = FilePinDb.count(session=session)

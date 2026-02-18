@@ -258,23 +258,57 @@ def get_matching_messages(
 def count_matching_messages_fast(
     session: DbSession,
     message_type: Optional[str] = None,
-    status: Optional[str] = None,
+    statuses: Optional[Sequence[str]] = None,
     sender: Optional[str] = None,
     owner: Optional[str] = None,
 ) -> Optional[int]:
     """
-    O(1) count lookup from the message_counts table.
-    Returns None if no matching row exists.
+    Fast count from the message_counts table using SUM over matching rows.
+
+    The trigger maintains these dimension combos:
+      (status), (type, status), (sender, status), (sender, type, status),
+      (owner, status).
+    Combinations not tracked (e.g. sender+owner, owner+type) return None
+    so the caller can fall back to a full COUNT(*).
     """
-    select_stmt = select(MessageCountsDb.row_count).where(
-        MessageCountsDb.type == (message_type or ""),
-        MessageCountsDb.status == (status or ""),
-        MessageCountsDb.sender == (sender or ""),
-        MessageCountsDb.owner == (owner or ""),
+    # Reject dimension combos the trigger doesn't maintain.
+    if sender and owner:
+        return None
+    if owner and message_type:
+        return None
+
+    filters = [
         MessageCountsDb.channel == "",
         MessageCountsDb.payment_type == "",
+    ]
+
+    if message_type:
+        filters.append(MessageCountsDb.type == message_type)
+    else:
+        filters.append(MessageCountsDb.type == "")
+
+    if sender:
+        filters.append(MessageCountsDb.sender == sender)
+    else:
+        filters.append(MessageCountsDb.sender == "")
+
+    if owner:
+        filters.append(MessageCountsDb.owner == owner)
+    else:
+        filters.append(MessageCountsDb.owner == "")
+
+    if statuses:
+        filters.append(MessageCountsDb.status.in_(statuses))
+    else:
+        # No status filter: sum across all statuses, but exclude the
+        # aggregate rows (status='') to avoid double-counting.
+        filters.append(MessageCountsDb.status != "")
+
+    select_stmt = select(func.coalesce(func.sum(MessageCountsDb.row_count), 0)).where(
+        *filters
     )
-    return session.execute(select_stmt).scalar_one_or_none()
+    # SUM(bigint) returns numeric/Decimal in PostgreSQL; cast to int.
+    return int(session.execute(select_stmt).scalar_one())
 
 
 def get_message_stats_by_address(
