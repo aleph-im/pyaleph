@@ -24,20 +24,20 @@ def upgrade() -> None:
         text(
             """
         CREATE TABLE message_counts (
-            type            TEXT NOT NULL DEFAULT '',
-            status          TEXT NOT NULL DEFAULT '',
-            sender          TEXT NOT NULL DEFAULT '',
-            owner           TEXT NOT NULL DEFAULT '',
-            channel         TEXT NOT NULL DEFAULT '',
-            payment_type    TEXT NOT NULL DEFAULT '',
+            type            VARCHAR NOT NULL DEFAULT '',
+            status          VARCHAR NOT NULL DEFAULT '',
+            sender          VARCHAR NOT NULL DEFAULT '',
+            owner           VARCHAR NOT NULL DEFAULT '',
+            channel         VARCHAR NOT NULL DEFAULT '',
+            payment_type    VARCHAR NOT NULL DEFAULT '',
             count           BIGINT NOT NULL DEFAULT 0,
             PRIMARY KEY (type, status, sender, owner, channel, payment_type)
         );
 
         -- Helper: increment the standard set of dimension combos for a message.
         CREATE OR REPLACE FUNCTION _increment_message_counts(
-            p_type TEXT, p_status TEXT, p_sender TEXT, p_owner TEXT,
-            p_channel TEXT, p_payment_type TEXT
+            p_type VARCHAR, p_status VARCHAR, p_sender VARCHAR, p_owner VARCHAR,
+            p_channel VARCHAR, p_payment_type VARCHAR
         ) RETURNS VOID AS $$
         BEGIN
             -- Global: by status only
@@ -76,8 +76,8 @@ def upgrade() -> None:
 
         -- Helper: decrement (mirror of increment)
         CREATE OR REPLACE FUNCTION _decrement_message_counts(
-            p_type TEXT, p_status TEXT, p_sender TEXT, p_owner TEXT,
-            p_channel TEXT, p_payment_type TEXT
+            p_type VARCHAR, p_status VARCHAR, p_sender VARCHAR, p_owner VARCHAR,
+            p_channel VARCHAR, p_payment_type VARCHAR
         ) RETURNS VOID AS $$
         BEGIN
             UPDATE message_counts SET count = count - 1
@@ -161,8 +161,8 @@ def downgrade() -> None:
             """
         DROP TRIGGER IF EXISTS trg_message_counts ON messages;
         DROP FUNCTION IF EXISTS update_message_counts();
-        DROP FUNCTION IF EXISTS _decrement_message_counts(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT);
-        DROP FUNCTION IF EXISTS _increment_message_counts(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT);
+        DROP FUNCTION IF EXISTS _decrement_message_counts(VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR);
+        DROP FUNCTION IF EXISTS _increment_message_counts(VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR);
         DROP TABLE IF EXISTS message_counts;
         """
         )

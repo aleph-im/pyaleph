@@ -24,16 +24,16 @@ def upgrade() -> None:
     op.execute(
         text(
             """
-        ALTER TABLE messages ADD COLUMN status TEXT;
+        ALTER TABLE messages ADD COLUMN status VARCHAR;
         ALTER TABLE messages ADD COLUMN reception_time TIMESTAMPTZ;
-        ALTER TABLE messages ADD COLUMN owner TEXT;
-        ALTER TABLE messages ADD COLUMN content_type TEXT;
-        ALTER TABLE messages ADD COLUMN content_ref TEXT;
-        ALTER TABLE messages ADD COLUMN content_key TEXT;
+        ALTER TABLE messages ADD COLUMN owner VARCHAR;
+        ALTER TABLE messages ADD COLUMN content_type VARCHAR;
+        ALTER TABLE messages ADD COLUMN content_ref VARCHAR;
+        ALTER TABLE messages ADD COLUMN content_key VARCHAR;
         ALTER TABLE messages ADD COLUMN first_confirmed_at TIMESTAMPTZ;
         ALTER TABLE messages ADD COLUMN first_confirmed_height BIGINT;
-        ALTER TABLE messages ADD COLUMN forgotten_by TEXT[];
-        ALTER TABLE messages ADD COLUMN payment_type TEXT;
+        ALTER TABLE messages ADD COLUMN forgotten_by VARCHAR[];
+        ALTER TABLE messages ADD COLUMN payment_type VARCHAR;
         ALTER TABLE messages ALTER COLUMN content DROP NOT NULL;
         """
         )
