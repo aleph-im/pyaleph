@@ -1,7 +1,7 @@
 """Create message_counts table and trigger
 
 Revision ID: d6e7f8a9b0c1
-Revises: c5d6e7f8a9b0
+Revises: b4c5d6e7f8a9
 Create Date: 2026-02-18
 
 Creates the message_counts counter table and a PostgreSQL trigger on messages
@@ -14,7 +14,7 @@ from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
 revision = "d6e7f8a9b0c1"
-down_revision = "c5d6e7f8a9b0"
+down_revision = "b4c5d6e7f8a9"
 branch_labels = None
 depends_on = None
 

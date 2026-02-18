@@ -1,7 +1,7 @@
 """Populate message_counts from existing data
 
 Revision ID: f8a9b0c1d2e3
-Revises: e7f8a9b0c1d2
+Revises: c5d6e7f8a9b0
 Create Date: 2026-02-18
 
 Aggregates existing messages into the message_counts table for all dimension
@@ -14,7 +14,7 @@ from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
 revision = "f8a9b0c1d2e3"
-down_revision = "e7f8a9b0c1d2"
+down_revision = "c5d6e7f8a9b0"
 branch_labels = None
 depends_on = None
 
