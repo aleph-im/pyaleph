@@ -20,7 +20,6 @@ from aleph.db.models import FilePinDb, PeerDb, PendingMessageDb, PendingTxDb
 from aleph.services.cache.node_cache import NodeCache
 from aleph.types.chain_sync import ChainEventType
 from aleph.types.db_session import DbSessionFactory
-
 from aleph.version import __version__
 
 LOGGER = getLogger("WEB.metrics")
