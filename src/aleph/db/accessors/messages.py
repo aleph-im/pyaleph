@@ -226,7 +226,7 @@ def count_matching_messages(
             include_confirmations=False,
             page=1,
             pagination=0,
-        ).subquery()
+        ).order_by(None).subquery()
         select_count_stmt = select(func.count()).select_from(select_stmt)
         return session.execute(select_count_stmt).scalar_one()
 
@@ -908,6 +908,6 @@ def count_matching_hashes(
     pagination: int = 0,
     **kwargs,
 ) -> int:
-    select_stmt = make_matching_hashes_query(pagination=0, **kwargs).subquery()
+    select_stmt = make_matching_hashes_query(pagination=0, **kwargs).order_by(None).subquery()
     select_count_stmt = select(func.count()).select_from(select_stmt)
     return session.execute(select_count_stmt).scalar_one()
