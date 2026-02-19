@@ -51,7 +51,12 @@ message_confirmations = Table(
     "message_confirmations",
     Base.metadata,
     Column("id", Integer, primary_key=True),
-    Column("item_hash", ForeignKey("messages.item_hash", ondelete="CASCADE"), nullable=False, index=True),
+    Column(
+        "item_hash",
+        ForeignKey("messages.item_hash", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    ),
     Column("tx_hash", ForeignKey("chain_txs.hash", ondelete="CASCADE"), nullable=False),
     UniqueConstraint("item_hash", "tx_hash"),
 )
