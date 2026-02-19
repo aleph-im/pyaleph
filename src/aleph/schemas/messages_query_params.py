@@ -157,6 +157,20 @@ class MessageQueryParams(BaseMessageQueryParams):
     page: int = Field(
         default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
     )
+    cursor: Optional[str] = Field(
+        default=None,
+        description="Opaque cursor for cursor-based pagination. "
+        "When provided, 'page' is ignored and responses include "
+        "'has_more' + 'next_cursor' instead of 'pagination_total'.",
+    )
+
+    @model_validator(mode="after")
+    def validate_cursor_sort(self):
+        if self.cursor and self.sort_by == SortBy.TX_TIME:
+            raise ValueError(
+                "Cursor pagination is not supported with tx-time sort order."
+            )
+        return self
 
 
 class WsMessageQueryParams(BaseMessageQueryParams):

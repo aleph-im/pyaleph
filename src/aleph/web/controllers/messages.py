@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Optional
 
 import aio_pika.abc
 import aiohttp.web_ws
@@ -43,6 +43,7 @@ from aleph.schemas.messages_query_params import (
     MessageQueryParams,
     WsMessageQueryParams,
 )
+from aleph.toolkit.cursor import encode_cursor
 from aleph.toolkit.shield import shielded
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_status import MessageStatus, RemovedMessageReason
@@ -70,8 +71,20 @@ def message_to_dict(message: MessageDb) -> Dict[str, Any]:
     message_dict["confirmations"] = confirmations
     message_dict["confirmed"] = bool(confirmations)
 
-    # TODO: Add this field in the response when we make sure it won't break any sdk schema checking
-    # message_dict["status"] = message.status.status
+    # Remove denormalized columns from API response to avoid breaking SDKs
+    for key in (
+        "status",
+        "reception_time",
+        "owner",
+        "content_type",
+        "content_ref",
+        "content_key",
+        "content_item_hash",
+        "first_confirmed_at",
+        "first_confirmed_height",
+        "payment_type",
+    ):
+        message_dict.pop(key, None)
 
     return message_dict
 
@@ -232,26 +245,61 @@ async def view_messages_list(request: web.Request) -> web.Response:
 
     find_filters = query_params.model_dump(exclude_none=True)
 
-    pagination_page = query_params.page
     pagination_per_page = query_params.pagination
+    cursor = find_filters.pop("cursor", None)
 
     session_factory = get_session_factory_from_request(request)
-    node_cache = get_node_cache_from_request(request)
 
-    total_msgs = await node_cache.count_messages(session_factory, query_params)
+    if cursor:
+        # Cursor mode: no count needed
+        try:
+            messages_query = make_matching_messages_query(
+                include_confirmations=True, cursor=cursor, **find_filters
+            )
+        except ValueError as e:
+            raise web.HTTPUnprocessableEntity(text=str(e))
 
-    with session_factory() as session:
-        messages_query = make_matching_messages_query(
-            include_confirmations=True, **find_filters
+        with session_factory() as session:
+            messages = list(session.execute(messages_query).scalars())
+
+        has_more = len(messages) > pagination_per_page
+        if has_more:
+            messages = messages[:pagination_per_page]
+
+        formatted = [message_to_dict(m) for m in messages]
+        next_cursor = None
+        if has_more and messages:
+            last = messages[-1]
+            next_cursor = encode_cursor(last.time.timestamp(), last.item_hash)
+
+        return web.json_response(
+            text=aleph_json.dumps(
+                {
+                    "messages": formatted,
+                    "pagination_per_page": pagination_per_page,
+                    "has_more": has_more,
+                    "next_cursor": next_cursor,
+                }
+            ).decode("utf-8")
         )
-        messages = (session.execute(messages_query)).scalars()
+    else:
+        # Legacy page mode (backward compat)
+        pagination_page = query_params.page
+        node_cache = get_node_cache_from_request(request)
+        total_msgs = await node_cache.count_messages(session_factory, query_params)
 
-        return format_response(
-            messages,
-            pagination=pagination_per_page,
-            page=pagination_page,
-            total_messages=total_msgs,
-        )
+        with session_factory() as session:
+            messages_query = make_matching_messages_query(
+                include_confirmations=True, **find_filters
+            )
+            messages = list(session.execute(messages_query).scalars())
+
+            return format_response(
+                messages,
+                pagination=pagination_per_page,
+                page=pagination_page,
+                total_messages=total_msgs,
+            )
 
 
 async def _send_history_to_ws(
@@ -440,7 +488,9 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
 
 
 def _get_message_with_status(
-    session: DbSession, status_db: MessageStatusDb
+    session: DbSession,
+    status_db: MessageStatusDb,
+    message_db: Optional[MessageDb] = None,
 ) -> MessageWithStatus:
     status = status_db.status
     item_hash = status_db.item_hash

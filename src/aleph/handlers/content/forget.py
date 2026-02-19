@@ -65,7 +65,6 @@ class ForgetMessageHandler(ContentHandler):
             dependent_volumes = get_vms_dependent_volumes(
                 session=session, volume_hash=item_hash
             )
-            print(dependent_volumes, item_hash)
             if dependent_volumes is not None:
                 raise ForgetNotAllowed(
                     file_hash=item_hash, vm_hash=dependent_volumes.item_hash
@@ -156,7 +155,6 @@ class ForgetMessageHandler(ContentHandler):
     async def _forget_message(
         self, session: DbSession, message: MessageDb, forgotten_by: MessageDb
     ):
-        # Mark the message as forgotten
         forget_message(
             session=session,
             item_hash=message.item_hash,
@@ -166,6 +164,7 @@ class ForgetMessageHandler(ContentHandler):
         additional_messages_to_forget = await self._forget_by_message_type(
             session=session, message=message
         )
+
         for item_hash in additional_messages_to_forget:
             forget_message(
                 session=session,

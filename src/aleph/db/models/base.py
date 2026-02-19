@@ -1,6 +1,6 @@
 from typing import Any, Dict, Iterable, Optional, Set, Union
 
-from sqlalchemy import Column, func, select, text
+from sqlalchemy import Column, func, inspect, select, text
 from sqlalchemy.orm import DeclarativeBase, InstrumentedAttribute
 from sqlalchemy.sql import exists as sql_exists
 
@@ -12,11 +12,26 @@ class Base(DeclarativeBase):
     Augmented declarative base providing utility methods for all models.
     """
 
+    @classmethod
+    def _col_name_to_attr(cls) -> Dict[str, str]:
+        """Build mapping from DB column names to Python attribute names.
+        Cached on the class after first call."""
+        cache_attr = "_col_attr_map"
+        if not hasattr(cls, cache_attr) or getattr(cls, cache_attr) is None:
+            mapper = inspect(cls)
+            mapping = {}
+            for prop in mapper.column_attrs:
+                for col in prop.columns:
+                    mapping[col.name] = prop.key
+            setattr(cls, cache_attr, mapping)
+        return getattr(cls, cache_attr)
+
     def to_dict(self, exclude: Optional[Set[str]] = None) -> Dict[str, Any]:
         exclude_set = exclude if exclude is not None else set()
+        col_map = self._col_name_to_attr()
 
         return {
-            column.name: getattr(self, column.name)
+            column.name: getattr(self, col_map.get(column.name, column.name))
             for column in self.__table__.columns
             if column.name not in exclude_set
         }

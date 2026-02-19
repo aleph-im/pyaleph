@@ -15,7 +15,8 @@ from web3 import Web3
 
 from aleph.config import get_config
 from aleph.db.accessors.chains import get_last_height
-from aleph.db.models import FilePinDb, MessageDb, PeerDb, PendingMessageDb, PendingTxDb
+from aleph.db.accessors.messages import count_matching_messages_fast
+from aleph.db.models import FilePinDb, PeerDb, PendingMessageDb, PendingTxDb
 from aleph.services.cache.node_cache import NodeCache
 from aleph.types.chain_sync import ChainEventType
 from aleph.types.db_session import DbSessionFactory
@@ -154,11 +155,10 @@ async def get_metrics(
     eth_reference_height = await fetch_eth_height()
 
     with session_factory() as session:
-        # select count(*) can be slow but estimates are not refreshed often enough to give
-        # a meaningful sense of progress for the node main page on /.
         n_pending_messages = PendingMessageDb.count(session=session)
         n_pending_txs = PendingTxDb.count(session=session)
-        n_synced_messages: int = MessageDb.count(session=session)
+        # Use message_counts for O(1) lookup instead of COUNT(*)
+        n_synced_messages: int = count_matching_messages_fast(session) or 0
         n_peers = PeerDb.count(session=session)
         n_file_pins = FilePinDb.count(session=session)
         eth_last_committed_height = get_last_height(

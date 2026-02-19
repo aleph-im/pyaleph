@@ -8,7 +8,6 @@ from aleph.db.accessors.messages import (
     get_distinct_channels_for_address,
     get_distinct_post_types_for_address,
     get_message_stats_by_address,
-    refresh_address_stats_mat_view,
 )
 from aleph.db.models import MessageDb
 from aleph.toolkit.timestamp import timestamp_to_datetime
@@ -68,11 +67,7 @@ async def test_get_message_stats_by_address(
         stats_no_data = get_message_stats_by_address(session)
         assert stats_no_data == []
 
-        # Refresh the materialized view
         session.add_all(fixture_messages)
-        session.commit()
-
-        refresh_address_stats_mat_view(session)
         session.commit()
 
         stats = get_message_stats_by_address(session)

@@ -64,10 +64,8 @@ async def test_duplicated_forgotten_message(
         )
         assert isinstance(test2, ProcessedMessage)
 
-        res2 = cast(
-            MessageDb,
-            session.query(MessageDb).where(MessageDb.item_hash == post_hash).first(),
-        )
+        res2 = session.query(MessageDb).where(MessageDb.item_hash == post_hash).first()
+        # Message is deleted from messages table
         assert res2 is None
 
         # 3) process post message confirmation (discarding it)
@@ -78,10 +76,8 @@ async def test_duplicated_forgotten_message(
         assert isinstance(test3, RejectedMessage)
         assert test3.error_code == ErrorCode.FORGOTTEN_DUPLICATE
 
-        res3 = cast(
-            MessageDb,
-            session.query(MessageDb).where(MessageDb.item_hash == post_hash).first(),
-        )
+        res3 = session.query(MessageDb).where(MessageDb.item_hash == post_hash).first()
+        # Message still deleted
         assert res3 is None
 
         res4 = cast(

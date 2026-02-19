@@ -4,7 +4,6 @@ from typing import List
 import pytest
 from aleph_message.models import Chain, ItemType, MessageType
 
-from aleph.db.accessors.messages import refresh_address_stats_mat_view
 from aleph.db.models import MessageDb
 from aleph.db.models.messages import MessageStatusDb
 from aleph.toolkit.timestamp import utc_now
@@ -46,6 +45,8 @@ def fixture_address_stats_messages(
             size=100,
             time=now,
             channel=Channel("TEST"),
+            status_value=MessageStatus.PROCESSED,
+            reception_time=now,
         ),
         MessageDb(
             item_hash="hash2",
@@ -58,6 +59,8 @@ def fixture_address_stats_messages(
             size=100,
             time=now + dt.timedelta(seconds=1),
             channel=Channel("TEST"),
+            status_value=MessageStatus.PROCESSED,
+            reception_time=now,
         ),
         MessageDb(
             item_hash="hash3",
@@ -70,6 +73,8 @@ def fixture_address_stats_messages(
             size=100,
             time=now + dt.timedelta(seconds=2),
             channel=Channel("TEST"),
+            status_value=MessageStatus.PROCESSED,
+            reception_time=now,
         ),
         # Second address has only POST
         MessageDb(
@@ -83,6 +88,8 @@ def fixture_address_stats_messages(
             size=100,
             time=now + dt.timedelta(seconds=3),
             channel=Channel("TEST"),
+            status_value=MessageStatus.PROCESSED,
+            reception_time=now,
         ),
         # Third address has only STORE
         MessageDb(
@@ -96,6 +103,8 @@ def fixture_address_stats_messages(
             size=100,
             time=now + dt.timedelta(seconds=4),
             channel=Channel("TEST"),
+            status_value=MessageStatus.PROCESSED,
+            reception_time=now,
         ),
         # Fourth address has AGGREGATE
         MessageDb(
@@ -109,6 +118,8 @@ def fixture_address_stats_messages(
             size=100,
             time=now + dt.timedelta(seconds=5),
             channel=Channel("TEST"),
+            status_value=MessageStatus.PROCESSED,
+            reception_time=now,
         ),
         # Fifth address has INSTANCE
         MessageDb(
@@ -122,6 +133,8 @@ def fixture_address_stats_messages(
             size=100,
             time=now + dt.timedelta(seconds=6),
             channel=Channel("TEST"),
+            status_value=MessageStatus.PROCESSED,
+            reception_time=now,
         ),
     ]
 
@@ -129,7 +142,7 @@ def fixture_address_stats_messages(
         MessageStatusDb(
             item_hash=msg.item_hash,
             status=MessageStatus.PROCESSED,
-            reception_time=utc_now(),
+            reception_time=now,
         )
         for msg in messages
     ]
@@ -137,10 +150,6 @@ def fixture_address_stats_messages(
     with session_factory() as session:
         session.add_all(messages)
         session.add_all(message_statuses)
-        session.commit()
-
-        # Refresh the materialized view to ensure stats are up to date
-        refresh_address_stats_mat_view(session)
         session.commit()
 
     return messages

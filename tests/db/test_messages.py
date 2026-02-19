@@ -213,6 +213,14 @@ async def test_upsert_query_confirmation(
         ).one()
         assert confirmation_db.tx_hash == chain_tx.hash
 
+        # Trigger should have populated denormalized confirmation columns
+        message = get_message_by_item_hash(
+            session=session, item_hash=ItemHash(item_hash)
+        )
+        assert message is not None
+        assert message.first_confirmed_at == chain_tx.datetime
+        assert message.first_confirmed_height == chain_tx.height
+
     # Upsert
     with session_factory() as session:
         session.execute(upsert_stmt)
@@ -224,6 +232,65 @@ async def test_upsert_query_confirmation(
             )
         ).one()
         assert confirmation_db.tx_hash == chain_tx.hash
+
+
+@pytest.mark.asyncio
+async def test_confirmation_trigger_keeps_earliest(
+    session_factory: DbSessionFactory, fixture_message: MessageDb
+):
+    """Adding a later confirmation should not overwrite earlier first_confirmed_* values."""
+    item_hash = fixture_message.item_hash
+
+    early_tx = ChainTxDb(
+        hash="0xearly",
+        chain=Chain.ETH,
+        height=500,
+        datetime=pytz.utc.localize(dt.datetime(2022, 9, 1)),
+        publisher="0xpub1",
+        protocol=ChainSyncProtocol.OFF_CHAIN_SYNC,
+        protocol_version=1,
+        content="early",
+    )
+    late_tx = ChainTxDb(
+        hash="0xlate",
+        chain=Chain.ETH,
+        height=900,
+        datetime=pytz.utc.localize(dt.datetime(2022, 11, 1)),
+        publisher="0xpub2",
+        protocol=ChainSyncProtocol.OFF_CHAIN_SYNC,
+        protocol_version=1,
+        content="late",
+    )
+
+    with session_factory() as session:
+        session.add(fixture_message)
+        session.add(early_tx)
+        session.add(late_tx)
+        session.commit()
+
+    # Insert LATER confirmation first
+    with session_factory() as session:
+        session.execute(
+            make_confirmation_upsert_query(item_hash=item_hash, tx_hash=late_tx.hash)
+        )
+        session.commit()
+
+        msg = get_message_by_item_hash(session=session, item_hash=ItemHash(item_hash))
+        assert msg is not None
+        assert msg.first_confirmed_at == late_tx.datetime
+        assert msg.first_confirmed_height == late_tx.height
+
+    # Now insert EARLIER confirmation — should replace
+    with session_factory() as session:
+        session.execute(
+            make_confirmation_upsert_query(item_hash=item_hash, tx_hash=early_tx.hash)
+        )
+        session.commit()
+
+        msg = get_message_by_item_hash(session=session, item_hash=ItemHash(item_hash))
+        assert msg is not None
+        assert msg.first_confirmed_at == early_tx.datetime
+        assert msg.first_confirmed_height == early_tx.height
 
 
 @pytest.mark.asyncio
@@ -379,7 +446,7 @@ async def test_forget_message(
         assert message_status
         assert message_status.status == MessageStatus.FORGOTTEN
 
-        # Assert that the message is not present in messages anymore
+        # Assert that the message was deleted
         message = get_message_by_item_hash(
             session=session, item_hash=ItemHash(fixture_message.item_hash)
         )

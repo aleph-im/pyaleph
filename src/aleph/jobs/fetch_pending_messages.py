@@ -69,10 +69,14 @@ class PendingMessageFetcher(MessageJob):
                     pending_message=pending_message, session=session
                 )
 
-                session.execute(
-                    make_pending_message_fetched_statement(
-                        pending_message, message.content
+                content = message.content
+                if not isinstance(content, dict):
+                    raise ValueError(
+                        f"Fetched message {message.item_hash} has no content dict"
                     )
+
+                session.execute(
+                    make_pending_message_fetched_statement(pending_message, content)
                 )
                 session.commit()
 

@@ -116,6 +116,7 @@ class BaseMessageHandler:
                 pending_message=pending_message,
                 content_dict=content.value,
                 content_size=len(content.raw_value),
+                reception_time=pending_message.reception_time,
             )
         except ValidationError as e:
             raise InvalidMessageFormat(errors=e.errors()) from e
@@ -349,6 +350,11 @@ class MessageHandler(BaseMessageHandler):
     ):
         session.execute(make_message_upsert_query(message))
         if message.item_type != ItemType.inline:
+            content = message.content
+            if not isinstance(content, dict):
+                raise ValueError(
+                    f"Non-inline message {message.item_hash} has no content dict"
+                )
             upsert_file(
                 session=session,
                 file_hash=message.item_hash,
@@ -360,7 +366,7 @@ class MessageHandler(BaseMessageHandler):
                 file_hash=message.item_hash,
                 owner=message.sender,
                 item_hash=message.item_hash,
-                created=timestamp_to_datetime(message.content["time"]),
+                created=timestamp_to_datetime(content["time"]),
             )
 
         delete_pending_message(session=session, pending_message=pending_message)
