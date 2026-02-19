@@ -488,3 +488,76 @@ async def test_forget_message(
             forget_message_hash,
             new_forget_message_hash,
         ]
+
+
+@pytest.mark.asyncio
+async def test_forget_message_with_confirmations(
+    session_factory: DbSessionFactory, fixture_message: MessageDb
+):
+    """Forgetting a message that has confirmations should cascade-delete them."""
+
+    confirmations = [
+        ChainTxDb(
+            hash="0xdeadbeef",
+            chain=Chain.ETH,
+            height=1000,
+            datetime=pytz.utc.localize(dt.datetime(2022, 10, 1)),
+            publisher="0xabadbabe",
+            protocol=ChainSyncProtocol.OFF_CHAIN_SYNC,
+            protocol_version=1,
+            content="tx-content-1",
+        ),
+    ]
+    fixture_message.confirmations = confirmations
+
+    with session_factory() as session:
+        session.add(fixture_message)
+        session.add(
+            MessageStatusDb(
+                item_hash=fixture_message.item_hash,
+                status=MessageStatus.PROCESSED,
+                reception_time=fixture_message.time,
+            )
+        )
+        session.commit()
+
+    forget_message_hash = (
+        "d06251c954d4c75476c749e80b8f2a4962d20282b28b3e237e30b0a76157df2d"
+    )
+
+    with session_factory() as session:
+        # Verify the confirmation exists before forgetting
+        rows = session.execute(
+            select(message_confirmations).where(
+                message_confirmations.c.item_hash == fixture_message.item_hash
+            )
+        ).all()
+        assert len(rows) == 1
+
+        forget_message(
+            session=session,
+            item_hash=fixture_message.item_hash,
+            forget_message_hash=forget_message_hash,
+        )
+        session.commit()
+
+        # Message should be gone
+        message = get_message_by_item_hash(
+            session=session, item_hash=ItemHash(fixture_message.item_hash)
+        )
+        assert message is None
+
+        # Confirmations should be gone too
+        rows = session.execute(
+            select(message_confirmations).where(
+                message_confirmations.c.item_hash == fixture_message.item_hash
+            )
+        ).all()
+        assert len(rows) == 0
+
+        # Forgotten record should exist
+        forgotten = get_forgotten_message(
+            session=session, item_hash=ItemHash(fixture_message.item_hash)
+        )
+        assert forgotten is not None
+        assert forgotten.forgotten_by == [forget_message_hash]
