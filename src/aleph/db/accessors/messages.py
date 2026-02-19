@@ -219,14 +219,18 @@ def count_matching_messages(
     # the same parameters as get_matching_messages and get the total number of messages,
     # not just the number on a page.
     if kwargs or start_date or end_date:
-        select_stmt = make_matching_messages_query(
-            **kwargs,
-            start_date=start_date,
-            end_date=end_date,
-            include_confirmations=False,
-            page=1,
-            pagination=0,
-        ).subquery()
+        select_stmt = (
+            make_matching_messages_query(
+                **kwargs,
+                start_date=start_date,
+                end_date=end_date,
+                include_confirmations=False,
+                page=1,
+                pagination=0,
+            )
+            .order_by(None)
+            .subquery()
+        )
         select_count_stmt = select(func.count()).select_from(select_stmt)
         return session.execute(select_count_stmt).scalar_one()
 
@@ -908,6 +912,8 @@ def count_matching_hashes(
     pagination: int = 0,
     **kwargs,
 ) -> int:
-    select_stmt = make_matching_hashes_query(pagination=0, **kwargs).subquery()
+    select_stmt = (
+        make_matching_hashes_query(pagination=0, **kwargs).order_by(None).subquery()
+    )
     select_count_stmt = select(func.count()).select_from(select_stmt)
     return session.execute(select_count_stmt).scalar_one()
