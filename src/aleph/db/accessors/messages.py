@@ -560,6 +560,13 @@ def forget_message(
     )
     session.execute(copy_row_stmt)
 
+    # Delete confirmations before the message (FK constraint)
+    session.execute(
+        delete(message_confirmations).where(
+            message_confirmations.c.item_hash == item_hash
+        )
+    )
+
     # Delete the message from the messages table
     session.execute(delete(MessageDb).where(MessageDb.item_hash == item_hash))
 
@@ -568,12 +575,6 @@ def forget_message(
         update(MessageStatusDb)
         .values(status=MessageStatus.FORGOTTEN)
         .where(MessageStatusDb.item_hash == item_hash)
-    )
-
-    session.execute(
-        delete(message_confirmations).where(
-            message_confirmations.c.item_hash == item_hash
-        )
     )
 
     delete_costs_for_message(
