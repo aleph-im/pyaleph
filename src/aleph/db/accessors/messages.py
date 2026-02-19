@@ -143,8 +143,6 @@ def make_matching_messages_query(
 
     order_by_columns: Tuple = ()
 
-    # TODO: this value was hardcoded as a quick fix a while ago, investigate if we can change it back
-    sort_by = SortBy.TX_TIME
     if sort_by == SortBy.TX_TIME or start_block or end_block:
         if start_block:
             select_stmt = select_stmt.where(
