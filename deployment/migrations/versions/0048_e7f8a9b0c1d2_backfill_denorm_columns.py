@@ -105,7 +105,8 @@ def upgrade() -> None:
         SET owner = COALESCE(content->>'address', ''),
             content_type = content->>'type',
             content_ref = content->>'ref',
-            content_key = content->>'key'
+            content_key = content->>'key',
+            content_item_hash = content->>'item_hash'
         WHERE item_hash IN (SELECT item_hash FROM batch)
         """,
     )
@@ -181,7 +182,8 @@ def downgrade() -> None:
 
         UPDATE messages SET status = NULL, reception_time = NULL,
             owner = NULL, content_type = NULL, content_ref = NULL,
-            content_key = NULL, first_confirmed_at = NULL,
+            content_key = NULL, content_item_hash = NULL,
+            first_confirmed_at = NULL,
             first_confirmed_height = NULL, payment_type = NULL;
 
         ALTER TABLE messages ENABLE TRIGGER trg_message_counts;

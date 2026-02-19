@@ -5,10 +5,7 @@ Tests for address stats functions.
 import pytest
 from aleph_message.models import Chain, ItemType, MessageType
 
-from aleph.db.accessors.address_stats import (
-    count_address_stats,
-    make_address_filter_subquery,
-)
+from aleph.db.accessors.address_stats import count_address_stats
 from aleph.db.accessors.messages import get_message_stats_by_address
 from aleph.db.models import MessageDb
 from aleph.toolkit.timestamp import timestamp_to_datetime
@@ -83,28 +80,6 @@ def create_test_messages():
             channel=Channel("TEST"),
         ),
     ]
-
-
-@pytest.mark.asyncio
-async def test_make_address_filter_subquery():
-    """Test the subquery builder for address filtering."""
-    # Test with a simple pattern
-    subquery = make_address_filter_subquery("0x123")
-
-    assert subquery.element.get_final_froms()[0].name == "address_stats_mat_view"
-    assert "lower(address_stats_mat_view.address)" in str(subquery.element)
-
-    # Test with a more complex pattern
-    subquery = make_address_filter_subquery("SPECIAL_CHARS!@#")
-
-    # Structure should be the same
-    assert "lower(address_stats_mat_view.address)" in str(subquery.element)
-
-    # Test with empty pattern
-    subquery = make_address_filter_subquery("")
-
-    # Should still create a valid subquery with empty pattern
-    assert "lower(address_stats_mat_view.address)" in str(subquery.element)
 
 
 @pytest.mark.asyncio

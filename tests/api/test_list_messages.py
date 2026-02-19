@@ -715,6 +715,7 @@ async def test_owners_filter_ws_logic(owners_test_messages):
         "content_type",
         "content_ref",
         "content_key",
+        "content_item_hash",
         "first_confirmed_at",
         "first_confirmed_height",
         "payment_type",

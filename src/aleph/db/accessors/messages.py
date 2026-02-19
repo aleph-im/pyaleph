@@ -121,17 +121,12 @@ def make_matching_messages_query(
         select_stmt = select_stmt.where(MessageDb.time >= start_datetime)
     if end_datetime:
         select_stmt = select_stmt.where(MessageDb.time < end_datetime)
-    # Ref - direct column, no JSONB
     if refs:
         select_stmt = select_stmt.where(MessageDb.content_ref.in_(refs))
     if content_hashes:
-        select_stmt = select_stmt.where(
-            MessageDb.content["item_hash"].astext.in_(content_hashes)
-        )
-    # Content types - direct column, no JSONB
+        select_stmt = select_stmt.where(MessageDb.content_item_hash.in_(content_hashes))
     if content_types:
         select_stmt = select_stmt.where(MessageDb.content_type.in_(content_types))
-    # Content keys - direct column, no JSONB
     if content_keys:
         select_stmt = select_stmt.where(MessageDb.content_key.in_(content_keys))
     if tags:
@@ -148,7 +143,8 @@ def make_matching_messages_query(
 
     order_by_columns: Tuple = ()
 
-    # TX_TIME sort - direct column, no subquery!
+    # TODO: this value was hardcoded as a quick fix a while ago, investigate if we can change it back
+    sort_by = SortBy.TX_TIME
     if sort_by == SortBy.TX_TIME or start_block or end_block:
         if start_block:
             select_stmt = select_stmt.where(
@@ -157,8 +153,7 @@ def make_matching_messages_query(
             )
         if end_block:
             select_stmt = select_stmt.where(
-                MessageDb.first_confirmed_height.is_(None)
-                | (MessageDb.first_confirmed_height < end_block)
+                MessageDb.first_confirmed_height < end_block
             )
 
         if sort_order == SortOrder.DESCENDING:

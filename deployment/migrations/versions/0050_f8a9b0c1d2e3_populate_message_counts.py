@@ -59,6 +59,9 @@ def upgrade() -> None:
 
         -- Re-enable trigger: all future changes are tracked automatically
         ALTER TABLE messages ENABLE TRIGGER trg_message_counts;
+
+        -- Drop the materialized view superseded by message_counts
+        DROP MATERIALIZED VIEW IF EXISTS address_stats_mat_view;
         """
         )
     )
@@ -70,6 +73,17 @@ def downgrade() -> None:
             """
         ALTER TABLE messages DISABLE TRIGGER trg_message_counts;
         TRUNCATE message_counts;
+
+        -- Recreate the materialized view that was dropped during upgrade
+        CREATE MATERIALIZED VIEW address_stats_mat_view AS
+            SELECT sender AS address, type, COUNT(*) AS nb_messages
+            FROM messages
+            GROUP BY sender, type;
+        CREATE UNIQUE INDEX ix_address_type ON address_stats_mat_view(address, type);
+        CREATE INDEX idx_address_stats_mat_view_address_trgm
+            ON address_stats_mat_view USING gin (lower(address) gin_trgm_ops);
+        CREATE INDEX idx_address_stats_covering
+            ON address_stats_mat_view(address) INCLUDE (nb_messages);
         """
         )
     )

@@ -79,6 +79,7 @@ def message_to_dict(message: MessageDb) -> Dict[str, Any]:
         "content_type",
         "content_ref",
         "content_key",
+        "content_item_hash",
         "first_confirmed_at",
         "first_confirmed_height",
         "payment_type",

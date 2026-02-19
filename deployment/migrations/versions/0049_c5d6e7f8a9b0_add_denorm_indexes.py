@@ -5,6 +5,8 @@ Revises: e7f8a9b0c1d2
 Create Date: 2026-02-18
 
 Creates indexes on denormalized columns using CONCURRENTLY (no table lock).
+Also adds a GIN index for tag containment queries and drops the obsolete
+ix_messages_posts_type_tags B-tree index.
 
 Execution order: runs AFTER the backfill (0048) so that indexes are built
 on already-populated columns in a single pass, rather than being maintained
@@ -31,10 +33,18 @@ INDEXES = [
     "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_messages_content_ref ON messages (content_ref) WHERE content_ref IS NOT NULL",
     "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_messages_content_type ON messages (content_type) WHERE content_type IS NOT NULL",
     "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_messages_content_key ON messages (content_key) WHERE content_key IS NOT NULL",
-    "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_messages_first_confirmed ON messages (first_confirmed_at DESC NULLS LAST)",
+    "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_messages_content_item_hash ON messages (content_item_hash) WHERE content_item_hash IS NOT NULL",
+    "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_messages_first_confirmed ON messages (first_confirmed_at DESC NULLS FIRST, time DESC, item_hash ASC)",
     "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_messages_confirmed_height ON messages (first_confirmed_height) WHERE first_confirmed_height IS NOT NULL",
     "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_messages_reception_time ON messages (reception_time DESC)",
     "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_messages_payment_type ON messages (payment_type) WHERE payment_type IS NOT NULL",
+    # GIN index for tag containment queries (?|) — replaces the old B-tree ix_messages_posts_type_tags
+    "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_messages_content_tags_gin ON messages USING GIN ((content->'content'->'tags')) WHERE type = 'POST'",
+]
+
+# Obsolete indexes to drop (superseded by denormalized columns + GIN)
+DROP_INDEXES = [
+    "ix_messages_posts_type_tags",
 ]
 
 
@@ -89,6 +99,13 @@ def upgrade() -> None:
 
     logger.info("All indexes created.")
 
+    # Drop obsolete indexes superseded by denormalized columns
+    for idx_name in DROP_INDEXES:
+        logger.info(f"  Dropping obsolete {idx_name}...")
+        with engine.connect() as conn:
+            conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+            conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {idx_name}"))
+
     if was_in_transaction:
         connection.execute(text("BEGIN"))
 
@@ -107,6 +124,7 @@ def downgrade() -> None:
     )
 
     connection = op.get_bind()
+    engine = connection.engine
     was_in_transaction = connection.in_transaction()
     if was_in_transaction:
         connection.execute(text("COMMIT"))
@@ -118,12 +136,23 @@ def downgrade() -> None:
         "ix_messages_content_ref",
         "ix_messages_content_type",
         "ix_messages_content_key",
+        "ix_messages_content_item_hash",
         "ix_messages_first_confirmed",
         "ix_messages_confirmed_height",
         "ix_messages_reception_time",
         "ix_messages_payment_type",
+        "ix_messages_content_tags_gin",
     ]:
         connection.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {idx_name}"))
+
+    # Restore obsolete indexes that were dropped during upgrade
+    for idx_sql in [
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_messages_posts_type_tags "
+        "ON messages ((content->>'type'), (content->'content'->>'tags')) WHERE type = 'POST'",
+    ]:
+        with engine.connect() as conn:
+            conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+            conn.execute(text(idx_sql))
 
     if was_in_transaction:
         connection.execute(text("BEGIN"))

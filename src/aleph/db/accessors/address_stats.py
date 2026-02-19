@@ -2,7 +2,6 @@ from typing import Optional
 
 from sqlalchemy import func, select
 
-from aleph.db.models.address_stats import AddressStats
 from aleph.db.models.message_counts import MessageCountsDb
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import MessageStatus
@@ -25,22 +24,6 @@ def escape_like_pattern(pattern: str) -> str:
     # Escape backslash first (since it's the escape character)
     # then escape % and _
     return pattern.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
-def make_address_filter_subquery(address_contains: str):
-    """
-    Subquery defining the set of addresses to include.
-    Only used when address filtering is requested.
-    """
-    escaped_pattern = escape_like_pattern(address_contains.lower())
-    return (
-        select(AddressStats.address)
-        .distinct()
-        .where(
-            func.lower(AddressStats.address).like(f"%{escaped_pattern}%", escape="\\")
-        )
-        .subquery()
-    )
 
 
 def count_address_stats(

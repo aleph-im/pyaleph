@@ -132,6 +132,7 @@ class MessageDb(Base):
         BigInteger, nullable=True
     )
     payment_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    content_item_hash: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     confirmations: Mapped[List[ChainTxDb]] = relationship(
         "ChainTxDb", secondary=message_confirmations
@@ -157,6 +158,7 @@ class MessageDb(Base):
             kwargs.setdefault("content_type", content.get("type"))
             kwargs.setdefault("content_ref", content.get("ref"))
             kwargs.setdefault("content_key", content.get("key"))
+            kwargs.setdefault("content_item_hash", content.get("item_hash"))
         super().__init__(**kwargs)
         self._parsed_content: Optional[BaseContent] = None
 
@@ -212,6 +214,7 @@ class MessageDb(Base):
             content_type=content_dict.get("type"),
             content_ref=content_dict.get("ref"),
             content_key=content_dict.get("key"),
+            content_item_hash=content_dict.get("item_hash"),
         )
         message._parsed_content = parsed_content
         return message

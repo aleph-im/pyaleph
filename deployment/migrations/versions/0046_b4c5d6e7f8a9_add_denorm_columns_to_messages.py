@@ -5,7 +5,7 @@ Revises: a3b4c5d6e7f8
 Create Date: 2026-02-18
 
 Adds status, reception_time, owner, content_type, content_ref, content_key,
-first_confirmed_at, first_confirmed_height, and payment_type
+content_item_hash, first_confirmed_at, first_confirmed_height, and payment_type
 columns to the messages table.
 """
 
@@ -29,6 +29,7 @@ def upgrade() -> None:
         ALTER TABLE messages ADD COLUMN content_type VARCHAR;
         ALTER TABLE messages ADD COLUMN content_ref VARCHAR;
         ALTER TABLE messages ADD COLUMN content_key VARCHAR;
+        ALTER TABLE messages ADD COLUMN content_item_hash VARCHAR;
         ALTER TABLE messages ADD COLUMN first_confirmed_at TIMESTAMPTZ;
         ALTER TABLE messages ADD COLUMN first_confirmed_height BIGINT;
         ALTER TABLE messages ADD COLUMN payment_type VARCHAR;
@@ -44,6 +45,7 @@ def downgrade() -> None:
         ALTER TABLE messages DROP COLUMN IF EXISTS payment_type;
         ALTER TABLE messages DROP COLUMN IF EXISTS first_confirmed_height;
         ALTER TABLE messages DROP COLUMN IF EXISTS first_confirmed_at;
+        ALTER TABLE messages DROP COLUMN IF EXISTS content_item_hash;
         ALTER TABLE messages DROP COLUMN IF EXISTS content_key;
         ALTER TABLE messages DROP COLUMN IF EXISTS content_ref;
         ALTER TABLE messages DROP COLUMN IF EXISTS content_type;
