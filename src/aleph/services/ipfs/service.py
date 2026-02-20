@@ -20,8 +20,8 @@ MAX_LEN = 1024 * 1024 * 100
 
 async def fetch_raw_cid_streamed(
     aioipfs_client: aioipfs.AsyncIPFS,
+    chunk_size: int,
     params: Optional[Dict] = None,
-    chunk_size: int = 16 * 1024,
 ) -> AsyncIterable[bytes]:
     driver = aioipfs_client.core.driver
     params = params or {}
@@ -208,10 +208,14 @@ class IpfsService:
         return result
 
     async def get_ipfs_content_iterator(
-        self, cid: str
+        self, cid: str, chunk_size: int
     ) -> Optional[AsyncIterable[bytes]]:
         params = {aioipfs.helpers.ARG_PARAM: cid}
-        return fetch_raw_cid_streamed(aioipfs_client=self.ipfs_client, params=params)
+        return fetch_raw_cid_streamed(
+            aioipfs_client=self.ipfs_client,
+            chunk_size=chunk_size,
+            params=params,
+        )
 
     async def get_json(self, hash, timeout=1, tries=1):
         result = await self.get_ipfs_content(hash, timeout=timeout, tries=tries)
