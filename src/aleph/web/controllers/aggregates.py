@@ -58,8 +58,50 @@ class AggregatesListQueryParams(BaseModel):
 
 
 async def address_aggregate(request: web.Request) -> web.Response:
-    """Returns the aggregate of an address.
-    TODO: handle filter on a single key, or even subkey.
+    """
+    Returns the aggregate of an address.
+
+    ---
+    summary: Get address aggregate
+    tags:
+      - Aggregates
+    parameters:
+      - name: address
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: keys
+        in: query
+        schema:
+          type: string
+        description: Comma-separated list of keys to filter
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 1000
+      - name: with_info
+        in: query
+        schema:
+          type: boolean
+          default: false
+      - name: value_only
+        in: query
+        schema:
+          type: boolean
+          default: false
+    responses:
+      '200':
+        description: Address aggregate data
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddressAggregate'
+      '404':
+        description: No aggregate found for this address
+      '422':
+        description: Validation error
     """
 
     address: str = request.match_info["address"]
@@ -142,6 +184,59 @@ async def address_aggregate(request: web.Request) -> web.Response:
 
 
 async def view_aggregates_list(request: web.Request) -> web.Response:
+    """
+    List aggregates with filters.
+
+    ---
+    summary: List aggregates
+    tags:
+      - Aggregates
+    parameters:
+      - name: keys
+        in: query
+        schema:
+          type: string
+        description: Comma-separated list of keys
+      - name: addresses
+        in: query
+        schema:
+          type: string
+        description: Comma-separated list of addresses
+      - name: sortBy
+        in: query
+        schema:
+          type: string
+          enum: [last_modified]
+          default: last_modified
+      - name: sortOrder
+        in: query
+        schema:
+          type: integer
+          enum: [-1, 1]
+          default: -1
+      - name: pagination
+        in: query
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+          maximum: 500
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+    responses:
+      '200':
+        description: Paginated list of aggregates
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaginatedAggregates'
+      '422':
+        description: Validation error
+    """
     try:
         query_params = AggregatesListQueryParams.model_validate(request.query)
     except ValidationError as e:

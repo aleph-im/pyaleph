@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from aleph_message.models import Chain, ItemHash, MessageType
+from aleph_message.models import Chain, ItemHash, MessageType, PaymentType
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from aleph.types.message_status import MessageStatus
@@ -75,6 +75,11 @@ class BaseMessageQueryParams(BaseModel):
     hashes: Optional[List[ItemHash]] = Field(
         default=None, description="Accepted values for the 'item_hash' field."
     )
+    payment_types: Optional[List[PaymentType]] = Field(
+        default=None,
+        alias="paymentTypes",
+        description="Accepted values for payment type (e.g., 'hold', 'superfluid', 'credit').",
+    )
 
     start_date: float = Field(
         default=0,
@@ -132,6 +137,7 @@ class BaseMessageQueryParams(BaseModel):
         "message_types",
         "message_statuses",
         "tags",
+        "payment_types",
         mode="before",
     )
     def split_str(cls, v):
@@ -151,6 +157,20 @@ class MessageQueryParams(BaseMessageQueryParams):
     page: int = Field(
         default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
     )
+    cursor: Optional[str] = Field(
+        default=None,
+        description="Opaque cursor for cursor-based pagination. "
+        "When provided, 'page' is ignored and responses include "
+        "'has_more' + 'next_cursor' instead of 'pagination_total'.",
+    )
+
+    @model_validator(mode="after")
+    def validate_cursor_sort(self):
+        if self.cursor and self.sort_by == SortBy.TX_TIME:
+            raise ValueError(
+                "Cursor pagination is not supported with tx-time sort order."
+            )
+        return self
 
 
 class WsMessageQueryParams(BaseMessageQueryParams):

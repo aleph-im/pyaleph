@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Optional
 
 import aio_pika.abc
 import aiohttp.web_ws
@@ -43,6 +43,7 @@ from aleph.schemas.messages_query_params import (
     MessageQueryParams,
     WsMessageQueryParams,
 )
+from aleph.toolkit.cursor import encode_cursor
 from aleph.toolkit.shield import shielded
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_status import MessageStatus, RemovedMessageReason
@@ -70,8 +71,20 @@ def message_to_dict(message: MessageDb) -> Dict[str, Any]:
     message_dict["confirmations"] = confirmations
     message_dict["confirmed"] = bool(confirmations)
 
-    # TODO: Add this field in the response when we make sure it won't break any sdk schema checking
-    # message_dict["status"] = message.status.status
+    # Remove denormalized columns from API response to avoid breaking SDKs
+    for key in (
+        "status",
+        "reception_time",
+        "owner",
+        "content_type",
+        "content_ref",
+        "content_key",
+        "content_item_hash",
+        "first_confirmed_at",
+        "first_confirmed_height",
+        "payment_type",
+    ):
+        message_dict.pop(key, None)
 
     return message_dict
 
@@ -104,7 +117,121 @@ def format_response(
 
 
 async def view_messages_list(request: web.Request) -> web.Response:
-    """Messages list view with filters"""
+    """
+    List messages with filters.
+
+    ---
+    summary: List messages
+    tags:
+      - Messages
+    parameters:
+      - name: sortBy
+        in: query
+        schema:
+          type: string
+          enum: [time, tx-time]
+          default: time
+      - name: sortOrder
+        in: query
+        schema:
+          type: integer
+          enum: [-1, 1]
+          default: -1
+      - name: msgType
+        in: query
+        schema:
+          type: string
+          enum: [POST, AGGREGATE, STORE, PROGRAM, INSTANCE, FORGET]
+      - name: msgTypes
+        in: query
+        schema:
+          type: string
+      - name: msgStatuses
+        in: query
+        schema:
+          type: string
+      - name: addresses
+        in: query
+        schema:
+          type: string
+      - name: owners
+        in: query
+        schema:
+          type: string
+      - name: refs
+        in: query
+        schema:
+          type: string
+      - name: contentHashes
+        in: query
+        schema:
+          type: string
+      - name: contentKeys
+        in: query
+        schema:
+          type: string
+      - name: contentTypes
+        in: query
+        schema:
+          type: string
+      - name: chains
+        in: query
+        schema:
+          type: string
+      - name: channels
+        in: query
+        schema:
+          type: string
+      - name: tags
+        in: query
+        schema:
+          type: string
+      - name: hashes
+        in: query
+        schema:
+          type: string
+      - name: startDate
+        in: query
+        schema:
+          type: number
+          default: 0
+      - name: endDate
+        in: query
+        schema:
+          type: number
+          default: 0
+      - name: startBlock
+        in: query
+        schema:
+          type: integer
+          default: 0
+      - name: endBlock
+        in: query
+        schema:
+          type: integer
+          default: 0
+      - name: pagination
+        in: query
+        schema:
+          type: integer
+          default: 20
+          minimum: 0
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+    responses:
+      '200':
+        description: Paginated list of messages
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaginatedMessages'
+      '422':
+        description: Validation error
+    """
 
     try:
         query_params = MessageQueryParams.model_validate(request.query)
@@ -118,25 +245,61 @@ async def view_messages_list(request: web.Request) -> web.Response:
 
     find_filters = query_params.model_dump(exclude_none=True)
 
-    pagination_page = query_params.page
     pagination_per_page = query_params.pagination
+    cursor = find_filters.pop("cursor", None)
 
     session_factory = get_session_factory_from_request(request)
-    node_cache = get_node_cache_from_request(request)
 
-    with session_factory() as session:
-        messages_query = make_matching_messages_query(
-            include_confirmations=True, **find_filters
-        )
-        messages = (session.execute(messages_query)).scalars()
-        total_msgs = await node_cache.count_messages(session, query_params)
+    if cursor:
+        # Cursor mode: no count needed
+        try:
+            messages_query = make_matching_messages_query(
+                include_confirmations=True, cursor=cursor, **find_filters
+            )
+        except ValueError as e:
+            raise web.HTTPUnprocessableEntity(text=str(e))
 
-        return format_response(
-            messages,
-            pagination=pagination_per_page,
-            page=pagination_page,
-            total_messages=total_msgs,
+        with session_factory() as session:
+            messages = list(session.execute(messages_query).scalars())
+
+        has_more = len(messages) > pagination_per_page
+        if has_more:
+            messages = messages[:pagination_per_page]
+
+        formatted = [message_to_dict(m) for m in messages]
+        next_cursor = None
+        if has_more and messages:
+            last = messages[-1]
+            next_cursor = encode_cursor(last.time.timestamp(), last.item_hash)
+
+        return web.json_response(
+            text=aleph_json.dumps(
+                {
+                    "messages": formatted,
+                    "pagination_per_page": pagination_per_page,
+                    "has_more": has_more,
+                    "next_cursor": next_cursor,
+                }
+            ).decode("utf-8")
         )
+    else:
+        # Legacy page mode (backward compat)
+        pagination_page = query_params.page
+        node_cache = get_node_cache_from_request(request)
+        total_msgs = await node_cache.count_messages(session_factory, query_params)
+
+        with session_factory() as session:
+            messages_query = make_matching_messages_query(
+                include_confirmations=True, **find_filters
+            )
+            messages = list(session.execute(messages_query).scalars())
+
+            return format_response(
+                messages,
+                pagination=pagination_per_page,
+                page=pagination_page,
+                total_messages=total_msgs,
+            )
 
 
 async def _send_history_to_ws(
@@ -146,14 +309,16 @@ async def _send_history_to_ws(
     query_params: WsMessageQueryParams,
 ) -> None:
     with session_factory() as session:
-        messages = get_matching_messages(
-            session=session,
-            pagination=history,
-            include_confirmations=True,
-            **query_params.model_dump(exclude_none=True),
+        messages = list(
+            get_matching_messages(
+                session=session,
+                pagination=history,
+                include_confirmations=True,
+                **query_params.model_dump(exclude_none=True),
+            )
         )
-        for message in messages:
-            await ws.send_str(format_message(message).model_dump_json())
+    for message in reversed(messages):
+        await ws.send_str(format_message(message).model_dump_json())
 
 
 def message_matches_filters(
@@ -323,7 +488,9 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
 
 
 def _get_message_with_status(
-    session: DbSession, status_db: MessageStatusDb
+    session: DbSession,
+    status_db: MessageStatusDb,
+    message_db: Optional[MessageDb] = None,
 ) -> MessageWithStatus:
     status = status_db.status
     item_hash = status_db.item_hash
@@ -416,6 +583,29 @@ def _get_message_with_status(
 
 
 async def view_message(request: web.Request):
+    """
+    Get a single message by item hash.
+
+    ---
+    summary: Get message
+    tags:
+      - Messages
+    parameters:
+      - name: item_hash
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Message with status
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageWithStatus'
+      '404':
+        description: Message not found
+    """
     item_hash = get_item_hash_from_request(request)
 
     session_factory: DbSessionFactory = request.app["session_factory"]
@@ -431,6 +621,31 @@ async def view_message(request: web.Request):
 
 
 async def view_message_content(request: web.Request):
+    """
+    Get the content of a POST message by item hash.
+
+    ---
+    summary: Get message content
+    tags:
+      - Messages
+    parameters:
+      - name: item_hash
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Message content (JSON)
+        content:
+          application/json:
+            schema:
+              type: object
+      '404':
+        description: Message not found
+      '422':
+        description: Invalid message type or status
+    """
     item_hash = get_item_hash_from_request(request)
 
     session_factory: DbSessionFactory = request.app["session_factory"]
@@ -463,6 +678,29 @@ async def view_message_content(request: web.Request):
 
 
 async def view_message_status(request: web.Request):
+    """
+    Get the processing status of a message.
+
+    ---
+    summary: Get message status
+    tags:
+      - Messages
+    parameters:
+      - name: item_hash
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Message status info
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageStatusInfo'
+      '404':
+        description: Message not found
+    """
     item_hash = get_item_hash_from_request(request)
 
     session_factory: DbSessionFactory = request.app["session_factory"]
@@ -476,6 +714,61 @@ async def view_message_status(request: web.Request):
 
 
 async def view_message_hashes(request: web.Request):
+    """
+    List message hashes with filters.
+
+    ---
+    summary: List message hashes
+    tags:
+      - Messages
+    parameters:
+      - name: status
+        in: query
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+      - name: pagination
+        in: query
+        schema:
+          type: integer
+          default: 20
+          minimum: 0
+      - name: startDate
+        in: query
+        schema:
+          type: number
+          default: 0
+      - name: endDate
+        in: query
+        schema:
+          type: number
+          default: 0
+      - name: sortOrder
+        in: query
+        schema:
+          type: integer
+          enum: [-1, 1]
+          default: -1
+      - name: hash_only
+        in: query
+        schema:
+          type: boolean
+          default: true
+    responses:
+      '200':
+        description: Paginated list of message hashes
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageHashes'
+      '422':
+        description: Validation error
+    """
     try:
         query_params = MessageHashesQueryParams.model_validate(request.query)
     except ValidationError as e:

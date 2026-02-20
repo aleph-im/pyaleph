@@ -16,6 +16,7 @@ from aleph.db.accessors.files import insert_content_file_pin, upsert_file
 from aleph.db.accessors.messages import (
     get_forgotten_message,
     get_message_by_item_hash,
+    get_message_status,
     make_confirmation_upsert_query,
     make_message_status_upsert_query,
     make_message_upsert_query,
@@ -115,6 +116,7 @@ class BaseMessageHandler:
                 pending_message=pending_message,
                 content_dict=content.value,
                 content_size=len(content.raw_value),
+                reception_time=pending_message.reception_time,
             )
         except ValidationError as e:
             raise InvalidMessageFormat(errors=e.errors()) from e
@@ -216,18 +218,41 @@ class MessagePublisher(BaseMessageHandler):
                 session.commit()
                 return None
 
-            # Check if there are an already existing record
-            existing_message = (
-                session.query(PendingMessageDb)
-                .filter_by(
-                    sender=pending_message.sender,
-                    item_hash=pending_message.item_hash,
-                    signature=pending_message.signature,
-                )
-                .one_or_none()
+            # Check message status - only proceed if REJECTED (retry) or no status (new)
+            # PENDING = already in queue, PROCESSED/FORGOTTEN/etc = already handled
+            message_status = get_message_status(
+                session, ItemHash(pending_message.item_hash)
             )
-            if existing_message:
-                return existing_message
+            if message_status and message_status.status != MessageStatus.REJECTED:
+                if (
+                    message_status.status
+                    in (
+                        MessageStatus.PROCESSED,
+                        MessageStatus.REMOVING,
+                    )
+                    and tx_hash
+                ):
+                    # Message already processed (or being removed but could go back to processed).
+                    # Record the on-chain confirmation - a message can have multiple confirmations.
+                    session.execute(
+                        make_confirmation_upsert_query(
+                            item_hash=pending_message.item_hash, tx_hash=tx_hash
+                        )
+                    )
+                    session.commit()
+                    LOGGER.debug(
+                        "Message %s has status %s, added confirmation for tx %s",
+                        pending_message.item_hash,
+                        message_status.status.value,
+                        tx_hash,
+                    )
+                else:
+                    LOGGER.debug(
+                        "Message %s has status %s, skipping",
+                        pending_message.item_hash,
+                        message_status.status.value,
+                    )
+                return None
 
             upsert_message_status_stmt = make_message_status_upsert_query(
                 item_hash=pending_message.item_hash,
@@ -325,6 +350,11 @@ class MessageHandler(BaseMessageHandler):
     ):
         session.execute(make_message_upsert_query(message))
         if message.item_type != ItemType.inline:
+            content = message.content
+            if not isinstance(content, dict):
+                raise ValueError(
+                    f"Non-inline message {message.item_hash} has no content dict"
+                )
             upsert_file(
                 session=session,
                 file_hash=message.item_hash,
@@ -336,7 +366,7 @@ class MessageHandler(BaseMessageHandler):
                 file_hash=message.item_hash,
                 owner=message.sender,
                 item_hash=message.item_hash,
-                created=timestamp_to_datetime(message.content["time"]),
+                created=timestamp_to_datetime(content["time"]),
             )
 
         delete_pending_message(session=session, pending_message=pending_message)

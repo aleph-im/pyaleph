@@ -24,7 +24,7 @@ class AccountCostsDb(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     ref: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     payment_type: Mapped[PaymentType] = mapped_column(
-        ChoiceType(PaymentType), nullable=False
+        ChoiceType(PaymentType), nullable=False, index=True
     )
     cost_hold: Mapped[Decimal] = mapped_column(DECIMAL, nullable=False)
     cost_stream: Mapped[Decimal] = mapped_column(DECIMAL, nullable=False)

@@ -11,8 +11,27 @@ from sqlalchemy import func, select, text
 from sqlalchemy.sql import Select
 
 from aleph.db.models import AlephBalanceDb, AlephCreditBalanceDb, AlephCreditHistoryDb
-from aleph.toolkit.timestamp import utc_now
+from aleph.toolkit.constants import (
+    CREDIT_PRECISION_CUTOFF_TIMESTAMP,
+    CREDIT_PRECISION_MULTIPLIER,
+)
+from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.db_session import DbSession
+
+
+def _apply_credit_precision_multiplier(
+    amount: int, message_timestamp: dt.datetime
+) -> int:
+    """
+    Apply the credit precision multiplier for messages before the cutoff.
+
+    Old messages (before cutoff) have amounts in old format (100 credits = 1 USD)
+    and need to be multiplied by 10,000 to match new format (1,000,000 credits = 1 USD).
+    """
+    cutoff_datetime = timestamp_to_datetime(CREDIT_PRECISION_CUTOFF_TIMESTAMP)
+    if message_timestamp < cutoff_datetime:
+        return amount * CREDIT_PRECISION_MULTIPLIER
+    return amount
 
 
 def get_balance_by_chain(
@@ -486,7 +505,8 @@ def update_credit_balances_distribution(
 
     for index, credit_entry in enumerate(credits_list):
         address = credit_entry["address"]
-        amount = abs(int(credit_entry["amount"]))
+        raw_amount = abs(int(credit_entry["amount"]))
+        amount = _apply_credit_precision_multiplier(raw_amount, message_timestamp)
         price = Decimal(credit_entry["price"])
         tx_hash = credit_entry["tx_hash"]
         provider = credit_entry["provider"]
@@ -535,7 +555,8 @@ def update_credit_balances_expense(
 
     for index, credit_entry in enumerate(credits_list):
         address = credit_entry["address"]
-        amount = -abs(int(credit_entry["amount"]))
+        raw_amount = abs(int(credit_entry["amount"]))
+        amount = -_apply_credit_precision_multiplier(raw_amount, message_timestamp)
         origin_ref = credit_entry.get("ref", "")
 
         # Map new fields
@@ -575,7 +596,8 @@ def update_credit_balances_transfer(
 
     for credit_entry in credits_list:
         recipient_address = credit_entry["address"]
-        amount = abs(int(credit_entry["amount"]))
+        raw_amount = abs(int(credit_entry["amount"]))
+        amount = _apply_credit_precision_multiplier(raw_amount, message_timestamp)
         expiration_timestamp = credit_entry.get("expiration", "")
 
         # Convert expiration timestamp to datetime
@@ -733,6 +755,37 @@ def count_address_credit_history(
     return session.execute(query).scalar_one()
 
 
+def get_total_consumed_credits(
+    session: DbSession,
+    address: Optional[str] = None,
+    item_hash: Optional[str] = None,
+) -> int:
+    """
+    Calculate total credits consumed, optionally filtered by address or item_hash.
+
+    Aggregates all credit_history entries where payment_method = 'credit_expense'.
+
+    Args:
+        session: Database session
+        address: Optional filter by address
+        item_hash: Optional filter by resource (origin)
+
+    Returns:
+        Total credits consumed
+    """
+    query = select(func.sum(func.abs(AlephCreditHistoryDb.amount))).where(
+        AlephCreditHistoryDb.payment_method == "credit_expense"
+    )
+
+    if address:
+        query = query.where(AlephCreditHistoryDb.address == address)
+    if item_hash:
+        query = query.where(AlephCreditHistoryDb.origin == item_hash)
+
+    result = session.execute(query).scalar()
+    return result or 0
+
+
 def get_resource_consumed_credits(
     session: DbSession,
     item_hash: str,
@@ -740,9 +793,8 @@ def get_resource_consumed_credits(
     """
     Calculate the total credits consumed by a specific resource.
 
-    Aggregates all credit_history entries where:
-    - payment_method = 'credit_expense'
-    - origin = item_hash (the resource identifier)
+    This is a convenience wrapper around get_total_consumed_credits
+    for filtering by a single item_hash.
 
     Args:
         session: Database session
@@ -751,10 +803,37 @@ def get_resource_consumed_credits(
     Returns:
         Total credits consumed by the resource
     """
-    query = select(func.sum(func.abs(AlephCreditHistoryDb.amount))).where(
-        (AlephCreditHistoryDb.payment_method == "credit_expense")
-        & (AlephCreditHistoryDb.origin == item_hash)
+    return get_total_consumed_credits(session=session, item_hash=item_hash)
+
+
+def get_consumed_credits_by_resource(
+    session: DbSession,
+    item_hashes: Optional[list[str]] = None,
+) -> dict[str, int]:
+    """
+    Get consumed credits grouped by resource (origin).
+
+    Args:
+        session: Database session
+        item_hashes: List of item hashes to filter by (required for efficiency)
+
+    Returns:
+        Dictionary mapping item_hash to consumed_credits
+    """
+    if not item_hashes:
+        return {}
+
+    query = (
+        select(
+            AlephCreditHistoryDb.origin,
+            func.sum(func.abs(AlephCreditHistoryDb.amount)).label("consumed_credits"),
+        )
+        .where(
+            (AlephCreditHistoryDb.payment_method == "credit_expense")
+            & (AlephCreditHistoryDb.origin.in_(item_hashes))
+        )
+        .group_by(AlephCreditHistoryDb.origin)
     )
 
-    result = session.execute(query).scalar()
-    return result or 0
+    results = session.execute(query).all()
+    return {row.origin: row.consumed_credits for row in results}

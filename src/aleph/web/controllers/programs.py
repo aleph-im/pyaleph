@@ -13,6 +13,30 @@ class GetProgramQueryFields(BaseModel):
 
 
 async def get_programs_on_message(request: web.Request) -> web.Response:
+    """
+    Get programs triggered by messages.
+
+    ---
+    summary: List programs on message
+    tags:
+      - Programs
+    parameters:
+      - name: sort_order
+        in: query
+        schema:
+          type: integer
+          enum: [-1, 1]
+          default: -1
+    responses:
+      '200':
+        description: Programs triggered by messages
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProgramsOnMessageResponse'
+      '400':
+        description: Validation error
+    """
     try:
         query = GetProgramQueryFields.model_validate(request.query)
     except ValidationError as error:

@@ -52,11 +52,11 @@ async def test_get_programs_on_message(
     assert response.status == 200, await response.text()
 
     data = await response.json()
+    msg_content = fixture_program_messages[0].content
+    assert isinstance(msg_content, dict), "Program message content must be a dict"
     expected = {
         "item_hash": fixture_program_messages[0].item_hash,
-        "content": {
-            "on": {"message": fixture_program_messages[0].content["on"]["message"]}
-        },
+        "content": {"on": {"message": msg_content["on"]["message"]}},
     }
 
     assert data == [expected]

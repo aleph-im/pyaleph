@@ -15,10 +15,11 @@ from web3 import Web3
 
 from aleph.config import get_config
 from aleph.db.accessors.chains import get_last_height
-from aleph.db.models import FilePinDb, MessageDb, PeerDb, PendingMessageDb, PendingTxDb
+from aleph.db.accessors.messages import count_matching_messages_fast
+from aleph.db.models import FilePinDb, PeerDb, PendingMessageDb, PendingTxDb
 from aleph.services.cache.node_cache import NodeCache
 from aleph.types.chain_sync import ChainEventType
-from aleph.types.db_session import DbSession
+from aleph.types.db_session import DbSessionFactory
 from aleph.version import __version__
 
 LOGGER = getLogger("WEB.metrics")
@@ -147,22 +148,26 @@ async def fetch_eth_height() -> Optional[int]:
 
 # Cache metrics for 10 seconds by default
 @cached(ttl=config.aleph.cache.ttl.metrics.value)
-async def get_metrics(session: DbSession, node_cache: NodeCache) -> Metrics:
+async def get_metrics(
+    session_factory: DbSessionFactory, node_cache: NodeCache
+) -> Metrics:
     sync_messages_reference_total = await fetch_reference_total_messages()
     eth_reference_height = await fetch_eth_height()
 
-    # select count(*) can be slow but estimates are not refreshed often enough to give
-    # a meaningful sense of progress for the node main page on /.
-    sync_messages_total: int = MessageDb.count(session=session)
-    peers_count = PeerDb.count(session=session)
+    with session_factory() as session:
+        n_pending_messages = PendingMessageDb.count(session=session)
+        n_pending_txs = PendingTxDb.count(session=session)
+        # Use message_counts for O(1) lookup instead of COUNT(*)
+        n_synced_messages: int = count_matching_messages_fast(session) or 0
+        n_peers = PeerDb.count(session=session)
+        n_file_pins = FilePinDb.count(session=session)
+        eth_last_committed_height = get_last_height(
+            session=session, chain=Chain.ETH, sync_type=ChainEventType.SYNC
+        )
 
-    eth_last_committed_height = get_last_height(
-        session=session, chain=Chain.ETH, sync_type=ChainEventType.SYNC
-    )
-
-    if not (sync_messages_reference_total is None or sync_messages_total is None):
+    if not (sync_messages_reference_total is None or n_synced_messages is None):
         sync_messages_remaining_total = (
-            sync_messages_reference_total - sync_messages_total
+            sync_messages_reference_total - n_synced_messages
         )
     else:
         sync_messages_remaining_total = None
@@ -179,16 +184,14 @@ async def get_metrics(session: DbSession, node_cache: NodeCache) -> Metrics:
 
     return Metrics(
         pyaleph_build_info=pyaleph_build_info,
-        pyaleph_status_peers_total=peers_count,
+        pyaleph_status_peers_total=n_peers,
         pyaleph_processing_pending_messages_tasks_total=nb_message_jobs,
-        pyaleph_status_sync_messages_total=sync_messages_total,
-        pyaleph_status_sync_permanent_files_total=FilePinDb.count(session=session),
+        pyaleph_status_sync_messages_total=n_synced_messages,
+        pyaleph_status_sync_permanent_files_total=n_file_pins,
         pyaleph_status_sync_messages_reference_total=sync_messages_reference_total,
         pyaleph_status_sync_messages_remaining_total=sync_messages_remaining_total,
-        pyaleph_status_sync_pending_messages_total=PendingMessageDb.count(
-            session=session
-        ),
-        pyaleph_status_sync_pending_txs_total=PendingTxDb.count(session=session),
+        pyaleph_status_sync_pending_messages_total=n_pending_messages,
+        pyaleph_status_sync_pending_txs_total=n_pending_txs,
         pyaleph_status_chain_eth_last_committed_height=eth_last_committed_height,
         pyaleph_status_chain_eth_height_reference_total=eth_reference_height,
         pyaleph_status_chain_eth_height_remaining_total=eth_remaining_height,

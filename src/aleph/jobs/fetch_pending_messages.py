@@ -43,6 +43,7 @@ class PendingMessageFetcher(MessageJob):
         message_handler: MessageHandler,
         max_retries: int,
         pending_message_queue: aio_pika.abc.AbstractQueue,
+        pending_message_exchange: aio_pika.abc.AbstractExchange,
     ):
         super().__init__(
             session_factory=session_factory,
@@ -51,6 +52,15 @@ class PendingMessageFetcher(MessageJob):
             pending_message_queue=pending_message_queue,
         )
         self.pending_message_queue = pending_message_queue
+        self.pending_message_exchange = pending_message_exchange
+
+    async def _notify_message_fetched(self, pending_message: PendingMessageDb) -> None:
+        """Publish to MQ to wake up the process job after a message is fetched."""
+        mq_message = aio_pika.Message(body=f"{pending_message.id}".encode("utf-8"))
+        await self.pending_message_exchange.publish(
+            mq_message,
+            routing_key=f"process.{pending_message.item_hash}",
+        )
 
     async def fetch_pending_message(self, pending_message: PendingMessageDb):
         with self.session_factory() as session:
@@ -59,12 +69,20 @@ class PendingMessageFetcher(MessageJob):
                     pending_message=pending_message, session=session
                 )
 
-                session.execute(
-                    make_pending_message_fetched_statement(
-                        pending_message, message.content
+                content = message.content
+                if not isinstance(content, dict):
+                    raise ValueError(
+                        f"Fetched message {message.item_hash} has no content dict"
                     )
+
+                session.execute(
+                    make_pending_message_fetched_statement(pending_message, content)
                 )
                 session.commit()
+
+                # Notify process job that a message is ready
+                await self._notify_message_fetched(pending_message)
+
                 return message
 
             except Exception as e:
@@ -134,17 +152,20 @@ class PendingMessageFetcher(MessageJob):
                     yield fetched_messages
                     fetched_messages = []
 
-                if not PendingMessageDb.count(session):
-                    # If not in loop mode, stop if there are no more pending messages
-                    if not loop:
-                        break
-                    # If we are done, wait a few seconds until retrying
-                    if not fetch_tasks:
-                        LOGGER.info("waiting for new pending messages...")
-                        try:
-                            await asyncio.wait_for(self.ready(), 1)
-                        except TimeoutError:
-                            pass
+                # If not in loop mode, stop when there are no more pending messages
+                if not loop and not PendingMessageDb.count(session):
+                    break
+
+                # Wait when there are no running tasks.
+                # This handles both cases: no messages at all, or all messages
+                # are delayed (next_attempt in the future). Without this check,
+                # the loop would spin at 100% CPU when messages exist but are delayed.
+                if not fetch_tasks:
+                    LOGGER.info("waiting for new pending messages...")
+                    try:
+                        await asyncio.wait_for(self.ready(), 1)
+                    except TimeoutError:
+                        pass
 
     def make_pipeline(
         self,
@@ -167,6 +188,13 @@ async def fetch_messages_task(config: Config):
 
     pending_message_queue = await make_pending_message_queue(
         config=config, routing_key="fetch.*", channel=mq_channel
+    )
+
+    # Exchange to notify process job when messages are fetched
+    pending_message_exchange = await mq_channel.declare_exchange(
+        name=config.rabbitmq.pending_message_exchange.value,
+        type=aio_pika.ExchangeType.TOPIC,
+        auto_delete=False,
     )
 
     async with (
@@ -193,6 +221,7 @@ async def fetch_messages_task(config: Config):
             message_handler=message_handler,
             max_retries=config.aleph.jobs.pending_messages.max_retries.value,
             pending_message_queue=pending_message_queue,
+            pending_message_exchange=pending_message_exchange,
         )
 
         async with fetcher:

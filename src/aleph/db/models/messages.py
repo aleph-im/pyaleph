@@ -17,6 +17,7 @@ from pydantic import ValidationError
 from sqlalchemy import (
     ARRAY,
     TIMESTAMP,
+    BigInteger,
     Column,
     ForeignKey,
     Integer,
@@ -28,7 +29,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy_utils.types.choice import ChoiceType
 
-from aleph.toolkit.timestamp import timestamp_to_datetime
+from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.channel import Channel
 from aleph.types.message_status import ErrorCode, MessageStatus
 
@@ -50,7 +51,12 @@ message_confirmations = Table(
     "message_confirmations",
     Base.metadata,
     Column("id", Integer, primary_key=True),
-    Column("item_hash", ForeignKey("messages.item_hash"), nullable=False, index=True),
+    Column(
+        "item_hash",
+        ForeignKey("messages.item_hash", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    ),
     Column("tx_hash", ForeignKey("chain_txs.hash", ondelete="CASCADE"), nullable=False),
     UniqueConstraint("item_hash", "tx_hash"),
 )
@@ -108,18 +114,56 @@ class MessageDb(Base):
     )
     size: Mapped[int] = mapped_column(Integer, nullable=False)
 
+    # Denormalized columns (merged from message_status + JSONB content)
+    status_value: Mapped[MessageStatus] = mapped_column(
+        "status",
+        ChoiceType(MessageStatus),
+        nullable=False,
+        default=MessageStatus.PROCESSED,
+    )
+    reception_time: Mapped[dt.datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+    owner: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    content_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    content_ref: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    content_key: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    first_confirmed_at: Mapped[Optional[dt.datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    first_confirmed_height: Mapped[Optional[int]] = mapped_column(
+        BigInteger, nullable=True
+    )
+    payment_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    content_item_hash: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
     confirmations: Mapped[List[ChainTxDb]] = relationship(
         "ChainTxDb", secondary=message_confirmations
     )
 
-    status: Mapped[Optional["MessageStatusDb"]] = relationship(
+    # Legacy relationship to MessageStatusDb (kept during transition, removed in Phase 7)
+    status_rel: Mapped[Optional["MessageStatusDb"]] = relationship(
         "MessageStatusDb",
         primaryjoin="MessageDb.item_hash == MessageStatusDb.item_hash",
         foreign_keys=MessageStatusDb.item_hash,
-        uselist=False,  # Critical: Makes it one-to-one
+        uselist=False,
     )
 
     def __init__(self, **kwargs) -> None:
+        # Apply defaults for required denormalized columns
+        kwargs.setdefault("status_value", MessageStatus.PROCESSED)
+        kwargs.setdefault("reception_time", utc_now())
+
+        # Auto-populate denormalized columns from content JSONB if not explicitly set
+        content = kwargs.get("content")
+        if isinstance(content, dict):
+            kwargs.setdefault("owner", content.get("address"))
+            kwargs.setdefault("content_type", content.get("type"))
+            kwargs.setdefault("content_ref", content.get("ref"))
+            kwargs.setdefault("content_key", content.get("key"))
+            kwargs.setdefault("content_item_hash", content.get("item_hash"))
         super().__init__(**kwargs)
         self._parsed_content: Optional[BaseContent] = None
 
@@ -149,7 +193,10 @@ class MessageDb(Base):
         pending_message: PendingMessageDb,
         content_dict: Dict[str, Any],
         content_size: int,
+        reception_time: Optional[dt.datetime] = None,
     ) -> "MessageDb":
+        if reception_time is None:
+            reception_time = pending_message.reception_time
         content_dict = cls._coerce_content(pending_message, content_dict)
         parsed_content = validate_message_content(pending_message.type, content_dict)
 
@@ -165,6 +212,14 @@ class MessageDb(Base):
             time=pending_message.time,
             channel=pending_message.channel,
             size=content_size,
+            # Denormalized columns
+            status_value=MessageStatus.PROCESSED,
+            reception_time=reception_time,
+            owner=content_dict.get("address"),
+            content_type=content_dict.get("type"),
+            content_ref=content_dict.get("ref"),
+            content_key=content_dict.get("key"),
+            content_item_hash=content_dict.get("item_hash"),
         )
         message._parsed_content = parsed_content
         return message

@@ -35,7 +35,6 @@ from aleph.jobs.cron.cron_job import CronJob, cron_job_task
 from aleph.network import listener_tasks
 from aleph.repair import repair_node
 from aleph.services import p2p
-from aleph.services.cache.materialized_views import refresh_cache_materialized_views
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.keys import generate_keypair, save_keys
@@ -208,10 +207,6 @@ async def main(args: List[str]) -> None:
         )
         tasks.append(chain_connector.chain_event_loop(config))
         LOGGER.debug("Initialized listeners")
-
-        LOGGER.debug("Initializing cache tasks")
-        tasks.append(refresh_cache_materialized_views(session_factory))
-        LOGGER.debug("Initialized cache tasks")
 
         LOGGER.debug("Initializing garbage collector task")
         tasks.append(

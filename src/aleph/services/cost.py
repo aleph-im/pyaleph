@@ -33,17 +33,19 @@ from aleph.toolkit.constants import (
     DEFAULT_PRICE_AGGREGATE,
     DEFAULT_SETTINGS_AGGREGATE,
     HOUR,
+    MIN_CREDIT_COST_PER_HOUR,
+    MIN_STORE_COST_MIB,
     PRICE_AGGREGATE_KEY,
     PRICE_AGGREGATE_OWNER,
     SETTINGS_AGGREGATE_KEY,
     SETTINGS_AGGREGATE_OWNER,
     MiB,
+    ProductPriceType,
 )
 from aleph.toolkit.costs import format_cost
 from aleph.types.cost import (
     CostType,
     ProductComputeUnit,
-    ProductPriceType,
     ProductPricing,
     RefVolume,
     SizedVolume,
@@ -85,6 +87,11 @@ def _get_settings(session: DbSession) -> Settings:
 
 
 def get_payment_type(content: CostComputableContent) -> PaymentType:
+    """
+    Determine the payment type for a message content.
+
+    Uses the payment field from content if available, otherwise defaults to hold.
+    """
     if hasattr(content, "payment") and content.payment and content.payment.is_credit:
         return PaymentType.credit
     elif hasattr(content, "payment") and content.payment and content.payment.is_stream:
@@ -119,30 +126,104 @@ def _get_product_instance_type(
     if not gpu_requirements:
         return ProductPriceType.INSTANCE
 
-    # TODO: Improve the way to compare tiers
-    premium_gpu_price = ProductPricing.from_aggregate(
+    # Determine the actual GPU tier(s) for this instance
+    premium_pricing = ProductPricing.from_aggregate(
         ProductPriceType.INSTANCE_GPU_PREMIUM, price_aggregate
     )
-    standard_gpu_price = ProductPricing.from_aggregate(
+    standard_pricing = ProductPricing.from_aggregate(
         ProductPriceType.INSTANCE_GPU_STANDARD, price_aggregate
     )
-
-    # TODO: Allow to get more than one GPU
-    selected_gpu = gpu_requirements[0]
-
-    gpu_model = next(
-        compatible_gpu.model
-        for compatible_gpu in settings.compatible_gpus
-        if compatible_gpu.device_id == selected_gpu.device_id
+    tier_breakdown = _get_gpu_tier_breakdown(
+        content, settings, premium_pricing, standard_pricing
     )
 
-    if gpu_model in [tier.model for tier in premium_gpu_price.tiers]:
-        return ProductPriceType.INSTANCE_GPU_PREMIUM
-    else:
-        if gpu_model in [tier.model for tier in standard_gpu_price.tiers]:
-            return ProductPriceType.INSTANCE_GPU_STANDARD
-        else:
-            raise ValueError(f"GPU model {gpu_model} not supported")
+    tiers_used = set(tier_breakdown.keys())
+    if tiers_used == {ProductPriceType.INSTANCE_GPU_STANDARD}:
+        return ProductPriceType.INSTANCE_GPU_STANDARD
+
+    # Premium-only or mixed: return premium (storage pricing baseline)
+    return ProductPriceType.INSTANCE_GPU_PREMIUM
+
+
+def _get_gpu_tier_breakdown(
+    content: InstanceContent | CostEstimationInstanceContent,
+    settings: Settings,
+    premium_pricing: ProductPricing,
+    standard_pricing: ProductPricing,
+) -> dict[ProductPriceType, int]:
+    """
+    Calculate GPU compute units grouped by tier (premium/standard).
+
+    Supports mixing GPUs from different tiers in a single instance.
+    For each GPU, looks up its model and tier, then sums compute units per tier.
+
+    Args:
+        content: Instance content with GPU requirements
+        settings: Settings containing compatible GPU definitions
+        premium_pricing: Premium GPU pricing with tiers
+        standard_pricing: Standard GPU pricing with tiers
+
+    Returns:
+        Dictionary mapping ProductPriceType to total compute units for that tier.
+        Example: {ProductPriceType.INSTANCE_GPU_PREMIUM: 16,
+                  ProductPriceType.INSTANCE_GPU_STANDARD: 6}
+        Only includes tiers that have GPUs (empty dict keys omitted).
+
+    Raises:
+        ValueError: If GPU device_id not found in compatible GPUs
+        ValueError: If GPU model not found in any pricing tier
+    """
+    tier_compute_units: dict[ProductPriceType, int] = {}
+
+    gpus = (content.requirements.gpu if content.requirements else None) or []
+    premium_tiers = premium_pricing.tiers or []
+    standard_tiers = standard_pricing.tiers or []
+
+    for gpu in gpus:
+        # Look up GPU model from device_id
+        gpu_model = None
+        for compatible_gpu in settings.compatible_gpus:
+            if compatible_gpu.device_id == gpu.device_id:
+                gpu_model = compatible_gpu.model
+                break
+
+        if gpu_model is None:
+            raise ValueError(
+                f"GPU device_id {gpu.device_id} not found in compatible GPUs"
+            )
+
+        # Find which tier this GPU belongs to and get its compute units
+        found_tier = False
+
+        # Check premium tier
+        for tier in premium_tiers:
+            if tier.model == gpu_model:
+                tier_type = ProductPriceType.INSTANCE_GPU_PREMIUM
+                compute_units = tier.compute_units
+                tier_compute_units[tier_type] = (
+                    tier_compute_units.get(tier_type, 0) + compute_units
+                )
+                found_tier = True
+                break
+
+        # Check standard tier if not found in premium
+        if not found_tier:
+            for tier in standard_tiers:
+                if tier.model == gpu_model:
+                    tier_type = ProductPriceType.INSTANCE_GPU_STANDARD
+                    compute_units = tier.compute_units
+                    tier_compute_units[tier_type] = (
+                        tier_compute_units.get(tier_type, 0) + compute_units
+                    )
+                    found_tier = True
+                    break
+
+        if not found_tier:
+            raise ValueError(
+                f"GPU model {gpu_model} not found in any pricing tier (premium or standard)"
+            )
+
+    return tier_compute_units
 
 
 def _get_product_price_type(
@@ -263,6 +344,13 @@ def _get_volumes_costs(
             storage_mib * price_per_mib_second,
         )
         cost_credit = format_cost(storage_mib * price_per_mib_credit)
+
+        # Ensure minimum cost per hour for credit payments
+        if payment_type == PaymentType.credit:
+            min_credit_cost_per_second = Decimal(MIN_CREDIT_COST_PER_HOUR) / Decimal(
+                HOUR
+            )
+            cost_credit = max(cost_credit, format_cost(min_credit_cost_per_second))
 
         costs.append(
             AccountCostsDb(
@@ -488,6 +576,89 @@ def _get_additional_storage_price(
     return costs
 
 
+def _calculate_multi_tier_gpu_execution_cost(
+    session: DbSession,
+    content: InstanceContent | CostEstimationInstanceContent,
+    settings: Settings,
+    price_aggregate: Union[AggregateDb, dict],
+    payment_type: PaymentType,
+    item_hash: str,
+) -> List[AccountCostsDb]:
+    """
+    Calculate execution costs for multi-tier GPU instances.
+
+    Supports instances with GPUs from different tiers (premium + standard).
+    Creates separate cost entries for each tier used.
+
+    Args:
+        session: Database session
+        content: Instance content with GPU requirements
+        settings: Settings with compatible GPU definitions
+        price_aggregate: Price aggregate data
+        payment_type: Payment type (hold/superfluid/credit)
+        item_hash: Message hash
+
+    Returns:
+        List of AccountCostsDb entries, one per GPU tier used.
+        For example, mixed-tier instance creates two entries: one for premium, one for standard.
+    """
+    # Get premium and standard pricing
+    premium_pricing = ProductPricing.from_aggregate(
+        ProductPriceType.INSTANCE_GPU_PREMIUM, price_aggregate
+    )
+    standard_pricing = ProductPricing.from_aggregate(
+        ProductPriceType.INSTANCE_GPU_STANDARD, price_aggregate
+    )
+
+    # Get tier breakdown (compute units per tier)
+    tier_breakdown = _get_gpu_tier_breakdown(
+        content, settings, premium_pricing, standard_pricing
+    )
+
+    costs = []
+    compute_unit_multiplier = _get_compute_unit_multiplier(content)
+
+    # Calculate cost for each tier
+    for price_type, compute_units in tier_breakdown.items():
+        # Select appropriate pricing for this tier
+        if price_type == ProductPriceType.INSTANCE_GPU_PREMIUM:
+            pricing = premium_pricing
+        else:
+            pricing = standard_pricing
+
+        # Get pricing rates for this tier
+        compute_unit_cost = pricing.price.compute_unit.holding
+        compute_unit_cost_second = pricing.price.compute_unit.payg / HOUR
+        compute_unit_cost_credit = pricing.price.compute_unit.credit / HOUR
+
+        # Calculate costs: compute_units × multiplier × rate
+        cost_hold = format_cost(
+            compute_units * compute_unit_multiplier * compute_unit_cost
+        )
+        cost_stream = format_cost(
+            compute_units * compute_unit_multiplier * compute_unit_cost_second
+        )
+        cost_credit = format_cost(
+            compute_units * compute_unit_multiplier * compute_unit_cost_credit
+        )
+
+        # Create cost entry for this tier
+        costs.append(
+            AccountCostsDb(
+                owner=content.address,
+                item_hash=item_hash,
+                type=CostType.EXECUTION,
+                name=price_type,  # "instance_gpu_premium" or "instance_gpu_standard"
+                payment_type=payment_type,
+                cost_hold=cost_hold,
+                cost_stream=cost_stream,
+                cost_credit=cost_credit,
+            )
+        )
+
+    return costs
+
+
 def _calculate_executable_costs(
     session: DbSession,
     content: CostComputableExecutableContent,
@@ -495,7 +666,30 @@ def _calculate_executable_costs(
     item_hash: str,
 ) -> List[AccountCostsDb]:
     payment_type = get_payment_type(content)
+    settings = _get_settings(session)
+    price_aggregate = _get_price_aggregate(session)
 
+    # GPU INSTANCES: Use multi-tier GPU cost calculation
+    if isinstance(
+        content, (InstanceContent, CostEstimationInstanceContent)
+    ) and _is_gpu_vm(content):
+        # Calculate GPU execution costs (handles multi-tier)
+        execution_costs = _calculate_multi_tier_gpu_execution_cost(
+            session, content, settings, price_aggregate, payment_type, item_hash
+        )
+
+        # Calculate storage costs (same as non-GPU instances)
+        # For storage, we need to pick one pricing tier - use premium as baseline
+        storage_pricing = ProductPricing.from_aggregate(
+            ProductPriceType.INSTANCE_GPU_PREMIUM, price_aggregate
+        )
+        storage_costs = _get_additional_storage_price(
+            session, content, storage_pricing, payment_type, item_hash
+        )
+
+        return execution_costs + storage_costs
+
+    # NON-GPU INSTANCES: Use existing logic
     if not pricing.compute_unit:
         logger.warning(
             "compute_unit not defined for type '{}' in pricing aggregate".format(
@@ -510,7 +704,7 @@ def _calculate_executable_costs(
             )
         )
 
-    # EXECUTION COST
+    # EXECUTION COST (existing logic for non-GPU)
     compute_units_required = _get_nb_compute_units(content, pricing.compute_unit)
     compute_unit_multiplier = _get_compute_unit_multiplier(content)
 
@@ -531,6 +725,11 @@ def _calculate_executable_costs(
     cost_hold = format_cost(compute_unit_price)
     cost_stream = format_cost(compute_unit_price_stream)
     cost_credit = format_cost(compute_unit_price_credit)
+
+    # Ensure minimum cost per hour for credit payments
+    if payment_type == PaymentType.credit:
+        min_credit_cost_per_second = Decimal(MIN_CREDIT_COST_PER_HOUR) / Decimal(HOUR)
+        cost_credit = max(cost_credit, format_cost(min_credit_cost_per_second))
 
     execution_cost = AccountCostsDb(
         owner=content.address,
@@ -564,6 +763,10 @@ def _calculate_storage_costs(
     if not storage_mib:
         return []
 
+    # Apply minimum of 25 MiB for pure STORE messages when using credit payment
+    if payment_type == PaymentType.credit and storage_mib < MIN_STORE_COST_MIB:
+        storage_mib = Decimal(MIN_STORE_COST_MIB)
+
     volume = SizedVolume(CostType.STORAGE, storage_mib, item_hash)
 
     price_per_mib = pricing.price.storage.holding
@@ -596,6 +799,157 @@ def calculate_storage_size(
         storage_mib = Decimal(file.size / MiB)
 
     return storage_mib
+
+
+def _get_size_from_file_ref(session: DbSession, file_hash: str) -> Optional[float]:
+    """Get file size in MiB from file hash."""
+    file = get_file(session, file_hash)
+    if not file:
+        return None
+    return float(Decimal(file.size) / MiB)
+
+
+def _get_estimated_size_from_content(
+    cost: AccountCostsDb, content: CostComputableContent
+) -> Optional[float]:
+    """Get estimated size from content based on cost type."""
+    if cost.type == CostType.STORAGE:
+        if isinstance(content, CostEstimationStoreContent):
+            if content.estimated_size_mib:
+                return float(content.estimated_size_mib)
+
+    elif cost.type == CostType.EXECUTION_PROGRAM_VOLUME_CODE:
+        if isinstance(content, CostEstimationProgramContent):
+            if content.code.estimated_size_mib:
+                return float(content.code.estimated_size_mib)
+
+    elif cost.type == CostType.EXECUTION_PROGRAM_VOLUME_RUNTIME:
+        if isinstance(content, CostEstimationProgramContent):
+            if content.runtime.estimated_size_mib:
+                return float(content.runtime.estimated_size_mib)
+
+    elif cost.type == CostType.EXECUTION_PROGRAM_VOLUME_DATA:
+        if isinstance(content, CostEstimationProgramContent):
+            if content.data and content.data.estimated_size_mib:
+                return float(content.data.estimated_size_mib)
+
+    elif cost.type == CostType.EXECUTION_VOLUME_INMUTABLE:
+        if isinstance(
+            content,
+            (
+                InstanceContent,
+                CostEstimationInstanceContent,
+                ProgramContent,
+                CostEstimationProgramContent,
+            ),
+        ):
+            # Extract volume index from name (format: "#0:/mount/path")
+            try:
+                if cost.name and ":" in cost.name:
+                    index_str = cost.name.split(":")[0].replace("#", "")
+                    volume_index = int(index_str)
+                    if volume_index < len(content.volumes):
+                        volume = content.volumes[volume_index]
+                        if (
+                            isinstance(volume, CostEstimationImmutableVolume)
+                            and volume.estimated_size_mib
+                        ):
+                            return float(volume.estimated_size_mib)
+            except (ValueError, IndexError):
+                pass
+
+    return None
+
+
+def get_cost_component_size_mib(
+    session: DbSession,
+    cost: AccountCostsDb,
+    content: Optional[CostComputableContent] = None,
+) -> Optional[float]:
+    """
+    Retrieve the size in MiB for a cost component.
+
+    Returns size for volume/storage-related cost types:
+    - STORAGE
+    - EXECUTION_INSTANCE_VOLUME_ROOTFS
+    - EXECUTION_PROGRAM_VOLUME_CODE
+    - EXECUTION_PROGRAM_VOLUME_RUNTIME
+    - EXECUTION_PROGRAM_VOLUME_DATA
+    - EXECUTION_VOLUME_PERSISTENT
+    - EXECUTION_VOLUME_INMUTABLE
+
+    Priority: Real file size first, then estimated size from content as fallback.
+
+    Args:
+        session: Database session
+        cost: Cost component from database
+        content: Optional message content (for estimation and content-based sizes)
+
+    Returns:
+        Size in MiB as float, or None if not applicable/unavailable
+    """
+    # EXECUTION_INSTANCE_VOLUME_ROOTFS: always from content
+    if cost.type == CostType.EXECUTION_INSTANCE_VOLUME_ROOTFS:
+        if content and isinstance(
+            content, (InstanceContent, CostEstimationInstanceContent)
+        ):
+            return float(content.rootfs.size_mib)
+        return None
+
+    # EXECUTION_VOLUME_PERSISTENT: always from content
+    if cost.type == CostType.EXECUTION_VOLUME_PERSISTENT:
+        if content and isinstance(
+            content,
+            (
+                InstanceContent,
+                CostEstimationInstanceContent,
+                ProgramContent,
+                CostEstimationProgramContent,
+            ),
+        ):
+            # Extract volume index from name (format: "#0:/mount/path")
+            try:
+                if cost.name and ":" in cost.name:
+                    index_str = cost.name.split(":")[0].replace("#", "")
+                    volume_index = int(index_str)
+                    if volume_index < len(content.volumes):
+                        volume = content.volumes[volume_index]
+                        if hasattr(volume, "size_mib"):
+                            return float(volume.size_mib)
+            except (ValueError, IndexError):
+                pass
+        return None
+
+    # For ref-based types: try real file size first, then estimated size
+    ref_based_types = {
+        CostType.STORAGE,
+        CostType.EXECUTION_PROGRAM_VOLUME_CODE,
+        CostType.EXECUTION_PROGRAM_VOLUME_RUNTIME,
+        CostType.EXECUTION_PROGRAM_VOLUME_DATA,
+        CostType.EXECUTION_VOLUME_INMUTABLE,
+    }
+
+    if cost.type in ref_based_types:
+        # Try to get real size from file (only if session is available).
+        # cost.ref (and cost.item_hash for STORAGE) is the item_hash of the linked
+        # STORE message, not the file content hash.  Resolve through file_pins first.
+        if session:
+            store_msg_hash = cost.ref or (
+                cost.item_hash if cost.type == CostType.STORAGE else None
+            )
+            if store_msg_hash:
+                pin = get_message_file_pin(session, store_msg_hash)
+                if pin:
+                    size = _get_size_from_file_ref(session, pin.file_hash)
+                    if size is not None:
+                        return size
+
+        # Fall back to estimated size from content
+        if content:
+            return _get_estimated_size_from_content(cost, content)
+
+    # For all other types (EXECUTION, EXECUTION_VOLUME_DISCOUNT), return None
+    return None
 
 
 def get_detailed_costs(

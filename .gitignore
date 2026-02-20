@@ -53,6 +53,9 @@ MANIFEST
 # Per-project virtualenvs
 venv*/
 
+# Git worktrees
+.worktrees/
+
 # Secret files
 /config.yml
 node-secret.key

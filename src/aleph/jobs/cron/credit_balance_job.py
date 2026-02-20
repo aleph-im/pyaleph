@@ -3,6 +3,7 @@ import logging
 from typing import List
 
 from aleph_message.models import ItemHash, MessageType, PaymentType
+from sqlalchemy import update
 
 from aleph.db.accessors.balances import (
     get_credit_balance,
@@ -16,10 +17,14 @@ from aleph.db.accessors.messages import (
     make_message_status_upsert_query,
 )
 from aleph.db.models.cron_jobs import CronJobDb
-from aleph.db.models.messages import MessageStatusDb
+from aleph.db.models.messages import MessageDb, MessageStatusDb
 from aleph.jobs.cron.cron_job import BaseCronJob
 from aleph.services.cost import calculate_storage_size
-from aleph.toolkit.constants import MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE, MiB
+from aleph.toolkit.constants import (
+    CREDIT_ONLY_CUTOFF_TIMESTAMP,
+    MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+    MiB,
+)
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_status import MessageStatus
@@ -102,8 +107,14 @@ class CreditBalanceCronJob(BaseCronJob):
                     session, message.parsed_content
                 )
 
-                if storage_size_mib and storage_size_mib <= (
-                    MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE / MiB
+                # Small file exception only applies to messages before credit-only cutoff
+                message_timestamp = message.time.timestamp()
+                is_legacy_message = message_timestamp < CREDIT_ONLY_CUTOFF_TIMESTAMP
+
+                if (
+                    is_legacy_message
+                    and storage_size_mib
+                    and storage_size_mib <= (MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE / MiB)
                 ):
                     continue
 
@@ -124,6 +135,12 @@ class CreditBalanceCronJob(BaseCronJob):
                     reception_time=now,
                     where=(MessageStatusDb.status == MessageStatus.PROCESSED),
                 )
+            )
+            # Dual-write to messages table (trigger handles message_counts)
+            session.execute(
+                update(MessageDb)
+                .where(MessageDb.item_hash == item_hash)
+                .values(status_value=MessageStatus.REMOVING)
             )
 
     async def recover_messages(self, session: DbSession, messages: List[ItemHash]):
@@ -146,4 +163,10 @@ class CreditBalanceCronJob(BaseCronJob):
                     reception_time=utc_now(),
                     where=(MessageStatusDb.status == MessageStatus.REMOVING),
                 )
+            )
+            # Dual-write to messages table (trigger handles message_counts)
+            session.execute(
+                update(MessageDb)
+                .where(MessageDb.item_hash == item_hash)
+                .values(status_value=MessageStatus.PROCESSED)
             )

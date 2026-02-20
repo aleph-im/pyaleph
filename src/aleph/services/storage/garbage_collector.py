@@ -5,6 +5,7 @@ import logging
 from aioipfs import NotPinnedError
 from aleph_message.models import ItemHash, ItemType, MessageType
 from configmanager import Config
+from sqlalchemy import update as sa_update
 
 from aleph.db.accessors.cost import delete_costs_for_forgotten_and_deleted_messages
 from aleph.db.accessors.files import delete_file as delete_file_db
@@ -18,7 +19,7 @@ from aleph.db.accessors.messages import (
     get_one_message_by_item_hash,
     make_message_status_upsert_query,
 )
-from aleph.db.models.messages import MessageStatusDb
+from aleph.db.models.messages import MessageDb, MessageStatusDb
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSessionFactory
@@ -63,21 +64,18 @@ class GarbageCollector:
 
         with self.session_factory() as session:
             # Get all messages with REMOVING status
-            removing_messages = list(
+            removing_hashes = list(
                 get_matching_hashes(
                     session=session,
                     status=MessageStatus.REMOVING,
-                    hash_only=False,
+                    hash_only=True,
                     pagination=0,  # Get all matching messages
                 )
             )
 
-            LOGGER.info(
-                "Found %d messages with REMOVING status", len(removing_messages)
-            )
+            LOGGER.info("Found %d messages with REMOVING status", len(removing_hashes))
 
-            for message_status in removing_messages:
-                item_hash = message_status.item_hash
+            for item_hash in removing_hashes:
                 try:
                     # For STORE messages, check if the file is still pinned
                     # We need to get message details to check its type
@@ -105,6 +103,12 @@ class GarbageCollector:
                                 ),
                             )
                         )
+                        # Dual-write to messages table (trigger handles message_counts)
+                        session.execute(
+                            sa_update(MessageDb)
+                            .where(MessageDb.item_hash == item_hash)
+                            .values(status_value=MessageStatus.REMOVED)
+                        )
 
                 except Exception as err:
                     LOGGER.error(
@@ -128,24 +132,22 @@ class GarbageCollector:
             LOGGER.info("Found %d files to delete", len(files_to_delete))
 
         for file_to_delete in files_to_delete:
-            with self.session_factory() as session:
-                try:
-                    file_hash = ItemHash(file_to_delete.hash)
-                    LOGGER.info("Deleting %s...", file_hash)
+            file_hash = ItemHash(file_to_delete.hash)
+            LOGGER.info("Deleting %s...", file_hash)
 
+            try:
+                if file_hash.item_type == ItemType.ipfs:
+                    await self._delete_from_ipfs(file_hash)
+                elif file_hash.item_type == ItemType.storage:
+                    await self._delete_from_local_storage(file_hash)
+
+                with self.session_factory() as session:
                     delete_file_db(session=session, file_hash=file_hash)
-
-                    if file_hash.item_type == ItemType.ipfs:
-                        await self._delete_from_ipfs(file_hash)
-                    elif file_hash.item_type == ItemType.storage:
-                        await self._delete_from_local_storage(file_hash)
-
                     session.commit()
 
-                    LOGGER.info("Deleted %s", file_hash)
-                except Exception as err:
-                    LOGGER.error("Failed to delete file %s: %s", file_hash, str(err))
-                    session.rollback()
+                LOGGER.info("Deleted %s", file_hash)
+            except Exception as err:
+                LOGGER.error("Failed to delete file %s: %s", file_hash, str(err))
 
         # After collecting garbage, check and update message status
         await self._check_and_update_removing_messages()

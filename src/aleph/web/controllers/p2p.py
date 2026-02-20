@@ -94,7 +94,39 @@ async def _pub_on_p2p_topics(
 
 
 async def pub_json(request: web.Request):
-    """Forward the message to P2P host and IPFS server as a pubsub message"""
+    """
+    Forward the message to P2P host and IPFS server as a pubsub message.
+
+    ---
+    summary: Publish JSON to P2P/IPFS pubsub
+    tags:
+      - P2P
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - topic
+              - data
+            properties:
+              topic:
+                type: string
+              data:
+                type: string
+    responses:
+      '200':
+        description: Publication status
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublicationStatus'
+      '403':
+        description: Unauthorized topic
+      '422':
+        description: Invalid data format
+    """
     request_data = await request.json()
     _validate_request_data(
         config=get_config_from_request(request), request_data=request_data
@@ -124,6 +156,37 @@ class PubMessageRequest(BaseModel):
 
 @shielded
 async def pub_message(request: web.Request):
+    """
+    Submit a new aleph.im message.
+
+    ---
+    summary: Submit message
+    tags:
+      - Messages
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - message
+            properties:
+              sync:
+                type: boolean
+                default: false
+              message:
+                type: object
+    responses:
+      '200':
+        description: Message broadcast status
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BroadcastStatus'
+      '422':
+        description: Validation error
+    """
     try:
         request_data = PubMessageRequest.model_validate(await request.json())
     except ValidationError as e:

@@ -26,10 +26,11 @@ async def index(request: web.Request) -> Dict:
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
     node_cache = get_node_cache_from_request(request)
-    with session_factory() as session:
-        model = asdict(await get_metrics(session=session, node_cache=node_cache))
-        model["version"] = __version__
-        return model
+    model = asdict(
+        await get_metrics(session_factory=session_factory, node_cache=node_cache)
+    )
+    model["version"] = __version__
+    return model
 
 
 async def status_ws(request: web.Request) -> web.WebSocketResponse:
@@ -41,8 +42,9 @@ async def status_ws(request: web.Request) -> web.WebSocketResponse:
 
     previous_status = None
     while True:
-        with session_factory() as session:
-            status = await get_metrics(session=session, node_cache=node_cache)
+        status = await get_metrics(
+            session_factory=session_factory, node_cache=node_cache
+        )
 
         if status != previous_status:
             try:
@@ -57,32 +59,56 @@ async def status_ws(request: web.Request) -> web.WebSocketResponse:
 
 
 async def metrics(request: web.Request) -> web.Response:
-    """Prometheus compatible metrics.
+    """
+    Prometheus compatible metrics.
 
-    Naming convention:
-    https://prometheus.io/docs/practices/naming/
+    ---
+    summary: Prometheus metrics
+    tags:
+      - Metrics
+    responses:
+      '200':
+        description: Prometheus-formatted metrics
+        content:
+          text/plain:
+            schema:
+              type: string
     """
     session_factory = get_session_factory_from_request(request)
     node_cache = get_node_cache_from_request(request)
 
-    with session_factory() as session:
-        return web.Response(
-            text=format_dataclass_for_prometheus(
-                await get_metrics(session=session, node_cache=node_cache)
-            )
+    return web.Response(
+        text=format_dataclass_for_prometheus(
+            await get_metrics(session_factory=session_factory, node_cache=node_cache)
         )
+    )
 
 
 async def metrics_json(request: web.Request) -> web.Response:
-    """JSON version of the Prometheus metrics."""
+    """
+    JSON version of the Prometheus metrics.
+
+    ---
+    summary: Metrics (JSON)
+    tags:
+      - Metrics
+    responses:
+      '200':
+        description: Metrics in JSON format
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MetricsResponse'
+    """
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
     node_cache = get_node_cache_from_request(request)
 
-    with session_factory() as session:
-        return web.Response(
-            text=(await get_metrics(session=session, node_cache=node_cache)).to_json(),
-            content_type="application/json",
-        )
+    return web.Response(
+        text=(
+            await get_metrics(session_factory=session_factory, node_cache=node_cache)
+        ).to_json(),
+        content_type="application/json",
+    )
 
 
 class MetricsQueryParams(BaseModel):
@@ -99,7 +125,43 @@ def _get_node_id_from_request(request: web.Request) -> str:
 
 
 async def ccn_metric(request: web.Request) -> web.Response:
-    """Fetch metrics for CCN node id"""
+    """
+    Fetch metrics for a CCN node.
+
+    ---
+    summary: Get CCN node metrics
+    tags:
+      - Metrics
+    parameters:
+      - name: node_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: start_date
+        in: query
+        schema:
+          type: number
+      - name: end_date
+        in: query
+        schema:
+          type: number
+      - name: sort
+        in: query
+        schema:
+          type: string
+    responses:
+      '200':
+        description: CCN node metrics
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeMetricsResponse'
+      '404':
+        description: Node not found
+      '422':
+        description: Validation error
+    """
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
     try:
@@ -128,7 +190,43 @@ async def ccn_metric(request: web.Request) -> web.Response:
 
 
 async def crn_metric(request: web.Request) -> web.Response:
-    """Fetch Metric for crn."""
+    """
+    Fetch metrics for a CRN node.
+
+    ---
+    summary: Get CRN node metrics
+    tags:
+      - Metrics
+    parameters:
+      - name: node_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: start_date
+        in: query
+        schema:
+          type: number
+      - name: end_date
+        in: query
+        schema:
+          type: number
+      - name: sort
+        in: query
+        schema:
+          type: string
+    responses:
+      '200':
+        description: CRN node metrics
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeMetricsResponse'
+      '404':
+        description: Node not found
+      '422':
+        description: Validation error
+    """
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
     try:

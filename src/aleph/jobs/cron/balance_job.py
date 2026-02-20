@@ -3,6 +3,7 @@ import logging
 from typing import List
 
 from aleph_message.models import ItemHash, MessageType, PaymentType
+from sqlalchemy import update
 
 from aleph.db.accessors.balances import get_total_balance, get_updated_balance_accounts
 from aleph.db.accessors.cost import get_total_costs_for_address_grouped_by_message
@@ -13,7 +14,7 @@ from aleph.db.accessors.messages import (
     make_message_status_upsert_query,
 )
 from aleph.db.models.cron_jobs import CronJobDb
-from aleph.db.models.messages import MessageStatusDb
+from aleph.db.models.messages import MessageDb, MessageStatusDb
 from aleph.jobs.cron.cron_job import BaseCronJob
 from aleph.services.cost import calculate_storage_size
 from aleph.toolkit.constants import (
@@ -122,6 +123,12 @@ class BalanceCronJob(BaseCronJob):
                     where=(MessageStatusDb.status == MessageStatus.PROCESSED),
                 )
             )
+            # Dual-write to messages table (trigger handles message_counts)
+            session.execute(
+                update(MessageDb)
+                .where(MessageDb.item_hash == item_hash)
+                .values(status_value=MessageStatus.REMOVING)
+            )
 
     async def recover_messages(self, session: DbSession, messages: List[ItemHash]):
         for item_hash in messages:
@@ -143,4 +150,10 @@ class BalanceCronJob(BaseCronJob):
                     reception_time=utc_now(),
                     where=(MessageStatusDb.status == MessageStatus.REMOVING),
                 )
+            )
+            # Dual-write to messages table (trigger handles message_counts)
+            session.execute(
+                update(MessageDb)
+                .where(MessageDb.item_hash == item_hash)
+                .values(status_value=MessageStatus.PROCESSED)
             )

@@ -22,6 +22,7 @@ from aleph.db.accessors.files import (
     get_file,
     get_file_tag,
     get_message_file_pin,
+    upsert_file,
 )
 from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.schemas.cost_estimation_messages import CostEstimationStoreContent
@@ -37,8 +38,8 @@ from aleph.toolkit.constants import (
     MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     MiB,
 )
-from aleph.types.db_session import DbSession
-from aleph.types.files import FileTag
+from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.files import FileTag, FileType
 from aleph.types.message_status import InvalidSignature
 from aleph.utils import item_type_from_hash, run_in_executor
 from aleph.web.controllers.app_state_getters import (
@@ -59,7 +60,27 @@ logger = logging.getLogger(__name__)
 
 
 async def add_ipfs_json_controller(request: web.Request):
-    """Forward the json content to IPFS server and return an hash"""
+    """
+    Forward the JSON content to IPFS server and return a hash.
+
+    ---
+    summary: Add JSON to IPFS
+    tags:
+      - Storage
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+    responses:
+      '200':
+        description: Upload result with IPFS hash
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileUploadResponse'
+    """
     storage_service = get_storage_service_from_request(request)
     session_factory = get_session_factory_from_request(request)
     config = get_config_from_request(request)
@@ -82,7 +103,27 @@ async def add_ipfs_json_controller(request: web.Request):
 
 
 async def add_storage_json_controller(request: web.Request):
-    """Forward the json content to IPFS server and return an hash"""
+    """
+    Forward the JSON content to storage and return a hash.
+
+    ---
+    summary: Add JSON to storage
+    tags:
+      - Storage
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+    responses:
+      '200':
+        description: Upload result with storage hash
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileUploadResponse'
+    """
     storage_service = get_storage_service_from_request(request)
     session_factory = get_session_factory_from_request(request)
     config = get_config_from_request(request)
@@ -113,7 +154,7 @@ async def _verify_message_signature(
         raise web.HTTPForbidden()
 
 
-async def _verify_user_balance(
+def _verify_user_balance(
     session: DbSession, content: CostEstimationStoreContent
 ) -> None:
     if content.estimated_size_mib and content.estimated_size_mib > (
@@ -224,7 +265,7 @@ class RawUploadedFile(UploadedFile):
 
 
 async def _check_and_add_file(
-    session: DbSession,
+    session_factory: DbSessionFactory,
     signature_verifier: SignatureVerifier,
     storage_service: StorageService,
     message: Optional[PendingStoreMessage],
@@ -255,7 +296,8 @@ async def _check_and_add_file(
                 reason=f"Invalid store message content: {e.json()}"
             )
 
-        await _verify_user_balance(session=session, content=message_content)
+        with session_factory() as session:
+            _verify_user_balance(session=session, content=message_content)
     else:
         message_content = None
 
@@ -272,15 +314,25 @@ async def _check_and_add_file(
         )
 
     await storage_service.add_file_content_to_local_storage(
-        session=session, file_content=file_bytes, file_hash=file_hash
+        file_content=file_bytes, file_hash=file_hash
     )
     await uploaded_file.cleanup()
-
-    # For files uploaded without authenticated upload, add a grace period of 1 day.
-    if message_content is None:
-        add_grace_period_for_file(
-            session=session, file_hash=file_hash, hours=grace_period
+    with session_factory() as session:
+        upsert_file(
+            session=session,
+            file_hash=file_hash,
+            size=len(file_content),
+            file_type=FileType.FILE,
         )
+
+        # For files uploaded without authenticated upload, add a grace period of 1 day.
+        if message_content is None:
+            add_grace_period_for_file(
+                session=session, file_hash=file_hash, hours=grace_period
+            )
+
+        session.commit()
+
     return file_hash
 
 
@@ -300,6 +352,43 @@ async def _make_mq_queue(
 
 
 async def storage_add_file(request: web.Request):
+    """
+    Upload a file to storage.
+
+    ---
+    summary: Upload file to storage
+    tags:
+      - Storage
+    requestBody:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            properties:
+              file:
+                type: string
+                format: binary
+              metadata:
+                type: string
+        application/octet-stream:
+          schema:
+            type: string
+            format: binary
+    responses:
+      '200':
+        description: Upload result with file hash
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileUploadResponse'
+      '400':
+        description: Bad request
+      '402':
+        description: Insufficient balance
+      '413':
+        description: File too large
+    """
     storage_service = get_storage_service_from_request(request)
     session_factory = get_session_factory_from_request(request)
     signature_verifier = get_signature_verifier_from_request(request)
@@ -364,16 +453,14 @@ async def storage_add_file(request: web.Request):
             message = None
             sync = False
 
-        with session_factory() as session:
-            file_hash = await _check_and_add_file(
-                session=session,
-                signature_verifier=signature_verifier,
-                storage_service=storage_service,
-                message=message,
-                uploaded_file=uploaded_file,
-                grace_period=grace_period,
-            )
-            session.commit()
+        file_hash = await _check_and_add_file(
+            session_factory=session_factory,
+            signature_verifier=signature_verifier,
+            storage_service=storage_service,
+            message=message,
+            uploaded_file=uploaded_file,
+            grace_period=grace_period,
+        )
         if message:
             broadcast_status = await broadcast_and_process_message(
                 pending_message=message, sync=sync, request=request, logger=logger
@@ -408,6 +495,31 @@ def prepare_content(content):
 
 
 async def get_hash(request):
+    """
+    Get file content by hash (base64 encoded).
+
+    ---
+    summary: Get file by hash
+    tags:
+      - Storage
+    parameters:
+      - name: file_hash
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: File content (base64 encoded)
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StorageHashResponse'
+      '400':
+        description: Invalid hash
+      '404':
+        description: File not found
+    """
     file_hash = request.match_info.get("file_hash", None)
     if file_hash is None:
         raise web.HTTPBadRequest(text="No hash provided")
@@ -449,6 +561,32 @@ async def get_hash(request):
 
 
 async def get_raw_hash(request):
+    """
+    Get raw file content by hash.
+
+    ---
+    summary: Get raw file by hash
+    tags:
+      - Storage
+    parameters:
+      - name: file_hash
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Raw file content
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      '400':
+        description: Invalid hash
+      '404':
+        description: File not found
+    """
     file_hash = request.match_info.get("file_hash", None)
 
     if file_hash is None:
@@ -520,7 +658,28 @@ class FileMetadataResponse(pydantic.BaseModel):
 async def get_file_metadata_by_message_hash(request: web.Request) -> web.Response:
     """
     Returns the file metadata for a specific STORE message.
-    Avoids fetching the full message from the client to determine the file hash.
+
+    ---
+    summary: Get file metadata by message hash
+    tags:
+      - Storage
+    parameters:
+      - name: message_hash
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: File metadata
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileMetadataResponse'
+      '400':
+        description: Invalid hash
+      '404':
+        description: File not found
     """
 
     message_hash_str = request.match_info.get("message_hash")
@@ -554,8 +713,29 @@ async def get_file_metadata_by_message_hash(request: web.Request) -> web.Respons
 
 async def get_file_metadata_by_ref(request: web.Request) -> web.Response:
     """
-    Returns the latest version of a file using its ref. Handles both /storage/by-ref/{address}/{ref}
-    and /storage/by-ref/{item_hash} endpoints.
+    Returns the latest version of a file using its ref.
+
+    ---
+    summary: Get file metadata by ref
+    tags:
+      - Storage
+    parameters:
+      - name: ref
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: File metadata
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileMetadataResponse'
+      '400':
+        description: Invalid parameters
+      '404':
+        description: File not found
     """
 
     ref = request.match_info.get("ref")
@@ -601,6 +781,29 @@ async def get_file_metadata_by_ref(request: web.Request) -> web.Response:
 
 
 async def get_file_pins_count(request: web.Request) -> web.Response:
+    """
+    Get the number of pins for a file.
+
+    ---
+    summary: Get file pins count
+    tags:
+      - Storage
+    parameters:
+      - name: hash
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Number of pins
+        content:
+          application/json:
+            schema:
+              type: integer
+      '400':
+        description: No hash provided
+    """
     item_hash = request.match_info.get("hash", None)
 
     if item_hash is None:

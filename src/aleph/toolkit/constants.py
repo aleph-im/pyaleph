@@ -1,6 +1,5 @@
+from enum import Enum
 from typing import Dict, Union
-
-from aleph.types.cost import ProductPriceType
 
 KiB = 1024
 MiB = 1024 * 1024
@@ -9,6 +8,18 @@ GiB = 1024 * 1024 * 1024
 MINUTE = 60
 HOUR = 60 * MINUTE
 DAY = 24 * HOUR
+
+
+class ProductPriceType(str, Enum):
+    STORAGE = "storage"
+    WEB3_HOSTING = "web3_hosting"
+    PROGRAM = "program"
+    PROGRAM_PERSISTENT = "program_persistent"
+    INSTANCE = "instance"
+    INSTANCE_GPU_PREMIUM = "instance_gpu_premium"
+    INSTANCE_CONFIDENTIAL = "instance_confidential"
+    INSTANCE_GPU_STANDARD = "instance_gpu_standard"
+
 
 PRICE_AGGREGATE_OWNER = "0xFba561a84A537fCaa567bb7A2257e7142701ae2A"
 PRICE_AGGREGATE_KEY = "pricing"
@@ -19,9 +30,9 @@ DEFAULT_PRICE_AGGREGATE: Dict[Union[ProductPriceType, str], dict] = {
             "storage": {
                 "payg": "0.000000977",
                 "holding": "0.05",
-                "credit": "0.000000977",
+                "credit": "0.977",
             },
-            "compute_unit": {"payg": "0.011", "holding": "200", "credit": "0.011"},
+            "compute_unit": {"payg": "0.011", "holding": "200", "credit": "11000"},
         },
         "tiers": [
             {"id": "tier-1", "compute_units": 1},
@@ -37,15 +48,19 @@ DEFAULT_PRICE_AGGREGATE: Dict[Union[ProductPriceType, str], dict] = {
             "memory_mib": 2048,
         },
     },
-    ProductPriceType.STORAGE: {"price": {"storage": {"holding": "0.333333333"}}},
+    ProductPriceType.STORAGE: {
+        "price": {
+            "storage": {"holding": "0.333333333", "credit": "0.17967489030626108"}
+        }
+    },
     ProductPriceType.INSTANCE: {
         "price": {
             "storage": {
                 "payg": "0.000000977",
                 "holding": "0.05",
-                "credit": "0.000000977",
+                "credit": "0.17967489030626108",
             },
-            "compute_unit": {"payg": "0.055", "holding": "1000", "credit": "0.055"},
+            "compute_unit": {"payg": "0.055", "holding": "1000", "credit": "14250"},
         },
         "tiers": [
             {"id": "tier-1", "compute_units": 1},
@@ -62,16 +77,19 @@ DEFAULT_PRICE_AGGREGATE: Dict[Union[ProductPriceType, str], dict] = {
         },
     },
     ProductPriceType.WEB3_HOSTING: {
-        "price": {"fixed": 50, "storage": {"holding": "0.333333333"}}
+        "price": {
+            "fixed": 50,
+            "storage": {"holding": "0.333333333", "credit": "0.17967489030626108"},
+        }
     },
     ProductPriceType.PROGRAM_PERSISTENT: {
         "price": {
             "storage": {
                 "payg": "0.000000977",
                 "holding": "0.05",
-                "credit": "0.000000977",
+                "credit": "0.977",
             },
-            "compute_unit": {"payg": "0.055", "holding": "1000", "credit": "0.055"},
+            "compute_unit": {"payg": "0.055", "holding": "1000", "credit": "55000"},
         },
         "tiers": [
             {"id": "tier-1", "compute_units": 1},
@@ -89,8 +107,8 @@ DEFAULT_PRICE_AGGREGATE: Dict[Union[ProductPriceType, str], dict] = {
     },
     ProductPriceType.INSTANCE_GPU_PREMIUM: {
         "price": {
-            "storage": {"payg": "0.000000977", "credit": "0.000000977"},
-            "compute_unit": {"payg": "0.56", "credit": "0.56"},
+            "storage": {"payg": "0.000000977", "credit": "0.17967489030626108"},
+            "compute_unit": {"payg": "0.56", "holding": "560", "credit": "86250"},
         },
         "tiers": [
             {
@@ -117,9 +135,9 @@ DEFAULT_PRICE_AGGREGATE: Dict[Union[ProductPriceType, str], dict] = {
             "storage": {
                 "payg": "0.000000977",
                 "holding": "0.05",
-                "credit": "0.000000977",
+                "credit": "0.17967489030626108",
             },
-            "compute_unit": {"payg": "0.11", "holding": "2000", "credit": "0.11"},
+            "compute_unit": {"payg": "0.11", "holding": "2000", "credit": "28500"},
         },
         "tiers": [
             {"id": "tier-1", "compute_units": 1},
@@ -137,8 +155,8 @@ DEFAULT_PRICE_AGGREGATE: Dict[Union[ProductPriceType, str], dict] = {
     },
     ProductPriceType.INSTANCE_GPU_STANDARD: {
         "price": {
-            "storage": {"payg": "0.000000977", "credit": "0.000000977"},
-            "compute_unit": {"payg": "0.28", "credit": "0.28"},
+            "storage": {"payg": "0.000000977", "credit": "0.17967489030626108"},
+            "compute_unit": {"payg": "0.28", "holding": "280", "credit": "43125"},
         },
         "tiers": [
             {
@@ -300,6 +318,20 @@ DEFAULT_SETTINGS_AGGREGATE = {
 STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT = 22196000
 STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP = 1743775079
 
+# Cutoff for STORE messages requiring credit-only payment
+# After this timestamp, STORE messages must use credit payment (no holding tier)
+# and the 25MB free file exception no longer applies
+CREDIT_ONLY_CUTOFF_TIMESTAMP = 1798761600  # 2027-01-01 00:00:00 UTC
+
+# Credit precision change: 1 USD = 1,000,000 credits (previously 100 credits)
+# Messages before this timestamp have amounts in old format (need 10,000x multiplier)
+CREDIT_PRECISION_CUTOFF_TIMESTAMP = 1769990400  # 2026-02-02 00:00:00 UTC
+CREDIT_PRECISION_MULTIPLIER = 10000
+
 MAX_FILE_SIZE = 100 * MiB
 MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE = 25 * MiB
 # MAX_UPLOAD_FILE_SIZE = 1000 * MiB (not used?)
+MIN_STORE_COST_MIB = 25  # Minimum MiB cost for pure STORE messages
+MIN_CREDIT_COST_PER_HOUR = (
+    1  # Minimum cost per hour in credits for instances and volumes
+)
