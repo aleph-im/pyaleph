@@ -285,8 +285,6 @@ async def view_messages_list(request: web.Request) -> web.Response:
     else:
         # Legacy page mode (backward compat)
         pagination_page = query_params.page
-        node_cache = get_node_cache_from_request(request)
-        total_msgs = await node_cache.count_messages(session_factory, query_params)
 
         with session_factory() as session:
             messages_query = make_matching_messages_query(
@@ -294,12 +292,20 @@ async def view_messages_list(request: web.Request) -> web.Response:
             )
             messages = list(session.execute(messages_query).scalars())
 
-            return format_response(
-                messages,
-                pagination=pagination_per_page,
-                page=pagination_page,
-                total_messages=total_msgs,
-            )
+        # If the result set is smaller than the page size, we already know
+        # the total count without running a separate COUNT query.
+        if pagination_per_page and len(messages) < pagination_per_page:
+            total_msgs = (pagination_page - 1) * pagination_per_page + len(messages)
+        else:
+            node_cache = get_node_cache_from_request(request)
+            total_msgs = await node_cache.count_messages(session_factory, query_params)
+
+        return format_response(
+            messages,
+            pagination=pagination_per_page,
+            page=pagination_page,
+            total_messages=total_msgs,
+        )
 
 
 async def _send_history_to_ws(
