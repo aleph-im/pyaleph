@@ -89,14 +89,39 @@ class StorageService:
 
         try:
             content = aleph_json.loads(item_content)
-        except aleph_json.DecodeError as e:
+        except (aleph_json.DecodeError, json.decoder.JSONDecodeError) as e:
             error_msg = f"Can't decode JSON: {e}"
             LOGGER.warning(error_msg)
-            raise InvalidContent(error_msg)
-        except json.decoder.JSONDecodeError as e:
-            error_msg = f"Can't decode JSON: {e}"
-            LOGGER.warning(error_msg)
-            raise InvalidContent(error_msg)
+            # If content was from local cache and is corrupted, delete it and retry
+            if source == ContentSource.DB and item_type in (
+                ItemType.ipfs,
+                ItemType.storage,
+            ):
+                LOGGER.warning(
+                    f"Corrupted cached content for {item_hash}, deleting and retrying from network"
+                )
+                await self.storage_engine.delete(filename=item_hash)
+                # Retry fetching from network/IPFS
+                hash_content = await self.get_hash_content(
+                    item_hash,
+                    engine=ItemType(item_type),
+                    use_network=True,
+                    use_ipfs=True,
+                )
+                item_content = hash_content.value
+                source = hash_content.source
+                # Try parsing again
+                try:
+                    content = aleph_json.loads(item_content)
+                except (
+                    aleph_json.DecodeError,
+                    json.decoder.JSONDecodeError,
+                ) as retry_error:
+                    raise InvalidContent(
+                        f"Content still invalid after retry: {retry_error}"
+                    ) from retry_error
+            else:
+                raise InvalidContent(error_msg)
 
         return MessageContent(
             hash=item_hash,
