@@ -100,6 +100,10 @@ class MessagePrice(DataClassJsonMixin):
 async def get_executable_message(session: DbSession, item_hash: ItemHash) -> MessageDb:
     """Attempt to get an executable message from the database.
     Raises an HTTP exception if the message is not found, not processed or is not an executable message.
+
+    Note: REMOVING status is treated as valid (like PROCESSED) to allow the expenses
+    generation job to continue fetching prices for resources being removed due to
+    insufficient balance/credits. This ensures accounts continue to be charged.
     """
 
     # Get the message status from the database
@@ -110,7 +114,15 @@ async def get_executable_message(session: DbSession, item_hash: ItemHash) -> Mes
     if message_status_db.status in MESSAGE_STATUS_EXCEPTIONS:
         exception, error_message = MESSAGE_STATUS_EXCEPTIONS[message_status_db.status]
         raise exception(body=f"{error_message}: {item_hash}")
-    assert message_status_db.status == MessageStatus.PROCESSED
+    # Allow both PROCESSED and REMOVING statuses - REMOVING resources still need
+    # their prices fetched for continued billing until fully removed
+    if message_status_db.status not in (
+        MessageStatus.PROCESSED,
+        MessageStatus.REMOVING,
+    ):
+        raise web.HTTPInternalServerError(
+            body=f"Unexpected message status {message_status_db.status}: {item_hash}"
+        )
 
     # Get the message from the database
     message: Optional[MessageDb] = get_message_by_item_hash(session, item_hash)
