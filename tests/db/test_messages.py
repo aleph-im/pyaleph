@@ -4,6 +4,7 @@ from copy import copy
 import pytest
 import pytz
 from aleph_message.models import Chain, ItemHash, ItemType, MessageType
+from message_test_helpers import make_validated_message_from_dict
 from sqlalchemy import insert, select, text
 
 from aleph.db.accessors.messages import (
@@ -561,3 +562,45 @@ async def test_forget_message_with_confirmations(
         )
         assert forgotten is not None
         assert forgotten.forgotten_by == [forget_message_hash]
+
+
+# Real STORE message from the aleph.im API with payment.type = credit.
+STORE_CREDIT_MESSAGE = {
+    "sender": "0xB6B5358493AF8159B17506C5cC85df69193444BC",
+    "chain": "ETH",
+    "signature": "0x54c5168ad59ccc4da6b6bae82b0c59b3d2d7d0ce1bbae6081382a97e9fc8f39a356c701529704c4d9d4a13d9bde1f6d3b7a4c9520e0957078430b9e5d1ab95ef1b",
+    "type": "STORE",
+    "item_content": '{"address":"0xB6B5358493AF8159B17506C5cC85df69193444BC","item_type":"ipfs","item_hash":"QmePTEmasKHQQYdK3maUhrMJ7nxftSTFKeAGP7JweeiNrf","time":1771337941.575,"payment":{"chain":"ETH","type":"credit"}}',
+    "item_type": "inline",
+    "item_hash": "b81dcc3aa4827c693bc65d8ca1041387960cb4f4323e8be1984b604748ff02a8",
+    "time": 1771337941.575,
+    "channel": "ALEPH-CLOUDSOLUTIONS",
+    "size": 189,
+    "content": {
+        "address": "0xB6B5358493AF8159B17506C5cC85df69193444BC",
+        "time": 1771337941.575,
+        "item_type": "ipfs",
+        "item_hash": "QmePTEmasKHQQYdK3maUhrMJ7nxftSTFKeAGP7JweeiNrf",
+        "payment": {"chain": "ETH", "type": "credit"},
+    },
+}
+
+
+@pytest.mark.asyncio
+async def test_payment_type_persisted_after_upsert(
+    session_factory: DbSessionFactory,
+):
+    """Check that the denormalized payment_type column is populated in DB as expected."""
+    message = make_validated_message_from_dict(STORE_CREDIT_MESSAGE)
+    upsert_stmt = make_message_upsert_query(message)
+
+    with session_factory() as session:
+        session.execute(upsert_stmt)
+        session.commit()
+
+    with session_factory() as session:
+        fetched = get_message_by_item_hash(
+            session=session, item_hash=ItemHash(message.item_hash)
+        )
+        assert fetched is not None
+        assert fetched.payment_type == "credit"
