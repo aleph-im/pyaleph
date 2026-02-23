@@ -164,6 +164,10 @@ class MessageDb(Base):
             kwargs.setdefault("content_ref", content.get("ref"))
             kwargs.setdefault("content_key", content.get("key"))
             kwargs.setdefault("content_item_hash", content.get("item_hash"))
+            # Derive payment_type from content.payment.type if present
+            payment = content.get("payment")
+            if isinstance(payment, dict) and payment.get("type"):
+                kwargs.setdefault("payment_type", payment["type"])
         super().__init__(**kwargs)
         self._parsed_content: Optional[BaseContent] = None
 
@@ -200,6 +204,17 @@ class MessageDb(Base):
         content_dict = cls._coerce_content(pending_message, content_dict)
         parsed_content = validate_message_content(pending_message.type, content_dict)
 
+        # Derive payment_type from parsed content for types that support it
+        payment_type = None
+        payment = getattr(parsed_content, "payment", None)
+        if payment is not None:
+            if payment.is_credit:
+                payment_type = "credit"
+            elif payment.is_stream:
+                payment_type = "superfluid"
+            else:
+                payment_type = "hold"
+
         message = cls(
             item_hash=pending_message.item_hash,
             type=pending_message.type,
@@ -220,6 +235,7 @@ class MessageDb(Base):
             content_ref=content_dict.get("ref"),
             content_key=content_dict.get("key"),
             content_item_hash=content_dict.get("item_hash"),
+            payment_type=payment_type,
         )
         message._parsed_content = parsed_content
         return message
