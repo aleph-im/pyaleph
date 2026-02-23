@@ -21,7 +21,7 @@ classifiers = [
 ]
 dynamic = [ "version" ]
 dependencies = [
-  "aio-pika==9.5.8",
+  "aio-pika==9.6.0",
   "aiocache==0.12.3",
   "aiofiles==25.1.0",
   "aiohttp==3.13.3",
