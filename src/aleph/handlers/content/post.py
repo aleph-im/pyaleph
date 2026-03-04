@@ -284,7 +284,6 @@ class PostMessageHandler(ContentHandler):
 
         if (
             content.type in self.credit_balances_post_types
-            and content.address in self.credit_balances_addresses
             and (
                 not self.credit_balances_channels
                 or message.channel in self.credit_balances_channels
@@ -292,14 +291,20 @@ class PostMessageHandler(ContentHandler):
             and content.content
         ):
             LOGGER.info("Updating credit balances...")
-            if content.type == "aleph_credit_distribution":
+            if (
+                content.type == "aleph_credit_distribution"
+                and content.address in self.credit_balances_addresses
+            ):
                 update_credit_balances_distribution(
                     session=session,
                     content=content.content,
                     message_hash=message.item_hash,
                     message_timestamp=creation_datetime,
                 )
-            elif content.type == "aleph_credit_expense":
+            elif (
+                content.type == "aleph_credit_expense"
+                and content.address in self.credit_balances_addresses
+            ):
                 update_credit_balances_expense(
                     session=session,
                     content=content.content,
