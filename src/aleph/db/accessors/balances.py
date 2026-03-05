@@ -596,14 +596,14 @@ def update_credit_balances_transfer(
 
     for credit_entry in credits_list:
         recipient_address = credit_entry["address"]
-        raw_amount = abs(int(credit_entry["amount"]))
+        raw_amount = int(credit_entry["amount"])
         amount = _apply_credit_precision_multiplier(raw_amount, message_timestamp)
-        expiration_timestamp = credit_entry.get("expiration", "")
+        expiration_timestamp = credit_entry.get("expiration") or None
 
         # Convert expiration timestamp to datetime
         expiration_date = (
             dt.datetime.fromtimestamp(expiration_timestamp / 1000, tz=dt.timezone.utc)
-            if expiration_timestamp != ""
+            if expiration_timestamp is not None
             else None
         )
 

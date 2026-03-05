@@ -102,13 +102,21 @@ RECIPIENT_ADDRESS = "0xRecipient12345678901234567890123456789012345"
 def _make_credit_transfer_message(
     sender: str, recipient: str, amount: int, msg_hash: str
 ) -> MessageDb:
+    return _make_credit_transfer_message_raw(
+        sender=sender,
+        credits=[{"address": recipient, "amount": amount}],
+        msg_hash=msg_hash,
+    )
+
+
+def _make_credit_transfer_message_raw(
+    sender: str, credits: list, msg_hash: str
+) -> MessageDb:
     item_content = json.dumps(
         {
             "address": sender,
             "time": 1651050219.0,
-            "content": {
-                "transfer": {"credits": [{"address": recipient, "amount": amount}]}
-            },
+            "content": {"transfer": {"credits": credits}},
             "type": "aleph_credit_transfer",
         }
     )
@@ -313,3 +321,114 @@ async def test_credit_distribution_non_whitelisted_sender_ignored(
         )
         assert len(records) == 0
         assert get_credit_balance(session, RECIPIENT_ADDRESS) == 0
+
+
+def _make_handler() -> PostMessageHandler:
+    return PostMessageHandler(
+        balances_addresses=[],
+        balances_post_type="balance",
+        credit_balances_addresses=[WHITELISTED_ADDRESS],
+        credit_balances_post_types=[
+            "aleph_credit_distribution",
+            "aleph_credit_transfer",
+            "aleph_credit_expense",
+        ],
+        credit_balances_channels=["ALEPH_CREDIT"],
+    )
+
+
+@pytest.mark.asyncio
+async def test_credit_transfer_self_transfer_rejected(
+    session_factory: DbSessionFactory,
+):
+    """Sender cannot transfer credits to themselves."""
+    handler = _make_handler()
+    with session_factory() as session:
+        msg = _make_credit_transfer_message(
+            sender=REGULAR_SENDER,
+            recipient=REGULAR_SENDER,  # same as sender
+            amount=100,
+            msg_hash="d" * 64,
+        )
+        with pytest.raises(InvalidMessageFormat) as exc_info:
+            await handler.process_post(session=session, message=msg)
+        assert "Self-transfer not allowed" in exc_info.value.args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_credit_transfer_zero_amount_rejected(session_factory: DbSessionFactory):
+    """Zero-amount transfers are rejected by Pydantic validation."""
+    handler = _make_handler()
+    with session_factory() as session:
+        msg = _make_credit_transfer_message_raw(
+            sender=REGULAR_SENDER,
+            credits=[{"address": RECIPIENT_ADDRESS, "amount": 0}],
+            msg_hash="e" * 64,
+        )
+        with pytest.raises(InvalidMessageFormat):
+            await handler.process_post(session=session, message=msg)
+
+
+@pytest.mark.asyncio
+async def test_credit_transfer_negative_amount_rejected(
+    session_factory: DbSessionFactory,
+):
+    """Negative amounts cannot be used to mint free credits."""
+    handler = _make_handler()
+    with session_factory() as session:
+        msg = _make_credit_transfer_message_raw(
+            sender=REGULAR_SENDER,
+            credits=[{"address": RECIPIENT_ADDRESS, "amount": -100}],
+            msg_hash="f" * 64,
+        )
+        with pytest.raises(InvalidMessageFormat):
+            await handler.process_post(session=session, message=msg)
+
+
+@pytest.mark.asyncio
+async def test_credit_transfer_string_amount_rejected(
+    session_factory: DbSessionFactory,
+):
+    """Non-integer amount fields are rejected."""
+    handler = _make_handler()
+    with session_factory() as session:
+        msg = _make_credit_transfer_message_raw(
+            sender=REGULAR_SENDER,
+            credits=[{"address": RECIPIENT_ADDRESS, "amount": "lots"}],
+            msg_hash="1" * 64,
+        )
+        with pytest.raises(InvalidMessageFormat):
+            await handler.process_post(session=session, message=msg)
+
+
+@pytest.mark.asyncio
+async def test_credit_transfer_empty_list_rejected(session_factory: DbSessionFactory):
+    """Empty credits list is rejected."""
+    handler = _make_handler()
+    with session_factory() as session:
+        msg = _make_credit_transfer_message_raw(
+            sender=REGULAR_SENDER,
+            credits=[],
+            msg_hash="2" * 64,
+        )
+        with pytest.raises(InvalidMessageFormat):
+            await handler.process_post(session=session, message=msg)
+
+
+@pytest.mark.asyncio
+async def test_credit_transfer_duplicate_recipients_rejected(
+    session_factory: DbSessionFactory,
+):
+    """Duplicate recipient addresses in a single transfer are rejected."""
+    handler = _make_handler()
+    with session_factory() as session:
+        msg = _make_credit_transfer_message_raw(
+            sender=REGULAR_SENDER,
+            credits=[
+                {"address": RECIPIENT_ADDRESS, "amount": 10},
+                {"address": RECIPIENT_ADDRESS, "amount": 20},
+            ],
+            msg_hash="3" * 64,
+        )
+        with pytest.raises(InvalidMessageFormat):
+            await handler.process_post(session=session, message=msg)

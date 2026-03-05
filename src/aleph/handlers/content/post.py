@@ -3,6 +3,7 @@ import logging
 from typing import Any, Dict, List, Mapping, Optional, Set, Union
 
 from aleph_message.models import Chain, ChainRef, PostContent
+from pydantic import ValidationError
 from sqlalchemy import update
 
 from aleph.db.accessors.balances import get_credit_balance
@@ -26,6 +27,7 @@ from aleph.db.accessors.posts import (
 )
 from aleph.db.models.messages import MessageDb
 from aleph.db.models.posts import PostDb
+from aleph.schemas.credit_transfer import CreditTransferContent
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import (
@@ -133,18 +135,24 @@ def update_credit_balances_transfer(
     sender_address: str,
     whitelisted_addresses: List[str],
 ) -> None:
-    try:
-        transfer = content["transfer"]
-        credits_list = transfer["credits"]
-    except KeyError as e:
-        raise InvalidMessageFormat(
-            f"Missing field '{e.args[0]}' for credit transfer post"
-        )
 
-    # Only validate if sender is not in the whitelisted addresses
+    try:
+        parsed = CreditTransferContent.model_validate(content)
+    except ValidationError as e:
+        raise InvalidMessageFormat(f"Invalid credit transfer content: {e.errors()}")
+
+    credits_list = parsed.transfer.credits
+
+    # Reject self-transfers
+    for entry in credits_list:
+        if entry.address == sender_address:
+            raise InvalidMessageFormat(
+                f"Self-transfer not allowed: sender and recipient are both {sender_address}"
+            )
+
+    # Only validate balance if sender is not whitelisted
     if sender_address not in whitelisted_addresses:
-        # Calculate total transfer amount for validation
-        total_amount = sum(int(credit["amount"]) for credit in credits_list)
+        total_amount = sum(entry.amount for entry in credits_list)
 
         if not validate_credit_transfer_balance(session, sender_address, total_amount):
             raise InvalidMessageFormat(
@@ -157,7 +165,7 @@ def update_credit_balances_transfer(
 
     update_credit_balances_transfer_db(
         session=session,
-        credits_list=credits_list,
+        credits_list=[entry.model_dump() for entry in credits_list],
         sender_address=sender_address,
         whitelisted_addresses=whitelisted_addresses,
         message_hash=message_hash,
