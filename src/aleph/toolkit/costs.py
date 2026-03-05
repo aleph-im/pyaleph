@@ -5,6 +5,7 @@ from typing import Optional
 from aleph.db.models.messages import MessageDb
 from aleph.toolkit.constants import (
     CREDIT_ONLY_CUTOFF_TIMESTAMP,
+    HOLD_AND_STREAM_CUTOFF_TIMESTAMP,
     PRICE_PRECISION,
     STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT,
     STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP,
@@ -47,3 +48,13 @@ def is_credit_only_required(message: MessageDb) -> bool:
     during message processing to prevent faking.
     """
     return message.time >= timestamp_to_datetime(CREDIT_ONLY_CUTOFF_TIMESTAMP)
+
+
+def is_hold_and_stream_deprecated(message: MessageDb) -> bool:
+    """
+    Check if hold and stream payment types are deprecated for this message.
+
+    After the cutoff, new INSTANCE messages and persistent PROGRAM messages
+    must use credit payment (hold and stream are no longer accepted).
+    """
+    return message.time >= timestamp_to_datetime(HOLD_AND_STREAM_CUTOFF_TIMESTAMP)
