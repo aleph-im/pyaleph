@@ -27,7 +27,11 @@ from aleph.db.accessors.posts import (
 )
 from aleph.db.models.messages import MessageDb
 from aleph.db.models.posts import PostDb
-from aleph.schemas.credit_transfer import CreditTransferContent
+from aleph.schemas.credit_transfer import (
+    CreditDistributionContent,
+    CreditExpenseContent,
+    CreditTransferContent,
+)
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import (
@@ -82,22 +86,18 @@ def update_credit_balances_distribution(
     message_timestamp: dt.datetime,
 ) -> None:
     try:
-        distribution = content["distribution"]
-        credits_list = distribution["credits"]
-        token = distribution["token"]
-        chain = distribution["chain"]
-    except KeyError as e:
-        raise InvalidMessageFormat(
-            f"Missing field '{e.args[0]}' for credit balance post"
-        )
+        parsed = CreditDistributionContent.model_validate(content)
+    except ValidationError as e:
+        raise InvalidMessageFormat(f"Invalid credit distribution content: {e.errors()}")
 
-    LOGGER.info("Updating credit balances for %d addresses", len(credits_list))
+    dist = parsed.distribution
+    LOGGER.info("Updating credit balances for %d addresses", len(dist.credits))
 
     update_credit_balances_distribution_db(
         session=session,
-        credits_list=credits_list,
-        token=token,
-        chain=chain,
+        credits_list=[entry.model_dump() for entry in dist.credits],
+        token=dist.token,
+        chain=dist.chain,
         message_hash=message_hash,
         message_timestamp=message_timestamp,
     )
@@ -110,18 +110,18 @@ def update_credit_balances_expense(
     message_timestamp: dt.datetime,
 ) -> None:
     try:
-        expense = content["expense"]
-        credits_list = expense["credits"]
-    except KeyError as e:
-        raise InvalidMessageFormat(
-            f"Missing field '{e.args[0]}' for credit expense post"
-        )
+        parsed = CreditExpenseContent.model_validate(content)
+    except ValidationError as e:
+        raise InvalidMessageFormat(f"Invalid credit expense content: {e.errors()}")
 
-    LOGGER.info("Updating credit balances expense for %d addresses", len(credits_list))
+    expense = parsed.expense
+    LOGGER.info(
+        "Updating credit balances expense for %d addresses", len(expense.credits)
+    )
 
     update_credit_balances_expense_db(
         session=session,
-        credits_list=credits_list,
+        credits_list=[entry.model_dump() for entry in expense.credits],
         message_hash=message_hash,
         message_timestamp=message_timestamp,
     )

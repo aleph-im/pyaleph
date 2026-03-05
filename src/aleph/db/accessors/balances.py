@@ -505,24 +505,23 @@ def update_credit_balances_distribution(
 
     for index, credit_entry in enumerate(credits_list):
         address = credit_entry["address"]
-        raw_amount = abs(int(credit_entry["amount"]))
+        raw_amount = int(credit_entry["amount"])
         amount = _apply_credit_precision_multiplier(raw_amount, message_timestamp)
         price = Decimal(credit_entry["price"])
         tx_hash = credit_entry["tx_hash"]
         provider = credit_entry["provider"]
 
         # Extract optional fields from each credit entry
-        expiration_timestamp = credit_entry.get("expiration", "")
+        expiration_timestamp = credit_entry.get("expiration") or None
         origin = credit_entry.get("origin", "")
         origin_ref = credit_entry.get("ref", "")
         payment_method = credit_entry.get("payment_method", "")
         bonus_amount = credit_entry.get("bonus_amount", "")
 
         # Convert expiration timestamp to datetime
-
         expiration_date = (
             dt.datetime.fromtimestamp(expiration_timestamp / 1000, tz=dt.timezone.utc)
-            if expiration_timestamp != ""
+            if expiration_timestamp is not None
             else None
         )
 
@@ -555,7 +554,7 @@ def update_credit_balances_expense(
 
     for index, credit_entry in enumerate(credits_list):
         address = credit_entry["address"]
-        raw_amount = abs(int(credit_entry["amount"]))
+        raw_amount = int(credit_entry["amount"])
         amount = -_apply_credit_precision_multiplier(raw_amount, message_timestamp)
         origin_ref = credit_entry.get("ref", "")
 
