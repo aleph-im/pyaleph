@@ -3,6 +3,7 @@ import logging
 from typing import Any, Dict, List, Mapping, Optional, Set, Union
 
 from aleph_message.models import Chain, ChainRef, PostContent
+from pydantic import ValidationError
 from sqlalchemy import update
 
 from aleph.db.accessors.balances import get_credit_balance
@@ -26,6 +27,11 @@ from aleph.db.accessors.posts import (
 )
 from aleph.db.models.messages import MessageDb
 from aleph.db.models.posts import PostDb
+from aleph.schemas.credit_transfer import (
+    CreditDistributionContent,
+    CreditExpenseContent,
+    CreditTransferContent,
+)
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import (
@@ -80,22 +86,18 @@ def update_credit_balances_distribution(
     message_timestamp: dt.datetime,
 ) -> None:
     try:
-        distribution = content["distribution"]
-        credits_list = distribution["credits"]
-        token = distribution["token"]
-        chain = distribution["chain"]
-    except KeyError as e:
-        raise InvalidMessageFormat(
-            f"Missing field '{e.args[0]}' for credit balance post"
-        )
+        parsed = CreditDistributionContent.model_validate(content)
+    except ValidationError as e:
+        raise InvalidMessageFormat(f"Invalid credit distribution content: {e.errors()}")
 
-    LOGGER.info("Updating credit balances for %d addresses", len(credits_list))
+    dist = parsed.distribution
+    LOGGER.info("Updating credit balances for %d addresses", len(dist.credits))
 
     update_credit_balances_distribution_db(
         session=session,
-        credits_list=credits_list,
-        token=token,
-        chain=chain,
+        credits_list=[entry.model_dump() for entry in dist.credits],
+        token=dist.token,
+        chain=dist.chain,
         message_hash=message_hash,
         message_timestamp=message_timestamp,
     )
@@ -108,18 +110,18 @@ def update_credit_balances_expense(
     message_timestamp: dt.datetime,
 ) -> None:
     try:
-        expense = content["expense"]
-        credits_list = expense["credits"]
-    except KeyError as e:
-        raise InvalidMessageFormat(
-            f"Missing field '{e.args[0]}' for credit expense post"
-        )
+        parsed = CreditExpenseContent.model_validate(content)
+    except ValidationError as e:
+        raise InvalidMessageFormat(f"Invalid credit expense content: {e.errors()}")
 
-    LOGGER.info("Updating credit balances expense for %d addresses", len(credits_list))
+    expense = parsed.expense
+    LOGGER.info(
+        "Updating credit balances expense for %d addresses", len(expense.credits)
+    )
 
     update_credit_balances_expense_db(
         session=session,
-        credits_list=credits_list,
+        credits_list=[entry.model_dump() for entry in expense.credits],
         message_hash=message_hash,
         message_timestamp=message_timestamp,
     )
@@ -133,18 +135,24 @@ def update_credit_balances_transfer(
     sender_address: str,
     whitelisted_addresses: List[str],
 ) -> None:
-    try:
-        transfer = content["transfer"]
-        credits_list = transfer["credits"]
-    except KeyError as e:
-        raise InvalidMessageFormat(
-            f"Missing field '{e.args[0]}' for credit transfer post"
-        )
 
-    # Only validate if sender is not in the whitelisted addresses
+    try:
+        parsed = CreditTransferContent.model_validate(content)
+    except ValidationError as e:
+        raise InvalidMessageFormat(f"Invalid credit transfer content: {e.errors()}")
+
+    credits_list = parsed.transfer.credits
+
+    # Reject self-transfers
+    for entry in credits_list:
+        if entry.address == sender_address:
+            raise InvalidMessageFormat(
+                f"Self-transfer not allowed: sender and recipient are both {sender_address}"
+            )
+
+    # Only validate balance if sender is not whitelisted
     if sender_address not in whitelisted_addresses:
-        # Calculate total transfer amount for validation
-        total_amount = sum(int(credit["amount"]) for credit in credits_list)
+        total_amount = sum(entry.amount for entry in credits_list)
 
         if not validate_credit_transfer_balance(session, sender_address, total_amount):
             raise InvalidMessageFormat(
@@ -157,7 +165,7 @@ def update_credit_balances_transfer(
 
     update_credit_balances_transfer_db(
         session=session,
-        credits_list=credits_list,
+        credits_list=[entry.model_dump() for entry in credits_list],
         sender_address=sender_address,
         whitelisted_addresses=whitelisted_addresses,
         message_hash=message_hash,
@@ -284,7 +292,6 @@ class PostMessageHandler(ContentHandler):
 
         if (
             content.type in self.credit_balances_post_types
-            and content.address in self.credit_balances_addresses
             and (
                 not self.credit_balances_channels
                 or message.channel in self.credit_balances_channels
@@ -292,14 +299,20 @@ class PostMessageHandler(ContentHandler):
             and content.content
         ):
             LOGGER.info("Updating credit balances...")
-            if content.type == "aleph_credit_distribution":
+            if (
+                content.type == "aleph_credit_distribution"
+                and content.address in self.credit_balances_addresses
+            ):
                 update_credit_balances_distribution(
                     session=session,
                     content=content.content,
                     message_hash=message.item_hash,
                     message_timestamp=creation_datetime,
                 )
-            elif content.type == "aleph_credit_expense":
+            elif (
+                content.type == "aleph_credit_expense"
+                and content.address in self.credit_balances_addresses
+            ):
                 update_credit_balances_expense(
                     session=session,
                     content=content.content,

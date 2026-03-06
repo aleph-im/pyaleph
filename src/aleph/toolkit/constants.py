@@ -318,6 +318,10 @@ DEFAULT_SETTINGS_AGGREGATE = {
 STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT = 22196000
 STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP = 1743775079
 
+# Cutoff for hold and stream payment type messages
+# After this timestamp, new messages with hold or stream payment types are rejected
+HOLD_AND_STREAM_CUTOFF_TIMESTAMP = 1773187200  # 2026-03-11 00:00:00 UTC
+
 # Cutoff for STORE messages requiring credit-only payment
 # After this timestamp, STORE messages must use credit payment (no holding tier)
 # and the 25MB free file exception no longer applies
