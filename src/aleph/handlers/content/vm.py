@@ -51,7 +51,11 @@ from aleph.db.models.account_costs import AccountCostsDb
 from aleph.handlers.content.content_handler import ContentHandler
 from aleph.services.cost import get_payment_type, get_total_and_detailed_costs
 from aleph.services.cost_validation import validate_balance_for_payment
-from aleph.toolkit.costs import are_store_and_program_free, is_credit_only_required
+from aleph.toolkit.costs import (
+    are_store_and_program_free,
+    is_credit_only_required,
+    is_hold_and_stream_deprecated,
+)
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag
@@ -355,6 +359,17 @@ class VmMessageHandler(ContentHandler):
         # After the cutoff, VM messages must use credit payment only
         if is_credit_only_required(message) and payment_type != PaymentType.credit:
             raise InvalidPaymentMethod()
+
+        # After the hold/stream cutoff, instances and persistent programs must use credit
+        is_instance = isinstance(content, InstanceContent)
+        is_persistent_program = isinstance(content, ProgramContent) and bool(
+            content.on.persistent
+        )
+        if is_hold_and_stream_deprecated(message) and (
+            is_instance or is_persistent_program
+        ):
+            if payment_type in (PaymentType.hold, PaymentType.superfluid):
+                raise InvalidPaymentMethod()
 
         # NOTE: For now allow to create anything that is being paid with STREAM for free, but generate a cost depending on the content.payment prop (HOLD / STREAM / CREDIT)
         if payment_type == PaymentType.superfluid:
