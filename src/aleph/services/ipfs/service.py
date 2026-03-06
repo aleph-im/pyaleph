@@ -296,7 +296,6 @@ class IpfsService:
                     LOGGER.exception("Error handling message")
         except Exception:
             LOGGER.exception("Error handling IPFS subscription")
-            await self.close()
 
     async def pub(self, topic: str, message: Union[str, bytes]):
         # aioipfs only accepts strings
