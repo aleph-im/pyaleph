@@ -37,6 +37,33 @@ async def fetch_raw_cid_streamed(
             yield chunk
 
 
+async def fetch_raw_cid_get_streamed(
+    aioipfs_client: aioipfs.AsyncIPFS,
+    params: Optional[Dict] = None,
+    chunk_size: int = 16 * 1024,
+) -> AsyncIterable[bytes]:
+    """Stream content from IPFS /get endpoint as a tar archive.
+
+    Unlike /cat, the /get endpoint works on directories and returns
+    a tar archive containing the directory tree.
+    """
+    driver = aioipfs_client.core.driver
+    params = params or {}
+    params.setdefault("archive", "true")
+    params.setdefault("compress", "false")
+    params.setdefault("compression-level", "-1")
+
+    async with driver.session.post(
+        aioipfs_client.core.url("get"), params=params, auth=driver.auth
+    ) as response:
+        if response.status in aioipfs.apis.HTTP_ERROR_CODES:
+            data = await response.read()
+            aioipfs_client.core.handle_error(response, data)
+
+        async for chunk in response.content.iter_chunked(chunk_size):
+            yield chunk
+
+
 class IpfsService:
     def __init__(
         self,
@@ -212,6 +239,15 @@ class IpfsService:
     ) -> Optional[AsyncIterable[bytes]]:
         params = {aioipfs.helpers.ARG_PARAM: cid}
         return fetch_raw_cid_streamed(aioipfs_client=self.ipfs_client, params=params)
+
+    async def get_ipfs_directory_iterator(
+        self, cid: str
+    ) -> Optional[AsyncIterable[bytes]]:
+        """Stream an IPFS directory as a tar archive using the /get endpoint."""
+        params = {aioipfs.helpers.ARG_PARAM: cid}
+        return fetch_raw_cid_get_streamed(
+            aioipfs_client=self.ipfs_client, params=params
+        )
 
     async def get_json(self, hash, timeout=1, tries=1):
         result = await self.get_ipfs_content(hash, timeout=timeout, tries=tries)

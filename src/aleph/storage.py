@@ -240,6 +240,7 @@ class StorageService:
         tries: int = 1,
         use_network: bool = True,
         use_ipfs: bool = True,
+        file_type: FileType = FileType.FILE,
     ) -> StreamContent:
         # Try to retrieve the data from the DB, then from IPFS.
         # P2P retrieval via HTTP does not easily support streaming yet in this codebase
@@ -258,9 +259,18 @@ class StorageService:
                 config = get_config()
                 ipfs_enabled = config.ipfs.enabled.value
                 if ipfs_enabled:
-                    content_iterator = (
-                        await self.ipfs_service.get_ipfs_content_iterator(content_hash)
-                    )
+                    if file_type == FileType.DIRECTORY:
+                        content_iterator = (
+                            await self.ipfs_service.get_ipfs_directory_iterator(
+                                content_hash
+                            )
+                        )
+                    else:
+                        content_iterator = (
+                            await self.ipfs_service.get_ipfs_content_iterator(
+                                content_hash
+                            )
+                        )
                     source = ContentSource.IPFS
 
         if content_iterator is None:

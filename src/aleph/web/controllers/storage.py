@@ -607,16 +607,20 @@ async def get_raw_hash(request):
         # because we are streaming them.
         # But we still check if the file is known to the DB.
         size = file_metadata.size
+        file_type = file_metadata.type
+    is_directory = file_type == FileType.DIRECTORY
+    content_type = "application/x-tar" if is_directory else "application/octet-stream"
 
     if request.method == "HEAD":
-        return web.Response(
-            status=200,
-            headers={
-                "Content-Length": str(size),
-                "Content-Type": "application/octet-stream",
-                "Accept-Ranges": "none",
-            },
-        )
+        headers = {
+            "Content-Type": content_type,
+            "Accept-Ranges": "none",
+        }
+        # Don't set Content-Length for directories: the DB stores CumulativeSize
+        # but the actual tar archive streamed from IPFS /get has a different size.
+        if not is_directory:
+            headers["Content-Length"] = str(size)
+        return web.Response(status=200, headers=headers)
 
     storage_service = get_storage_service_from_request(request)
 
@@ -627,6 +631,7 @@ async def get_raw_hash(request):
             use_ipfs=True,
             engine=engine,
             timeout=30,
+            file_type=file_type,
         )
     except AlephStorageException as e:
         raise web.HTTPNotFound(text="Not found") from e
@@ -635,8 +640,11 @@ async def get_raw_hash(request):
         status=200,
         reason="OK",
     )
-    response.content_type = "application/octet-stream"
-    response.content_length = size
+    response.content_type = content_type
+    # Don't set Content-Length for directories (tar archive size differs from
+    # CumulativeSize); aiohttp will use chunked transfer encoding instead.
+    if not is_directory:
+        response.content_length = size
     response.headers["Accept-Ranges"] = "none"
 
     await response.prepare(request)
