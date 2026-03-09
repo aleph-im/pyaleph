@@ -540,6 +540,78 @@ async def test_get_raw_hash_streaming(
 
 
 @pytest.mark.asyncio
+async def test_get_raw_hash_directory_head(
+    api_client, session_factory: DbSessionFactory
+):
+    """HEAD on a directory CID returns application/x-tar and no Content-Length."""
+    from aleph.db.accessors.files import upsert_file
+
+    dir_hash = "QmecrKriwJEq4sCapKfr3nqXSHib6RP2XRmNqsvjznPqZ5"
+    with session_factory() as session:
+        upsert_file(
+            session=session,
+            file_hash=dir_hash,
+            size=104726723,
+            file_type=FileType.DIRECTORY,
+        )
+        session.commit()
+
+    response = await api_client.head(f"{GET_STORAGE_RAW_URI}/{dir_hash}")
+    assert response.status == 200
+    assert response.headers["Content-Type"] == "application/x-tar"
+    assert response.headers["Accept-Ranges"] == "none"
+    # Directories must not set Content-Length (CumulativeSize != tar archive size)
+    assert "Content-Length" not in response.headers
+    assert await response.read() == b""
+
+
+@pytest.mark.asyncio
+async def test_get_raw_hash_directory_streaming(
+    api_client, session_factory: DbSessionFactory, mocker
+):
+    """GET on a directory CID streams tar content with no Content-Length."""
+    from aleph.db.accessors.files import upsert_file
+    from aleph.schemas.message_content import ContentSource, StreamContent
+
+    tar_content = b"fake tar archive data"
+    dir_hash = "QmecrKriwJEq4sCapKfr3nqXSHib6RP2XRmNqsvjznPqZ5"
+
+    with session_factory() as session:
+        upsert_file(
+            session=session,
+            file_hash=dir_hash,
+            size=104726723,
+            file_type=FileType.DIRECTORY,
+        )
+        session.commit()
+
+    async def mock_iterator():
+        yield tar_content[:10]
+        yield tar_content[10:]
+
+    storage_service = api_client.app[APP_STATE_STORAGE_SERVICE]
+    mocker.patch.object(
+        storage_service,
+        "get_hash_content_iterator",
+        mocker.AsyncMock(
+            return_value=StreamContent(
+                hash=dir_hash, value=mock_iterator(), source=ContentSource.IPFS
+            )
+        ),
+    )
+
+    response = await api_client.get(f"{GET_STORAGE_RAW_URI}/{dir_hash}")
+    assert response.status == 200
+    assert response.headers["Content-Type"] == "application/x-tar"
+    assert "Content-Length" not in response.headers
+    assert await response.read() == tar_content
+
+    storage_service.get_hash_content_iterator.assert_called_once()
+    call_kwargs = storage_service.get_hash_content_iterator.call_args
+    assert call_kwargs.kwargs["file_type"] == FileType.DIRECTORY
+
+
+@pytest.mark.asyncio
 async def test_ipfs_add_json(api_client, session_factory: DbSessionFactory):
     await add_json(
         api_client,

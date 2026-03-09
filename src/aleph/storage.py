@@ -248,6 +248,8 @@ class StorageService:
 
         source = None
 
+        # Note: directories are always pinned on IPFS and never stored in the
+        # local storage engine, so this will be None for directory CIDs.
         content_iterator = await self.storage_engine.read_iterator(
             filename=content_hash
         )
