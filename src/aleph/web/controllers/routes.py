@@ -7,6 +7,7 @@ from aiohttp_swagger3 import SwaggerDocs
 from aleph.web.controllers import (
     accounts,
     aggregates,
+    authorizations,
     channels,
     info,
     ipfs,
@@ -59,6 +60,14 @@ def register_routes(app: web.Application, swagger: Optional[SwaggerDocs]):
         web.get("/api/v0/compute/{node_id}/metrics", main.crn_metric),
         web.get("/api/v0/aggregates/{address}.json", aggregates.address_aggregate),
         web.get("/api/v0/aggregates", aggregates.view_aggregates_list),
+        web.get(
+            "/api/v0/authorizations/granted/{address}.json",
+            authorizations.view_granted_authorizations,
+        ),
+        web.get(
+            "/api/v0/authorizations/received/{address}.json",
+            authorizations.view_received_authorizations,
+        ),
         web.get("/api/v0/channels/list.json", channels.used_channels),
         web.get("/api/v0/info/public.json", info.public_multiaddress),
         web.get("/api/v0/messages.json", messages.view_messages_list),
