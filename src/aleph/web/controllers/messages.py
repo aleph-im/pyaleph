@@ -7,13 +7,13 @@ import aiohttp.web_ws
 from aiohttp import WSMsgType, web
 from aleph_message.models import ItemHash, MessageType
 from pydantic import ValidationError
+from sqlalchemy.orm import defer
 
 import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.messages import (
     count_matching_hashes,
     get_forgotten_message,
     get_matching_hashes,
-    get_matching_messages,
     get_message_by_item_hash,
     get_message_status,
     get_rejected_message,
@@ -61,8 +61,13 @@ from aleph.web.controllers.utils import (
 LOGGER = logging.getLogger(__name__)
 
 
-def message_to_dict(message: MessageDb) -> Dict[str, Any]:
-    message_dict = message.to_dict()
+def message_to_dict(
+    message: MessageDb, exclude_content: bool = False
+) -> Dict[str, Any]:
+    if exclude_content:
+        message_dict = message.to_dict(exclude={"content"})
+    else:
+        message_dict = message.to_dict()
     message_dict["time"] = message.time.timestamp()
     confirmations = [
         {"chain": c.chain, "hash": c.hash, "height": c.height}
@@ -102,9 +107,16 @@ def format_response_dict(
 
 
 def format_response(
-    messages: Iterable[MessageDb], pagination: int, page: int, total_messages: int
+    messages: Iterable[MessageDb],
+    pagination: int,
+    page: int,
+    total_messages: int,
+    exclude_content: bool = False,
 ) -> web.Response:
-    formatted_messages = [message_to_dict(message) for message in messages]
+    formatted_messages = [
+        message_to_dict(message, exclude_content=exclude_content)
+        for message in messages
+    ]
 
     response = format_response_dict(
         messages=formatted_messages,
@@ -210,6 +222,12 @@ async def view_messages_list(request: web.Request) -> web.Response:
         schema:
           type: integer
           default: 0
+      - name: excludeContent
+        in: query
+        schema:
+          type: boolean
+          default: false
+        description: If true, omit the 'content' field from each message.
       - name: pagination
         in: query
         schema:
@@ -245,6 +263,7 @@ async def view_messages_list(request: web.Request) -> web.Response:
 
     find_filters = query_params.model_dump(exclude_none=True)
 
+    exclude_content = find_filters.pop("exclude_content", False)
     pagination_per_page = query_params.pagination
     cursor = find_filters.pop("cursor", None)
 
@@ -259,6 +278,9 @@ async def view_messages_list(request: web.Request) -> web.Response:
         except ValueError as e:
             raise web.HTTPUnprocessableEntity(text=str(e))
 
+        if exclude_content:
+            messages_query = messages_query.options(defer(MessageDb.content))
+
         with session_factory() as session:
             messages = list(session.execute(messages_query).scalars())
 
@@ -266,7 +288,9 @@ async def view_messages_list(request: web.Request) -> web.Response:
         if has_more:
             messages = messages[:pagination_per_page]
 
-        formatted = [message_to_dict(m) for m in messages]
+        formatted = [
+            message_to_dict(m, exclude_content=exclude_content) for m in messages
+        ]
         next_cursor = None
         if has_more and messages:
             last = messages[-1]
@@ -290,6 +314,8 @@ async def view_messages_list(request: web.Request) -> web.Response:
             messages_query = make_matching_messages_query(
                 include_confirmations=True, **find_filters
             )
+            if exclude_content:
+                messages_query = messages_query.options(defer(MessageDb.content))
             messages = list(session.execute(messages_query).scalars())
 
         # If the result set is smaller than the page size, we already know
@@ -305,6 +331,7 @@ async def view_messages_list(request: web.Request) -> web.Response:
             pagination=pagination_per_page,
             page=pagination_page,
             total_messages=total_msgs,
+            exclude_content=exclude_content,
         )
 
 
@@ -314,17 +341,26 @@ async def _send_history_to_ws(
     history: int,
     query_params: WsMessageQueryParams,
 ) -> None:
+    find_filters = query_params.model_dump(exclude_none=True)
+    exclude_content = find_filters.pop("exclude_content", False)
+
+    messages_query = make_matching_messages_query(
+        pagination=history,
+        include_confirmations=True,
+        **find_filters,
+    )
+    if exclude_content:
+        messages_query = messages_query.options(defer(MessageDb.content))
+
     with session_factory() as session:
-        messages = list(
-            get_matching_messages(
-                session=session,
-                pagination=history,
-                include_confirmations=True,
-                **query_params.model_dump(exclude_none=True),
-            )
-        )
+        messages = list(session.execute(messages_query).scalars())
+
     for message in reversed(messages):
-        await ws.send_str(format_message(message).model_dump_json())
+        if exclude_content:
+            msg_dict = message_to_dict(message, exclude_content=True)
+            await ws.send_str(aleph_json.dumps(msg_dict).decode("utf-8"))
+        else:
+            await ws.send_str(format_message(message).model_dump_json())
 
 
 def message_matches_filters(
@@ -389,6 +425,7 @@ async def _start_mq_consumer(
     ws: aiohttp.web_ws.WebSocketResponse,
     mq_queue: aio_pika.abc.AbstractQueue,
     query_params: WsMessageQueryParams,
+    exclude_content: bool = False,
 ) -> aio_pika.abc.ConsumerTag:
     """
     Starts the consumer task responsible for forwarding new aleph.im messages from
@@ -397,6 +434,7 @@ async def _start_mq_consumer(
     :param ws: Websocket.
     :param mq_queue: Message queue object.
     :param query_params: Message filters specified by the caller.
+    :param exclude_content: If True, strip content from outgoing messages.
     """
 
     async def _process_message(mq_message: aio_pika.abc.AbstractMessage):
@@ -406,7 +444,8 @@ async def _start_mq_consumer(
 
         if message_matches_filters(message=message, query_params=query_params):
             try:
-                await ws.send_str(message.model_dump_json())
+                dump_exclude = {"content"} if exclude_content else None
+                await ws.send_str(message.model_dump_json(exclude=dump_exclude))
             except ConnectionResetError:
                 # We can detect the WS closing in this task in addition to the main one.
                 # The main task will also detect the close event.
@@ -460,6 +499,7 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
             ws=ws,
             mq_queue=mq_queue,
             query_params=query_params,
+            exclude_content=query_params.exclude_content,
         )
         LOGGER.debug(
             "Started consuming mq %s for websocket. Consumer tag: %s",

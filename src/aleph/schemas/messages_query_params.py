@@ -81,6 +81,12 @@ class BaseMessageQueryParams(BaseModel):
         description="Accepted values for payment type (e.g., 'hold', 'superfluid', 'credit').",
     )
 
+    exclude_content: bool = Field(
+        default=False,
+        alias="excludeContent",
+        description="If true, omit the 'content' field from each message in the response.",
+    )
+
     start_date: float = Field(
         default=0,
         ge=0,

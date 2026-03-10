@@ -703,6 +703,77 @@ async def test_owners_filter(owners_test_messages, ccn_api_client):
 
 
 @pytest.mark.asyncio
+async def test_exclude_content(
+    fixture_messages: Sequence[Dict[str, Any]], ccn_api_client
+):
+    """excludeContent=true strips content from every message."""
+    response = await ccn_api_client.get(MESSAGES_URI, params={"excludeContent": "true"})
+    assert response.status == 200, await response.text()
+    data = await response.json()
+
+    messages = data["messages"]
+    assert len(messages) == len(fixture_messages)
+    for msg in messages:
+        assert "content" not in msg
+        # All other core fields still present
+        assert "item_hash" in msg
+        assert "sender" in msg
+        assert "chain" in msg
+        assert "type" in msg
+        assert "time" in msg
+        assert "confirmed" in msg
+        assert "confirmations" in msg
+        assert "item_content" in msg
+        assert "item_type" in msg
+        assert "signature" in msg
+
+
+@pytest.mark.asyncio
+async def test_exclude_content_default(
+    fixture_messages: Sequence[Dict[str, Any]], ccn_api_client
+):
+    """Default behavior: content is present."""
+    response = await ccn_api_client.get(MESSAGES_URI)
+    assert response.status == 200, await response.text()
+    data = await response.json()
+
+    for msg in data["messages"]:
+        assert "content" in msg
+
+
+@pytest.mark.asyncio
+async def test_exclude_content_cursor_pagination(
+    fixture_messages: Sequence[Dict[str, Any]], ccn_api_client
+):
+    """excludeContent works with cursor-based pagination."""
+    response = await ccn_api_client.get(
+        MESSAGES_URI,
+        params={"excludeContent": "true", "pagination": "2"},
+    )
+    assert response.status == 200, await response.text()
+    data = await response.json()
+
+    for msg in data["messages"]:
+        assert "content" not in msg
+        assert "item_hash" in msg
+
+    # Follow cursor if there are more results
+    if data.get("next_cursor"):
+        response2 = await ccn_api_client.get(
+            MESSAGES_URI,
+            params={
+                "excludeContent": "true",
+                "pagination": "2",
+                "cursor": data["next_cursor"],
+            },
+        )
+        assert response2.status == 200, await response2.text()
+        data2 = await response2.json()
+        for msg in data2["messages"]:
+            assert "content" not in msg
+
+
+@pytest.mark.asyncio
 async def test_owners_filter_ws_logic(owners_test_messages):
     # Test the logic used by WebSocket filtering
     # hash1: sender1, owner1
