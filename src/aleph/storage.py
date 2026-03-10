@@ -36,6 +36,7 @@ LOGGER = logging.getLogger(__name__)
 
 U0000_STR: Final = "\\u0000"
 U0000_BYTES: Final = U0000_STR.encode("utf-8")
+STREAM_CHUNK_SIZE: Final = 128 * 1024
 
 
 def check_for_u0000(item_content: aleph_json.SerializedJsonInput):
@@ -248,7 +249,7 @@ class StorageService:
         source = None
 
         content_iterator = await self.storage_engine.read_iterator(
-            filename=content_hash
+            filename=content_hash, chunk_size=STREAM_CHUNK_SIZE
         )
         if content_iterator is not None:
             source = ContentSource.DB
@@ -259,33 +260,11 @@ class StorageService:
                 ipfs_enabled = config.ipfs.enabled.value
                 if ipfs_enabled:
                     content_iterator = (
-                        await self.ipfs_service.get_ipfs_content_iterator(content_hash)
+                        await self.ipfs_service.get_ipfs_content_iterator(
+                            content_hash, chunk_size=STREAM_CHUNK_SIZE
+                        )
                     )
                     source = ContentSource.IPFS
-
-        if content_iterator is None:
-            # Fallback to non-streaming if only P2P is available or if streaming failed
-            # This is a bit suboptimal but keeps it working.
-            # However, for GET /storage/raw/ we really want streaming.
-            # If we reach here and it's not in DB/IPFS, we might have to load it from P2P and then wrap it.
-            try:
-                content = await self.get_hash_content(
-                    content_hash,
-                    engine=engine,
-                    timeout=timeout,
-                    tries=tries,
-                    use_network=use_network,
-                    use_ipfs=use_ipfs,
-                    store_value=True,
-                )
-                source = content.source
-
-                async def _iterator():
-                    yield content.value
-
-                content_iterator = _iterator()
-            except ContentCurrentlyUnavailable:
-                content_iterator = None
 
         if content_iterator is None:
             raise ContentCurrentlyUnavailable(
