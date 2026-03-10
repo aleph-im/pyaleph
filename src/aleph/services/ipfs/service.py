@@ -209,13 +209,13 @@ class IpfsService:
 
         return result
 
-    async def get_ipfs_content_iterator(self, cid: str) -> AsyncIterable[bytes]:
+    def get_ipfs_content_iterator(self, cid: str) -> AsyncIterable[bytes]:
         params = {aioipfs.helpers.ARG_PARAM: cid}
         return _fetch_ipfs_endpoint_streamed(
             aioipfs_client=self.ipfs_client, endpoint="cat", params=params
         )
 
-    async def get_ipfs_directory_iterator(self, cid: str) -> AsyncIterable[bytes]:
+    def get_ipfs_directory_iterator(self, cid: str) -> AsyncIterable[bytes]:
         """Stream an IPFS directory as a tar archive using the /get endpoint."""
         params = {
             aioipfs.helpers.ARG_PARAM: cid,

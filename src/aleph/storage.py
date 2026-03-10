@@ -263,23 +263,20 @@ class StorageService:
                 if ipfs_enabled:
                     if file_type == FileType.DIRECTORY:
                         content_iterator = (
-                            await self.ipfs_service.get_ipfs_directory_iterator(
-                                content_hash
-                            )
+                            self.ipfs_service.get_ipfs_directory_iterator(content_hash)
                         )
                     else:
-                        content_iterator = (
-                            await self.ipfs_service.get_ipfs_content_iterator(
-                                content_hash
-                            )
+                        content_iterator = self.ipfs_service.get_ipfs_content_iterator(
+                            content_hash
                         )
                     source = ContentSource.IPFS
 
-        if content_iterator is None:
-            # Fallback to non-streaming if only P2P is available or if streaming failed
+        if content_iterator is None and file_type != FileType.DIRECTORY:
+            # Fallback to non-streaming if only P2P is available or if streaming failed.
             # This is a bit suboptimal but keeps it working.
             # However, for GET /storage/raw/ we really want streaming.
-            # If we reach here and it's not in DB/IPFS, we might have to load it from P2P and then wrap it.
+            # Skipped for directories: the non-streaming path uses /cat which
+            # does not support directory CIDs.
             try:
                 content = await self.get_hash_content(
                     content_hash,

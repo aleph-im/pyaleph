@@ -81,7 +81,7 @@ async def api_client(ccn_test_aiohttp_app, mocker, aiohttp_client):
     async def _mock_ipfs_content_iterator(*args, **kwargs):
         yield FILE_CONTENT
 
-    ipfs_service.get_ipfs_content_iterator = mocker.AsyncMock(
+    ipfs_service.get_ipfs_content_iterator = mocker.Mock(
         return_value=_mock_ipfs_content_iterator()
     )
     ipfs_service.ipfs_client.files.stat = mocker.AsyncMock(
