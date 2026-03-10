@@ -255,6 +255,11 @@ def fetch_pending_messages_subprocess(config_values: Dict):
     :param config_values: Application configuration, as a dictionary.
     """
 
+    import faulthandler
+    import sys
+
+    faulthandler.enable(file=sys.stderr)
+
     setproctitle("aleph.jobs.fetch_messages")
     loop, config = prepare_loop(config_values)
 
@@ -265,4 +270,10 @@ def fetch_pending_messages_subprocess(config_values: Dict):
         max_log_file_size=config.logging.max_log_file_size.value,
     )
 
-    asyncio.run(fetch_messages_task(config=config))
+    try:
+        asyncio.run(fetch_messages_task(config=config))
+    except KeyboardInterrupt:
+        LOGGER.info("Fetch messages subprocess interrupted")
+    except BaseException:
+        LOGGER.critical("Fatal error in fetch messages subprocess", exc_info=True)
+        raise

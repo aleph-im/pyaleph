@@ -27,10 +27,12 @@ def setup_logging(
                 "When logging to a log file, a max log file must be specified."
             )
 
-        handler = RotatingFileHandler(
+        file_handler = RotatingFileHandler(
             filename, maxBytes=max_log_file_size, backupCount=4
         )
-        kwargs = {"handlers": [handler]}
+        # Also log to stderr so subprocess output is visible in docker compose logs
+        stderr_handler = logging.StreamHandler(sys.stderr)
+        kwargs = {"handlers": [file_handler, stderr_handler]}
     else:
         kwargs = {"stream": sys.stdout}
 

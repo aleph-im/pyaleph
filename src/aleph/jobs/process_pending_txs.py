@@ -176,6 +176,11 @@ async def handle_txs_task(config: Config):
 
 
 def pending_txs_subprocess(config_values: Dict):
+    import faulthandler
+    import sys
+
+    faulthandler.enable(file=sys.stderr)
+
     setproctitle("aleph.jobs.txs_task_loop")
     loop, config = prepare_loop(config_values)
 
@@ -186,4 +191,10 @@ def pending_txs_subprocess(config_values: Dict):
         max_log_file_size=config.logging.max_log_file_size.value,
     )
 
-    loop.run_until_complete(handle_txs_task(config))
+    try:
+        loop.run_until_complete(handle_txs_task(config))
+    except KeyboardInterrupt:
+        LOGGER.info("Pending txs subprocess interrupted")
+    except BaseException:
+        LOGGER.critical("Fatal error in pending txs subprocess", exc_info=True)
+        raise
