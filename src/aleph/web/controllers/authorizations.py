@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 
 from aiohttp import web
 from pydantic import BaseModel, Field, ValidationError, field_validator
-from sqlalchemy import select
+from sqlalchemy import exists, select
 
 from aleph.db.accessors.aggregates import refresh_aggregate
 from aleph.db.accessors.authorizations import (
@@ -33,6 +33,7 @@ class AuthorizationsQueryParams(BaseModel):
     @field_validator(
         "channels", "types", "post_types", "chains", "aggregate_keys", mode="before"
     )
+    @classmethod
     def split_str(cls, v):
         if isinstance(v, str):
             return v.split(LIST_FIELD_SEPARATOR)
@@ -78,10 +79,12 @@ async def view_granted_authorizations(request: web.Request) -> web.Response:
     with session_factory() as session:
         # Refresh dirty security aggregate for this address
         dirty = session.execute(
-            select(AggregateDb.key).where(
-                (AggregateDb.owner == address)
-                & (AggregateDb.key == "security")
-                & AggregateDb.dirty
+            select(
+                exists().where(
+                    (AggregateDb.owner == address)
+                    & (AggregateDb.key == "security")
+                    & AggregateDb.dirty
+                )
             )
         ).scalar()
         if dirty:

@@ -73,7 +73,7 @@ def security_aggregates(session_factory):
                 dirty=False,
             )
         )
-        # Owner B grants to A
+        # Owner B grants to A and GranteeB
         session.add(
             AggregateDb(
                 key="security",
@@ -83,6 +83,10 @@ def security_aggregates(session_factory):
                         {
                             "address": "0xOwnerA",
                             "types": ["POST", "STORE"],
+                        },
+                        {
+                            "address": "0xGranteeB",
+                            "types": ["AGGREGATE"],
                         },
                     ]
                 },
@@ -152,13 +156,16 @@ def test_get_received_authorizations_multiple_granters(
     with session_factory() as session:
         results = get_received_authorizations(session=session, address="0xGranteeB")
 
-    # Only 0xOwnerA granted to 0xGranteeB
-    assert len(results) == 1
-    owner, auths = results[0]
-    assert owner == "0xOwnerA"
-    assert len(auths) == 1
-    assert auths[0]["types"] == ["POST"]
-    assert "address" not in auths[0]
+    # Both 0xOwnerA and 0xOwnerB granted to 0xGranteeB
+    assert len(results) == 2
+    results_by_owner = {owner: auths for owner, auths in results}
+    assert "0xOwnerA" in results_by_owner
+    assert "0xOwnerB" in results_by_owner
+    assert results_by_owner["0xOwnerA"][0]["types"] == ["POST"]
+    assert results_by_owner["0xOwnerB"][0]["types"] == ["AGGREGATE"]
+    # 'address' field is stripped
+    assert "address" not in results_by_owner["0xOwnerA"][0]
+    assert "address" not in results_by_owner["0xOwnerB"][0]
 
 
 def test_get_received_authorizations_none(session_factory, security_aggregates):

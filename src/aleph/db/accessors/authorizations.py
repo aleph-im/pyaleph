@@ -38,9 +38,13 @@ def get_received_authorizations(
     Returns a list of (owner, matching_authorizations) tuples where
     matching_authorizations contains only the entries for the target address.
     """
-    select_stmt = select(AggregateDb.owner, AggregateDb.content).where(
-        (AggregateDb.key == "security")
-        & AggregateDb.content["authorizations"].contains([{"address": address}])
+    select_stmt = (
+        select(AggregateDb.owner, AggregateDb.content)
+        .where(
+            (AggregateDb.key == "security")
+            & AggregateDb.content["authorizations"].contains([{"address": address}])
+        )
+        .order_by(AggregateDb.owner)
     )
     rows = session.execute(select_stmt).all()
 
