@@ -792,6 +792,7 @@ class StoredFileMetadataResponse(pydantic.BaseModel):
     file_hash: str
     type: str
     size: int
+    download_url: str
 
 
 async def get_file_metadata(request: web.Request) -> web.Response:
@@ -815,15 +816,11 @@ async def get_file_metadata(request: web.Request) -> web.Response:
           application/json:
             schema:
               $ref: '#/components/schemas/StoredFileMetadataResponse'
-      '400':
-        description: Invalid hash
       '404':
         description: File not found
     """
 
-    file_hash = request.match_info.get("file_hash")
-    if not file_hash:
-        raise web.HTTPBadRequest(text="No hash provided")
+    file_hash = request.match_info["file_hash"]
 
     session_factory = get_session_factory_from_request(request)
     with session_factory() as session:
@@ -836,6 +833,7 @@ async def get_file_metadata(request: web.Request) -> web.Response:
                 file_hash=stored_file.hash,
                 type=stored_file.type.value,
                 size=stored_file.size,
+                download_url=f"/api/v0/storage/raw/{stored_file.hash}",
             ).model_dump()
         )
 

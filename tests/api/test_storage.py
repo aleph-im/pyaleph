@@ -806,6 +806,7 @@ async def test_get_file_metadata(api_client, session_factory: DbSessionFactory):
         assert data["file_hash"] == file_hash
         assert data["type"] == "file"
         assert data["size"] == file_size
+        assert data["download_url"] == f"/api/v0/storage/raw/{file_hash}"
 
     # 3. Test successful retrieval for a directory
     dir_hash = "QmecrKriwJEq4sCapKfr3nqXSHib6RP2XRmNqsvjznPqZ5"
@@ -826,3 +827,4 @@ async def test_get_file_metadata(api_client, session_factory: DbSessionFactory):
         assert data["file_hash"] == dir_hash
         assert data["type"] == "dir"
         assert data["size"] == dir_size
+        assert data["download_url"] == f"/api/v0/storage/raw/{dir_hash}"
