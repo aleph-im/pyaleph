@@ -356,11 +356,8 @@ async def _send_history_to_ws(
         messages = list(session.execute(messages_query).scalars())
 
     for message in reversed(messages):
-        if exclude_content:
-            msg_dict = message_to_dict(message, exclude_content=True)
-            await ws.send_str(aleph_json.dumps(msg_dict).decode("utf-8"))
-        else:
-            await ws.send_str(format_message(message).model_dump_json())
+        msg_dict = message_to_dict(message, exclude_content=exclude_content)
+        await ws.send_str(aleph_json.dumps(msg_dict).decode("utf-8"))
 
 
 def message_matches_filters(
