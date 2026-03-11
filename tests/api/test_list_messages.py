@@ -1,5 +1,6 @@
 import datetime as dt
 import itertools
+import json
 from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
@@ -771,6 +772,67 @@ async def test_exclude_content_cursor_pagination(
         data2 = await response2.json()
         for msg in data2["messages"]:
             assert "content" not in msg
+
+
+@pytest.mark.asyncio
+async def test_exclude_content_ws_history(
+    fixture_messages: Sequence[Dict[str, Any]],
+    session_factory: DbSessionFactory,
+):
+    """_send_history_to_ws with excludeContent=true strips content from messages."""
+    from unittest.mock import AsyncMock
+
+    from aleph.web.controllers.messages import _send_history_to_ws
+
+    ws = AsyncMock()
+
+    history = len(fixture_messages)
+    query_params = WsMessageQueryParams(history=history, excludeContent=True)
+    await _send_history_to_ws(
+        ws=ws,
+        session_factory=session_factory,
+        history=history,
+        query_params=query_params,
+    )
+
+    assert ws.send_str.call_count == len(fixture_messages)
+    for call in ws.send_str.call_args_list:
+        payload = json.loads(call.args[0])
+        assert "content" not in payload
+        assert "item_hash" in payload
+        assert "sender" in payload
+        assert "chain" in payload
+        assert "type" in payload
+        assert "time" in payload
+        assert "confirmed" in payload
+        assert "confirmations" in payload
+
+
+@pytest.mark.asyncio
+async def test_exclude_content_ws_history_default(
+    fixture_messages: Sequence[Dict[str, Any]],
+    session_factory: DbSessionFactory,
+):
+    """_send_history_to_ws without excludeContent keeps content in messages."""
+    from unittest.mock import AsyncMock
+
+    from aleph.web.controllers.messages import _send_history_to_ws
+
+    ws = AsyncMock()
+
+    history = len(fixture_messages)
+    query_params = WsMessageQueryParams(history=history)
+    await _send_history_to_ws(
+        ws=ws,
+        session_factory=session_factory,
+        history=history,
+        query_params=query_params,
+    )
+
+    assert ws.send_str.call_count == len(fixture_messages)
+    for call in ws.send_str.call_args_list:
+        payload = json.loads(call.args[0])
+        assert "content" in payload
 
 
 @pytest.mark.asyncio
