@@ -3,6 +3,8 @@ Job in charge of (re-) processing Aleph messages waiting in the pending queue.
 """
 
 import asyncio
+import faulthandler
+import sys
 from logging import getLogger
 from typing import AsyncIterator, Dict, List, NewType, Sequence, Set
 
@@ -254,9 +256,6 @@ def fetch_pending_messages_subprocess(config_values: Dict):
 
     :param config_values: Application configuration, as a dictionary.
     """
-
-    import faulthandler
-    import sys
 
     faulthandler.enable(file=sys.stderr)
 

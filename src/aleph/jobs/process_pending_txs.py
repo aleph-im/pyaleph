@@ -3,7 +3,9 @@ Job in charge of loading messages stored on-chain and put them in the pending me
 """
 
 import asyncio
+import faulthandler
 import logging
+import sys
 from typing import Dict, Optional, Set
 
 import aio_pika.abc
@@ -176,9 +178,6 @@ async def handle_txs_task(config: Config):
 
 
 def pending_txs_subprocess(config_values: Dict):
-    import faulthandler
-    import sys
-
     faulthandler.enable(file=sys.stderr)
 
     setproctitle("aleph.jobs.txs_task_loop")
