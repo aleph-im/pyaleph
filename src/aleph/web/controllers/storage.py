@@ -790,7 +790,7 @@ async def get_file_metadata_by_ref(request: web.Request) -> web.Response:
 
 class StoredFileMetadataResponse(pydantic.BaseModel):
     file_hash: str
-    type: str
+    type: FileType
     size: int
     download_url: str
 
@@ -831,7 +831,7 @@ async def get_file_metadata(request: web.Request) -> web.Response:
         return web.json_response(
             data=StoredFileMetadataResponse(
                 file_hash=stored_file.hash,
-                type=stored_file.type.value,
+                type=stored_file.type,
                 size=stored_file.size,
                 download_url=f"/api/v0/storage/raw/{stored_file.hash}",
             ).model_dump()
