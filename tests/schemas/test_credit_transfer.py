@@ -341,3 +341,13 @@ class TestCreditExpenseContent:
             CreditExpenseContent.model_validate(
                 {"expense": {"credits": [{"address": "", "amount": 10}]}}
             )
+
+    def test_float_time_accepted(self):
+        entry = CreditExpenseContent.model_validate(
+            {
+                "expense": {
+                    "credits": [{"address": "0xabc", "amount": 10, "time": 3599.475}]
+                }
+            }
+        ).expense.credits[0]
+        assert entry.time == 3599.475

@@ -120,7 +120,7 @@ class CreditExpenseEntry(BaseModel):
     execution_id: Optional[str] = None
     node_id: Optional[str] = None
     price: Optional[str] = None
-    time: Optional[int] = None  # accepted but ignored
+    time: Optional[float] = None  # accepted but ignored
 
     @field_validator("address")
     @classmethod
