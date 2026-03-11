@@ -195,6 +195,8 @@ def pending_txs_subprocess(config_values: Dict):
         loop.run_until_complete(handle_txs_task(config))
     except KeyboardInterrupt:
         LOGGER.info("Pending txs subprocess interrupted")
+    except SystemExit:
+        raise
     except BaseException:
         LOGGER.critical("Fatal error in pending txs subprocess", exc_info=True)
         raise

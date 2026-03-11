@@ -32,6 +32,7 @@ def setup_logging(
         )
         # Also log to stderr so subprocess output is visible in docker compose logs
         stderr_handler = logging.StreamHandler(sys.stderr)
+        stderr_handler.setLevel(logging.WARNING)
         kwargs = {"handlers": [file_handler, stderr_handler]}
     else:
         kwargs = {"stream": sys.stdout}

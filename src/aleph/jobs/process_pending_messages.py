@@ -241,6 +241,8 @@ def pending_messages_subprocess(config_values: Dict):
         loop.run_until_complete(fetch_and_process_messages_task(config=config))
     except KeyboardInterrupt:
         LOGGER.info("Process messages subprocess interrupted")
+    except SystemExit:
+        raise
     except BaseException:
         LOGGER.critical("Fatal error in process messages subprocess", exc_info=True)
         raise

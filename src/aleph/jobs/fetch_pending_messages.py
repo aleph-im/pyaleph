@@ -274,6 +274,8 @@ def fetch_pending_messages_subprocess(config_values: Dict):
         asyncio.run(fetch_messages_task(config=config))
     except KeyboardInterrupt:
         LOGGER.info("Fetch messages subprocess interrupted")
+    except SystemExit:
+        raise
     except BaseException:
         LOGGER.critical("Fatal error in fetch messages subprocess", exc_info=True)
         raise
