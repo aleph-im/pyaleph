@@ -3,7 +3,9 @@ Job in charge of loading messages stored on-chain and put them in the pending me
 """
 
 import asyncio
+import faulthandler
 import logging
+import sys
 from typing import Dict, Optional, Set
 
 import aio_pika.abc
@@ -176,6 +178,8 @@ async def handle_txs_task(config: Config):
 
 
 def pending_txs_subprocess(config_values: Dict):
+    faulthandler.enable(file=sys.stderr)
+
     setproctitle("aleph.jobs.txs_task_loop")
     loop, config = prepare_loop(config_values)
 
@@ -186,4 +190,12 @@ def pending_txs_subprocess(config_values: Dict):
         max_log_file_size=config.logging.max_log_file_size.value,
     )
 
-    loop.run_until_complete(handle_txs_task(config))
+    try:
+        loop.run_until_complete(handle_txs_task(config))
+    except KeyboardInterrupt:
+        LOGGER.info("Pending txs subprocess interrupted")
+    except SystemExit:
+        raise
+    except BaseException:
+        LOGGER.critical("Fatal error in pending txs subprocess", exc_info=True)
+        raise

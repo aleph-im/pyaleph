@@ -3,6 +3,8 @@ Job in charge of (re-) processing Aleph messages waiting in the pending queue.
 """
 
 import asyncio
+import faulthandler
+import sys
 from logging import getLogger
 from typing import AsyncIterator, Dict, List, NewType, Sequence, Set
 
@@ -255,6 +257,8 @@ def fetch_pending_messages_subprocess(config_values: Dict):
     :param config_values: Application configuration, as a dictionary.
     """
 
+    faulthandler.enable(file=sys.stderr)
+
     setproctitle("aleph.jobs.fetch_messages")
     loop, config = prepare_loop(config_values)
 
@@ -265,4 +269,12 @@ def fetch_pending_messages_subprocess(config_values: Dict):
         max_log_file_size=config.logging.max_log_file_size.value,
     )
 
-    asyncio.run(fetch_messages_task(config=config))
+    try:
+        asyncio.run(fetch_messages_task(config=config))
+    except KeyboardInterrupt:
+        LOGGER.info("Fetch messages subprocess interrupted")
+    except SystemExit:
+        raise
+    except BaseException:
+        LOGGER.critical("Fatal error in fetch messages subprocess", exc_info=True)
+        raise
