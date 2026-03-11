@@ -788,6 +788,58 @@ async def get_file_metadata_by_ref(request: web.Request) -> web.Response:
     )
 
 
+class StoredFileMetadataResponse(pydantic.BaseModel):
+    file_hash: str
+    type: str
+    size: int
+
+
+async def get_file_metadata(request: web.Request) -> web.Response:
+    """
+    Returns the metadata for a stored file.
+
+    ---
+    summary: Get file metadata by hash
+    tags:
+      - Storage
+    parameters:
+      - name: file_hash
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: File metadata
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoredFileMetadataResponse'
+      '400':
+        description: Invalid hash
+      '404':
+        description: File not found
+    """
+
+    file_hash = request.match_info.get("file_hash")
+    if not file_hash:
+        raise web.HTTPBadRequest(text="No hash provided")
+
+    session_factory = get_session_factory_from_request(request)
+    with session_factory() as session:
+        stored_file = get_file(session=session, file_hash=file_hash)
+        if not stored_file:
+            raise web.HTTPNotFound(text=f"No file found for hash {file_hash}")
+
+        return web.json_response(
+            data=StoredFileMetadataResponse(
+                file_hash=stored_file.hash,
+                type=stored_file.type.value,
+                size=stored_file.size,
+            ).model_dump()
+        )
+
+
 async def get_file_pins_count(request: web.Request) -> web.Response:
     """
     Get the number of pins for a file.

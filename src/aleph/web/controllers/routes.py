@@ -153,6 +153,10 @@ def register_routes(app: web.Application, swagger: Optional[SwaggerDocs]):
             storage.get_file_metadata_by_ref,
         ),
         web.get(
+            "/api/v0/storage/metadata/{file_hash}",
+            storage.get_file_metadata,
+        ),
+        web.get(
             "/api/v0/storage/count/{hash}",
             storage.get_file_pins_count,
         ),

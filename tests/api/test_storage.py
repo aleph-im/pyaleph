@@ -777,3 +777,52 @@ async def test_get_file_metadata_by_message_hash(
     url_400 = "/api/v0/storage/by-message-hash/invalid-hash"
     async with api_client.get(url_400) as response:
         assert response.status == 400
+
+
+@pytest.mark.asyncio
+async def test_get_file_metadata(api_client, session_factory: DbSessionFactory):
+    file_hash = "a" * 64
+    file_size = 2048
+
+    # 1. Test 404 for non-existent file
+    url_404 = f"/api/v0/storage/metadata/{file_hash}"
+    async with api_client.get(url_404) as response:
+        assert response.status == 404
+
+    # 2. Test successful retrieval for a regular file
+    with session_factory() as session:
+        upsert_file(
+            session=session,
+            file_hash=file_hash,
+            size=file_size,
+            file_type=FileType.FILE,
+        )
+        session.commit()
+
+    url = f"/api/v0/storage/metadata/{file_hash}"
+    async with api_client.get(url) as response:
+        assert response.status == 200
+        data = await response.json()
+        assert data["file_hash"] == file_hash
+        assert data["type"] == "file"
+        assert data["size"] == file_size
+
+    # 3. Test successful retrieval for a directory
+    dir_hash = "QmecrKriwJEq4sCapKfr3nqXSHib6RP2XRmNqsvjznPqZ5"
+    dir_size = 104726723
+    with session_factory() as session:
+        upsert_file(
+            session=session,
+            file_hash=dir_hash,
+            size=dir_size,
+            file_type=FileType.DIRECTORY,
+        )
+        session.commit()
+
+    url_dir = f"/api/v0/storage/metadata/{dir_hash}"
+    async with api_client.get(url_dir) as response:
+        assert response.status == 200
+        data = await response.json()
+        assert data["file_hash"] == dir_hash
+        assert data["type"] == "dir"
+        assert data["size"] == dir_size
