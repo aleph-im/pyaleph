@@ -240,6 +240,7 @@ class StorageService:
         tries: int = 1,
         use_network: bool = True,
         use_ipfs: bool = True,
+        file_type: FileType = FileType.FILE,
     ) -> StreamContent:
         # Try to retrieve the data from the DB, then from IPFS.
         # P2P retrieval via HTTP does not easily support streaming yet in this codebase
@@ -247,6 +248,8 @@ class StorageService:
 
         source = None
 
+        # Note: directories are always pinned on IPFS and never stored in the
+        # local storage engine, so this will be None for directory CIDs.
         content_iterator = await self.storage_engine.read_iterator(
             filename=content_hash
         )
@@ -258,16 +261,22 @@ class StorageService:
                 config = get_config()
                 ipfs_enabled = config.ipfs.enabled.value
                 if ipfs_enabled:
-                    content_iterator = (
-                        await self.ipfs_service.get_ipfs_content_iterator(content_hash)
-                    )
+                    if file_type == FileType.DIRECTORY:
+                        content_iterator = (
+                            self.ipfs_service.get_ipfs_directory_iterator(content_hash)
+                        )
+                    else:
+                        content_iterator = self.ipfs_service.get_ipfs_content_iterator(
+                            content_hash
+                        )
                     source = ContentSource.IPFS
 
-        if content_iterator is None:
-            # Fallback to non-streaming if only P2P is available or if streaming failed
+        if content_iterator is None and file_type != FileType.DIRECTORY:
+            # Fallback to non-streaming if only P2P is available or if streaming failed.
             # This is a bit suboptimal but keeps it working.
             # However, for GET /storage/raw/ we really want streaming.
-            # If we reach here and it's not in DB/IPFS, we might have to load it from P2P and then wrap it.
+            # Skipped for directories: the non-streaming path uses /cat which
+            # does not support directory CIDs.
             try:
                 content = await self.get_hash_content(
                     content_hash,
