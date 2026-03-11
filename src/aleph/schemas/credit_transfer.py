@@ -81,6 +81,13 @@ class CreditDistributionEntry(BaseModel):
     def amount_must_be_int(cls, v: object) -> int:
         return _validate_positive_int_amount(v)
 
+    @field_validator("price", mode="before")
+    @classmethod
+    def coerce_price_to_str(cls, v: object) -> object:
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            return str(v)
+        return v
+
     @field_validator("price")
     @classmethod
     def price_must_be_decimal(cls, v: str) -> str:
@@ -113,7 +120,7 @@ class CreditExpenseEntry(BaseModel):
     execution_id: Optional[str] = None
     node_id: Optional[str] = None
     price: Optional[str] = None
-    time: Optional[int] = None  # accepted but ignored
+    time: Optional[float] = None  # accepted but ignored
 
     @field_validator("address")
     @classmethod
@@ -124,6 +131,13 @@ class CreditExpenseEntry(BaseModel):
     @classmethod
     def amount_must_be_int(cls, v: object) -> int:
         return _validate_positive_int_amount(v)
+
+    @field_validator("price", mode="before")
+    @classmethod
+    def coerce_price_to_str(cls, v: object) -> object:
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            return str(v)
+        return v
 
     @field_validator("price")
     @classmethod

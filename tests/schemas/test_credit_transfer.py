@@ -194,6 +194,30 @@ class TestCreditDistributionContent:
                 }
             )
 
+    def test_numeric_price_accepted(self):
+        entry = CreditDistributionContent.model_validate(
+            {
+                "distribution": {
+                    "credits": [{**_VALID_DIST_ENTRY, "price": 0.000001}],
+                    "token": "ALEPH",
+                    "chain": "ETH",
+                }
+            }
+        ).distribution.credits[0]
+        assert entry.price == "1e-06"
+
+    def test_integer_price_accepted(self):
+        entry = CreditDistributionContent.model_validate(
+            {
+                "distribution": {
+                    "credits": [{**_VALID_DIST_ENTRY, "price": 1}],
+                    "token": "ALEPH",
+                    "chain": "ETH",
+                }
+            }
+        ).distribution.credits[0]
+        assert entry.price == "1"
+
     def test_invalid_price_rejected(self):
         with pytest.raises(ValidationError, match="decimal"):
             CreditDistributionContent.model_validate(
@@ -286,6 +310,16 @@ class TestCreditExpenseContent:
                 {"expense": {"credits": [{"address": "0xabc", "amount": "big"}]}}
             )
 
+    def test_numeric_price_accepted(self):
+        entry = CreditExpenseContent.model_validate(
+            {
+                "expense": {
+                    "credits": [{"address": "0xabc", "amount": 10, "price": 0.001}]
+                }
+            }
+        ).expense.credits[0]
+        assert entry.price == "0.001"
+
     def test_invalid_price_rejected(self):
         with pytest.raises(ValidationError, match="decimal"):
             CreditExpenseContent.model_validate(
@@ -307,3 +341,13 @@ class TestCreditExpenseContent:
             CreditExpenseContent.model_validate(
                 {"expense": {"credits": [{"address": "", "amount": 10}]}}
             )
+
+    def test_float_time_accepted(self):
+        entry = CreditExpenseContent.model_validate(
+            {
+                "expense": {
+                    "credits": [{"address": "0xabc", "amount": 10, "time": 3599.475}]
+                }
+            }
+        ).expense.credits[0]
+        assert entry.time == 3599.475
