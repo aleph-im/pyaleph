@@ -9,6 +9,7 @@ import jinja2
 from aiohttp import web
 from aiohttp_swagger3 import SwaggerDocs, SwaggerInfo, SwaggerUiSettings
 
+from aleph.version import get_version
 from aleph.web.controllers.routes import register_routes
 
 
@@ -41,7 +42,7 @@ def create_aiohttp_app(with_swagger: bool = True) -> web.Application:
         )
         swagger = SwaggerDocs(
             app,
-            info=SwaggerInfo(title="Aleph CCN API", version="0.9.3"),
+            info=SwaggerInfo(title="Aleph CCN API", version=get_version()),
             swagger_ui_settings=SwaggerUiSettings(path="/api/docs"),
             components=components_path,
             validate=False,
