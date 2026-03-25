@@ -44,7 +44,6 @@ from aleph.schemas.messages_query_params import (
     WsMessageQueryParams,
 )
 from aleph.toolkit.cursor import encode_cursor
-from aleph.toolkit.shield import shielded
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_status import MessageStatus, RemovedMessageReason
 from aleph.web.controllers.app_state_getters import (
@@ -457,9 +456,8 @@ async def _start_mq_consumer(
     return consumer_tag
 
 
-@shielded
 async def messages_ws(request: web.Request) -> web.WebSocketResponse:
-    ws = web.WebSocketResponse()
+    ws = web.WebSocketResponse(heartbeat=30.0)
     await ws.prepare(request)
 
     config = get_config_from_request(request)
@@ -510,8 +508,7 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
             # and only handle "close" messages.
             ws_msg = await ws.receive()
             LOGGER.debug("rx ws msg: %s", str(ws_msg))
-            if ws_msg.type == WSMsgType.CLOSE:
-                LOGGER.debug("ws close received")
+            if ws_msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR, WSMsgType.CLOSING):
                 break
 
     finally:

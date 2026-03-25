@@ -34,14 +34,14 @@ async def index(request: web.Request) -> Dict:
 
 
 async def status_ws(request: web.Request) -> web.WebSocketResponse:
-    ws = web.WebSocketResponse()
+    ws = web.WebSocketResponse(heartbeat=30.0)
     await ws.prepare(request)
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
     node_cache = get_node_cache_from_request(request)
 
     previous_status = None
-    while True:
+    while not ws.closed:
         status = await get_metrics(
             session_factory=session_factory, node_cache=node_cache
         )
@@ -49,13 +49,15 @@ async def status_ws(request: web.Request) -> web.WebSocketResponse:
         if status != previous_status:
             try:
                 await ws.send_json(asdict(status))
-            except ConnectionResetError:
-                logger.warning("Websocket connection reset")
-                await ws.close()
-                return ws
+            except (ConnectionResetError, ConnectionError):
+                break
             previous_status = status
 
         await asyncio.sleep(2)
+
+    if not ws.closed:
+        await ws.close()
+    return ws
 
 
 async def metrics(request: web.Request) -> web.Response:
