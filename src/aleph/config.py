@@ -260,6 +260,14 @@ def get_defaults():
             # TTL of the cache in front of DB count queries on the messages table.
             "message_count_cache_ttl": 300,
         },
+        "websocket": {
+            # Maximum concurrent message WebSocket connections.
+            "max_message_connections": 10000,
+            # Maximum concurrent status WebSocket connections.
+            "max_status_connections": 1000,
+            # WebSocket heartbeat interval in seconds (ping/pong).
+            "heartbeat": 30,
+        },
     }
 
 
