@@ -169,20 +169,38 @@ def test_update_credit_balances_expense_with_new_fields(
 
 def test_update_credit_balances_transfer(session_factory: DbSessionFactory):
     """Test direct database insertion for credit transfer messages."""
-    credits_list = [
-        {
-            "address": "0x789",  # recipient
-            "amount": 250,
-            "expiration": 1700000000000,  # timestamp in ms
-        }
-    ]
+    # Far-future expiration so this test never breaks due to real-world clock drift
+    future_expiration_dt = dt.datetime(2100, 1, 1, 0, 0, 0, tzinfo=dt.timezone.utc)
+    future_expiration_ms = int(future_expiration_dt.timestamp() * 1000)
 
+    dist_timestamp = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
     message_timestamp = dt.datetime(2023, 1, 3, 12, 0, 0, tzinfo=dt.timezone.utc)
 
     with session_factory() as session:
+        # Give sender enough credits with the same expiration as the transfer request
+        update_credit_balances_distribution(
+            session=session,
+            credits_list=[
+                {
+                    "address": "0xsender",
+                    "amount": 300,
+                    "price": "1.0",
+                    "tx_hash": "0xdist",
+                    "provider": "test_provider",
+                    "expiration": future_expiration_ms,
+                }
+            ],
+            token="ALEPH",
+            chain="ETH",
+            message_hash="dist_for_transfer_test",
+            message_timestamp=dist_timestamp,
+        )
+
         update_credit_balances_transfer(
             session=session,
-            credits_list=credits_list,
+            credits_list=[
+                {"address": "0x789", "amount": 250, "expiration": future_expiration_ms}
+            ],
             sender_address="0xsender",
             whitelisted_addresses=["0xwhitelisted"],
             message_hash="transfer_msg_456",
@@ -207,7 +225,7 @@ def test_update_credit_balances_transfer(session_factory: DbSessionFactory):
         )  # 250 * 10000
         assert recipient_record.address == "0x789"
         assert recipient_record.amount == 2500000  # 250 * 10000 multiplier
-        assert recipient_record.expiration_date is not None
+        assert recipient_record.expiration_date == future_expiration_dt
         assert recipient_record.provider == "ALEPH"
         assert recipient_record.payment_method == "credit_transfer"
         assert recipient_record.origin == "0xsender"
@@ -1191,3 +1209,213 @@ def test_get_resource_consumed_credits_uses_absolute_values(
             session=session, item_hash="resource_abs"
         )
         assert consumed_credits == 2500000
+
+
+# ---------------------------------------------------------------------------
+# Expiration propagation / re-transfer security tests
+# ---------------------------------------------------------------------------
+
+# Far-future timestamps so these tests never break due to real-world clock drift.
+# Relationships: Z < X < Y
+_EXP_X_DT = dt.datetime(2100, 1, 1, 0, 0, 0, tzinfo=dt.timezone.utc)
+_EXP_X_MS = int(_EXP_X_DT.timestamp() * 1000)
+_EXP_Y_DT = dt.datetime(2101, 1, 1, 0, 0, 0, tzinfo=dt.timezone.utc)  # later than X
+_EXP_Y_MS = int(_EXP_Y_DT.timestamp() * 1000)
+_EXP_Z_DT = dt.datetime(2099, 1, 1, 0, 0, 0, tzinfo=dt.timezone.utc)  # earlier than X
+_EXP_Z_MS = int(_EXP_Z_DT.timestamp() * 1000)
+
+_DIST_TS = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+_XFER_TS = dt.datetime(2023, 6, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+
+
+def _give_credits(
+    session,
+    address: str,
+    amount: int,
+    expiration_ms: int | None,
+    msg_hash: str,
+    msg_ts: dt.datetime,
+) -> None:
+    """Helper: distribute credits to an address."""
+    entry: dict = {
+        "address": address,
+        "amount": amount,
+        "price": "1.0",
+        "tx_hash": "0xdist",
+        "provider": "test_provider",
+    }
+    if expiration_ms is not None:
+        entry["expiration"] = expiration_ms
+    update_credit_balances_distribution(
+        session=session,
+        credits_list=[entry],
+        token="ALEPH",
+        chain="ETH",
+        message_hash=msg_hash,
+        message_timestamp=msg_ts,
+    )
+
+
+def test_transfer_expiration_propagated_to_recipient(
+    session_factory: DbSessionFactory,
+) -> None:
+    """Re-transferring without expiration inherits the source's expiration (X)."""
+    with session_factory() as session:
+        _give_credits(session, "0xB", 300, _EXP_X_MS, "dist_prop_1", _DIST_TS)
+
+        update_credit_balances_transfer(
+            session=session,
+            credits_list=[{"address": "0xC", "amount": 200, "expiration": None}],
+            sender_address="0xB",
+            whitelisted_addresses=[],
+            message_hash="xfer_prop_1",
+            message_timestamp=_XFER_TS,
+        )
+        session.commit()
+
+        recipient_records = (
+            session.query(AlephCreditHistoryDb)
+            .filter_by(credit_ref="xfer_prop_1")
+            .filter(AlephCreditHistoryDb.amount > 0)
+            .all()
+        )
+        assert len(recipient_records) == 1
+        assert recipient_records[0].expiration_date == _EXP_X_DT
+
+
+def test_transfer_later_expiration_capped_to_source(
+    session_factory: DbSessionFactory,
+) -> None:
+    """Re-transferring with a later expiration (Y > X) is capped to X."""
+    with session_factory() as session:
+        _give_credits(session, "0xB", 300, _EXP_X_MS, "dist_cap_1", _DIST_TS)
+
+        update_credit_balances_transfer(
+            session=session,
+            credits_list=[{"address": "0xC", "amount": 200, "expiration": _EXP_Y_MS}],
+            sender_address="0xB",
+            whitelisted_addresses=[],
+            message_hash="xfer_cap_1",
+            message_timestamp=_XFER_TS,
+        )
+        session.commit()
+
+        recipient_records = (
+            session.query(AlephCreditHistoryDb)
+            .filter_by(credit_ref="xfer_cap_1")
+            .filter(AlephCreditHistoryDb.amount > 0)
+            .all()
+        )
+        assert len(recipient_records) == 1
+        # Capped at source expiration X, not the requested Y
+        assert recipient_records[0].expiration_date == _EXP_X_DT
+
+
+def test_transfer_earlier_expiration_kept(
+    session_factory: DbSessionFactory,
+) -> None:
+    """Re-transferring with an earlier expiration (Z < X) keeps Z."""
+    with session_factory() as session:
+        _give_credits(session, "0xB", 300, _EXP_X_MS, "dist_early_1", _DIST_TS)
+
+        update_credit_balances_transfer(
+            session=session,
+            credits_list=[{"address": "0xC", "amount": 200, "expiration": _EXP_Z_MS}],
+            sender_address="0xB",
+            whitelisted_addresses=[],
+            message_hash="xfer_early_1",
+            message_timestamp=_XFER_TS,
+        )
+        session.commit()
+
+        recipient_records = (
+            session.query(AlephCreditHistoryDb)
+            .filter_by(credit_ref="xfer_early_1")
+            .filter(AlephCreditHistoryDb.amount > 0)
+            .all()
+        )
+        assert len(recipient_records) == 1
+        # Z is more restrictive than X — keep Z
+        assert recipient_records[0].expiration_date == _EXP_Z_DT
+
+
+def test_mixed_credits_transfer_split_entries(
+    session_factory: DbSessionFactory,
+) -> None:
+    """
+    Sender has 100 expiring credits (oldest) + 200 non-expiring credits.
+    Transferring 250 → recipient gets 2 entries: 100 expiring at X, 150 with no expiration.
+    After X, recipient can only spend the 150 non-expiring credits.
+    """
+    dist2_ts = dt.datetime(2023, 2, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+
+    with session_factory() as session:
+        # Oldest batch: 100 credits expiring at X
+        _give_credits(session, "0xB", 100, _EXP_X_MS, "dist_mixed_1", _DIST_TS)
+        # Newer batch: 200 credits with no expiration
+        _give_credits(session, "0xB", 200, None, "dist_mixed_2", dist2_ts)
+
+        update_credit_balances_transfer(
+            session=session,
+            credits_list=[{"address": "0xC", "amount": 250, "expiration": None}],
+            sender_address="0xB",
+            whitelisted_addresses=[],
+            message_hash="xfer_mixed_1",
+            message_timestamp=_XFER_TS,
+        )
+        session.commit()
+
+        recipient_records = (
+            session.query(AlephCreditHistoryDb)
+            .filter_by(credit_ref="xfer_mixed_1")
+            .filter(AlephCreditHistoryDb.amount > 0)
+            .order_by(AlephCreditHistoryDb.credit_index)
+            .all()
+        )
+        # Two entries: one for the expiring slice, one for the permanent slice
+        assert len(recipient_records) == 2
+
+        expiring_entry = next(
+            r for r in recipient_records if r.expiration_date is not None
+        )
+        permanent_entry = next(
+            r for r in recipient_records if r.expiration_date is None
+        )
+
+        assert expiring_entry.amount == 1000000  # 100 * 10000 multiplier
+        assert expiring_entry.expiration_date == _EXP_X_DT
+        assert permanent_entry.amount == 1500000  # 150 * 10000 multiplier
+        assert permanent_entry.expiration_date is None
+
+        # After X expires, 0xC can only spend the 150 permanent credits
+        # Check balance one day after X expires — only the permanent slice should remain
+        balance_after_x = get_credit_balance(
+            session, "0xC", now=_EXP_X_DT + dt.timedelta(days=1)
+        )
+        assert balance_after_x == 1500000  # 150 * 10000
+
+
+def test_whitelisted_sender_expiration_not_constrained(
+    session_factory: DbSessionFactory,
+) -> None:
+    """Whitelisted senders are not constrained — recipient keeps the requested expiration."""
+    with session_factory() as session:
+        update_credit_balances_transfer(
+            session=session,
+            credits_list=[{"address": "0xC", "amount": 100, "expiration": _EXP_Y_MS}],
+            sender_address="0xwhitelisted",
+            whitelisted_addresses=["0xwhitelisted"],
+            message_hash="xfer_whitelist_1",
+            message_timestamp=_XFER_TS,
+        )
+        session.commit()
+
+        recipient_records = (
+            session.query(AlephCreditHistoryDb)
+            .filter_by(credit_ref="xfer_whitelist_1")
+            .filter(AlephCreditHistoryDb.amount > 0)
+            .all()
+        )
+        assert len(recipient_records) == 1
+        # No source-credit constraint for whitelisted senders: Y is kept as-is
+        assert recipient_records[0].expiration_date == _EXP_Y_DT

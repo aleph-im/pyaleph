@@ -240,23 +240,18 @@ class NegativeAmount:
     timestamp: dt.datetime
 
 
-def _calculate_credit_balance_fifo(
+def _get_remaining_credits_fifo(
     session: DbSession, address: str, now: Optional[dt.datetime] = None
-) -> int:
+) -> list[PositiveCredit]:
     """
-    Calculate credit balance using FIFO consumption strategy.
+    Fetch all positive credits for the address and apply all existing debits via FIFO.
 
-    This function implements the core FIFO logic:
-    1. Get all positive credits (ordered by message_timestamp)
-    2. Get all negative amounts (expenses/transfers)
-    3. Apply negative amounts to oldest credits first, but only if the expense
-       occurred before the credit's expiration date
-    4. Return remaining balance considering current expiration status
+    Returns the list of PositiveCredit objects with `.remaining` reflecting how many
+    credits are still unconsumed after all past expenses/transfers. Expired credits are
+    included in the returned list — callers are responsible for filtering by expiration.
     """
-
     now = now if now is not None else utc_now()
 
-    # Get all credit history for this address, ordered by message timestamp
     records = (
         session.execute(
             select(AlephCreditHistoryDb)
@@ -267,9 +262,8 @@ def _calculate_credit_balance_fifo(
         .all()
     )
 
-    # Separate positive credits and negative amounts
-    positive_credits = []
-    negative_amounts = []
+    positive_credits: list[PositiveCredit] = []
+    negative_amounts: list[NegativeAmount] = []
 
     for record in records:
         if record.amount > 0:
@@ -288,34 +282,94 @@ def _calculate_credit_balance_fifo(
                 )
             )
 
-    # Apply negative amounts using FIFO strategy
     for expense in negative_amounts:
         remaining_expense = expense.amount
-
-        # Consume from oldest credits first
         for credit in positive_credits:
             if remaining_expense <= 0:
                 break
-
-            # Can only consume if expense happened before credit expiration
-            # If credit has no expiration (None), expense can always consume
-            # If credit has expiration, expense must have occurred before expiration
             expense_valid = (
                 credit.expiration_date is None
                 or expense.timestamp < credit.expiration_date
             )
-
             if expense_valid and credit.remaining > 0:
                 consumed = min(credit.remaining, remaining_expense)
                 credit.remaining -= consumed
                 remaining_expense -= consumed
 
-    # Sum remaining balances from currently non-expired credits
-    total_balance = 0
-    for credit in positive_credits:
-        if credit.expiration_date is None or credit.expiration_date > now:
-            total_balance += credit.remaining
+    return positive_credits
 
+
+def _compute_transfer_entries_by_expiration(
+    remaining_credits: list[PositiveCredit],
+    amount: int,
+    requested_expiration: Optional[dt.datetime],
+    now: dt.datetime,
+) -> list[tuple[int, Optional[dt.datetime]]]:
+    """
+    Simulate consuming `amount` from `remaining_credits` (FIFO, non-expired only) and
+    return a list of (portion_amount, effective_expiration) pairs.
+
+    The effective expiration for each portion is:
+      min(source_credit.expiration_date, requested_expiration)
+    where None means no expiration.
+
+    Adjacent portions with the same effective expiration are merged into one entry.
+    This prevents a re-transfer from extending or removing the original expiration
+    constraint placed on the source credits.
+    """
+    result: list[tuple[int, Optional[dt.datetime]]] = []
+    remaining_to_consume = amount
+
+    for credit in remaining_credits:
+        if remaining_to_consume <= 0:
+            break
+        if credit.expiration_date is not None and credit.expiration_date <= now:
+            continue
+        if credit.remaining <= 0:
+            continue
+
+        consumed = min(credit.remaining, remaining_to_consume)
+        remaining_to_consume -= consumed
+
+        # Effective expiration: most restrictive of source and requested
+        if credit.expiration_date is not None:
+            effective_exp: Optional[dt.datetime] = (
+                credit.expiration_date
+                if requested_expiration is None
+                else min(credit.expiration_date, requested_expiration)
+            )
+        else:
+            effective_exp = requested_expiration
+
+        # Merge with previous entry if same effective expiration
+        if result and result[-1][1] == effective_exp:
+            result[-1] = (result[-1][0] + consumed, effective_exp)
+        else:
+            result.append((consumed, effective_exp))
+
+    return result
+
+
+def _calculate_credit_balance_fifo(
+    session: DbSession, address: str, now: Optional[dt.datetime] = None
+) -> int:
+    """
+    Calculate credit balance using FIFO consumption strategy.
+
+    This function implements the core FIFO logic:
+    1. Get all positive credits (ordered by message_timestamp)
+    2. Get all negative amounts (expenses/transfers)
+    3. Apply negative amounts to oldest credits first, but only if the expense
+       occurred before the credit's expiration date
+    4. Return remaining balance considering current expiration status
+    """
+    now = now if now is not None else utc_now()
+    positive_credits = _get_remaining_credits_fifo(session, address, now)
+    total_balance = sum(
+        c.remaining
+        for c in positive_credits
+        if c.expiration_date is None or c.expiration_date > now
+    )
     return max(0, total_balance)
 
 
@@ -648,15 +702,30 @@ def update_credit_balances_transfer(
     Updates credit balances for transfer messages (aleph_credit_transfer).
 
     Transfer messages involve two entries per transfer:
+    - One or more positive entries for the recipient (adding credits)
     - One negative entry for the sender (subtracting credits)
-    - One positive entry for the recipient (adding credits)
 
-    Special case: If sender is in the whitelisted addresses, only add credits to recipient.
+    When a non-whitelisted sender re-transfers credits they received with an expiration
+    date, the recipient's credits are capped at the original expiration — preventing
+    bypass of expiration constraints through re-transfers. If the sender's credits have
+    mixed expirations, multiple positive entries are created for the recipient (one per
+    expiration group).
+
+    Special case: If sender is in the whitelisted addresses, only add credits to recipient
+    using the requested expiration as-is (whitelisted senders create credits from nothing).
     """
 
     last_update = utc_now()
     csv_rows = []
     index = 0
+    is_whitelisted = sender_address in whitelisted_addresses
+
+    # Compute sender's remaining credits once for all entries in this transfer
+    sender_remaining: list[PositiveCredit] = []
+    if not is_whitelisted:
+        sender_remaining = _get_remaining_credits_fifo(
+            session, sender_address, last_update
+        )
 
     for credit_entry in credits_list:
         recipient_address = credit_entry["address"]
@@ -665,38 +734,53 @@ def update_credit_balances_transfer(
         expiration_timestamp = credit_entry.get("expiration") or None
 
         # Convert expiration timestamp to datetime
-        expiration_date = (
+        requested_expiration = (
             dt.datetime.fromtimestamp(expiration_timestamp / 1000, tz=dt.timezone.utc)
             if expiration_timestamp is not None
             else None
         )
 
-        # Add positive entry for recipient (origin = sender, provider = ALEPH, payment_method = credit_transfer)
-        csv_rows.append(
-            _format_csv_row(
-                recipient_address,
-                amount,
-                message_hash,
-                index,
-                message_timestamp,
-                last_update,
-                "",
-                "",
-                "",
-                expiration_date or "",
-                "",
-                "",
-                sender_address,
-                "ALEPH",
-                "",
-                "credit_transfer",
+        if is_whitelisted:
+            # Whitelisted senders are not constrained by source credits
+            entries: list[tuple[int, Optional[dt.datetime]]] = [
+                (amount, requested_expiration)
+            ]
+        else:
+            entries = _compute_transfer_entries_by_expiration(
+                sender_remaining, amount, requested_expiration, last_update
             )
-        )
-        index += 1
+            # Fallback for edge cases where sender credits are not tracked
+            # (e.g. whitelisted distributions not recorded in history)
+            if not entries:
+                entries = [(amount, requested_expiration)]
+
+        # Add positive entries for recipient (one per expiration group)
+        for entry_amount, entry_expiration in entries:
+            csv_rows.append(
+                _format_csv_row(
+                    recipient_address,
+                    entry_amount,
+                    message_hash,
+                    index,
+                    message_timestamp,
+                    last_update,
+                    "",
+                    "",
+                    "",
+                    entry_expiration or "",
+                    "",
+                    "",
+                    sender_address,
+                    "ALEPH",
+                    "",
+                    "credit_transfer",
+                )
+            )
+            index += 1
 
         # Add negative entry for sender (unless sender is in whitelisted addresses)
         # (origin = recipient, provider = ALEPH, payment_method = credit_transfer)
-        if sender_address not in whitelisted_addresses:
+        if not is_whitelisted:
             csv_rows.append(
                 _format_csv_row(
                     sender_address,
