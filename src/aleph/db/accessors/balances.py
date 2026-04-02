@@ -306,8 +306,11 @@ def _compute_transfer_entries_by_expiration(
     now: dt.datetime,
 ) -> list[tuple[int, Optional[dt.datetime]]]:
     """
-    Simulate consuming `amount` from `remaining_credits` (FIFO, non-expired only) and
-    return a list of (portion_amount, effective_expiration) pairs.
+    Simulate consuming `amount` from `remaining_credits` (FIFO order) and return a list
+    of (portion_amount, effective_expiration) pairs.
+
+    Credits are consumed in the same FIFO order used by the balance calculation, so the
+    expiration assignment for the recipient is consistent with the sender's accounting.
 
     The effective expiration for each portion is:
       min(source_credit.expiration_date, requested_expiration)

@@ -1344,8 +1344,13 @@ def test_mixed_credits_transfer_split_entries(
 ) -> None:
     """
     Sender has 100 expiring credits (oldest) + 200 non-expiring credits.
-    Transferring 250 → recipient gets 2 entries: 100 expiring at X, 150 with no expiration.
-    After X, recipient can only spend the 150 non-expiring credits.
+    Transferring 250 → FIFO consumes 100 expiring first, then 150 non-expiring, so
+    recipient gets two entries: 100 expiring at X + 150 non-expiring.
+    After X, recipient can only spend the 150 permanent credits.
+
+    FIFO is intentionally used for both the transfer assignment and the balance
+    calculation to keep accounting consistent and prevent expiring credits from
+    being laundered into non-expiring ones via a transfer.
     """
     dist2_ts = dt.datetime(2023, 2, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
 
@@ -1372,7 +1377,7 @@ def test_mixed_credits_transfer_split_entries(
             .order_by(AlephCreditHistoryDb.credit_index)
             .all()
         )
-        # Two entries: one for the expiring slice, one for the permanent slice
+        # Two entries: expiring slice first (FIFO), then permanent slice
         assert len(recipient_records) == 2
 
         expiring_entry = next(
@@ -1388,7 +1393,6 @@ def test_mixed_credits_transfer_split_entries(
         assert permanent_entry.expiration_date is None
 
         # After X expires, 0xC can only spend the 150 permanent credits
-        # Check balance one day after X expires — only the permanent slice should remain
         balance_after_x = get_credit_balance(
             session, "0xC", now=_EXP_X_DT + dt.timedelta(days=1)
         )
@@ -1419,3 +1423,118 @@ def test_whitelisted_sender_expiration_not_constrained(
         assert len(recipient_records) == 1
         # No source-credit constraint for whitelisted senders: Y is kept as-is
         assert recipient_records[0].expiration_date == _EXP_Y_DT
+
+
+def test_chain_transfer_a_b_c_expiration_and_balances(
+    session_factory: DbSessionFactory,
+) -> None:
+    """
+    Full A → B → C chain with progressive expiration reduction.
+
+    Setup:
+      A receives 100 non-expiring + 100 expiring at EXP_A (year 2400)
+
+    Step 1 — A transfers 150 to B, capping expiration at EXP_B (year 2200 < 2400):
+      FIFO consumes 100 expiring-at-EXP_A first, then 50 non-expiring.
+      Both slices get effective_exp = min(EXP_A, EXP_B) = EXP_B and min(None, EXP_B) = EXP_B,
+      so they merge into one entry: 150 credits expiring at EXP_B.
+
+    Step 2 — B transfers 50 to C, capping expiration at EXP_C (year 2100 < 2200):
+      B has 150 expiring at EXP_B; FIFO consumes 50 → C gets 50 expiring at EXP_C.
+
+    Expected final balances (in multiplied units, 1 credit = 10_000 internal units):
+      A: 50 non-expiring (always 500_000 regardless of time)
+      B: 100 expiring at EXP_B (1_000_000 before EXP_B, 0 after)
+      C: 50 expiring at EXP_C  (500_000 before EXP_C, 0 after)
+    """
+    # Far-future expirations that form a clear chain: EXP_C < EXP_B < EXP_A
+    exp_a_dt = dt.datetime(2400, 1, 1, tzinfo=dt.timezone.utc)
+    exp_a_ms = int(exp_a_dt.timestamp() * 1000)
+    exp_b_dt = dt.datetime(2200, 1, 1, tzinfo=dt.timezone.utc)
+    exp_b_ms = int(exp_b_dt.timestamp() * 1000)
+    exp_c_dt = dt.datetime(2100, 1, 1, tzinfo=dt.timezone.utc)
+    exp_c_ms = int(exp_c_dt.timestamp() * 1000)
+
+    dist1_ts = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+    dist2_ts = dt.datetime(2023, 2, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+    xfer_ab_ts = dt.datetime(2023, 3, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+    xfer_bc_ts = dt.datetime(2023, 4, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+
+    MUL = 10_000  # precision multiplier for pre-cutoff messages
+
+    with session_factory() as session:
+        # --- Setup: give A two credit pools ---
+        _give_credits(
+            session, "0xA", 100, exp_a_ms, "dist_chain_1", dist1_ts
+        )  # 100 expiring
+        _give_credits(
+            session, "0xA", 100, None, "dist_chain_2", dist2_ts
+        )  # 100 permanent
+
+        # --- Step 1: A transfers 150 to B, capping at EXP_B ---
+        update_credit_balances_transfer(
+            session=session,
+            credits_list=[{"address": "0xB", "amount": 150, "expiration": exp_b_ms}],
+            sender_address="0xA",
+            whitelisted_addresses=[],
+            message_hash="xfer_ab_chain",
+            message_timestamp=xfer_ab_ts,
+        )
+        session.commit()
+
+        # B should have one merged entry: 150 * MUL expiring at EXP_B
+        b_records = (
+            session.query(AlephCreditHistoryDb)
+            .filter_by(credit_ref="xfer_ab_chain")
+            .filter(AlephCreditHistoryDb.amount > 0)
+            .all()
+        )
+        assert len(b_records) == 1, "both slices share EXP_B so they must merge"
+        assert b_records[0].amount == 150 * MUL
+        assert b_records[0].expiration_date == exp_b_dt
+
+        # --- Step 2: B transfers 50 to C, capping at EXP_C ---
+        update_credit_balances_transfer(
+            session=session,
+            credits_list=[{"address": "0xC", "amount": 50, "expiration": exp_c_ms}],
+            sender_address="0xB",
+            whitelisted_addresses=[],
+            message_hash="xfer_bc_chain",
+            message_timestamp=xfer_bc_ts,
+        )
+        session.commit()
+
+        # C should have one entry: 50 * MUL expiring at EXP_C
+        c_records = (
+            session.query(AlephCreditHistoryDb)
+            .filter_by(credit_ref="xfer_bc_chain")
+            .filter(AlephCreditHistoryDb.amount > 0)
+            .all()
+        )
+        assert len(c_records) == 1
+        assert c_records[0].amount == 50 * MUL
+        assert c_records[0].expiration_date == exp_c_dt
+
+        # --- Balance checks before any expiration ---
+        now_before = dt.datetime(2099, 1, 1, tzinfo=dt.timezone.utc)
+        assert get_credit_balance(session, "0xA", now=now_before) == 50 * MUL
+        assert get_credit_balance(session, "0xB", now=now_before) == 100 * MUL
+        assert get_credit_balance(session, "0xC", now=now_before) == 50 * MUL
+
+        # --- After EXP_C: C's credits expire, A and B unchanged ---
+        now_after_c = exp_c_dt + dt.timedelta(days=1)
+        assert get_credit_balance(session, "0xA", now=now_after_c) == 50 * MUL
+        assert get_credit_balance(session, "0xB", now=now_after_c) == 100 * MUL
+        assert get_credit_balance(session, "0xC", now=now_after_c) == 0
+
+        # --- After EXP_B: B's credits expire too, A still has permanent credits ---
+        now_after_b = exp_b_dt + dt.timedelta(days=1)
+        assert get_credit_balance(session, "0xA", now=now_after_b) == 50 * MUL
+        assert get_credit_balance(session, "0xB", now=now_after_b) == 0
+        assert get_credit_balance(session, "0xC", now=now_after_b) == 0
+
+        # --- After EXP_A: all expiring pools gone, A's permanent slice survives ---
+        now_after_a = exp_a_dt + dt.timedelta(days=1)
+        assert get_credit_balance(session, "0xA", now=now_after_a) == 50 * MUL
+        assert get_credit_balance(session, "0xB", now=now_after_a) == 0
+        assert get_credit_balance(session, "0xC", now=now_after_a) == 0
