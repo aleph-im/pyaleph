@@ -1,11 +1,13 @@
+import asyncio
 import json
 import logging
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Set
 
 import aio_pika.abc
 import aiohttp.web_ws
-from aiohttp import WSMsgType, web
+from aiohttp import WSCloseCode, WSMsgType, web
 from aleph_message.models import ItemHash, MessageType
+from configmanager import Config
 from pydantic import ValidationError
 from sqlalchemy.orm import defer
 
@@ -44,12 +46,11 @@ from aleph.schemas.messages_query_params import (
     WsMessageQueryParams,
 )
 from aleph.toolkit.cursor import encode_cursor
-from aleph.toolkit.shield import shielded
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_status import MessageStatus, RemovedMessageReason
 from aleph.web.controllers.app_state_getters import (
+    APP_STATE_MESSAGE_BROADCASTER,
     get_config_from_request,
-    get_mq_ws_channel_from_request,
     get_node_cache_from_request,
     get_session_factory_from_request,
 )
@@ -59,6 +60,207 @@ from aleph.web.controllers.utils import (
 )
 
 LOGGER = logging.getLogger(__name__)
+
+
+_SEND_BATCH_SIZE = 100
+_HEALTH_CHECK_INTERVAL = 5
+
+
+class _WsClient:
+    """A connected WS client with its filter params."""
+
+    def __init__(
+        self,
+        ws: web.WebSocketResponse,
+        query_params: WsMessageQueryParams,
+        exclude_content: bool,
+    ):
+        self.ws = ws
+        self.query_params = query_params
+        self.exclude_content = exclude_content
+
+
+class MessageBroadcaster:
+    """Single MQ consumer that fans out messages to all connected WS clients."""
+
+    def __init__(
+        self,
+        mq_conn: aio_pika.abc.AbstractConnection,
+        config: Config,
+    ):
+        self._mq_conn = mq_conn
+        self._config = config
+        self._clients: Set[_WsClient] = set()
+        self._channel: Optional[aio_pika.abc.AbstractChannel] = None
+        self._queue: Optional[aio_pika.abc.AbstractQueue] = None
+        self._consumer_tag: Optional[aio_pika.abc.ConsumerTag] = None
+        self._health_task: Optional[asyncio.Task] = None
+
+        # Connection limit
+        self.max_connections: int = config.websocket.max_message_connections.value
+        self._semaphore = asyncio.Semaphore(self.max_connections)
+
+        # Metrics
+        self.broadcast_total: int = 0
+        self.connections_rejected_total: int = 0
+        self.consumer_restarts_total: int = 0
+
+    @property
+    def active_connections(self) -> int:
+        return len(self._clients)
+
+    @property
+    def is_at_capacity(self) -> bool:
+        return self._semaphore.locked()
+
+    def acquire_slot(self) -> asyncio.Semaphore:
+        return self._semaphore
+
+    async def _start_consumer(self):
+        """Create channel, queue, and consumer."""
+        self._channel = await self._mq_conn.channel()
+        self._queue = await mq_make_aleph_message_topic_queue(
+            channel=self._channel,
+            config=self._config,
+            routing_key="processed.*",
+        )
+        self._consumer_tag = await self._queue.consume(self._on_message, no_ack=True)
+        LOGGER.info("MessageBroadcaster: started MQ consumer")
+
+    async def _stop_consumer(self):
+        """Stop the MQ consumer and clean up resources."""
+        if self._consumer_tag and self._queue:
+            try:
+                await self._queue.cancel(self._consumer_tag)
+            except Exception:
+                LOGGER.warning("Failed to cancel broadcaster consumer", exc_info=True)
+        self._consumer_tag = None
+
+        if self._queue:
+            try:
+                await self._queue.delete(if_unused=False, if_empty=False)
+            except Exception:
+                LOGGER.warning("Failed to delete broadcaster queue", exc_info=True)
+        self._queue = None
+
+        if self._channel:
+            try:
+                await self._channel.close()
+            except Exception:
+                LOGGER.warning("Failed to close broadcaster channel", exc_info=True)
+        self._channel = None
+
+        LOGGER.info("MessageBroadcaster: stopped MQ consumer")
+
+    async def _restart_consumer(self):
+        """Restart the consumer after a channel failure."""
+        self.consumer_restarts_total += 1
+        LOGGER.warning(
+            "MessageBroadcaster: restarting consumer (restart #%d)",
+            self.consumer_restarts_total,
+        )
+        await self._stop_consumer()
+        try:
+            await self._start_consumer()
+        except Exception:
+            LOGGER.exception("MessageBroadcaster: failed to restart consumer")
+
+    async def _health_check_loop(self):
+        """Periodic health check that restarts the consumer if the channel dies."""
+        try:
+            while self._clients:
+                await asyncio.sleep(_HEALTH_CHECK_INTERVAL)
+                if not self._clients:
+                    break
+                if self._channel is None or self._channel.is_closed:
+                    await self._restart_consumer()
+        except asyncio.CancelledError:
+            LOGGER.debug("MessageBroadcaster: health check loop cancelled")
+
+    async def add(self, client: _WsClient):
+        self._clients.add(client)
+        if self._consumer_tag is None:
+            await self._start_consumer()
+        if self._health_task is None or self._health_task.done():
+            self._health_task = asyncio.create_task(self._health_check_loop())
+
+    async def remove(self, client: _WsClient):
+        self._clients.discard(client)
+        if not self._clients:
+            if self._health_task and not self._health_task.done():
+                self._health_task.cancel()
+                self._health_task = None
+            await self._stop_consumer()
+
+    async def shutdown(self):
+        """Graceful shutdown — called from aiohttp on_cleanup."""
+        if self._health_task and not self._health_task.done():
+            self._health_task.cancel()
+            self._health_task = None
+        await self._stop_consumer()
+        self._clients.clear()
+
+    async def _on_message(self, mq_message: aio_pika.abc.AbstractMessage):
+        """Called for each message from RabbitMQ. Fan out to matching clients."""
+        try:
+            payload_bytes = mq_message.body
+            payload_dict = aleph_json.loads(payload_bytes)
+            message = format_message_dict(payload_dict["message"])
+        except Exception:
+            LOGGER.exception("MessageBroadcaster: failed to parse MQ message")
+            return
+
+        self.broadcast_total += 1
+        clients = list(self._clients)
+        if not clients:
+            return
+
+        # Lazy-serialize only the variants that clients actually need
+        needs_full = any(not c.exclude_content for c in clients)
+        needs_no_content = any(c.exclude_content for c in clients)
+        json_full = message.model_dump_json() if needs_full else ""
+        json_no_content = (
+            message.model_dump_json(exclude={"content"}) if needs_no_content else ""
+        )
+
+        # Send in batches to avoid event loop starvation with many clients
+        for i in range(0, len(clients), _SEND_BATCH_SIZE):
+            batch = clients[i : i + _SEND_BATCH_SIZE]
+            results = await asyncio.gather(
+                *[
+                    self._send_to_client(client, message, json_full, json_no_content)
+                    for client in batch
+                ],
+                return_exceptions=True,
+            )
+            for client, result in zip(batch, results):
+                if isinstance(result, Exception):
+                    LOGGER.debug(
+                        "MessageBroadcaster: error sending to client: %s",
+                        result,
+                    )
+                    continue
+                if result is False:
+                    self._clients.discard(client)
+
+    async def _send_to_client(
+        self,
+        client: _WsClient,
+        message: AlephMessage,
+        json_full: str,
+        json_no_content: str,
+    ) -> bool:
+        """Send a message to a single client. Returns False if client is dead."""
+        if client.ws.closed:
+            return False
+        if not message_matches_filters(message, client.query_params):
+            return True
+        try:
+            payload = json_no_content if client.exclude_content else json_full
+            await client.ws.send_str(payload)
+            return True
+        except (ConnectionResetError, ConnectionError):
+            return False
 
 
 def message_to_dict(
@@ -418,114 +620,64 @@ def message_matches_filters(
     return True
 
 
-async def _start_mq_consumer(
-    ws: aiohttp.web_ws.WebSocketResponse,
-    mq_queue: aio_pika.abc.AbstractQueue,
-    query_params: WsMessageQueryParams,
-    exclude_content: bool = False,
-) -> aio_pika.abc.ConsumerTag:
-    """
-    Starts the consumer task responsible for forwarding new aleph.im messages from
-    the processing pipeline to a websocket.
-
-    :param ws: Websocket.
-    :param mq_queue: Message queue object.
-    :param query_params: Message filters specified by the caller.
-    :param exclude_content: If True, strip content from outgoing messages.
-    """
-
-    async def _process_message(mq_message: aio_pika.abc.AbstractMessage):
-        payload_bytes = mq_message.body
-        payload_dict = aleph_json.loads(payload_bytes)
-        message = format_message_dict(payload_dict["message"])
-
-        if message_matches_filters(message=message, query_params=query_params):
-            try:
-                dump_exclude = {"content"} if exclude_content else None
-                await ws.send_str(message.model_dump_json(exclude=dump_exclude))
-            except ConnectionResetError:
-                # We can detect the WS closing in this task in addition to the main one.
-                # The main task will also detect the close event.
-                # We just ignore this exception to avoid the "task exception was never retrieved"
-                # warning.
-                LOGGER.info("Cannot send messages because the websocket is closed")
-
-    # Note that we use the consume pattern here instead of using the `queue.iterator()`
-    # pattern because cancelling the iterator attempts to close the queue and channel.
-    # See discussion here: https://github.com/mosquito/aio-pika/issues/358
-    consumer_tag = await mq_queue.consume(_process_message, no_ack=True)
-    return consumer_tag
-
-
-@shielded
 async def messages_ws(request: web.Request) -> web.WebSocketResponse:
-    ws = web.WebSocketResponse()
+    config = get_config_from_request(request)
+    heartbeat = config.websocket.heartbeat.value
+
+    ws = web.WebSocketResponse(heartbeat=float(heartbeat))
     await ws.prepare(request)
 
-    config = get_config_from_request(request)
-    session_factory = get_session_factory_from_request(request)
-    mq_channel = await get_mq_ws_channel_from_request(request=request, logger=LOGGER)
+    broadcaster: MessageBroadcaster = request.app[APP_STATE_MESSAGE_BROADCASTER]
 
-    try:
-        query_params = WsMessageQueryParams.model_validate(request.query)
-    except ValidationError as e:
-        raise web.HTTPUnprocessableEntity(text=e.json())
+    if broadcaster.is_at_capacity:
+        broadcaster.connections_rejected_total += 1
+        LOGGER.warning(
+            "WebSocket connection limit reached (%d)", broadcaster.max_connections
+        )
+        await ws.close(
+            code=WSCloseCode.TRY_AGAIN_LATER, message=b"Too many connections"
+        )
+        return ws
 
-    history = query_params.history
+    async with broadcaster.acquire_slot():
+        session_factory = get_session_factory_from_request(request)
 
-    if history:
         try:
-            await _send_history_to_ws(
-                ws=ws,
-                session_factory=session_factory,
-                history=history,
-                query_params=query_params,
-            )
-        except ConnectionResetError:
-            LOGGER.info("Could not send history, aborting message websocket")
-            return ws
+            query_params = WsMessageQueryParams.model_validate(request.query)
+        except ValidationError as e:
+            raise web.HTTPUnprocessableEntity(text=e.json())
 
-    mq_queue = await mq_make_aleph_message_topic_queue(
-        channel=mq_channel, config=config, routing_key="processed.*"
-    )
-    consumer_tag = None
+        history = query_params.history
 
-    try:
-        # Start a task to handle outgoing traffic to the websocket.
-        consumer_tag = await _start_mq_consumer(
-            ws=ws,
-            mq_queue=mq_queue,
-            query_params=query_params,
-            exclude_content=query_params.exclude_content,
-        )
-        LOGGER.debug(
-            "Started consuming mq %s for websocket. Consumer tag: %s",
-            mq_queue.name,
-            consumer_tag,
-        )
+        if history:
+            try:
+                await _send_history_to_ws(
+                    ws=ws,
+                    session_factory=session_factory,
+                    history=history,
+                    query_params=query_params,
+                )
+            except ConnectionResetError:
+                LOGGER.info("Could not send history, aborting message websocket")
+                return ws
 
-        # Wait for the websocket to close.
-        while not ws.closed:
-            # Users can potentially send anything to the websocket. Ignore these messages
-            # and only handle "close" messages.
-            ws_msg = await ws.receive()
-            LOGGER.debug("rx ws msg: %s", str(ws_msg))
-            if ws_msg.type == WSMsgType.CLOSE:
-                LOGGER.debug("ws close received")
-                break
+        client = _WsClient(ws, query_params, query_params.exclude_content)
+        await broadcaster.add(client)
 
-    finally:
-        # In theory, we should cancel the consumer with `mq_queue.cancel()` before deleting the queue.
-        # In practice, this sometimes leads to an RPC timeout that closes the channel.
-        # To avoid this situation, we just delete the queue directly.
-        # Note that even if the queue is in auto-delete mode, it will only be deleted automatically
-        # once the channel closes. We delete it manually to avoid keeping queues around.
-        if consumer_tag:
-            LOGGER.info("Deleting consumer %s (queue: %s)", consumer_tag, mq_queue.name)
-            await mq_queue.cancel(consumer_tag=consumer_tag)
-
-        LOGGER.info("Deleting queue: %s", mq_queue.name)
-        await mq_queue.delete(if_unused=False, if_empty=False)
+        try:
+            while not ws.closed:
+                ws_msg = await ws.receive()
+                LOGGER.debug("rx ws msg: %s", str(ws_msg))
+                if ws_msg.type in (
+                    WSMsgType.CLOSE,
+                    WSMsgType.ERROR,
+                    WSMsgType.CLOSING,
+                ):
+                    break
+        finally:
+            await broadcaster.remove(client)
+            if not ws.closed:
+                await ws.close()
 
     return ws
 

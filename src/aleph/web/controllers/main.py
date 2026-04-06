@@ -1,61 +1,188 @@
 import asyncio
 import logging
 from dataclasses import asdict
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Set
 
 import aiohttp_jinja2
-from aiohttp import web
+from aiohttp import WSCloseCode, WSMsgType, web
 from pydantic import BaseModel, ValidationError
 
 from aleph.db.accessors.metrics import query_metric_ccn, query_metric_crn
+from aleph.services.cache.node_cache import NodeCache
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.sort_order import SortOrderForMetrics
 from aleph.version import __version__
 from aleph.web.controllers.app_state_getters import (
+    APP_STATE_MESSAGE_BROADCASTER,
+    APP_STATE_STATUS_BROADCASTER,
+    get_config_from_request,
     get_node_cache_from_request,
     get_session_factory_from_request,
 )
-from aleph.web.controllers.metrics import format_dataclass_for_prometheus, get_metrics
+from aleph.web.controllers.metrics import (
+    format_dataclass_for_prometheus,
+    get_metrics,
+    get_metrics_with_ws,
+)
 
 logger = logging.getLogger(__name__)
+
+_STATUS_SEND_BATCH_SIZE = 100
+
+
+class StatusBroadcaster:
+    """Single polling loop that broadcasts status to all connected WS clients."""
+
+    def __init__(
+        self,
+        session_factory: DbSessionFactory,
+        node_cache: NodeCache,
+        max_connections: int = 1000,
+        poll_interval: float = 10.0,
+    ):
+        self._session_factory = session_factory
+        self._node_cache = node_cache
+        self._clients: Set[web.WebSocketResponse] = set()
+        self._task: Optional[asyncio.Task] = None
+        self._poll_interval = poll_interval
+
+        # Connection limit
+        self.max_connections: int = max_connections
+        self._semaphore = asyncio.Semaphore(max_connections)
+
+        # Metrics
+        self.connections_rejected_total: int = 0
+
+    @property
+    def active_connections(self) -> int:
+        return len(self._clients)
+
+    @property
+    def is_at_capacity(self) -> bool:
+        return self._semaphore.locked()
+
+    def acquire_slot(self) -> asyncio.Semaphore:
+        return self._semaphore
+
+    def add(self, ws: web.WebSocketResponse):
+        self._clients.add(ws)
+        if self._task is None or self._task.done():
+            self._task = asyncio.create_task(self._poll_loop())
+
+    def remove(self, ws: web.WebSocketResponse):
+        self._clients.discard(ws)
+
+    async def shutdown(self):
+        """Graceful shutdown — called from aiohttp on_cleanup."""
+        if self._task and not self._task.done():
+            self._task.cancel()
+            self._task = None
+        self._clients.clear()
+
+    async def _poll_loop(self):
+        previous_status = None
+        while self._clients:
+            try:
+                status = await get_metrics(
+                    session_factory=self._session_factory,
+                    node_cache=self._node_cache,
+                )
+            except Exception:
+                logger.exception("Failed to get metrics for status broadcast")
+                await asyncio.sleep(self._poll_interval)
+                continue
+
+            if status != previous_status:
+                payload = asdict(status)
+                clients = list(self._clients)
+                dead: List[web.WebSocketResponse] = []
+
+                for i in range(0, len(clients), _STATUS_SEND_BATCH_SIZE):
+                    batch = clients[i : i + _STATUS_SEND_BATCH_SIZE]
+                    results = await asyncio.gather(
+                        *[self._send(ws, payload) for ws in batch],
+                        return_exceptions=True,
+                    )
+                    for ws, ok in zip(batch, results):
+                        if ok is not True:
+                            dead.append(ws)
+
+                for ws in dead:
+                    self._clients.discard(ws)
+                previous_status = status
+
+            await asyncio.sleep(self._poll_interval)
+
+    @staticmethod
+    async def _send(ws: web.WebSocketResponse, payload: dict) -> bool:
+        if ws.closed:
+            return False
+        try:
+            await ws.send_json(payload)
+            return True
+        except (ConnectionResetError, ConnectionError):
+            return False
+
+
+async def _get_full_metrics(request: web.Request):
+    """Fetch metrics including live WS stats from broadcasters."""
+    session_factory = get_session_factory_from_request(request)
+    node_cache = get_node_cache_from_request(request)
+    return await get_metrics_with_ws(
+        session_factory=session_factory,
+        node_cache=node_cache,
+        message_broadcaster=request.app.get(APP_STATE_MESSAGE_BROADCASTER),
+        status_broadcaster=request.app.get(APP_STATE_STATUS_BROADCASTER),
+    )
 
 
 @aiohttp_jinja2.template("index.html")
 async def index(request: web.Request) -> Dict:
     """Index of aleph."""
 
-    session_factory: DbSessionFactory = get_session_factory_from_request(request)
-    node_cache = get_node_cache_from_request(request)
-    model = asdict(
-        await get_metrics(session_factory=session_factory, node_cache=node_cache)
-    )
+    model = asdict(await _get_full_metrics(request))
     model["version"] = __version__
     return model
 
 
 async def status_ws(request: web.Request) -> web.WebSocketResponse:
-    ws = web.WebSocketResponse()
+    config = get_config_from_request(request)
+    heartbeat = config.websocket.heartbeat.value
+
+    ws = web.WebSocketResponse(heartbeat=float(heartbeat))
     await ws.prepare(request)
 
-    session_factory: DbSessionFactory = get_session_factory_from_request(request)
-    node_cache = get_node_cache_from_request(request)
+    broadcaster: StatusBroadcaster = request.app[APP_STATE_STATUS_BROADCASTER]
 
-    previous_status = None
-    while True:
-        status = await get_metrics(
-            session_factory=session_factory, node_cache=node_cache
+    if broadcaster.is_at_capacity:
+        broadcaster.connections_rejected_total += 1
+        logger.warning(
+            "Status WS connection limit reached (%d)", broadcaster.max_connections
         )
+        await ws.close(
+            code=WSCloseCode.TRY_AGAIN_LATER,
+            message=b"Too many connections",
+        )
+        return ws
 
-        if status != previous_status:
-            try:
-                await ws.send_json(asdict(status))
-            except ConnectionResetError:
-                logger.warning("Websocket connection reset")
+    async with broadcaster.acquire_slot():
+        broadcaster.add(ws)
+
+        try:
+            while not ws.closed:
+                ws_msg = await ws.receive()
+                if ws_msg.type in (
+                    WSMsgType.CLOSE,
+                    WSMsgType.ERROR,
+                    WSMsgType.CLOSING,
+                ):
+                    break
+        finally:
+            broadcaster.remove(ws)
+            if not ws.closed:
                 await ws.close()
-                return ws
-            previous_status = status
 
-        await asyncio.sleep(2)
+    return ws
 
 
 async def metrics(request: web.Request) -> web.Response:
@@ -74,13 +201,8 @@ async def metrics(request: web.Request) -> web.Response:
             schema:
               type: string
     """
-    session_factory = get_session_factory_from_request(request)
-    node_cache = get_node_cache_from_request(request)
-
     return web.Response(
-        text=format_dataclass_for_prometheus(
-            await get_metrics(session_factory=session_factory, node_cache=node_cache)
-        )
+        text=format_dataclass_for_prometheus(await _get_full_metrics(request))
     )
 
 
@@ -100,13 +222,8 @@ async def metrics_json(request: web.Request) -> web.Response:
             schema:
               $ref: '#/components/schemas/MetricsResponse'
     """
-    session_factory: DbSessionFactory = get_session_factory_from_request(request)
-    node_cache = get_node_cache_from_request(request)
-
     return web.Response(
-        text=(
-            await get_metrics(session_factory=session_factory, node_cache=node_cache)
-        ).to_json(),
+        text=(await _get_full_metrics(request)).to_json(),
         content_type="application/json",
     )
 

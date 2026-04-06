@@ -21,15 +21,13 @@ from aleph.types.db_session import DbSessionFactory
 APP_STATE_CONFIG = "config"
 APP_STATE_MQ_CONN = "mq_conn"
 APP_STATE_MQ_CHANNEL = "mq_channel"
-# RabbitMQ channel dedicated to websocket operations.
-# A yet to be understood issue causes the websocket channel to close unexpectedly.
-# We use a dedicated channel to avoid propagation of the issue to other endpoints.
-APP_STATE_MQ_WS_CHANNEL = "mq_ws_channel"
 APP_STATE_NODE_CACHE = "node_cache"
 APP_STATE_P2P_CLIENT = "p2p_client"
 APP_STATE_SESSION_FACTORY = "session_factory"
 APP_STATE_STORAGE_SERVICE = "storage_service"
 APP_STATE_SIGNATURE_VERIFIER = "signature_verifier"
+APP_STATE_MESSAGE_BROADCASTER = "message_broadcaster"
+APP_STATE_STATUS_BROADCASTER = "status_broadcaster"
 
 T = TypeVar("T")
 
@@ -76,18 +74,6 @@ async def get_mq_channel_from_request(
 
     return await _get_open_channel(
         request=request, channel_name=APP_STATE_MQ_CHANNEL, logger=logger
-    )
-
-
-async def get_mq_ws_channel_from_request(
-    request: web.Request, logger: logging.Logger
-) -> aio_pika.abc.AbstractChannel:
-    """
-    Gets the websocket MQ channel from the app state and reopens it if needed.
-    """
-
-    return await _get_open_channel(
-        request=request, channel_name=APP_STATE_MQ_WS_CHANNEL, logger=logger
     )
 
 
