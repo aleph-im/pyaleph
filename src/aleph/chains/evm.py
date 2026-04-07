@@ -32,7 +32,7 @@ class EVMVerifier(Verifier):
                     Account.recover_message, message_hash, signature=message.signature
                 ),
             )
-            if address == message.sender:
+            if address.lower() == message.sender.lower():
                 verified = True
             else:
                 LOGGER.warning(
