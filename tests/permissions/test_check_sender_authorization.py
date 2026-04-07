@@ -526,3 +526,31 @@ async def test_amend_different_owner_denied(mocker, session_factory: DbSessionFa
             assert "does not match original post owner" in error_message
             assert "0xDifferentOwner12345678901234567890123456789012" in error_message
             assert "0xOriginalOwner12345678901234567890123456789012" in error_message
+
+
+@pytest.mark.asyncio
+async def test_owner_is_sender_case_insensitive(mocker):
+    """Verify that owner == sender check is case-insensitive (EVM checksummed vs lowercase)."""
+    checksummed = "0xDeF61fAadE93a8aaE303D083Ead5BF7a25E55a23"
+    lowercase = checksummed.lower()
+
+    message_dict = {
+        "chain": "ETH",
+        "item_hash": "2a5aaf71c8767bda8eb235223a3387b310af117f42fac08f02461e90aee073b0",
+        "sender": lowercase,
+        "type": "STORE",
+        "channel": "TEST",
+        "item_content": f'{{"address":"{checksummed}","item_type":"storage","item_hash":"e916165d63c9b1d455dc415859ec3e1da5a3c6c86cc743cbedf2203fd92a2b1b","time":1652085236.777}}',
+        "item_type": "inline",
+        "signature": "0x51383ef8823665bd8ea1150175be0c3745a36ea1f0d503ceb51e0d7ff1fd88a5290665564bf9c2315d97884e7448efdb8d4b4f8293b47a641c2ff43f21b6c5b61c",
+        "time": 1652085236.777,
+    }
+
+    message = make_validated_message_from_dict(
+        message_dict, str(message_dict["item_content"])
+    )
+
+    is_authorized = await check_sender_authorization(
+        session=mocker.MagicMock(), message=message
+    )
+    assert is_authorized

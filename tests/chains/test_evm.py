@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 
 from aleph.chains.evm import EVMVerifier
@@ -25,6 +27,22 @@ def evm_message() -> BasePendingMessage:
 async def test_verify_evm_signature_real(evm_message: BasePendingMessage):
     verifier = EVMVerifier()
     result = await verifier.verify_signature(evm_message)
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_verify_evm_signature_case_insensitive(evm_message: BasePendingMessage):
+    """Verify that signature verification succeeds when sender case differs from recovered address."""
+    checksummed_address = "0xA07B1214bAe0D5ccAA25449C3149c0aC83658874"
+    evm_message.sender = checksummed_address.lower()
+
+    verifier = EVMVerifier()
+
+    with patch(
+        "aleph.chains.evm.Account.recover_message", return_value=checksummed_address
+    ):
+        result = await verifier.verify_signature(evm_message)
+
     assert result is True
 
 

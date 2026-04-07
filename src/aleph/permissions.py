@@ -122,7 +122,7 @@ async def check_sender_authorization(session: DbSession, message: MessageDb) -> 
                     original_address = original_content.address
 
                     # Check new owner is the same than the original
-                    if address != original_address:
+                    if address.lower() != original_address.lower():
                         return False
 
                     # Check delegated permissions for original address
