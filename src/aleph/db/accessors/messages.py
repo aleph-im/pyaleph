@@ -197,10 +197,8 @@ def make_matching_messages_query(
 
     select_stmt = select_stmt.order_by(*order_by_columns)
 
-    # If pagination == 0, return all matching results
-    if pagination:
-        # Fetch +1 for has_more detection when using cursor
-        select_stmt = select_stmt.limit(pagination + 1 if cursor else pagination)
+    # Fetch +1 for has_more detection when using cursor
+    select_stmt = select_stmt.limit(pagination + 1 if cursor else pagination)
 
     return select_stmt
 
@@ -388,8 +386,7 @@ def get_message_stats_by_address(
     else:
         stmt = stmt.order_by(sort_column.desc(), subquery.c.address.asc())
 
-    if pagination:
-        stmt = stmt.limit(pagination).offset((page - 1) * pagination)
+    stmt = stmt.limit(pagination).offset((page - 1) * pagination)
 
     return session.execute(stmt).all()
 
@@ -892,9 +889,7 @@ def make_matching_hashes_query(
     select_stmt = select_stmt.order_by(*order_by_columns)
 
     select_stmt = select_stmt.offset((page - 1) * pagination)
-
-    if pagination:
-        select_stmt = select_stmt.limit(pagination)
+    select_stmt = select_stmt.limit(pagination)
 
     return select_stmt
 

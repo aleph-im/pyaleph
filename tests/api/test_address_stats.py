@@ -253,7 +253,6 @@ async def test_address_stats_endpoint_basic(
     [
         (2, 1, 2),
         (1, 1, 2),
-        (0, 1, 2),  # all items in one page
     ],
 )
 async def test_address_stats_pagination(
@@ -280,20 +279,14 @@ async def test_address_stats_pagination(
     # Basic pagination assertions
     assert data_page1["pagination_page"] == page1
 
-    if per_page > 0:
-        assert data_page1["pagination_per_page"] == per_page
-        assert data_page2["pagination_page"] == page2
+    assert data_page1["pagination_per_page"] == per_page
+    assert data_page2["pagination_page"] == page2
 
-        # Should not return the same addresses across pages
-        page1_addresses = set(data_page1["data"].keys())
-        page2_addresses = set(data_page2["data"].keys())
+    # Should not return the same addresses across pages
+    page1_addresses = set(data_page1["data"].keys())
+    page2_addresses = set(data_page2["data"].keys())
 
-        assert len(page1_addresses.intersection(page2_addresses)) == 0
-
-    else:
-        # per_page == 0 then everything in one page
-        assert data_page1["pagination_per_page"] == 0
-        assert len(data_page2["data"]) == 5
+    assert len(page1_addresses.intersection(page2_addresses)) == 0
 
 
 @pytest.mark.asyncio
@@ -423,25 +416,12 @@ async def test_address_stats_all_message_types(
 
 
 @pytest.mark.asyncio
-async def test_address_stats_request_all_items(
+async def test_address_stats_pagination_zero_rejected(
     ccn_api_client, fixture_address_stats_messages
 ):
-    """Test requesting all items without pagination."""
-    # Get count of all addresses
-    response_normal = await ccn_api_client.get(ADDRESSES_STATS_URI_V1)
-    assert response_normal.status == 200
-    data_normal = await response_normal.json()
-    total_count = data_normal["pagination_total"]
-
-    # Request all items with pagination=0
-    response_all = await ccn_api_client.get(ADDRESSES_STATS_URI_V1 + "?pagination=0")
-    assert response_all.status == 200
-    data_all = await response_all.json()
-
-    # Should return all items
-    assert len(data_all["data"]) == total_count
-    assert data_all["pagination_per_page"] == 0
-    assert data_all["pagination_total"] == total_count
+    """Test that pagination=0 is rejected."""
+    response = await ccn_api_client.get(ADDRESSES_STATS_URI_V1 + "?pagination=0")
+    assert response.status == 422
 
 
 @pytest.mark.asyncio

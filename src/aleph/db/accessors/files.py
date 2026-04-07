@@ -247,8 +247,7 @@ def get_address_files_for_api(
         .where(MessageFilePinDb.owner == owner)
     )
 
-    if pagination:
-        select_stmt = select_stmt.limit(pagination).offset((page - 1) * pagination)
+    select_stmt = select_stmt.limit(pagination).offset((page - 1) * pagination)
 
     if sort_order == SortOrder.DESCENDING:
         order_by_columns: Tuple[UnaryExpression[Any], UnaryExpression[Any]] = (

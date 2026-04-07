@@ -214,8 +214,8 @@ async def test_fetch_stats_address_query(session_factory: DbSessionFactory):
 
 
 @pytest.mark.asyncio
-async def test_zero_per_page_returns_all(session_factory: DbSessionFactory):
-    """Test that setting pagination=0 returns all results without pagination."""
+async def test_large_pagination_returns_all(session_factory: DbSessionFactory):
+    """Test that a large pagination value returns all results."""
     with session_factory() as session:
         test_messages = create_test_messages()
         session.add_all(test_messages)
@@ -226,13 +226,13 @@ async def test_zero_per_page_returns_all(session_factory: DbSessionFactory):
         # Count total addresses
         total_count = count_address_stats(session)
 
-        # Get all results with pagination=0
+        # Get all results with a large pagination value
         all_stats = get_message_stats_by_address(
             session=session,
             sort_by=SortByMessageType.TOTAL,
             sort_order=SortOrder.DESCENDING,
             page=1,
-            pagination=0,  # This should return all results
+            pagination=1000,
         )
 
         # Should have all addresses

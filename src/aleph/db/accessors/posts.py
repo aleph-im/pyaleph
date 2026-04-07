@@ -285,9 +285,7 @@ def filter_post_select_stmt(
                 )
         select_stmt = select_stmt.order_by(*order_by_columns)
 
-    # If pagination == 0, return all matching results
-    if pagination:
-        select_stmt = select_stmt.limit(pagination)
+    select_stmt = select_stmt.limit(pagination)
     if page:
         select_stmt = select_stmt.offset((page - 1) * pagination)
 
