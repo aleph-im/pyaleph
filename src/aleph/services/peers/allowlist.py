@@ -11,7 +11,7 @@ LOGGER = logging.getLogger(__name__)
 
 CORECHANNEL_KEY = "corechannel"
 
-CACHE_TTL = 300  # 5 minutes
+DEFAULT_CACHE_TTL = 300  # 5 minutes
 
 
 def _extract_peer_id(multiaddress: str) -> Optional[str]:
@@ -35,10 +35,12 @@ class PeerAllowlist:
         session_factory: DbSessionFactory,
         bootstrap_peer_ids: Set[str],
         corechannel_address: str,
+        cache_ttl: int = DEFAULT_CACHE_TTL,
     ):
         self._session_factory = session_factory
         self._bootstrap_peer_ids = bootstrap_peer_ids
         self._corechannel_address = corechannel_address
+        self._cache_ttl = cache_ttl
         self._cached_ccn_peer_ids: Set[str] = set()
         self._cache_timestamp: float = 0
 
@@ -59,7 +61,8 @@ class PeerAllowlist:
         return cls(
             session_factory=session_factory,
             bootstrap_peer_ids=bootstrap_peer_ids,
-            corechannel_address=config.aleph.corechannel_address.value,
+            corechannel_address=config.aleph.corechannel.address.value,
+            cache_ttl=config.aleph.corechannel.cache_ttl.value,
         )
 
     def _refresh_ccn_peer_ids(self) -> Set[str]:
@@ -93,7 +96,7 @@ class PeerAllowlist:
 
     def _ensure_cache_fresh(self):
         now = time.monotonic()
-        if now - self._cache_timestamp > CACHE_TTL:
+        if now - self._cache_timestamp > self._cache_ttl:
             self._cached_ccn_peer_ids = self._refresh_ccn_peer_ids()
             self._cache_timestamp = now
 
