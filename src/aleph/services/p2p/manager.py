@@ -7,6 +7,7 @@ from configmanager import Config
 
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
+from aleph.services.peers.allowlist import PeerAllowlist
 from aleph.services.peers.monitor import monitor_hosts_ipfs, monitor_hosts_p2p
 from aleph.services.peers.publish import publish_host
 from aleph.services.utils import get_IP
@@ -30,6 +31,10 @@ async def initialize_host(
     tasks: List[Coroutine]
 
     transport_opt = f"/ip4/{host}/tcp/{port}"
+
+    peer_allowlist = PeerAllowlist.from_config(
+        config=config, session_factory=session_factory
+    )
 
     tasks = [
         reconnect_p2p_job(
@@ -81,6 +86,7 @@ async def initialize_host(
             monitor_hosts_p2p(
                 p2p_client,
                 session_factory=session_factory,
+                peer_allowlist=peer_allowlist,
                 alive_topic=config.p2p.alive_topic.value,
             ),
         ]
@@ -90,6 +96,7 @@ async def initialize_host(
                 monitor_hosts_ipfs(
                     ipfs_service=ipfs_service,
                     session_factory=session_factory,
+                    peer_allowlist=peer_allowlist,
                     alive_topic=config.ipfs.alive_topic.value,
                 )
             )

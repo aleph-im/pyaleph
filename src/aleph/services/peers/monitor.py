@@ -8,6 +8,7 @@ from aleph_p2p_client import AlephP2PServiceClient
 from aleph.db.accessors.peers import upsert_peer
 from aleph.db.models import PeerType
 from aleph.services.ipfs import IpfsService
+from aleph.services.peers.allowlist import PeerAllowlist
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSessionFactory
 
@@ -16,11 +17,16 @@ LOGGER = logging.getLogger(__name__)
 
 async def handle_incoming_host(
     session_factory: DbSessionFactory,
+    peer_allowlist: PeerAllowlist,
     data: bytes,
     sender: str,
     source: PeerType,
 ):
     try:
+        if not peer_allowlist.is_allowed(sender):
+            LOGGER.debug("Ignoring alive message from unknown peer %s", sender)
+            return
+
         LOGGER.debug("New message received from %s", sender)
         message_data = data.decode("utf-8")
         content = json.loads(unquote(message_data))
@@ -55,6 +61,7 @@ async def handle_incoming_host(
 async def monitor_hosts_p2p(
     p2p_client: AlephP2PServiceClient,
     session_factory: DbSessionFactory,
+    peer_allowlist: PeerAllowlist,
     alive_topic: str,
 ) -> None:
     while True:
@@ -64,6 +71,7 @@ async def monitor_hosts_p2p(
                 protocol, topic, peer_id = alive_message.routing_key.split(".")
                 await handle_incoming_host(
                     session_factory=session_factory,
+                    peer_allowlist=peer_allowlist,
                     data=alive_message.body,
                     sender=peer_id,
                     source=PeerType.P2P,
@@ -76,13 +84,17 @@ async def monitor_hosts_p2p(
 
 
 async def monitor_hosts_ipfs(
-    ipfs_service: IpfsService, session_factory: DbSessionFactory, alive_topic: str
+    ipfs_service: IpfsService,
+    session_factory: DbSessionFactory,
+    peer_allowlist: PeerAllowlist,
+    alive_topic: str,
 ):
     while True:
         try:
             async for message in ipfs_service.sub(alive_topic):
                 await handle_incoming_host(
                     session_factory=session_factory,
+                    peer_allowlist=peer_allowlist,
                     data=message["data"],
                     sender=message["from"],
                     source=PeerType.IPFS,
