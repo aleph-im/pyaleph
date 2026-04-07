@@ -17,15 +17,18 @@ from aleph.toolkit.monitoring import setup_sentry
 from aleph.web import create_aiohttp_app
 from aleph.web.controllers.app_state_getters import (
     APP_STATE_CONFIG,
+    APP_STATE_MESSAGE_BROADCASTER,
     APP_STATE_MQ_CHANNEL,
     APP_STATE_MQ_CONN,
-    APP_STATE_MQ_WS_CHANNEL,
     APP_STATE_NODE_CACHE,
     APP_STATE_P2P_CLIENT,
     APP_STATE_SESSION_FACTORY,
     APP_STATE_SIGNATURE_VERIFIER,
+    APP_STATE_STATUS_BROADCASTER,
     APP_STATE_STORAGE_SERVICE,
 )
+from aleph.web.controllers.main import StatusBroadcaster
+from aleph.web.controllers.messages import MessageBroadcaster
 
 
 async def configure_aiohttp_app(
@@ -63,20 +66,32 @@ async def configure_aiohttp_app(
 
         # Reuse the connection of the P2P client to avoid opening two connections
         mq_conn = p2p_client.mq_client.connection
-        # Channels are long-lived, so we create one at startup. Otherwise, we end up hitting
-        # the channel limit if we create a channel for each operation.
+        # Channel for non-WS API operations.
         mq_channel = await mq_conn.channel()
-        mq_ws_channel = await mq_conn.channel()
+
+        status_broadcaster = StatusBroadcaster(
+            session_factory=session_factory,
+            node_cache=node_cache,
+            max_connections=config.websocket.max_status_connections.value,
+        )
+        message_broadcaster = MessageBroadcaster(mq_conn=mq_conn, config=config)
 
         app[APP_STATE_CONFIG] = config
         app[APP_STATE_P2P_CLIENT] = p2p_client
         app[APP_STATE_MQ_CONN] = mq_conn
         app[APP_STATE_MQ_CHANNEL] = mq_channel
-        app[APP_STATE_MQ_WS_CHANNEL] = mq_ws_channel
         app[APP_STATE_NODE_CACHE] = node_cache
         app[APP_STATE_STORAGE_SERVICE] = storage_service
         app[APP_STATE_SESSION_FACTORY] = session_factory
         app[APP_STATE_SIGNATURE_VERIFIER] = signature_verifier
+        app[APP_STATE_STATUS_BROADCASTER] = status_broadcaster
+        app[APP_STATE_MESSAGE_BROADCASTER] = message_broadcaster
+
+        async def _on_cleanup(_app: web.Application):
+            await message_broadcaster.shutdown()
+            await status_broadcaster.shutdown()
+
+        app.on_cleanup.append(_on_cleanup)
 
     return app
 

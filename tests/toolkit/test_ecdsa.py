@@ -134,19 +134,32 @@ def test_verify_auth_token_expired():
     assert is_valid_long is True
 
 
-def test_verify_auth_token_future_timestamp():
-    """Test token verification handles future timestamps within tolerance."""
+def test_verify_auth_token_future_timestamp_within_skew():
+    """Test token verification accepts future timestamps within clock skew tolerance."""
     private_key, public_key = generate_key_pair()
 
-    # Mock time to create a future token
-    future_timestamp = int(time.time()) + 60  # 1 minute in future
+    # Token 20 seconds in the future should be accepted (within 30s tolerance)
+    future_timestamp = int(time.time()) + 20
 
     with patch("aleph.toolkit.ecdsa.time.time", return_value=future_timestamp):
         token = create_auth_token(private_key)
 
-    # Should pass as it uses abs() for time difference
     is_valid = verify_auth_token(token, public_key)
     assert is_valid is True
+
+
+def test_verify_auth_token_future_timestamp_beyond_skew():
+    """Test token verification rejects future timestamps beyond clock skew tolerance."""
+    private_key, public_key = generate_key_pair()
+
+    # Token 60 seconds in the future should be rejected (beyond 30s tolerance)
+    future_timestamp = int(time.time()) + 60
+
+    with patch("aleph.toolkit.ecdsa.time.time", return_value=future_timestamp):
+        token = create_auth_token(private_key)
+
+    is_valid = verify_auth_token(token, public_key)
+    assert is_valid is False
 
 
 def test_verify_auth_token_malformed():

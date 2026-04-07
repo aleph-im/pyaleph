@@ -1,9 +1,9 @@
 import asyncio
 import json
 import platform
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from logging import getLogger
-from typing import Dict, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 from urllib.parse import urljoin
 
 import aiohttp
@@ -21,6 +21,10 @@ from aleph.services.cache.node_cache import NodeCache
 from aleph.types.chain_sync import ChainEventType
 from aleph.types.db_session import DbSessionFactory
 from aleph.version import __version__
+
+if TYPE_CHECKING:
+    from aleph.web.controllers.main import StatusBroadcaster
+    from aleph.web.controllers.messages import MessageBroadcaster
 
 LOGGER = getLogger("WEB.metrics")
 
@@ -96,6 +100,15 @@ class Metrics(DataClassJsonMixin):
     pyaleph_status_sync_messages_remaining_total: Optional[int] = None
     pyaleph_status_chain_eth_height_reference_total: Optional[int] = None
     pyaleph_status_chain_eth_height_remaining_total: Optional[int] = None
+
+    pyaleph_ws_messages_connections_active: int = 0
+    pyaleph_ws_messages_connections_max: int = 0
+    pyaleph_ws_status_connections_active: int = 0
+    pyaleph_ws_status_connections_max: int = 0
+    pyaleph_ws_messages_broadcast_total: int = 0
+    pyaleph_ws_messages_connections_rejected_total: int = 0
+    pyaleph_ws_status_connections_rejected_total: int = 0
+    pyaleph_ws_broadcaster_consumer_restarts_total: int = 0
 
 
 pyaleph_build_info = BuildInfo(
@@ -196,3 +209,45 @@ async def get_metrics(
         pyaleph_status_chain_eth_height_reference_total=eth_reference_height,
         pyaleph_status_chain_eth_height_remaining_total=eth_remaining_height,
     )
+
+
+async def get_metrics_with_ws(
+    session_factory: DbSessionFactory,
+    node_cache: NodeCache,
+    message_broadcaster: Optional["MessageBroadcaster"] = None,
+    status_broadcaster: Optional["StatusBroadcaster"] = None,
+) -> Metrics:
+    """get_metrics + live WebSocket metrics from broadcasters."""
+    cached_metrics = await get_metrics(
+        session_factory=session_factory, node_cache=node_cache
+    )
+    # Copy to avoid mutating the cached dataclass
+    metrics = replace(cached_metrics)
+
+    if message_broadcaster:
+        metrics.pyaleph_ws_messages_connections_active = (
+            message_broadcaster.active_connections
+        )
+        metrics.pyaleph_ws_messages_connections_max = (
+            message_broadcaster.max_connections
+        )
+        metrics.pyaleph_ws_messages_broadcast_total = (
+            message_broadcaster.broadcast_total
+        )
+        metrics.pyaleph_ws_messages_connections_rejected_total = (
+            message_broadcaster.connections_rejected_total
+        )
+        metrics.pyaleph_ws_broadcaster_consumer_restarts_total = (
+            message_broadcaster.consumer_restarts_total
+        )
+
+    if status_broadcaster:
+        metrics.pyaleph_ws_status_connections_active = (
+            status_broadcaster.active_connections
+        )
+        metrics.pyaleph_ws_status_connections_max = status_broadcaster.max_connections
+        metrics.pyaleph_ws_status_connections_rejected_total = (
+            status_broadcaster.connections_rejected_total
+        )
+
+    return metrics

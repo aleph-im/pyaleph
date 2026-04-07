@@ -1,3 +1,4 @@
+import csv
 import datetime as dt
 import random
 import time
@@ -419,6 +420,16 @@ def count_credit_balances(session: DbSession, min_balance: int = 0) -> int:
     return session.execute(query).scalar_one()
 
 
+def _format_csv_row(*fields) -> str:
+    """Format fields as a properly escaped CSV row with semicolon delimiter."""
+    output = StringIO()
+    writer = csv.writer(
+        output, delimiter=";", quoting=csv.QUOTE_MINIMAL, lineterminator="\n"
+    )
+    writer.writerow([str(f) if f is not None else "" for f in fields])
+    return output.getvalue().rstrip("\n")
+
+
 def _bulk_insert_credit_history(
     session: DbSession,
     csv_rows: Sequence[str],
@@ -526,7 +537,24 @@ def update_credit_balances_distribution(
         )
 
         csv_rows.append(
-            f"{address};{amount};{message_hash};{index};{message_timestamp};{last_update};{price};{bonus_amount or ''};{tx_hash};{expiration_date or ''};{token};{chain};{origin};{provider};{origin_ref};{payment_method}"
+            _format_csv_row(
+                address,
+                amount,
+                message_hash,
+                index,
+                message_timestamp,
+                last_update,
+                price,
+                bonus_amount or "",
+                tx_hash,
+                expiration_date or "",
+                token,
+                chain,
+                origin,
+                provider,
+                origin_ref,
+                payment_method,
+            )
         )
 
     _bulk_insert_credit_history(session, csv_rows)
@@ -565,7 +593,24 @@ def update_credit_balances_expense(
         # Skip time field for now
 
         csv_rows.append(
-            f"{address};{amount};{message_hash};{index};{message_timestamp};{last_update};{price};;{tx_hash};;;;{origin};ALEPH;{origin_ref};credit_expense"
+            _format_csv_row(
+                address,
+                amount,
+                message_hash,
+                index,
+                message_timestamp,
+                last_update,
+                price,
+                "",
+                tx_hash,
+                "",
+                "",
+                "",
+                origin,
+                "ALEPH",
+                origin_ref,
+                "credit_expense",
+            )
         )
 
     _bulk_insert_credit_history(session, csv_rows)
@@ -608,7 +653,24 @@ def update_credit_balances_transfer(
 
         # Add positive entry for recipient (origin = sender, provider = ALEPH, payment_method = credit_transfer)
         csv_rows.append(
-            f"{recipient_address};{amount};{message_hash};{index};{message_timestamp};{last_update};;;;{expiration_date or ''};;;{sender_address};ALEPH;;credit_transfer"
+            _format_csv_row(
+                recipient_address,
+                amount,
+                message_hash,
+                index,
+                message_timestamp,
+                last_update,
+                "",
+                "",
+                "",
+                expiration_date or "",
+                "",
+                "",
+                sender_address,
+                "ALEPH",
+                "",
+                "credit_transfer",
+            )
         )
         index += 1
 
@@ -616,7 +678,24 @@ def update_credit_balances_transfer(
         # (origin = recipient, provider = ALEPH, payment_method = credit_transfer)
         if sender_address not in whitelisted_addresses:
             csv_rows.append(
-                f"{sender_address};{-amount};{message_hash};{index};{message_timestamp};{last_update};;;;;;;{recipient_address};ALEPH;;credit_transfer"
+                _format_csv_row(
+                    sender_address,
+                    -amount,
+                    message_hash,
+                    index,
+                    message_timestamp,
+                    last_update,
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    recipient_address,
+                    "ALEPH",
+                    "",
+                    "credit_transfer",
+                )
             )
             index += 1
 

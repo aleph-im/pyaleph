@@ -241,7 +241,7 @@ class IpfsService:
         return result
 
     async def add_json(self, value: bytes) -> str:
-        result = self.pinning_client.add_json(value)
+        result = await self.pinning_client.add_json(value)
         return result["Hash"]
 
     async def add_bytes(self, value: bytes, cid_version: int = 0) -> str:

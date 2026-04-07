@@ -75,6 +75,7 @@ class CosmosConnector(Verifier):
                 LOGGER.warning(
                     "Unsupported curve %s" % signature.get("pub_key").get("type")
                 )
+                return False
         except Exception:
             LOGGER.exception("Cosmos signature Key error")
             return False

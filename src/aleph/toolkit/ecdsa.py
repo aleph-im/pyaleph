@@ -107,7 +107,7 @@ def verify_auth_token(
         # Check timestamp validity
         timestamp = int(timestamp_str)
         current_time = int(time.time())
-        if abs(current_time - timestamp) > max_age_seconds:
+        if current_time - timestamp > max_age_seconds or timestamp - current_time > 30:
             return False
 
         # Verify signature
