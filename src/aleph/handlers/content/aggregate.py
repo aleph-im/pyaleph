@@ -169,7 +169,11 @@ class AggregateMessageHandler(ContentHandler):
         # Last chance before a full refresh, check the keys of the aggregate
         # and determine if there's a conflict.
         keys = set(get_aggregate_content_keys(session=session, key=key, owner=owner))
-        new_keys = set(itertools.chain(element.content.keys for element in elements))
+        new_keys = set(
+            itertools.chain.from_iterable(
+                element.content.keys() for element in elements
+            )
+        )
         conflicting_keys = keys & new_keys
 
         if not conflicting_keys:
