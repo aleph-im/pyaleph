@@ -19,7 +19,6 @@ def init_cors(app: web.Application):
         defaults={
             "*": aiohttp_cors.ResourceOptions(
                 allow_methods=["GET", "POST"],
-                allow_credentials=True,
                 expose_headers="*",
                 allow_headers="*",
             )
