@@ -229,6 +229,7 @@ class TezosVerifier(Verifier):
                 message.sender,
                 public_key_hash,
             )
+            return False
 
         verification_buffer = get_tezos_verification_buffer(
             message, signature_type, dapp_url

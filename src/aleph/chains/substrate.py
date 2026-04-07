@@ -28,6 +28,7 @@ class SubstrateConnector(Verifier):
         try:
             if signature.get("curve", "sr25519") != "sr25519":
                 LOGGER.warning("Unsupported curve %s" % signature.get("curve"))
+                return False
         except Exception:
             LOGGER.exception("Substrate signature Key error")
             return False
