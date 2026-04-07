@@ -24,6 +24,8 @@ def get_defaults():
                 # Maximum token age in seconds (default: 5 minutes)
                 "max_token_age": 300,
             },
+            # Address of the corechannel aggregate owner.
+            "corechannel_address": "0xa1B3bb7d2332383D96b7796B908fB7f7F3c2Be10",
             "balances": {
                 # Addresses allowed to publish balance updates.
                 "addresses": [

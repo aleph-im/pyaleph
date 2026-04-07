@@ -9,7 +9,6 @@ from aleph.types.db_session import DbSessionFactory
 
 LOGGER = logging.getLogger(__name__)
 
-CORECHANNEL_ADDRESS = "0xa1B3bb7d2332383D96b7796B908fB7f7F3c2Be10"
 CORECHANNEL_KEY = "corechannel"
 
 CACHE_TTL = 300  # 5 minutes
@@ -35,9 +34,11 @@ class PeerAllowlist:
         self,
         session_factory: DbSessionFactory,
         bootstrap_peer_ids: Set[str],
+        corechannel_address: str,
     ):
         self._session_factory = session_factory
         self._bootstrap_peer_ids = bootstrap_peer_ids
+        self._corechannel_address = corechannel_address
         self._cached_ccn_peer_ids: Set[str] = set()
         self._cache_timestamp: float = 0
 
@@ -58,6 +59,7 @@ class PeerAllowlist:
         return cls(
             session_factory=session_factory,
             bootstrap_peer_ids=bootstrap_peer_ids,
+            corechannel_address=config.aleph.corechannel_address.value,
         )
 
     def _refresh_ccn_peer_ids(self) -> Set[str]:
@@ -65,7 +67,7 @@ class PeerAllowlist:
             with self._session_factory() as session:
                 aggregate = get_aggregate_by_key(
                     session=session,
-                    owner=CORECHANNEL_ADDRESS,
+                    owner=self._corechannel_address,
                     key=CORECHANNEL_KEY,
                 )
 
