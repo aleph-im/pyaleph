@@ -211,6 +211,9 @@ def message_status_to_http_status(status: MessageStatus) -> int:
         MessageStatus.PENDING: 202,
         MessageStatus.PROCESSED: 200,
         MessageStatus.REJECTED: 422,
+        MessageStatus.FORGOTTEN: 410,
+        MessageStatus.REMOVING: 200,
+        MessageStatus.REMOVED: 410,
     }
     return mapping[status]
 
