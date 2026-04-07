@@ -21,7 +21,7 @@ def _check_delegated_authorization(
         True if sender has delegated authorization, False otherwise
     """
 
-    if sender == owner_address:
+    if sender.lower() == owner_address.lower():
         return True
 
     aggregate = get_aggregate_by_key(
@@ -34,7 +34,7 @@ def _check_delegated_authorization(
     authorizations = aggregate.content.get("authorizations", [])
 
     for auth in authorizations:
-        if auth.get("address", "") != sender:
+        if auth.get("address", "").lower() != sender.lower():
             continue
 
         if auth.get("chain") and message.chain != auth.get("chain"):
@@ -93,7 +93,7 @@ async def check_sender_authorization(session: DbSession, message: MessageDb) -> 
     address = content.address
 
     # if sender is the content address, all good.
-    if sender == address:
+    if sender.lower() == address.lower():
         return True
 
     # Special handling for POST amend messages
