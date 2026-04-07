@@ -423,7 +423,9 @@ def count_credit_balances(session: DbSession, min_balance: int = 0) -> int:
 def _format_csv_row(*fields) -> str:
     """Format fields as a properly escaped CSV row with semicolon delimiter."""
     output = StringIO()
-    writer = csv.writer(output, delimiter=";", quoting=csv.QUOTE_MINIMAL)
+    writer = csv.writer(
+        output, delimiter=";", quoting=csv.QUOTE_MINIMAL, lineterminator="\n"
+    )
     writer.writerow([str(f) if f is not None else "" for f in fields])
     return output.getvalue().rstrip("\n")
 
