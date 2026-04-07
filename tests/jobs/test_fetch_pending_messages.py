@@ -9,6 +9,7 @@ These tests cover the four scenarios called out in code review:
 
 import asyncio
 import datetime as dt
+from typing import AsyncGenerator, Dict, Sequence, cast
 
 import pytest
 import pytest_asyncio
@@ -17,6 +18,7 @@ from aleph_message.models import Chain, ItemType, MessageType
 from aleph.db.models import MessageDb, PendingMessageDb
 from aleph.jobs.fetch_pending_messages import (
     ACTIVE_FETCH_TASKS_KEY,
+    MetricState,
     PendingMessageFetcher,
 )
 from aleph.toolkit.timestamp import timestamp_to_datetime
@@ -117,7 +119,7 @@ def test_claim_messages_respects_slot_limit(
 def test_spawn_skips_already_busy_hash(fetcher: PendingMessageFetcher, mocker):
     """``_spawn`` is a no-op if the message is already being fetched."""
     busy_hashes = {"a" * 64}
-    in_flight: dict = {}
+    in_flight: Dict[asyncio.Task, PendingMessageDb] = {}
     pending = _make_pending(item_hash="a" * 64)
 
     fetcher._spawn(pending, in_flight, busy_hashes)
@@ -131,7 +133,7 @@ async def test_publish_metric_only_writes_on_change(
 ):
     """The metric is debounced — no Redis traffic when the value is unchanged."""
     node_cache = mocker.AsyncMock()
-    state = {"last": -1}
+    state: MetricState = {"last": -1}
 
     await fetcher._publish_metric(node_cache, current=5, state=state)
     await fetcher._publish_metric(node_cache, current=5, state=state)
@@ -152,7 +154,7 @@ async def test_drain_cancels_and_clears_in_flight(fetcher: PendingMessageFetcher
     async def _hang():
         await asyncio.sleep(60)
 
-    in_flight: dict = {}
+    in_flight: Dict[asyncio.Task, PendingMessageDb] = {}
     for i in range(3):
         task = asyncio.create_task(_hang())
         in_flight[task] = _make_pending(item_hash=f"{i:064x}")
@@ -192,7 +194,7 @@ async def test_fetch_pending_messages_yields_fetched(
         config=mock_config, node_cache=node_cache, loop=False
     )
 
-    yielded = []
+    yielded: list[MessageDb] = []
     async for batch in pipeline:
         yielded.extend(batch)
 
@@ -213,7 +215,6 @@ async def test_fetch_pending_messages_does_not_starve_pool(
     on a session that the workers also need.
     """
     seen: list[str] = []
-    seen_event = asyncio.Event()
     expected = 5
 
     async def _record(pending_message: PendingMessageDb):
@@ -222,8 +223,6 @@ async def test_fetch_pending_messages_does_not_starve_pool(
         with session_factory() as session:
             session.execute  # touch the session to ensure a real checkout
             seen.append(pending_message.item_hash)
-            if len(seen) >= expected:
-                seen_event.set()
         message = mocker.MagicMock(spec=MessageDb)
         message.item_hash = pending_message.item_hash
         return message
@@ -276,11 +275,18 @@ async def test_fetch_pending_messages_drains_on_shutdown(
         session.commit()
 
     node_cache = mocker.AsyncMock()
-    pipeline = fetcher.fetch_pending_messages(
-        config=mock_config, node_cache=node_cache, loop=True
+    # fetch_pending_messages is declared as AsyncIterator but is actually an
+    # async generator (uses `yield`), so we cast to expose `aclose()`.
+    pipeline = cast(
+        AsyncGenerator[Sequence[MessageDb], None],
+        fetcher.fetch_pending_messages(
+            config=mock_config, node_cache=node_cache, loop=True
+        ),
     )
 
-    consumer = asyncio.create_task(pipeline.__anext__())
+    consumer: asyncio.Task[Sequence[MessageDb]] = asyncio.create_task(
+        pipeline.__anext__()
+    )
     await started.wait()  # at least one worker is running
     await pipeline.aclose()  # triggers the generator's finally block
 
