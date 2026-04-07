@@ -62,7 +62,10 @@ def make_balances_by_chain_query(
         query = query.filter(AlephBalanceDb.balance >= min_balance)
 
     query = query.offset((page - 1) * pagination)
-    query = query.limit(pagination)
+
+    # If pagination == 0, return all matching results
+    if pagination:
+        query = query.limit(pagination)
 
     return query
 
@@ -394,7 +397,9 @@ def get_credit_balances(
         query = query.filter(AlephCreditBalanceDb.balance >= min_balance)
 
     query = query.offset((page - 1) * pagination)
-    query = query.limit(pagination)
+
+    if pagination:
+        query = query.limit(pagination)
 
     # Return results in the expected format (address, credits)
     results = session.execute(query).all()
@@ -692,7 +697,8 @@ def get_address_credit_history(
     if payment_method is not None:
         query = query.where(AlephCreditHistoryDb.payment_method == payment_method)
 
-    query = query.offset((page - 1) * pagination).limit(pagination)
+    if pagination > 0:
+        query = query.offset((page - 1) * pagination).limit(pagination)
 
     return session.execute(query).scalars().all()
 

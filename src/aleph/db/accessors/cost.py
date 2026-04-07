@@ -248,7 +248,8 @@ def get_resources_with_costs(
         select_stmt = select_stmt.where(AccountCostsDb.payment_type == payment_type)
 
     select_stmt = select_stmt.offset((page - 1) * pagination)
-    select_stmt = select_stmt.limit(pagination)
+    if pagination:
+        select_stmt = select_stmt.limit(pagination)
 
     return list(session.execute(select_stmt).all())
 
