@@ -6,7 +6,7 @@ import asyncio
 import faulthandler
 import sys
 from logging import getLogger
-from typing import AsyncIterator, Dict, List, NewType, Sequence, Set
+from typing import AsyncIterator, Dict, List, NewType, Sequence, Set, TypedDict
 
 import aio_pika.abc
 from configmanager import Config
@@ -44,6 +44,12 @@ ACTIVE_FETCH_TASKS_KEY = "retry_messages_job_tasks"
 # before re-checking the database. Bounds the latency for messages that arrive
 # without an MQ notification (e.g. delayed retries).
 IDLE_WAIT_TIMEOUT_SECONDS = 3
+
+
+class MetricState(TypedDict):
+    """Tracks the last value sent to Redis to debounce no-op updates."""
+
+    last: int
 
 
 class PendingMessageFetcher(MessageJob):
@@ -188,7 +194,7 @@ class PendingMessageFetcher(MessageJob):
         self,
         node_cache: NodeCache,
         current: int,
-        state: Dict[str, int],
+        state: MetricState,
     ) -> None:
         """Sync the in-flight task count to Redis. No-op if unchanged.
 
@@ -211,7 +217,7 @@ class PendingMessageFetcher(MessageJob):
         # an exception starts from a clean slate.
         in_flight: Dict[asyncio.Task, PendingMessageDb] = {}
         busy_hashes: Set[str] = set()
-        metric_state: Dict[str, int] = {"last": -1}
+        metric_state: MetricState = {"last": -1}
 
         await node_cache.set(ACTIVE_FETCH_TASKS_KEY, 0)
         metric_state["last"] = 0
@@ -226,12 +232,13 @@ class PendingMessageFetcher(MessageJob):
                 # 2. Publish updated metric (single SET, only on change).
                 await self._publish_metric(node_cache, len(in_flight), metric_state)
 
-                # 3. Idle path: nothing in flight.
+                # 3. Idle path: nothing in flight after step 1.
                 if not in_flight:
+                    # In non-loop mode, "no claim and no in-flight" means there
+                    # is no work *ready right now*. Future-dated retries do not
+                    # block exit because _claim_messages already filters them.
                     if not loop:
-                        with self.session_factory() as session:
-                            if not PendingMessageDb.count(session):
-                                break
+                        break
                     LOGGER.info("waiting for new pending messages...")
                     try:
                         await asyncio.wait_for(self.ready(), IDLE_WAIT_TIMEOUT_SECONDS)
