@@ -196,6 +196,10 @@ class EthereumConnector(ChainWriter):
                 block_range = self.max_block_range
             except TooManyLogsInRange:
                 block_range //= 2
+                if block_range < 1:
+                    raise GetLogsException(
+                        f"Cannot fetch logs: block range reduced to zero at block {start_block}"
+                    )
                 LOGGER.info(
                     f"Too many logs in range {start_block}..{end_block}, reducing to {block_range} blocks"
                 )
