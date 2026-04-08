@@ -15,6 +15,9 @@ import pytest
 import pytest_asyncio
 from aleph_message.models import Chain, ItemType, MessageType
 
+from aleph.db.accessors.pending_messages import (
+    make_pending_message_fetched_statement,
+)
 from aleph.db.models import MessageDb, PendingMessageDb
 from aleph.jobs.fetch_pending_messages import (
     ACTIVE_FETCH_TASKS_KEY,
@@ -180,14 +183,17 @@ async def test_fetch_pending_messages_yields_fetched(
         session.add(_make_pending(item_hash=pending_hash))
         session.commit()
 
-    fetched_message = mocker.MagicMock(spec=MessageDb)
-    fetched_message.item_hash = pending_hash
-    mocker.patch.object(
-        fetcher,
-        "fetch_pending_message",
-        new_callable=mocker.AsyncMock,
-        return_value=fetched_message,
-    )
+    async def _fake_fetch(pending_message: PendingMessageDb):
+        # Mirror the real worker: mark the row as fetched so the loop doesn't
+        # re-claim it forever.
+        with session_factory() as session:
+            session.execute(make_pending_message_fetched_statement(pending_message, {}))
+            session.commit()
+        message = mocker.MagicMock(spec=MessageDb)
+        message.item_hash = pending_message.item_hash
+        return message
+
+    mocker.patch.object(fetcher, "fetch_pending_message", side_effect=_fake_fetch)
 
     node_cache = mocker.AsyncMock()
     pipeline = fetcher.fetch_pending_messages(
@@ -221,7 +227,10 @@ async def test_fetch_pending_messages_does_not_starve_pool(
         # Each worker opens its own session via the real session_factory.
         # If the loop were holding the pool, this call would block.
         with session_factory() as session:
-            session.execute  # touch the session to ensure a real checkout
+            # Mirror the real worker: mark the row as fetched so the loop
+            # doesn't re-claim it forever.
+            session.execute(make_pending_message_fetched_statement(pending_message, {}))
+            session.commit()
             seen.append(pending_message.item_hash)
         message = mocker.MagicMock(spec=MessageDb)
         message.item_hash = pending_message.item_hash
@@ -325,6 +334,9 @@ async def test_fetch_pending_messages_dedupes_concurrent_hashes(
         nonlocal call_count
         call_count += 1
         await asyncio.sleep(0.05)
+        with session_factory() as session:
+            session.execute(make_pending_message_fetched_statement(pending_message, {}))
+            session.commit()
         message = mocker.MagicMock(spec=MessageDb)
         message.item_hash = pending_message.item_hash
         return message
