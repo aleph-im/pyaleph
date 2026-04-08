@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 from aleph.schemas.messages_query_params import DEFAULT_MESSAGES_PER_PAGE, DEFAULT_PAGE
@@ -5,6 +7,10 @@ from aleph.types.sort_order import SortByMessageType, SortOrder
 
 
 class AddressesQueryParams(BaseModel):
+    cursor: Optional[str] = Field(
+        default=None, description="Opaque cursor for cursor-based pagination."
+    )
+
     address_contains: str | None = Field(
         default=None,
         alias="addressContains",

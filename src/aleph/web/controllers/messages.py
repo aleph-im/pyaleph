@@ -45,7 +45,7 @@ from aleph.schemas.messages_query_params import (
     MessageQueryParams,
     WsMessageQueryParams,
 )
-from aleph.toolkit.cursor import encode_cursor
+from aleph.toolkit.cursor import decode_message_cursor, encode_message_cursor
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_status import MessageStatus, RemovedMessageReason
 from aleph.web.controllers.app_state_getters import (
@@ -57,6 +57,7 @@ from aleph.web.controllers.app_state_getters import (
 from aleph.web.controllers.utils import (
     get_item_hash_from_request,
     mq_make_aleph_message_topic_queue,
+    validate_cursor_pagination,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -471,14 +472,24 @@ async def view_messages_list(request: web.Request) -> web.Response:
 
     session_factory = get_session_factory_from_request(request)
 
-    if cursor:
+    if cursor is not None:
         # Cursor mode: no count needed
-        try:
-            messages_query = make_matching_messages_query(
-                include_confirmations=True, cursor=cursor, **find_filters
-            )
-        except ValueError as e:
-            raise web.HTTPUnprocessableEntity(text=str(e))
+        pagination_per_page = validate_cursor_pagination(cursor, pagination_per_page)
+
+        after_time, after_hash = None, None
+        if cursor:
+            try:
+                after_time, after_hash = decode_message_cursor(cursor)
+            except ValueError as e:
+                raise web.HTTPUnprocessableEntity(text=str(e))
+
+        messages_query = make_matching_messages_query(
+            include_confirmations=True,
+            after_time=after_time,
+            after_hash=after_hash,
+            cursor_mode=True,
+            **find_filters,
+        )
 
         if exclude_content:
             messages_query = messages_query.options(defer(MessageDb.content))
@@ -496,14 +507,13 @@ async def view_messages_list(request: web.Request) -> web.Response:
         next_cursor = None
         if has_more and messages:
             last = messages[-1]
-            next_cursor = encode_cursor(last.time.timestamp(), last.item_hash)
+            next_cursor = encode_message_cursor(last.time, last.item_hash)
 
         return web.json_response(
             text=aleph_json.dumps(
                 {
                     "messages": formatted,
                     "pagination_per_page": pagination_per_page,
-                    "has_more": has_more,
                     "next_cursor": next_cursor,
                 }
             ).decode("utf-8")

@@ -43,6 +43,9 @@ class GetAccountFilesQueryParams(BaseModel):
         description="Order in which files should be listed: "
         "-1 means most recent messages first, 1 means older messages first.",
     )
+    cursor: Optional[str] = Field(
+        default=None, description="Opaque cursor for cursor-based pagination."
+    )
 
 
 class GetBalancesChainsQueryParams(BaseModel):
@@ -58,6 +61,9 @@ class GetBalancesChainsQueryParams(BaseModel):
         default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
     )
     min_balance: int = Field(default=0, ge=1, description="Minimum Balance needed")
+    cursor: Optional[str] = Field(
+        default=None, description="Opaque cursor for cursor-based pagination."
+    )
 
     @field_validator("chains", mode="before")
     def split_str(cls, v):
@@ -85,6 +91,9 @@ class GetCreditBalancesQueryParams(BaseModel):
     )
     min_balance: int = Field(
         default=0, ge=1, description="Minimum Credit Balance needed"
+    )
+    cursor: Optional[str] = Field(
+        default=None, description="Opaque cursor for cursor-based pagination."
     )
 
 
@@ -122,6 +131,9 @@ class GetAccountCreditHistoryQueryParams(BaseModel):
     )
     page: int = Field(
         default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
+    )
+    cursor: Optional[str] = Field(
+        default=None, description="Opaque cursor for cursor-based pagination."
     )
     tx_hash: Optional[str] = Field(
         default=None, description="Filter by transaction hash"

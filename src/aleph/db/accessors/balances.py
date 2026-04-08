@@ -53,6 +53,8 @@ def make_balances_by_chain_query(
     page: int = 1,
     pagination: int = 100,
     min_balance: int = 0,
+    after_address: Optional[str] = None,
+    cursor_mode: bool = False,
 ) -> Select:
     query = select(AlephBalanceDb.address, AlephBalanceDb.balance, AlephBalanceDb.chain)
 
@@ -62,11 +64,19 @@ def make_balances_by_chain_query(
     if min_balance > 0:
         query = query.filter(AlephBalanceDb.balance >= min_balance)
 
-    query = query.offset((page - 1) * pagination)
+    query = query.order_by(AlephBalanceDb.address.asc())
 
-    # If pagination == 0, return all matching results
-    if pagination:
-        query = query.limit(pagination)
+    if after_address is not None:
+        query = query.where(AlephBalanceDb.address > after_address)
+
+    if after_address is not None or cursor_mode:
+        if pagination:
+            query = query.limit(pagination + 1)
+    else:
+        query = query.offset((page - 1) * pagination)
+        # If pagination == 0, return all matching results
+        if pagination:
+            query = query.limit(pagination)
 
     return query
 
@@ -387,6 +397,8 @@ def get_credit_balances(
     page: int = 1,
     pagination: int = 100,
     min_balance: int = 0,
+    after_address: Optional[str] = None,
+    cursor_mode: bool = False,
 ) -> list[tuple[str, int]]:
     """
     Get paginated credit balances for all addresses.
@@ -397,10 +409,18 @@ def get_credit_balances(
     if min_balance > 0:
         query = query.filter(AlephCreditBalanceDb.balance >= min_balance)
 
-    query = query.offset((page - 1) * pagination)
+    query = query.order_by(AlephCreditBalanceDb.address.asc())
 
-    if pagination:
-        query = query.limit(pagination)
+    if after_address is not None:
+        query = query.where(AlephCreditBalanceDb.address > after_address)
+
+    if after_address is not None or cursor_mode:
+        if pagination:
+            query = query.limit(pagination + 1)
+    else:
+        query = query.offset((page - 1) * pagination)
+        if pagination:
+            query = query.limit(pagination)
 
     # Return results in the expected format (address, credits)
     results = session.execute(query).all()
@@ -734,6 +754,10 @@ def get_address_credit_history(
     origin: Optional[str] = None,
     origin_ref: Optional[str] = None,
     payment_method: Optional[str] = None,
+    after_time: Optional[dt.datetime] = None,
+    after_credit_ref: Optional[str] = None,
+    after_credit_index: Optional[int] = None,
+    cursor_mode: bool = False,
 ) -> Sequence[AlephCreditHistoryDb]:
     """
     Get paginated credit history entries for a specific address, ordered from newest to oldest.
@@ -750,6 +774,9 @@ def get_address_credit_history(
         origin: Filter by origin
         origin_ref: Filter by origin reference
         payment_method: Filter by payment method
+        after_time: Cursor-based: only return entries older than this timestamp
+        after_credit_ref: Cursor-based: tiebreaker credit_ref for entries with the same timestamp
+        after_credit_index: Cursor-based: tiebreaker credit_index for entries with the same timestamp and credit_ref
 
     Returns:
         List of credit history entries ordered by message_timestamp desc
@@ -757,7 +784,11 @@ def get_address_credit_history(
     query = (
         select(AlephCreditHistoryDb)
         .where(AlephCreditHistoryDb.address == address)
-        .order_by(AlephCreditHistoryDb.message_timestamp.desc())
+        .order_by(
+            AlephCreditHistoryDb.message_timestamp.desc(),
+            AlephCreditHistoryDb.credit_ref.desc(),
+            AlephCreditHistoryDb.credit_index.desc(),
+        )
     )
 
     # Apply filters
@@ -776,7 +807,25 @@ def get_address_credit_history(
     if payment_method is not None:
         query = query.where(AlephCreditHistoryDb.payment_method == payment_method)
 
-    if pagination > 0:
+    if after_time is not None:
+        query = query.where(
+            (AlephCreditHistoryDb.message_timestamp < after_time)
+            | (
+                (AlephCreditHistoryDb.message_timestamp == after_time)
+                & (
+                    (AlephCreditHistoryDb.credit_ref < after_credit_ref)
+                    | (
+                        (AlephCreditHistoryDb.credit_ref == after_credit_ref)
+                        & (AlephCreditHistoryDb.credit_index < after_credit_index)
+                    )
+                )
+            )
+        )
+
+    if after_time is not None or cursor_mode:
+        if pagination > 0:
+            query = query.limit(pagination + 1)
+    elif pagination > 0:
         query = query.offset((page - 1) * pagination).limit(pagination)
 
     return session.execute(query).scalars().all()

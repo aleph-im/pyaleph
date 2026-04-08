@@ -65,6 +65,7 @@ class MergedPostV0(Protocol):
     original_signature: str
     time: float
     size: int
+    last_updated: dt.datetime
 
 
 Amend = aliased(PostDb)
@@ -206,6 +207,9 @@ def filter_post_select_stmt(
     sort_order: Optional[SortOrder] = None,
     page: int = 0,
     pagination: int = 20,
+    after_time: Optional[dt.datetime] = None,
+    after_hash: Optional[str] = None,
+    cursor_mode: bool = False,
 ) -> Select:
     select_merged_post_subquery = select_stmt.subquery()
     select_stmt = select(select_merged_post_subquery)
@@ -285,11 +289,31 @@ def filter_post_select_stmt(
                 )
         select_stmt = select_stmt.order_by(*order_by_columns)
 
-    # If pagination == 0, return all matching results
-    if pagination:
-        select_stmt = select_stmt.limit(pagination)
-    if page:
+    # Cursor filtering
+    if after_time is not None and sort_by == SortBy.TIME:
+        if sort_order == SortOrder.DESCENDING:
+            select_stmt = select_stmt.where(
+                (last_updated_column < after_time)
+                | (
+                    (last_updated_column == after_time)
+                    & (select_merged_post_subquery.c.original_item_hash > after_hash)
+                )
+            )
+        else:
+            select_stmt = select_stmt.where(
+                (last_updated_column > after_time)
+                | (
+                    (last_updated_column == after_time)
+                    & (select_merged_post_subquery.c.original_item_hash > after_hash)
+                )
+            )
+    elif page > 1:
         select_stmt = select_stmt.offset((page - 1) * pagination)
+
+    if pagination:
+        select_stmt = select_stmt.limit(
+            pagination + 1 if after_time is not None or cursor_mode else pagination
+        )
 
     return select_stmt
 
