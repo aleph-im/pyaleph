@@ -40,9 +40,10 @@ def create_aiohttp_app(with_swagger: bool = True) -> web.Application:
         components_path = str(
             importlib.resources.files("aleph.web.controllers") / "components.yaml"
         )
+        version = get_version() or "unknown"
         swagger = SwaggerDocs(
             app,
-            info=SwaggerInfo(title="Aleph CCN API", version=get_version()),
+            info=SwaggerInfo(title="Aleph CCN API", version=version),
             swagger_ui_settings=SwaggerUiSettings(path="/api/docs"),
             components=components_path,
             validate=False,
