@@ -445,3 +445,21 @@ def get_item_hash_from_request(request: web.Request) -> ItemHash:
         raise web.HTTPBadRequest(body=f"Invalid message hash: {item_hash_str}")
 
     return item_hash
+
+
+CURSOR_MAX_PAGINATION = 200
+
+
+def validate_cursor_pagination(cursor: Optional[str], pagination: int) -> int:
+    """Validate and adjust pagination when cursor mode is active.
+
+    Returns the (possibly capped) pagination value.
+    Raises web.HTTPUnprocessableEntity if pagination=0 with cursor.
+    """
+    if cursor is None:
+        return pagination
+    if pagination == 0:
+        raise web.HTTPUnprocessableEntity(
+            text="pagination=0 is not allowed with cursor-based pagination"
+        )
+    return min(pagination, CURSOR_MAX_PAGINATION)

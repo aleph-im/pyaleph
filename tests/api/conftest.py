@@ -1,11 +1,17 @@
 import datetime as dt
 import json
 from pathlib import Path
-from typing import Any, Dict, Sequence, Tuple, cast
+from typing import Any, Dict, List, Sequence, Tuple, cast
 
 import pytest
 import pytest_asyncio
-from aleph_message.models import AggregateContent, PostContent
+from aleph_message.models import (
+    AggregateContent,
+    Chain,
+    ItemType,
+    MessageType,
+    PostContent,
+)
 from configmanager import Config
 from in_memory_storage_engine import InMemoryStorageEngine
 from sqlalchemy import insert
@@ -24,6 +30,7 @@ from aleph.handlers.message_handler import MessageHandler
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
+from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.message_status import MessageStatus
 
@@ -219,6 +226,147 @@ def amended_post_with_refs_and_tags(
     )
 
     return amend_message, amend_post, message_status
+
+
+@pytest.fixture
+def test_addresses():
+    """Return a list of test addresses used in the address stats message fixtures."""
+    return [
+        "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",  # Has POST, STORE, PROGRAM
+        "0xaC033C1cA5C49Eff98A1D9a56BeDBC4840010BA4",  # Has POST
+        "0x5D00fAD0763A876202a29FE71D30B4554D28FB97",  # Has STORE
+        "0xDifferentAddress1",  # Has AGGREGATE
+        "0xDifferentAddress2",  # Has INSTANCE
+    ]
+
+
+@pytest.fixture
+def fixture_address_stats_messages(
+    session_factory: DbSessionFactory, test_addresses
+) -> List[MessageDb]:
+    """Create test messages with different types and addresses for address stats testing."""
+    now = utc_now()
+    messages = [
+        # First address has multiple message types
+        MessageDb(
+            item_hash="hash1",
+            chain=Chain.ETH,
+            sender=test_addresses[0],
+            signature="0xsig1",
+            item_type=ItemType.inline,
+            type=MessageType.post,
+            content={"test": "content1"},
+            size=100,
+            time=now,
+            channel=Channel("TEST"),
+            status_value=MessageStatus.PROCESSED,
+            reception_time=now,
+        ),
+        MessageDb(
+            item_hash="hash2",
+            chain=Chain.ETH,
+            sender=test_addresses[0],
+            signature="0xsig2",
+            item_type=ItemType.inline,
+            type=MessageType.store,
+            content={"test": "content2"},
+            size=100,
+            time=now + dt.timedelta(seconds=1),
+            channel=Channel("TEST"),
+            status_value=MessageStatus.PROCESSED,
+            reception_time=now,
+        ),
+        MessageDb(
+            item_hash="hash3",
+            chain=Chain.ETH,
+            sender=test_addresses[0],
+            signature="0xsig3",
+            item_type=ItemType.inline,
+            type=MessageType.program,
+            content={"test": "content3"},
+            size=100,
+            time=now + dt.timedelta(seconds=2),
+            channel=Channel("TEST"),
+            status_value=MessageStatus.PROCESSED,
+            reception_time=now,
+        ),
+        # Second address has only POST
+        MessageDb(
+            item_hash="hash4",
+            chain=Chain.ETH,
+            sender=test_addresses[1],
+            signature="0xsig4",
+            item_type=ItemType.inline,
+            type=MessageType.post,
+            content={"test": "content4"},
+            size=100,
+            time=now + dt.timedelta(seconds=3),
+            channel=Channel("TEST"),
+            status_value=MessageStatus.PROCESSED,
+            reception_time=now,
+        ),
+        # Third address has only STORE
+        MessageDb(
+            item_hash="hash5",
+            chain=Chain.ETH,
+            sender=test_addresses[2],
+            signature="0xsig5",
+            item_type=ItemType.inline,
+            type=MessageType.store,
+            content={"test": "content5"},
+            size=100,
+            time=now + dt.timedelta(seconds=4),
+            channel=Channel("TEST"),
+            status_value=MessageStatus.PROCESSED,
+            reception_time=now,
+        ),
+        # Fourth address has AGGREGATE
+        MessageDb(
+            item_hash="hash6",
+            chain=Chain.ETH,
+            sender=test_addresses[3],
+            signature="0xsig6",
+            item_type=ItemType.inline,
+            type=MessageType.aggregate,
+            content={"key": "test6", "content": {"data": "aggregate"}},
+            size=100,
+            time=now + dt.timedelta(seconds=5),
+            channel=Channel("TEST"),
+            status_value=MessageStatus.PROCESSED,
+            reception_time=now,
+        ),
+        # Fifth address has INSTANCE
+        MessageDb(
+            item_hash="hash7",
+            chain=Chain.ETH,
+            sender=test_addresses[4],
+            signature="0xsig7",
+            item_type=ItemType.inline,
+            type=MessageType.instance,
+            content={"test": "content7"},
+            size=100,
+            time=now + dt.timedelta(seconds=6),
+            channel=Channel("TEST"),
+            status_value=MessageStatus.PROCESSED,
+            reception_time=now,
+        ),
+    ]
+
+    message_statuses = [
+        MessageStatusDb(
+            item_hash=msg.item_hash,
+            status=MessageStatus.PROCESSED,
+            reception_time=now,
+        )
+        for msg in messages
+    ]
+
+    with session_factory() as session:
+        session.add_all(messages)
+        session.add_all(message_statuses)
+        session.commit()
+
+    return messages
 
 
 @pytest.fixture

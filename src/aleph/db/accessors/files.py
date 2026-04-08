@@ -234,6 +234,9 @@ def get_address_files_for_api(
     pagination: int = 0,
     page: int = 1,
     sort_order: SortOrder = SortOrder.DESCENDING,
+    after_time: Optional[dt.datetime] = None,
+    after_hash: Optional[str] = None,
+    cursor_mode: bool = False,
 ) -> Iterable[Row]:
     select_stmt = (
         select(
@@ -247,9 +250,6 @@ def get_address_files_for_api(
         .where(MessageFilePinDb.owner == owner)
     )
 
-    if pagination:
-        select_stmt = select_stmt.limit(pagination).offset((page - 1) * pagination)
-
     if sort_order == SortOrder.DESCENDING:
         order_by_columns: Tuple[UnaryExpression[Any], UnaryExpression[Any]] = (
             MessageFilePinDb.created.desc(),
@@ -257,11 +257,39 @@ def get_address_files_for_api(
         )
     else:  # ASCENDING
         order_by_columns = (
-            MessageFilePinDb.item_hash.asc(),
+            MessageFilePinDb.created.asc(),
             MessageFilePinDb.item_hash.asc(),
         )
 
     select_stmt = select_stmt.order_by(*order_by_columns)
+
+    if after_time is not None:
+        if sort_order == SortOrder.DESCENDING:
+            select_stmt = select_stmt.where(
+                (MessageFilePinDb.created < after_time)
+                | (
+                    (MessageFilePinDb.created == after_time)
+                    & (MessageFilePinDb.item_hash > after_hash)
+                )
+            )
+        else:
+            select_stmt = select_stmt.where(
+                (MessageFilePinDb.created > after_time)
+                | (
+                    (MessageFilePinDb.created == after_time)
+                    & (MessageFilePinDb.item_hash > after_hash)
+                )
+            )
+
+    if after_time is not None or cursor_mode:
+        if pagination:
+            select_stmt = select_stmt.limit(pagination + 1)
+    elif pagination and page > 1:
+        select_stmt = select_stmt.offset((page - 1) * pagination)
+        if pagination:
+            select_stmt = select_stmt.limit(pagination)
+    elif pagination:
+        select_stmt = select_stmt.limit(pagination)
 
     return session.execute(select_stmt).all()
 

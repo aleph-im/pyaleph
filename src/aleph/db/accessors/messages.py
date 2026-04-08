@@ -12,7 +12,6 @@ from sqlalchemy.sql.elements import literal
 from aleph.db.accessors.address_stats import escape_like_pattern
 from aleph.db.accessors.cost import delete_costs_for_message
 from aleph.db.models.message_counts import MessageCountsDb
-from aleph.toolkit.cursor import decode_cursor
 from aleph.toolkit.timestamp import coerce_to_datetime, utc_now
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSession
@@ -84,7 +83,9 @@ def make_matching_messages_query(
     page: int = 1,
     pagination: int = 20,
     include_confirmations: bool = False,
-    cursor: Optional[str] = None,
+    after_time: Optional[dt.datetime] = None,
+    after_hash: Optional[str] = None,
+    cursor_mode: bool = False,
     # TODO: remove once all filters are supported
     **kwargs,
 ) -> Select:
@@ -178,19 +179,17 @@ def make_matching_messages_query(
                 MessageDb.item_hash.asc(),
             )
 
-    # Cursor pagination (if cursor provided, ignore page)
-    if cursor:
-        time_val, hash_val = decode_cursor(cursor)
-        cursor_time = coerce_to_datetime(time_val)
+    # Cursor pagination (if cursor values provided, ignore page)
+    if after_time is not None:
         if sort_order == SortOrder.DESCENDING:
             select_stmt = select_stmt.where(
-                (MessageDb.time < cursor_time)
-                | ((MessageDb.time == cursor_time) & (MessageDb.item_hash > hash_val))
+                (MessageDb.time < after_time)
+                | ((MessageDb.time == after_time) & (MessageDb.item_hash > after_hash))
             )
         else:
             select_stmt = select_stmt.where(
-                (MessageDb.time > cursor_time)
-                | ((MessageDb.time == cursor_time) & (MessageDb.item_hash > hash_val))
+                (MessageDb.time > after_time)
+                | ((MessageDb.time == after_time) & (MessageDb.item_hash > after_hash))
             )
     elif page > 1:
         select_stmt = select_stmt.offset((page - 1) * pagination)
@@ -199,8 +198,9 @@ def make_matching_messages_query(
 
     # If pagination == 0, return all matching results
     if pagination:
-        # Fetch +1 for has_more detection when using cursor
-        select_stmt = select_stmt.limit(pagination + 1 if cursor else pagination)
+        select_stmt = select_stmt.limit(
+            pagination + 1 if after_time is not None or cursor_mode else pagination
+        )
 
     return select_stmt
 
@@ -309,6 +309,9 @@ def get_message_stats_by_address(
     sort_order: SortOrder = SortOrder.DESCENDING,
     page: int = 1,
     pagination: int = 0,
+    after_sort_value: Optional[Any] = None,
+    after_address: Optional[str] = None,
+    cursor_mode: bool = False,
 ) -> Sequence[Any]:
     """
     Get message stats for user addresses using the message_counts table.
@@ -388,7 +391,28 @@ def get_message_stats_by_address(
     else:
         stmt = stmt.order_by(sort_column.desc(), subquery.c.address.asc())
 
-    if pagination:
+    if after_sort_value is not None:
+        if sort_order == SortOrder.DESCENDING:
+            stmt = stmt.where(
+                (sort_column < after_sort_value)
+                | (
+                    (sort_column == after_sort_value)
+                    & (subquery.c.address > after_address)
+                )
+            )
+        else:
+            stmt = stmt.where(
+                (sort_column > after_sort_value)
+                | (
+                    (sort_column == after_sort_value)
+                    & (subquery.c.address > after_address)
+                )
+            )
+
+    if after_sort_value is not None or cursor_mode:
+        if pagination:
+            stmt = stmt.limit(pagination + 1)
+    elif pagination:
         stmt = stmt.limit(pagination).offset((page - 1) * pagination)
 
     return session.execute(stmt).all()

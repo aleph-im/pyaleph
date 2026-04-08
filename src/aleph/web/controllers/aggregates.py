@@ -17,8 +17,10 @@ from aleph.schemas.messages_query_params import (
     DEFAULT_MESSAGES_PER_PAGE,
     LIST_FIELD_SEPARATOR,
 )
+from aleph.toolkit.cursor import decode_aggregate_cursor, encode_aggregate_cursor
 from aleph.types.sort_order import SortByAggregate, SortOrder
 from aleph.web.controllers.app_state_getters import get_session_factory_from_request
+from aleph.web.controllers.utils import validate_cursor_pagination
 
 LOGGER = logging.getLogger(__name__)
 
@@ -49,6 +51,9 @@ class AggregatesListQueryParams(BaseModel):
         default=DEFAULT_MESSAGES_PER_PAGE, ge=1, le=500, alias="pagination"
     )
     page: int = Field(default=1, ge=1, alias="page")
+    cursor: Optional[str] = Field(
+        default=None, description="Opaque cursor for cursor-based pagination."
+    )
 
     @field_validator("keys", "addresses", mode="before")
     def split_str(cls, v):
@@ -245,8 +250,68 @@ async def view_aggregates_list(request: web.Request) -> web.Response:
         )
 
     session_factory = get_session_factory_from_request(request)
+
+    if query_params.cursor is not None:
+        pagination = validate_cursor_pagination(
+            query_params.cursor, query_params.pagination
+        )
+
+        after_time, after_key, after_owner = None, None, None
+        if query_params.cursor:
+            try:
+                after_time, after_key, after_owner = decode_aggregate_cursor(
+                    query_params.cursor
+                )
+            except ValueError as e:
+                raise web.HTTPUnprocessableEntity(text=str(e))
+
+        with session_factory() as session:
+            aggregates = list(
+                get_aggregates(
+                    session=session,
+                    keys=query_params.keys,
+                    addresses=query_params.addresses,
+                    sort_by=query_params.sort_by,
+                    sort_order=query_params.sort_order,
+                    pagination=pagination,
+                    after_time=after_time,
+                    after_key=after_key,
+                    after_owner=after_owner,
+                    cursor_mode=True,
+                )
+            )
+
+        has_more = len(aggregates) > pagination
+        if has_more:
+            aggregates = aggregates[:pagination]
+
+        next_cursor: Optional[str] = None
+        if has_more and aggregates:
+            last = aggregates[-1]
+            if query_params.sort_by == SortByAggregate.LAST_MODIFIED:
+                cursor_time = last.last_revision.creation_datetime
+            else:
+                cursor_time = last.creation_datetime
+            next_cursor = encode_aggregate_cursor(cursor_time, last.key, last.owner)
+
+        output = {
+            "aggregates": [
+                {
+                    "address": aggregate.owner,
+                    "key": aggregate.key,
+                    "content": aggregate.content,
+                    "created": aggregate.creation_datetime.isoformat(),
+                    "last_updated": aggregate.last_revision.creation_datetime.isoformat(),
+                }
+                for aggregate in aggregates
+            ],
+            "pagination_per_page": pagination,
+            "next_cursor": next_cursor,
+        }
+        return web.json_response(output)
+
     with session_factory() as session:
-        aggregates = get_aggregates(
+        page_aggregates = get_aggregates(
             session=session,
             keys=query_params.keys,
             addresses=query_params.addresses,
@@ -271,7 +336,7 @@ async def view_aggregates_list(request: web.Request) -> web.Response:
                     "created": aggregate.creation_datetime.isoformat(),
                     "last_updated": aggregate.last_revision.creation_datetime.isoformat(),
                 }
-                for aggregate in aggregates
+                for aggregate in page_aggregates
             ],
             "pagination_per_page": query_params.pagination,
             "pagination_page": query_params.page,

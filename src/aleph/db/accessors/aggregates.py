@@ -320,6 +320,10 @@ def get_aggregates(
     sort_order: SortOrder = SortOrder.DESCENDING,
     page: int = 1,
     pagination: int = 100,
+    after_time: Optional[dt.datetime] = None,
+    after_key: Optional[str] = None,
+    after_owner: Optional[str] = None,
+    cursor_mode: bool = False,
 ) -> Iterable[AggregateDb]:
     where_clause = []
     if keys:
@@ -328,15 +332,15 @@ def get_aggregates(
         where_clause.append(AggregateDb.owner.in_(addresses))
 
     if sort_by == SortByAggregate.CREATION_TIME:
-        order_by_column: Any = AggregateDb.creation_datetime
+        order_by_raw_column: Any = AggregateDb.creation_datetime
     else:
         # last_modified
-        order_by_column = AggregateElementDb.creation_datetime
+        order_by_raw_column = AggregateElementDb.creation_datetime
 
     if sort_order == SortOrder.DESCENDING:
-        order_by_column = order_by_column.desc()
+        order_by_column = order_by_raw_column.desc()
     else:
-        order_by_column = order_by_column.asc()
+        order_by_column = order_by_raw_column.asc()
 
     query = (
         select(AggregateDb)
@@ -346,9 +350,44 @@ def get_aggregates(
         )
         .where(*where_clause)
         .order_by(order_by_column)
-        .limit(pagination)
-        .offset((page - 1) * pagination)
     )
+
+    if after_time is not None:
+        if sort_order == SortOrder.DESCENDING:
+            query = query.where(
+                (order_by_raw_column < after_time)
+                | (
+                    (order_by_raw_column == after_time)
+                    & (
+                        (AggregateDb.key > after_key)
+                        | (
+                            (AggregateDb.key == after_key)
+                            & (AggregateDb.owner > after_owner)
+                        )
+                    )
+                )
+            )
+        else:
+            query = query.where(
+                (order_by_raw_column > after_time)
+                | (
+                    (order_by_raw_column == after_time)
+                    & (
+                        (AggregateDb.key > after_key)
+                        | (
+                            (AggregateDb.key == after_key)
+                            & (AggregateDb.owner > after_owner)
+                        )
+                    )
+                )
+            )
+    elif page > 1:
+        query = query.offset((page - 1) * pagination)
+
+    if pagination:
+        query = query.limit(
+            pagination + 1 if after_time is not None or cursor_mode else pagination
+        )
 
     return (
         session.execute(query.options(selectinload(AggregateDb.last_revision)))

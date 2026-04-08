@@ -167,7 +167,7 @@ class MessageQueryParams(BaseMessageQueryParams):
         default=None,
         description="Opaque cursor for cursor-based pagination. "
         "When provided, 'page' is ignored and responses include "
-        "'has_more' + 'next_cursor' instead of 'pagination_total'.",
+        "'next_cursor' instead of 'pagination_total'.",
     )
 
     @model_validator(mode="after")

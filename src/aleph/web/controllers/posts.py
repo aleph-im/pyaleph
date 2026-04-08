@@ -1,3 +1,4 @@
+import datetime as dt
 from typing import Any, Dict, List, Optional
 
 from aiohttp import web
@@ -25,9 +26,15 @@ from aleph.schemas.messages_query_params import (
     DEFAULT_PAGE,
     LIST_FIELD_SEPARATOR,
 )
+from aleph.toolkit.cursor import decode_message_cursor, encode_message_cursor
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.sort_order import SortBy, SortOrder
-from aleph.web.controllers.utils import Pagination, cond_output, get_path_page
+from aleph.web.controllers.utils import (
+    Pagination,
+    cond_output,
+    get_path_page,
+    validate_cursor_pagination,
+)
 
 
 class PostQueryParams(BaseModel):
@@ -86,6 +93,9 @@ class PostQueryParams(BaseModel):
         description="Order in which messages should be listed: "
         "-1 means most recent messages first, 1 means older messages first.",
     )
+    cursor: Optional[str] = Field(
+        default=None, description="Opaque cursor for cursor-based pagination."
+    )
 
     @model_validator(mode="before")
     def validate_field_dependencies(cls, values):
@@ -94,6 +104,14 @@ class PostQueryParams(BaseModel):
         if start_date and end_date and (end_date < start_date):
             raise ValueError("end date cannot be lower than start date.")
         return values
+
+    @model_validator(mode="after")
+    def validate_cursor_sort(self):
+        if self.cursor and self.sort_by == SortBy.TX_TIME:
+            raise ValueError(
+                "Cursor pagination is not supported with tx-time sort order."
+            )
+        return self
 
     @field_validator(
         "addresses", "hashes", "refs", "post_types", "channels", "tags", mode="before"
@@ -270,14 +288,56 @@ async def view_posts_list_v0(request: web.Request) -> web.Response:
     pagination_page = query_params.page
     pagination_per_page = query_params.pagination
 
+    cursor = find_filters.pop("cursor", None)
+
     session_factory: DbSessionFactory = request.app["session_factory"]
+
+    if cursor is not None:
+        pagination_per_page = validate_cursor_pagination(cursor, pagination_per_page)
+
+        if cursor:
+            try:
+                after_time, after_hash = decode_message_cursor(cursor)
+            except ValueError as e:
+                raise web.HTTPUnprocessableEntity(text=str(e))
+            find_filters["after_time"] = after_time
+            find_filters["after_hash"] = after_hash
+
+        with session_factory() as session:
+            results = get_matching_posts_legacy(
+                session=session, cursor_mode=True, **find_filters
+            )
+            posts_with_meta = [
+                (merged_post_v0_to_dict(session, post), post) for post in results
+            ]
+
+        has_more = len(posts_with_meta) > pagination_per_page
+        if has_more:
+            posts_with_meta = posts_with_meta[:pagination_per_page]
+
+        posts = [p for p, _ in posts_with_meta]
+
+        next_cursor: Optional[str] = None
+        if has_more and posts_with_meta:
+            last_raw = posts_with_meta[-1][1]
+            next_cursor = encode_message_cursor(
+                last_raw.last_updated,
+                last_raw.original_item_hash,
+            )
+
+        context: Dict[str, Any] = {
+            "posts": posts,
+            "pagination_per_page": pagination_per_page,
+            "next_cursor": next_cursor,
+        }
+        return cond_output(request, context, "TODO.html")
 
     with session_factory() as session:
         total_posts = count_matching_posts(session=session, **find_filters)
         results = get_matching_posts_legacy(session=session, **find_filters)
         posts = [merged_post_v0_to_dict(session, post) for post in results]
 
-    context: Dict[str, Any] = {"posts": posts}
+    context = {"posts": posts}
 
     if pagination_per_page is not None:
 
@@ -399,13 +459,52 @@ async def view_posts_list_v1(request) -> web.Response:
     pagination_page = query_params.page
     pagination_per_page = query_params.pagination
 
+    cursor = find_filters.pop("cursor", None)
+
     session_factory: DbSessionFactory = request.app["session_factory"]
+
+    if cursor is not None:
+        pagination_per_page = validate_cursor_pagination(cursor, pagination_per_page)
+
+        if cursor:
+            try:
+                after_time, after_hash = decode_message_cursor(cursor)
+            except ValueError as e:
+                raise web.HTTPUnprocessableEntity(text=str(e))
+            find_filters["after_time"] = after_time
+            find_filters["after_hash"] = after_hash
+
+        with session_factory() as session:
+            results = get_matching_posts(
+                session=session, cursor_mode=True, **find_filters
+            )
+            posts = [merged_post_to_dict(post) for post in results]
+
+        has_more = len(posts) > pagination_per_page
+        if has_more:
+            posts = posts[:pagination_per_page]
+
+        next_cursor: Optional[str] = None
+        if has_more and posts:
+            last = posts[-1]
+            next_cursor = encode_message_cursor(
+                dt.datetime.fromisoformat(last["last_updated"]),
+                last["original_item_hash"],
+            )
+
+        context: Dict[str, Any] = {
+            "posts": posts,
+            "pagination_per_page": pagination_per_page,
+            "next_cursor": next_cursor,
+        }
+        return cond_output(request, context, "TODO.html")
+
     with session_factory() as session:
         total_posts = count_matching_posts(session=session, **find_filters)
         results = get_matching_posts(session=session, **find_filters)
         posts = [merged_post_to_dict(post) for post in results]
 
-    context: Dict[str, Any] = {"posts": posts}
+    context = {"posts": posts}
 
     if pagination_per_page is not None:
 

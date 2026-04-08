@@ -1,5 +1,6 @@
 import json
-from typing import Any, Dict, List, Sequence
+from decimal import Decimal
+from typing import Any, Dict, List, Optional, Sequence
 
 from aiohttp import web
 from pydantic import TypeAdapter, ValidationError
@@ -42,9 +43,22 @@ from aleph.schemas.api.accounts import (
     GetCreditBalancesQueryParams,
     GetResourceConsumedCreditsResponse,
 )
+from aleph.toolkit.cursor import (
+    decode_address_cursor,
+    decode_address_stats_cursor,
+    decode_credit_history_cursor,
+    decode_message_cursor,
+    encode_address_cursor,
+    encode_address_stats_cursor,
+    encode_credit_history_cursor,
+    encode_message_cursor,
+)
 from aleph.types.db_session import DbSessionFactory
 from aleph.web.controllers.app_state_getters import get_session_factory_from_request
-from aleph.web.controllers.utils import get_item_hash_str_from_request
+from aleph.web.controllers.utils import (
+    get_item_hash_str_from_request,
+    validate_cursor_pagination,
+)
 
 
 def make_stats_dict(rows: Sequence[Any]) -> Dict[str, Dict[str, int]]:
@@ -171,6 +185,63 @@ async def addresses_stats_view_v1(request: web.Request):
         query_params = AddressesQueryParams.model_validate(request.query)
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json())
+
+    cursor = query_params.cursor
+
+    if cursor is not None:
+        pagination_per_page = validate_cursor_pagination(
+            cursor, query_params.pagination
+        )
+
+        sort_value, after_address = None, None
+        if cursor:
+            try:
+                sort_value, after_address = decode_address_stats_cursor(cursor)
+            except ValueError as e:
+                raise web.HTTPUnprocessableEntity(text=str(e))
+
+        with session_factory() as session:
+            rows = get_message_stats_by_address(
+                session=session,
+                address_contains=query_params.address_contains,
+                sort_by=query_params.sort_by,
+                sort_order=query_params.sort_order,
+                pagination=pagination_per_page,
+                after_sort_value=sort_value,
+                after_address=after_address,
+                cursor_mode=True,
+            )
+
+        has_more = len(rows) > pagination_per_page
+        if has_more:
+            rows_trimmed = rows[:pagination_per_page]
+        else:
+            rows_trimmed = rows
+
+        next_cursor: Optional[str] = None
+        if has_more and rows_trimmed:
+            sort_column_name = (
+                query_params.sort_by.value.lower()
+                if query_params.sort_by
+                else "address"
+            )
+            last_row = rows_trimmed[-1]
+            cursor_sort_value = getattr(last_row, sort_column_name)
+            if isinstance(cursor_sort_value, (int, float, Decimal)):
+                cursor_sort_value = int(cursor_sort_value)
+            next_cursor = encode_address_stats_cursor(
+                cursor_sort_value, last_row.address
+            )
+
+        data = make_stats_dict(rows_trimmed)
+        response = {
+            "data": data,
+            "pagination_per_page": pagination_per_page,
+            "next_cursor": next_cursor,
+        }
+        return web.json_response(
+            text=aleph_json.dumps(response, sort_keys=False).decode("utf-8")
+        )
 
     pagination_page = query_params.page
     pagination_per_page = query_params.pagination
@@ -320,9 +391,51 @@ async def get_chain_balances(request: web.Request) -> web.Response:
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json())
 
-    find_filters = query_params.model_dump(exclude_none=True)
-
+    cursor = query_params.cursor
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
+
+    if cursor is not None:
+        pagination_per_page = validate_cursor_pagination(
+            cursor, query_params.pagination
+        )
+
+        after_address = None
+        if cursor:
+            try:
+                after_address = decode_address_cursor(cursor)
+            except ValueError as e:
+                raise web.HTTPUnprocessableEntity(text=str(e))
+
+        find_filters = query_params.model_dump(exclude_none=True, exclude={"cursor"})
+
+        with session_factory() as session:
+            balances = get_balances_by_chain(
+                session, after_address=after_address, cursor_mode=True, **find_filters
+            )
+
+        has_more = len(balances) > pagination_per_page
+        if has_more:
+            balances = balances[:pagination_per_page]
+
+        formatted_balances = [
+            AddressBalanceResponse(address=b.address, balance=b.balance, chain=b.chain)
+            for b in balances
+        ]
+
+        next_cursor: Optional[str] = None
+        if has_more and balances:
+            last_balance = balances[-1]
+            next_cursor = encode_address_cursor(last_balance.address)
+
+        response = {
+            "balances": formatted_balances,
+            "pagination_per_page": pagination_per_page,
+            "next_cursor": next_cursor,
+        }
+        return web.json_response(text=aleph_json.dumps(response).decode("utf-8"))
+
+    find_filters = query_params.model_dump(exclude_none=True, exclude={"cursor"})
+
     with session_factory() as session:
         balances = get_balances_by_chain(session, **find_filters)
 
@@ -388,9 +501,51 @@ async def get_credit_balances_handler(request: web.Request) -> web.Response:
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json())
 
-    find_filters = query_params.model_dump(exclude_none=True)
-
+    cursor = query_params.cursor
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
+
+    if cursor is not None:
+        pagination_per_page = validate_cursor_pagination(
+            cursor, query_params.pagination
+        )
+
+        after_address = None
+        if cursor:
+            try:
+                after_address = decode_address_cursor(cursor)
+            except ValueError as e:
+                raise web.HTTPUnprocessableEntity(text=str(e))
+
+        find_filters = query_params.model_dump(exclude_none=True, exclude={"cursor"})
+
+        with session_factory() as session:
+            credit_balances = get_credit_balances(
+                session, after_address=after_address, cursor_mode=True, **find_filters
+            )
+
+        has_more = len(credit_balances) > pagination_per_page
+        if has_more:
+            credit_balances = credit_balances[:pagination_per_page]
+
+        formatted_credit_balances = [
+            AddressCreditBalanceResponse(address=address, credits=credits)
+            for address, credits in credit_balances
+        ]
+
+        next_cursor: Optional[str] = None
+        if has_more and credit_balances:
+            last_address, _last_credits = credit_balances[-1]
+            next_cursor = encode_address_cursor(last_address)
+
+        response = {
+            "credit_balances": formatted_credit_balances,
+            "pagination_per_page": pagination_per_page,
+            "next_cursor": next_cursor,
+        }
+        return web.json_response(text=aleph_json.dumps(response).decode("utf-8"))
+
+    find_filters = query_params.model_dump(exclude_none=True, exclude={"cursor"})
+
     with session_factory() as session:
         credit_balances = get_credit_balances(session, **find_filters)
 
@@ -467,7 +622,61 @@ async def get_account_files(request: web.Request) -> web.Response:
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json())
 
+    cursor = query_params.cursor
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
+
+    if cursor is not None:
+        pagination_per_page = validate_cursor_pagination(
+            cursor, query_params.pagination
+        )
+
+        after_time, after_hash = None, None
+        if cursor:
+            try:
+                after_time, after_hash = decode_message_cursor(cursor)
+            except ValueError as e:
+                raise web.HTTPUnprocessableEntity(text=str(e))
+
+        with session_factory() as session:
+            file_pins = list(
+                get_address_files_for_api(
+                    session=session,
+                    owner=address,
+                    pagination=pagination_per_page,
+                    page=1,
+                    sort_order=query_params.sort_order,
+                    after_time=after_time,
+                    after_hash=after_hash,
+                    cursor_mode=True,
+                )
+            )
+            _nb_files, total_size = get_address_files_stats(
+                session=session, owner=address
+            )
+
+        has_more = len(file_pins) > pagination_per_page
+        if has_more:
+            file_pins = file_pins[:pagination_per_page]
+
+        if not file_pins:
+            raise web.HTTPNotFound()
+
+        files_adapter = TypeAdapter(list[GetAccountFilesResponseItem])
+        file_pins_list = [row._asdict() for row in file_pins]
+
+        next_cursor: Optional[str] = None
+        if has_more and file_pins:
+            last_file = file_pins[-1]
+            next_cursor = encode_message_cursor(last_file.created, last_file.item_hash)
+
+        response_data = {
+            "address": address,
+            "total_size": total_size,
+            "files": files_adapter.validate_python(file_pins_list),
+            "pagination_per_page": pagination_per_page,
+            "next_cursor": next_cursor,
+        }
+        return web.json_response(text=aleph_json.dumps(response_data).decode("utf-8"))
 
     with session_factory() as session:
         file_pins = list(
@@ -571,7 +780,87 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json())
 
+    cursor = query_params.cursor
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
+
+    if cursor is not None:
+        pagination_per_page = validate_cursor_pagination(
+            cursor, query_params.pagination
+        )
+
+        after_time, after_credit_ref, after_credit_index = None, None, None
+        if cursor:
+            try:
+                after_time, after_credit_ref, after_credit_index = (
+                    decode_credit_history_cursor(cursor)
+                )
+            except ValueError as e:
+                raise web.HTTPUnprocessableEntity(text=str(e))
+
+        with session_factory() as session:
+            cursor_entries = list(
+                get_address_credit_history(
+                    session=session,
+                    address=address,
+                    pagination=pagination_per_page,
+                    tx_hash=query_params.tx_hash,
+                    token=query_params.token,
+                    chain=query_params.chain,
+                    provider=query_params.provider,
+                    origin=query_params.origin,
+                    origin_ref=query_params.origin_ref,
+                    payment_method=query_params.payment_method,
+                    after_time=after_time,
+                    after_credit_ref=after_credit_ref,
+                    after_credit_index=after_credit_index,
+                    cursor_mode=True,
+                )
+            )
+
+        if not cursor_entries:
+            raise web.HTTPNotFound(text="No credit history found for this address")
+
+        has_more = len(cursor_entries) > pagination_per_page
+        if has_more:
+            cursor_entries = cursor_entries[:pagination_per_page]
+
+        history_adapter = TypeAdapter(list[CreditHistoryResponseItem])
+        credit_history_list = [
+            {
+                "amount": entry.amount,
+                "price": entry.price,
+                "bonus_amount": entry.bonus_amount,
+                "tx_hash": entry.tx_hash,
+                "token": entry.token,
+                "chain": entry.chain,
+                "provider": entry.provider,
+                "origin": entry.origin,
+                "origin_ref": entry.origin_ref,
+                "payment_method": entry.payment_method,
+                "credit_ref": entry.credit_ref,
+                "credit_index": entry.credit_index,
+                "expiration_date": entry.expiration_date,
+                "message_timestamp": entry.message_timestamp,
+            }
+            for entry in cursor_entries
+        ]
+
+        next_cursor: Optional[str] = None
+        if has_more and cursor_entries:
+            last_entry = cursor_entries[-1]
+            next_cursor = encode_credit_history_cursor(
+                last_entry.message_timestamp,
+                last_entry.credit_ref,
+                last_entry.credit_index,
+            )
+
+        response_data = {
+            "address": address,
+            "credit_history": history_adapter.validate_python(credit_history_list),
+            "pagination_per_page": pagination_per_page,
+            "next_cursor": next_cursor,
+        }
+        return web.json_response(text=aleph_json.dumps(response_data).decode("utf-8"))
 
     with session_factory() as session:
         credit_history_entries = get_address_credit_history(
