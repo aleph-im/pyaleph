@@ -15,9 +15,7 @@ import pytest
 import pytest_asyncio
 from aleph_message.models import Chain, ItemType, MessageType
 
-from aleph.db.accessors.pending_messages import (
-    make_pending_message_fetched_statement,
-)
+from aleph.db.accessors.pending_messages import make_pending_message_fetched_statement
 from aleph.db.models import MessageDb, PendingMessageDb
 from aleph.jobs.fetch_pending_messages import (
     ACTIVE_FETCH_TASKS_KEY,
