@@ -40,11 +40,6 @@ MessageId = NewType("MessageId", str)
 # Redis key tracking the number of in-flight fetch tasks. Used by /metrics.
 ACTIVE_FETCH_TASKS_KEY = "retry_messages_job_tasks"
 
-# Idle wait timeout: how long to block on the MQ "new pending message" signal
-# before re-checking the database. Bounds the latency for messages that arrive
-# without an MQ notification (e.g. delayed retries).
-IDLE_WAIT_TIMEOUT_SECONDS = 3
-
 
 class MetricState(TypedDict):
     """Tracks the last value sent to Redis to debounce no-op updates."""
@@ -212,6 +207,7 @@ class PendingMessageFetcher(MessageJob):
         LOGGER.info("starting fetch job")
 
         max_concurrent_tasks = config.aleph.jobs.pending_messages.max_concurrency.value
+        idle_timeout = config.aleph.jobs.pending_messages.idle_timeout.value
 
         # State is local to the generator call so a make_pipeline restart after
         # an exception starts from a clean slate.
@@ -241,7 +237,7 @@ class PendingMessageFetcher(MessageJob):
                         break
                     LOGGER.info("waiting for new pending messages...")
                     try:
-                        await asyncio.wait_for(self.ready(), IDLE_WAIT_TIMEOUT_SECONDS)
+                        await asyncio.wait_for(self.ready(), idle_timeout)
                     except asyncio.TimeoutError:
                         pass
                     continue
@@ -264,7 +260,7 @@ class PendingMessageFetcher(MessageJob):
             try:
                 await node_cache.set(ACTIVE_FETCH_TASKS_KEY, 0)
             except Exception:
-                LOGGER.debug(
+                LOGGER.warning(
                     "Failed to reset %s on drain",
                     ACTIVE_FETCH_TASKS_KEY,
                     exc_info=True,
