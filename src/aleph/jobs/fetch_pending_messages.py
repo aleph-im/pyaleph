@@ -6,7 +6,7 @@ import asyncio
 import faulthandler
 import sys
 from logging import getLogger
-from typing import AsyncIterator, Dict, List, NewType, Sequence, Set
+from typing import AsyncIterator, Dict, List, NewType, Sequence, Set, TypedDict
 
 import aio_pika.abc
 from configmanager import Config
@@ -36,6 +36,15 @@ LOGGER = getLogger(__name__)
 
 
 MessageId = NewType("MessageId", str)
+
+# Redis key tracking the number of in-flight fetch tasks. Used by /metrics.
+ACTIVE_FETCH_TASKS_KEY = "retry_messages_job_tasks"
+
+
+class MetricState(TypedDict):
+    """Tracks the last value sent to Redis to debounce no-op updates."""
+
+    last: int
 
 
 class PendingMessageFetcher(MessageJob):
@@ -97,77 +106,165 @@ class PendingMessageFetcher(MessageJob):
                 session.commit()
                 return None
 
+    def _claim_messages(
+        self,
+        slots: int,
+        busy_hashes: Set[str],
+    ) -> List[PendingMessageDb]:
+        """Open a fresh session, fetch up to ``slots`` candidates, close immediately.
+
+        The session is intentionally short-lived: it must NOT be held across an
+        ``await`` so the connection returns to the pool while the worker tasks run.
+        """
+        if slots <= 0:
+            return []
+        with self.session_factory() as session:
+            return list(
+                get_next_pending_messages(
+                    session=session,
+                    current_time=utc_now(),
+                    limit=slots,
+                    exclude_item_hashes=busy_hashes,
+                    fetched=False,
+                )
+            )
+
+    def _spawn(
+        self,
+        pending_message: PendingMessageDb,
+        in_flight: Dict[asyncio.Task, PendingMessageDb],
+        busy_hashes: Set[str],
+    ) -> None:
+        """Schedule a fetch task and track it as in-flight."""
+        if pending_message.item_hash in busy_hashes:
+            return
+        busy_hashes.add(pending_message.item_hash)
+        task = asyncio.create_task(
+            self.fetch_pending_message(pending_message=pending_message)
+        )
+        in_flight[task] = pending_message
+
+    def _reap(
+        self,
+        finished: Set[asyncio.Task],
+        in_flight: Dict[asyncio.Task, PendingMessageDb],
+        busy_hashes: Set[str],
+    ) -> List[MessageDb]:
+        """Drain completed tasks; return successfully fetched ``MessageDb`` results."""
+        results: List[MessageDb] = []
+        for task in finished:
+            pending_message = in_flight.pop(task)
+            busy_hashes.discard(pending_message.item_hash)
+            try:
+                outcome = task.result()
+            except asyncio.CancelledError:
+                continue
+            except Exception:
+                # fetch_pending_message catches everything internally; this is
+                # defensive in case a future change leaks an exception.
+                # BaseException (SystemExit, KeyboardInterrupt) is intentionally
+                # not caught — let it propagate to the generator's finally.
+                LOGGER.exception(
+                    "Unexpected exception in fetch task for %s",
+                    pending_message.item_hash,
+                )
+                continue
+            if outcome is not None:
+                results.append(outcome)
+        return results
+
+    async def _drain(self, in_flight: Dict[asyncio.Task, PendingMessageDb]) -> None:
+        """Cancel and await all in-flight tasks. Idempotent."""
+        if not in_flight:
+            return
+        # task.cancel() only schedules cancellation on the next event loop tick,
+        # so iterating `in_flight` here is safe — the dict is not mutated until
+        # we explicitly clear it after gather.
+        for task in in_flight:
+            task.cancel()
+        await asyncio.gather(*in_flight, return_exceptions=True)
+        in_flight.clear()
+
+    async def _publish_metric(
+        self,
+        node_cache: NodeCache,
+        current: int,
+        state: MetricState,
+    ) -> None:
+        """Sync the in-flight task count to Redis. No-op if unchanged.
+
+        Replaces per-task ``incr``/``decr`` (60+ Redis roundtrips per cycle at
+        ``max_concurrency=30``) with at most one ``SET`` per loop iteration.
+        """
+        if state["last"] == current:
+            return
+        await node_cache.set(ACTIVE_FETCH_TASKS_KEY, current)
+        state["last"] = current
+
     async def fetch_pending_messages(
         self, config: Config, node_cache: NodeCache, loop: bool = True
     ) -> AsyncIterator[Sequence[MessageDb]]:
         LOGGER.info("starting fetch job")
 
-        # Reset stats to avoid nonsensical values if the job restarts
-        retry_messages_cache_key = "retry_messages_job_tasks"
-        await node_cache.set(retry_messages_cache_key, 0)
         max_concurrent_tasks = config.aleph.jobs.pending_messages.max_concurrency.value
-        fetch_tasks: Set[asyncio.Task] = set()
-        task_message_dict: Dict[asyncio.Task, PendingMessageDb] = {}
-        messages_being_fetched: Set[str] = set()
-        fetched_messages: List[MessageDb] = []
+        idle_timeout = config.aleph.jobs.pending_messages.idle_timeout.value
 
-        while True:
-            with self.session_factory() as session:
-                if fetch_tasks:
-                    finished_tasks, fetch_tasks = await asyncio.wait(
-                        fetch_tasks, return_when=asyncio.FIRST_COMPLETED
-                    )
-                    for finished_task in finished_tasks:
-                        pending_message = task_message_dict.pop(finished_task)
-                        messages_being_fetched.remove(pending_message.item_hash)
-                        await node_cache.decr(retry_messages_cache_key)
+        # State is local to the generator call so a make_pipeline restart after
+        # an exception starts from a clean slate.
+        in_flight: Dict[asyncio.Task, PendingMessageDb] = {}
+        busy_hashes: Set[str] = set()
+        metric_state: MetricState = {"last": -1}
 
-                if len(fetch_tasks) < max_concurrent_tasks:
-                    pending_messages = get_next_pending_messages(
-                        session=session,
-                        current_time=utc_now(),
-                        limit=max_concurrent_tasks - len(fetch_tasks),
-                        offset=len(fetch_tasks),
-                        exclude_item_hashes=messages_being_fetched,
-                        fetched=False,
-                    )
+        await node_cache.set(ACTIVE_FETCH_TASKS_KEY, 0)
+        metric_state["last"] = 0
 
-                    for pending_message in pending_messages:
-                        # Avoid processing the same message twice at the same time.
-                        if pending_message.item_hash in messages_being_fetched:
-                            continue
+        try:
+            while True:
+                # 1. Refill the pool from the DB.
+                slots = max_concurrent_tasks - len(in_flight)
+                for pending_message in self._claim_messages(slots, busy_hashes):
+                    self._spawn(pending_message, in_flight, busy_hashes)
 
-                        # Check if the message is already processing
-                        messages_being_fetched.add(pending_message.item_hash)
+                # 2. Publish updated metric (single SET, only on change).
+                await self._publish_metric(node_cache, len(in_flight), metric_state)
 
-                        await node_cache.incr(retry_messages_cache_key)
-
-                        message_task = asyncio.create_task(
-                            self.fetch_pending_message(
-                                pending_message=pending_message,
-                            )
-                        )
-                        fetch_tasks.add(message_task)
-                        task_message_dict[message_task] = pending_message
-
-                if fetched_messages:
-                    yield fetched_messages
-                    fetched_messages = []
-
-                # If not in loop mode, stop when there are no more pending messages
-                if not loop and not PendingMessageDb.count(session):
-                    break
-
-                # Wait when there are no running tasks.
-                # This handles both cases: no messages at all, or all messages
-                # are delayed (next_attempt in the future). Without this check,
-                # the loop would spin at 100% CPU when messages exist but are delayed.
-                if not fetch_tasks:
+                # 3. Idle path: nothing in flight after step 1.
+                if not in_flight:
+                    # In non-loop mode, "no claim and no in-flight" means there
+                    # is no work *ready right now*. Future-dated retries do not
+                    # block exit because _claim_messages already filters them.
+                    if not loop:
+                        break
                     LOGGER.info("waiting for new pending messages...")
                     try:
-                        await asyncio.wait_for(self.ready(), 1)
-                    except TimeoutError:
+                        await asyncio.wait_for(self.ready(), idle_timeout)
+                    except asyncio.TimeoutError:
                         pass
+                    continue
+
+                # 4. Wait for at least one task to complete.
+                #    NB: no DB session is held across this await.
+                finished, _ = await asyncio.wait(
+                    in_flight.keys(), return_when=asyncio.FIRST_COMPLETED
+                )
+
+                # 5. Reap all completed tasks (FIRST_COMPLETED can return >1).
+                fetched = self._reap(finished, in_flight, busy_hashes)
+                if fetched:
+                    yield fetched
+        finally:
+            # Cancel and await any in-flight tasks on consumer break, exception,
+            # or normal shutdown. Each task's own DB session is rolled back via
+            # its `with` context manager, leaving rows as fetched=False for retry.
+            await self._drain(in_flight)
+            try:
+                await node_cache.set(ACTIVE_FETCH_TASKS_KEY, 0)
+            except Exception:
+                LOGGER.warning(
+                    "Failed to reset %s on drain",
+                    ACTIVE_FETCH_TASKS_KEY,
+                    exc_info=True,
+                )
 
     def make_pipeline(
         self,

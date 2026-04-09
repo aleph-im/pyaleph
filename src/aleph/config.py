@@ -59,6 +59,10 @@ def get_defaults():
                     "max_retries": 10,
                     # Maximum number of messages/files fetched at the same time.
                     "max_concurrency": 10,
+                    # Seconds to block on the MQ "new pending message" signal
+                    # when the fetcher has nothing in flight. Bounds the latency
+                    # for delayed retries that arrive without an MQ notification.
+                    "idle_timeout": 3,
                 },
                 "pending_txs": {
                     # Maximum number of chain/sync events processed at the same time.
