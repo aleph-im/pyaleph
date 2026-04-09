@@ -9,7 +9,7 @@ These tests cover the four scenarios called out in code review:
 
 import asyncio
 import datetime as dt
-from typing import AsyncGenerator, Dict, Sequence, cast
+from typing import Dict
 
 import pytest
 import pytest_asyncio
@@ -282,25 +282,23 @@ async def test_fetch_pending_messages_drains_on_shutdown(
         session.commit()
 
     node_cache = mocker.AsyncMock()
-    # fetch_pending_messages is declared as AsyncIterator but is actually an
-    # async generator (uses `yield`), so we cast to expose `aclose()`.
-    pipeline = cast(
-        AsyncGenerator[Sequence[MessageDb], None],
-        fetcher.fetch_pending_messages(
-            config=mock_config, node_cache=node_cache, loop=True
-        ),
+    pipeline = fetcher.fetch_pending_messages(
+        config=mock_config, node_cache=node_cache, loop=True
     )
 
-    consumer: asyncio.Task[Sequence[MessageDb]] = asyncio.create_task(
-        pipeline.__anext__()
-    )
+    async def _consume():
+        async for _ in pipeline:
+            pass
+
+    consumer = asyncio.create_task(_consume())
     await started.wait()  # at least one worker is running
-    await pipeline.aclose()  # triggers the generator's finally block
 
+    # Cancelling the consumer triggers async generator cleanup, which runs
+    # the generator's `finally` block (including `_drain` and metric reset).
     consumer.cancel()
     try:
         await consumer
-    except (asyncio.CancelledError, StopAsyncIteration):
+    except asyncio.CancelledError:
         pass
 
     assert cancelled, "in-flight worker should have been cancelled"
