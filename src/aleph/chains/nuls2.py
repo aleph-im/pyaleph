@@ -64,6 +64,13 @@ class Nuls2Verifier(Verifier):
                     chain_id=sender_chain_id,
                 ),
             )
+        except KeyError:
+            LOGGER.warning(
+                "'%s': unsupported NULS chain ID %d",
+                message.item_hash,
+                sender_chain_id,
+            )
+            return False
         except Exception:
             LOGGER.exception("NULS Signature verification error")
             return False
