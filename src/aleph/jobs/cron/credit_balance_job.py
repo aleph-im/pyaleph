@@ -20,11 +20,7 @@ from aleph.db.models.cron_jobs import CronJobDb
 from aleph.db.models.messages import MessageDb, MessageStatusDb
 from aleph.jobs.cron.cron_job import BaseCronJob
 from aleph.services.cost import calculate_storage_size
-from aleph.toolkit.constants import (
-    CREDIT_ONLY_CUTOFF_TIMESTAMP,
-    MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
-    MiB,
-)
+from aleph.toolkit.constants import CREDIT_ONLY_CUTOFF_TIMESTAMP, MiB
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_status import MessageStatus
@@ -33,8 +29,13 @@ LOGGER = logging.getLogger(__name__)
 
 
 class CreditBalanceCronJob(BaseCronJob):
-    def __init__(self, session_factory: DbSessionFactory):
+    def __init__(
+        self,
+        session_factory: DbSessionFactory,
+        max_unauthenticated_upload_file_size: int,
+    ):
         self.session_factory = session_factory
+        self.max_unauthenticated_upload_file_size = max_unauthenticated_upload_file_size
 
     async def run(self, now: dt.datetime, job: CronJobDb):
         with self.session_factory() as session:
@@ -114,7 +115,8 @@ class CreditBalanceCronJob(BaseCronJob):
                 if (
                     is_legacy_message
                     and storage_size_mib
-                    and storage_size_mib <= (MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE / MiB)
+                    and storage_size_mib
+                    <= (self.max_unauthenticated_upload_file_size / MiB)
                 ):
                     continue
 

@@ -25,6 +25,7 @@ from aleph.handlers.content.post import PostMessageHandler
 from aleph.handlers.content.store import StoreMessageHandler
 from aleph.handlers.content.vm import VmMessageHandler
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
+from aleph.toolkit.constants import DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
@@ -48,7 +49,9 @@ def forget_handler(mocker) -> ForgetMessageHandler:
         ),
         MessageType.program: vm_handler,
         MessageType.store: StoreMessageHandler(
-            storage_service=mocker.AsyncMock(), grace_period=24
+            storage_service=mocker.AsyncMock(),
+            grace_period=24,
+            max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
         ),
     }
     return ForgetMessageHandler(content_handlers=content_handlers)

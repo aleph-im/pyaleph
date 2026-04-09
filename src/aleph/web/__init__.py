@@ -9,6 +9,7 @@ import jinja2
 from aiohttp import web
 from aiohttp_swagger3 import SwaggerDocs, SwaggerInfo, SwaggerUiSettings
 
+from aleph.toolkit.constants import DEFAULT_MAX_FILE_SIZE
 from aleph.version import get_version
 from aleph.web.controllers.routes import register_routes
 
@@ -32,8 +33,11 @@ def init_cors(app: web.Application):
             cors.add(route)
 
 
-def create_aiohttp_app(with_swagger: bool = True) -> web.Application:
-    app = web.Application(client_max_size=1024**2 * 64)
+def create_aiohttp_app(
+    with_swagger: bool = True,
+    max_file_size: int = DEFAULT_MAX_FILE_SIZE,
+) -> web.Application:
+    app = web.Application(client_max_size=max_file_size)
 
     swagger = None
     if with_swagger:

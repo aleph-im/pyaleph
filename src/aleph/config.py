@@ -2,6 +2,11 @@ import logging
 
 from configmanager import Config
 
+from aleph.toolkit.constants import (
+    DEFAULT_MAX_FILE_SIZE,
+    DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+)
+
 
 def get_defaults():
     return {
@@ -117,8 +122,12 @@ def get_defaults():
             "store_files": True,
             # Interval between garbage collector runs, expressed in hours.
             "garbage_collector_period": 24,
-            # Grapce period for files, expressed in hours.
+            # Grace period for files, expressed in hours.
             "grace_period": 24,
+            # Maximum file size for authenticated uploads, in bytes.
+            "max_file_size": DEFAULT_MAX_FILE_SIZE,
+            # Maximum file size for unauthenticated uploads, in bytes.
+            "max_unauthenticated_upload_file_size": DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
         },
         "nuls2": {
             # NULS2 chain ID.

@@ -78,6 +78,7 @@ class BaseMessageHandler:
             MessageType.store: StoreMessageHandler(
                 storage_service=storage_service,
                 grace_period=config.storage.grace_period.value,
+                max_unauthenticated_upload_file_size=config.storage.max_unauthenticated_upload_file_size.value,
             ),
         }
 
