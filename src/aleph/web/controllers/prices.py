@@ -37,6 +37,7 @@ from aleph.schemas.api.costs import (
     ResourceCostItem,
 )
 from aleph.schemas.cost_estimation_messages import (
+    CostEstimationInstanceContent,
     validate_cost_estimation_message_content,
     validate_cost_estimation_message_dict,
 )
@@ -280,6 +281,92 @@ async def message_price_estimate(request: web.Request):
             raise web.HTTPNotFound(reason=str(e))
 
         # Enrich detail with size information
+        detail_list = []
+        for cost in costs:
+            size_mib = get_cost_component_size_mib(session, cost, content)
+            detail_list.append(
+                EstimatedCostDetailResponse(
+                    type=(
+                        cost.type.value
+                        if hasattr(cost.type, "value")
+                        else str(cost.type)
+                    ),
+                    name=cost.name,
+                    cost_hold=str(cost.cost_hold),
+                    cost_stream=str(cost.cost_stream),
+                    cost_credit=str(cost.cost_credit),
+                    size_mib=size_mib,
+                )
+            )
+
+    model = {
+        "required_tokens": float(required_tokens),
+        "payment_type": payment_type,
+        "cost": format_cost_str(required_tokens),
+        "detail": detail_list,
+        "charged_address": content.address,
+    }
+
+    response = EstimatedCostsResponse.model_validate(model)
+
+    return web.json_response(text=aleph_json.dumps(response).decode("utf-8"))
+
+
+async def instance_cost_estimate(request: web.Request):
+    """
+    Returns the estimated cost of an instance from its content alone.
+
+    Accepts a CostEstimationInstanceContent body directly, without requiring
+    a full Aleph message wrapper. This is useful for UIs and tools that want
+    to compute the cost of a hypothetical instance before submitting it.
+
+    ---
+    summary: Estimate instance cost from content
+    tags:
+      - Prices
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+    responses:
+      '200':
+        description: Estimated costs
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstimatedCostsResponse'
+      '422':
+        description: Invalid instance content
+      '404':
+        description: Pricing error
+    """
+
+    session_factory = get_session_factory_from_request(request)
+
+    try:
+        body = await request.json()
+    except Exception:
+        raise web.HTTPBadRequest(reason="Invalid JSON body")
+
+    try:
+        content = CostEstimationInstanceContent.model_validate(body)
+    except ValidationError as e:
+        raise web.HTTPUnprocessableEntity(text=str(e))
+
+    # Use a placeholder item_hash — it's only used as a label on cost entries
+    item_hash = "estimate"
+
+    with session_factory() as session:
+        try:
+            payment_type = get_payment_type(content)
+            required_tokens, costs = get_total_and_detailed_costs(
+                session, content, item_hash
+            )
+        except RuntimeError as e:
+            raise web.HTTPNotFound(reason=str(e))
+
         detail_list = []
         for cost in costs:
             size_mib = get_cost_component_size_mib(session, cost, content)
