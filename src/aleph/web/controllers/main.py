@@ -29,6 +29,11 @@ logger = logging.getLogger(__name__)
 
 _STATUS_SEND_BATCH_SIZE = 100
 
+# Redis keys for WS status metrics. Shared across gunicorn workers so
+# Prometheus sees cluster-wide state regardless of which worker serves /metrics.
+WS_STATUS_CONNECTIONS_ACTIVE_KEY = "pyaleph_ws_status_connections_active"
+WS_STATUS_CONNECTIONS_REJECTED_KEY = "pyaleph_ws_status_connections_rejected_total"
+
 
 class StatusBroadcaster:
     """Single polling loop that broadcasts status to all connected WS clients."""
@@ -46,16 +51,12 @@ class StatusBroadcaster:
         self._task: Optional[asyncio.Task] = None
         self._poll_interval = poll_interval
 
-        # Connection limit
+        # Connection limit (same on every worker — from config).
         self.max_connections: int = max_connections
         self._semaphore = asyncio.Semaphore(max_connections)
-
-        # Metrics
-        self.connections_rejected_total: int = 0
-
-    @property
-    def active_connections(self) -> int:
-        return len(self._clients)
+        # Note: counter state lives in Redis (see WS_*_KEY constants). This
+        # class never holds it locally so that all gunicorn workers share
+        # the same observed values.
 
     @property
     def is_at_capacity(self) -> bool:
@@ -64,20 +65,38 @@ class StatusBroadcaster:
     def acquire_slot(self) -> asyncio.Semaphore:
         return self._semaphore
 
-    def add(self, ws: web.WebSocketResponse):
+    async def record_rejection(self) -> None:
+        """Increment the shared 'connection rejected' counter."""
+        await self._node_cache.incr(WS_STATUS_CONNECTIONS_REJECTED_KEY)
+
+    async def add(self, ws: web.WebSocketResponse):
+        if ws in self._clients:
+            return
         self._clients.add(ws)
+        await self._node_cache.incr(WS_STATUS_CONNECTIONS_ACTIVE_KEY)
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._poll_loop())
 
-    def remove(self, ws: web.WebSocketResponse):
+    async def remove(self, ws: web.WebSocketResponse):
+        # Guard against double-remove: Redis DECR must be idempotent-safe.
+        if ws not in self._clients:
+            return
         self._clients.discard(ws)
+        await self._node_cache.decr(WS_STATUS_CONNECTIONS_ACTIVE_KEY)
 
     async def shutdown(self):
         """Graceful shutdown — called from aiohttp on_cleanup."""
         if self._task and not self._task.done():
             self._task.cancel()
             self._task = None
-        self._clients.clear()
+        # Decrement the shared active counter once per client this worker
+        # owned, so the Redis value reflects only clients still connected
+        # through other workers.
+        if self._clients:
+            await self._node_cache.decrby(
+                WS_STATUS_CONNECTIONS_ACTIVE_KEY, len(self._clients)
+            )
+            self._clients.clear()
 
     async def _poll_loop(self):
         previous_status = None
@@ -108,7 +127,7 @@ class StatusBroadcaster:
                             dead.append(ws)
 
                 for ws in dead:
-                    self._clients.discard(ws)
+                    await self.remove(ws)
                 previous_status = status
 
             await asyncio.sleep(self._poll_interval)
@@ -155,7 +174,7 @@ async def status_ws(request: web.Request) -> web.WebSocketResponse:
     broadcaster: StatusBroadcaster = request.app[APP_STATE_STATUS_BROADCASTER]
 
     if broadcaster.is_at_capacity:
-        broadcaster.connections_rejected_total += 1
+        await broadcaster.record_rejection()
         logger.warning(
             "Status WS connection limit reached (%d)", broadcaster.max_connections
         )
@@ -166,7 +185,7 @@ async def status_ws(request: web.Request) -> web.WebSocketResponse:
         return ws
 
     async with broadcaster.acquire_slot():
-        broadcaster.add(ws)
+        await broadcaster.add(ws)
 
         try:
             while not ws.closed:
@@ -178,7 +197,7 @@ async def status_ws(request: web.Request) -> web.WebSocketResponse:
                 ):
                     break
         finally:
-            broadcaster.remove(ws)
+            await broadcaster.remove(ws)
             if not ws.closed:
                 await ws.close()
 

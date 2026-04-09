@@ -30,6 +30,16 @@ LOGGER = getLogger("WEB.metrics")
 
 config = get_config()
 
+# Redis keys for WS metrics shared across gunicorn workers.
+# Mirrors the constants defined in main.py / messages.py — duplicated here
+# to avoid circular imports. Names match Prometheus metric fields exactly.
+_WS_MESSAGES_BROADCAST_TOTAL_KEY = "pyaleph_ws_messages_broadcast_total"
+_WS_MESSAGES_CONNECTIONS_ACTIVE_KEY = "pyaleph_ws_messages_connections_active"
+_WS_MESSAGES_CONNECTIONS_REJECTED_KEY = "pyaleph_ws_messages_connections_rejected_total"
+_WS_BROADCASTER_CONSUMER_RESTARTS_KEY = "pyaleph_ws_broadcaster_consumer_restarts_total"
+_WS_STATUS_CONNECTIONS_ACTIVE_KEY = "pyaleph_ws_status_connections_active"
+_WS_STATUS_CONNECTIONS_REJECTED_KEY = "pyaleph_ws_status_connections_rejected_total"
+
 
 def format_dict_for_prometheus(values: Dict) -> str:
     """Format a dict to a Prometheus tags string"""
@@ -211,43 +221,56 @@ async def get_metrics(
     )
 
 
+async def _read_int_key(node_cache: NodeCache, key: str) -> int:
+    """Read an integer Redis value. Returns 0 if the key does not exist."""
+    value = await node_cache.get(key)
+    if value is None:
+        return 0
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
 async def get_metrics_with_ws(
     session_factory: DbSessionFactory,
     node_cache: NodeCache,
     message_broadcaster: Optional["MessageBroadcaster"] = None,
     status_broadcaster: Optional["StatusBroadcaster"] = None,
 ) -> Metrics:
-    """get_metrics + live WebSocket metrics from broadcasters."""
+    """get_metrics + live WebSocket metrics shared across gunicorn workers."""
     cached_metrics = await get_metrics(
         session_factory=session_factory, node_cache=node_cache
     )
     # Copy to avoid mutating the cached dataclass
     metrics = replace(cached_metrics)
 
+    # Counters and active gauges: shared Redis state.
+    metrics.pyaleph_ws_messages_broadcast_total = await _read_int_key(
+        node_cache, _WS_MESSAGES_BROADCAST_TOTAL_KEY
+    )
+    metrics.pyaleph_ws_messages_connections_active = await _read_int_key(
+        node_cache, _WS_MESSAGES_CONNECTIONS_ACTIVE_KEY
+    )
+    metrics.pyaleph_ws_messages_connections_rejected_total = await _read_int_key(
+        node_cache, _WS_MESSAGES_CONNECTIONS_REJECTED_KEY
+    )
+    metrics.pyaleph_ws_broadcaster_consumer_restarts_total = await _read_int_key(
+        node_cache, _WS_BROADCASTER_CONSUMER_RESTARTS_KEY
+    )
+    metrics.pyaleph_ws_status_connections_active = await _read_int_key(
+        node_cache, _WS_STATUS_CONNECTIONS_ACTIVE_KEY
+    )
+    metrics.pyaleph_ws_status_connections_rejected_total = await _read_int_key(
+        node_cache, _WS_STATUS_CONNECTIONS_REJECTED_KEY
+    )
+
+    # Config-value gauges: same on every worker, read from the local instance.
     if message_broadcaster:
-        metrics.pyaleph_ws_messages_connections_active = (
-            message_broadcaster.active_connections
-        )
         metrics.pyaleph_ws_messages_connections_max = (
             message_broadcaster.max_connections
         )
-        metrics.pyaleph_ws_messages_broadcast_total = (
-            message_broadcaster.broadcast_total
-        )
-        metrics.pyaleph_ws_messages_connections_rejected_total = (
-            message_broadcaster.connections_rejected_total
-        )
-        metrics.pyaleph_ws_broadcaster_consumer_restarts_total = (
-            message_broadcaster.consumer_restarts_total
-        )
-
     if status_broadcaster:
-        metrics.pyaleph_ws_status_connections_active = (
-            status_broadcaster.active_connections
-        )
         metrics.pyaleph_ws_status_connections_max = status_broadcaster.max_connections
-        metrics.pyaleph_ws_status_connections_rejected_total = (
-            status_broadcaster.connections_rejected_total
-        )
 
     return metrics

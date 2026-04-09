@@ -45,6 +45,7 @@ from aleph.schemas.messages_query_params import (
     MessageQueryParams,
     WsMessageQueryParams,
 )
+from aleph.services.cache.node_cache import NodeCache
 from aleph.toolkit.cursor import decode_message_cursor, encode_message_cursor
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_status import MessageStatus, RemovedMessageReason
@@ -65,6 +66,13 @@ LOGGER = logging.getLogger(__name__)
 
 _SEND_BATCH_SIZE = 100
 _HEALTH_CHECK_INTERVAL = 5
+
+# Redis keys for WS message metrics. Shared across gunicorn workers so
+# Prometheus sees cluster-wide state regardless of which worker serves /metrics.
+WS_MESSAGES_BROADCAST_TOTAL_KEY = "pyaleph_ws_messages_broadcast_total"
+WS_MESSAGES_CONNECTIONS_ACTIVE_KEY = "pyaleph_ws_messages_connections_active"
+WS_MESSAGES_CONNECTIONS_REJECTED_KEY = "pyaleph_ws_messages_connections_rejected_total"
+WS_BROADCASTER_CONSUMER_RESTARTS_KEY = "pyaleph_ws_broadcaster_consumer_restarts_total"
 
 
 class _WsClient:
@@ -88,27 +96,27 @@ class MessageBroadcaster:
         self,
         mq_conn: aio_pika.abc.AbstractConnection,
         config: Config,
+        node_cache: NodeCache,
     ):
         self._mq_conn = mq_conn
         self._config = config
+        self._node_cache = node_cache
         self._clients: Set[_WsClient] = set()
         self._channel: Optional[aio_pika.abc.AbstractChannel] = None
         self._queue: Optional[aio_pika.abc.AbstractQueue] = None
         self._consumer_tag: Optional[aio_pika.abc.ConsumerTag] = None
         self._health_task: Optional[asyncio.Task] = None
 
-        # Connection limit
+        # Connection limit (same on every worker — from config).
         self.max_connections: int = config.websocket.max_message_connections.value
         self._semaphore = asyncio.Semaphore(self.max_connections)
+        # Note: counter state lives in Redis (see WS_*_KEY constants). This
+        # class never holds it locally so that all gunicorn workers share
+        # the same observed values.
 
-        # Metrics
-        self.broadcast_total: int = 0
-        self.connections_rejected_total: int = 0
-        self.consumer_restarts_total: int = 0
-
-    @property
-    def active_connections(self) -> int:
-        return len(self._clients)
+    async def record_rejection(self) -> None:
+        """Increment the shared 'connection rejected' counter."""
+        await self._node_cache.incr(WS_MESSAGES_CONNECTIONS_REJECTED_KEY)
 
     @property
     def is_at_capacity(self) -> bool:
@@ -155,11 +163,8 @@ class MessageBroadcaster:
 
     async def _restart_consumer(self):
         """Restart the consumer after a channel failure."""
-        self.consumer_restarts_total += 1
-        LOGGER.warning(
-            "MessageBroadcaster: restarting consumer (restart #%d)",
-            self.consumer_restarts_total,
-        )
+        await self._node_cache.incr(WS_BROADCASTER_CONSUMER_RESTARTS_KEY)
+        LOGGER.warning("MessageBroadcaster: restarting consumer")
         await self._stop_consumer()
         try:
             await self._start_consumer()
@@ -179,14 +184,21 @@ class MessageBroadcaster:
             LOGGER.debug("MessageBroadcaster: health check loop cancelled")
 
     async def add(self, client: _WsClient):
+        if client in self._clients:
+            return
         self._clients.add(client)
+        await self._node_cache.incr(WS_MESSAGES_CONNECTIONS_ACTIVE_KEY)
         if self._consumer_tag is None:
             await self._start_consumer()
         if self._health_task is None or self._health_task.done():
             self._health_task = asyncio.create_task(self._health_check_loop())
 
     async def remove(self, client: _WsClient):
+        # Guard against double-remove: Redis DECR must be idempotent-safe.
+        if client not in self._clients:
+            return
         self._clients.discard(client)
+        await self._node_cache.decr(WS_MESSAGES_CONNECTIONS_ACTIVE_KEY)
         if not self._clients:
             if self._health_task and not self._health_task.done():
                 self._health_task.cancel()
@@ -199,7 +211,14 @@ class MessageBroadcaster:
             self._health_task.cancel()
             self._health_task = None
         await self._stop_consumer()
-        self._clients.clear()
+        # Decrement the shared active counter once per client this worker
+        # owned, so the Redis value reflects only clients still connected
+        # through other workers.
+        if self._clients:
+            await self._node_cache.decrby(
+                WS_MESSAGES_CONNECTIONS_ACTIVE_KEY, len(self._clients)
+            )
+            self._clients.clear()
 
     async def _on_message(self, mq_message: aio_pika.abc.AbstractMessage):
         """Called for each message from RabbitMQ. Fan out to matching clients."""
@@ -211,7 +230,7 @@ class MessageBroadcaster:
             LOGGER.exception("MessageBroadcaster: failed to parse MQ message")
             return
 
-        self.broadcast_total += 1
+        await self._node_cache.incr(WS_MESSAGES_BROADCAST_TOTAL_KEY)
         clients = list(self._clients)
         if not clients:
             return
@@ -640,7 +659,7 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
     broadcaster: MessageBroadcaster = request.app[APP_STATE_MESSAGE_BROADCASTER]
 
     if broadcaster.is_at_capacity:
-        broadcaster.connections_rejected_total += 1
+        await broadcaster.record_rejection()
         LOGGER.warning(
             "WebSocket connection limit reached (%d)", broadcaster.max_connections
         )

@@ -74,7 +74,9 @@ async def configure_aiohttp_app(
             node_cache=node_cache,
             max_connections=config.websocket.max_status_connections.value,
         )
-        message_broadcaster = MessageBroadcaster(mq_conn=mq_conn, config=config)
+        message_broadcaster = MessageBroadcaster(
+            mq_conn=mq_conn, config=config, node_cache=node_cache
+        )
 
         app[APP_STATE_CONFIG] = config
         app[APP_STATE_P2P_CLIENT] = p2p_client
