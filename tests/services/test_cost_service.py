@@ -937,9 +937,11 @@ def test_compute_cost_single_gpu_standard(
             item_hash="gpu_single",
         )
 
-        # RTX 4090: 6 compute units × $0.28/hour = $1.68/hour
-        # Expected hold cost: $1680 (in smallest unit)
-        assert cost == Decimal("1680")
+        # RTX 4090: GPU tier minimum is 6 CUs, but resource-based CUs are
+        # max(8 vcpus, ceil(16384/6144) mem) = 8, which is higher.
+        # 8 compute units × $0.28/hour = $2.24/hour
+        # Expected hold cost: $2240 (in smallest unit)
+        assert cost == Decimal("2240")
 
         # Should have execution cost entries (GPU + storage)
         execution_costs = [d for d in details if d.type == CostType.EXECUTION]

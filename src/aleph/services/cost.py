@@ -615,6 +615,23 @@ def _calculate_multi_tier_gpu_execution_cost(
         content, settings, premium_pricing, standard_pricing
     )
 
+    # GPU tier CUs are a lower bound. If the VM's resource requirements
+    # (vCPUs, memory) translate to more CUs, use the higher value.
+    dominant_tier_type = (
+        ProductPriceType.INSTANCE_GPU_PREMIUM
+        if ProductPriceType.INSTANCE_GPU_PREMIUM in tier_breakdown
+        else ProductPriceType.INSTANCE_GPU_STANDARD
+    )
+    dominant_pricing = (
+        premium_pricing
+        if dominant_tier_type == ProductPriceType.INSTANCE_GPU_PREMIUM
+        else standard_pricing
+    )
+    resource_cus = _get_nb_compute_units(content, dominant_pricing.compute_unit)
+    total_gpu_cus = sum(tier_breakdown.values())
+    if resource_cus > total_gpu_cus:
+        tier_breakdown[dominant_tier_type] += resource_cus - total_gpu_cus
+
     costs = []
     compute_unit_multiplier = _get_compute_unit_multiplier(content)
 
