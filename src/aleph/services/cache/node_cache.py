@@ -71,6 +71,9 @@ class NodeCache:
     async def decr(self, key: CacheKey):
         await self.redis_client.decr(key)
 
+    async def decrby(self, key: CacheKey, amount: int):
+        await self.redis_client.decrby(key, amount)
+
     async def get_api_servers(self) -> Set[str]:
         return set(
             api_server.decode()
