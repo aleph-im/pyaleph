@@ -11,6 +11,7 @@ from aleph.handlers.content.store import StoreMessageHandler
 from aleph.schemas.message_content import ContentSource, RawContent
 from aleph.services.ipfs import IpfsService
 from aleph.storage import StorageService
+from aleph.toolkit.constants import DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.files import FileType
 
@@ -86,7 +87,9 @@ async def test_handle_new_storage_file(
     )
     storage_service.get_hash_content = get_hash_content_mock = mocker.AsyncMock(return_value=raw_content)  # type: ignore
     store_message_handler = StoreMessageHandler(
-        storage_service=storage_service, grace_period=24
+        storage_service=storage_service,
+        grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     )
     with session_factory() as session:
         await store_message_handler.fetch_related_content(
@@ -133,7 +136,9 @@ async def test_handle_new_storage_directory(
         node_cache=mocker.AsyncMock(),
     )
     store_message_handler = StoreMessageHandler(
-        storage_service=storage_service, grace_period=24
+        storage_service=storage_service,
+        grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     )
 
     with session_factory() as session:
@@ -185,7 +190,9 @@ async def test_store_files_is_false(
     )
     _get_hash_content_mock = mocker.patch.object(storage_service, "get_hash_content")
     store_message_handler = StoreMessageHandler(
-        storage_service=storage_service, grace_period=24
+        storage_service=storage_service,
+        grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     )
 
     with session_factory() as session:
@@ -235,7 +242,9 @@ async def test_store_files_is_false_ipfs_is_disabled(
     )
     _get_hash_content_mock = mocker.patch.object(storage_service, "get_hash_content")
     store_message_handler = StoreMessageHandler(
-        storage_service=storage_service, grace_period=24
+        storage_service=storage_service,
+        grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     )
 
     with session_factory() as session:

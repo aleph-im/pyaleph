@@ -153,8 +153,14 @@ async def main(args: List[str]) -> None:
         cron_job = CronJob(
             session_factory=session_factory,
             jobs={
-                "balance": BalanceCronJob(session_factory=session_factory),
-                "credit_balance": CreditBalanceCronJob(session_factory=session_factory),
+                "balance": BalanceCronJob(
+                    session_factory=session_factory,
+                    max_unauthenticated_upload_file_size=config.storage.max_unauthenticated_upload_file_size.value,
+                ),
+                "credit_balance": CreditBalanceCronJob(
+                    session_factory=session_factory,
+                    max_unauthenticated_upload_file_size=config.storage.max_unauthenticated_upload_file_size.value,
+                ),
             },
         )
         chain_data_service = ChainDataService(

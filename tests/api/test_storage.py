@@ -435,7 +435,7 @@ async def test_storage_add_json(api_client, session_factory: DbSessionFactory):
 @pytest.mark.asyncio
 async def test_get_raw_hash_head(api_client, session_factory: DbSessionFactory, mocker):
     from aleph.db.accessors.files import upsert_file
-    from aleph.toolkit.constants import MAX_FILE_SIZE
+    from aleph.toolkit.constants import DEFAULT_MAX_FILE_SIZE
 
     # 1. Test standard file
     file_content = b"Some content"
@@ -457,7 +457,7 @@ async def test_get_raw_hash_head(api_client, session_factory: DbSessionFactory, 
     assert await response.read() == b""
 
     # 2. Test large file (> 100MB)
-    large_file_size = MAX_FILE_SIZE + 1024
+    large_file_size = DEFAULT_MAX_FILE_SIZE + 1024
     large_file_hash = "a" * 64
     large_file_content = b"a" * large_file_size
     with session_factory() as session:
@@ -472,7 +472,7 @@ async def test_get_raw_hash_head(api_client, session_factory: DbSessionFactory, 
     storage_service = api_client.app[APP_STATE_STORAGE_SERVICE]
     await storage_service.storage_engine.write(large_file_hash, large_file_content)
 
-    # This should succeed for HEAD even if it's over MAX_FILE_SIZE
+    # This should succeed for HEAD even if it's over DEFAULT_MAX_FILE_SIZE
     response = await api_client.head(f"{GET_STORAGE_RAW_URI}/{large_file_hash}")
     assert response.status == 200
     assert response.headers["Content-Length"] == str(large_file_size)

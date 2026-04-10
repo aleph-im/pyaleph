@@ -32,7 +32,7 @@ from aleph.services.storage.engine import StorageEngine
 from aleph.storage import StorageService
 from aleph.toolkit.constants import (
     CREDIT_ONLY_CUTOFF_TIMESTAMP,
-    MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+    DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP,
 )
 from aleph.toolkit.timestamp import timestamp_to_datetime
@@ -393,6 +393,7 @@ async def test_pre_check_balance_free_store_message(
     store_handler = StoreMessageHandler(
         storage_service=storage_service,
         grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     )
 
     with session_factory() as session:
@@ -421,7 +422,7 @@ async def test_pre_check_balance_free_store_message(
 async def test_pre_check_balance_small_ipfs_file(mocker, session_factory, mock_config):
     """Test that small IPFS files (<=25MiB) don't require balance."""
     small_file_size = int(
-        MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.9
+        DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.9
     )  # 90% of max free size
 
     ipfs_service = mocker.AsyncMock()
@@ -436,6 +437,7 @@ async def test_pre_check_balance_small_ipfs_file(mocker, session_factory, mock_c
     store_handler = StoreMessageHandler(
         storage_service=storage_service,
         grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     )
 
     with session_factory() as session:
@@ -470,7 +472,9 @@ async def test_pre_check_balance_large_ipfs_file_insufficient_balance(
     fixture_settings_aggregate_in_db,
 ):
     """Test that large IPFS files (>25MiB) require sufficient balance."""
-    large_file_size = int(MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 2)  # 2x max free size
+    large_file_size = int(
+        DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 2
+    )  # 2x max free size
 
     ipfs_service = mocker.AsyncMock()
     ipfs_service.get_ipfs_size = AsyncMock(return_value=large_file_size)
@@ -484,6 +488,7 @@ async def test_pre_check_balance_large_ipfs_file_insufficient_balance(
     store_handler = StoreMessageHandler(
         storage_service=storage_service,
         grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     )
 
     with session_factory() as session:
@@ -522,7 +527,9 @@ async def test_pre_check_balance_large_ipfs_file_sufficient_balance(
     fixture_settings_aggregate_in_db,
 ):
     """Test that large IPFS files (>25MiB) with sufficient balance pass the check."""
-    large_file_size = int(MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 2)  # 2x max free size
+    large_file_size = int(
+        DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 2
+    )  # 2x max free size
 
     ipfs_service = mocker.AsyncMock()
     ipfs_service.get_ipfs_size = AsyncMock(return_value=large_file_size)
@@ -536,6 +543,7 @@ async def test_pre_check_balance_large_ipfs_file_sufficient_balance(
     store_handler = StoreMessageHandler(
         storage_service=storage_service,
         grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     )
 
     with session_factory() as session:
@@ -589,6 +597,7 @@ async def test_pre_check_balance_non_ipfs_file(mocker, session_factory, mock_con
     store_handler = StoreMessageHandler(
         storage_service=storage_service,
         grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     )
 
     with session_factory() as session:
@@ -628,6 +637,7 @@ async def test_pre_check_balance_ipfs_disabled(mocker, session_factory):
     store_handler = StoreMessageHandler(
         storage_service=storage_service,
         grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     )
 
     # Create a mock config with IPFS disabled
@@ -674,6 +684,7 @@ async def test_pre_check_balance_ipfs_size_none(mocker, session_factory, mock_co
     store_handler = StoreMessageHandler(
         storage_service=storage_service,
         grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     )
 
     with session_factory() as session:
@@ -709,9 +720,11 @@ async def test_pre_check_balance_with_existing_costs(
     fixture_ipfs_store_message: PendingMessageDb,
 ):
     """Test that existing costs for an address are considered."""
-    small_file_size = int(MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE)  # max free size
+    small_file_size = int(DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE)  # max free size
     small_file_content = b"X" * small_file_size  # 25 MiB
-    large_file_size = int(MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 2)  # 2x max free size
+    large_file_size = int(
+        DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 2
+    )  # 2x max free size
 
     ipfs_service = mocker.AsyncMock()
     ipfs_service.get_ipfs_size = AsyncMock(return_value=small_file_size)
@@ -728,6 +741,7 @@ async def test_pre_check_balance_with_existing_costs(
     store_handler = StoreMessageHandler(
         storage_service=storage_service,
         grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     )
 
     with session_factory() as session:
@@ -806,7 +820,9 @@ async def test_new_store_message_requires_credits(
     fixture_settings_aggregate_in_db,
 ):
     """Test that new STORE messages (after cutoff) with credit payment require credits."""
-    small_file_size = int(MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.5)  # 50% of max
+    small_file_size = int(
+        DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.5
+    )  # 50% of max
 
     ipfs_service = mocker.AsyncMock()
     ipfs_service.get_ipfs_size = AsyncMock(return_value=small_file_size)
@@ -819,6 +835,7 @@ async def test_new_store_message_requires_credits(
     store_handler = StoreMessageHandler(
         storage_service=storage_service,
         grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     )
 
     # Ensure IPFS is enabled in config for balance check to run
@@ -854,7 +871,9 @@ async def test_new_store_message_with_sufficient_credits(
     fixture_settings_aggregate_in_db,
 ):
     """Test that new STORE messages with sufficient credits pass."""
-    small_file_size = int(MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.5)  # 50% of max
+    small_file_size = int(
+        DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.5
+    )  # 50% of max
 
     ipfs_service = mocker.AsyncMock()
     ipfs_service.get_ipfs_size = AsyncMock(return_value=small_file_size)
@@ -867,6 +886,7 @@ async def test_new_store_message_with_sufficient_credits(
     store_handler = StoreMessageHandler(
         storage_service=storage_service,
         grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     )
 
     with session_factory() as session:
@@ -907,7 +927,9 @@ async def test_legacy_store_message_uses_hold_payment(
     mocker, session_factory, mock_config
 ):
     """Test that legacy STORE messages (before cutoff) use hold payment with 25MB exception."""
-    small_file_size = int(MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.5)  # 50% of max
+    small_file_size = int(
+        DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.5
+    )  # 50% of max
 
     ipfs_service = mocker.AsyncMock()
     ipfs_service.get_ipfs_size = AsyncMock(return_value=small_file_size)
@@ -920,6 +942,7 @@ async def test_legacy_store_message_uses_hold_payment(
     store_handler = StoreMessageHandler(
         storage_service=storage_service,
         grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     )
 
     with session_factory() as session:
@@ -949,7 +972,9 @@ async def test_new_store_small_file_still_requires_credits(
     fixture_settings_aggregate_in_db,
 ):
     """Test that new STORE messages with small files still require credits (no free exception)."""
-    small_file_size = int(MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.5)  # 50% of max
+    small_file_size = int(
+        DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.5
+    )  # 50% of max
 
     ipfs_service = mocker.AsyncMock()
     ipfs_service.get_ipfs_size = AsyncMock(return_value=small_file_size)
@@ -962,6 +987,7 @@ async def test_new_store_small_file_still_requires_credits(
     store_handler = StoreMessageHandler(
         storage_service=storage_service,
         grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     )
 
     # Ensure IPFS is enabled in config for balance check to run
@@ -993,7 +1019,9 @@ async def test_legacy_store_small_file_no_balance_required(
     mocker, session_factory, mock_config
 ):
     """Test that legacy STORE messages with small files don't require balance (25MB exception)."""
-    small_file_size = int(MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.9)  # 90% of max
+    small_file_size = int(
+        DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.9
+    )  # 90% of max
 
     ipfs_service = mocker.AsyncMock()
     ipfs_service.get_ipfs_size = AsyncMock(return_value=small_file_size)
@@ -1006,6 +1034,7 @@ async def test_legacy_store_small_file_no_balance_required(
     store_handler = StoreMessageHandler(
         storage_service=storage_service,
         grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     )
 
     with session_factory() as session:
@@ -1031,7 +1060,9 @@ async def test_new_store_hold_payment_rejected(mocker, session_factory, mock_con
     """Test that new STORE messages (after cutoff) with hold payment are rejected."""
     from aleph.types.message_status import InvalidPaymentMethod
 
-    small_file_size = int(MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.5)  # 50% of max
+    small_file_size = int(
+        DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.5
+    )  # 50% of max
 
     ipfs_service = mocker.AsyncMock()
     ipfs_service.get_ipfs_size = AsyncMock(return_value=small_file_size)
@@ -1044,6 +1075,7 @@ async def test_new_store_hold_payment_rejected(mocker, session_factory, mock_con
     store_handler = StoreMessageHandler(
         storage_service=storage_service,
         grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     )
 
     with session_factory() as session:
@@ -1076,7 +1108,9 @@ async def test_legacy_store_large_file_requires_balance(
     fixture_settings_aggregate_in_db,
 ):
     """Test that legacy STORE messages with large files (>25MB) require balance."""
-    large_file_size = int(MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 2)  # 2x max (50MB)
+    large_file_size = int(
+        DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 2
+    )  # 2x max (50MB)
 
     ipfs_service = mocker.AsyncMock()
     ipfs_service.get_ipfs_size = AsyncMock(return_value=large_file_size)
@@ -1089,6 +1123,7 @@ async def test_legacy_store_large_file_requires_balance(
     store_handler = StoreMessageHandler(
         storage_service=storage_service,
         grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     )
 
     with session_factory() as session:
@@ -1120,7 +1155,9 @@ async def test_legacy_store_large_file_with_balance(
     fixture_settings_aggregate_in_db,
 ):
     """Test that legacy STORE messages with large files (>25MB) pass with sufficient balance."""
-    large_file_size = int(MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 2)  # 2x max (50MB)
+    large_file_size = int(
+        DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 2
+    )  # 2x max (50MB)
 
     ipfs_service = mocker.AsyncMock()
     ipfs_service.get_ipfs_size = AsyncMock(return_value=large_file_size)
@@ -1133,6 +1170,7 @@ async def test_legacy_store_large_file_with_balance(
     store_handler = StoreMessageHandler(
         storage_service=storage_service,
         grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     )
 
     with session_factory() as session:
@@ -1175,7 +1213,9 @@ async def test_legacy_store_with_credit_payment_requires_credits(
     fixture_settings_aggregate_in_db,
 ):
     """Test that legacy STORE messages with credit payment still require credits."""
-    small_file_size = int(MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.5)  # 50% of max
+    small_file_size = int(
+        DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.5
+    )  # 50% of max
 
     ipfs_service = mocker.AsyncMock()
     ipfs_service.get_ipfs_size = AsyncMock(return_value=small_file_size)
@@ -1188,6 +1228,7 @@ async def test_legacy_store_with_credit_payment_requires_credits(
     store_handler = StoreMessageHandler(
         storage_service=storage_service,
         grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     )
 
     # Ensure IPFS is enabled in config for balance check to run
@@ -1223,7 +1264,9 @@ async def test_legacy_store_with_credit_payment_and_credits(
     fixture_settings_aggregate_in_db,
 ):
     """Test that legacy STORE messages with credit payment pass with sufficient credits."""
-    small_file_size = int(MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.5)  # 50% of max
+    small_file_size = int(
+        DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 0.5
+    )  # 50% of max
 
     ipfs_service = mocker.AsyncMock()
     ipfs_service.get_ipfs_size = AsyncMock(return_value=small_file_size)
@@ -1236,6 +1279,7 @@ async def test_legacy_store_with_credit_payment_and_credits(
     store_handler = StoreMessageHandler(
         storage_service=storage_service,
         grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     )
 
     with session_factory() as session:

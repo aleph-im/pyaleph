@@ -33,11 +33,7 @@ from aleph.schemas.pending_messages import (
 )
 from aleph.services.cost import get_total_and_detailed_costs
 from aleph.storage import StorageService
-from aleph.toolkit.constants import (
-    MAX_FILE_SIZE,
-    MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
-    MiB,
-)
+from aleph.toolkit.constants import MiB
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.files import FileTag, FileType
 from aleph.types.message_status import InvalidSignature
@@ -155,10 +151,12 @@ async def _verify_message_signature(
 
 
 def _verify_user_balance(
-    session: DbSession, content: CostEstimationStoreContent
+    session: DbSession,
+    content: CostEstimationStoreContent,
+    max_unauthenticated_upload_file_size: int,
 ) -> None:
     if content.estimated_size_mib and content.estimated_size_mib > (
-        MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE / MiB
+        max_unauthenticated_upload_file_size / MiB
     ):
         current_balance = get_total_balance(session=session, address=content.address)
         current_cost = get_total_cost_for_address(
@@ -271,6 +269,7 @@ async def _check_and_add_file(
     message: Optional[PendingStoreMessage],
     uploaded_file: UploadedFile,
     grace_period: int,
+    max_unauthenticated_upload_file_size: int,
 ) -> str:
     file_hash = uploaded_file.get_hash()
     # Perform authentication and balance checks
@@ -297,7 +296,11 @@ async def _check_and_add_file(
             )
 
         with session_factory() as session:
-            _verify_user_balance(session=session, content=message_content)
+            _verify_user_balance(
+                session=session,
+                content=message_content,
+                max_unauthenticated_upload_file_size=max_unauthenticated_upload_file_size,
+            )
     else:
         message_content = None
 
@@ -394,6 +397,10 @@ async def storage_add_file(request: web.Request):
     signature_verifier = get_signature_verifier_from_request(request)
     config = get_config_from_request(request)
     grace_period = config.storage.grace_period.value
+    max_file_size = config.storage.max_file_size.value
+    max_unauthenticated_upload_file_size = (
+        config.storage.max_unauthenticated_upload_file_size.value
+    )
     metadata = None
     uploaded_file: Optional[UploadedFile] = None
 
@@ -409,13 +416,13 @@ async def storage_add_file(request: web.Request):
                     raise web.HTTPBadRequest(text="Invalid multipart structure")
 
                 if part.name == "file":
-                    uploaded_file = MultipartUploadedFile(part, MAX_FILE_SIZE)
+                    uploaded_file = MultipartUploadedFile(part, max_file_size)
                     await uploaded_file.read_and_validate()
                 elif part.name == "metadata":
                     metadata = await part.read(decode=True)
         else:
             uploaded_file = RawUploadedFile(
-                request=request, max_size=MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE
+                request=request, max_size=max_unauthenticated_upload_file_size
             )
             await uploaded_file.read_and_validate()
 
@@ -425,7 +432,7 @@ async def storage_add_file(request: web.Request):
             )
 
         max_upload_size = (
-            MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE if not metadata else MAX_FILE_SIZE
+            max_unauthenticated_upload_file_size if not metadata else max_file_size
         )
         if uploaded_file.size > max_upload_size:
             raise web.HTTPRequestEntityTooLarge(
@@ -460,6 +467,7 @@ async def storage_add_file(request: web.Request):
             message=message,
             uploaded_file=uploaded_file,
             grace_period=grace_period,
+            max_unauthenticated_upload_file_size=max_unauthenticated_upload_file_size,
         )
         if message:
             broadcast_status = await broadcast_and_process_message(
@@ -475,7 +483,9 @@ async def storage_add_file(request: web.Request):
             await uploaded_file.cleanup()
 
 
-def assert_file_is_downloadable(session: DbSession, file_hash: str) -> None:
+def assert_file_is_downloadable(
+    session: DbSession, file_hash: str, max_file_size: int
+) -> None:
     """
     Check if the file is on the aleph.im network and can be downloaded from the API.
     This filters out requests for files outside the network / nonexistent files.
@@ -484,9 +494,9 @@ def assert_file_is_downloadable(session: DbSession, file_hash: str) -> None:
     if not file_metadata:
         raise web.HTTPNotFound(text="Not found")
 
-    if file_metadata.size > MAX_FILE_SIZE:
+    if file_metadata.size > max_file_size:
         raise web.HTTPRequestEntityTooLarge(
-            max_size=MAX_FILE_SIZE, actual_size=file_metadata.size
+            max_size=max_file_size, actual_size=file_metadata.size
         )
 
 
@@ -529,9 +539,14 @@ async def get_hash(request):
         logger.warning(e.args[0])
         raise web.HTTPBadRequest(text="Invalid hash provided")
 
+    config = get_config_from_request(request)
+    max_file_size = config.storage.max_file_size.value
+
     session_factory = get_session_factory_from_request(request)
     with session_factory() as session:
-        assert_file_is_downloadable(session=session, file_hash=file_hash)
+        assert_file_is_downloadable(
+            session=session, file_hash=file_hash, max_file_size=max_file_size
+        )
 
     storage_service = get_storage_service_from_request(request)
 

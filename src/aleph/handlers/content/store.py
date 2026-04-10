@@ -40,7 +40,7 @@ from aleph.services.cost import (
 from aleph.services.cost_validation import validate_balance_for_payment
 from aleph.services.ipfs import IpfsService
 from aleph.storage import StorageService
-from aleph.toolkit.constants import MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE, MiB
+from aleph.toolkit.constants import MiB
 from aleph.toolkit.costs import are_store_and_program_free, is_credit_only_required
 from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.db_session import DbSession
@@ -135,9 +135,15 @@ def _should_pin_on_ipfs(
 
 
 class StoreMessageHandler(ContentHandler):
-    def __init__(self, storage_service: StorageService, grace_period: int):
+    def __init__(
+        self,
+        storage_service: StorageService,
+        grace_period: int,
+        max_unauthenticated_upload_file_size: int,
+    ):
         self.storage_service = storage_service
         self.grace_period = grace_period
+        self.max_unauthenticated_upload_file_size = max_unauthenticated_upload_file_size
 
     async def is_related_content_fetched(
         self, session: DbSession, message: MessageDb
@@ -245,7 +251,7 @@ class StoreMessageHandler(ContentHandler):
 
                 # Allow users to pin small files (only for hold payment type, before cutoff)
                 if payment_type == PaymentType.hold and storage_mib <= (
-                    MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE / MiB
+                    self.max_unauthenticated_upload_file_size / MiB
                 ):
                     return None
 
@@ -298,7 +304,7 @@ class StoreMessageHandler(ContentHandler):
         if (
             payment_type == PaymentType.hold
             and storage_size_mib
-            and storage_size_mib <= (MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE / MiB)
+            and storage_size_mib <= (self.max_unauthenticated_upload_file_size / MiB)
         ):
             return costs
 

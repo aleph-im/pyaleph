@@ -4,6 +4,7 @@ import pytest
 
 from aleph.jobs.cron.balance_job import BalanceCronJob
 from aleph.jobs.cron.cron_job import CronJob
+from aleph.toolkit.constants import DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE
 from aleph.types.db_session import DbSessionFactory
 
 
@@ -11,7 +12,12 @@ from aleph.types.db_session import DbSessionFactory
 def cron_job(session_factory: DbSessionFactory) -> CronJob:
     return CronJob(
         session_factory=session_factory,
-        jobs={"balance": BalanceCronJob(session_factory=session_factory)},
+        jobs={
+            "balance": BalanceCronJob(
+                session_factory=session_factory,
+                max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+            )
+        },
     )
 
 

@@ -18,7 +18,11 @@ from aleph.db.models.files import (
 )
 from aleph.db.models.messages import MessageDb, MessageStatusDb
 from aleph.jobs.cron.balance_job import BalanceCronJob
-from aleph.toolkit.constants import STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT, MiB
+from aleph.toolkit.constants import (
+    DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+    STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT,
+    MiB,
+)
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.cost import CostType
@@ -29,7 +33,10 @@ from aleph.types.message_status import MessageStatus
 
 @pytest.fixture
 def balance_job(session_factory: DbSessionFactory) -> BalanceCronJob:
-    return BalanceCronJob(session_factory=session_factory)
+    return BalanceCronJob(
+        session_factory=session_factory,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+    )
 
 
 @pytest.fixture
