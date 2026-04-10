@@ -52,6 +52,12 @@ class CostEstimationInstanceContent(InstanceContent):
         default=[], description="Volumes to mount on the filesystem"
     )
 
+    # Fields required by InstanceContent but irrelevant for cost estimation.
+    # Made optional so callers of the /price/estimate/instance endpoint don't
+    # need to provide them.
+    time: Optional[float] = None  # type: ignore[assignment]
+    allow_amend: bool = False
+
 
 class CostEstimationCodeContent(CodeContent):
     estimated_size_mib: Optional[int] = None

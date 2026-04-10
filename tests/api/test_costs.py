@@ -581,3 +581,136 @@ async def test_message_price_estimate_includes_size_mib(
     # of get_cost_component_size_mib is already thoroughly tested in
     # unit tests and the other integration tests.
     pytest.skip("Complex message format validation - covered by other tests")
+
+
+INSTANCE_COST_ESTIMATE_URI = "/api/v0/price/estimate/instance"
+
+SAMPLE_INSTANCE_CONTENT = {
+    "address": "0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
+    "allow_amend": False,
+    "environment": {
+        "reproducible": True,
+        "internet": False,
+        "aleph_api": False,
+        "shared_cache": False,
+    },
+    "resources": {"vcpus": 1, "memory": 128, "seconds": 30},
+    "requirements": {"cpu": {"architecture": "x86_64"}},
+    "rootfs": {
+        "parent": {
+            "ref": "549ec451d9b099cad112d4aaa2c00ac40fb6729a92ff252ff22eef0b5c3cb613",
+            "use_latest": True,
+        },
+        "persistence": "host",
+        "name": "test-rootfs",
+        "size_mib": 20 * 1024,
+    },
+    "authorized_keys": [
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGULT6A41Msmw2KEu0R9MvUjhuWNAsbdeZ0DOwYbt4Qt user@example",
+    ],
+    "volumes": [],
+}
+
+
+@pytest.mark.asyncio
+async def test_instance_cost_estimate(
+    ccn_api_client,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """Test POST /api/v0/price/estimate/instance returns cost from content alone."""
+    response = await ccn_api_client.post(
+        INSTANCE_COST_ESTIMATE_URI, json=SAMPLE_INSTANCE_CONTENT
+    )
+    assert response.status == 200, await response.text()
+    data = await response.json()
+
+    assert data["required_tokens"] > 0
+    assert data["payment_type"] == "hold"
+    assert float(data["cost"]) > 0
+    assert data["charged_address"] == SAMPLE_INSTANCE_CONTENT["address"]
+    assert isinstance(data["detail"], list)
+    assert len(data["detail"]) > 0
+
+    # Should have at least an EXECUTION cost component
+    detail_types = {d["type"] for d in data["detail"]}
+    assert "EXECUTION" in detail_types
+
+
+@pytest.mark.asyncio
+async def test_instance_cost_estimate_with_credit_payment(
+    ccn_api_client,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """Test instance cost estimate with credit payment type."""
+    content = {
+        **SAMPLE_INSTANCE_CONTENT,
+        "payment": {"chain": "ETH", "type": "credit"},
+        "requirements": {
+            "cpu": {"architecture": "x86_64"},
+            "node": {"node_hash": "ab" * 32},
+        },
+    }
+    response = await ccn_api_client.post(INSTANCE_COST_ESTIMATE_URI, json=content)
+    assert response.status == 200, await response.text()
+    data = await response.json()
+
+    assert data["payment_type"] == "credit"
+    assert float(data["cost"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_instance_cost_estimate_with_volumes(
+    ccn_api_client,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """Test instance cost estimate with additional volumes."""
+    content = {
+        **SAMPLE_INSTANCE_CONTENT,
+        "volumes": [
+            {
+                "mount": "/var/lib/data",
+                "name": "data",
+                "persistence": "host",
+                "size_mib": 1024,
+            },
+        ],
+    }
+    response = await ccn_api_client.post(INSTANCE_COST_ESTIMATE_URI, json=content)
+    assert response.status == 200, await response.text()
+    data = await response.json()
+
+    assert data["required_tokens"] > 0
+    detail_types = {d["type"] for d in data["detail"]}
+    assert "EXECUTION_VOLUME_PERSISTENT" in detail_types
+
+
+@pytest.mark.asyncio
+async def test_instance_cost_estimate_invalid_body(ccn_api_client):
+    """Test that invalid content body returns 422."""
+    response = await ccn_api_client.post(
+        INSTANCE_COST_ESTIMATE_URI, json={"invalid": "content"}
+    )
+    assert response.status == 422
+
+
+@pytest.mark.asyncio
+async def test_instance_cost_estimate_detail_has_size_mib(
+    ccn_api_client,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """Test that size_mib is included in the cost detail for volume components."""
+    response = await ccn_api_client.post(
+        INSTANCE_COST_ESTIMATE_URI, json=SAMPLE_INSTANCE_CONTENT
+    )
+    assert response.status == 200, await response.text()
+    data = await response.json()
+
+    for detail in data["detail"]:
+        if detail["type"] == "EXECUTION_INSTANCE_VOLUME_ROOTFS":
+            assert detail["size_mib"] == 20 * 1024
+        elif detail["type"] == "EXECUTION":
+            assert detail["size_mib"] is None

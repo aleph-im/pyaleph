@@ -89,6 +89,10 @@ def register_routes(app: web.Application, swagger: Optional[SwaggerDocs]):
         web.get("/api/v0/price/{item_hash}", prices.message_price),
         web.post("/api/v0/price/estimate", prices.message_price_estimate),
         web.post(
+            "/api/v0/price/estimate/instance",
+            prices.instance_cost_estimate,
+        ),
+        web.post(
             "/api/v0/price/recalculate",
             prices.recalculate_message_costs,
         ),
