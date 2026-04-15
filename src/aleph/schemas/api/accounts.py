@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, field_valida
 
 from aleph.schemas.messages_query_params import DEFAULT_PAGE, LIST_FIELD_SEPARATOR
 from aleph.types.files import FileType
-from aleph.types.sort_order import SortOrder
+from aleph.types.sort_order import SortByCreditHistory, SortOrder
 
 
 class GetAccountQueryParams(BaseModel):
@@ -158,6 +158,30 @@ class GetAccountCreditHistoryQueryParams(BaseModel):
     payment_method: Optional[str] = Field(
         default=None, description="Filter by payment method"
     )
+    has_expiration: Optional[bool] = Field(
+        default=None,
+        description="Filter by presence of expiration_date. "
+        "true: only entries with an expiration date, "
+        "false: only entries without an expiration date.",
+    )
+    exclude_payment_method: Optional[List[str]] = Field(
+        default=None,
+        description="Exclude entries matching these payment methods (comma-separated).",
+    )
+    sort_by: SortByCreditHistory = Field(
+        default=SortByCreditHistory.MESSAGE_TIMESTAMP,
+        description="Field to sort by.",
+    )
+    sort_order: SortOrder = Field(
+        default=SortOrder.DESCENDING,
+        description="Sort direction: 1 (ASC) or -1 (DESC).",
+    )
+
+    @field_validator("exclude_payment_method", mode="before")
+    def split_exclude_payment_method(cls, v):
+        if isinstance(v, str):
+            return v.split(LIST_FIELD_SEPARATOR)
+        return v
 
 
 class CreditHistoryResponseItem(BaseModel):
