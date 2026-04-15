@@ -7,9 +7,11 @@ from sqlalchemy import select
 from sqlalchemy import update as sql_update
 
 from aleph.db.accessors.balances import (
+    get_consumed_credits_by_resource,
     get_credit_balance,
     get_credit_balance_with_details,
     get_resource_consumed_credits,
+    get_total_consumed_credits,
     update_credit_balances_distribution,
     update_credit_balances_expense,
     update_credit_balances_transfer,
@@ -1865,3 +1867,108 @@ def test_credit_balance_details_matches_total(session_factory: DbSessionFactory)
         assert details[0].amount == 600
         assert details[1].expiration_date == exp2
         assert details[1].amount == 600
+
+
+# ── Volume (origin_ref) consumed credits tests ───────────────────────
+
+
+def test_get_resource_consumed_credits_uses_origin_ref_for_volumes(
+    session_factory: DbSessionFactory,
+):
+    """Volumes store the resource hash in origin_ref, not origin.
+    get_resource_consumed_credits (via get_total_consumed_credits) must
+    fall back to origin_ref when origin is empty."""
+
+    message_timestamp = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+
+    with session_factory() as session:
+        update_credit_balances_expense(
+            session=session,
+            credits_list=[
+                {"address": "0xvol_user", "amount": 200, "ref": "vol_hash_1"}
+            ],
+            message_hash="vol_expense_1",
+            message_timestamp=message_timestamp,
+        )
+        # Volume expenses: origin="" (no execution_id), origin_ref="vol_hash_1"
+        session.commit()
+
+        consumed = get_resource_consumed_credits(
+            session=session, item_hash="vol_hash_1"
+        )
+        assert consumed == 2000000  # 200 * 10000
+
+
+def test_get_total_consumed_credits_uses_origin_ref_for_volumes(
+    session_factory: DbSessionFactory,
+):
+    """get_total_consumed_credits must match on origin_ref when origin is empty."""
+
+    message_timestamp = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+
+    with session_factory() as session:
+        update_credit_balances_expense(
+            session=session,
+            credits_list=[
+                {"address": "0xvol_total", "amount": 100, "ref": "vol_total_hash"},
+            ],
+            message_hash="vol_total_expense",
+            message_timestamp=message_timestamp,
+        )
+        session.commit()
+
+        # Filter by item_hash (should match via origin_ref)
+        consumed = get_total_consumed_credits(
+            session=session, item_hash="vol_total_hash"
+        )
+        assert consumed == 1000000  # 100 * 10000
+
+        # Filter by address only (no origin check, should always work)
+        consumed_addr = get_total_consumed_credits(
+            session=session, address="0xvol_total"
+        )
+        assert consumed_addr == 1000000
+
+
+def test_get_consumed_credits_by_resource_uses_origin_ref_for_volumes(
+    session_factory: DbSessionFactory,
+):
+    """get_consumed_credits_by_resource must resolve origin_ref for volume
+    resources whose origin is empty."""
+
+    message_timestamp = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+
+    with session_factory() as session:
+        # Instance expense (has execution_id → origin is set)
+        update_credit_balances_expense(
+            session=session,
+            credits_list=[
+                {
+                    "address": "0xmixed",
+                    "amount": 300,
+                    "execution_id": "instance_hash_1",
+                    "ref": "some_ref",
+                },
+            ],
+            message_hash="inst_exp_mixed",
+            message_timestamp=message_timestamp,
+        )
+
+        # Volume expense (no execution_id → origin is empty, ref → origin_ref)
+        update_credit_balances_expense(
+            session=session,
+            credits_list=[
+                {"address": "0xmixed", "amount": 150, "ref": "vol_hash_mixed"},
+            ],
+            message_hash="vol_exp_mixed",
+            message_timestamp=message_timestamp,
+        )
+        session.commit()
+
+        result = get_consumed_credits_by_resource(
+            session=session,
+            item_hashes=["instance_hash_1", "vol_hash_mixed"],
+        )
+
+        assert result["instance_hash_1"] == 3000000  # 300 * 10000
+        assert result["vol_hash_mixed"] == 1500000  # 150 * 10000

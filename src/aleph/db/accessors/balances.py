@@ -1034,7 +1034,11 @@ def get_total_consumed_credits(
     if address:
         query = query.where(AlephCreditHistoryDb.address == address)
     if item_hash:
-        query = query.where(AlephCreditHistoryDb.origin == item_hash)
+        effective_origin = func.coalesce(
+            func.nullif(AlephCreditHistoryDb.origin, ""),
+            AlephCreditHistoryDb.origin_ref,
+        )
+        query = query.where(effective_origin == item_hash)
 
     result = session.execute(query).scalar()
     return result or 0
@@ -1077,17 +1081,22 @@ def get_consumed_credits_by_resource(
     if not item_hashes:
         return {}
 
+    effective_origin = func.coalesce(
+        func.nullif(AlephCreditHistoryDb.origin, ""),
+        AlephCreditHistoryDb.origin_ref,
+    )
+
     query = (
         select(
-            AlephCreditHistoryDb.origin,
+            effective_origin.label("resource_hash"),
             func.sum(func.abs(AlephCreditHistoryDb.amount)).label("consumed_credits"),
         )
         .where(
             (AlephCreditHistoryDb.payment_method == "credit_expense")
-            & (AlephCreditHistoryDb.origin.in_(item_hashes))
+            & (effective_origin.in_(item_hashes))
         )
-        .group_by(AlephCreditHistoryDb.origin)
+        .group_by(effective_origin)
     )
 
     results = session.execute(query).all()
-    return {row.origin: row.consumed_credits for row in results}
+    return {row.resource_hash: row.consumed_credits for row in results}
