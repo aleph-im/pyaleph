@@ -883,7 +883,6 @@ CREDIT_HISTORY_SORT_COLUMN_MAP = {
 # Columns that are nullable and need NULLS LAST handling
 _NULLABLE_SORT_COLUMNS = {
     SortByCreditHistory.EXPIRATION_DATE,
-    SortByCreditHistory.PAYMENT_METHOD,
     SortByCreditHistory.ORIGIN,
     SortByCreditHistory.TX_HASH,
     SortByCreditHistory.PROVIDER,
@@ -1035,6 +1034,7 @@ def get_address_credit_history(
                         )
                     )
                 )
+                # NULLs come after all non-NULLs due to NULLS LAST ordering
                 | (primary_col.is_(None))
             )
         else:
@@ -1050,6 +1050,7 @@ def get_address_credit_history(
                         )
                     )
                 )
+                # NULLs come after all non-NULLs due to NULLS LAST ordering
                 | (primary_col.is_(None))
             )
 

@@ -842,6 +842,7 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
                 (
                     cursor_sort_by,
                     after_sort_value,
+                    cursor_sort_order,
                     after_credit_ref,
                     after_credit_index,
                 ) = decode_credit_history_sort_cursor(cursor)
@@ -854,6 +855,14 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
                     text="Cursor sort field mismatch: cursor was created with "
                     f"sort_by={cursor_sort_by}, but request has "
                     f"sort_by={query_params.sort_by.value}"
+                )
+
+            # Validate cursor sort_order matches request sort_order
+            if cursor_sort_order != int(query_params.sort_order):
+                raise web.HTTPUnprocessableEntity(
+                    text="Cursor sort order mismatch: cursor was created with "
+                    f"sort_order={cursor_sort_order}, but request has "
+                    f"sort_order={int(query_params.sort_order)}"
                 )
 
             # Parse sort value back to correct type for datetime columns
@@ -922,6 +931,7 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
             next_cursor = encode_credit_history_sort_cursor(
                 sort_by=query_params.sort_by.value,
                 sort_value=sort_value,
+                sort_order=int(query_params.sort_order),
                 credit_ref=last_entry.credit_ref,
                 credit_index=last_entry.credit_index,
             )

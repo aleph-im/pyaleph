@@ -2356,3 +2356,135 @@ def test_has_expiration_and_exclude_combined(session_factory: DbSessionFactory):
         )
         assert len(results) == 1
         assert results[0].credit_ref == "combo_a"
+
+
+def test_cursor_pagination_nullable_sort_nulls_on_last_page(
+    session_factory: DbSessionFactory,
+):
+    """When sorting by expiration_date DESC with pagination, NULLs appear only on the last page."""
+    base_ts = dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc)
+
+    entries = [
+        # 3 entries with expiration dates
+        {
+            "address": "0xpagnull",
+            "amount": 100,
+            "credit_ref": "pn_a",
+            "credit_index": 0,
+            "message_timestamp": base_ts,
+            "last_update": base_ts,
+            "expiration_date": dt.datetime(2026, 9, 1, tzinfo=dt.timezone.utc),
+            "payment_method": "credit_distribution",
+        },
+        {
+            "address": "0xpagnull",
+            "amount": 200,
+            "credit_ref": "pn_b",
+            "credit_index": 0,
+            "message_timestamp": base_ts + dt.timedelta(hours=1),
+            "last_update": base_ts,
+            "expiration_date": dt.datetime(2026, 7, 1, tzinfo=dt.timezone.utc),
+            "payment_method": "credit_distribution",
+        },
+        {
+            "address": "0xpagnull",
+            "amount": 300,
+            "credit_ref": "pn_c",
+            "credit_index": 0,
+            "message_timestamp": base_ts + dt.timedelta(hours=2),
+            "last_update": base_ts,
+            "expiration_date": dt.datetime(2026, 5, 1, tzinfo=dt.timezone.utc),
+            "payment_method": "credit_distribution",
+        },
+        # 2 entries with NULL expiration (should appear last)
+        {
+            "address": "0xpagnull",
+            "amount": 400,
+            "credit_ref": "pn_d",
+            "credit_index": 0,
+            "message_timestamp": base_ts + dt.timedelta(hours=3),
+            "last_update": base_ts,
+            "expiration_date": None,
+            "payment_method": "credit_distribution",
+        },
+        {
+            "address": "0xpagnull",
+            "amount": 500,
+            "credit_ref": "pn_e",
+            "credit_index": 0,
+            "message_timestamp": base_ts + dt.timedelta(hours=4),
+            "last_update": base_ts,
+            "expiration_date": None,
+            "payment_method": "credit_distribution",
+        },
+    ]
+
+    with session_factory() as session:
+        _insert_credit_history_entries(session, entries)
+        session.commit()
+
+        # Page 1: pagination=2, sort by expiration_date DESC → 2 non-NULL entries
+        page1 = get_address_credit_history(
+            session=session,
+            address="0xpagnull",
+            pagination=2,
+            sort_by=SortByCreditHistory.EXPIRATION_DATE,
+            sort_order=SortOrder.DESCENDING,
+            cursor_mode=True,
+        )
+        # Returns 3 rows (limit = pagination + 1 = 3), so has_more = True
+        assert len(page1) == 3
+        page1_trimmed = page1[:2]
+        # DESC order: 2026-09-01, 2026-07-01
+        assert page1_trimmed[0].credit_ref == "pn_a"
+        assert page1_trimmed[1].credit_ref == "pn_b"
+        # No NULLs on page 1
+        assert all(e.expiration_date is not None for e in page1_trimmed)
+
+        # Page 2: cursor from last entry of page 1
+        last = page1_trimmed[-1]
+        page2 = get_address_credit_history(
+            session=session,
+            address="0xpagnull",
+            pagination=2,
+            sort_by=SortByCreditHistory.EXPIRATION_DATE,
+            sort_order=SortOrder.DESCENDING,
+            after_sort_value=last.expiration_date,
+            after_credit_ref=last.credit_ref,
+            after_credit_index=last.credit_index,
+            cursor_mode=True,
+        )
+        # Returns 3 rows (1 non-NULL + 2 NULLs), has_more = True
+        assert len(page2) == 3
+        page2_trimmed = page2[:2]
+        # 2026-05-01, then first NULL
+        assert page2_trimmed[0].credit_ref == "pn_c"
+        assert page2_trimmed[0].expiration_date is not None
+        assert page2_trimmed[1].credit_ref in ("pn_d", "pn_e")
+        assert page2_trimmed[1].expiration_date is None
+
+        # Page 3: cursor from last entry of page 2 (which is a NULL)
+        last2 = page2_trimmed[-1]
+        page3 = get_address_credit_history(
+            session=session,
+            address="0xpagnull",
+            pagination=2,
+            sort_by=SortByCreditHistory.EXPIRATION_DATE,
+            sort_order=SortOrder.DESCENDING,
+            after_sort_value=last2.expiration_date,
+            after_credit_ref=last2.credit_ref,
+            after_credit_index=last2.credit_index,
+            cursor_mode=True,
+        )
+        # Only 1 remaining NULL entry
+        assert len(page3) == 1
+        assert page3[0].expiration_date is None
+
+        # Verify all entries were seen exactly once across all pages
+        all_refs = (
+            [e.credit_ref for e in page1_trimmed]
+            + [e.credit_ref for e in page2_trimmed]
+            + [e.credit_ref for e in page3]
+        )
+        assert len(all_refs) == 5
+        assert len(set(all_refs)) == 5
