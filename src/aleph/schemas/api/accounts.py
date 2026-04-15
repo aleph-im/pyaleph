@@ -14,11 +14,20 @@ class GetAccountQueryParams(BaseModel):
     chain: Optional[Chain] = Field(
         default=None, description="Get Balance on a specific EVM Chain"
     )
+    include_credit_details: bool = Field(
+        default=False,
+        description="Include credit balance breakdown by expiration date (after FIFO consumption).",
+    )
 
 
 FloatDecimal = Annotated[
     Decimal, PlainSerializer(lambda x: float(x), return_type=float, when_used="always")
 ]
+
+
+class CreditBalanceDetailItem(BaseModel):
+    expiration_date: Optional[dt.datetime] = None
+    amount: int
 
 
 class GetAccountBalanceResponse(BaseModel):
@@ -27,6 +36,7 @@ class GetAccountBalanceResponse(BaseModel):
     details: Optional[Dict[str, FloatDecimal]] = None
     locked_amount: FloatDecimal
     credit_balance: int = 0
+    credit_balance_details: Optional[List[CreditBalanceDetailItem]] = None
 
 
 class GetAccountFilesQueryParams(BaseModel):

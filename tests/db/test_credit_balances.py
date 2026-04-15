@@ -8,6 +8,7 @@ from sqlalchemy import update as sql_update
 
 from aleph.db.accessors.balances import (
     get_credit_balance,
+    get_credit_balance_with_details,
     get_resource_consumed_credits,
     update_credit_balances_distribution,
     update_credit_balances_expense,
@@ -1228,6 +1229,7 @@ _DIST_TS = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
 _XFER_TS = dt.datetime(2023, 6, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
 
 
+
 def _give_credits(
     session,
     address: str,
@@ -1538,3 +1540,329 @@ def test_chain_transfer_a_b_c_expiration_and_balances(
         assert get_credit_balance(session, "0xA", now=now_after_a) == 50 * MUL
         assert get_credit_balance(session, "0xB", now=now_after_a) == 0
         assert get_credit_balance(session, "0xC", now=now_after_a) == 0
+
+
+# ── Credit balance details tests ──────────────────────────────────────
+
+
+def _insert_credit_history_entries(session, entries: List[Dict[str, Any]]):
+    """Helper to bulk-insert credit history rows for testing."""
+    for entry in entries:
+        session.add(AlephCreditHistoryDb(**entry))
+    session.flush()
+
+
+def test_credit_balance_details_non_expiring_only(session_factory: DbSessionFactory):
+    """Details with only non-expiring credits."""
+    ts = dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc)
+
+    entries = [
+        {
+            "address": "0xdetails1",
+            "amount": 1000,
+            "credit_ref": "d1_a",
+            "credit_index": 0,
+            "message_timestamp": ts,
+            "last_update": ts,
+            "expiration_date": None,
+        },
+        {
+            "address": "0xdetails1",
+            "amount": 2000,
+            "credit_ref": "d1_b",
+            "credit_index": 0,
+            "message_timestamp": ts + dt.timedelta(hours=1),
+            "last_update": ts,
+            "expiration_date": None,
+        },
+    ]
+
+    with session_factory() as session:
+        _insert_credit_history_entries(session, entries)
+        session.commit()
+
+        total, details = get_credit_balance_with_details(
+            session=session, address="0xdetails1"
+        )
+        assert total == 3000
+        assert len(details) == 1
+        assert details[0].expiration_date is None
+        assert details[0].amount == 3000
+
+
+def test_credit_balance_details_mixed_expiration(session_factory: DbSessionFactory):
+    """Details group by different expiration dates."""
+    ts = dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc)
+    exp1 = dt.datetime(2026, 6, 1, tzinfo=dt.timezone.utc)
+    exp2 = dt.datetime(2026, 9, 1, tzinfo=dt.timezone.utc)
+
+    entries = [
+        {
+            "address": "0xdetails2",
+            "amount": 1000,
+            "credit_ref": "d2_a",
+            "credit_index": 0,
+            "message_timestamp": ts,
+            "last_update": ts,
+            "expiration_date": None,
+        },
+        {
+            "address": "0xdetails2",
+            "amount": 500,
+            "credit_ref": "d2_b",
+            "credit_index": 0,
+            "message_timestamp": ts + dt.timedelta(hours=1),
+            "last_update": ts,
+            "expiration_date": exp1,
+        },
+        {
+            "address": "0xdetails2",
+            "amount": 300,
+            "credit_ref": "d2_c",
+            "credit_index": 0,
+            "message_timestamp": ts + dt.timedelta(hours=2),
+            "last_update": ts,
+            "expiration_date": exp2,
+        },
+    ]
+
+    with session_factory() as session:
+        _insert_credit_history_entries(session, entries)
+        session.commit()
+
+        total, details = get_credit_balance_with_details(
+            session=session, address="0xdetails2"
+        )
+        assert total == 1800
+        # Non-expiring first, then by expiration_date ascending
+        assert len(details) == 3
+        assert details[0].expiration_date is None
+        assert details[0].amount == 1000
+        assert details[1].expiration_date == exp1
+        assert details[1].amount == 500
+        assert details[2].expiration_date == exp2
+        assert details[2].amount == 300
+
+
+def test_credit_balance_details_partial_consumption(session_factory: DbSessionFactory):
+    """Details are accurate after FIFO partial consumption."""
+    ts = dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc)
+    exp1 = dt.datetime(2026, 9, 1, tzinfo=dt.timezone.utc)
+
+    entries = [
+        # Non-expiring credit (oldest, consumed first by FIFO)
+        {
+            "address": "0xdetails3",
+            "amount": 1000,
+            "credit_ref": "d3_a",
+            "credit_index": 0,
+            "message_timestamp": ts,
+            "last_update": ts,
+            "expiration_date": None,
+        },
+        # Expiring credit
+        {
+            "address": "0xdetails3",
+            "amount": 500,
+            "credit_ref": "d3_b",
+            "credit_index": 0,
+            "message_timestamp": ts + dt.timedelta(hours=1),
+            "last_update": ts,
+            "expiration_date": exp1,
+        },
+        # Expense consuming 700 from the oldest (non-expiring) credit
+        {
+            "address": "0xdetails3",
+            "amount": -700,
+            "credit_ref": "d3_exp",
+            "credit_index": 0,
+            "message_timestamp": ts + dt.timedelta(hours=2),
+            "last_update": ts,
+            "expiration_date": None,
+            "payment_method": "credit_expense",
+        },
+    ]
+
+    with session_factory() as session:
+        _insert_credit_history_entries(session, entries)
+        session.commit()
+
+        total, details = get_credit_balance_with_details(
+            session=session, address="0xdetails3"
+        )
+        # 1000 - 700 = 300 non-expiring remaining, 500 expiring remaining
+        assert total == 800
+        assert len(details) == 2
+        assert details[0].expiration_date is None
+        assert details[0].amount == 300
+        assert details[1].expiration_date == exp1
+        assert details[1].amount == 500
+
+
+def test_credit_balance_details_fully_consumed(session_factory: DbSessionFactory):
+    """Fully consumed credits don't appear in details."""
+    ts = dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc)
+
+    entries = [
+        {
+            "address": "0xdetails4",
+            "amount": 500,
+            "credit_ref": "d4_a",
+            "credit_index": 0,
+            "message_timestamp": ts,
+            "last_update": ts,
+            "expiration_date": None,
+        },
+        {
+            "address": "0xdetails4",
+            "amount": -500,
+            "credit_ref": "d4_exp",
+            "credit_index": 0,
+            "message_timestamp": ts + dt.timedelta(hours=1),
+            "last_update": ts,
+            "expiration_date": None,
+            "payment_method": "credit_expense",
+        },
+    ]
+
+    with session_factory() as session:
+        _insert_credit_history_entries(session, entries)
+        session.commit()
+
+        total, details = get_credit_balance_with_details(
+            session=session, address="0xdetails4"
+        )
+        assert total == 0
+        assert len(details) == 0
+
+
+def test_credit_balance_details_expired_excluded(session_factory: DbSessionFactory):
+    """Expired credits are excluded from details."""
+    ts = dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc)
+    past_exp = dt.datetime(2026, 3, 15, tzinfo=dt.timezone.utc)
+    future_exp = dt.datetime(2027, 6, 1, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 4, 1, tzinfo=dt.timezone.utc)
+
+    entries = [
+        # Already expired
+        {
+            "address": "0xdetails5",
+            "amount": 1000,
+            "credit_ref": "d5_expired",
+            "credit_index": 0,
+            "message_timestamp": ts,
+            "last_update": ts,
+            "expiration_date": past_exp,
+        },
+        # Still valid
+        {
+            "address": "0xdetails5",
+            "amount": 500,
+            "credit_ref": "d5_valid",
+            "credit_index": 0,
+            "message_timestamp": ts + dt.timedelta(hours=1),
+            "last_update": ts,
+            "expiration_date": future_exp,
+        },
+        # Non-expiring
+        {
+            "address": "0xdetails5",
+            "amount": 200,
+            "credit_ref": "d5_noexp",
+            "credit_index": 0,
+            "message_timestamp": ts + dt.timedelta(hours=2),
+            "last_update": ts,
+            "expiration_date": None,
+        },
+    ]
+
+    with session_factory() as session:
+        _insert_credit_history_entries(session, entries)
+        session.commit()
+
+        total, details = get_credit_balance_with_details(
+            session=session, address="0xdetails5", now=now
+        )
+        # Expired 1000 excluded, remaining: 500 + 200 = 700
+        assert total == 700
+        assert len(details) == 2
+        assert details[0].expiration_date is None
+        assert details[0].amount == 200
+        assert details[1].expiration_date == future_exp
+        assert details[1].amount == 500
+
+
+def test_credit_balance_details_no_history(session_factory: DbSessionFactory):
+    """No credit history returns 0 balance and empty details."""
+    with session_factory() as session:
+        total, details = get_credit_balance_with_details(
+            session=session, address="0xno_history"
+        )
+        assert total == 0
+        assert len(details) == 0
+
+
+def test_credit_balance_details_matches_total(session_factory: DbSessionFactory):
+    """Sum of details amounts equals the total balance."""
+    ts = dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc)
+    exp1 = dt.datetime(2026, 9, 1, tzinfo=dt.timezone.utc)
+    exp2 = dt.datetime(2026, 12, 1, tzinfo=dt.timezone.utc)
+
+    entries = [
+        {
+            "address": "0xdetails6",
+            "amount": 1000,
+            "credit_ref": "d6_a",
+            "credit_index": 0,
+            "message_timestamp": ts,
+            "last_update": ts,
+            "expiration_date": None,
+        },
+        {
+            "address": "0xdetails6",
+            "amount": 800,
+            "credit_ref": "d6_b",
+            "credit_index": 0,
+            "message_timestamp": ts + dt.timedelta(hours=1),
+            "last_update": ts,
+            "expiration_date": exp1,
+        },
+        {
+            "address": "0xdetails6",
+            "amount": 600,
+            "credit_ref": "d6_c",
+            "credit_index": 0,
+            "message_timestamp": ts + dt.timedelta(hours=2),
+            "last_update": ts,
+            "expiration_date": exp2,
+        },
+        # Expense consuming 1200 total (FIFO: 1000 from non-expiring, 200 from exp1)
+        {
+            "address": "0xdetails6",
+            "amount": -1200,
+            "credit_ref": "d6_exp",
+            "credit_index": 0,
+            "message_timestamp": ts + dt.timedelta(hours=3),
+            "last_update": ts,
+            "expiration_date": None,
+            "payment_method": "credit_expense",
+        },
+    ]
+
+    with session_factory() as session:
+        _insert_credit_history_entries(session, entries)
+        session.commit()
+
+        total, details = get_credit_balance_with_details(
+            session=session, address="0xdetails6"
+        )
+        # 1000 - 1000 = 0 non-expiring, 800 - 200 = 600 exp1, 600 exp2
+        assert total == 1200
+        details_sum = sum(d.amount for d in details)
+        assert details_sum == total
+
+        assert len(details) == 2
+        assert details[0].expiration_date == exp1
+        assert details[0].amount == 600
+        assert details[1].expiration_date == exp2
+        assert details[1].amount == 600

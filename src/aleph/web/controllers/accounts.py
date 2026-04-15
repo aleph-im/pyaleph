@@ -14,6 +14,7 @@ from aleph.db.accessors.balances import (
     get_address_credit_history,
     get_balances_by_chain,
     get_credit_balance,
+    get_credit_balance_with_details,
     get_credit_balances,
     get_resource_consumed_credits,
     get_total_detailed_balance,
@@ -29,6 +30,7 @@ from aleph.schemas.addresses_query_params import AddressesQueryParams
 from aleph.schemas.api.accounts import (
     AddressBalanceResponse,
     AddressCreditBalanceResponse,
+    CreditBalanceDetailItem,
     CreditHistoryResponseItem,
     GetAccountBalanceResponse,
     GetAccountChannelsResponse,
@@ -307,6 +309,12 @@ async def get_account_balance(request: web.Request):
         schema:
           type: string
         description: Filter by EVM chain
+      - name: include_credit_details
+        in: query
+        schema:
+          type: boolean
+          default: false
+        description: Include credit balance breakdown by expiration date (after FIFO consumption)
     responses:
       '200':
         description: Account balance details
@@ -330,9 +338,25 @@ async def get_account_balance(request: web.Request):
             session=session, address=address, chain=query_params.chain
         )
         total_cost = get_total_cost_for_address(session=session, address=address)
-        credits = get_credit_balance(session=session, address=address)
+
+        credit_balance_details = None
+        if query_params.include_credit_details:
+            credits, detail_items = get_credit_balance_with_details(
+                session=session, address=address
+            )
+            credit_balance_details = [
+                CreditBalanceDetailItem(
+                    expiration_date=d.expiration_date,
+                    amount=d.amount,
+                )
+                for d in detail_items
+            ]
+        else:
+            credits = get_credit_balance(session=session, address=address)
+
         if credits is None:
             credits = 0
+
     return web.json_response(
         text=GetAccountBalanceResponse(
             address=address,
@@ -340,6 +364,7 @@ async def get_account_balance(request: web.Request):
             locked_amount=total_cost,
             details=details,
             credit_balance=credits,
+            credit_balance_details=credit_balance_details,
         ).model_dump_json()
     )
 
