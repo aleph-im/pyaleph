@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Use this script to build the Docker image of the Core Channel Node
+# Build the Docker image of the Core Channel Node.
 
 set -euo pipefail
 
@@ -16,12 +16,18 @@ else
   DOCKER_COMMAND=docker
 fi
 
-# Sets IMAGE_TAG and PEP440_VERSION
+# Sets IMAGE, IMAGE_TAG, and PEP440_VERSION
 source "${SCRIPT_DIR}/get_version.sh"
 get_version
 
-${DOCKER_COMMAND} build \
+echo "Building ${IMAGE}:${IMAGE_TAG} (PEP440: ${PEP440_VERSION})"
+
+"${DOCKER_COMMAND}" build \
   -f "${SCRIPT_DIR}/pyaleph.dockerfile" \
-  -t "alephim/pyaleph-node:${IMAGE_TAG}" \
+  -t "${IMAGE}:${IMAGE_TAG}" \
   --build-arg "VERSION=${PEP440_VERSION}" \
   .
+
+echo
+echo "Build complete: ${IMAGE}:${IMAGE_TAG}"
+echo "To publish: ${SCRIPT_DIR}/publish.sh"
