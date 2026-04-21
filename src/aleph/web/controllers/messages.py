@@ -884,9 +884,7 @@ async def view_message_content(request: web.Request):
             session=session, status_db=message_status_db
         )
 
-    if message_with_status.status != MessageStatus.PROCESSED or not isinstance(
-        message_with_status, ProcessedMessageStatus
-    ):
+    if not isinstance(message_with_status, ProcessedMessageStatus):
         raise web.HTTPUnprocessableEntity(
             text=(
                 f"Message {item_hash} is not processed "
@@ -894,13 +892,13 @@ async def view_message_content(request: web.Request):
             )
         )
 
-    message = message_with_status.message
-    if isinstance(message, PostMessage):
+    # Serialize the full message once; extract the content portion below.
+    # Using model_dump keeps mypy happy through the AlephMessage union.
+    message_dict = message_with_status.message.model_dump(mode="json")
+    content = message_dict["content"]
+    if isinstance(message_with_status.message, PostMessage):
         # POST messages wrap the user payload in content.content
-        content = message.content.content
-    else:
-        # All other types expose the payload directly in content
-        content = message.content.model_dump(mode="json")
+        content = content["content"]
 
     return web.json_response(text=json.dumps(content))
 
