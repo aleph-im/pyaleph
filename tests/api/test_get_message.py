@@ -217,13 +217,17 @@ async def test_get_processed_message_content(
     fixture_messages_with_status: Mapping[MessageStatus, Sequence[Any]], ccn_api_client
 ):
     for processed_message in fixture_messages_with_status[MessageStatus.PROCESSED]:
+        response = await ccn_api_client.get(
+            MESSAGE_CONTENT_URI.format(processed_message.item_hash)
+        )
+        assert response.status == 200, await response.text()
+        response_json = await response.json()
         if processed_message.type == MessageType.post:
-            response = await ccn_api_client.get(
-                MESSAGE_CONTENT_URI.format(processed_message.item_hash)
-            )
-            assert response.status == 200, await response.text()
-            response_json = await response.json()
+            # POST messages unwrap content.content
             assert response_json == processed_message.content["content"]
+        else:
+            # All other types return the full content payload
+            assert response_json == processed_message.content
 
 
 @pytest.mark.asyncio
