@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterable, List, Optional, Set
 import aio_pika.abc
 import aiohttp.web_ws
 from aiohttp import WSCloseCode, WSMsgType, web
-from aleph_message.models import ItemHash, MessageType
+from aleph_message.models import ItemHash
 from configmanager import Config
 from pydantic import ValidationError
 from sqlalchemy.orm import defer
@@ -846,7 +846,10 @@ async def view_message(request: web.Request):
 
 async def view_message_content(request: web.Request):
     """
-    Get the content of a POST message by item hash.
+    Get the content of a processed message by item hash.
+
+    For POST messages, returns the nested user content (content.content).
+    For all other message types, returns the full message content.
 
     ---
     summary: Get message content
@@ -868,7 +871,7 @@ async def view_message_content(request: web.Request):
       '404':
         description: Message not found
       '422':
-        description: Invalid message type or status
+        description: Message is not in a PROCESSED state
     """
     item_hash = get_item_hash_from_request(request)
 
@@ -881,23 +884,22 @@ async def view_message_content(request: web.Request):
             session=session, status_db=message_status_db
         )
 
-    status = message_with_status.status
-    if (
-        status != MessageStatus.PROCESSED
-        or not hasattr(message_with_status, "message")
-        or not isinstance(message_with_status.message, PostMessage)
-    ):
+    if not isinstance(message_with_status, ProcessedMessageStatus):
         raise web.HTTPUnprocessableEntity(
-            text=f"Invalid message hash status {status} for hash {item_hash}"
+            text=(
+                f"Message {item_hash} is not processed "
+                f"(status: {message_with_status.status})"
+            )
         )
 
-    message_type = message_with_status.message.type
-    if message_type != MessageType.post:
-        raise web.HTTPUnprocessableEntity(
-            text=f"Invalid message hash type {message_type} for hash {item_hash}"
-        )
+    # Serialize the full message once; extract the content portion below.
+    # Using model_dump keeps mypy happy through the AlephMessage union.
+    message_dict = message_with_status.message.model_dump(mode="json")
+    content = message_dict["content"]
+    if isinstance(message_with_status.message, PostMessage):
+        # POST messages wrap the user payload in content.content
+        content = content["content"]
 
-    content = message_with_status.message.content.content
     return web.json_response(text=json.dumps(content))
 
 
