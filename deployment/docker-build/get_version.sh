@@ -22,7 +22,7 @@ function get_version() {
   PEP440_VERSION="${IMAGE_TAG}"
 
   if [ -z "${IMAGE_TAG}" ]; then
-    latest_release=$(git describe --tags --abbrev=0 --match '[0-9]*' 2>/dev/null \
+    latest_release=$(git describe --tags --abbrev=0 --match '[0-9]*.[0-9]*.[0-9]*' 2>/dev/null \
       || echo "0.0.0")
     commit_hash=$(git rev-parse --short HEAD)
     IMAGE_TAG="${latest_release}-${commit_hash}"

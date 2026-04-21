@@ -16,7 +16,6 @@ else
   DOCKER_COMMAND=docker
 fi
 
-# Sets IMAGE_TAG and PEP440_VERSION
 # Sets IMAGE, IMAGE_TAG, and PEP440_VERSION
 source "${SCRIPT_DIR}/get_version.sh"
 get_version
