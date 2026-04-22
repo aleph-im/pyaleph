@@ -768,9 +768,7 @@ def update_credit_balances_transfer(
     # Compute sender's remaining credits once for all entries in this transfer
     sender_remaining: list[PositiveCredit] = []
     if not is_whitelisted:
-        sender_remaining = _apply_fifo_consumption(
-            session, sender_address, last_update
-        )
+        sender_remaining = _apply_fifo_consumption(session, sender_address, last_update)
 
     for credit_entry in credits_list:
         recipient_address = credit_entry["address"]

@@ -1229,7 +1229,6 @@ _DIST_TS = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
 _XFER_TS = dt.datetime(2023, 6, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
 
 
-
 def _give_credits(
     session,
     address: str,
