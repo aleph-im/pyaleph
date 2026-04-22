@@ -121,11 +121,20 @@ class StorageService:
                 ItemType.ipfs,
                 ItemType.storage,
             ):
-                content, hash_content = await self._recover_cached_content(
+                hash_content = await self._recover_cached_content(
                     item_hash, ItemType(item_type)
                 )
                 item_content = hash_content.value
                 source = hash_content.source
+                try:
+                    content = aleph_json.loads(item_content)
+                except (
+                    aleph_json.DecodeError,
+                    json.decoder.JSONDecodeError,
+                ) as retry_e:
+                    raise InvalidContent(
+                        f"Content still invalid after retry: {retry_e}"
+                    ) from retry_e
             else:
                 raise InvalidContent(error_msg)
 
@@ -138,28 +147,23 @@ class StorageService:
 
     async def _recover_cached_content(
         self, item_hash: str, engine: ItemType
-    ) -> tuple[Any, RawContent]:
-        """Delete a corrupt cache entry, refetch from network, and parse JSON.
+    ) -> RawContent:
+        """Delete a corrupt cache entry and refetch its raw bytes from the network.
 
-        Called when cached content fails either SHA-256 verification or JSON
-        decoding. Raises InvalidContent if the fresh copy also fails to parse.
+        Does not interpret the content — callers decide what to do with the bytes.
+        Raises ContentCurrentlyUnavailable if the content cannot be fetched.
         """
         LOGGER.warning(
             "Corrupted cached content for %s, deleting and retrying from network",
             item_hash,
         )
         await self.storage_engine.delete(filename=item_hash)
-        hash_content = await self.get_hash_content(
+        return await self.get_hash_content(
             item_hash,
             engine=engine,
             use_network=True,
             use_ipfs=True,
         )
-        try:
-            content = aleph_json.loads(hash_content.value)
-        except (aleph_json.DecodeError, json.decoder.JSONDecodeError) as e:
-            raise InvalidContent(f"Content still invalid after retry: {e}") from e
-        return content, hash_content
 
     async def _fetch_content_from_network(
         self, content_hash: str, engine: ItemType, timeout: int
