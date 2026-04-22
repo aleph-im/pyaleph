@@ -117,33 +117,15 @@ class StorageService:
         except (aleph_json.DecodeError, json.decoder.JSONDecodeError) as e:
             error_msg = f"Can't decode JSON: {e}"
             LOGGER.warning(error_msg)
-            # If content was from local cache and is corrupted, delete it and retry
             if source == ContentSource.DB and item_type in (
                 ItemType.ipfs,
                 ItemType.storage,
             ):
-                LOGGER.warning(
-                    f"Corrupted cached content for {item_hash}, deleting and retrying from network"
-                )
-                await self.storage_engine.delete(filename=item_hash)
-                hash_content = await self.get_hash_content(
-                    item_hash,
-                    engine=ItemType(item_type),
-                    use_network=True,
-                    use_ipfs=True,
+                content, hash_content = await self._recover_cached_content(
+                    item_hash, ItemType(item_type)
                 )
                 item_content = hash_content.value
                 source = hash_content.source
-                # Try parsing again
-                try:
-                    content = aleph_json.loads(item_content)
-                except (
-                    aleph_json.DecodeError,
-                    json.decoder.JSONDecodeError,
-                ) as retry_error:
-                    raise InvalidContent(
-                        f"Content still invalid after retry: {retry_error}"
-                    ) from retry_error
             else:
                 raise InvalidContent(error_msg)
 
@@ -153,6 +135,31 @@ class StorageService:
             value=content,
             raw_value=item_content,
         )
+
+    async def _recover_cached_content(
+        self, item_hash: str, engine: ItemType
+    ) -> tuple[Any, RawContent]:
+        """Delete a corrupt cache entry, refetch from network, and parse JSON.
+
+        Called when cached content fails either SHA-256 verification or JSON
+        decoding. Raises InvalidContent if the fresh copy also fails to parse.
+        """
+        LOGGER.warning(
+            "Corrupted cached content for %s, deleting and retrying from network",
+            item_hash,
+        )
+        await self.storage_engine.delete(filename=item_hash)
+        hash_content = await self.get_hash_content(
+            item_hash,
+            engine=engine,
+            use_network=True,
+            use_ipfs=True,
+        )
+        try:
+            content = aleph_json.loads(hash_content.value)
+        except (aleph_json.DecodeError, json.decoder.JSONDecodeError) as e:
+            raise InvalidContent(f"Content still invalid after retry: {e}") from e
+        return content, hash_content
 
     async def _fetch_content_from_network(
         self, content_hash: str, engine: ItemType, timeout: int
