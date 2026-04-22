@@ -110,6 +110,7 @@ class StorageService:
             # unknown, could retry later? shouldn't have arrived this far though.
             raise ValueError(f"Unknown item type: '{item_type}'.")
 
+        # check_for_u0000 raises InvalidContent without recovery: it is a schema violation, not corruption.
         check_for_u0000(item_content)
 
         try:

@@ -60,9 +60,10 @@ class FileSystemStorageEngine(StorageEngine):
           4. Best-effort fsync of the parent directory so the rename is durable
              across kernel crashes (POSIX-only; silently skipped on Windows).
 
-        On any exception, the temp file is removed (best-effort) and the
-        exception is re-raised. The target file is never touched until the
-        rename succeeds, so crashes leave either the old content or none.
+        On any exception (including post-rename errors in the directory-fsync
+        section), the temp file is removed best-effort and the exception is
+        re-raised. The target file is never touched until the rename succeeds,
+        so crashes leave either the old content or none.
         """
         fd = os.open(
             str(temp_path),
