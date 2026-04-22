@@ -7,6 +7,8 @@ from sqlalchemy import select
 from sqlalchemy import update as sql_update
 
 from aleph.db.accessors.balances import (
+    count_address_credit_history,
+    get_address_credit_history,
     get_consumed_credits_by_resource,
     get_credit_balance,
     get_credit_balance_with_details,
@@ -19,6 +21,7 @@ from aleph.db.accessors.balances import (
 )
 from aleph.db.models import AlephCreditBalanceDb, AlephCreditHistoryDb
 from aleph.types.db_session import DbSessionFactory
+from aleph.types.sort_order import SortByCreditHistory, SortOrder
 
 
 def test_update_credit_balances_distribution(session_factory: DbSessionFactory):
@@ -1972,3 +1975,516 @@ def test_get_consumed_credits_by_resource_uses_origin_ref_for_volumes(
 
         assert result["instance_hash_1"] == 3000000  # 300 * 10000
         assert result["vol_hash_mixed"] == 1500000  # 150 * 10000
+
+
+# ── Credit history filter and sort tests ──────────────────────────────
+
+
+def test_has_expiration_filter_true(session_factory: DbSessionFactory):
+    """has_expiration=True returns only entries WITH an expiration_date."""
+    ts = dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc)
+    exp = dt.datetime(2026, 6, 1, tzinfo=dt.timezone.utc)
+
+    entries = [
+        {
+            "address": "0xfilter",
+            "amount": 100,
+            "credit_ref": "ref_exp",
+            "credit_index": 0,
+            "message_timestamp": ts,
+            "last_update": ts,
+            "expiration_date": exp,
+            "payment_method": "credit_distribution",
+        },
+        {
+            "address": "0xfilter",
+            "amount": 200,
+            "credit_ref": "ref_noexp",
+            "credit_index": 0,
+            "message_timestamp": ts,
+            "last_update": ts,
+            "expiration_date": None,
+            "payment_method": "credit_distribution",
+        },
+    ]
+
+    with session_factory() as session:
+        _insert_credit_history_entries(session, entries)
+        session.commit()
+
+        results = get_address_credit_history(
+            session=session, address="0xfilter", has_expiration=True
+        )
+        assert len(results) == 1
+        assert results[0].credit_ref == "ref_exp"
+
+
+def test_has_expiration_filter_false(session_factory: DbSessionFactory):
+    """has_expiration=False returns only entries WITHOUT an expiration_date."""
+    ts = dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc)
+    exp = dt.datetime(2026, 6, 1, tzinfo=dt.timezone.utc)
+
+    entries = [
+        {
+            "address": "0xfilter2",
+            "amount": 100,
+            "credit_ref": "ref2_exp",
+            "credit_index": 0,
+            "message_timestamp": ts,
+            "last_update": ts,
+            "expiration_date": exp,
+            "payment_method": "credit_distribution",
+        },
+        {
+            "address": "0xfilter2",
+            "amount": 200,
+            "credit_ref": "ref2_noexp",
+            "credit_index": 0,
+            "message_timestamp": ts,
+            "last_update": ts,
+            "expiration_date": None,
+            "payment_method": "credit_distribution",
+        },
+    ]
+
+    with session_factory() as session:
+        _insert_credit_history_entries(session, entries)
+        session.commit()
+
+        results = get_address_credit_history(
+            session=session, address="0xfilter2", has_expiration=False
+        )
+        assert len(results) == 1
+        assert results[0].credit_ref == "ref2_noexp"
+
+
+def test_exclude_payment_method(session_factory: DbSessionFactory):
+    """exclude_payment_method removes entries matching given payment methods."""
+    ts = dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc)
+
+    entries = [
+        {
+            "address": "0xexclude",
+            "amount": 100,
+            "credit_ref": "ref_dist",
+            "credit_index": 0,
+            "message_timestamp": ts,
+            "last_update": ts,
+            "payment_method": "credit_distribution",
+        },
+        {
+            "address": "0xexclude",
+            "amount": -50,
+            "credit_ref": "ref_expense",
+            "credit_index": 0,
+            "message_timestamp": ts,
+            "last_update": ts,
+            "payment_method": "credit_expense",
+        },
+        {
+            "address": "0xexclude",
+            "amount": 75,
+            "credit_ref": "ref_transfer",
+            "credit_index": 0,
+            "message_timestamp": ts,
+            "last_update": ts,
+            "payment_method": "credit_transfer",
+        },
+    ]
+
+    with session_factory() as session:
+        _insert_credit_history_entries(session, entries)
+        session.commit()
+
+        # Exclude expense
+        results = get_address_credit_history(
+            session=session,
+            address="0xexclude",
+            exclude_payment_method=["credit_expense"],
+        )
+        assert len(results) == 2
+        refs = {r.credit_ref for r in results}
+        assert refs == {"ref_dist", "ref_transfer"}
+
+        # Exclude both expense and transfer
+        results = get_address_credit_history(
+            session=session,
+            address="0xexclude",
+            exclude_payment_method=["credit_expense", "credit_transfer"],
+        )
+        assert len(results) == 1
+        assert results[0].credit_ref == "ref_dist"
+
+
+def test_exclude_payment_method_count(session_factory: DbSessionFactory):
+    """count_address_credit_history respects exclude_payment_method."""
+    ts = dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc)
+
+    entries = [
+        {
+            "address": "0xcnt",
+            "amount": 100,
+            "credit_ref": "cnt_dist",
+            "credit_index": 0,
+            "message_timestamp": ts,
+            "last_update": ts,
+            "payment_method": "credit_distribution",
+        },
+        {
+            "address": "0xcnt",
+            "amount": -50,
+            "credit_ref": "cnt_expense",
+            "credit_index": 0,
+            "message_timestamp": ts,
+            "last_update": ts,
+            "payment_method": "credit_expense",
+        },
+    ]
+
+    with session_factory() as session:
+        _insert_credit_history_entries(session, entries)
+        session.commit()
+
+        total = count_address_credit_history(session=session, address="0xcnt")
+        assert total == 2
+
+        filtered = count_address_credit_history(
+            session=session,
+            address="0xcnt",
+            exclude_payment_method=["credit_expense"],
+        )
+        assert filtered == 1
+
+
+def test_sort_by_amount_ascending(session_factory: DbSessionFactory):
+    """sort_by=AMOUNT, sort_order=ASC orders by amount ascending."""
+    base_ts = dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc)
+
+    entries = [
+        {
+            "address": "0xsort",
+            "amount": 300,
+            "credit_ref": "sort_a",
+            "credit_index": 0,
+            "message_timestamp": base_ts,
+            "last_update": base_ts,
+        },
+        {
+            "address": "0xsort",
+            "amount": 100,
+            "credit_ref": "sort_b",
+            "credit_index": 0,
+            "message_timestamp": base_ts + dt.timedelta(hours=1),
+            "last_update": base_ts,
+        },
+        {
+            "address": "0xsort",
+            "amount": 200,
+            "credit_ref": "sort_c",
+            "credit_index": 0,
+            "message_timestamp": base_ts + dt.timedelta(hours=2),
+            "last_update": base_ts,
+        },
+    ]
+
+    with session_factory() as session:
+        _insert_credit_history_entries(session, entries)
+        session.commit()
+
+        results = get_address_credit_history(
+            session=session,
+            address="0xsort",
+            sort_by=SortByCreditHistory.AMOUNT,
+            sort_order=SortOrder.ASCENDING,
+        )
+        amounts = [r.amount for r in results]
+        assert amounts == [100, 200, 300]
+
+
+def test_sort_by_amount_descending(session_factory: DbSessionFactory):
+    """sort_by=AMOUNT, sort_order=DESC orders by amount descending."""
+    base_ts = dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc)
+
+    entries = [
+        {
+            "address": "0xsortd",
+            "amount": 300,
+            "credit_ref": "sortd_a",
+            "credit_index": 0,
+            "message_timestamp": base_ts,
+            "last_update": base_ts,
+        },
+        {
+            "address": "0xsortd",
+            "amount": 100,
+            "credit_ref": "sortd_b",
+            "credit_index": 0,
+            "message_timestamp": base_ts + dt.timedelta(hours=1),
+            "last_update": base_ts,
+        },
+        {
+            "address": "0xsortd",
+            "amount": 200,
+            "credit_ref": "sortd_c",
+            "credit_index": 0,
+            "message_timestamp": base_ts + dt.timedelta(hours=2),
+            "last_update": base_ts,
+        },
+    ]
+
+    with session_factory() as session:
+        _insert_credit_history_entries(session, entries)
+        session.commit()
+
+        results = get_address_credit_history(
+            session=session,
+            address="0xsortd",
+            sort_by=SortByCreditHistory.AMOUNT,
+            sort_order=SortOrder.DESCENDING,
+        )
+        amounts = [r.amount for r in results]
+        assert amounts == [300, 200, 100]
+
+
+def test_sort_by_expiration_date_nulls_last(session_factory: DbSessionFactory):
+    """Sorting by expiration_date puts NULLs last."""
+    base_ts = dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc)
+
+    entries = [
+        {
+            "address": "0xnull",
+            "amount": 100,
+            "credit_ref": "null_a",
+            "credit_index": 0,
+            "message_timestamp": base_ts,
+            "last_update": base_ts,
+            "expiration_date": None,
+        },
+        {
+            "address": "0xnull",
+            "amount": 200,
+            "credit_ref": "null_b",
+            "credit_index": 0,
+            "message_timestamp": base_ts + dt.timedelta(hours=1),
+            "last_update": base_ts,
+            "expiration_date": dt.datetime(2026, 5, 1, tzinfo=dt.timezone.utc),
+        },
+        {
+            "address": "0xnull",
+            "amount": 300,
+            "credit_ref": "null_c",
+            "credit_index": 0,
+            "message_timestamp": base_ts + dt.timedelta(hours=2),
+            "last_update": base_ts,
+            "expiration_date": dt.datetime(2026, 4, 1, tzinfo=dt.timezone.utc),
+        },
+    ]
+
+    with session_factory() as session:
+        _insert_credit_history_entries(session, entries)
+        session.commit()
+
+        # ASC: earliest expiration first, NULLs last
+        results = get_address_credit_history(
+            session=session,
+            address="0xnull",
+            sort_by=SortByCreditHistory.EXPIRATION_DATE,
+            sort_order=SortOrder.ASCENDING,
+        )
+        refs = [r.credit_ref for r in results]
+        assert refs == ["null_c", "null_b", "null_a"]
+
+        # DESC: latest expiration first, NULLs last
+        results = get_address_credit_history(
+            session=session,
+            address="0xnull",
+            sort_by=SortByCreditHistory.EXPIRATION_DATE,
+            sort_order=SortOrder.DESCENDING,
+        )
+        refs = [r.credit_ref for r in results]
+        assert refs == ["null_b", "null_c", "null_a"]
+
+
+def test_has_expiration_and_exclude_combined(session_factory: DbSessionFactory):
+    """has_expiration and exclude_payment_method work together."""
+    ts = dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc)
+    exp = dt.datetime(2026, 6, 1, tzinfo=dt.timezone.utc)
+
+    entries = [
+        {
+            "address": "0xcombo",
+            "amount": 100,
+            "credit_ref": "combo_a",
+            "credit_index": 0,
+            "message_timestamp": ts,
+            "last_update": ts,
+            "expiration_date": exp,
+            "payment_method": "credit_distribution",
+        },
+        {
+            "address": "0xcombo",
+            "amount": -50,
+            "credit_ref": "combo_b",
+            "credit_index": 0,
+            "message_timestamp": ts,
+            "last_update": ts,
+            "expiration_date": None,
+            "payment_method": "credit_expense",
+        },
+        {
+            "address": "0xcombo",
+            "amount": 75,
+            "credit_ref": "combo_c",
+            "credit_index": 0,
+            "message_timestamp": ts,
+            "last_update": ts,
+            "expiration_date": exp,
+            "payment_method": "credit_expense",
+        },
+    ]
+
+    with session_factory() as session:
+        _insert_credit_history_entries(session, entries)
+        session.commit()
+
+        # has_expiration=True + exclude credit_expense => only combo_a
+        results = get_address_credit_history(
+            session=session,
+            address="0xcombo",
+            has_expiration=True,
+            exclude_payment_method=["credit_expense"],
+        )
+        assert len(results) == 1
+        assert results[0].credit_ref == "combo_a"
+
+
+def test_cursor_pagination_nullable_sort_nulls_on_last_page(
+    session_factory: DbSessionFactory,
+):
+    """When sorting by expiration_date DESC with pagination, NULLs appear only on the last page."""
+    base_ts = dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc)
+
+    entries = [
+        # 3 entries with expiration dates
+        {
+            "address": "0xpagnull",
+            "amount": 100,
+            "credit_ref": "pn_a",
+            "credit_index": 0,
+            "message_timestamp": base_ts,
+            "last_update": base_ts,
+            "expiration_date": dt.datetime(2026, 9, 1, tzinfo=dt.timezone.utc),
+            "payment_method": "credit_distribution",
+        },
+        {
+            "address": "0xpagnull",
+            "amount": 200,
+            "credit_ref": "pn_b",
+            "credit_index": 0,
+            "message_timestamp": base_ts + dt.timedelta(hours=1),
+            "last_update": base_ts,
+            "expiration_date": dt.datetime(2026, 7, 1, tzinfo=dt.timezone.utc),
+            "payment_method": "credit_distribution",
+        },
+        {
+            "address": "0xpagnull",
+            "amount": 300,
+            "credit_ref": "pn_c",
+            "credit_index": 0,
+            "message_timestamp": base_ts + dt.timedelta(hours=2),
+            "last_update": base_ts,
+            "expiration_date": dt.datetime(2026, 5, 1, tzinfo=dt.timezone.utc),
+            "payment_method": "credit_distribution",
+        },
+        # 2 entries with NULL expiration (should appear last)
+        {
+            "address": "0xpagnull",
+            "amount": 400,
+            "credit_ref": "pn_d",
+            "credit_index": 0,
+            "message_timestamp": base_ts + dt.timedelta(hours=3),
+            "last_update": base_ts,
+            "expiration_date": None,
+            "payment_method": "credit_distribution",
+        },
+        {
+            "address": "0xpagnull",
+            "amount": 500,
+            "credit_ref": "pn_e",
+            "credit_index": 0,
+            "message_timestamp": base_ts + dt.timedelta(hours=4),
+            "last_update": base_ts,
+            "expiration_date": None,
+            "payment_method": "credit_distribution",
+        },
+    ]
+
+    with session_factory() as session:
+        _insert_credit_history_entries(session, entries)
+        session.commit()
+
+        # Page 1: pagination=2, sort by expiration_date DESC → 2 non-NULL entries
+        page1 = get_address_credit_history(
+            session=session,
+            address="0xpagnull",
+            pagination=2,
+            sort_by=SortByCreditHistory.EXPIRATION_DATE,
+            sort_order=SortOrder.DESCENDING,
+            cursor_mode=True,
+        )
+        # Returns 3 rows (limit = pagination + 1 = 3), so has_more = True
+        assert len(page1) == 3
+        page1_trimmed = page1[:2]
+        # DESC order: 2026-09-01, 2026-07-01
+        assert page1_trimmed[0].credit_ref == "pn_a"
+        assert page1_trimmed[1].credit_ref == "pn_b"
+        # No NULLs on page 1
+        assert all(e.expiration_date is not None for e in page1_trimmed)
+
+        # Page 2: cursor from last entry of page 1
+        last = page1_trimmed[-1]
+        page2 = get_address_credit_history(
+            session=session,
+            address="0xpagnull",
+            pagination=2,
+            sort_by=SortByCreditHistory.EXPIRATION_DATE,
+            sort_order=SortOrder.DESCENDING,
+            after_sort_value=last.expiration_date,
+            after_credit_ref=last.credit_ref,
+            after_credit_index=last.credit_index,
+            cursor_mode=True,
+        )
+        # Returns 3 rows (1 non-NULL + 2 NULLs), has_more = True
+        assert len(page2) == 3
+        page2_trimmed = page2[:2]
+        # 2026-05-01, then first NULL
+        assert page2_trimmed[0].credit_ref == "pn_c"
+        assert page2_trimmed[0].expiration_date is not None
+        assert page2_trimmed[1].credit_ref in ("pn_d", "pn_e")
+        assert page2_trimmed[1].expiration_date is None
+
+        # Page 3: cursor from last entry of page 2 (which is a NULL)
+        last2 = page2_trimmed[-1]
+        page3 = get_address_credit_history(
+            session=session,
+            address="0xpagnull",
+            pagination=2,
+            sort_by=SortByCreditHistory.EXPIRATION_DATE,
+            sort_order=SortOrder.DESCENDING,
+            after_sort_value=last2.expiration_date,
+            after_credit_ref=last2.credit_ref,
+            after_credit_index=last2.credit_index,
+            cursor_mode=True,
+        )
+        # Only 1 remaining NULL entry
+        assert len(page3) == 1
+        assert page3[0].expiration_date is None
+
+        # Verify all entries were seen exactly once across all pages
+        all_refs = (
+            [e.credit_ref for e in page1_trimmed]
+            + [e.credit_ref for e in page2_trimmed]
+            + [e.credit_ref for e in page3]
+        )
+        assert len(all_refs) == 5
+        assert len(set(all_refs)) == 5

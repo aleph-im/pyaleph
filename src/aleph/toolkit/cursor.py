@@ -90,6 +90,47 @@ def decode_credit_history_cursor(cursor: str) -> Tuple[dt.datetime, str, int]:
         raise ValueError("Invalid cursor: missing required fields")
 
 
+def encode_credit_history_sort_cursor(
+    sort_by: str,
+    sort_value: Any,
+    sort_order: int,
+    credit_ref: str,
+    credit_index: int,
+) -> str:
+    """Encode a credit history cursor with sort field and order info."""
+    value = (
+        sort_value.isoformat() if isinstance(sort_value, dt.datetime) else sort_value
+    )
+    return encode_cursor(
+        {"s": sort_by, "v": value, "o": sort_order, "r": credit_ref, "i": credit_index}
+    )
+
+
+def decode_credit_history_sort_cursor(
+    cursor: str,
+) -> Tuple[str, Any, int, str, int]:
+    """Decode a credit history sort cursor.
+
+    Returns (sort_by, sort_value, sort_order, credit_ref, credit_index).
+    For backward compat, if 's' key is missing, assumes 'message_timestamp' sort
+    with DESC order and uses the 't' key as the sort value.
+    """
+    try:
+        d = decode_cursor(cursor)
+        if "s" in d:
+            return (
+                str(d["s"]),
+                d["v"],
+                int(d["o"]),
+                str(d["r"]),
+                int(d["i"]),
+            )
+        # Backward compat: old cursor format with (t, r, i)
+        return "message_timestamp", d["t"], -1, str(d["r"]), int(d["i"])
+    except KeyError:
+        raise ValueError("Invalid cursor: missing required fields")
+
+
 def encode_address_stats_cursor(sort_value: Any, address: str) -> str:
     """Encode an address stats cursor: (sort_value, address)."""
     return encode_cursor({"v": sort_value, "a": address})

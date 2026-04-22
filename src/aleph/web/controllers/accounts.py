@@ -1,3 +1,4 @@
+import datetime as dt
 import json
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence
@@ -48,11 +49,11 @@ from aleph.schemas.api.accounts import (
 from aleph.toolkit.cursor import (
     decode_address_cursor,
     decode_address_stats_cursor,
-    decode_credit_history_cursor,
+    decode_credit_history_sort_cursor,
     decode_message_cursor,
     encode_address_cursor,
     encode_address_stats_cursor,
-    encode_credit_history_cursor,
+    encode_credit_history_sort_cursor,
     encode_message_cursor,
 )
 from aleph.types.db_session import DbSessionFactory
@@ -734,7 +735,7 @@ async def get_account_files(request: web.Request) -> web.Response:
 
 async def get_account_credit_history(request: web.Request) -> web.Response:
     """
-    Returns the credit history of an account, ordered from newest to oldest.
+    Returns the credit history of an account.
 
     ---
     summary: Get account credit history
@@ -786,6 +787,28 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
         in: query
         schema:
           type: string
+      - name: has_expiration
+        in: query
+        schema:
+          type: boolean
+        description: "Filter by presence of expiration_date (true/false)"
+      - name: exclude_payment_method
+        in: query
+        schema:
+          type: string
+        description: "Comma-separated payment methods to exclude"
+      - name: sort_by
+        in: query
+        schema:
+          type: string
+          default: message_timestamp
+          enum: [message_timestamp, expiration_date, payment_method, amount, origin, tx_hash, provider]
+      - name: sort_order
+        in: query
+        schema:
+          type: integer
+          default: -1
+          enum: [1, -1]
     responses:
       '200':
         description: Account credit history
@@ -813,14 +836,41 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
             cursor, query_params.pagination
         )
 
-        after_time, after_credit_ref, after_credit_index = None, None, None
+        after_sort_value, after_credit_ref, after_credit_index = None, None, None
         if cursor:
             try:
-                after_time, after_credit_ref, after_credit_index = (
-                    decode_credit_history_cursor(cursor)
-                )
+                (
+                    cursor_sort_by,
+                    after_sort_value,
+                    cursor_sort_order,
+                    after_credit_ref,
+                    after_credit_index,
+                ) = decode_credit_history_sort_cursor(cursor)
             except ValueError as e:
                 raise web.HTTPUnprocessableEntity(text=str(e))
+
+            # Validate cursor sort_by matches request sort_by
+            if cursor_sort_by != query_params.sort_by.value:
+                raise web.HTTPUnprocessableEntity(
+                    text="Cursor sort field mismatch: cursor was created with "
+                    f"sort_by={cursor_sort_by}, but request has "
+                    f"sort_by={query_params.sort_by.value}"
+                )
+
+            # Validate cursor sort_order matches request sort_order
+            if cursor_sort_order != int(query_params.sort_order):
+                raise web.HTTPUnprocessableEntity(
+                    text="Cursor sort order mismatch: cursor was created with "
+                    f"sort_order={cursor_sort_order}, but request has "
+                    f"sort_order={int(query_params.sort_order)}"
+                )
+
+            # Parse sort value back to correct type for datetime columns
+            if after_sort_value is not None and query_params.sort_by.value in (
+                "message_timestamp",
+                "expiration_date",
+            ):
+                after_sort_value = dt.datetime.fromisoformat(after_sort_value)
 
         with session_factory() as session:
             cursor_entries = list(
@@ -835,7 +885,11 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
                     origin=query_params.origin,
                     origin_ref=query_params.origin_ref,
                     payment_method=query_params.payment_method,
-                    after_time=after_time,
+                    has_expiration=query_params.has_expiration,
+                    exclude_payment_method=query_params.exclude_payment_method,
+                    sort_by=query_params.sort_by,
+                    sort_order=query_params.sort_order,
+                    after_sort_value=after_sort_value,
                     after_credit_ref=after_credit_ref,
                     after_credit_index=after_credit_index,
                     cursor_mode=True,
@@ -873,10 +927,13 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
         next_cursor: Optional[str] = None
         if has_more and cursor_entries:
             last_entry = cursor_entries[-1]
-            next_cursor = encode_credit_history_cursor(
-                last_entry.message_timestamp,
-                last_entry.credit_ref,
-                last_entry.credit_index,
+            sort_value = getattr(last_entry, query_params.sort_by.value)
+            next_cursor = encode_credit_history_sort_cursor(
+                sort_by=query_params.sort_by.value,
+                sort_value=sort_value,
+                sort_order=int(query_params.sort_order),
+                credit_ref=last_entry.credit_ref,
+                credit_index=last_entry.credit_index,
             )
 
         response_data = {
@@ -900,6 +957,10 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
             origin=query_params.origin,
             origin_ref=query_params.origin_ref,
             payment_method=query_params.payment_method,
+            has_expiration=query_params.has_expiration,
+            exclude_payment_method=query_params.exclude_payment_method,
+            sort_by=query_params.sort_by,
+            sort_order=query_params.sort_order,
         )
 
         if not credit_history_entries:
@@ -915,6 +976,8 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
             origin=query_params.origin,
             origin_ref=query_params.origin_ref,
             payment_method=query_params.payment_method,
+            has_expiration=query_params.has_expiration,
+            exclude_payment_method=query_params.exclude_payment_method,
         )
 
         # Convert to response items

@@ -55,3 +55,18 @@ class SortByAggregate(str, Enum):
 
     CREATION_TIME = "creation_time"
     LAST_MODIFIED = "last_modified"
+
+
+class SortByCreditHistory(str, Enum):
+    """
+    Determines by which field credit history entries should be sorted.
+    Values match AlephCreditHistoryDb column names.
+    """
+
+    MESSAGE_TIMESTAMP = "message_timestamp"
+    EXPIRATION_DATE = "expiration_date"
+    PAYMENT_METHOD = "payment_method"
+    AMOUNT = "amount"
+    ORIGIN = "origin"
+    TX_HASH = "tx_hash"
+    PROVIDER = "provider"
