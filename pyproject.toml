@@ -30,7 +30,7 @@ dependencies = [
   "aiohttp-swagger3>=0.10.0",
   "aioipfs~=0.7.1",
   "alembic==1.18.4",
-  "aleph-message~=1.1.0",
+  "aleph-message==1.1.1",
   "aleph-nuls2==0.1.1",
   "aleph-p2p-client @ git+https://github.com/aleph-im/p2p-service-client-python@cbfebb871db94b2ca580e66104a67cd730c5020c",
   "asyncpg==0.31.0",
@@ -222,7 +222,7 @@ addopts = "-vv -m \"not ledger_hardware\""
 filterwarnings = [
   "ignore:pkg_resources is deprecated as an API:UserWarning",
 ]
-norecursedirs = [ "*.egg", "dist", "build", ".tox", ".venv", "*/site-packages/*" ]
+norecursedirs = [ "*.egg", "dist", "build", ".tox", ".venv", "*/site-packages/*", ".claude", ".worktrees" ]
 testpaths = [ "tests/unit" ]
 markers = { ledger_hardware = "marks tests as requiring ledger hardware" }
 
