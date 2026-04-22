@@ -72,7 +72,7 @@ def fixture_confidential_vm_message(
         "requirements": {
             "cpu": {"architecture": "x86_64"},
             "node": {
-                "node_hash": "149ec451d9b099cad112d4aaa2c00ac40fb6729a92ff252ff22eef0b5c3cb6PD"
+                "node_hash": "149ec451d9b099cad112d4aaa2c00ac40fb6729a92ff252ff22eef0b5c3cb6db"
             },
         },
         "rootfs": {
