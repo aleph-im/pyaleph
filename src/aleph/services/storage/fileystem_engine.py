@@ -82,7 +82,8 @@ class FileSystemStorageEngine(StorageEngine):
             os.replace(str(temp_path), str(file_path))
 
             # Best-effort directory fsync — makes the rename durable.
-            # O_DIRECTORY is POSIX-only; on Windows this path is a no-op.
+            # os.O_DIRECTORY is POSIX-only (AttributeError on Windows);
+            # some filesystems/VMs also raise OSError — both are silently skipped.
             try:
                 dir_fd = os.open(str(file_path.parent), os.O_DIRECTORY)
             except (AttributeError, OSError):
