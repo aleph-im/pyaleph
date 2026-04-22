@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 from decimal import Decimal
 from io import StringIO
-from typing import Any, Dict, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from aleph_message.models import Chain
 from sqlalchemy import func, select, text
@@ -240,7 +240,13 @@ class NegativeAmount:
     timestamp: dt.datetime
 
 
-def _get_remaining_credits_fifo(
+@dataclass
+class CreditBalanceDetail:
+    expiration_date: Optional[dt.datetime]
+    amount: int
+
+
+def _apply_fifo_consumption(
     session: DbSession, address: str, now: Optional[dt.datetime] = None
 ) -> list[PositiveCredit]:
     """
@@ -367,13 +373,49 @@ def _calculate_credit_balance_fifo(
     4. Return remaining balance considering current expiration status
     """
     now = now if now is not None else utc_now()
-    positive_credits = _get_remaining_credits_fifo(session, address, now)
+    positive_credits = _apply_fifo_consumption(session, address, now)
     total_balance = sum(
         c.remaining
         for c in positive_credits
         if c.expiration_date is None or c.expiration_date > now
     )
     return max(0, total_balance)
+
+
+def get_credit_balance_with_details(
+    session: DbSession, address: str, now: Optional[dt.datetime] = None
+) -> Tuple[int, List[CreditBalanceDetail]]:
+    """
+    Calculate credit balance with a breakdown by expiration date.
+
+    Returns (total_balance, details) where details is a list of
+    CreditBalanceDetail grouped by expiration_date, sorted with
+    non-expiring (None) first, then by expiration_date ascending.
+
+    Always recalculates (bypasses cache) since details are not cached.
+    """
+    now = now if now is not None else utc_now()
+    positive_credits = _apply_fifo_consumption(session, address, now)
+
+    details_map: Dict[Optional[dt.datetime], int] = {}
+    total_balance = 0
+    for credit in positive_credits:
+        if credit.expiration_date is None or credit.expiration_date > now:
+            if credit.remaining > 0:
+                total_balance += credit.remaining
+                key = credit.expiration_date
+                details_map[key] = details_map.get(key, 0) + credit.remaining
+
+    # Sort: non-expiring first (None), then by expiration_date ascending
+    details = [
+        CreditBalanceDetail(expiration_date=k, amount=v)
+        for k, v in sorted(
+            details_map.items(),
+            key=lambda x: (x[0] is not None, x[0] or dt.datetime.min),
+        )
+    ]
+
+    return max(0, total_balance), details
 
 
 def get_credit_balance(
@@ -726,9 +768,7 @@ def update_credit_balances_transfer(
     # Compute sender's remaining credits once for all entries in this transfer
     sender_remaining: list[PositiveCredit] = []
     if not is_whitelisted:
-        sender_remaining = _get_remaining_credits_fifo(
-            session, sender_address, last_update
-        )
+        sender_remaining = _apply_fifo_consumption(session, sender_address, last_update)
 
     for credit_entry in credits_list:
         recipient_address = credit_entry["address"]
