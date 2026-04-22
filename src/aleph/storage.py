@@ -77,6 +77,31 @@ class StorageService:
             )
             item_content = hash_content.value
             source = hash_content.source
+
+            # Verify SHA-256 integrity for storage items read from local cache.
+            # Network-fetched content is already verified in _fetch_content_from_network.
+            # IPFS: skipped here (daemon round-trip too slow on hot path; the JSON-parse
+            # recovery below acts as the safety net for IPFS corruption).
+            if item_type == ItemType.storage and source == ContentSource.DB:
+                try:
+                    await self._verify_content_hash(
+                        item_content, ItemType.storage, item_hash
+                    )
+                except InvalidContent:
+                    LOGGER.warning(
+                        "Cached content for '%s' failed SHA-256 verification; "
+                        "deleting and refetching.",
+                        item_hash,
+                    )
+                    await self.storage_engine.delete(filename=item_hash)
+                    hash_content = await self.get_hash_content(
+                        item_hash,
+                        engine=ItemType(item_type),
+                        use_network=True,
+                        use_ipfs=True,
+                    )
+                    item_content = hash_content.value
+                    source = hash_content.source
         elif item_type == ItemType.inline:
             # This hypothesis is validated at schema level
             item_content = cast(str, message.item_content)
@@ -101,16 +126,11 @@ class StorageService:
                     f"Corrupted cached content for {item_hash}, deleting and retrying from network"
                 )
                 await self.storage_engine.delete(filename=item_hash)
-                # Retry fetching from network/IPFS. _from_corruption_recovery=True
-                # prevents re-entering the self-healing path even if another worker
-                # races us and re-populates the cache between the delete and the
-                # next read.
                 hash_content = await self.get_hash_content(
                     item_hash,
                     engine=ItemType(item_type),
                     use_network=True,
                     use_ipfs=True,
-                    _from_corruption_recovery=True,
                 )
                 item_content = hash_content.value
                 source = hash_content.source
@@ -221,7 +241,6 @@ class StorageService:
         use_network: bool = True,
         use_ipfs: bool = True,
         store_value: bool = True,
-        _from_corruption_recovery: bool = False,
     ) -> RawContent:
         # TODO: determine which storage engine to use
 
@@ -230,27 +249,7 @@ class StorageService:
         # Try to retrieve the data from the DB, then from the network or IPFS.
         content = await self.storage_engine.read(filename=content_hash)
         if content is not None:
-            # Verify cache integrity for SHA-256 content. Catches silent
-            # corruption (bit flips, truncation) that still parses as JSON.
-            # IPFS is skipped on the read path: verification requires an IPFS
-            # daemon round-trip that we cannot afford per cache hit; for that
-            # case, get_message_content has a JSON-parse safety net.
-            if engine == ItemType.storage and not _from_corruption_recovery:
-                try:
-                    await self._verify_content_hash(
-                        content, ItemType.storage, content_hash
-                    )
-                    source = ContentSource.DB
-                except InvalidContent:
-                    LOGGER.warning(
-                        "Cached content for '%s' failed SHA-256 verification; "
-                        "deleting and refetching.",
-                        content_hash,
-                    )
-                    await self.storage_engine.delete(filename=content_hash)
-                    content = None
-            else:
-                source = ContentSource.DB
+            source = ContentSource.DB
 
         if content is None and use_network:
             content = await self._fetch_content_from_network(
