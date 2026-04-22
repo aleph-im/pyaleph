@@ -365,7 +365,7 @@ async def test_get_message_content_ipfs_cache_no_sha256(mocker):
     """IPFS message content from cache is not sha256-verified: a daemon
     round-trip per cache hit is too slow. JSON-parse recovery is the fallback."""
     cached_json = b'{"key": "value"}'
-    content_hash = "some-ipfs-cid"
+    content_hash = "QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ"
 
     ipfs_client = mocker.AsyncMock()
     ipfs_client.add_bytes = mocker.AsyncMock(
