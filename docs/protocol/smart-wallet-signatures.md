@@ -229,7 +229,29 @@ is_valid = bool(int.from_bytes(result, "big"))
 
 ---
 
-## 11. Files changed in pyaleph
+## 11. Current scope: Ethereum mainnet only
+
+Smart wallet verification (ERC-1271 and ERC-6492) is intentionally limited to
+`Chain.ETH` for now.
+
+**Why:** smart wallets use `block.chainid` in their EIP-712 domain separator, so a
+signature produced on (say) Base cannot be validated by calling `isValidSignature`
+against an Ethereum mainnet RPC — the domains won't match and the call will return
+invalid even when the signature is genuine. Until pyaleph has per-chain RPC URLs
+wired through, other EVM chains keep their previous behavior: plain ECDSA only.
+
+| Chain | Verifier | Plain ECDSA | ERC-1271 | ERC-6492 |
+|---|---|---|---|---|
+| `ETH` | `EthereumVerifier(rpc_url=...)` | ✅ | ✅ | ✅ |
+| `ETHERLINK` | `EthereumVerifier()` (no RPC) | ✅ | ❌ (skipped) | ❌ (skipped) |
+| All other EVM chains (Base, Arbitrum, Optimism, …) | `EVMVerifier()` (no RPC) | ✅ | ❌ (skipped) | ❌ (skipped) |
+
+Plain EOA messages on every EVM chain continue to work exactly as before — the
+scoping above affects only smart contract wallet signatures.
+
+---
+
+## 12. Files changed in pyaleph
 
 | File | Change |
 |---|---|

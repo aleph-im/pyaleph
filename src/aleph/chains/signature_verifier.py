@@ -20,8 +20,15 @@ class SignatureVerifier:
     verifiers: Dict[Chain, Verifier]
 
     def __init__(self, rpc_url: Optional[str] = None):
-        evm = EVMVerifier(rpc_url=rpc_url)
+        # Smart wallet validation (ERC-1271 / ERC-6492) is chain-specific: the
+        # wallet's EIP-712 domain uses `block.chainid`, so verifying a signature
+        # from Base (or any other chain) against the Ethereum mainnet RPC would
+        # produce false negatives. Until per-chain RPCs are configured, only
+        # Ethereum mainnet gets the RPC-backed paths. Every other EVM chain
+        # keeps the previous behavior: plain ECDSA only.
+        evm = EVMVerifier()
         eth = EthereumVerifier(rpc_url=rpc_url)
+        etherlink = EthereumVerifier()
         self.verifiers = {
             Chain.ARBITRUM: evm,
             Chain.AVAX: AvalancheConnector(),
@@ -34,7 +41,7 @@ class SignatureVerifier:
             Chain.DOT: SubstrateConnector(),
             Chain.ECLIPSE: SolanaConnector(),
             Chain.ETH: eth,
-            Chain.ETHERLINK: eth,
+            Chain.ETHERLINK: etherlink,
             Chain.FRAXTAL: evm,
             Chain.HYPE: evm,
             Chain.INK: evm,
