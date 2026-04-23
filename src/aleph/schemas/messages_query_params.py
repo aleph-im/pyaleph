@@ -157,8 +157,9 @@ class BaseMessageQueryParams(BaseModel):
 class MessageQueryParams(BaseMessageQueryParams):
     pagination: int = Field(
         default=DEFAULT_MESSAGES_PER_PAGE,
-        ge=0,
-        description="Maximum number of messages to return. Specifying 0 removes this limit.",
+        ge=1,
+        le=1000,
+        description="Maximum number of messages to return.",
     )
     page: int = Field(
         default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
@@ -198,8 +199,9 @@ class MessageHashesQueryParams(BaseModel):
     )
     pagination: int = Field(
         default=DEFAULT_MESSAGES_PER_PAGE,
-        ge=0,
-        description="Maximum number of messages to return. Specifying 0 removes this limit.",
+        ge=1,
+        le=1000,
+        description="Maximum number of messages to return.",
     )
     start_date: float = Field(
         default=0,

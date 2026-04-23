@@ -426,9 +426,9 @@ async def test_pagination(fixture_messages, ccn_api_client):
     )
     assert_messages_equal(messages=messages, expected_messages=fixture_messages)
 
-    # All the messages
+    # All the messages (use a large pagination value)
     messages = await fetch_messages_with_pagination_expect_success(
-        ccn_api_client, page=1, pagination=0
+        ccn_api_client, page=1, pagination=1000
     )
     assert_messages_equal(messages=messages, expected_messages=fixture_messages)
 

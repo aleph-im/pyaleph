@@ -42,8 +42,9 @@ class GetAccountBalanceResponse(BaseModel):
 class GetAccountFilesQueryParams(BaseModel):
     pagination: int = Field(
         default=100,
-        ge=0,
-        description="Maximum number of files to return. Specifying 0 removes this limit.",
+        ge=1,
+        le=1000,
+        description="Maximum number of files to return.",
     )
     page: int = Field(
         default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
@@ -64,8 +65,9 @@ class GetBalancesChainsQueryParams(BaseModel):
     )
     pagination: int = Field(
         default=100,
-        ge=0,
-        description="Maximum number of files to return. Specifying 0 removes this limit.",
+        ge=1,
+        le=1000,
+        description="Maximum number of balances to return.",
     )
     page: int = Field(
         default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
@@ -93,8 +95,9 @@ class AddressBalanceResponse(BaseModel):
 class GetCreditBalancesQueryParams(BaseModel):
     pagination: int = Field(
         default=100,
-        ge=0,
-        description="Maximum number of credit balances to return. Specifying 0 removes this limit.",
+        ge=1,
+        le=1000,
+        description="Maximum number of credit balances to return.",
     )
     page: int = Field(
         default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
@@ -135,9 +138,10 @@ class GetAccountFilesResponse(BaseModel):
 
 class GetAccountCreditHistoryQueryParams(BaseModel):
     pagination: int = Field(
-        default=0,
-        ge=0,
-        description="Maximum number of credit history entries to return. Specifying 0 returns all entries.",
+        default=100,
+        ge=1,
+        le=1000,
+        description="Maximum number of credit history entries to return.",
     )
     page: int = Field(
         default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."

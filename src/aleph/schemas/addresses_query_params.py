@@ -51,8 +51,9 @@ class AddressesQueryParams(BaseModel):
     # Pagination
     pagination: int = Field(
         default=DEFAULT_MESSAGES_PER_PAGE,
-        ge=0,
-        description="Maximum number of address to return. Specifying 0 removes this limit.",
+        ge=1,
+        le=1000,
+        description="Maximum number of addresses to return.",
     )
     page: int = Field(
         default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
