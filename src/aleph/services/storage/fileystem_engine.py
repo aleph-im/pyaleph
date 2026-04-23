@@ -98,6 +98,8 @@ class FileSystemStorageEngine(StorageEngine):
 
         except Exception:
             try:
+                # temp_path may already be gone if os.replace succeeded before
+                # the exception (e.g. an error in the dir-fsync section).
                 temp_path.unlink(missing_ok=True)
             except OSError:
                 pass
