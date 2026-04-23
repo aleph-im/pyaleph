@@ -369,3 +369,43 @@ async def test_auth_upload_insufficient_balance(
         file = get_file(session=session, file_hash=EXPECTED_FILE_CID)
         assert file is not None
         assert _has_grace_period(session, EXPECTED_FILE_CID)
+
+
+@pytest.mark.asyncio
+async def test_auth_upload_small_file_skips_balance_check(
+    api_client, session_factory: DbSessionFactory, mocker
+):
+    """
+    For files below max_unauthenticated_upload_file_size, the balance check
+    short-circuits even when balance is zero. Matches /storage/add_file's
+    rule: anything you could have uploaded unauth for free doesn't need a
+    balance check.
+
+    We deliberately do NOT mock _verify_user_balance: its internal threshold
+    short-circuit is exactly what we want to exercise. Zero balance + tiny
+    file → request must succeed.
+    """
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+    mocker.patch(
+        "aleph.web.controllers.ipfs.broadcast_and_process_message",
+        new_callable=mocker.AsyncMock,
+        return_value=BroadcastStatus(
+            publication_status=PublicationStatus.from_failures([]),
+            message_status=MessageStatus.PROCESSED,
+        ),
+    )
+
+    # No balance inserted — balance is zero. File is 34 bytes << 25 MiB.
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(FILE_CONTENT))
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": IPFS_MESSAGE_DICT, "sync": True}),
+        content_type="application/json",
+    )
+
+    response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
+    assert response.status == 200, await response.text()
