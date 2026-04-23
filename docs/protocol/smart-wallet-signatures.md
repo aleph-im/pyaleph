@@ -66,6 +66,67 @@ FULL SIGNATURE (hex)
 └── MAGIC SUFFIX (32 bytes): 0x6492649264926492649264926492649264926492649264926492649264926492
 ```
 
+### Full schema of an ERC-1271 signature (same wallet, after deployment)
+
+Once the smart wallet has been deployed on chain, the ERC-6492 wrapper, the factory
+calldata and the magic suffix are all dropped. The client sends only the inner
+signature — the wallet itself is now queryable on chain, so there's nothing to
+"teach" the verifier about how to reconstruct it.
+
+For the same Kernel wallet (`0xa9F3…1635`, same owner), the post-deployment
+signature is just 86 bytes:
+
+```
+INNER SIGNATURE (86 bytes) — sent as-is, no wrapper, no suffix
+│
+├── [0]     type byte:  0x01
+│            └── Kernel signature type selector (routes to the root validator)
+│
+├── [1:21]  validator:  0x845ADb2C711129d4f3966735eD98a9F09fC4cE57
+│            └── Address of the ECDSA validator plugin baked into this wallet
+│
+└── [21:86] ECDSA (65 bytes) — produced by the owner EOA's private key
+    ├── [21:53]  r: 0x94f8df9bcc3e2fa2049519666e9977ff76f9c99322db6a1f1117f3955411b2ae
+    ├── [53:85]  s: 0x316b72e49bd1743a5dee905ea4f27c4e7912479995f6b99eb56c44349dabe373
+    └── [85]     v: 28 (0x1c)
+```
+
+Full hex (exact bytes sent over the wire):
+
+```
+0x01                                                                ← type byte
+  845adb2c711129d4f3966735ed98a9f09fc4ce57                          ← validator (20 bytes)
+  94f8df9bcc3e2fa2049519666e9977ff76f9c99322db6a1f1117f3955411b2ae  ← r (32 bytes)
+  316b72e49bd1743a5dee905ea4f27c4e7912479995f6b99eb56c44349dabe373  ← s (32 bytes)
+  1c                                                                ← v (1 byte)
+```
+
+Flattened:
+
+```
+0x01845adb2c711129d4f3966735ed98a9f09fc4ce5794f8df9bcc3e2fa2049519666e9977ff76f9c99322db6a1f1117f3955411b2ae316b72e49bd1743a5dee905ea4f27c4e7912479995f6b99eb56c44349dabe3731c
+```
+
+**Size comparison:**
+
+| Signature type | Size | Overhead vs bare ECDSA |
+|---|---|---|
+| Bare ECDSA (plain EOA) | 65 bytes | — |
+| ERC-1271 (deployed Kernel) | 86 bytes | +21 bytes (type + validator) |
+| ERC-6492 (counterfactual Kernel) | ~800 bytes | +~735 bytes (factory, calldata, wrapper, magic) |
+
+**What's NOT in the ERC-1271 payload** (but is in ERC-6492):
+
+- No factory address — the wallet is already on chain, no need to redeploy.
+- No `initData` / owner EOA — stored inside the deployed contract, queried directly
+  by `isValidSignature`.
+- No `0x6492…6492` magic suffix — the verifier doesn't need to know "please simulate
+  a deployment"; it just calls the live contract.
+
+The inner signature byte-layout is identical to the one inside the ERC-6492
+wrapper. The client literally reuses the same `innerSig` bytes; it just stops
+wrapping them once there's deployed code to talk to.
+
 ---
 
 ## 4. The message being signed in Aleph
