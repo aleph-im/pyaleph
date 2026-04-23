@@ -278,3 +278,55 @@ async def test_auth_upload_exceeding_authenticated_cap(
 
     response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
     assert response.status == 413, await response.text()
+
+
+@pytest.mark.asyncio
+async def test_auth_upload_cid_mismatch(
+    api_client,
+    session_factory: DbSessionFactory,
+    mocker,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """
+    If the message.item_hash does not match the CID the daemon produced,
+    return 422 and leave the pinned file under a 24 h grace period.
+    """
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+
+    # Message claims a different CID than the fixture's mocked add_bytes.
+    mismatched = {
+        **IPFS_MESSAGE_DICT,
+        "item_content": json.dumps(
+            {
+                "address": "0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                "time": 1692193373.714271,
+                "item_type": "ipfs",
+                "item_hash": "QmY8HD3jCfJ5K6t4VYQvkFBni2LpasVusLGkCrtjkfntSA",
+                "mime_type": "application/octet-stream",
+            }
+        ),
+        # Outer item_hash = sha256(item_content) — required by pydantic.
+        "item_hash": "dcaa4ab4374b11084ca2fea61d9235f06d658f97adb18af8b4bd659adf0377af",
+    }
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(FILE_CONTENT))
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": mismatched, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
+    assert response.status == 422, await response.text()
+
+    # Pin happened (CID mismatch is a post-pin check), so the file is in DB
+    # with a grace period.
+    with session_factory() as session:
+        file = get_file(session=session, file_hash=EXPECTED_FILE_CID)
+        assert file is not None
+        assert _has_grace_period(session, EXPECTED_FILE_CID)
