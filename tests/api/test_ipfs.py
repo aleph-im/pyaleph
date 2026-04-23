@@ -50,7 +50,7 @@ IPFS_MESSAGE_DICT: dict[str, Any] = {
             "mime_type": "application/octet-stream",
         }
     ),
-    "item_hash": "8227acbc2f7c43899efd9f63ea9d8119a4cb142f3ba2db5fe499ccfab86dfaed",
+    "item_hash": "6e717bf3296372a4d7b470a1a29ec2694a78a338002f33c94cb2f518e0c1fdb8",
 }
 
 
@@ -129,3 +129,57 @@ async def test_unauth_upload_exceeding_size_limit(
 
     response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
     assert response.status == 413, await response.text()
+
+
+@pytest.mark.asyncio
+async def test_auth_upload_happy_path(
+    api_client,
+    session_factory: DbSessionFactory,
+    mocker,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """Authenticated upload: small file, valid message, sufficient balance."""
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+    mocker.patch(
+        "aleph.web.controllers.ipfs.broadcast_and_process_message",
+        new_callable=mocker.AsyncMock,
+        return_value=BroadcastStatus(
+            publication_status=PublicationStatus.from_failures([]),
+            message_status=MessageStatus.PROCESSED,
+        ),
+    )
+
+    with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                chain=Chain.ETH,
+                balance=Decimal(1000),
+                eth_height=0,
+            )
+        )
+        session.commit()
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(FILE_CONTENT))
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": IPFS_MESSAGE_DICT, "sync": True}),
+        content_type="application/json",
+    )
+
+    response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
+    body = await response.text()
+    assert response.status == 200, body
+    payload = await response.json()
+    assert payload["hash"] == EXPECTED_FILE_CID
+
+    with session_factory() as session:
+        file = get_file(session=session, file_hash=EXPECTED_FILE_CID)
+        assert file is not None
+        # Authenticated uploads do NOT get a grace period (message anchors).
+        assert not _has_grace_period(session, EXPECTED_FILE_CID)
