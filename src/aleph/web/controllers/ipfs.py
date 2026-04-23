@@ -177,19 +177,19 @@ async def ipfs_add_file(request: web.Request):
 
         cid = await ipfs_service.add_bytes(file_content)
 
-        try:
-            stats = await asyncio.wait_for(
-                ipfs_service.pinning_client.files.stat(f"/ipfs/{cid}"),
-                config.ipfs.stat_timeout.value,
-            )
-            size = stats["Size"]
-        except TimeoutError:
-            raise web.HTTPNotFound(reason="File not found on IPFS")
-
-        # Post-pin: CID match, balance check, persist.
+        # Post-pin: stat, CID match, balance check, persist.
         # Failures from this point on must leave the pin covered by the
         # 24 h grace period so the GC doesn't strand it.
         try:
+            try:
+                stats = await asyncio.wait_for(
+                    ipfs_service.pinning_client.files.stat(f"/ipfs/{cid}"),
+                    config.ipfs.stat_timeout.value,
+                )
+            except TimeoutError:
+                raise web.HTTPGatewayTimeout(reason="Timed out waiting for IPFS stat")
+            size = stats["Size"]
+
             if message_content is not None:
                 message_content.estimated_size_mib = math.ceil(uploaded_file.size / MiB)
                 if message_content.item_hash != cid:
@@ -220,18 +220,26 @@ async def ipfs_add_file(request: web.Request):
                         session=session, file_hash=cid, hours=grace_period
                     )
                 session.commit()
-        except web.HTTPException:
-            with session_factory() as session:
-                upsert_file(
-                    session=session,
-                    file_hash=cid,
-                    size=size,
-                    file_type=FileType.FILE,
-                )
-                add_grace_period_for_file(
-                    session=session, file_hash=cid, hours=grace_period
-                )
-                session.commit()
+        except Exception:
+            # Post-pin failure (HTTPException or any other Exception) — apply
+            # grace period so the orphan pin is garbage-collected after 24 h.
+            # size may be unset here (if stat itself failed); fall back to
+            # the size we already know from multipart read.
+            fallback_size = size if size is not None else uploaded_file.size
+            try:
+                with session_factory() as session:
+                    upsert_file(
+                        session=session,
+                        file_hash=cid,
+                        size=fallback_size,
+                        file_type=FileType.FILE,
+                    )
+                    add_grace_period_for_file(
+                        session=session, file_hash=cid, hours=grace_period
+                    )
+                    session.commit()
+            except Exception:
+                logger.exception("Failed to apply grace period for orphan pin %s", cid)
             logger.warning(
                 "Post-pin failure for %s; applied %dh grace period",
                 cid,

@@ -248,6 +248,7 @@ async def test_auth_upload_rejects_storage_item_type(
 
     response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
     assert response.status == 422, await response.text()
+    assert "item_type=ipfs" in await response.text()
     ipfs_service.add_bytes.assert_not_called()
 
 
@@ -421,3 +422,39 @@ async def test_auth_upload_malformed_metadata(
     response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
     assert response.status == 422, await response.text()
     ipfs_service.add_bytes.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_auth_upload_stat_timeout_applies_grace(
+    api_client,
+    session_factory: DbSessionFactory,
+    mocker,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """Stat timeout after pin returns 504 and applies grace period."""
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+    ipfs_service = _get_ipfs_service_mock(api_client)
+    # Make stat raise TimeoutError as if asyncio.wait_for timed out.
+    ipfs_service.pinning_client.files.stat = mocker.AsyncMock(
+        side_effect=TimeoutError()
+    )
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(FILE_CONTENT))
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": IPFS_MESSAGE_DICT, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
+    assert response.status == 504, await response.text()
+
+    with session_factory() as session:
+        file = get_file(session=session, file_hash=EXPECTED_FILE_CID)
+        assert file is not None
+        assert _has_grace_period(session, EXPECTED_FILE_CID)
