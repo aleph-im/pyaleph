@@ -52,6 +52,11 @@ cover/*
 MANIFEST
 .github/
 
+# Git metadata — version is injected via --build-arg VERSION
+.git
+.gitignore
+.gitattributes
+
 # Per-project virtualenvs
 .venv*/
 venv*/

@@ -48,8 +48,8 @@ ENV PATH="/opt/venv/bin:${PATH}"
 RUN mkdir --parents /opt/pyaleph
 WORKDIR /opt/pyaleph
 COPY . .
-RUN git config --global --add safe.directory /opt/pyaleph
 ARG VERSION
+RUN : "${VERSION:?--build-arg VERSION is required (e.g. from 'hatch version')}"
 ENV SETUPTOOLS_SCM_PRETEND_VERSION=$VERSION
 RUN pip install -e .
 
