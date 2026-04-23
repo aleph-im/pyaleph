@@ -262,30 +262,35 @@ is_valid = result[:4] == VALID_SIG_MAGIC
 
 ---
 
-## 10. ERC-6492 `UniversalSigValidator`
+## 10. ERC-6492 validation via contract-creation bytecode
 
-ERC-6492 defines a `UniversalSigValidator` contract deployed at a deterministic address
-on every major EVM chain. It validates counterfactual signatures in a single `eth_call`:
+ERC-6492 does **not** rely on a pre-deployed contract. Instead it uses a clever
+`eth_call` trick: send the `ValidateSigOffchain` deployer bytecode as
+contract-creation data (no `to` field). The bytecode runs as a constructor, deploys
+a `UniversalSigValidator` inline, simulates the factory deployment, calls
+`isValidSignature`, and returns 1 byte: `0x01` if valid, `0x00` if invalid — all
+inside a single `eth_call`, with no persisted state changes.
+
+The canonical bytecode is the reference implementation from
+[AmbireTech/signature-validator](https://github.com/AmbireTech/signature-validator)
+(see also [EIP-6492](https://eips.ethereum.org/EIPS/eip-6492)). Pyaleph ships it
+as an asset file at `src/aleph/chains/assets/erc6492_validator_bytecode.hex`.
 
 ```python
 from eth_abi.abi import encode
 
-# UniversalSigValidator address (deterministic CREATE2)
-# See: https://eips.ethereum.org/EIPS/eip-6492
-UNIVERSAL_VALIDATOR = "0x0000000000002fd5Aeb385D324B580FCa7c83823"
-
-calldata = encode(
+constructor_args = encode(
     ["address", "bytes32", "bytes"],
     [sender_address, message_hash, full_erc6492_signature],
 )
 
-# Call with selector isValidSigWithSideEffects(address,bytes32,bytes) = 0x8dca4bea
-selector = bytes.fromhex("8dca4bea")
-result = await w3.eth.call({
-    "to": UNIVERSAL_VALIDATOR,
-    "data": selector + calldata,
-})
-is_valid = bool(int.from_bytes(result, "big"))
+deploy_data = UNIVERSAL_VALIDATOR_BYTECODE + constructor_args
+
+# No `to` field = contract creation; the bytecode runs as a constructor.
+result = await w3.eth.call({"data": "0x" + deploy_data.hex()})
+
+# Returns a single byte: 0x01 valid / 0x00 invalid
+is_valid = result == b"\x01"
 ```
 
 ---

@@ -29,22 +29,27 @@ sender has deployed bytecode, route to ERC-1271.
 
 ```
 1. Detect 0x6492…6492 suffix  → present
-2. Decode abi.encode(factory, calldata, innerSig)
-3. eth_call → UniversalSigValidator.isValidSigWithSideEffects(
+2. Build deploy_data = ValidateSigOffchainBytecode + abi.encode(
        sender, messageHash, fullSignature
    )
-4. Check the returned uint256 is non-zero
+3. eth_call({"data": deploy_data})  # no `to` field = contract creation
+4. Check the single returned byte == 0x01
 ```
 
-The `UniversalSigValidator` (canonical deployment at
-`0x0000000000002fd5Aeb385D324B580FCa7c83823`) performs two operations atomically
-inside the `eth_call`:
+ERC-6492 uses the **contract-creation pattern** — there is no pre-deployed
+validator contract on chain. The bytecode is sent as creation data; it runs as
+a constructor and performs two operations atomically:
 
 1. **Simulates deployment**: `factory.call(factoryCalldata)` — this deploys the
    wallet contract at some address, purely inside the simulation. No state changes
    persist because we use `eth_call`, not `sendTransaction`.
 2. **Calls `isValidSignature`**: routes the inner signature through the deployed
-   contract's verification logic.
+   contract's verification logic, and returns a single byte (`0x01` valid /
+   `0x00` invalid) from the constructor's RETURN opcode.
+
+The canonical bytecode is the EIP-6492 reference implementation from
+AmbireTech/signature-validator, shipped at
+`src/aleph/chains/assets/erc6492_validator_bytecode.hex`.
 
 ### What the simulation does (Kernel example)
 
@@ -90,9 +95,10 @@ CREATE2 address. Its `isValidSignature`:
 
 - Anyone who obtains the owner's private key can sign as `sender` — same risk as
   any EOA.
-- Trust in the `UniversalSigValidator` deployment. The reference implementation is
-  documented in EIP-6492; worth verifying the bytecode at `0x0000…3823` on your
-  target chain before relying on it in production.
+- Trust in the `ValidateSigOffchain` / `UniversalSigValidator` bytecode. The
+  reference implementation is documented in EIP-6492 and sourced from
+  AmbireTech/signature-validator. Worth verifying the packaged hex against the
+  upstream source before relying on it in production.
 
 ---
 

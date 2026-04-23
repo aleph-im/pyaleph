@@ -198,25 +198,29 @@ async def test_verify_erc6492_counterfactual_valid(
     verifier = EVMVerifier(rpc_url="http://localhost:8545")
 
     mock_w3 = AsyncMock()
-    mock_w3.eth.call = AsyncMock(return_value=(1).to_bytes(32, "big"))
+    # The validator bytecode returns 1 byte: 0x01 = valid
+    mock_w3.eth.call = AsyncMock(return_value=b"\x01")
 
     with patch.object(verifier, "_get_web3_client", return_value=mock_w3):
         result = await verifier.verify_signature(erc6492_message)
 
     assert result is True
+    # Confirm it's a contract-creation call: no `to` field, data is the
+    # validator bytecode + ABI-encoded (signer, hash, signature)
     call_args = mock_w3.eth.call.call_args[0][0]
-    assert call_args["to"].lower() == "0x0000000000002fd5aeb385d324b580fca7c83823"
+    assert "to" not in call_args
+    assert call_args["data"].startswith("0x608060")
 
 
 @pytest.mark.asyncio
 async def test_verify_erc6492_counterfactual_invalid(
     erc6492_message: BasePendingMessage,
 ):
-    """ERC-6492: UniversalSigValidator returns 0 → invalid."""
+    """ERC-6492: validator bytecode returns 0x00 → invalid."""
     verifier = EVMVerifier(rpc_url="http://localhost:8545")
 
     mock_w3 = AsyncMock()
-    mock_w3.eth.call = AsyncMock(return_value=(0).to_bytes(32, "big"))
+    mock_w3.eth.call = AsyncMock(return_value=b"\x00")
 
     with patch.object(verifier, "_get_web3_client", return_value=mock_w3):
         result = await verifier.verify_signature(erc6492_message)
@@ -228,11 +232,11 @@ async def test_verify_erc6492_counterfactual_invalid(
 async def test_erc6492_detection_skips_ecdsa(
     erc6492_message: BasePendingMessage,
 ):
-    """ERC-6492 signatures skip ECDSA entirely and go straight to UniversalSigValidator."""
+    """ERC-6492 sigs skip ECDSA entirely and go straight to bytecode validation."""
     verifier = EVMVerifier(rpc_url="http://localhost:8545")
 
     mock_w3 = AsyncMock()
-    mock_w3.eth.call = AsyncMock(return_value=(1).to_bytes(32, "big"))
+    mock_w3.eth.call = AsyncMock(return_value=b"\x01")
 
     with patch.object(verifier, "_get_web3_client", return_value=mock_w3):
         with patch("aleph.chains.evm.Account.recover_message") as mock_recover:

@@ -1,10 +1,12 @@
 import functools
+import importlib.resources
 import logging
 from typing import Optional
 
 from eth_abi.abi import encode
 from eth_account import Account
 from eth_account.messages import _hash_eip191_message, encode_defunct
+from eth_typing import HexStr
 from eth_utils.address import to_checksum_address
 from web3 import AsyncHTTPProvider, AsyncWeb3
 
@@ -21,11 +23,22 @@ ERC6492_MAGIC = bytes.fromhex(
 )
 ERC1271_MAGIC = bytes.fromhex("1626ba7e")
 IS_VALID_SIGNATURE_SELECTOR = bytes.fromhex("1626ba7e")
-# isValidSigWithSideEffects(address,bytes32,bytes)
-UNIVERSAL_VALIDATOR_SELECTOR = bytes.fromhex("8dca4bea")
-# ERC-6492 UniversalSigValidator (deterministic CREATE2 address)
-# See: https://eips.ethereum.org/EIPS/eip-6492
-UNIVERSAL_VALIDATOR_ADDRESS = "0x0000000000002fd5Aeb385D324B580FCa7c83823"
+
+
+# ERC-6492 UniversalSigValidator deployer bytecode (reference impl from
+# AmbireTech/signature-validator, EIP-6492). It is NOT a pre-deployed contract
+# — it is sent as contract-creation data in eth_call. The bytecode receives
+# (address signer, bytes32 hash, bytes signature) as constructor args, deploys
+# the UniversalSigValidator on the fly, runs isValidSig, and returns a single
+# byte: 0x01 for valid, 0x00 for invalid.
+@functools.lru_cache(maxsize=1)
+def _universal_validator_bytecode() -> bytes:
+    resource = (
+        importlib.resources.files("aleph.chains.assets")
+        / "erc6492_validator_bytecode.hex"
+    )
+    hex_str = resource.read_text(encoding="utf-8").strip()
+    return bytes.fromhex(hex_str.removeprefix("0x"))
 
 
 class EVMVerifier(Verifier):
@@ -51,18 +64,26 @@ class EVMVerifier(Verifier):
         message_hash: bytes,
         signature: bytes,
     ) -> bool:
-        """Validate an ERC-6492 counterfactual signature via UniversalSigValidator."""
+        """Validate an ERC-6492 counterfactual signature.
+
+        Uses the EIP-6492 off-chain verification pattern: send the
+        ValidateSigOffchain deployer bytecode as contract-creation data in
+        eth_call (no `to` field). The bytecode runs as a constructor, deploys
+        the UniversalSigValidator inline, simulates the factory deployment,
+        calls isValidSignature, and returns 1 byte: 0x01 valid / 0x00 invalid.
+        """
         try:
-            calldata = UNIVERSAL_VALIDATOR_SELECTOR + encode(
+            constructor_args = encode(
                 ["address", "bytes32", "bytes"],
                 [sender, message_hash, signature],
             )
-            result = await w3.eth.call(
-                {"to": UNIVERSAL_VALIDATOR_ADDRESS, "data": calldata}
-            )
-            return bool(int.from_bytes(result, "big"))
+            deploy_data = _universal_validator_bytecode() + constructor_args
+            result = await w3.eth.call({"data": HexStr("0x" + deploy_data.hex())})
+            return result == b"\x01"
         except Exception:
-            LOGGER.exception("Error calling UniversalSigValidator for %s", sender)
+            LOGGER.exception(
+                "Error running ERC-6492 validation bytecode for %s", sender
+            )
             return False
 
     async def _verify_erc1271(
