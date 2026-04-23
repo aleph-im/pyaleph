@@ -218,13 +218,16 @@ keep_full_version = true
 [tool.pytest.ini_options]
 minversion = "6.0"
 pythonpath = [ "src" ]
-addopts = "-vv -m \"not ledger_hardware\""
+addopts = "-vv -m \"not ledger_hardware and not network\""
 filterwarnings = [
   "ignore:pkg_resources is deprecated as an API:UserWarning",
 ]
 norecursedirs = [ "*.egg", "dist", "build", ".tox", ".venv", "*/site-packages/*", ".claude", ".worktrees" ]
 testpaths = [ "tests/unit" ]
-markers = { ledger_hardware = "marks tests as requiring ledger hardware" }
+markers = [
+  "ledger_hardware: marks tests as requiring ledger hardware",
+  "network: marks tests as requiring external network access (e.g. Ethereum mainnet RPC)",
+]
 
 [tool.coverage.run]
 branch = true
