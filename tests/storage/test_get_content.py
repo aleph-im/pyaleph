@@ -343,7 +343,12 @@ async def test_get_message_content_sha256_match_returns_from_db(mocker):
 @pytest.mark.asyncio
 async def test_get_message_content_sha256_mismatch_network_also_bad_raises(mocker):
     """Bad cache sha256 + network returning content that also fails sha256
-    verification raises InvalidContent without looping."""
+    verification raises InvalidContent without looping.
+
+    This test relies on _fetch_content_from_network calling _verify_content_hash
+    on the bytes it receives. If that verification were removed, the bad network
+    bytes would be written to cache and returned without raising.
+    """
     content_hash = _sha256_hex(b"valid content never returned")
     bad_network = b"bad bytes from network"
 
