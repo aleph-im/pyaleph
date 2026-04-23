@@ -409,3 +409,21 @@ async def test_auth_upload_small_file_skips_balance_check(
 
     response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
     assert response.status == 200, await response.text()
+
+
+@pytest.mark.asyncio
+async def test_auth_upload_malformed_metadata(
+    api_client, session_factory: DbSessionFactory
+):
+    """Garbage in `metadata` returns 422 and does not pin."""
+    ipfs_service = _get_ipfs_service_mock(api_client)
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(FILE_CONTENT))
+    form_data.add_field(
+        "metadata", "not-json-at-all", content_type="application/json"
+    )
+
+    response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
+    assert response.status == 422, await response.text()
+    ipfs_service.add_bytes.assert_not_called()
