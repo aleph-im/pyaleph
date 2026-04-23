@@ -3,6 +3,7 @@ import json
 from typing import AsyncIterable, Dict, Optional
 
 import pytest
+
 from aleph.exceptions import InvalidContent
 from aleph.schemas.message_content import ContentSource
 from aleph.schemas.pending_messages import parse_message
