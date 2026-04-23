@@ -431,7 +431,7 @@ async def test_get_message_content_json_retry_does_not_loop(mocker):
         call_log.append(kwargs)
         return await original(*args, **kwargs)
 
-    storage_manager.get_hash_content = traced  # type: ignore[method-assign]
+    storage_manager.get_hash_content = traced
 
     with pytest.raises(InvalidContent):
         await storage_manager.get_message_content(message)
