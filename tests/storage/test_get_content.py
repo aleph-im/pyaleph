@@ -439,3 +439,66 @@ async def test_get_message_content_json_retry_does_not_loop(mocker):
     assert len(call_log) == 2
     assert call_log[1].get("use_network") is True
     assert verify_spy.call_count == 2  # sha256 block + _fetch_content_from_network
+
+
+@pytest.mark.asyncio
+async def test_get_message_content_ipfs_cache_corrupt_json_refetches(mocker):
+    """Cached IPFS content that is not valid JSON triggers the recovery path:
+    the corrupt entry is deleted and the content is refetched from the network."""
+    content_hash = "QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ"
+    real_json = b'{"recovered": true}'
+
+    mocker.patch("aleph.storage.p2p_http_request_hash", return_value=real_json)
+
+    storage_engine = MockStorageEngine(files={content_hash: b"not-json"})
+    storage_manager = StorageService(
+        storage_engine,
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
+    )
+
+    message_dict = {
+        "chain": "ETH",
+        "channel": "TEST",
+        "sender": "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
+        "type": "POST",
+        "item_type": "ipfs",
+        "item_hash": content_hash,
+        "item_content": None,
+        "signature": "unsigned fixture",
+        "time": 1652805847.190618,
+    }
+    content = await storage_manager.get_message_content(parse_message(message_dict))
+
+    assert content.value == {"recovered": True}
+    assert content.source == ContentSource.P2P
+    assert content_hash not in storage_engine.files  # corrupt entry deleted
+
+
+@pytest.mark.asyncio
+async def test_get_message_content_inline_invalid_json_raises_no_recovery(mocker):
+    """Inline content that is not valid JSON raises InvalidContent immediately.
+    No recovery path is triggered since inline items never come from the DB."""
+    message_dict = {
+        "chain": "ETH",
+        "channel": "TEST",
+        "sender": "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
+        "type": "POST",
+        "item_type": "inline",
+        "item_hash": _sha256_hex(b"not-json"),
+        "item_content": "not-json",
+        "signature": "unsigned fixture",
+        "time": 1652805847.190618,
+    }
+
+    p2p_mock = mocker.patch("aleph.storage.p2p_http_request_hash")
+    storage_manager = StorageService(
+        MockStorageEngine(files={}),
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
+    )
+
+    with pytest.raises(InvalidContent):
+        await storage_manager.get_message_content(parse_message(message_dict))
+
+    p2p_mock.assert_not_called()
