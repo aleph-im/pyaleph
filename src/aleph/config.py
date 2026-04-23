@@ -227,6 +227,10 @@ def get_defaults():
                 "/ip4/51.159.57.71/tcp/4001/p2p/12D3KooWBH3JVSBwHLNzxv7EzniBP3tDmjJaoa3EJBF9wyhZtHt2",
                 "/ip4/62.210.93.220/tcp/4001/p2p/12D3KooWLcmvqojHzUnR7rr8YhFKGDD8z7fmsPyBfAm2rT3sFGAF",
             ],
+            # Maximum file size for authenticated uploads via /ipfs/add_file, in bytes.
+            "max_upload_file_size": DEFAULT_MAX_FILE_SIZE,
+            # Maximum file size for unauthenticated uploads via /ipfs/add_file, in bytes.
+            "max_unauthenticated_upload_file_size": DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
             # Pinning service configuration
             "pinning": {
                 # Hostname of the IPFS pinning service (if different from main IPFS).
