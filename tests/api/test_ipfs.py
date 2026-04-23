@@ -183,3 +183,32 @@ async def test_auth_upload_happy_path(
         assert file is not None
         # Authenticated uploads do NOT get a grace period (message anchors).
         assert not _has_grace_period(session, EXPECTED_FILE_CID)
+
+
+@pytest.mark.asyncio
+async def test_auth_upload_bad_signature(
+    api_client, session_factory: DbSessionFactory, mocker
+):
+    """Invalid signature is rejected BEFORE the file is pinned."""
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+        side_effect=web.HTTPForbidden(),
+    )
+    # Spy on add_bytes to confirm we never called it.
+    ipfs_service = _get_ipfs_service_mock(api_client)
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(FILE_CONTENT))
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": IPFS_MESSAGE_DICT, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
+    assert response.status == 403, await response.text()
+    ipfs_service.add_bytes.assert_not_called()
+
+    with session_factory() as session:
+        assert get_file(session=session, file_hash=EXPECTED_FILE_CID) is None
