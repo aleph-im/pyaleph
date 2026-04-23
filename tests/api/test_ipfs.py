@@ -115,3 +115,17 @@ async def test_unauth_upload_happy_path(
         assert file is not None
         assert file.type == FileType.FILE
         assert _has_grace_period(session, EXPECTED_FILE_CID)
+
+
+@pytest.mark.asyncio
+async def test_unauth_upload_exceeding_size_limit(
+    api_client, session_factory: DbSessionFactory
+):
+    """Unauth mode rejects files over max_unauthenticated_upload_file_size."""
+    # Default unauth limit is 25 MiB. Send 26 MiB.
+    oversized = b"x" * (26 * 1024 * 1024)
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(oversized))
+
+    response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
+    assert response.status == 413, await response.text()
