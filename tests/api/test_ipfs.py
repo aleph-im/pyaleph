@@ -330,3 +330,42 @@ async def test_auth_upload_cid_mismatch(
         file = get_file(session=session, file_hash=EXPECTED_FILE_CID)
         assert file is not None
         assert _has_grace_period(session, EXPECTED_FILE_CID)
+
+
+@pytest.mark.asyncio
+async def test_auth_upload_insufficient_balance(
+    api_client,
+    session_factory: DbSessionFactory,
+    mocker,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """
+    File above the unauth threshold with insufficient balance returns 402
+    and leaves the pinned file under a 24 h grace period.
+    """
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+
+    # 26 MiB payload > 25 MiB unauth cap, so balance check fires.
+    payload = b"x" * (26 * 1024 * 1024)
+
+    # No balance row inserted → balance is zero.
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(payload))
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": IPFS_MESSAGE_DICT, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
+    assert response.status == 402, await response.text()
+
+    with session_factory() as session:
+        file = get_file(session=session, file_hash=EXPECTED_FILE_CID)
+        assert file is not None
+        assert _has_grace_period(session, EXPECTED_FILE_CID)
