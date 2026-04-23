@@ -111,9 +111,7 @@ async def ipfs_add_file(request: web.Request):
 
             if part.name == "file":
                 filename = part.filename or "file"
-                uploaded_file = MultipartUploadedFile(
-                    part, max_upload_file_size
-                )
+                uploaded_file = MultipartUploadedFile(part, max_upload_file_size)
                 await uploaded_file.read_and_validate()
             elif part.name == "metadata":
                 metadata = await part.read(decode=True)
@@ -124,7 +122,10 @@ async def ipfs_add_file(request: web.Request):
             )
 
         # Narrow the effective cap for unauthenticated requests.
-        if metadata is None and uploaded_file.size > max_unauthenticated_upload_file_size:
+        if (
+            metadata is None
+            and uploaded_file.size > max_unauthenticated_upload_file_size
+        ):
             raise web.HTTPRequestEntityTooLarge(
                 actual_size=uploaded_file.size,
                 max_size=max_unauthenticated_upload_file_size,
@@ -136,14 +137,10 @@ async def ipfs_add_file(request: web.Request):
         sync = False
         if metadata:
             metadata_bytes = (
-                metadata.file.read()
-                if isinstance(metadata, FileField)
-                else metadata
+                metadata.file.read() if isinstance(metadata, FileField) else metadata
             )
             try:
-                storage_metadata = StorageMetadata.model_validate_json(
-                    metadata_bytes
-                )
+                storage_metadata = StorageMetadata.model_validate_json(metadata_bytes)
             except ValidationError as e:
                 raise web.HTTPUnprocessableEntity(
                     reason=f"Could not decode metadata: {e.json()}"
@@ -155,9 +152,7 @@ async def ipfs_add_file(request: web.Request):
                 pending_message=message, signature_verifier=signature_verifier
             )
             if not message.item_content:
-                raise web.HTTPUnprocessableEntity(
-                    reason="Store message content needed"
-                )
+                raise web.HTTPUnprocessableEntity(reason="Store message content needed")
             try:
                 message_content = CostEstimationStoreContent.model_validate_json(
                     message.item_content
@@ -196,9 +191,7 @@ async def ipfs_add_file(request: web.Request):
         # 24 h grace period so the GC doesn't strand it.
         try:
             if message_content is not None:
-                message_content.estimated_size_mib = math.ceil(
-                    uploaded_file.size / MiB
-                )
+                message_content.estimated_size_mib = math.ceil(uploaded_file.size / MiB)
                 if message_content.item_hash != cid:
                     raise web.HTTPUnprocessableEntity(
                         reason=(

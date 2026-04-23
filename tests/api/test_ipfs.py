@@ -87,17 +87,13 @@ def _get_ipfs_service_mock(api_client):
 def _has_grace_period(session, file_hash: str) -> bool:
     """Helper: is there an active grace-period pin for this file?"""
     return (
-        session.query(GracePeriodFilePinDb)
-        .filter_by(file_hash=file_hash)
-        .first()
+        session.query(GracePeriodFilePinDb).filter_by(file_hash=file_hash).first()
         is not None
     )
 
 
 @pytest.mark.asyncio
-async def test_unauth_upload_happy_path(
-    api_client, session_factory: DbSessionFactory
-):
+async def test_unauth_upload_happy_path(api_client, session_factory: DbSessionFactory):
     """Regression: existing unauthenticated upload still works."""
     form_data = aiohttp.FormData()
     form_data.add_field("file", BytesIO(FILE_CONTENT))
@@ -420,9 +416,7 @@ async def test_auth_upload_malformed_metadata(
 
     form_data = aiohttp.FormData()
     form_data.add_field("file", BytesIO(FILE_CONTENT))
-    form_data.add_field(
-        "metadata", "not-json-at-all", content_type="application/json"
-    )
+    form_data.add_field("metadata", "not-json-at-all", content_type="application/json")
 
     response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
     assert response.status == 422, await response.text()
