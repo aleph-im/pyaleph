@@ -449,6 +449,8 @@ async def test_get_message_content_ipfs_cache_corrupt_json_refetches(mocker):
     real_json = b'{"recovered": true}'
 
     mocker.patch("aleph.storage.p2p_http_request_hash", return_value=real_json)
+    # Skip IPFS hash verification — we're testing the recovery flow, not hash computation.
+    mocker.patch.object(StorageService, "_verify_content_hash")
 
     storage_engine = MockStorageEngine(files={content_hash: b"not-json"})
     storage_manager = StorageService(

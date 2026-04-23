@@ -94,14 +94,14 @@ class StorageService:
                         item_hash,
                     )
                     await self.storage_engine.delete(filename=item_hash)
-                    hash_content = await self.get_hash_content(
+                    recovery_content = await self.get_hash_content(
                         item_hash,
                         engine=ItemType(item_type),
                         use_network=True,
                         use_ipfs=True,
                     )
-                    item_content = hash_content.value
-                    source = hash_content.source
+                    item_content = recovery_content.value
+                    source = recovery_content.source
         elif item_type == ItemType.inline:
             # This hypothesis is validated at schema level
             item_content = cast(str, message.item_content)
@@ -110,7 +110,7 @@ class StorageService:
             # unknown, could retry later? shouldn't have arrived this far though.
             raise ValueError(f"Unknown item type: '{item_type}'.")
 
-        # check_for_u0000 raises InvalidContent without recovery: it's a schema violation, not corruption.
+        # NUL character (U+0000) is a schema violation, not corruption — raise without recovery.
         check_for_u0000(item_content)
 
         try:
@@ -122,11 +122,11 @@ class StorageService:
                 ItemType.ipfs,
                 ItemType.storage,
             ):
-                hash_content = await self._recover_cached_content(
+                recovery_content = await self._recover_cached_content(
                     item_hash, ItemType(item_type)
                 )
-                item_content = hash_content.value
-                source = hash_content.source
+                item_content = recovery_content.value
+                source = recovery_content.source
                 try:
                     content = aleph_json.loads(item_content)
                 except (
