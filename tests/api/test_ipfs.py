@@ -212,3 +212,44 @@ async def test_auth_upload_bad_signature(
 
     with session_factory() as session:
         assert get_file(session=session, file_hash=EXPECTED_FILE_CID) is None
+
+
+@pytest.mark.asyncio
+async def test_auth_upload_rejects_storage_item_type(
+    api_client, session_factory: DbSessionFactory, mocker
+):
+    """Message with item_type=storage is rejected, no pin happens."""
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+
+    bad_message = {
+        **IPFS_MESSAGE_DICT,
+        "item_content": json.dumps(
+            {
+                "address": "0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                "time": 1692193373.714271,
+                "item_type": "storage",
+                "item_hash": "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
+                "mime_type": "application/octet-stream",
+            }
+        ),
+        # Outer item_hash must match sha256(item_content) or pydantic rejects
+        # with 422 before our item_type check runs.
+        "item_hash": "ea0ead4b5a3e3d9a7c5e693fd2797ed253a987c4ad80600ee97111a0d8911d87",
+    }
+
+    ipfs_service = _get_ipfs_service_mock(api_client)
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(FILE_CONTENT))
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": bad_message, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
+    assert response.status == 422, await response.text()
+    ipfs_service.add_bytes.assert_not_called()
