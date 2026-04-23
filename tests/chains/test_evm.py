@@ -52,3 +52,15 @@ async def test_verify_bad_evm_signature(evm_message: BasePendingMessage):
     evm_message.signature = "baba"
     result = await verifier.verify_signature(evm_message)
     assert result is False
+
+
+def test_evm_verifier_accepts_rpc_url():
+    """EVMVerifier can be constructed with an rpc_url without errors."""
+    verifier = EVMVerifier(rpc_url="http://localhost:8545")
+    assert verifier.rpc_url == "http://localhost:8545"
+
+
+def test_evm_verifier_no_rpc_url():
+    """EVMVerifier can still be constructed with no rpc_url."""
+    verifier = EVMVerifier()
+    assert verifier.rpc_url is None

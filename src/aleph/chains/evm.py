@@ -1,5 +1,6 @@
 import functools
 import logging
+from typing import Optional
 
 from eth_account import Account
 from eth_account.messages import encode_defunct
@@ -14,6 +15,9 @@ LOGGER = logging.getLogger("chains.evm")
 
 
 class EVMVerifier(Verifier):
+    def __init__(self, rpc_url: Optional[str] = None):
+        self.rpc_url = rpc_url
+
     async def verify_signature(self, message: BasePendingMessage) -> bool:
         """Verifies a signature of a message, return True if verified, false if not"""
 
