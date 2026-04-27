@@ -47,6 +47,7 @@ class FileSystemStorageEngine(StorageEngine):
         file_path = self.folder / filename
         temp_path = self.folder / f"{filename}.tmp"
 
+        # Run blocking syscalls (os.open, os.fsync, os.replace) off the event loop.
         await asyncio.to_thread(self._write_durably, temp_path, file_path, content)
 
     @staticmethod
@@ -66,7 +67,7 @@ class FileSystemStorageEngine(StorageEngine):
         so crashes leave either the old content or none.
         """
         fd = os.open(
-            str(temp_path),
+            temp_path,
             os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
             0o644,
         )
@@ -80,13 +81,13 @@ class FileSystemStorageEngine(StorageEngine):
             finally:
                 os.close(fd)
 
-            os.replace(str(temp_path), str(file_path))
+            os.replace(temp_path, file_path)
 
             # Best-effort directory fsync — makes the rename durable.
             # os.O_DIRECTORY is POSIX-only (AttributeError on Windows);
             # some filesystems/VMs also raise OSError — both are silently skipped.
             try:
-                dir_fd = os.open(str(file_path.parent), os.O_DIRECTORY)
+                dir_fd = os.open(file_path.parent, os.O_DIRECTORY)
             except (AttributeError, OSError):
                 return
             try:
