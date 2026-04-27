@@ -100,6 +100,7 @@ class StorageService:
                         use_network=True,
                         use_ipfs=True,
                     )
+                    # Refetched bytes were verified by _fetch_content_from_network.
                     item_content = recovery_content.value
                     source = recovery_content.source
         elif item_type == ItemType.inline:

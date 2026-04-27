@@ -10,6 +10,7 @@ from aleph.schemas.pending_messages import parse_message
 from aleph.services.ipfs import IpfsService
 from aleph.services.storage.engine import StorageEngine
 from aleph.storage import StorageService
+from aleph.types.message_status import InvalidMessageFormat
 
 
 def _sha256_hex(content: bytes) -> str:
@@ -450,7 +451,8 @@ async def test_get_message_content_ipfs_cache_corrupt_json_refetches(mocker):
 
     mocker.patch("aleph.storage.p2p_http_request_hash", return_value=real_json)
     # Skip IPFS hash verification — we're testing the recovery flow, not hash computation.
-    mocker.patch.object(StorageService, "_verify_content_hash")
+    # Assert it is called once: _fetch_content_from_network verifies the network bytes.
+    verify_mock = mocker.patch.object(StorageService, "_verify_content_hash")
 
     storage_engine = MockStorageEngine(files={content_hash: b"not-json"})
     storage_manager = StorageService(
@@ -474,13 +476,15 @@ async def test_get_message_content_ipfs_cache_corrupt_json_refetches(mocker):
 
     assert content.value == {"recovered": True}
     assert content.source == ContentSource.P2P
-    assert content_hash not in storage_engine.files  # corrupt entry deleted
+    # Corrupt entry was replaced in cache with the real bytes after recovery.
+    assert storage_engine.files[content_hash] == real_json
+    verify_mock.assert_called_once()  # network bytes verified during recovery
 
 
-@pytest.mark.asyncio
-async def test_get_message_content_inline_invalid_json_raises_no_recovery(mocker):
-    """Inline content that is not valid JSON raises InvalidContent immediately.
-    No recovery path is triggered since inline items never come from the DB."""
+def test_get_message_content_inline_invalid_json_raises_no_recovery():
+    """Inline POST content that is not valid JSON is rejected by schema validation
+    before reaching get_message_content — the recovery path is structurally unreachable
+    for inline items."""
     message_dict = {
         "chain": "ETH",
         "channel": "TEST",
@@ -493,14 +497,5 @@ async def test_get_message_content_inline_invalid_json_raises_no_recovery(mocker
         "time": 1652805847.190618,
     }
 
-    p2p_mock = mocker.patch("aleph.storage.p2p_http_request_hash")
-    storage_manager = StorageService(
-        MockStorageEngine(files={}),
-        ipfs_service=mocker.AsyncMock(),
-        node_cache=mocker.AsyncMock(),
-    )
-
-    with pytest.raises(InvalidContent):
-        await storage_manager.get_message_content(parse_message(message_dict))
-
-    p2p_mock.assert_not_called()
+    with pytest.raises(InvalidMessageFormat):
+        parse_message(message_dict)
