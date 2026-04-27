@@ -420,8 +420,8 @@ async def test_get_message_content_json_retry_does_not_loop(mocker):
 
     # Spy on _verify_content_hash to confirm sha256 self-heal is not re-triggered
     # after the JSON recovery (source becomes P2P, so the DB-guarded block must not
-    # fire again). Expected calls: 1 from sha256 block (passes) + 1 from
-    # _fetch_content_from_network during recovery = 2 total.
+    # fire again). Expected calls: 1 from the SHA-256 integrity block (bytes match
+    # their own hash) + 1 from _fetch_content_from_network during JSON recovery = 2.
     verify_spy = mocker.spy(storage_manager, "_verify_content_hash")
 
     call_log = []
