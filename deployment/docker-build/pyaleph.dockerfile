@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Runtime packages
 RUN apt-get update && apt-get -y upgrade && apt-get install -y \
      git \
-     libgmp-dev \
+     libgmp10 \
      libpq5
 
 FROM base AS builder
@@ -18,6 +18,7 @@ RUN echo "$OPENSSL_CONF"
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
+    libgmp-dev \
     libpq-dev \
     pkg-config
 
@@ -56,8 +57,6 @@ COPY --from=builder --chown=aleph /opt/venv /opt/venv
 COPY --from=builder --chown=aleph /opt/pyaleph /opt/pyaleph
 
 RUN apt-get update && apt-get install -y \
-    libgmp-dev \
-    libsodium-dev \
     libsodium23 \
     patch
 
