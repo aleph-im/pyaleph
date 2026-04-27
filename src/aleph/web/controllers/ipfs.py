@@ -131,7 +131,11 @@ async def ipfs_add_file(request: web.Request):
                 max_size=max_unauthenticated_upload_file_size,
             )
 
-        # Parse + validate the message BEFORE pinning (fail-fast).
+        # Validate the signed message BEFORE pinning so a bad signature
+        # cannot leave an orphan pin on the IPFS daemon. Note: by this
+        # point the file is already buffered to a temp file (multipart
+        # parts are consumed in arrival order); we gate the pin step,
+        # not the multipart read.
         message = None
         message_content = None
         sync = False

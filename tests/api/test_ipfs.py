@@ -247,8 +247,9 @@ async def test_auth_upload_rejects_storage_item_type(
     )
 
     response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
-    assert response.status == 422, await response.text()
-    assert "item_type=ipfs" in await response.text()
+    body = await response.text()
+    assert response.status == 422, body
+    assert "item_type=ipfs" in body
     ipfs_service.add_bytes.assert_not_called()
 
 
