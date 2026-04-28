@@ -24,10 +24,19 @@ jobs:
       - name: Download Docker cache image (if available)
         run: docker pull ghcr.io/$GITHUB_REPOSITORY/build-cache || true
 
-      - name: Build the Docker image
+      - name: Compute version
+        id: version
         run: |
           git fetch --prune --unshallow --tags
-          docker build . -t alephim/pyaleph-node:${GITHUB_REF##*/} -f deployment/docker-build/pyaleph.dockerfile --cache-from=ghcr.io/$GITHUB_REPOSITORY/build-cache
+          python3 -m pip install --quiet --user hatch hatch-vcs
+          echo "value=$(hatch version)" >> "$GITHUB_OUTPUT"
+
+      - name: Build the Docker image
+        run: |
+          docker build . -t alephim/pyaleph-node:${GITHUB_REF##*/} \
+            --build-arg VERSION=${{ steps.version.outputs.value }} \
+            -f deployment/docker-build/pyaleph.dockerfile \
+            --cache-from=ghcr.io/$GITHUB_REPOSITORY/build-cache
 
       - name: Tag the image
         run: |
