@@ -4,7 +4,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Runtime packages
 RUN apt-get update && apt-get install -y \
-     git \
      libgmp10 \
      libpq5
 
@@ -18,6 +17,7 @@ RUN echo "$OPENSSL_CONF"
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
+    git \
     libgmp-dev \
     libpq-dev \
     pkg-config
