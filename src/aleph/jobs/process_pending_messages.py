@@ -172,7 +172,7 @@ async def fetch_and_process_messages_task(config: Config):
             ipfs_service=ipfs_service,
             node_cache=node_cache,
         )
-        signature_verifier = SignatureVerifier()
+        signature_verifier = SignatureVerifier(rpc_url=config.ethereum.api_url.value)
         message_handler = MessageHandler(
             signature_verifier=signature_verifier,
             storage_service=storage_service,
