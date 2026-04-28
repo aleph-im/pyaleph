@@ -225,8 +225,11 @@ async def ipfs_add_file(request: web.Request):
                     )
                 session.commit()
         except Exception:
-            # Post-pin failure (HTTPException or any other Exception) — apply
-            # grace period so the orphan pin is garbage-collected after 24 h.
+            # Bare `Exception` is intentional: any post-pin failure must
+            # apply the grace period, including non-HTTP errors like DB
+            # outages or library timeouts. Without this catch, the pin
+            # would be left on the IPFS daemon with no record in our DB,
+            # which the GC has no way to reap. We re-raise after applying.
             # size may be unset here (if stat itself failed); fall back to
             # the size we already know from multipart read.
             fallback_size = size if size is not None else uploaded_file.size

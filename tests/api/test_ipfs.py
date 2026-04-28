@@ -203,7 +203,12 @@ async def test_auth_upload_bad_signature(
     )
 
     response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
-    assert response.status == 403, await response.text()
+    body = await response.text()
+    assert response.status == 403, body
+    # 403 is also produced by HTTPForbidden from other middleware. Spot-check
+    # that the body contains the verifier's reason so the test can't pass on
+    # an unrelated 403.
+    assert "Forbidden" in body
     ipfs_service.add_bytes.assert_not_called()
 
     with session_factory() as session:
@@ -262,6 +267,7 @@ async def test_auth_upload_exceeding_authenticated_cap(
         "aleph.web.controllers.ipfs._verify_message_signature",
         new_callable=mocker.AsyncMock,
     )
+    ipfs_service = _get_ipfs_service_mock(api_client)
 
     # Build a 101 MiB payload. The test fixture doesn't care about content
     # since ipfs_service.add_bytes is mocked.
@@ -276,6 +282,7 @@ async def test_auth_upload_exceeding_authenticated_cap(
 
     response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
     assert response.status == 413, await response.text()
+    ipfs_service.add_bytes.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -320,7 +327,11 @@ async def test_auth_upload_cid_mismatch(
     )
 
     response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
-    assert response.status == 422, await response.text()
+    body = await response.text()
+    assert response.status == 422, body
+    # Confirm the 422 came from the controller's CID match check, not from
+    # pydantic rejecting the message earlier on a different invariant.
+    assert "File hash does not match" in body
 
     # Pin happened (CID mismatch is a post-pin check), so the file is in DB
     # with a grace period.
