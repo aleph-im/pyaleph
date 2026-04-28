@@ -1,16 +1,12 @@
-FROM ubuntu:24.04 AS base
+FROM python:3.12-slim-bookworm AS base
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get -y upgrade && apt-get install -y software-properties-common
-RUN add-apt-repository -y ppa:deadsnakes/ppa
-
-# Runtime + build packages
+# Runtime packages
 RUN apt-get update && apt-get -y upgrade && apt-get install -y \
      git \
      libgmp-dev \
-     libpq5 \
-     python3.12
+     libpq5
 
 FROM base AS builder
 
@@ -22,11 +18,8 @@ RUN echo "$OPENSSL_CONF"
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
-    pkg-config \
-    python3.12-dev \
-    python3.12-venv \
     libpq-dev \
-    software-properties-common
+    pkg-config
 
 # Install Rust to build Python packages
 RUN curl https://sh.rustup.rs > rustup-installer.sh
@@ -38,11 +31,11 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 RUN rustup default nightly
 
 # Create virtualenv
-RUN python3.12 -m venv /opt/venv
+RUN python3 -m venv /opt/venv
 
 # Install pip
 ENV PIP_NO_CACHE_DIR=yes
-RUN /opt/venv/bin/python3.12 -m pip install --upgrade pip wheel
+RUN /opt/venv/bin/python3 -m pip install --upgrade pip wheel
 ENV PATH="/opt/venv/bin:${PATH}"
 
 RUN mkdir --parents /opt/pyaleph
@@ -63,9 +56,10 @@ COPY --from=builder --chown=aleph /opt/venv /opt/venv
 COPY --from=builder --chown=aleph /opt/pyaleph /opt/pyaleph
 
 RUN apt-get update && apt-get install -y \
-    libsodium23 \
+    libgmp-dev \
     libsodium-dev \
-    libgmp-dev
+    libsodium23 \
+    patch
 
 # OpenSSL 3 disabled some hash algorithms by default. They must be reenabled
 # by enabling the "legacy" providers in /etc/ssl/openssl.cnf.
