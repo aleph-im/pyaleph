@@ -3,7 +3,7 @@ FROM python:3.12-slim-bookworm AS base
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Runtime packages
-RUN apt-get update && apt-get -y upgrade && apt-get install -y \
+RUN apt-get update && apt-get install -y \
      git \
      libgmp10 \
      libpq5
