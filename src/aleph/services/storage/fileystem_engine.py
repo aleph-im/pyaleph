@@ -1,3 +1,5 @@
+import asyncio
+import os
 from pathlib import Path
 from typing import AsyncIterable, Optional, Union
 
@@ -43,7 +45,66 @@ class FileSystemStorageEngine(StorageEngine):
 
     async def write(self, filename: str, content: bytes):
         file_path = self.folder / filename
-        file_path.write_bytes(content)
+        temp_path = self.folder / f"{filename}.tmp"
+
+        # Run blocking syscalls (os.open, os.fsync, os.replace) off the event loop.
+        await asyncio.to_thread(self._write_durably, temp_path, file_path, content)
+
+    @staticmethod
+    def _write_durably(temp_path: Path, file_path: Path, content: bytes) -> None:
+        """Atomically and durably write ``content`` to ``file_path``.
+
+        Steps:
+          1. Write bytes to ``temp_path`` (same directory as ``file_path``).
+          2. fsync the file descriptor so data and file metadata hit the disk.
+          3. Atomically rename via ``os.replace`` (POSIX-atomic on same FS).
+          4. Best-effort fsync of the parent directory so the rename is durable
+             across kernel crashes (POSIX-only; silently skipped on Windows).
+
+        On any exception (including post-rename errors in the directory-fsync
+        section), the temp file is removed best-effort and the exception is
+        re-raised. The target file is never touched until the rename succeeds,
+        so crashes leave either the old content or none.
+        """
+        fd = os.open(
+            temp_path,
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+            0o644,
+        )
+        try:
+            try:
+                view = memoryview(content)
+                written = 0
+                while written < len(view):
+                    written += os.write(fd, view[written:])
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+
+            os.replace(temp_path, file_path)
+
+            # Best-effort directory fsync — makes the rename durable.
+            # os.O_DIRECTORY is POSIX-only (AttributeError on Windows);
+            # some filesystems/VMs also raise OSError — both are silently skipped.
+            try:
+                dir_fd = os.open(file_path.parent, os.O_DIRECTORY)
+            except (AttributeError, OSError):
+                return
+            try:
+                os.fsync(dir_fd)
+            except OSError:
+                pass
+            finally:
+                os.close(dir_fd)
+
+        except Exception:
+            try:
+                # temp_path may already be gone if os.replace succeeded before
+                # the exception (e.g. an error in the dir-fsync section).
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
 
     async def delete(self, filename: str):
         file_path = self.folder / filename

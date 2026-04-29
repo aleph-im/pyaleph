@@ -1,3 +1,4 @@
+import hashlib
 import json
 from typing import AsyncIterable, Dict, Optional
 
@@ -9,6 +10,11 @@ from aleph.schemas.pending_messages import parse_message
 from aleph.services.ipfs import IpfsService
 from aleph.services.storage.engine import StorageEngine
 from aleph.storage import StorageService
+from aleph.types.message_status import InvalidMessageFormat
+
+
+def _sha256_hex(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
 
 
 class MockStorageEngine(StorageEngine):
@@ -38,7 +44,7 @@ class MockStorageEngine(StorageEngine):
         self.files[filename] = content
 
     async def delete(self, filename: str):
-        del self.files[filename]
+        self.files.pop(filename, None)
 
     async def exists(self, filename: str) -> bool:
         return filename in self.files
@@ -267,3 +273,229 @@ async def test_get_stored_message_content(mocker):
     content = await storage_manager.get_message_content(message)
     assert content.value == json_content
     assert content.hash == message.item_hash
+
+
+def _make_storage_message(item_hash: str) -> dict:
+    return {
+        "chain": "ETH",
+        "channel": "TEST",
+        "sender": "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
+        "type": "POST",
+        "item_type": "storage",
+        "item_hash": item_hash,
+        "item_content": None,
+        "signature": "unsigned fixture",
+        "time": 1652805847.190618,
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_message_content_sha256_mismatch_triggers_refetch(mocker):
+    """SHA-256 mismatch on a cached storage message triggers cache deletion,
+    refetch from network, and successful JSON parse of the real content."""
+    real_json = b'{"hello": "world"}'
+    content_hash = _sha256_hex(real_json)
+    corrupted = b'{"hello": "corrupted"}'  # valid JSON, wrong sha256
+
+    mocker.patch("aleph.storage.p2p_http_request_hash", return_value=real_json)
+
+    storage_engine = MockStorageEngine(files={content_hash: corrupted})
+    storage_manager = StorageService(
+        storage_engine,
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
+    )
+
+    content = await storage_manager.get_message_content(
+        parse_message(_make_storage_message(content_hash))
+    )
+
+    assert content.value == {"hello": "world"}
+    assert storage_engine.files[content_hash] == real_json
+
+
+@pytest.mark.asyncio
+async def test_get_message_content_sha256_match_returns_from_db(mocker):
+    """Happy-path regression guard: valid sha256 cached message content is
+    returned from DB without touching the network."""
+    real_json = b'{"status": "ok"}'
+    content_hash = _sha256_hex(real_json)
+
+    p2p_mock = mocker.patch(
+        "aleph.storage.p2p_http_request_hash",
+        side_effect=AssertionError("network must not be called when cache is valid"),
+    )
+
+    storage_manager = StorageService(
+        MockStorageEngine(files={content_hash: real_json}),
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
+    )
+
+    content = await storage_manager.get_message_content(
+        parse_message(_make_storage_message(content_hash))
+    )
+
+    assert content.value == {"status": "ok"}
+    assert content.source == ContentSource.DB
+    p2p_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_message_content_sha256_mismatch_network_also_bad_raises(mocker):
+    """Bad cache sha256 + network returning content that also fails sha256
+    verification raises InvalidContent without looping.
+
+    This test relies on _fetch_content_from_network calling _verify_content_hash
+    on the bytes it receives. If that verification were removed, the bad network
+    bytes would be written to cache and returned without raising.
+    """
+    content_hash = _sha256_hex(b"valid content never returned")
+    bad_network = b"bad bytes from network"
+
+    mocker.patch("aleph.storage.p2p_http_request_hash", return_value=bad_network)
+
+    storage_manager = StorageService(
+        MockStorageEngine(files={content_hash: b"bad cache bytes"}),
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
+    )
+
+    with pytest.raises(InvalidContent):
+        await storage_manager.get_message_content(
+            parse_message(_make_storage_message(content_hash))
+        )
+
+
+@pytest.mark.asyncio
+async def test_get_message_content_ipfs_cache_no_sha256(mocker):
+    """IPFS message content from cache is not sha256-verified: a daemon
+    round-trip per cache hit is too slow. JSON-parse recovery is the fallback."""
+    cached_json = b'{"key": "value"}'
+    content_hash = "QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ"
+
+    ipfs_client = mocker.AsyncMock()
+    ipfs_client.add_bytes = mocker.AsyncMock(
+        side_effect=AssertionError("IPFS must not be consulted on cache read")
+    )
+    ipfs_service = IpfsService(ipfs_client=ipfs_client)
+
+    message_dict = {
+        "chain": "ETH",
+        "channel": "TEST",
+        "sender": "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
+        "type": "POST",
+        "item_type": "ipfs",
+        "item_hash": content_hash,
+        "item_content": None,
+        "signature": "unsigned fixture",
+        "time": 1652805847.190618,
+    }
+    storage_manager = StorageService(
+        MockStorageEngine(files={content_hash: cached_json}),
+        ipfs_service=ipfs_service,
+        node_cache=mocker.AsyncMock(),
+    )
+
+    content = await storage_manager.get_message_content(parse_message(message_dict))
+    assert content.value == {"key": "value"}
+    assert content.source == ContentSource.DB
+
+
+@pytest.mark.asyncio
+async def test_get_message_content_json_retry_does_not_loop(mocker):
+    """After a JSON parse failure the recovery path calls get_hash_content
+    exactly once more (with use_network=True). No further retries, and the
+    SHA-256 self-heal block is not re-triggered on the retry (source=P2P)."""
+    bad_json_bytes = b"definitely-not-json"
+    content_hash = _sha256_hex(bad_json_bytes)
+
+    message = parse_message(_make_storage_message(content_hash))
+    mocker.patch("aleph.storage.p2p_http_request_hash", return_value=bad_json_bytes)
+
+    storage_manager = StorageService(
+        MockStorageEngine(files={content_hash: bad_json_bytes}),
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
+    )
+
+    # Spy on _verify_content_hash to confirm sha256 self-heal is not re-triggered
+    # after the JSON recovery (source becomes P2P, so the DB-guarded block must not
+    # fire again). Expected calls: 1 from the SHA-256 integrity block (bytes match
+    # their own hash) + 1 from _fetch_content_from_network during JSON recovery = 2.
+    verify_spy = mocker.spy(storage_manager, "_verify_content_hash")
+
+    call_log = []
+    original = storage_manager.get_hash_content
+
+    async def traced(*args, **kwargs):
+        call_log.append(kwargs)
+        return await original(*args, **kwargs)
+
+    storage_manager.get_hash_content = traced
+
+    with pytest.raises(InvalidContent):
+        await storage_manager.get_message_content(message)
+
+    assert len(call_log) == 2
+    assert call_log[1].get("use_network") is True
+    assert verify_spy.call_count == 2  # sha256 block + _fetch_content_from_network
+
+
+@pytest.mark.asyncio
+async def test_get_message_content_ipfs_cache_corrupt_json_refetches(mocker):
+    """Cached IPFS content that is not valid JSON triggers the recovery path:
+    the corrupt entry is deleted and the content is refetched from the network."""
+    content_hash = "QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ"
+    real_json = b'{"recovered": true}'
+
+    mocker.patch("aleph.storage.p2p_http_request_hash", return_value=real_json)
+    # Skip IPFS hash verification — we're testing the recovery flow, not hash computation.
+    # Assert it is called once: _fetch_content_from_network verifies the network bytes.
+    verify_mock = mocker.patch.object(StorageService, "_verify_content_hash")
+
+    storage_engine = MockStorageEngine(files={content_hash: b"not-json"})
+    storage_manager = StorageService(
+        storage_engine,
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
+    )
+
+    message_dict = {
+        "chain": "ETH",
+        "channel": "TEST",
+        "sender": "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
+        "type": "POST",
+        "item_type": "ipfs",
+        "item_hash": content_hash,
+        "item_content": None,
+        "signature": "unsigned fixture",
+        "time": 1652805847.190618,
+    }
+    content = await storage_manager.get_message_content(parse_message(message_dict))
+
+    assert content.value == {"recovered": True}
+    assert content.source == ContentSource.P2P
+    # Corrupt entry was replaced in cache with the real bytes after recovery.
+    assert storage_engine.files[content_hash] == real_json
+    verify_mock.assert_called_once()  # network bytes verified during recovery
+
+
+def test_get_message_content_inline_invalid_json_raises_no_recovery():
+    """Inline POST content that is not valid JSON is rejected by schema validation
+    before reaching get_message_content — the recovery path is structurally unreachable
+    for inline items."""
+    message_dict = {
+        "chain": "ETH",
+        "channel": "TEST",
+        "sender": "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
+        "type": "POST",
+        "item_type": "inline",
+        "item_hash": _sha256_hex(b"not-json"),
+        "item_content": "not-json",
+        "signature": "unsigned fixture",
+        "time": 1652805847.190618,
+    }
+
+    with pytest.raises(InvalidMessageFormat):
+        parse_message(message_dict)

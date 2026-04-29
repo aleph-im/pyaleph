@@ -77,6 +77,32 @@ class StorageService:
             )
             item_content = hash_content.value
             source = hash_content.source
+
+            # Verify SHA-256 integrity for storage items read from local cache.
+            # Network-fetched content is already verified in _fetch_content_from_network.
+            # IPFS: skipped here (daemon round-trip too slow on hot path; the JSON-parse
+            # recovery below acts as the safety net for IPFS corruption).
+            if item_type == ItemType.storage and source == ContentSource.DB:
+                try:
+                    await self._verify_content_hash(
+                        item_content, ItemType.storage, item_hash
+                    )
+                except InvalidContent:
+                    LOGGER.warning(
+                        "Cached content for '%s' failed SHA-256 verification; "
+                        "deleting and refetching.",
+                        item_hash,
+                    )
+                    await self.storage_engine.delete(filename=item_hash)
+                    recovery_content = await self.get_hash_content(
+                        item_hash,
+                        engine=ItemType(item_type),
+                        use_network=True,
+                        use_ipfs=True,
+                    )
+                    # Refetched bytes were verified by _fetch_content_from_network.
+                    item_content = recovery_content.value
+                    source = recovery_content.source
         elif item_type == ItemType.inline:
             # This hypothesis is validated at schema level
             item_content = cast(str, message.item_content)
@@ -85,24 +111,60 @@ class StorageService:
             # unknown, could retry later? shouldn't have arrived this far though.
             raise ValueError(f"Unknown item type: '{item_type}'.")
 
+        # NUL character (U+0000) is a schema violation, not corruption — raise without recovery.
         check_for_u0000(item_content)
 
         try:
             content = aleph_json.loads(item_content)
-        except aleph_json.DecodeError as e:
+        except (aleph_json.DecodeError, json.decoder.JSONDecodeError) as e:
             error_msg = f"Can't decode JSON: {e}"
             LOGGER.warning(error_msg)
-            raise InvalidContent(error_msg)
-        except json.decoder.JSONDecodeError as e:
-            error_msg = f"Can't decode JSON: {e}"
-            LOGGER.warning(error_msg)
-            raise InvalidContent(error_msg)
+            if source == ContentSource.DB and item_type in (
+                ItemType.ipfs,
+                ItemType.storage,
+            ):
+                recovery_content = await self._recover_cached_content(
+                    item_hash, ItemType(item_type)
+                )
+                item_content = recovery_content.value
+                source = recovery_content.source
+                try:
+                    content = aleph_json.loads(item_content)
+                except (
+                    aleph_json.DecodeError,
+                    json.decoder.JSONDecodeError,
+                ) as retry_e:
+                    raise InvalidContent(
+                        f"Content still invalid after retry: {retry_e}"
+                    ) from retry_e
+            else:
+                raise InvalidContent(error_msg)
 
         return MessageContent(
             hash=item_hash,
             source=source,
             value=content,
             raw_value=item_content,
+        )
+
+    async def _recover_cached_content(
+        self, item_hash: str, engine: ItemType
+    ) -> RawContent:
+        """Delete a corrupt cache entry and refetch its raw bytes from the network.
+
+        Does not interpret the content — callers decide what to do with the bytes.
+        Raises ContentCurrentlyUnavailable if the content cannot be fetched.
+        """
+        LOGGER.warning(
+            "Corrupted cached content for %s, deleting and retrying from network",
+            item_hash,
+        )
+        await self.storage_engine.delete(filename=item_hash)
+        return await self.get_hash_content(
+            item_hash,
+            engine=engine,
+            use_network=True,
+            use_ipfs=True,
         )
 
     async def _fetch_content_from_network(
