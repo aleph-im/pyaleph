@@ -1,5 +1,5 @@
 import datetime as dt
-from typing import Any, Dict, List, Mapping, Optional, Type
+from typing import Any, ClassVar, Dict, FrozenSet, List, Mapping, Optional, Type
 
 from aleph_message.models import (
     AggregateContent,
@@ -97,6 +97,26 @@ class MessageDb(Base):
     """
 
     __tablename__ = "messages"
+
+    # Column names that exist on the table for indexing/joining but are NOT
+    # part of the canonical aleph-message wire format. API responses and any
+    # ``MessageDb.to_dict()`` payload bound for an aleph-message validator
+    # must strip these — pydantic models like ``PostMessage`` use
+    # ``extra="forbid"`` and will reject a stray denormalized field.
+    DENORMALIZED_COLUMNS: ClassVar[FrozenSet[str]] = frozenset(
+        {
+            "status",
+            "reception_time",
+            "owner",
+            "content_type",
+            "content_ref",
+            "content_key",
+            "content_item_hash",
+            "first_confirmed_at",
+            "first_confirmed_height",
+            "payment_type",
+        }
+    )
 
     item_hash: Mapped[str] = mapped_column(String, primary_key=True)
     type: Mapped[MessageType] = mapped_column(ChoiceType(MessageType), nullable=False)

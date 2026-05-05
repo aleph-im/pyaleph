@@ -299,18 +299,7 @@ def message_to_dict(
     message_dict["confirmed"] = bool(confirmations)
 
     # Remove denormalized columns from API response to avoid breaking SDKs
-    for key in (
-        "status",
-        "reception_time",
-        "owner",
-        "content_type",
-        "content_ref",
-        "content_key",
-        "content_item_hash",
-        "first_confirmed_at",
-        "first_confirmed_height",
-        "payment_type",
-    ):
+    for key in MessageDb.DENORMALIZED_COLUMNS:
         message_dict.pop(key, None)
 
     return message_dict
