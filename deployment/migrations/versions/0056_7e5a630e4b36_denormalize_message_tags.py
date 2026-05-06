@@ -58,9 +58,13 @@ def _batched_update(connection, label: str, sql: str) -> None:
 
 
 # Backfill SQL: each rebuilds the new column from the legacy JSONB
-# location for the relevant content types. ``jsonb_array_length > 0``
-# keeps empty tag lists out of the column so an absent value and an
-# empty array stay distinguishable.
+# location for the relevant content types. The non-empty filter uses
+# a JSONB literal comparison (``<> '[]'::jsonb``) rather than
+# ``jsonb_array_length(...) > 0``: production data contains rows where
+# ``tags`` is a scalar string, and ``jsonb_array_length`` aborts the
+# query on a scalar. JSONB equality is defined across all types, so
+# the comparison is safe regardless of the planner's predicate order.
+# Absent and empty tag lists both stay NULL in the new column.
 
 BACKFILL_MESSAGES_SQL = f"""
 WITH batch AS (
@@ -69,13 +73,13 @@ WITH batch AS (
       AND (
         (type IN ('POST', 'AGGREGATE')
             AND jsonb_typeof(content->'content'->'tags') = 'array'
-            AND jsonb_array_length(content->'content'->'tags') > 0)
+            AND content->'content'->'tags' <> '[]'::jsonb)
         OR (type = 'STORE'
             AND jsonb_typeof(content->'tags') = 'array'
-            AND jsonb_array_length(content->'tags') > 0)
+            AND content->'tags' <> '[]'::jsonb)
         OR (type IN ('INSTANCE', 'PROGRAM')
             AND jsonb_typeof(content->'metadata'->'tags') = 'array'
-            AND jsonb_array_length(content->'metadata'->'tags') > 0)
+            AND content->'metadata'->'tags' <> '[]'::jsonb)
       )
     LIMIT {BATCH_SIZE}
 )
@@ -96,7 +100,7 @@ WITH batch AS (
     SELECT item_hash FROM posts
     WHERE tags IS NULL
       AND jsonb_typeof(content->'tags') = 'array'
-      AND jsonb_array_length(content->'tags') > 0
+      AND content->'tags' <> '[]'::jsonb
     LIMIT {BATCH_SIZE}
 )
 UPDATE posts
