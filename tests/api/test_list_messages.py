@@ -269,6 +269,98 @@ async def test_get_messages_filter_by_tags_no_match(fixture_messages, ccn_api_cl
     assert len(messages) == 0
 
 
+# Tags live in a different JSONB key per message type. The denormalized
+# ``messages.tags`` column unifies them, so the filter must hit each type.
+TAGGED_MESSAGES_PER_TYPE: List[Tuple[str, str, str, Dict[str, Any]]] = [
+    ("hash-post", "POST", "only-post", {"content": {"tags": ["only-post", "shared"]}}),
+    (
+        "hash-aggr",
+        "AGGREGATE",
+        "only-aggr",
+        {"content": {"tags": ["only-aggr", "shared"]}},
+    ),
+    ("hash-stor", "STORE", "only-stor", {"tags": ["only-stor", "shared"]}),
+    (
+        "hash-inst",
+        "INSTANCE",
+        "only-inst",
+        {"metadata": {"tags": ["only-inst", "shared"]}},
+    ),
+    (
+        "hash-prog",
+        "PROGRAM",
+        "only-prog",
+        {"metadata": {"tags": ["only-prog", "shared"]}},
+    ),
+]
+
+
+@pytest_asyncio.fixture
+async def messages_with_tags_per_type(session_factory: DbSessionFactory):
+    """One message of each tagged content type, each carrying a unique tag
+    plus a ``shared`` tag, with tags stored at the legacy per-type key."""
+    common_time = dt.datetime(2024, 1, 1, tzinfo=dt.timezone.utc)
+    with session_factory() as session:
+        for item_hash, msg_type, _, content in TAGGED_MESSAGES_PER_TYPE:
+            session.add_all(
+                [
+                    MessageDb(
+                        item_hash=item_hash,
+                        chain="ETH",
+                        sender="0xtest",
+                        signature=None,
+                        item_type="storage",
+                        item_content=None,
+                        type=msg_type,
+                        content=content,
+                        time=common_time,
+                        channel=None,
+                        size=100,
+                    ),
+                    MessageStatusDb(
+                        item_hash=item_hash,
+                        status=MessageStatus.PROCESSED,
+                        reception_time=utc_now(),
+                    ),
+                ]
+            )
+        session.commit()
+
+
+@pytest.mark.parametrize(
+    "msg_type,unique_tag",
+    [(t, tag) for _, t, tag, _ in TAGGED_MESSAGES_PER_TYPE],
+)
+@pytest.mark.asyncio
+async def test_get_messages_filter_by_tags_per_type(
+    messages_with_tags_per_type,
+    ccn_api_client,
+    msg_type: str,
+    unique_tag: str,
+):
+    """A type-specific tag returns exactly the message of that type. Guards
+    against regressing back into the POST-only JSONB filter."""
+    response = await ccn_api_client.get(MESSAGES_URI, params={"tags": unique_tag})
+    assert response.status == 200, await response.text()
+    messages = (await response.json())["messages"]
+    assert len(messages) == 1
+    assert messages[0]["type"] == msg_type
+
+
+@pytest.mark.asyncio
+async def test_get_messages_filter_by_shared_tag_returns_all_types(
+    messages_with_tags_per_type,
+    ccn_api_client,
+):
+    """A tag carried by every type returns one match per type."""
+    response = await ccn_api_client.get(MESSAGES_URI, params={"tags": "shared"})
+    assert response.status == 200, await response.text()
+    messages = (await response.json())["messages"]
+    assert {m["type"] for m in messages} == {
+        t for _, t, _, _ in TAGGED_MESSAGES_PER_TYPE
+    }
+
+
 @pytest.mark.asyncio
 async def test_get_messages_filter_by_invalid_content_hash(
     fixture_messages, ccn_api_client
