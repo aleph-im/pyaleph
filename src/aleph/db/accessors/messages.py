@@ -131,9 +131,7 @@ def make_matching_messages_query(
     if content_keys:
         select_stmt = select_stmt.where(MessageDb.content_key.in_(content_keys))
     if tags:
-        select_stmt = select_stmt.where(
-            MessageDb.content["content"]["tags"].has_any(array(tags))
-        )
+        select_stmt = select_stmt.where(MessageDb.tags.overlap(array(tags)))
     if channels:
         select_stmt = select_stmt.where(MessageDb.channel.in_(channels))
     # Payment types - direct column, no JOIN to account_costs

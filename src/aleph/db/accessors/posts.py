@@ -25,7 +25,7 @@ from sqlalchemy import (
     select,
     update,
 )
-from sqlalchemy.dialects.postgresql import JSONB, array
+from sqlalchemy.dialects.postgresql import ARRAY, array
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql import Select
 
@@ -93,6 +93,7 @@ def make_select_merged_post_stmt() -> Select:
             Original.channel.label("channel"),
             Original.creation_datetime.label("created"),
             Original.type.label("original_type"),
+            func.coalesce(Amend.tags, Original.tags).label("tags"),
         ).join(
             Amend,
             Original.latest_amend == Amend.item_hash,
@@ -142,6 +143,7 @@ def make_select_merged_post_with_message_info_stmt() -> Select:
                 ),
                 Float,
             ).label("time"),
+            func.coalesce(Amend.tags, Original.tags).label("tags"),
         )
         .join(
             Amend,
@@ -231,7 +233,7 @@ def filter_post_select_stmt(
         select_stmt = select_stmt.where(literal_column("original_type").in_(post_types))
     if tags:
         select_stmt = select_stmt.where(
-            literal_column("content", type_=JSONB)["tags"].has_any(array(tags))
+            literal_column("tags", type_=ARRAY(String)).overlap(array(tags))
         )
     if channels:
         select_stmt = select_stmt.where(literal_column("channel").in_(channels))

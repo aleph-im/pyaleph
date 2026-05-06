@@ -15,7 +15,6 @@ from aleph_message.models import (
 )
 from pydantic import ValidationError
 from sqlalchemy import (
-    ARRAY,
     TIMESTAMP,
     BigInteger,
     Column,
@@ -25,7 +24,7 @@ from sqlalchemy import (
     Table,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy_utils.types.choice import ChoiceType
 
@@ -45,6 +44,42 @@ CONTENT_TYPE_MAP: Dict[MessageType, Type[BaseContent]] = {
     MessageType.program: ProgramContent,
     MessageType.store: StoreContent,
 }
+
+
+def extract_tags(
+    message_type: Any, content_dict: Mapping[str, Any]
+) -> Optional[List[str]]:
+    """Pull the tag list out of a content payload.
+
+    Tags live in different keys depending on the message type:
+
+    * POST + AGGREGATE: ``content -> 'content' -> 'tags'``
+    * STORE:            ``content -> 'tags'``
+    * INSTANCE/PROGRAM: ``content -> 'metadata' -> 'tags'``
+
+    Returns ``None`` when the message carries no tags so the caller can
+    leave the column NULL, distinguishable from an explicitly empty list.
+    """
+    if not isinstance(message_type, MessageType):
+        try:
+            message_type = MessageType(message_type)
+        except (ValueError, KeyError):
+            return None
+
+    if message_type in (MessageType.post, MessageType.aggregate):
+        inner = content_dict.get("content")
+        tags = inner.get("tags") if isinstance(inner, dict) else None
+    elif message_type == MessageType.store:
+        tags = content_dict.get("tags")
+    elif message_type in (MessageType.instance, MessageType.program):
+        metadata = content_dict.get("metadata")
+        tags = metadata.get("tags") if isinstance(metadata, dict) else None
+    else:
+        tags = None
+
+    if not isinstance(tags, list) or not tags:
+        return None
+    return [t for t in tags if isinstance(t, str)] or None
 
 
 message_confirmations = Table(
@@ -115,6 +150,7 @@ class MessageDb(Base):
             "first_confirmed_at",
             "first_confirmed_height",
             "payment_type",
+            "tags",
         }
     )
 
@@ -158,6 +194,7 @@ class MessageDb(Base):
     )
     payment_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     content_item_hash: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
 
     confirmations: Mapped[List[ChainTxDb]] = relationship(
         "ChainTxDb", secondary=message_confirmations
@@ -188,6 +225,9 @@ class MessageDb(Base):
             payment = content.get("payment")
             if isinstance(payment, dict) and payment.get("type"):
                 kwargs.setdefault("payment_type", payment["type"])
+            message_type = kwargs.get("type")
+            if message_type is not None:
+                kwargs.setdefault("tags", extract_tags(message_type, content))
         super().__init__(**kwargs)
         self._parsed_content: Optional[BaseContent] = None
 
@@ -256,6 +296,7 @@ class MessageDb(Base):
             content_key=content_dict.get("key"),
             content_item_hash=content_dict.get("item_hash"),
             payment_type=payment_type,
+            tags=extract_tags(pending_message.type, content_dict),
         )
         message._parsed_content = parsed_content
         return message
