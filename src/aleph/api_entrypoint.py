@@ -60,7 +60,7 @@ async def configure_aiohttp_app(
             ipfs_service=ipfs_service,
             node_cache=node_cache,
         )
-        signature_verifier = SignatureVerifier()
+        signature_verifier = SignatureVerifier(rpc_url=config.ethereum.api_url.value)
 
         app = create_aiohttp_app(
             max_file_size=config.storage.max_file_size.value,
