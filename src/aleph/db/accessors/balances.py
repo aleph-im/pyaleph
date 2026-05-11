@@ -557,7 +557,6 @@ def _apply_balance_deltas(session: DbSession, deltas: Mapping[str, int]) -> None
     running_balance is the raw signed sum of all credit_history.amount rows for the
     address, NOT FIFO-aware. The lazy FIFO recompute on the `balance` column remains
     the source of truth for the API read path until the expiration cron lands.
-    See docs/superpowers/plans/2026-05-08-credit-balance-eager-cache.md.
     """
     if not deltas:
         return
