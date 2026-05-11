@@ -3,7 +3,6 @@ Basically manages the IPFS storage.
 """
 
 import asyncio
-import json
 import logging
 from hashlib import sha256
 from typing import Any, Final, Optional, cast
@@ -77,32 +76,6 @@ class StorageService:
             )
             item_content = hash_content.value
             source = hash_content.source
-
-            # Verify SHA-256 integrity for storage items read from local cache.
-            # Network-fetched content is already verified in _fetch_content_from_network.
-            # IPFS: skipped here (daemon round-trip too slow on hot path; the JSON-parse
-            # recovery below acts as the safety net for IPFS corruption).
-            if item_type == ItemType.storage and source == ContentSource.DB:
-                try:
-                    await self._verify_content_hash(
-                        item_content, ItemType.storage, item_hash
-                    )
-                except InvalidContent:
-                    LOGGER.warning(
-                        "Cached content for '%s' failed SHA-256 verification; "
-                        "deleting and refetching.",
-                        item_hash,
-                    )
-                    await self.storage_engine.delete(filename=item_hash)
-                    recovery_content = await self.get_hash_content(
-                        item_hash,
-                        engine=ItemType(item_type),
-                        use_network=True,
-                        use_ipfs=True,
-                    )
-                    # Refetched bytes were verified by _fetch_content_from_network.
-                    item_content = recovery_content.value
-                    source = recovery_content.source
         elif item_type == ItemType.inline:
             # This hypothesis is validated at schema level
             item_content = cast(str, message.item_content)
@@ -116,7 +89,7 @@ class StorageService:
 
         try:
             content = aleph_json.loads(item_content)
-        except (aleph_json.DecodeError, json.decoder.JSONDecodeError) as e:
+        except aleph_json.DecodeError as e:
             error_msg = f"Can't decode JSON: {e}"
             LOGGER.warning(error_msg)
             if source == ContentSource.DB and item_type in (
@@ -130,10 +103,7 @@ class StorageService:
                 source = recovery_content.source
                 try:
                     content = aleph_json.loads(item_content)
-                except (
-                    aleph_json.DecodeError,
-                    json.decoder.JSONDecodeError,
-                ) as retry_e:
+                except aleph_json.DecodeError as retry_e:
                     raise InvalidContent(
                         f"Content still invalid after retry: {retry_e}"
                     ) from retry_e

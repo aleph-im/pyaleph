@@ -176,7 +176,9 @@ async def main(args: List[str]) -> None:
         )
 
         await repair_node(
-            storage_service=storage_service, session_factory=session_factory
+            storage_service=storage_service,
+            session_factory=session_factory,
+            repair_storage=args.repair_native_storage,
         )
 
         set_start_method("spawn")

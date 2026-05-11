@@ -77,4 +77,12 @@ def parse_args(args):
         action="store_true",
         default=False,
     )
+    parser.add_argument(
+        "--repair-native-storage",
+        dest="repair_native_storage",
+        help="Scan local storage cache at startup and delete entries whose content "
+        "does not match their SHA-256 hash. Corrupt entries are refetched on demand.",
+        action="store_true",
+        default=False,
+    )
     return parser.parse_args(args)
