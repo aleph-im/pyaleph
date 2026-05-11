@@ -74,6 +74,9 @@ class AlephCreditBalanceDb(Base):
 
     address: Mapped[str] = mapped_column(String, primary_key=True, index=True)
     balance: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    running_balance: Mapped[Optional[int]] = mapped_column(
+        BigInteger, nullable=True, default=None
+    )
     last_update: Mapped[dt.datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,

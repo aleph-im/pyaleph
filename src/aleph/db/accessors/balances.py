@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from aleph_message.models import Chain
 from sqlalchemy import func, select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.sql import Select
 
 from aleph.db.models import AlephBalanceDb, AlephCreditBalanceDb, AlephCreditHistoryDb
@@ -550,16 +551,51 @@ def _format_csv_row(*fields) -> str:
     return output.getvalue().rstrip("\n")
 
 
+def _apply_balance_deltas(session: DbSession, deltas: Mapping[str, int]) -> None:
+    """Apply per-address signed deltas to credit_balances.running_balance atomically.
+
+    running_balance is the raw signed sum of all credit_history.amount rows for the
+    address, NOT FIFO-aware. The lazy FIFO recompute on the `balance` column remains
+    the source of truth for the API read path until the expiration cron lands.
+    See docs/superpowers/plans/2026-05-08-credit-balance-eager-cache.md.
+    """
+    if not deltas:
+        return
+
+    rows = [
+        {"address": addr, "running_balance": delta}
+        for addr, delta in deltas.items()
+        if delta != 0
+    ]
+    if not rows:
+        return
+
+    stmt = pg_insert(AlephCreditBalanceDb).values(rows)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[AlephCreditBalanceDb.address],
+        set_={
+            "running_balance": func.coalesce(AlephCreditBalanceDb.running_balance, 0)
+            + stmt.excluded.running_balance,
+            "last_update": func.now(),
+        },
+    )
+    session.execute(stmt)
+
+
 def _bulk_insert_credit_history(
     session: DbSession,
     csv_rows: Sequence[str],
+    balance_deltas: Mapping[str, int],
 ) -> None:
     """
-    Generic function to bulk insert credit history rows using temporary table.
+    Bulk insert credit history rows via temporary table, then atomically apply
+    running_balance deltas to credit_balances in the same transaction.
 
     Args:
         session: Database session
         csv_rows: List of CSV-formatted strings with credit history data
+        balance_deltas: Map of address -> signed delta to apply to
+            credit_balances.running_balance. Pass {} to skip eager cache update.
     """
 
     # Generate unique table name with timestamp and random suffix to avoid race conditions
@@ -603,6 +639,8 @@ def _bulk_insert_credit_history(
     # Drop the temporary table
     session.execute(text(f"DROP TABLE {temp_table_name}"))
 
+    _apply_balance_deltas(session, balance_deltas)
+
 
 def get_updated_credit_balance_accounts(session: DbSession, last_update: dt.datetime):
     """
@@ -633,11 +671,13 @@ def update_credit_balances_distribution(
 
     last_update = utc_now()
     csv_rows = []
+    deltas: dict[str, int] = {}
 
     for index, credit_entry in enumerate(credits_list):
         address = credit_entry["address"]
         raw_amount = int(credit_entry["amount"])
         amount = _apply_credit_precision_multiplier(raw_amount, message_timestamp)
+        deltas[address] = deltas.get(address, 0) + amount
         price = Decimal(credit_entry["price"])
         tx_hash = credit_entry["tx_hash"]
         provider = credit_entry["provider"]
@@ -677,7 +717,7 @@ def update_credit_balances_distribution(
             )
         )
 
-    _bulk_insert_credit_history(session, csv_rows)
+    _bulk_insert_credit_history(session, csv_rows, balance_deltas=deltas)
 
 
 def update_credit_balances_expense(
@@ -699,11 +739,13 @@ def update_credit_balances_expense(
 
     last_update = utc_now()
     csv_rows = []
+    deltas: dict[str, int] = {}
 
     for index, credit_entry in enumerate(credits_list):
         address = credit_entry["address"]
         raw_amount = int(credit_entry["amount"])
         amount = -_apply_credit_precision_multiplier(raw_amount, message_timestamp)
+        deltas[address] = deltas.get(address, 0) + amount
         origin_ref = credit_entry.get("ref", "")
 
         # Map new fields
@@ -733,7 +775,7 @@ def update_credit_balances_expense(
             )
         )
 
-    _bulk_insert_credit_history(session, csv_rows)
+    _bulk_insert_credit_history(session, csv_rows, balance_deltas=deltas)
 
 
 def update_credit_balances_transfer(
@@ -763,6 +805,7 @@ def update_credit_balances_transfer(
 
     last_update = utc_now()
     csv_rows = []
+    deltas: dict[str, int] = {}
     index = 0
     is_whitelisted = sender_address in whitelisted_addresses
 
@@ -800,6 +843,7 @@ def update_credit_balances_transfer(
 
         # Add positive entries for recipient (one per expiration group)
         for entry_amount, entry_expiration in entries:
+            deltas[recipient_address] = deltas.get(recipient_address, 0) + entry_amount
             csv_rows.append(
                 _format_csv_row(
                     recipient_address,
@@ -825,6 +869,7 @@ def update_credit_balances_transfer(
         # Add negative entry for sender (unless sender is in whitelisted addresses)
         # (origin = recipient, provider = ALEPH, payment_method = credit_transfer)
         if not is_whitelisted:
+            deltas[sender_address] = deltas.get(sender_address, 0) - amount
             csv_rows.append(
                 _format_csv_row(
                     sender_address,
@@ -847,7 +892,7 @@ def update_credit_balances_transfer(
             )
             index += 1
 
-    _bulk_insert_credit_history(session, csv_rows)
+    _bulk_insert_credit_history(session, csv_rows, balance_deltas=deltas)
 
 
 def validate_credit_transfer_balance(

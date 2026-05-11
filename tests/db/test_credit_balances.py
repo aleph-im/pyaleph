@@ -3,10 +3,11 @@ import time
 from decimal import Decimal
 from typing import Any, Dict, List
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy import update as sql_update
 
 from aleph.db.accessors.balances import (
+    _apply_balance_deltas,
     count_address_credit_history,
     get_address_credit_history,
     get_consumed_credits_by_resource,
@@ -2488,3 +2489,358 @@ def test_cursor_pagination_nullable_sort_nulls_on_last_page(
         )
         assert len(all_refs) == 5
         assert len(set(all_refs)) == 5
+
+
+# ---------------------------------------------------------------------------
+# Eager running_balance maintenance
+# ---------------------------------------------------------------------------
+
+
+def test_credit_balance_model_exposes_running_balance(
+    session_factory: DbSessionFactory,
+):
+    """The new running_balance column is mapped on the ORM and is nullable."""
+    with session_factory() as session:
+        session.add(
+            AlephCreditBalanceDb(
+                address="0xrunning",
+                balance=0,
+                running_balance=42,
+            )
+        )
+        session.commit()
+        row = session.execute(
+            select(AlephCreditBalanceDb).where(
+                AlephCreditBalanceDb.address == "0xrunning"
+            )
+        ).scalar_one()
+        assert row.running_balance == 42
+
+        session.add(AlephCreditBalanceDb(address="0xnull", balance=0))
+        session.commit()
+        row2 = session.execute(
+            select(AlephCreditBalanceDb).where(AlephCreditBalanceDb.address == "0xnull")
+        ).scalar_one()
+        assert row2.running_balance is None
+
+
+def test_apply_balance_deltas_inserts_new_row(session_factory: DbSessionFactory):
+    """Applying a delta for an unknown address creates a new row with that delta."""
+    with session_factory() as session:
+        _apply_balance_deltas(session, {"0xfresh": 1234})
+        session.commit()
+        row = session.execute(
+            select(AlephCreditBalanceDb).where(
+                AlephCreditBalanceDb.address == "0xfresh"
+            )
+        ).scalar_one()
+        assert row.running_balance == 1234
+
+
+def test_apply_balance_deltas_increments_existing_row(
+    session_factory: DbSessionFactory,
+):
+    """Applying a delta for an existing row adds to its running_balance."""
+    with session_factory() as session:
+        session.add(
+            AlephCreditBalanceDb(address="0xseed", balance=0, running_balance=1000)
+        )
+        session.commit()
+        _apply_balance_deltas(session, {"0xseed": 250})
+        session.commit()
+        row = session.execute(
+            select(AlephCreditBalanceDb).where(AlephCreditBalanceDb.address == "0xseed")
+        ).scalar_one()
+        assert row.running_balance == 1250
+
+
+def test_apply_balance_deltas_handles_negative_delta(
+    session_factory: DbSessionFactory,
+):
+    """Negative deltas reduce running_balance, including below zero."""
+    with session_factory() as session:
+        session.add(
+            AlephCreditBalanceDb(address="0xspend", balance=0, running_balance=100)
+        )
+        session.commit()
+        _apply_balance_deltas(session, {"0xspend": -150})
+        session.commit()
+        row = session.execute(
+            select(AlephCreditBalanceDb).where(
+                AlephCreditBalanceDb.address == "0xspend"
+            )
+        ).scalar_one()
+        assert row.running_balance == -50
+
+
+def test_apply_balance_deltas_initialises_running_balance_when_null(
+    session_factory: DbSessionFactory,
+):
+    """A row whose running_balance is NULL (pre-backfill) gets initialised."""
+    with session_factory() as session:
+        session.add(
+            AlephCreditBalanceDb(address="0xnull2", balance=99, running_balance=None)
+        )
+        session.commit()
+        _apply_balance_deltas(session, {"0xnull2": 7})
+        session.commit()
+        row = session.execute(
+            select(AlephCreditBalanceDb).where(
+                AlephCreditBalanceDb.address == "0xnull2"
+            )
+        ).scalar_one()
+        assert row.running_balance == 7
+
+
+def test_apply_balance_deltas_no_op_on_empty(session_factory: DbSessionFactory):
+    """Empty mapping produces no SQL and no rows."""
+    with session_factory() as session:
+        _apply_balance_deltas(session, {})
+        session.commit()
+        count = session.execute(
+            select(func.count()).select_from(AlephCreditBalanceDb)
+        ).scalar_one()
+        assert count == 0
+
+
+def test_apply_balance_deltas_skips_zero_delta(session_factory: DbSessionFactory):
+    """A delta of zero does not create or modify a row."""
+    with session_factory() as session:
+        _apply_balance_deltas(session, {"0xzero": 0})
+        session.commit()
+        row = session.execute(
+            select(AlephCreditBalanceDb).where(AlephCreditBalanceDb.address == "0xzero")
+        ).scalar_one_or_none()
+        assert row is None
+
+
+def test_distribution_updates_running_balance(
+    session_factory: DbSessionFactory,
+):
+    """A distribution writes credits to credit_history AND increments running_balance."""
+    credits_list = [
+        {
+            "address": "0xrecipient1",
+            "amount": 100,
+            "price": "0.1",
+            "tx_hash": "0xtx1",
+            "provider": "test_provider",
+        },
+        {
+            "address": "0xrecipient2",
+            "amount": 250,
+            "price": "0.1",
+            "tx_hash": "0xtx1",
+            "provider": "test_provider",
+        },
+    ]
+    message_timestamp = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+
+    with session_factory() as session:
+        update_credit_balances_distribution(
+            session=session,
+            credits_list=credits_list,
+            token="ALEPH",
+            chain="ETH",
+            message_hash="msg_dist_eager_1",
+            message_timestamp=message_timestamp,
+        )
+        session.commit()
+
+        row1 = session.execute(
+            select(AlephCreditBalanceDb).where(
+                AlephCreditBalanceDb.address == "0xrecipient1"
+            )
+        ).scalar_one()
+        row2 = session.execute(
+            select(AlephCreditBalanceDb).where(
+                AlephCreditBalanceDb.address == "0xrecipient2"
+            )
+        ).scalar_one()
+        assert row1.running_balance == 100 * 10000
+        assert row2.running_balance == 250 * 10000
+
+
+def test_distribution_with_repeated_address_sums_deltas(
+    session_factory: DbSessionFactory,
+):
+    """Two entries to the same address in one distribution add up."""
+    credits_list = [
+        {
+            "address": "0xsame",
+            "amount": 100,
+            "price": "0.1",
+            "tx_hash": "0xtx",
+            "provider": "p",
+        },
+        {
+            "address": "0xsame",
+            "amount": 50,
+            "price": "0.1",
+            "tx_hash": "0xtx",
+            "provider": "p",
+        },
+    ]
+    message_timestamp = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+
+    with session_factory() as session:
+        update_credit_balances_distribution(
+            session=session,
+            credits_list=credits_list,
+            token="ALEPH",
+            chain="ETH",
+            message_hash="msg_dist_eager_repeat",
+            message_timestamp=message_timestamp,
+        )
+        session.commit()
+
+        row = session.execute(
+            select(AlephCreditBalanceDb).where(AlephCreditBalanceDb.address == "0xsame")
+        ).scalar_one()
+        assert row.running_balance == 150 * 10000
+
+
+def test_expense_updates_running_balance(session_factory: DbSessionFactory):
+    """An expense decrements running_balance, even when no row pre-exists."""
+    credits_list = [
+        {"address": "0xspender", "amount": 75, "ref": "exp_ref"},
+    ]
+    message_timestamp = dt.datetime(2023, 1, 2, 12, 0, 0, tzinfo=dt.timezone.utc)
+
+    with session_factory() as session:
+        update_credit_balances_expense(
+            session=session,
+            credits_list=credits_list,
+            message_hash="msg_expense_eager_1",
+            message_timestamp=message_timestamp,
+        )
+        session.commit()
+
+        row = session.execute(
+            select(AlephCreditBalanceDb).where(
+                AlephCreditBalanceDb.address == "0xspender"
+            )
+        ).scalar_one()
+        assert row.running_balance == -75 * 10000
+
+
+def test_expense_decrements_existing_running_balance(
+    session_factory: DbSessionFactory,
+):
+    """An expense applied after a distribution leaves the correct net running_balance."""
+    address = "0xnet"
+    dist_ts = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+    exp_ts = dt.datetime(2023, 1, 2, 12, 0, 0, tzinfo=dt.timezone.utc)
+
+    with session_factory() as session:
+        update_credit_balances_distribution(
+            session=session,
+            credits_list=[
+                {
+                    "address": address,
+                    "amount": 1000,
+                    "price": "0.1",
+                    "tx_hash": "0xt",
+                    "provider": "p",
+                }
+            ],
+            token="ALEPH",
+            chain="ETH",
+            message_hash="msg_dist_net",
+            message_timestamp=dist_ts,
+        )
+        update_credit_balances_expense(
+            session=session,
+            credits_list=[{"address": address, "amount": 300, "ref": "r"}],
+            message_hash="msg_exp_net",
+            message_timestamp=exp_ts,
+        )
+        session.commit()
+
+        row = session.execute(
+            select(AlephCreditBalanceDb).where(AlephCreditBalanceDb.address == address)
+        ).scalar_one()
+        assert row.running_balance == (1000 - 300) * 10000
+
+
+def test_transfer_updates_running_balance_for_sender_and_recipient(
+    session_factory: DbSessionFactory,
+):
+    """A transfer subtracts from the sender's running_balance and adds to recipients."""
+    sender = "0xtsender"
+    recipient = "0xtrecipient"
+
+    dist_ts = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+    transfer_ts = dt.datetime(2023, 1, 3, 12, 0, 0, tzinfo=dt.timezone.utc)
+
+    with session_factory() as session:
+        update_credit_balances_distribution(
+            session=session,
+            credits_list=[
+                {
+                    "address": sender,
+                    "amount": 500,
+                    "price": "1.0",
+                    "tx_hash": "0xfund",
+                    "provider": "p",
+                }
+            ],
+            token="ALEPH",
+            chain="ETH",
+            message_hash="msg_seed_transfer",
+            message_timestamp=dist_ts,
+        )
+
+        update_credit_balances_transfer(
+            session=session,
+            credits_list=[{"address": recipient, "amount": 200}],
+            sender_address=sender,
+            whitelisted_addresses=[],
+            message_hash="msg_transfer_eager",
+            message_timestamp=transfer_ts,
+        )
+        session.commit()
+
+        sender_row = session.execute(
+            select(AlephCreditBalanceDb).where(AlephCreditBalanceDb.address == sender)
+        ).scalar_one()
+        recipient_row = session.execute(
+            select(AlephCreditBalanceDb).where(
+                AlephCreditBalanceDb.address == recipient
+            )
+        ).scalar_one()
+
+        assert sender_row.running_balance == (500 - 200) * 10000
+        assert recipient_row.running_balance == 200 * 10000
+
+
+def test_transfer_from_whitelisted_only_credits_recipient(
+    session_factory: DbSessionFactory,
+):
+    """Whitelisted senders are not debited; recipient still receives."""
+    sender = "0xwhitelisted"
+    recipient = "0xrecv_w"
+    transfer_ts = dt.datetime(2023, 1, 3, 12, 0, 0, tzinfo=dt.timezone.utc)
+
+    with session_factory() as session:
+        update_credit_balances_transfer(
+            session=session,
+            credits_list=[{"address": recipient, "amount": 75}],
+            sender_address=sender,
+            whitelisted_addresses=[sender],
+            message_hash="msg_wl_transfer",
+            message_timestamp=transfer_ts,
+        )
+        session.commit()
+
+        sender_row = session.execute(
+            select(AlephCreditBalanceDb).where(AlephCreditBalanceDb.address == sender)
+        ).scalar_one_or_none()
+        recipient_row = session.execute(
+            select(AlephCreditBalanceDb).where(
+                AlephCreditBalanceDb.address == recipient
+            )
+        ).scalar_one()
+
+        assert sender_row is None
+        assert recipient_row.running_balance == 75 * 10000
