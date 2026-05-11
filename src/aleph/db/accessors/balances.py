@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from aleph_message.models import Chain
 from sqlalchemy import func, select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.sql import Select
 
 from aleph.db.models import AlephBalanceDb, AlephCreditBalanceDb, AlephCreditHistoryDb
@@ -16,6 +17,7 @@ from aleph.toolkit.constants import (
     CREDIT_PRECISION_CUTOFF_TIMESTAMP,
     CREDIT_PRECISION_MULTIPLIER,
 )
+from aleph.toolkit.infinity import INFINITY
 from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.db_session import DbSession
 from aleph.types.sort_order import SortByCreditHistory, SortOrder
@@ -228,268 +230,214 @@ def get_updated_balance_accounts(session: DbSession, last_update: dt.datetime):
 
 
 @dataclass
-class PositiveCredit:
-    amount: int
-    expiration_date: Optional[dt.datetime]
-    timestamp: dt.datetime
-    remaining: int
-
-
-@dataclass
-class NegativeAmount:
-    amount: int
-    timestamp: dt.datetime
-
-
-@dataclass
 class CreditBalanceDetail:
     expiration_date: Optional[dt.datetime]
     amount: int
 
 
-def _apply_fifo_consumption(
-    session: DbSession, address: str, now: Optional[dt.datetime] = None
-) -> list[PositiveCredit]:
-    """
-    Fetch all positive credits for the address and apply all existing debits via FIFO.
+def _bucket_expiration(expiration_date: Optional[dt.datetime]) -> dt.datetime:
+    """Map an optional API-level expiration to the DB sentinel for the bucket PK."""
+    return expiration_date if expiration_date is not None else INFINITY
 
-    Returns the list of PositiveCredit objects with `.remaining` reflecting how many
-    credits are still unconsumed after all past expenses/transfers. Expired credits are
-    included in the returned list — callers are responsible for filtering by expiration.
-    """
-    now = now if now is not None else utc_now()
 
-    records = (
+def _api_expiration(expiration_date: dt.datetime) -> Optional[dt.datetime]:
+    """Inverse of _bucket_expiration: convert the sentinel back to None for callers."""
+    return None if expiration_date == INFINITY else expiration_date
+
+
+def _apply_grant_bucket(
+    session: DbSession,
+    address: str,
+    amount: int,
+    expiration_date: Optional[dt.datetime],
+) -> None:
+    """Add ``amount`` (positive) to the bucket for ``(address, expiration_date)``.
+
+    Inserts the bucket if missing, increments it otherwise. ``amount`` may be
+    negative to undo a previous grant, but consumption of expenses/transfers
+    should go through ``_consume_address_credits`` so the soonest-expiring
+    bucket is drained first.
+    """
+    bucket_exp = _bucket_expiration(expiration_date)
+    stmt = pg_insert(AlephCreditBalanceDb).values(
+        address=address,
+        expiration_date=bucket_exp,
+        amount=amount,
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[
+            AlephCreditBalanceDb.address,
+            AlephCreditBalanceDb.expiration_date,
+        ],
+        set_={
+            "amount": AlephCreditBalanceDb.amount + stmt.excluded.amount,
+            "last_update": func.now(),
+        },
+    )
+    session.execute(stmt)
+
+    # Tell the expiration task that something may need attention. NOTIFY is
+    # transactional: Postgres queues the payload and only delivers it to
+    # LISTENers when the surrounding transaction commits, so the wake fires
+    # iff the bucket actually lands. We only signal for finite expirations;
+    # the sentinel ``infinity`` never fires.
+    if bucket_exp != INFINITY:
+        session.execute(text("NOTIFY credit_expiration_changed"))
+
+
+def _consume_address_credits(
+    session: DbSession,
+    address: str,
+    amount: int,
+    now: Optional[dt.datetime] = None,
+) -> List[Tuple[int, dt.datetime]]:
+    """Drain ``amount`` credits from the address's still-valid buckets, soonest
+    expiry first. Returns a list of ``(consumed_amount, source_bucket_expiration)``
+    in consumption order. The bucket expiration is the DB-stored value (with
+    sentinel for "no expiration"); callers wanting the API-shaped value should
+    pass it through ``_api_expiration``.
+
+    ``now`` is the validity cutoff: only buckets whose ``expiration_date`` is
+    strictly after ``now`` are eligible to be drained. Production callers pass
+    the expense / transfer ``message_timestamp`` here so a bucket that was
+    valid at the moment the message was signed remains spendable even if it
+    has since expired in wall-clock terms. This also keeps the eager-write
+    path consistent with the repair replay, which uses the historical
+    ``message_timestamp`` as the cutoff. ``now`` defaults to ``func.now()``
+    (evaluated server-side) for callers that genuinely mean "right now".
+
+    Bucket rows are locked ``FOR UPDATE`` to serialise concurrent writers for
+    the same address. Buckets are not deleted when they reach zero; the
+    expiration task and the next read both treat zero-amount buckets as inert.
+
+    If ``amount`` exceeds the available credit, the leftover is silently
+    dropped (matches the prior FIFO behaviour). Going negative is prevented.
+    """
+    if amount <= 0:
+        return []
+
+    cutoff = now if now is not None else func.now()
+    buckets = (
         session.execute(
-            select(AlephCreditHistoryDb)
-            .where(AlephCreditHistoryDb.address == address)
-            .order_by(AlephCreditHistoryDb.message_timestamp.asc())
+            select(AlephCreditBalanceDb)
+            .where(
+                AlephCreditBalanceDb.address == address,
+                AlephCreditBalanceDb.expiration_date > cutoff,
+                AlephCreditBalanceDb.amount > 0,
+            )
+            .order_by(AlephCreditBalanceDb.expiration_date.asc())
+            .with_for_update()
         )
         .scalars()
         .all()
     )
 
-    positive_credits: list[PositiveCredit] = []
-    negative_amounts: list[NegativeAmount] = []
-
-    for record in records:
-        if record.amount > 0:
-            positive_credits.append(
-                PositiveCredit(
-                    amount=record.amount,
-                    expiration_date=record.expiration_date,
-                    timestamp=record.message_timestamp,
-                    remaining=record.amount,
-                )
-            )
-        else:
-            negative_amounts.append(
-                NegativeAmount(
-                    amount=abs(record.amount), timestamp=record.message_timestamp
-                )
-            )
-
-    for expense in negative_amounts:
-        remaining_expense = expense.amount
-        for credit in positive_credits:
-            if remaining_expense <= 0:
-                break
-            expense_valid = (
-                credit.expiration_date is None
-                or expense.timestamp < credit.expiration_date
-            )
-            if expense_valid and credit.remaining > 0:
-                consumed = min(credit.remaining, remaining_expense)
-                credit.remaining -= consumed
-                remaining_expense -= consumed
-
-    return positive_credits
+    consumed_log: List[Tuple[int, dt.datetime]] = []
+    remaining = amount
+    for bucket in buckets:
+        if remaining <= 0:
+            break
+        take = min(bucket.amount, remaining)
+        bucket.amount -= take
+        remaining -= take
+        consumed_log.append((take, bucket.expiration_date))
+    session.flush()
+    return consumed_log
 
 
 def _compute_transfer_entries_by_expiration(
-    remaining_credits: list[PositiveCredit],
-    amount: int,
+    consumed_buckets: List[Tuple[int, dt.datetime]],
     requested_expiration: Optional[dt.datetime],
-    now: dt.datetime,
-) -> list[tuple[int, Optional[dt.datetime]]]:
+) -> List[Tuple[int, Optional[dt.datetime]]]:
+    """For each consumed source bucket, produce the matching recipient entry,
+    capping the recipient's expiration at the more-restrictive of source vs.
+    requested. Adjacent entries with the same effective expiration are merged
+    so a recipient never sees more granularity than necessary.
+
+    The cap rule (``min(source, requested)``) prevents an attacker re-transferring
+    expiring credits with a longer requested expiration to bypass the original
+    expiry. Whitelisted senders skip this path entirely (see caller).
     """
-    Simulate consuming `amount` from `remaining_credits` (FIFO order) and return a list
-    of (portion_amount, effective_expiration) pairs.
+    result: List[Tuple[int, Optional[dt.datetime]]] = []
+    for consumed, source_exp in consumed_buckets:
+        api_source_exp = _api_expiration(source_exp)
 
-    Credits are consumed in the same FIFO order used by the balance calculation, so the
-    expiration assignment for the recipient is consistent with the sender's accounting.
-
-    The effective expiration for each portion is:
-      min(source_credit.expiration_date, requested_expiration)
-    where None means no expiration.
-
-    Adjacent portions with the same effective expiration are merged into one entry.
-    This prevents a re-transfer from extending or removing the original expiration
-    constraint placed on the source credits.
-    """
-    result: list[tuple[int, Optional[dt.datetime]]] = []
-    remaining_to_consume = amount
-
-    for credit in remaining_credits:
-        if remaining_to_consume <= 0:
-            break
-        if credit.expiration_date is not None and credit.expiration_date <= now:
-            continue
-        if credit.remaining <= 0:
-            continue
-
-        consumed = min(credit.remaining, remaining_to_consume)
-        remaining_to_consume -= consumed
-
-        # Effective expiration: most restrictive of source and requested
-        if credit.expiration_date is not None:
-            effective_exp: Optional[dt.datetime] = (
-                credit.expiration_date
-                if requested_expiration is None
-                else min(credit.expiration_date, requested_expiration)
-            )
+        if api_source_exp is None:
+            effective_exp: Optional[dt.datetime] = requested_expiration
+        elif requested_expiration is None:
+            effective_exp = api_source_exp
         else:
-            effective_exp = requested_expiration
+            effective_exp = min(api_source_exp, requested_expiration)
 
-        # Merge with previous entry if same effective expiration
         if result and result[-1][1] == effective_exp:
             result[-1] = (result[-1][0] + consumed, effective_exp)
         else:
             result.append((consumed, effective_exp))
-
     return result
 
 
-def _calculate_credit_balance_fifo(
-    session: DbSession, address: str, now: Optional[dt.datetime] = None
-) -> int:
-    """
-    Calculate credit balance using FIFO consumption strategy.
+def _credit_balance_amount_expr():
+    """Reusable SQL expression: per-address sum of non-expired bucket amounts.
 
-    This function implements the core FIFO logic:
-    1. Get all positive credits (ordered by message_timestamp)
-    2. Get all negative amounts (expenses/transfers)
-    3. Apply negative amounts to oldest credits first, but only if the expense
-       occurred before the credit's expiration date
-    4. Return remaining balance considering current expiration status
+    Uses ``func.now()`` so the cutoff is evaluated server-side at statement
+    execution time rather than at expression-construction time in Python.
     """
-    now = now if now is not None else utc_now()
-    positive_credits = _apply_fifo_consumption(session, address, now)
-    total_balance = sum(
-        c.remaining
-        for c in positive_credits
-        if c.expiration_date is None or c.expiration_date > now
+    return func.coalesce(
+        func.sum(AlephCreditBalanceDb.amount).filter(
+            AlephCreditBalanceDb.expiration_date > func.now()
+        ),
+        0,
     )
-    return max(0, total_balance)
-
-
-def get_credit_balance_with_details(
-    session: DbSession, address: str, now: Optional[dt.datetime] = None
-) -> Tuple[int, List[CreditBalanceDetail]]:
-    """
-    Calculate credit balance with a breakdown by expiration date.
-
-    Returns (total_balance, details) where details is a list of
-    CreditBalanceDetail grouped by expiration_date, sorted with
-    non-expiring (None) first, then by expiration_date ascending.
-
-    Always recalculates (bypasses cache) since details are not cached.
-    """
-    now = now if now is not None else utc_now()
-    positive_credits = _apply_fifo_consumption(session, address, now)
-
-    details_map: Dict[Optional[dt.datetime], int] = {}
-    total_balance = 0
-    for credit in positive_credits:
-        if credit.expiration_date is None or credit.expiration_date > now:
-            if credit.remaining > 0:
-                total_balance += credit.remaining
-                key = credit.expiration_date
-                details_map[key] = details_map.get(key, 0) + credit.remaining
-
-    # Sort: non-expiring first (None), then by expiration_date ascending
-    details = [
-        CreditBalanceDetail(expiration_date=k, amount=v)
-        for k, v in sorted(
-            details_map.items(),
-            key=lambda x: (x[0] is not None, x[0] or dt.datetime.min),
-        )
-    ]
-
-    return max(0, total_balance), details
 
 
 def get_credit_balance(
     session: DbSession, address: str, now: Optional[dt.datetime] = None
 ) -> int:
+    """Sum of non-expired bucket amounts for ``address``, floored at zero.
+
+    Pure read: no FIFO walk, no write-back. The bucket cache is maintained by
+    the credit_history writers and by the expiration task.
     """
-    Get credit balance using lazy recalculation strategy.
-
-    1. Check if cached balance exists in credit_balances table
-    2. Check if credit_history has newer entries than cached balance
-    3. Check if any credits have expiration dates that occurred after the cache's last update
-    4. If recalculation is needed, recalculate using FIFO and update cache
-    5. Return cached balance
-    """
-
-    now = now if now is not None else utc_now()
-
-    # Get the timestamp of the most recent credit history entry for this address
-    latest_history_timestamp = session.execute(
-        select(func.max(AlephCreditHistoryDb.last_update)).where(
-            AlephCreditHistoryDb.address == address
+    cutoff = now if now is not None else func.now()
+    result = session.execute(
+        select(func.coalesce(func.sum(AlephCreditBalanceDb.amount), 0)).where(
+            AlephCreditBalanceDb.address == address,
+            AlephCreditBalanceDb.expiration_date > cutoff,
         )
     ).scalar()
+    return max(0, int(result or 0))
 
-    # If no history exists, balance is 0
-    if latest_history_timestamp is None:
-        return 0
 
-    # Get cached balance if it exists
-    cached_balance = session.execute(
-        select(AlephCreditBalanceDb).where(AlephCreditBalanceDb.address == address)
-    ).scalar_one_or_none()
+def get_credit_balance_with_details(
+    session: DbSession, address: str, now: Optional[dt.datetime] = None
+) -> Tuple[int, List[CreditBalanceDetail]]:
+    """Per-expiration-date breakdown of an address's non-expired credits.
 
-    # Check if recalculation is needed
-    needs_recalculation = (
-        cached_balance is None or cached_balance.last_update < latest_history_timestamp
-    )
+    Returns ``(total, details)`` where details are sorted with the
+    non-expiring bucket first (sentinel mapped back to ``None``), then by
+    expiration ascending. Zero-amount buckets are filtered out.
+    """
+    cutoff = now if now is not None else func.now()
+    rows = session.execute(
+        select(AlephCreditBalanceDb.expiration_date, AlephCreditBalanceDb.amount).where(
+            AlephCreditBalanceDb.address == address,
+            AlephCreditBalanceDb.expiration_date > cutoff,
+            AlephCreditBalanceDb.amount > 0,
+        )
+    ).all()
 
-    # Also check if any credits have expiration dates that occurred after the cache's last update
-    # This handles the case where credits expired since the last cache update
-    if not needs_recalculation and cached_balance is not None:
-        # Check for any credits with expiration dates between cache last_update and now
-        earliest_expiration_after_cache = session.execute(
-            select(func.min(AlephCreditHistoryDb.expiration_date)).where(
-                (AlephCreditHistoryDb.address == address)
-                & (AlephCreditHistoryDb.expiration_date.isnot(None))
-                & (AlephCreditHistoryDb.expiration_date > cached_balance.last_update)
-                & (AlephCreditHistoryDb.expiration_date <= now)
-            )
-        ).scalar()
+    pairs = [(row.expiration_date, int(row.amount)) for row in rows]
+    total = max(0, sum(amount for _, amount in pairs))
 
-        needs_recalculation = earliest_expiration_after_cache is not None
-
-    if needs_recalculation:
-        # Recalculate balance using FIFO
-        new_balance = _calculate_credit_balance_fifo(session, address, now)
-
-        if cached_balance is None:
-            # Create new cache entry
-            session.add(
-                AlephCreditBalanceDb(
-                    address=address, balance=new_balance, last_update=now
-                )
-            )
-        else:
-            # Update existing cache entry
-            cached_balance.balance = new_balance
-            cached_balance.last_update = now
-
-        session.flush()
-        return new_balance
-
-    return cached_balance.balance if cached_balance else 0
+    details = [
+        CreditBalanceDetail(expiration_date=_api_expiration(exp), amount=amount)
+        for exp, amount in sorted(
+            pairs,
+            # Sentinel (no expiration) first, then by expiration ascending.
+            key=lambda x: (x[0] != INFINITY, x[0]),
+        )
+    ]
+    return total, details
 
 
 def get_credit_balances(
@@ -500,16 +448,17 @@ def get_credit_balances(
     after_address: Optional[str] = None,
     cursor_mode: bool = False,
 ) -> list[tuple[str, int]]:
+    """Paginated list of (address, balance) across all addresses with a
+    positive non-expired sum.
     """
-    Get paginated credit balances for all addresses.
-    Uses the cached balances from the credit_balances table.
-    """
-    query = select(AlephCreditBalanceDb.address, AlephCreditBalanceDb.balance)
+    balance_expr = _credit_balance_amount_expr().label("balance")
 
-    if min_balance > 0:
-        query = query.filter(AlephCreditBalanceDb.balance >= min_balance)
-
-    query = query.order_by(AlephCreditBalanceDb.address.asc())
+    query = (
+        select(AlephCreditBalanceDb.address, balance_expr)
+        .group_by(AlephCreditBalanceDb.address)
+        .having(balance_expr >= max(min_balance, 1))
+        .order_by(AlephCreditBalanceDb.address.asc())
+    )
 
     if after_address is not None:
         query = query.where(AlephCreditBalanceDb.address > after_address)
@@ -522,22 +471,20 @@ def get_credit_balances(
         if pagination:
             query = query.limit(pagination)
 
-    # Return results in the expected format (address, credits)
-    results = session.execute(query).all()
-    return [(row.address, row.balance) for row in results]
+    return [(row.address, int(row.balance)) for row in session.execute(query).all()]
 
 
 def count_credit_balances(session: DbSession, min_balance: int = 0) -> int:
-    """
-    Count addresses with credit balances.
-    Uses the cached balances from the credit_balances table.
-    """
-    query = select(func.count(AlephCreditBalanceDb.address))
-
-    if min_balance > 0:
-        query = query.filter(AlephCreditBalanceDb.balance >= min_balance)
-
-    return session.execute(query).scalar_one()
+    """Count of addresses with a positive non-expired sum (or matching
+    ``min_balance``)."""
+    balance_expr = _credit_balance_amount_expr().label("balance")
+    sub = (
+        select(AlephCreditBalanceDb.address)
+        .group_by(AlephCreditBalanceDb.address)
+        .having(balance_expr >= max(min_balance, 1))
+        .subquery()
+    )
+    return session.execute(select(func.count()).select_from(sub)).scalar_one()
 
 
 def _format_csv_row(*fields) -> str:
@@ -624,11 +571,8 @@ def update_credit_balances_distribution(
     message_hash: str,
     message_timestamp: dt.datetime,
 ) -> None:
-    """
-    Updates credit balances for distribution messages (aleph_credit_distribution).
-
-    Distribution messages include all fields like price, bonus_amount, tx_hash, provider,
-    payment_method, token, chain, and expiration_date.
+    """Apply a distribution message: grant each entry's bucket and append the
+    matching credit_history rows.
     """
 
     last_update = utc_now()
@@ -642,19 +586,19 @@ def update_credit_balances_distribution(
         tx_hash = credit_entry["tx_hash"]
         provider = credit_entry["provider"]
 
-        # Extract optional fields from each credit entry
         expiration_timestamp = credit_entry.get("expiration") or None
         origin = credit_entry.get("origin", "")
         origin_ref = credit_entry.get("ref", "")
         payment_method = credit_entry.get("payment_method", "")
         bonus_amount = credit_entry.get("bonus_amount", "")
 
-        # Convert expiration timestamp to datetime
         expiration_date = (
             dt.datetime.fromtimestamp(expiration_timestamp / 1000, tz=dt.timezone.utc)
             if expiration_timestamp is not None
             else None
         )
+
+        _apply_grant_bucket(session, address, amount, expiration_date)
 
         csv_rows.append(
             _format_csv_row(
@@ -686,15 +630,12 @@ def update_credit_balances_expense(
     message_hash: str,
     message_timestamp: dt.datetime,
 ) -> None:
-    """
-    Updates credit balances for expense messages (aleph_credit_expense).
+    """Apply an expense message: drain each entry's amount from the soonest-
+    expiring non-expired buckets, then append the matching credit_history rows.
 
-    Expense messages have negative amounts and can include:
-    - execution_id (mapped to origin)
-    - node_id (mapped to tx_hash)
-    - price (mapped to price)
-    - time (skipped for now)
-    - ref (mapped to origin_ref)
+    The history row's negative ``amount`` reflects the message intent. If the
+    address is under-funded, fewer credits are actually consumed (buckets cannot
+    go negative), matching the prior FIFO behaviour.
     """
 
     last_update = utc_now()
@@ -703,19 +644,18 @@ def update_credit_balances_expense(
     for index, credit_entry in enumerate(credits_list):
         address = credit_entry["address"]
         raw_amount = int(credit_entry["amount"])
-        amount = -_apply_credit_precision_multiplier(raw_amount, message_timestamp)
+        amount = _apply_credit_precision_multiplier(raw_amount, message_timestamp)
         origin_ref = credit_entry.get("ref", "")
-
-        # Map new fields
         origin = credit_entry.get("execution_id", "")
         tx_hash = credit_entry.get("node_id", "")
         price = credit_entry.get("price", "")
-        # Skip time field for now
+
+        _consume_address_credits(session, address, amount, now=message_timestamp)
 
         csv_rows.append(
             _format_csv_row(
                 address,
-                amount,
+                -amount,
                 message_hash,
                 index,
                 message_timestamp,
@@ -744,21 +684,13 @@ def update_credit_balances_transfer(
     message_hash: str,
     message_timestamp: dt.datetime,
 ) -> None:
-    """
-    Updates credit balances for transfer messages (aleph_credit_transfer).
+    """Apply a transfer message: drain the sender's buckets (soonest-expiring
+    first), grant the resulting amounts to the recipient(s) with each portion
+    capped at ``min(source_expiration, requested_expiration)``, and append the
+    matching credit_history rows.
 
-    Transfer messages involve two entries per transfer:
-    - One or more positive entries for the recipient (adding credits)
-    - One negative entry for the sender (subtracting credits)
-
-    When a non-whitelisted sender re-transfers credits they received with an expiration
-    date, the recipient's credits are capped at the original expiration — preventing
-    bypass of expiration constraints through re-transfers. If the sender's credits have
-    mixed expirations, multiple positive entries are created for the recipient (one per
-    expiration group).
-
-    Special case: If sender is in the whitelisted addresses, only add credits to recipient
-    using the requested expiration as-is (whitelisted senders create credits from nothing).
+    Whitelisted senders create credits from nothing: the sender is not debited
+    and the recipient is granted ``amount`` with the requested expiration as-is.
     """
 
     last_update = utc_now()
@@ -766,18 +698,12 @@ def update_credit_balances_transfer(
     index = 0
     is_whitelisted = sender_address in whitelisted_addresses
 
-    # Compute sender's remaining credits once for all entries in this transfer
-    sender_remaining: list[PositiveCredit] = []
-    if not is_whitelisted:
-        sender_remaining = _apply_fifo_consumption(session, sender_address, last_update)
-
     for credit_entry in credits_list:
         recipient_address = credit_entry["address"]
         raw_amount = int(credit_entry["amount"])
         amount = _apply_credit_precision_multiplier(raw_amount, message_timestamp)
         expiration_timestamp = credit_entry.get("expiration") or None
 
-        # Convert expiration timestamp to datetime
         requested_expiration = (
             dt.datetime.fromtimestamp(expiration_timestamp / 1000, tz=dt.timezone.utc)
             if expiration_timestamp is not None
@@ -785,21 +711,29 @@ def update_credit_balances_transfer(
         )
 
         if is_whitelisted:
-            # Whitelisted senders are not constrained by source credits
-            entries: list[tuple[int, Optional[dt.datetime]]] = [
+            entries: List[Tuple[int, Optional[dt.datetime]]] = [
                 (amount, requested_expiration)
             ]
         else:
-            entries = _compute_transfer_entries_by_expiration(
-                sender_remaining, amount, requested_expiration, last_update
+            consumed = _consume_address_credits(
+                session, sender_address, amount, now=message_timestamp
             )
-            # Fallback for edge cases where sender credits are not tracked
-            # (e.g. whitelisted distributions not recorded in history)
+            entries = _compute_transfer_entries_by_expiration(
+                consumed, requested_expiration
+            )
+            # Production transfers are gated by validate_credit_transfer_balance,
+            # so consumed should sum to ``amount``. Fall back to a single
+            # ``(amount, requested_expiration)`` entry whenever it doesn't (under-
+            # funded test scenarios or zero-amount transfers) so the recipient
+            # still receives a history row matching the message intent. The
+            # bucket grant below is a no-op for zero-amount entries.
             if not entries:
                 entries = [(amount, requested_expiration)]
 
-        # Add positive entries for recipient (one per expiration group)
         for entry_amount, entry_expiration in entries:
+            _apply_grant_bucket(
+                session, recipient_address, entry_amount, entry_expiration
+            )
             csv_rows.append(
                 _format_csv_row(
                     recipient_address,
@@ -822,8 +756,6 @@ def update_credit_balances_transfer(
             )
             index += 1
 
-        # Add negative entry for sender (unless sender is in whitelisted addresses)
-        # (origin = recipient, provider = ALEPH, payment_method = credit_transfer)
         if not is_whitelisted:
             csv_rows.append(
                 _format_csv_row(

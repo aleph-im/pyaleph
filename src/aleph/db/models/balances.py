@@ -70,10 +70,20 @@ class AlephCreditHistoryDb(Base):
 
 
 class AlephCreditBalanceDb(Base):
+    """Eagerly-maintained credit balance cache, one row per (address, expiration_date).
+
+    For credits without an expiration, ``aleph.toolkit.infinity.INFINITY``
+    (PG ``'infinity'::timestamptz``) is used so the primary key columns can
+    stay NOT NULL while reads still treat the bucket as never expiring.
+    """
+
     __tablename__ = "credit_balances"
 
-    address: Mapped[str] = mapped_column(String, primary_key=True, index=True)
-    balance: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    address: Mapped[str] = mapped_column(String, primary_key=True)
+    expiration_date: Mapped[dt.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), primary_key=True
+    )
+    amount: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     last_update: Mapped[dt.datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,

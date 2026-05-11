@@ -36,6 +36,7 @@ from aleph.network import listener_tasks
 from aleph.repair import repair_node
 from aleph.services import p2p
 from aleph.services.cache.node_cache import NodeCache
+from aleph.services.credit_expiration import CreditExpirationTask
 from aleph.services.ipfs import IpfsService
 from aleph.services.keys import generate_keypair, save_keys
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
@@ -223,6 +224,13 @@ async def main(args: List[str]) -> None:
         LOGGER.debug("Initializing cron job task")
         tasks.append(cron_job_task(config=config, cron_job=cron_job))
         LOGGER.debug("Initialized cron job task")
+
+        LOGGER.debug("Initializing credit expiration task")
+        credit_expiration = CreditExpirationTask(
+            session_factory=session_factory, config=config
+        )
+        tasks.append(credit_expiration.run())
+        LOGGER.debug("Initialized credit expiration task")
 
         LOGGER.debug("Running event loop")
         await asyncio.gather(*tasks)

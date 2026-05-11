@@ -3,7 +3,7 @@ import time
 from decimal import Decimal
 from typing import Any, Dict, List
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy import update as sql_update
 
 from aleph.db.accessors.balances import (
@@ -618,19 +618,24 @@ def test_balance_fix_doesnt_affect_valid_credits(session_factory: DbSessionFacto
         assert balance > 0
 
 
-def test_fifo_scenario_1_non_expiring_first_equals_0_remaining(
+def test_fifo_scenario_1_non_expiring_first_equals_500_remaining(
     session_factory: DbSessionFactory,
 ):
     """
-    FIFO Scenario 1: Non-expiring credits received FIRST → Result: 0 remaining
+    Sort-by-expiration Scenario 1: non-expiring grant FIRST, expiring grant SECOND.
 
     Setup:
     - 1000 non-expiring credits (received FIRST at T1)
     - 1000 expiring credits (received SECOND at T2, expire at T4)
     - 1500 expense at T3 (before expiration at T4)
 
-    FIFO Consumption: 1000 (non-expiring) + 500 (expiring) = 1500 total consumed
-    Final Balance: 0 (non-expiring remaining) + 500 (expiring remaining but expired) = 0
+    Sort-by-expiration consumption: the expiring bucket has the earlier
+    expiration_date and is drained first (1000), then 500 from the non-expiring
+    bucket. After expiration the expiring bucket is dropped by the cron, so the
+    final balance is the 500 surviving in the non-expiring bucket.
+
+    Under the previous sort-by-issuance FIFO this test asserted 0; the policy
+    change makes the user lose fewer credits to expiration.
     """
 
     # Use fixed timestamps before the credit precision cutoff (2026-02-02)
@@ -721,8 +726,9 @@ def test_fifo_scenario_1_non_expiring_first_equals_0_remaining(
             session, "0xcorner_case_user", now_time
         )
 
-        # Expected: 0 remaining (all non-expiring consumed, expiring remainder expired)
-        expected_balance = 0
+        # Expected: 500 * 10000 remaining in the non-expiring bucket, because
+        # the expiring bucket was drained first under sort-by-expiration.
+        expected_balance = 500 * 10000
         assert (
             balance_after_expiration == expected_balance
         ), f"Scenario 1: Expected {expected_balance} remaining credits, got {balance_after_expiration}"
@@ -838,97 +844,39 @@ def test_fifo_scenario_2_expiring_first_equals_500_remaining(
         ), f"Scenario 2: Expected {expected_balance} remaining credits, got {balance_after_expiration}"
 
 
-def test_cache_invalidation_on_credit_expiration(session_factory: DbSessionFactory):
+def test_expired_credits_filtered_out_by_read(session_factory: DbSessionFactory):
+    """A bucket whose ``expiration_date`` is in the past is not counted by
+    ``get_credit_balance``. This replaces the prior cache-invalidation test:
+    there is no lazy recompute; the read query just filters by
+    ``expiration_date > now()``.
     """
-    Test that cached balances are recalculated when credits expire.
-
-    This test covers the bug where cached balances were not being recalculated
-    when credits expired after the cache was last updated.
-
-    Bug scenario:
-    1. Credit with expiration date X is added at time T1
-    2. Cache is calculated at time T2 (where T1 < T2 < X)
-    3. Current time is T3 (where T2 < X < T3, so credit has expired)
-    4. Without the fix, cached balance would be returned incorrectly
-    5. With the fix, balance is recalculated because credit expired after cache update
-    """
-
-    # Use fixed timestamps before the credit precision cutoff (2026-02-02)
-    # to ensure the 10000x multiplier is applied consistently
-    # Base time (T3): 2023-06-15 12:00:00 UTC
-    base_time = 1686830400
-
-    # Time T1: Add credit (1 hour before base_time)
+    base_time = 1686830400  # 2023-06-15 12:00:00 UTC (pre precision cutoff)
     credit_time = dt.datetime.fromtimestamp(base_time - 3600, tz=dt.timezone.utc)
-
-    # Time T2: Cache calculation time (30 minutes before base_time, before expiration)
-    cache_time = dt.datetime.fromtimestamp(base_time - 1800, tz=dt.timezone.utc)
-
-    # Time X: Credit expiration (5 minutes before base_time, between cache time and T3)
-    expiration_time = int((base_time - 300) * 1000)
-
-    # Time T3: Current time for final balance check (after expiration)
+    expiration_time_ms = int((base_time - 300) * 1000)  # expired 5 minutes before now
     now_time = dt.datetime.fromtimestamp(base_time, tz=dt.timezone.utc)
 
     with session_factory() as session:
-        # Step 1: Add credit with expiration date
-        credits_list = [
-            {
-                "address": "0xcache_bug_user",
-                "amount": 1000,
-                "price": "1.0",
-                "tx_hash": "0xcache_test",
-                "provider": "test_provider",
-                "expiration": expiration_time,  # Will expire at T3
-            }
-        ]
-
         update_credit_balances_distribution(
             session=session,
-            credits_list=credits_list,
+            credits_list=[
+                {
+                    "address": "0xexpired_user",
+                    "amount": 1000,
+                    "price": "1.0",
+                    "tx_hash": "0xexpired",
+                    "provider": "test_provider",
+                    "expiration": expiration_time_ms,
+                }
+            ],
             token="TEST",
             chain="ETH",
-            message_hash="cache_expiration_test",
-            message_timestamp=credit_time,  # T1
+            message_hash="expired_credits_test",
+            message_timestamp=credit_time,
         )
         session.commit()
 
-        # Step 2: Simulate cache being calculated at T2 (before expiration)
-        # Mock utc_now to return cache_time during first balance calculation
-        balance_before_expiration = get_credit_balance(
-            session, "0xcache_bug_user", cache_time
-        )
-        session.commit()
-
-        # Verify that at T2, the balance was 10000000 (1000 * 10000 multiplier, credit not yet expired)
-        assert balance_before_expiration == 10000000
-
-        # Verify that a cache entry was created and manually update its timestamp
-        # to simulate it being created at T2 (cache_time)
-
-        cached_balance = session.execute(
-            select(AlephCreditBalanceDb).where(
-                AlephCreditBalanceDb.address == "0xcache_bug_user"
-            )
-        ).scalar_one_or_none()
-
-        assert cached_balance is not None
-        assert cached_balance.balance == 10000000
-        assert cached_balance.last_update == cache_time
-
-        # Step 3: Now check balance at current time (T3, after expiration)
-        # The fix should detect that credit expired after cache update and recalculate
-        balance_after_expiration = get_credit_balance(
-            session, "0xcache_bug_user", now_time
-        )
-
-        # Expected: 0 (credit has expired)
-        assert balance_after_expiration == 0
-
-        # Verify that cache was updated (should have a newer timestamp)
-        session.refresh(cached_balance)
-        assert cached_balance.balance == 0
-        assert cached_balance.last_update == now_time
+        # Bucket row exists with the past expiration, but the read filters it out.
+        assert get_credit_balance(session, "0xexpired_user", now_time) == 0
 
 
 def test_get_resource_consumed_credits_no_records(session_factory: DbSessionFactory):
@@ -1550,9 +1498,35 @@ def test_chain_transfer_a_b_c_expiration_and_balances(
 
 
 def _insert_credit_history_entries(session, entries: List[Dict[str, Any]]):
-    """Helper to bulk-insert credit history rows for testing."""
+    """Helper to bulk-insert credit history rows for testing.
+
+    Also seeds the bucket cache so ``get_credit_balance(_with_details)`` see
+    the credits without going through the message writers. Positive amounts
+    add to a bucket at the entry's expiration_date; negative amounts drain
+    soonest-first from existing buckets, matching the writer semantics.
+    """
+    from aleph.db.accessors.balances import (
+        _apply_grant_bucket,
+        _consume_address_credits,
+    )
+
     for entry in entries:
         session.add(AlephCreditHistoryDb(**entry))
+        amount = int(entry["amount"])
+        if amount > 0:
+            _apply_grant_bucket(
+                session, entry["address"], amount, entry.get("expiration_date")
+            )
+        else:
+            # Use the entry's message_timestamp as the validity cutoff so
+            # backdated test scenarios drain buckets that were valid at the
+            # historical expense time (matching the writer's eager-write path).
+            _consume_address_credits(
+                session,
+                entry["address"],
+                -amount,
+                now=entry.get("message_timestamp"),
+            )
     session.flush()
 
 
@@ -1649,12 +1623,18 @@ def test_credit_balance_details_mixed_expiration(session_factory: DbSessionFacto
 
 
 def test_credit_balance_details_partial_consumption(session_factory: DbSessionFactory):
-    """Details are accurate after FIFO partial consumption."""
+    """Details are accurate after partial consumption under sort-by-expiration.
+
+    Setup: 1000 non-expiring + 500 expiring at exp1, expense 700.
+    Sort-by-expiration drains the expiring (soonest) bucket first: 500 from
+    exp1, then 200 from non-expiring. Only the non-expiring bucket has a
+    positive amount left, so ``details`` is a single entry.
+    """
     ts = dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc)
     exp1 = dt.datetime(2026, 9, 1, tzinfo=dt.timezone.utc)
 
     entries = [
-        # Non-expiring credit (oldest, consumed first by FIFO)
+        # Non-expiring credit
         {
             "address": "0xdetails3",
             "amount": 1000,
@@ -1664,7 +1644,7 @@ def test_credit_balance_details_partial_consumption(session_factory: DbSessionFa
             "last_update": ts,
             "expiration_date": None,
         },
-        # Expiring credit
+        # Expiring credit (will be drained first under sort-by-expiration)
         {
             "address": "0xdetails3",
             "amount": 500,
@@ -1674,7 +1654,7 @@ def test_credit_balance_details_partial_consumption(session_factory: DbSessionFa
             "last_update": ts,
             "expiration_date": exp1,
         },
-        # Expense consuming 700 from the oldest (non-expiring) credit
+        # Expense consuming 700 (drains 500 from exp1 then 200 from non-expiring)
         {
             "address": "0xdetails3",
             "amount": -700,
@@ -1694,13 +1674,12 @@ def test_credit_balance_details_partial_consumption(session_factory: DbSessionFa
         total, details = get_credit_balance_with_details(
             session=session, address="0xdetails3"
         )
-        # 1000 - 700 = 300 non-expiring remaining, 500 expiring remaining
+        # Soonest-first drain: exp1 -> 0, non-expiring -> 800. Only the
+        # non-expiring bucket has a positive remainder.
         assert total == 800
-        assert len(details) == 2
+        assert len(details) == 1
         assert details[0].expiration_date is None
-        assert details[0].amount == 300
-        assert details[1].expiration_date == exp1
-        assert details[1].amount == 500
+        assert details[0].amount == 800
 
 
 def test_credit_balance_details_fully_consumed(session_factory: DbSessionFactory):
@@ -1807,7 +1786,10 @@ def test_credit_balance_details_no_history(session_factory: DbSessionFactory):
 
 
 def test_credit_balance_details_matches_total(session_factory: DbSessionFactory):
-    """Sum of details amounts equals the total balance."""
+    """Sum of details amounts equals the total balance, with the
+    sort-by-expiration policy producing a different per-bucket breakdown
+    than the legacy sort-by-issuance one (same total).
+    """
     ts = dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc)
     exp1 = dt.datetime(2026, 9, 1, tzinfo=dt.timezone.utc)
     exp2 = dt.datetime(2026, 12, 1, tzinfo=dt.timezone.utc)
@@ -1840,7 +1822,8 @@ def test_credit_balance_details_matches_total(session_factory: DbSessionFactory)
             "last_update": ts,
             "expiration_date": exp2,
         },
-        # Expense consuming 1200 total (FIFO: 1000 from non-expiring, 200 from exp1)
+        # Expense consuming 1200. Sort-by-expiration drains exp1 (800) then
+        # exp2 (400); non-expiring (sentinel) is untouched.
         {
             "address": "0xdetails6",
             "amount": -1200,
@@ -1860,16 +1843,18 @@ def test_credit_balance_details_matches_total(session_factory: DbSessionFactory)
         total, details = get_credit_balance_with_details(
             session=session, address="0xdetails6"
         )
-        # 1000 - 1000 = 0 non-expiring, 800 - 200 = 600 exp1, 600 exp2
+        # 1000 non-expiring + 0 exp1 + 200 exp2 = 1200
         assert total == 1200
         details_sum = sum(d.amount for d in details)
         assert details_sum == total
 
+        # Details order: non-expiring first (None), then by expiration ASC.
+        # exp1 is drained to 0 so it's absent from the positive-amount list.
         assert len(details) == 2
-        assert details[0].expiration_date == exp1
-        assert details[0].amount == 600
+        assert details[0].expiration_date is None
+        assert details[0].amount == 1000
         assert details[1].expiration_date == exp2
-        assert details[1].amount == 600
+        assert details[1].amount == 200
 
 
 # ── Volume (origin_ref) consumed credits tests ───────────────────────
@@ -2488,3 +2473,461 @@ def test_cursor_pagination_nullable_sort_nulls_on_last_page(
         )
         assert len(all_refs) == 5
         assert len(set(all_refs)) == 5
+
+
+# ---------------------------------------------------------------------------
+# Bucket-cache eager-update behaviour
+# ---------------------------------------------------------------------------
+
+from aleph.db.accessors.balances import (  # noqa: E402
+    _apply_grant_bucket,
+    _compute_transfer_entries_by_expiration,
+    _consume_address_credits,
+    count_credit_balances,
+    get_credit_balances,
+)
+from aleph.toolkit.infinity import INFINITY  # noqa: E402
+
+
+def _bucket_amount(session, address, expiration_date) -> int:
+    row = session.execute(
+        select(AlephCreditBalanceDb).where(
+            AlephCreditBalanceDb.address == address,
+            AlephCreditBalanceDb.expiration_date == expiration_date,
+        )
+    ).scalar_one_or_none()
+    return 0 if row is None else int(row.amount)
+
+
+def test_apply_grant_bucket_inserts_and_increments(
+    session_factory: DbSessionFactory,
+):
+    """Grants insert a new bucket and increment an existing one (same expiration)."""
+    exp = dt.datetime(2050, 1, 1, tzinfo=dt.timezone.utc)
+    with session_factory() as session:
+        _apply_grant_bucket(session, "0xbucket1", 100, exp)
+        session.commit()
+        assert _bucket_amount(session, "0xbucket1", exp) == 100
+
+        _apply_grant_bucket(session, "0xbucket1", 50, exp)
+        session.commit()
+        assert _bucket_amount(session, "0xbucket1", exp) == 150
+
+
+def test_apply_grant_bucket_none_expiration_uses_sentinel(
+    session_factory: DbSessionFactory,
+):
+    """A None expiration maps to the INFINITY sentinel bucket."""
+    with session_factory() as session:
+        _apply_grant_bucket(session, "0xnoexp", 200, None)
+        session.commit()
+        assert _bucket_amount(session, "0xnoexp", INFINITY) == 200
+
+
+def test_consume_address_credits_drains_soonest_first(
+    session_factory: DbSessionFactory,
+):
+    """Consumption drains the soonest-expiring non-expired bucket first."""
+    exp_soon = dt.datetime(2050, 1, 1, tzinfo=dt.timezone.utc)
+    exp_late = dt.datetime(2099, 1, 1, tzinfo=dt.timezone.utc)
+    with session_factory() as session:
+        _apply_grant_bucket(session, "0xsoonest", 100, exp_late)
+        _apply_grant_bucket(session, "0xsoonest", 100, exp_soon)
+        session.commit()
+
+        consumed = _consume_address_credits(session, "0xsoonest", 150)
+        session.commit()
+
+        # 100 from soon, 50 from late.
+        assert consumed == [(100, exp_soon), (50, exp_late)]
+        assert _bucket_amount(session, "0xsoonest", exp_soon) == 0
+        assert _bucket_amount(session, "0xsoonest", exp_late) == 50
+
+
+def test_consume_address_credits_skips_expired_buckets(
+    session_factory: DbSessionFactory,
+):
+    """A bucket whose expiration has already passed is not drained."""
+    past = dt.datetime(2000, 1, 1, tzinfo=dt.timezone.utc)
+    future = dt.datetime(2099, 1, 1, tzinfo=dt.timezone.utc)
+    with session_factory() as session:
+        _apply_grant_bucket(session, "0xskipexpired", 100, past)
+        _apply_grant_bucket(session, "0xskipexpired", 100, future)
+        session.commit()
+
+        consumed = _consume_address_credits(session, "0xskipexpired", 100)
+        session.commit()
+
+        assert consumed == [(100, future)]
+        assert _bucket_amount(session, "0xskipexpired", past) == 100
+        assert _bucket_amount(session, "0xskipexpired", future) == 0
+
+
+def test_consume_address_credits_underfunded_returns_partial(
+    session_factory: DbSessionFactory,
+):
+    """Consuming more than available drains everything available and stops at zero."""
+    exp = dt.datetime(2099, 1, 1, tzinfo=dt.timezone.utc)
+    with session_factory() as session:
+        _apply_grant_bucket(session, "0xshort", 75, exp)
+        session.commit()
+
+        consumed = _consume_address_credits(session, "0xshort", 200)
+        session.commit()
+
+        assert consumed == [(75, exp)]
+        assert _bucket_amount(session, "0xshort", exp) == 0
+
+
+def test_get_credit_balance_sums_non_expired_buckets(
+    session_factory: DbSessionFactory,
+):
+    past = dt.datetime(2000, 1, 1, tzinfo=dt.timezone.utc)
+    future = dt.datetime(2099, 1, 1, tzinfo=dt.timezone.utc)
+    with session_factory() as session:
+        _apply_grant_bucket(session, "0xsum", 100, past)
+        _apply_grant_bucket(session, "0xsum", 250, future)
+        _apply_grant_bucket(session, "0xsum", 50, None)
+        session.commit()
+        assert get_credit_balance(session, "0xsum") == 300
+
+
+def test_get_credit_balance_floors_at_zero(session_factory: DbSessionFactory):
+    """Negative bucket amounts (defensive) are floored at zero on read."""
+    with session_factory() as session:
+        session.add(
+            AlephCreditBalanceDb(
+                address="0xneg",
+                expiration_date=INFINITY,
+                amount=-10,
+            )
+        )
+        session.commit()
+        assert get_credit_balance(session, "0xneg") == 0
+
+
+def test_get_credit_balance_with_details_groups_by_expiration(
+    session_factory: DbSessionFactory,
+):
+    """``get_credit_balance_with_details`` returns one entry per bucket with
+    the no-expiration sentinel mapped back to None and sorted first.
+    """
+    exp_a = dt.datetime(2050, 1, 1, tzinfo=dt.timezone.utc)
+    exp_b = dt.datetime(2099, 1, 1, tzinfo=dt.timezone.utc)
+    with session_factory() as session:
+        _apply_grant_bucket(session, "0xdetails", 100, exp_b)
+        _apply_grant_bucket(session, "0xdetails", 50, None)
+        _apply_grant_bucket(session, "0xdetails", 25, exp_a)
+        session.commit()
+
+        total, details = get_credit_balance_with_details(session, "0xdetails")
+        assert total == 175
+        # No-expiration first, then earliest expiration next.
+        assert [d.expiration_date for d in details] == [None, exp_a, exp_b]
+        assert [d.amount for d in details] == [50, 25, 100]
+
+
+def test_compute_transfer_entries_caps_at_source_and_requested():
+    """``min(source, requested)`` is applied per consumed slice; same effective
+    expiration entries are merged."""
+    source_exp = dt.datetime(2099, 1, 1, tzinfo=dt.timezone.utc)
+    later_requested = dt.datetime(2200, 1, 1, tzinfo=dt.timezone.utc)
+    earlier_requested = dt.datetime(2050, 1, 1, tzinfo=dt.timezone.utc)
+
+    # Requested later than source: source wins.
+    assert _compute_transfer_entries_by_expiration(
+        [(100, source_exp)], later_requested
+    ) == [(100, source_exp)]
+
+    # Requested earlier than source: requested wins.
+    assert _compute_transfer_entries_by_expiration(
+        [(100, source_exp)], earlier_requested
+    ) == [(100, earlier_requested)]
+
+    # Source is the sentinel (no expiration): requested propagates.
+    assert _compute_transfer_entries_by_expiration(
+        [(100, INFINITY)], later_requested
+    ) == [(100, later_requested)]
+
+    # Source is the sentinel and no requested: recipient gets no expiration.
+    assert _compute_transfer_entries_by_expiration([(100, INFINITY)], None) == [
+        (100, None)
+    ]
+
+    # Two consumed slices with the same effective expiration merge.
+    assert _compute_transfer_entries_by_expiration(
+        [(50, source_exp), (50, INFINITY)], earlier_requested
+    ) == [(100, earlier_requested)]
+
+
+def test_distribution_creates_buckets_with_correct_expiration(
+    session_factory: DbSessionFactory,
+):
+    """Distribution rows produce buckets at exactly the message expiration_date."""
+    ts = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+    exp_dt = dt.datetime(2200, 1, 1, tzinfo=dt.timezone.utc)
+    exp_ms = int(exp_dt.timestamp() * 1000)
+
+    with session_factory() as session:
+        update_credit_balances_distribution(
+            session=session,
+            credits_list=[
+                {
+                    "address": "0xnewdist",
+                    "amount": 42,
+                    "price": "0.1",
+                    "tx_hash": "0xt",
+                    "provider": "p",
+                    "expiration": exp_ms,
+                }
+            ],
+            token="ALEPH",
+            chain="ETH",
+            message_hash="msg_new_dist",
+            message_timestamp=ts,
+        )
+        session.commit()
+
+        # Bucket exists at exactly the expected expiration (not the sentinel).
+        assert _bucket_amount(session, "0xnewdist", exp_dt) == 42 * 10000
+        assert _bucket_amount(session, "0xnewdist", INFINITY) == 0
+
+
+def test_expense_drains_soonest_bucket_first(session_factory: DbSessionFactory):
+    """An expense first drains the soonest-expiring bucket. The history row
+    still records the full intended amount even if buckets are under-drained.
+    """
+    dist1 = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+    dist2 = dt.datetime(2023, 1, 2, 12, 0, 0, tzinfo=dt.timezone.utc)
+    exp_dt = dt.datetime(2200, 1, 1, tzinfo=dt.timezone.utc)
+    exp_ms = int(exp_dt.timestamp() * 1000)
+    expense_ts = dt.datetime(2023, 1, 3, 12, 0, 0, tzinfo=dt.timezone.utc)
+
+    with session_factory() as session:
+        # Bucket A: 100 expiring at exp_dt (issued FIRST).
+        update_credit_balances_distribution(
+            session=session,
+            credits_list=[
+                {
+                    "address": "0xexpense",
+                    "amount": 100,
+                    "price": "0.1",
+                    "tx_hash": "0xa",
+                    "provider": "p",
+                    "expiration": exp_ms,
+                }
+            ],
+            token="ALEPH",
+            chain="ETH",
+            message_hash="dist_a",
+            message_timestamp=dist1,
+        )
+        # Bucket B: 200 non-expiring (issued SECOND).
+        update_credit_balances_distribution(
+            session=session,
+            credits_list=[
+                {
+                    "address": "0xexpense",
+                    "amount": 200,
+                    "price": "0.1",
+                    "tx_hash": "0xb",
+                    "provider": "p",
+                }
+            ],
+            token="ALEPH",
+            chain="ETH",
+            message_hash="dist_b",
+            message_timestamp=dist2,
+        )
+        # Expense 150: soonest-first drains A entirely (100) then 50 from B.
+        update_credit_balances_expense(
+            session=session,
+            credits_list=[{"address": "0xexpense", "amount": 150, "ref": "r"}],
+            message_hash="exp_msg",
+            message_timestamp=expense_ts,
+        )
+        session.commit()
+
+        assert _bucket_amount(session, "0xexpense", exp_dt) == 0
+        assert _bucket_amount(session, "0xexpense", INFINITY) == 150 * 10000
+        # The history row carries the full intent.
+        record = session.execute(
+            select(AlephCreditHistoryDb).where(
+                AlephCreditHistoryDb.credit_ref == "exp_msg"
+            )
+        ).scalar_one()
+        assert record.amount == -150 * 10000
+
+
+def test_transfer_recipient_inherits_capped_expiration(
+    session_factory: DbSessionFactory,
+):
+    """Sender's soonest-expiring bucket is drained first; recipient inherits
+    min(source_exp, requested_exp).
+    """
+    dist_ts = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+    xfer_ts = dt.datetime(2023, 2, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+    soon = dt.datetime(2050, 1, 1, tzinfo=dt.timezone.utc)
+    soon_ms = int(soon.timestamp() * 1000)
+    requested = dt.datetime(2200, 1, 1, tzinfo=dt.timezone.utc)
+    requested_ms = int(requested.timestamp() * 1000)
+
+    with session_factory() as session:
+        update_credit_balances_distribution(
+            session=session,
+            credits_list=[
+                {
+                    "address": "0xsender",
+                    "amount": 100,
+                    "price": "0.1",
+                    "tx_hash": "0xt",
+                    "provider": "p",
+                    "expiration": soon_ms,
+                }
+            ],
+            token="ALEPH",
+            chain="ETH",
+            message_hash="dist_sender",
+            message_timestamp=dist_ts,
+        )
+        update_credit_balances_transfer(
+            session=session,
+            credits_list=[
+                {"address": "0xrecipient", "amount": 50, "expiration": requested_ms}
+            ],
+            sender_address="0xsender",
+            whitelisted_addresses=[],
+            message_hash="xfer",
+            message_timestamp=xfer_ts,
+        )
+        session.commit()
+
+        # Sender drained from the soon bucket.
+        assert _bucket_amount(session, "0xsender", soon) == 50 * 10000
+        # Recipient bucket capped at source's earlier expiration.
+        assert _bucket_amount(session, "0xrecipient", soon) == 50 * 10000
+        assert _bucket_amount(session, "0xrecipient", requested) == 0
+
+
+def test_count_and_list_credit_balances(session_factory: DbSessionFactory):
+    """Multi-address aggregation: ``get_credit_balances`` and
+    ``count_credit_balances`` aggregate per-address sums of non-expired buckets.
+    """
+    past = dt.datetime(2000, 1, 1, tzinfo=dt.timezone.utc)
+    future = dt.datetime(2099, 1, 1, tzinfo=dt.timezone.utc)
+    with session_factory() as session:
+        _apply_grant_bucket(session, "0xa", 100, future)
+        _apply_grant_bucket(session, "0xb", 50, future)
+        _apply_grant_bucket(session, "0xc", 999, past)  # expired
+        _apply_grant_bucket(session, "0xd", 0, future)  # zero, no positive sum
+        session.commit()
+
+        rows = get_credit_balances(session)
+        addresses = {address for address, _ in rows}
+        # 0xc has only expired credits, 0xd has zero — both excluded.
+        assert addresses == {"0xa", "0xb"}
+        assert dict(rows) == {"0xa": 100, "0xb": 50}
+
+        assert count_credit_balances(session) == 2
+        assert count_credit_balances(session, min_balance=75) == 1
+
+
+def test_repair_rebuilds_buckets_from_history(session_factory: DbSessionFactory):
+    """The repair function reproduces buckets from credit_history alone.
+    Simulates a fresh table by deleting all buckets then running repair.
+    """
+    from aleph.repair import _repair_credit_balances
+
+    dist1 = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+    dist2 = dt.datetime(2023, 1, 2, 12, 0, 0, tzinfo=dt.timezone.utc)
+    expense_ts = dt.datetime(2023, 1, 3, 12, 0, 0, tzinfo=dt.timezone.utc)
+    exp_dt = dt.datetime(2200, 1, 1, tzinfo=dt.timezone.utc)
+    exp_ms = int(exp_dt.timestamp() * 1000)
+
+    with session_factory() as session:
+        update_credit_balances_distribution(
+            session=session,
+            credits_list=[
+                {
+                    "address": "0xrepair",
+                    "amount": 100,
+                    "price": "0.1",
+                    "tx_hash": "0xt",
+                    "provider": "p",
+                    "expiration": exp_ms,
+                }
+            ],
+            token="ALEPH",
+            chain="ETH",
+            message_hash="repair_dist_a",
+            message_timestamp=dist1,
+        )
+        update_credit_balances_distribution(
+            session=session,
+            credits_list=[
+                {
+                    "address": "0xrepair",
+                    "amount": 200,
+                    "price": "0.1",
+                    "tx_hash": "0xt",
+                    "provider": "p",
+                }
+            ],
+            token="ALEPH",
+            chain="ETH",
+            message_hash="repair_dist_b",
+            message_timestamp=dist2,
+        )
+        update_credit_balances_expense(
+            session=session,
+            credits_list=[{"address": "0xrepair", "amount": 150, "ref": "r"}],
+            message_hash="repair_exp",
+            message_timestamp=expense_ts,
+        )
+        session.commit()
+
+        # Capture the expected post-eager state.
+        expected_bucket_amount = _bucket_amount(session, "0xrepair", INFINITY)
+        assert expected_bucket_amount == 150 * 10000
+
+        # Wipe the cache, simulating a freshly migrated DB.
+        session.execute(delete(AlephCreditBalanceDb))
+        session.commit()
+
+    _repair_credit_balances(session_factory)
+
+    with session_factory() as session:
+        assert _bucket_amount(session, "0xrepair", INFINITY) == expected_bucket_amount
+        # The expiring bucket was drained first and has no remaining amount,
+        # so the repair does not write a row for it.
+        assert _bucket_amount(session, "0xrepair", exp_dt) == 0
+
+
+def test_repair_is_idempotent(session_factory: DbSessionFactory):
+    from aleph.repair import _repair_credit_balances
+
+    ts = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+    with session_factory() as session:
+        update_credit_balances_distribution(
+            session=session,
+            credits_list=[
+                {
+                    "address": "0xidemp",
+                    "amount": 42,
+                    "price": "0.1",
+                    "tx_hash": "0xt",
+                    "provider": "p",
+                }
+            ],
+            token="ALEPH",
+            chain="ETH",
+            message_hash="idemp_dist",
+            message_timestamp=ts,
+        )
+        session.commit()
+
+    _repair_credit_balances(session_factory)
+    _repair_credit_balances(session_factory)
+
+    with session_factory() as session:
+        assert _bucket_amount(session, "0xidemp", INFINITY) == 42 * 10000

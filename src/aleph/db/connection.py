@@ -7,7 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from aleph.config import get_config
+from aleph.toolkit.infinity import register_infinity_adapter
 from aleph.types.db_session import DbSessionFactory
+
+# Make psycopg2 emit PG ``infinity::timestamptz`` for the credit-balance
+# expiration sentinel. The adapter is global to psycopg2, so registering once
+# at module import time covers every connection opened later in this process.
+register_infinity_adapter()
 
 
 def make_db_url(
