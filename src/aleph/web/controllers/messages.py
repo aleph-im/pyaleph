@@ -244,6 +244,7 @@ class MessageBroadcaster:
         )
 
         # Send in batches to avoid event loop starvation with many clients
+        dead: List[_WsClient] = []
         for i in range(0, len(clients), _SEND_BATCH_SIZE):
             batch = clients[i : i + _SEND_BATCH_SIZE]
             results = await asyncio.gather(
@@ -261,7 +262,13 @@ class MessageBroadcaster:
                     )
                     continue
                 if result is False:
-                    self._clients.discard(client)
+                    dead.append(client)
+
+        # Route dead clients through remove() so the Redis active counter is
+        # decremented and the MQ consumer is torn down when the last client
+        # drops. A bare set discard here would leave the counter drifting up.
+        for client in dead:
+            await self.remove(client)
 
     async def _send_to_client(
         self,
