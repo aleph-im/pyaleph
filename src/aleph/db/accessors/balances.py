@@ -281,11 +281,16 @@ def _consume_address_credits(
     in place.
 
     Emission order matches the historical FIFO: ``(message_timestamp, credit_ref,
-    credit_index) ASC``. ``message_timestamp`` is the cutoff for "still valid":
-    only lots with ``expiration_date IS NULL OR expiration_date > message_timestamp``
-    are eligible. Using the message timestamp (not wall-clock now) keeps eager
-    writes consistent with the repair replay, which uses the historical timestamp
-    when reconstructing state from ``credit_history``.
+    credit_index) ASC``. ``message_timestamp`` bounds eligibility on both ends:
+    a lot is drainable only if it was granted at or before the expense
+    (``lot.message_timestamp <= message_timestamp``) and is not yet expired
+    (``expiration_date IS NULL OR expiration_date > message_timestamp``). The
+    lower bound prevents a backdated expense from draining a grant that did
+    not yet exist at the expense's instant; messages can arrive out of order
+    in the P2P pipeline, so a future-dated grant may already be in the cache
+    when an older expense lands. Using the message timestamp (not wall-clock
+    now) keeps eager writes consistent with the repair replay, which walks
+    history chronologically and enforces both bounds by construction.
 
     Lots are locked ``FOR UPDATE`` to serialise concurrent writers for the same
     address. Over-draw silently drops the excess, matching the prior FIFO
@@ -300,6 +305,7 @@ def _consume_address_credits(
             .where(
                 AlephCreditBalanceDb.address == address,
                 AlephCreditBalanceDb.amount_remaining > 0,
+                AlephCreditBalanceDb.message_timestamp <= message_timestamp,
                 (
                     AlephCreditBalanceDb.expiration_date.is_(None)
                     | (AlephCreditBalanceDb.expiration_date > message_timestamp)
