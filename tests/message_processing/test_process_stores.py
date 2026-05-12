@@ -27,6 +27,7 @@ from aleph.db.models import (
 from aleph.handlers.content.store import StoreMessageHandler
 from aleph.handlers.message_handler import MessageHandler
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
+from aleph.repair import _rebuild_credit_lots_for_address
 from aleph.services.cost import get_total_and_detailed_costs_from_db
 from aleph.services.storage.engine import StorageEngine
 from aleph.storage import StorageService
@@ -915,6 +916,8 @@ async def test_new_store_message_with_sufficient_credits(
                 message_timestamp=timestamp_to_datetime(CREDIT_ONLY_CUTOFF_TIMESTAMP),
             )
         )
+        session.flush()
+        _rebuild_credit_lots_for_address(session, address)
         session.commit()
 
         # Should pass the balance check
@@ -1310,6 +1313,8 @@ async def test_legacy_store_with_credit_payment_and_credits(
                 ),
             )
         )
+        session.flush()
+        _rebuild_credit_lots_for_address(session, address)
         session.commit()
 
         # Should pass the balance check

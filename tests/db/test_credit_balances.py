@@ -20,6 +20,7 @@ from aleph.db.accessors.balances import (
     validate_credit_transfer_balance,
 )
 from aleph.db.models import AlephCreditBalanceDb, AlephCreditHistoryDb
+from aleph.repair import _rebuild_credit_lots_for_address
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.sort_order import SortByCreditHistory, SortOrder
 
@@ -893,42 +894,31 @@ def test_cache_invalidation_on_credit_expiration(session_factory: DbSessionFacto
         )
         session.commit()
 
-        # Step 2: Simulate cache being calculated at T2 (before expiration)
-        # Mock utc_now to return cache_time during first balance calculation
+        # Read at T2 (before expiration): the lot is still valid.
         balance_before_expiration = get_credit_balance(
             session, "0xcache_bug_user", cache_time
         )
-        session.commit()
-
-        # Verify that at T2, the balance was 10000000 (1000 * 10000 multiplier, credit not yet expired)
         assert balance_before_expiration == 10000000
 
-        # Verify that a cache entry was created and manually update its timestamp
-        # to simulate it being created at T2 (cache_time)
-
-        cached_balance = session.execute(
+        # The eager write created the lot row at distribution time. With the
+        # lot cache, reads filter by expiration server-side; no write-back on
+        # the read path.
+        lot = session.execute(
             select(AlephCreditBalanceDb).where(
                 AlephCreditBalanceDb.address == "0xcache_bug_user"
             )
         ).scalar_one_or_none()
+        assert lot is not None
+        assert lot.amount_remaining == 10000000
 
-        assert cached_balance is not None
-        assert cached_balance.balance == 10000000
-        assert cached_balance.last_update == cache_time
-
-        # Step 3: Now check balance at current time (T3, after expiration)
-        # The fix should detect that credit expired after cache update and recalculate
+        # Read at T3 (after expiration): same row, filtered out by the read's
+        # cutoff. The lot stays in the table; the balance returns 0.
         balance_after_expiration = get_credit_balance(
             session, "0xcache_bug_user", now_time
         )
-
-        # Expected: 0 (credit has expired)
         assert balance_after_expiration == 0
-
-        # Verify that cache was updated (should have a newer timestamp)
-        session.refresh(cached_balance)
-        assert cached_balance.balance == 0
-        assert cached_balance.last_update == now_time
+        session.refresh(lot)
+        assert lot.amount_remaining == 10000000
 
 
 def test_get_resource_consumed_credits_no_records(session_factory: DbSessionFactory):
@@ -1550,10 +1540,21 @@ def test_chain_transfer_a_b_c_expiration_and_balances(
 
 
 def _insert_credit_history_entries(session, entries: List[Dict[str, Any]]):
-    """Helper to bulk-insert credit history rows for testing."""
+    """Helper to seed credit_history rows and rebuild the lot cache so reads
+    served by the eager cache see them.
+
+    Production code reaches the lot cache through ``update_credit_balances_*``;
+    tests that bypass those writers and insert into ``credit_history`` directly
+    have to rebuild the lot cache by hand, mirroring what ``repair_node`` does on
+    startup.
+    """
+    addresses = set()
     for entry in entries:
         session.add(AlephCreditHistoryDb(**entry))
+        addresses.add(entry["address"])
     session.flush()
+    for address in addresses:
+        _rebuild_credit_lots_for_address(session, address)
 
 
 def test_credit_balance_details_non_expiring_only(session_factory: DbSessionFactory):

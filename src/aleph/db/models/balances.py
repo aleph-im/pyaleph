@@ -70,10 +70,22 @@ class AlephCreditHistoryDb(Base):
 
 
 class AlephCreditBalanceDb(Base):
+    """Per-lot cache of remaining credit. One row per granting credit_history
+    entry; ``amount_remaining`` is decremented eagerly by expense and transfer
+    writers, so reads collapse to a SUM over still-valid lots."""
+
     __tablename__ = "credit_balances"
 
-    address: Mapped[str] = mapped_column(String, primary_key=True, index=True)
-    balance: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    address: Mapped[str] = mapped_column(String, primary_key=True)
+    credit_ref: Mapped[str] = mapped_column(String, primary_key=True)
+    credit_index: Mapped[int] = mapped_column(Integer, primary_key=True)
+    amount_remaining: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    expiration_date: Mapped[Optional[dt.datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    message_timestamp: Mapped[dt.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
     last_update: Mapped[dt.datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
