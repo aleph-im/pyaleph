@@ -20,6 +20,7 @@ from aleph.db.accessors.balances import (
     validate_credit_transfer_balance,
 )
 from aleph.db.models import AlephCreditBalanceDb, AlephCreditHistoryDb
+from aleph.repair import _rebuild_credit_lots_for_address
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.sort_order import SortByCreditHistory, SortOrder
 
@@ -1539,10 +1540,21 @@ def test_chain_transfer_a_b_c_expiration_and_balances(
 
 
 def _insert_credit_history_entries(session, entries: List[Dict[str, Any]]):
-    """Helper to bulk-insert credit history rows for testing."""
+    """Helper to seed credit_history rows and rebuild the lot cache so reads
+    served by the eager cache see them.
+
+    Production code reaches the lot cache through ``update_credit_balances_*``;
+    tests that bypass those writers and insert into ``credit_history`` directly
+    have to rebuild the lot cache by hand, mirroring what ``repair_node`` does on
+    startup.
+    """
+    addresses = set()
     for entry in entries:
         session.add(AlephCreditHistoryDb(**entry))
+        addresses.add(entry["address"])
     session.flush()
+    for address in addresses:
+        _rebuild_credit_lots_for_address(session, address)
 
 
 def test_credit_balance_details_non_expiring_only(session_factory: DbSessionFactory):

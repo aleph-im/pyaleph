@@ -49,12 +49,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint(
             "address", "credit_ref", "credit_index", name="credit_balances_pkey"
         ),
-        sa.ForeignKeyConstraint(
-            ["credit_ref", "credit_index"],
-            ["credit_history.credit_ref", "credit_history.credit_index"],
-            name="credit_balances_credit_history_fkey",
-            ondelete="CASCADE",
-        ),
     )
 
     op.create_index(
