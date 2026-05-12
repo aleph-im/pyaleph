@@ -276,14 +276,6 @@ def _apply_grant_bucket(
     )
     session.execute(stmt)
 
-    # Tell the expiration task that something may need attention. NOTIFY is
-    # transactional: Postgres queues the payload and only delivers it to
-    # LISTENers when the surrounding transaction commits, so the wake fires
-    # iff the bucket actually lands. We only signal for finite expirations;
-    # the sentinel ``infinity`` never fires.
-    if bucket_exp != INFINITY:
-        session.execute(text("NOTIFY credit_expiration_changed"))
-
 
 def _consume_address_credits(
     session: DbSession,
