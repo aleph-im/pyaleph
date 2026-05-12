@@ -19,6 +19,7 @@ from aleph.db.accessors.files import get_message_file_pin
 from aleph.db.accessors.messages import get_message_by_item_hash
 from aleph.db.models import (
     AlephBalanceDb,
+    AlephCreditBalanceDb,
     AlephCreditHistoryDb,
     MessageDb,
     MessageStatusDb,
@@ -905,14 +906,25 @@ async def test_new_store_message_with_sufficient_credits(
         )
         message.parsed_content = content
 
-        # Add sufficient credit balance via credit history (required by get_credit_balance)
+        # Seed the eager bucket cache so get_credit_balance sees the credits.
+        # (The credit_history row mirrors what the writer would have stored;
+        # production goes through update_credit_balances_distribution.)
+        from aleph.toolkit.infinity import INFINITY
+
         session.add(
             AlephCreditHistoryDb(
                 address=address,
-                amount=1000000000,  # Large enough to cover 1 day of storage
+                amount=1000000000,
                 credit_ref="test-credit-ref",
                 credit_index=0,
                 message_timestamp=timestamp_to_datetime(CREDIT_ONLY_CUTOFF_TIMESTAMP),
+            )
+        )
+        session.add(
+            AlephCreditBalanceDb(
+                address=address,
+                expiration_date=INFINITY,
+                amount=1000000000,
             )
         )
         session.commit()
@@ -1298,16 +1310,25 @@ async def test_legacy_store_with_credit_payment_and_credits(
         )
         message.parsed_content = content
 
-        # Add sufficient credit balance via credit history (required by get_credit_balance)
+        # Seed the eager bucket cache so get_credit_balance sees the credits.
+        from aleph.toolkit.infinity import INFINITY
+
         session.add(
             AlephCreditHistoryDb(
                 address=address,
-                amount=1000000000,  # Large enough to cover 1 day of storage
+                amount=1000000000,
                 credit_ref="test-credit-ref",
                 credit_index=0,
                 message_timestamp=timestamp_to_datetime(
                     CREDIT_ONLY_CUTOFF_TIMESTAMP - 2
                 ),
+            )
+        )
+        session.add(
+            AlephCreditBalanceDb(
+                address=address,
+                expiration_date=INFINITY,
+                amount=1000000000,
             )
         )
         session.commit()
