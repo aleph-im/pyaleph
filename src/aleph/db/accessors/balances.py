@@ -5,12 +5,12 @@ import time
 from dataclasses import dataclass
 from decimal import Decimal
 from io import StringIO
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 from aleph_message.models import Chain
 from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.sql import Select
+from sqlalchemy.sql import ColumnElement, Select
 
 from aleph.db.models import AlephBalanceDb, AlephCreditBalanceDb, AlephCreditHistoryDb
 from aleph.toolkit.constants import (
@@ -356,7 +356,7 @@ def _compute_transfer_entries_by_expiration(
     return result
 
 
-def _valid_lot_filter(cutoff):
+def _valid_lot_filter(cutoff: Union[dt.datetime, ColumnElement[dt.datetime]]):
     return AlephCreditBalanceDb.expiration_date.is_(None) | (
         AlephCreditBalanceDb.expiration_date > cutoff
     )
@@ -444,7 +444,7 @@ def get_credit_balances(
     query = (
         select(AlephCreditBalanceDb.address, balance_expr)
         .group_by(AlephCreditBalanceDb.address)
-        .having(balance_expr >= max(min_balance, 1))
+        .having(balance_expr >= min_balance)
         .order_by(AlephCreditBalanceDb.address.asc())
     )
 
@@ -468,7 +468,7 @@ def count_credit_balances(session: DbSession, min_balance: int = 0) -> int:
     sub = (
         select(AlephCreditBalanceDb.address)
         .group_by(AlephCreditBalanceDb.address)
-        .having(balance_expr >= max(min_balance, 1))
+        .having(balance_expr >= min_balance)
         .subquery()
     )
     return session.execute(select(func.count()).select_from(sub)).scalar_one()
