@@ -274,18 +274,23 @@ def _consume_address_credits(
     amount: int,
     message_timestamp: dt.datetime,
 ) -> List[Tuple[int, Optional[dt.datetime]]]:
-    """Drain ``amount`` from the address's still-valid lots in emission order.
+    """Drain ``amount`` from the address's still-valid lots, soonest-expiring first.
 
     Returns ``(consumed_amount, source_expiration)`` per touched lot in
     consumption order. Each touched lot has its ``amount_remaining`` decremented
     in place.
 
-    Emission order matches the historical FIFO: ``(message_timestamp, credit_ref,
-    credit_index) ASC``. ``message_timestamp`` is the cutoff for "still valid":
-    only lots with ``expiration_date IS NULL OR expiration_date > message_timestamp``
-    are eligible. Using the message timestamp (not wall-clock now) keeps eager
-    writes consistent with the repair replay, which uses the historical timestamp
-    when reconstructing state from ``credit_history``.
+    Drain order is ``expiration_date ASC NULLS LAST``, with emission order
+    (``message_timestamp, credit_ref, credit_index``) ASC as the tiebreaker so
+    two lots sharing an expiration drain in a deterministic, replay-stable
+    sequence. Spending the soonest-expiring credit first preserves longer-lived
+    credits and matches the user-facing "use it or lose it" model.
+
+    ``message_timestamp`` is the cutoff for "still valid": only lots with
+    ``expiration_date IS NULL OR expiration_date > message_timestamp`` are
+    eligible. Using the message timestamp (not wall-clock now) keeps eager
+    writes consistent with the repair replay, which uses the historical
+    timestamp when reconstructing state from ``credit_history``.
 
     Lots are locked ``FOR UPDATE`` to serialise concurrent writers for the same
     address. Over-draw silently drops the excess, matching the prior FIFO
@@ -306,6 +311,7 @@ def _consume_address_credits(
                 ),
             )
             .order_by(
+                AlephCreditBalanceDb.expiration_date.asc().nullslast(),
                 AlephCreditBalanceDb.message_timestamp.asc(),
                 AlephCreditBalanceDb.credit_ref.asc(),
                 AlephCreditBalanceDb.credit_index.asc(),
