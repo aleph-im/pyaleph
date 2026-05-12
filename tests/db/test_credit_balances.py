@@ -619,19 +619,21 @@ def test_balance_fix_doesnt_affect_valid_credits(session_factory: DbSessionFacto
         assert balance > 0
 
 
-def test_fifo_scenario_1_non_expiring_first_equals_0_remaining(
+def test_drain_consumes_soonest_expiring_first_non_expiring_arrives_first(
     session_factory: DbSessionFactory,
 ):
     """
-    FIFO Scenario 1: Non-expiring credits received FIRST → Result: 0 remaining
+    Expiration-first drain, when the non-expiring lot arrives first:
 
     Setup:
-    - 1000 non-expiring credits (received FIRST at T1)
-    - 1000 expiring credits (received SECOND at T2, expire at T4)
+    - 1000 non-expiring credits (received at T1, FIRST in emission order)
+    - 1000 expiring credits (received at T2, SECOND in emission order; expire at T4)
     - 1500 expense at T3 (before expiration at T4)
 
-    FIFO Consumption: 1000 (non-expiring) + 500 (expiring) = 1500 total consumed
-    Final Balance: 0 (non-expiring remaining) + 500 (expiring remaining but expired) = 0
+    Drain order is by expiration-date ASC NULLS LAST, so the expiring lot is
+    spent first even though it arrived later: 1000 (expiring) + 500
+    (non-expiring) = 1500 consumed. After T4, the expiring lot is past its
+    expiration so it no longer counts, and 500 non-expiring credits survive.
     """
 
     # Use fixed timestamps before the credit precision cutoff (2026-02-02)
@@ -722,26 +724,29 @@ def test_fifo_scenario_1_non_expiring_first_equals_0_remaining(
             session, "0xcorner_case_user", now_time
         )
 
-        # Expected: 0 remaining (all non-expiring consumed, expiring remainder expired)
-        expected_balance = 0
+        # Expected: 500 non-expiring credits survive (5_000_000 with the
+        # 10_000 precision multiplier applied to pre-cutoff messages).
+        expected_balance = 5_000_000
         assert (
             balance_after_expiration == expected_balance
-        ), f"Scenario 1: Expected {expected_balance} remaining credits, got {balance_after_expiration}"
+        ), f"Expected {expected_balance} remaining credits, got {balance_after_expiration}"
 
 
-def test_fifo_scenario_2_expiring_first_equals_500_remaining(
+def test_drain_consumes_soonest_expiring_first_expiring_arrives_first(
     session_factory: DbSessionFactory,
 ):
     """
-    FIFO Scenario 2: Expiring credits received FIRST → Result: 500 remaining
+    Expiration-first drain, when the expiring lot arrives first:
 
     Setup:
-    - 1000 expiring credits (received FIRST at T1, expire at T4)
-    - 1000 non-expiring credits (received SECOND at T2)
+    - 1000 expiring credits (received at T1, FIRST in emission order; expire at T4)
+    - 1000 non-expiring credits (received at T2, SECOND in emission order)
     - 1500 expense at T3 (before expiration at T4)
 
-    FIFO Consumption: 1000 (expiring) + 500 (non-expiring) = 1500 total consumed
-    Final Balance: 0 (expiring remaining but expired) + 500 (non-expiring remaining) = 500
+    Drain order is by expiration-date ASC NULLS LAST, so the expiring lot is
+    still spent first: 1000 (expiring) + 500 (non-expiring) = 1500 consumed.
+    After T4, the expiring remainder is past its expiration so it no longer
+    counts, and 500 non-expiring credits survive.
     """
 
     # Use fixed timestamps before the credit precision cutoff (2026-02-02)
@@ -832,11 +837,12 @@ def test_fifo_scenario_2_expiring_first_equals_500_remaining(
             session, "0xscenario2_user", now_time
         )
 
-        # Expected: 5000000 remaining (500 * 10000 multiplier - expiring consumed and expired, non-expiring remainder survives)
-        expected_balance = 5000000
+        # Expected: 500 non-expiring credits survive (5_000_000 with the
+        # 10_000 precision multiplier applied to pre-cutoff messages).
+        expected_balance = 5_000_000
         assert (
             balance_after_expiration == expected_balance
-        ), f"Scenario 2: Expected {expected_balance} remaining credits, got {balance_after_expiration}"
+        ), f"Expected {expected_balance} remaining credits, got {balance_after_expiration}"
 
 
 def test_cache_invalidation_on_credit_expiration(session_factory: DbSessionFactory):
@@ -1650,12 +1656,12 @@ def test_credit_balance_details_mixed_expiration(session_factory: DbSessionFacto
 
 
 def test_credit_balance_details_partial_consumption(session_factory: DbSessionFactory):
-    """Details are accurate after FIFO partial consumption."""
+    """Details are accurate after partial consumption (expiration-first drain)."""
     ts = dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc)
     exp1 = dt.datetime(2026, 9, 1, tzinfo=dt.timezone.utc)
 
     entries = [
-        # Non-expiring credit (oldest, consumed first by FIFO)
+        # Non-expiring credit (oldest in emission order)
         {
             "address": "0xdetails3",
             "amount": 1000,
@@ -1665,7 +1671,8 @@ def test_credit_balance_details_partial_consumption(session_factory: DbSessionFa
             "last_update": ts,
             "expiration_date": None,
         },
-        # Expiring credit
+        # Expiring credit (newer in emission order, but drained first because
+        # its expiration is soonest).
         {
             "address": "0xdetails3",
             "amount": 500,
@@ -1675,7 +1682,8 @@ def test_credit_balance_details_partial_consumption(session_factory: DbSessionFa
             "last_update": ts,
             "expiration_date": exp1,
         },
-        # Expense consuming 700 from the oldest (non-expiring) credit
+        # Expense consuming 700: drains the 500 expiring lot first, then 200
+        # from the non-expiring lot.
         {
             "address": "0xdetails3",
             "amount": -700,
@@ -1695,13 +1703,11 @@ def test_credit_balance_details_partial_consumption(session_factory: DbSessionFa
         total, details = get_credit_balance_with_details(
             session=session, address="0xdetails3"
         )
-        # 1000 - 700 = 300 non-expiring remaining, 500 expiring remaining
+        # 1000 - 200 = 800 non-expiring remaining, 500 - 500 = 0 expiring
         assert total == 800
-        assert len(details) == 2
+        assert len(details) == 1
         assert details[0].expiration_date is None
-        assert details[0].amount == 300
-        assert details[1].expiration_date == exp1
-        assert details[1].amount == 500
+        assert details[0].amount == 800
 
 
 def test_credit_balance_details_fully_consumed(session_factory: DbSessionFactory):
@@ -1841,7 +1847,8 @@ def test_credit_balance_details_matches_total(session_factory: DbSessionFactory)
             "last_update": ts,
             "expiration_date": exp2,
         },
-        # Expense consuming 1200 total (FIFO: 1000 from non-expiring, 200 from exp1)
+        # Expense consuming 1200 total: drains soonest-expiring first → 800
+        # from exp1, then 400 from exp2; non-expiring lot is preserved.
         {
             "address": "0xdetails6",
             "amount": -1200,
@@ -1861,16 +1868,16 @@ def test_credit_balance_details_matches_total(session_factory: DbSessionFactory)
         total, details = get_credit_balance_with_details(
             session=session, address="0xdetails6"
         )
-        # 1000 - 1000 = 0 non-expiring, 800 - 200 = 600 exp1, 600 exp2
+        # 1000 non-expiring untouched, 800 - 800 = 0 exp1, 600 - 400 = 200 exp2
         assert total == 1200
         details_sum = sum(d.amount for d in details)
         assert details_sum == total
 
         assert len(details) == 2
-        assert details[0].expiration_date == exp1
-        assert details[0].amount == 600
+        assert details[0].expiration_date is None
+        assert details[0].amount == 1000
         assert details[1].expiration_date == exp2
-        assert details[1].amount == 600
+        assert details[1].amount == 200
 
 
 # ── Volume (origin_ref) consumed credits tests ───────────────────────

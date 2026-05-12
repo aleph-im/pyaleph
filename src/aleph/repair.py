@@ -54,12 +54,13 @@ def _rebuild_credit_lots_for_address(session: DbSession, address: str) -> None:
     Idempotent: clears existing lots for the address first, then rebuilds. Safe
     to interrupt at address granularity (callers commit per-address).
 
-    Replays in emission order ``(message_timestamp, credit_ref, credit_index)
-    ASC``, the same ordering the eager writers see. Each positive history row
-    becomes a lot; each negative row drains lots in emission order, skipping
-    any whose expiration is at or before the negative row's
-    ``message_timestamp`` (so an expense from the past does not drain a lot
-    that had already expired at that moment).
+    Walks history in emission order ``(message_timestamp, credit_ref,
+    credit_index) ASC``. Each positive row becomes a lot. Each negative row
+    drains lots soonest-expiring first (ties broken by emission order),
+    skipping any lot whose expiration is at or before the negative row's
+    ``message_timestamp`` so an expense from the past does not drain a lot
+    that had already expired at that moment. This matches the eager writer's
+    drain policy in ``_consume_address_credits``.
     """
     session.execute(
         delete(AlephCreditBalanceDb).where(AlephCreditBalanceDb.address == address)
@@ -80,6 +81,18 @@ def _rebuild_credit_lots_for_address(session: DbSession, address: str) -> None:
     )
 
     lots: list[dict] = []
+
+    def _drain_order_key(lot: dict) -> tuple:
+        # expiration_date ASC NULLS LAST, then emission tiebreakers
+        exp = lot["expiration_date"]
+        return (
+            exp is None,
+            exp,
+            lot["message_timestamp"],
+            lot["credit_ref"],
+            lot["credit_index"],
+        )
+
     for record in records:
         if record.amount > 0:
             lots.append(
@@ -93,7 +106,7 @@ def _rebuild_credit_lots_for_address(session: DbSession, address: str) -> None:
             )
         else:
             remaining = -int(record.amount)
-            for lot in lots:
+            for lot in sorted(lots, key=_drain_order_key):
                 if remaining <= 0:
                     break
                 if lot["amount_remaining"] <= 0:
