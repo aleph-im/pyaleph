@@ -6,6 +6,7 @@ import pytest
 import pytz
 from aleph_message.models import Chain, ItemHash, ItemType, MessageType
 from more_itertools import one
+from sqlalchemy import insert
 
 from aleph.db.accessors.posts import (
     MergedPost,
@@ -18,11 +19,12 @@ from aleph.db.accessors.posts import (
     get_post,
     refresh_latest_amend,
 )
-from aleph.db.models import MessageDb
+from aleph.db.models import ChainTxDb, MessageDb, message_confirmations
+from aleph.db.models.chains import ChainSyncProtocol
 from aleph.db.models.posts import PostDb
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
-from aleph.types.sort_order import SortOrder
+from aleph.types.sort_order import SortBy, SortOrder
 
 
 def message_fields_from_post(post: PostDb) -> Dict[str, Any]:
@@ -478,6 +480,147 @@ async def test_get_matching_posts_sort_order(
             last_amend=first_amend_post,
         )
         assert_posts_equal(merged_post=asc_posts[1], original=post_from_second_user)
+
+
+@pytest.mark.asyncio
+async def test_get_matching_posts_legacy_sort_order_time(
+    original_post: PostDb,
+    original_message: MessageDb,
+    first_amend_post: PostDb,
+    first_amend_message: MessageDb,
+    post_from_second_user: PostDb,
+    message_from_second_user: MessageDb,
+    session_factory: DbSessionFactory,
+):
+    """
+    Tests the SortBy.TIME sort order on the v0 listing in both directions.
+
+    With the default fixtures, ``original_post`` has ``last_updated`` equal
+    to ``first_amend_post.creation_datetime`` (2022-12-06), while
+    ``post_from_second_user.last_updated`` is 2022-10-12.
+    """
+
+    with session_factory() as session:
+        session.add_all(
+            [original_message, first_amend_message, message_from_second_user]
+        )
+        session.add(original_post)
+        session.add(first_amend_post)
+        original_post.latest_amend = first_amend_post.item_hash
+        session.add(post_from_second_user)
+        session.commit()
+
+    with session_factory() as session:
+        desc_posts = get_matching_posts_legacy(
+            session=session, sort_order=SortOrder.DESCENDING
+        )
+        assert len(desc_posts) == 2
+        assert desc_posts[0].original_item_hash == original_post.item_hash
+        assert desc_posts[1].original_item_hash == post_from_second_user.item_hash
+
+        asc_posts = get_matching_posts_legacy(
+            session=session, sort_order=SortOrder.ASCENDING
+        )
+        assert len(asc_posts) == 2
+        assert asc_posts[0].original_item_hash == post_from_second_user.item_hash
+        assert asc_posts[1].original_item_hash == original_post.item_hash
+
+
+def _make_chain_tx(hash_: str, when: dt.datetime, height: int) -> ChainTxDb:
+    return ChainTxDb(
+        hash=hash_,
+        chain=Chain.ETH,
+        height=height,
+        datetime=when,
+        publisher="0xpublisher",
+        protocol=ChainSyncProtocol.OFF_CHAIN_SYNC,
+        protocol_version=1,
+        content="",
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_matching_posts_legacy_sort_order_tx_time(
+    original_post: PostDb,
+    original_message: MessageDb,
+    post_from_second_user: PostDb,
+    message_from_second_user: MessageDb,
+    session_factory: DbSessionFactory,
+):
+    """
+    Tests the SortBy.TX_TIME sort order on the v0 listing.
+
+    Two confirmed posts are seeded with controlled confirmation times so
+    the tx-time ordering can be asserted independently of the post
+    creation time. A third unconfirmed post exercises the
+    nullsfirst/nullslast branches.
+    """
+
+    unconfirmed_post = PostDb(
+        item_hash="9b1cfa9e0adf3a401a0b3a8fd8ebd0e0bb3ee46a4f9cbf3d3a5e4f5e6a7b8c9d",
+        owner="0xothers",
+        type="some-type",
+        ref=None,
+        amends=None,
+        channel=Channel("OTHER"),
+        content={"body": "no chain tx"},
+        creation_datetime=pytz.utc.localize(dt.datetime(2022, 9, 1)),
+    )
+    unconfirmed_message = MessageDb(
+        **message_fields_from_post(unconfirmed_post),
+        chain=Chain.ETH,
+        signature="sig-unconfirmed",
+    )
+
+    tx_late = _make_chain_tx(
+        "0xtx-late", pytz.utc.localize(dt.datetime(2023, 6, 1)), height=2000
+    )
+    tx_early = _make_chain_tx(
+        "0xtx-early", pytz.utc.localize(dt.datetime(2022, 8, 1)), height=1000
+    )
+
+    with session_factory() as session:
+        session.add_all(
+            [original_message, message_from_second_user, unconfirmed_message]
+        )
+        session.add_all([original_post, post_from_second_user, unconfirmed_post])
+        session.add_all([tx_late, tx_early])
+        session.flush()
+        session.execute(
+            insert(message_confirmations).values(
+                [
+                    {"item_hash": original_post.item_hash, "tx_hash": tx_late.hash},
+                    {
+                        "item_hash": post_from_second_user.item_hash,
+                        "tx_hash": tx_early.hash,
+                    },
+                ]
+            )
+        )
+        session.commit()
+
+    with session_factory() as session:
+        desc_posts = get_matching_posts_legacy(
+            session=session,
+            sort_by=SortBy.TX_TIME,
+            sort_order=SortOrder.DESCENDING,
+        )
+        assert [p.original_item_hash for p in desc_posts] == [
+            unconfirmed_post.item_hash,  # nullsfirst on DESC
+            original_post.item_hash,
+            post_from_second_user.item_hash,
+        ]
+
+        asc_posts = get_matching_posts_legacy(
+            session=session,
+            sort_by=SortBy.TX_TIME,
+            sort_order=SortOrder.ASCENDING,
+        )
+        assert [p.original_item_hash for p in asc_posts] == [
+            post_from_second_user.item_hash,
+            original_post.item_hash,
+            unconfirmed_post.item_hash,  # nullslast on ASC
+        ]
 
 
 @pytest.mark.asyncio
