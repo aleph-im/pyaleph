@@ -411,7 +411,6 @@ class EthereumConnector(ChainWriter):
                                 session=session,
                                 limit=500,
                                 offset=offset,
-                                chain=Chain.ETH,
                             )
                         )
                         if not batch:

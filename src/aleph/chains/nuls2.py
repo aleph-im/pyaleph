@@ -208,7 +208,7 @@ class Nuls2Connector(ChainWriter):
                 while True:
                     batch = list(
                         get_unconfirmed_messages(
-                            session=session, limit=500, offset=offset, chain=Chain.NULS2
+                            session=session, limit=500, offset=offset
                         )
                     )
                     if not batch:
