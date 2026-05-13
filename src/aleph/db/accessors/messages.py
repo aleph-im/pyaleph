@@ -419,28 +419,11 @@ def get_message_stats_by_address(
 # TODO: declare a type that will match the result (something like UnconfirmedMessageDb)
 #       and translate the time field to epoch.
 def get_unconfirmed_messages(
-    session: DbSession, limit: int = 100, offset: int = 0, chain: Optional[Chain] = None
+    session: DbSession, limit: int = 100, offset: int = 0
 ) -> Iterable[MessageDb]:
-
-    if chain is None:
-        select_message_confirmations = select(message_confirmations.c.item_hash).where(
-            message_confirmations.c.item_hash == MessageDb.item_hash
-        )
-    else:
-        select_message_confirmations = (
-            select(message_confirmations.c.item_hash)
-            .join(ChainTxDb, message_confirmations.c.tx_hash == ChainTxDb.hash)
-            .where(
-                (message_confirmations.c.item_hash == MessageDb.item_hash)
-                & (ChainTxDb.chain == chain)
-            )
-        )
-
     select_stmt = (
         select(MessageDb)
-        .where(
-            MessageDb.signature.isnot(None) & (~select_message_confirmations.exists())
-        )
+        .where(MessageDb.signature.isnot(None) & MessageDb.first_confirmed_at.is_(None))
         .order_by(MessageDb.reception_time.asc())
     )
 

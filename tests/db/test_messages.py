@@ -366,21 +366,8 @@ async def test_get_unconfirmed_messages(
         unconfirmed_messages = list(get_unconfirmed_messages(session))
         assert unconfirmed_messages == []
 
-        # Check that it is also ignored when the chain parameter is specified
-        unconfirmed_messages = list(get_unconfirmed_messages(session, chain=tx.chain))
-        assert unconfirmed_messages == []
-
-        # Check that it reappears if we specify a different chain
-        unconfirmed_messages = list(
-            get_unconfirmed_messages(session, chain=Chain.TEZOS)
-        )
-        assert len(unconfirmed_messages) == 1
-        assert_messages_equal(fixture_message, unconfirmed_messages[0])
-
         # Check that the limit parameter is respected
-        unconfirmed_messages = list(
-            get_unconfirmed_messages(session, chain=Chain.TEZOS, limit=0)
-        )
+        unconfirmed_messages = list(get_unconfirmed_messages(session, limit=0))
         assert unconfirmed_messages == []
 
 
