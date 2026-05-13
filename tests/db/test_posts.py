@@ -20,8 +20,8 @@ from aleph.db.accessors.posts import (
     refresh_latest_amend,
 )
 from aleph.db.models import ChainTxDb, MessageDb, message_confirmations
-from aleph.db.models.chains import ChainSyncProtocol
 from aleph.db.models.posts import PostDb
+from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.sort_order import SortBy, SortOrder
