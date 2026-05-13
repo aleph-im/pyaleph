@@ -104,24 +104,23 @@ def make_select_merged_post_stmt() -> Select:
     return select_merged_post_stmt
 
 
-def make_select_merged_post_with_message_info_stmt() -> Select:
+def _make_select_merged_post_v0_base_stmt() -> Select:
     """
-    Combines posts and their latest amends according to the v0 /posts/ endpoint spec.
+    Originals + their latest amends, projected with the post-side
+    columns needed by the v0 /posts/ endpoint.
+
+    Unlike :func:`make_select_merged_post_stmt` the result also exposes
+    ``latest_amend`` and the amend-aware ``type``, which lets callers
+    defer the ``messages`` joins until *after* applying filters and
+    LIMIT instead of paying for them on every candidate row.
     """
 
-    select_merged_post_stmt = (
+    return (
         select(
             Original.item_hash.label("original_item_hash"),
             func.coalesce(Amend.item_hash, Original.item_hash).label("item_hash"),
-            OriginalMessage.chain,
+            Original.latest_amend.label("latest_amend"),
             func.coalesce(Amend.content, Original.content).label("content"),
-            case(
-                (AmendMessage.item_type.is_(None), OriginalMessage.item_content),
-                else_=AmendMessage.item_content,
-            ).label("item_content"),
-            func.coalesce(AmendMessage.item_type, OriginalMessage.item_type).label(
-                "item_type"
-            ),
             Original.owner.label("owner"),
             Original.ref.label("ref"),
             func.coalesce(Amend.creation_datetime, Original.creation_datetime).label(
@@ -131,18 +130,6 @@ def make_select_merged_post_with_message_info_stmt() -> Select:
             Original.creation_datetime.label("created"),
             func.coalesce(Amend.type, Original.type).label("type"),
             Original.type.label("original_type"),
-            func.coalesce(Amend.item_hash, Original.item_hash).label("hash"),
-            func.coalesce(AmendMessage.signature, OriginalMessage.signature).label(
-                "signature"
-            ),
-            OriginalMessage.signature.label("original_signature"),
-            func.coalesce(AmendMessage.size, OriginalMessage.size).label("size"),
-            sqla_cast(
-                extract(
-                    "epoch", func.coalesce(AmendMessage.time, OriginalMessage.time)
-                ),
-                Float,
-            ).label("time"),
             func.coalesce(Amend.tags, Original.tags).label("tags"),
         )
         .join(
@@ -150,11 +137,8 @@ def make_select_merged_post_with_message_info_stmt() -> Select:
             Original.latest_amend == Amend.item_hash,
             isouter=True,
         )
-        .join(OriginalMessage, Original.item_hash == OriginalMessage.item_hash)
-        .join(AmendMessage, Amend.item_hash == AmendMessage.item_hash, isouter=True)
-    ).where(Original.amends.is_(None))
-
-    return select_merged_post_stmt
+        .where(Original.amends.is_(None))
+    )
 
 
 def get_post(session: DbSession, item_hash: str) -> Optional[MergedPost]:
@@ -356,9 +340,110 @@ def get_matching_posts_legacy(
     # Same as make_matching_posts_query
     **kwargs,
 ) -> List[MergedPostV0]:
-    select_stmt = make_select_merged_post_with_message_info_stmt()
-    filtered_select_stmt = filter_post_select_stmt(select_stmt, **kwargs)
-    return cast(List[MergedPostV0], session.execute(filtered_select_stmt).all())
+    """
+    v0 /posts/ list query. Filters and LIMITs on ``posts`` first, then
+    joins ``messages`` on the bounded result so we never fetch message
+    fields for rows that get discarded by pagination.
+    """
+    base_stmt = _make_select_merged_post_v0_base_stmt()
+    limited_stmt = filter_post_select_stmt(base_stmt, **kwargs)
+    limited = limited_stmt.subquery()
+
+    final_stmt = (
+        select(
+            limited.c.original_item_hash,
+            limited.c.item_hash,
+            OriginalMessage.chain.label("chain"),
+            limited.c.content,
+            case(
+                (AmendMessage.item_type.is_(None), OriginalMessage.item_content),
+                else_=AmendMessage.item_content,
+            ).label("item_content"),
+            func.coalesce(AmendMessage.item_type, OriginalMessage.item_type).label(
+                "item_type"
+            ),
+            limited.c.owner,
+            limited.c.ref,
+            limited.c.last_updated,
+            limited.c.channel,
+            limited.c.created,
+            limited.c.type,
+            limited.c.original_type,
+            func.coalesce(AmendMessage.signature, OriginalMessage.signature).label(
+                "signature"
+            ),
+            OriginalMessage.signature.label("original_signature"),
+            func.coalesce(AmendMessage.size, OriginalMessage.size).label("size"),
+            sqla_cast(
+                extract(
+                    "epoch", func.coalesce(AmendMessage.time, OriginalMessage.time)
+                ),
+                Float,
+            ).label("time"),
+            limited.c.tags,
+        )
+        .select_from(limited)
+        .join(
+            OriginalMessage,
+            OriginalMessage.item_hash == limited.c.original_item_hash,
+        )
+        .join(
+            AmendMessage,
+            AmendMessage.item_hash == limited.c.latest_amend,
+            isouter=True,
+        )
+    )
+
+    # The inner subquery applies the LIMIT, but wrapping it discards row
+    # order, so re-apply ORDER BY on the bounded set (cheap, at most a
+    # few hundred rows).
+    sort_by: Optional[SortBy] = kwargs.get("sort_by")
+    sort_order: Optional[SortOrder] = kwargs.get("sort_order")
+    if sort_order is not None:
+        if sort_by == SortBy.TX_TIME:
+            select_earliest_confirmation = (
+                select(
+                    message_confirmations.c.item_hash,
+                    func.min(ChainTxDb.datetime).label("earliest_confirmation"),
+                )
+                .join(ChainTxDb, message_confirmations.c.tx_hash == ChainTxDb.hash)
+                .group_by(message_confirmations.c.item_hash)
+            ).subquery()
+            final_stmt = final_stmt.join(
+                select_earliest_confirmation,
+                select_earliest_confirmation.c.item_hash
+                == limited.c.original_item_hash,
+                isouter=True,
+            )
+            if sort_order == SortOrder.DESCENDING:
+                final_stmt = final_stmt.order_by(
+                    nullsfirst(
+                        select_earliest_confirmation.c.earliest_confirmation.desc()
+                    ),
+                    limited.c.created.desc(),
+                    limited.c.item_hash.asc(),
+                )
+            else:
+                final_stmt = final_stmt.order_by(
+                    nullslast(
+                        select_earliest_confirmation.c.earliest_confirmation.asc()
+                    ),
+                    limited.c.created.asc(),
+                    limited.c.item_hash.asc(),
+                )
+        else:
+            if sort_order == SortOrder.DESCENDING:
+                final_stmt = final_stmt.order_by(
+                    limited.c.last_updated.desc(),
+                    limited.c.original_item_hash.asc(),
+                )
+            else:
+                final_stmt = final_stmt.order_by(
+                    limited.c.last_updated.asc(),
+                    limited.c.original_item_hash.asc(),
+                )
+
+    return cast(List[MergedPostV0], session.execute(final_stmt).all())
 
 
 def get_matching_posts(
