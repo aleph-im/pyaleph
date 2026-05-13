@@ -2,8 +2,10 @@ import asyncio
 import concurrent
 import json
 import logging
+import pathlib
 from typing import AsyncIterable, Dict, Optional, Self, Union, cast
 
+import aiofiles
 import aiohttp
 import aioipfs
 from configmanager import Config
@@ -16,6 +18,40 @@ from aleph.utils import run_in_executor
 LOGGER = logging.getLogger(__name__)
 
 MAX_LEN = 1024 * 1024 * 100
+
+
+class DagImportError(Exception):
+    """kubo /api/v0/dag/import reported a failure (transport, malformed
+    response, or a non-empty PinErrorMsg for an imported root)."""
+
+
+def parse_dag_import_response(body: bytes) -> list[str]:
+    """Walk the NDJSON body from kubo /api/v0/dag/import and return imported
+    root CIDs in encounter order.
+
+    Raises DagImportError on malformed JSON, missing fields, or any root
+    with a non-empty PinErrorMsg.
+    """
+    roots: list[str] = []
+    for line in body.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError as e:
+            raise DagImportError(f"malformed NDJSON line: {e}") from e
+        root = entry.get("Root")
+        if root is None:
+            continue
+        pin_err = root.get("PinErrorMsg") or ""
+        if pin_err:
+            raise DagImportError(f"kubo pin error: {pin_err}")
+        cid = root.get("Cid", {}).get("/")
+        if not cid:
+            raise DagImportError(f"malformed Root entry (missing Cid./): {entry!r}")
+        roots.append(cid)
+    return roots
 
 
 async def _fetch_ipfs_endpoint_streamed(
@@ -292,6 +328,54 @@ class IpfsService:
                     raise
             else:
                 break
+
+    async def dag_import(
+        self,
+        car_path: "pathlib.Path",
+        *,
+        pin_roots: bool = True,
+    ) -> list[str]:
+        """Stream a CAR file into kubo /api/v0/dag/import on the pinning client
+        and return imported root CIDs in order.
+
+        Raises:
+            DagImportError: if the response is malformed or kubo reports a pin
+                error.
+            aioipfs.APIError: on a non-2xx response from kubo.
+        """
+        driver = self.pinning_client.core.driver
+        url = self.pinning_client.core.url("dag/import")
+        params = {
+            "pin-roots": "true" if pin_roots else "false",
+            "silent": "false",
+            "stats": "false",
+        }
+
+        # Stream the file body as a single multipart field named "file".
+        # Kubo accepts the body as application/vnd.ipld.car directly, but the
+        # official client uploads it via multipart; replicate that to stay on
+        # the well-trodden path.
+        #
+        # We use aiofiles so that reads happen on the threadpool executor
+        # rather than blocking the event loop. aiohttp's payload registry
+        # picks up the aiofiles handle via AsyncIterablePayload because it
+        # implements __aiter__/__anext__.
+        async with aiofiles.open(car_path, "rb") as f:
+            data = aiohttp.FormData()
+            data.add_field(
+                "file",
+                f,
+                filename=car_path.name,
+                content_type="application/vnd.ipld.car",
+            )
+            async with driver.session.post(
+                url, params=params, data=data, auth=driver.auth
+            ) as response:
+                body = await response.read()
+                if response.status in aioipfs.apis.HTTP_ERROR_CODES:
+                    self.pinning_client.core.handle_error(response, body)
+
+        return parse_dag_import_response(body)
 
     async def sub(self, topic: str):
         ipfs_client = self.ipfs_client

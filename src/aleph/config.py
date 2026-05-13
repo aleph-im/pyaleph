@@ -5,6 +5,7 @@ from configmanager import Config
 from aleph.toolkit.constants import (
     DEFAULT_MAX_FILE_SIZE,
     DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+    DEFAULT_MAX_UPLOAD_CAR_SIZE,
 )
 
 
@@ -231,6 +232,10 @@ def get_defaults():
             "max_upload_file_size": DEFAULT_MAX_FILE_SIZE,
             # Maximum file size for unauthenticated uploads via /ipfs/add_file, in bytes.
             "max_unauthenticated_upload_file_size": DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+            # Maximum CAR file size for /ipfs/add_car uploads, in bytes.
+            # CAR uploads always require a signed STORE message; this cap
+            # protects against runaway uploads, not unauthenticated abuse.
+            "max_upload_car_size": DEFAULT_MAX_UPLOAD_CAR_SIZE,
             # Pinning service configuration
             "pinning": {
                 # Hostname of the IPFS pinning service (if different from main IPFS).

@@ -1,14 +1,17 @@
 import datetime as dt
+import hashlib
 import json
 from decimal import Decimal
 from io import BytesIO
 from typing import Any
+from unittest.mock import AsyncMock as MockAsyncMock
 
 import aiohttp
 import pytest
 import pytest_asyncio
 from aiohttp import web
 from aleph_message.models import Chain
+from car_test_utils import build_carv1
 from in_memory_storage_engine import InMemoryStorageEngine
 
 from aleph.chains.signature_verifier import SignatureVerifier
@@ -573,3 +576,575 @@ async def test_auth_credit_upload_sufficient_credit_balance(
     assert response.status == 200, await response.text()
     payload = await response.json()
     assert payload["hash"] == EXPECTED_FILE_CID
+
+
+# ---------------------------------------------------------------------------
+# CAR upload tests (POST /api/v0/ipfs/add_car)
+# ---------------------------------------------------------------------------
+
+IPFS_ADD_CAR_URI = "/api/v0/ipfs/add_car"
+
+# Stable test root CID: CIDv1 dag-pb with sha2-256 multihash of a known
+# byte string. We do NOT need this CID's blocks to actually exist on the
+# test kubo: the IpfsService is mocked, so dag_import returns whatever we
+# instruct it to return.
+DIR_ROOT_CID = "bafybeibwzifw72ttrkqglhi64gn3stoyjs6t2vcyfzr67gqkogfgcyo3uy"
+MOCK_DIR_SIZE = 4096  # CumulativeSize returned by the mocked stat
+
+
+def _build_dir_store_message(item_hash: str) -> dict:
+    """Build an IPFS STORE message dict referencing item_hash. Signature is
+    mocked away so the placeholder signature is fine."""
+    item_content = json.dumps(
+        {
+            "address": "0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+            "time": 1692193373.714271,
+            "item_type": "ipfs",
+            "item_hash": item_hash,
+            "mime_type": "application/octet-stream",
+        }
+    )
+    # Outer item_hash must equal sha256(item_content) or pydantic rejects
+    # the message before our handler runs. Compute it here so the test
+    # message validates.
+    outer_hash = hashlib.sha256(item_content.encode("utf-8")).hexdigest()
+    return {
+        "chain": "ETH",
+        "sender": "0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+        "type": "STORE",
+        "channel": "null",
+        "signature": "0x" + "00" * 65,
+        "time": 1692193373.7144432,
+        "item_type": "inline",
+        "item_content": item_content,
+        "item_hash": outer_hash,
+    }
+
+
+@pytest_asyncio.fixture
+async def api_client_with_dag_import(api_client):
+    """Extends `api_client`: also mock dag_import to return DIR_ROOT_CID and
+    update files.stat to return directory-shaped stats."""
+    ipfs_service = _get_ipfs_service_mock(api_client)
+    ipfs_service.dag_import = MockAsyncMock(return_value=[DIR_ROOT_CID])
+    ipfs_service.pinning_client.files.stat = MockAsyncMock(
+        return_value={
+            "Hash": DIR_ROOT_CID,
+            "Size": 0,
+            "CumulativeSize": MOCK_DIR_SIZE,
+            "Blocks": 4,
+            "Type": "directory",
+        }
+    )
+    return api_client
+
+
+@pytest.mark.asyncio
+async def test_add_car_success(
+    api_client_with_dag_import,
+    session_factory: DbSessionFactory,
+    mocker,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+) -> None:
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+    mocker.patch(
+        "aleph.web.controllers.ipfs.broadcast_and_process_message",
+        new_callable=mocker.AsyncMock,
+        return_value=BroadcastStatus(
+            publication_status=PublicationStatus.from_failures([]),
+            message_status=MessageStatus.PROCESSED,
+        ),
+    )
+
+    with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                chain=Chain.ETH,
+                balance=Decimal(1000),
+                eth_height=0,
+            )
+        )
+        session.commit()
+
+    car_bytes = build_carv1(DIR_ROOT_CID)
+    message = _build_dir_store_message(DIR_ROOT_CID)
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(car_bytes), filename="dir.car")
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": message, "sync": True}),
+        content_type="application/json",
+    )
+
+    response = await api_client_with_dag_import.post(IPFS_ADD_CAR_URI, data=form_data)
+    body = await response.text()
+    assert response.status == 200, body
+    payload = await response.json()
+    assert payload == {
+        "status": "success",
+        "hash": DIR_ROOT_CID,
+        "size": MOCK_DIR_SIZE,
+    }
+
+    with session_factory() as session:
+        file = get_file(session=session, file_hash=DIR_ROOT_CID)
+        assert file is not None
+        assert file.type == FileType.DIRECTORY
+        assert file.size == MOCK_DIR_SIZE
+        # Authenticated success: no grace period.
+        assert not _has_grace_period(session, DIR_ROOT_CID)
+
+    ipfs_service = _get_ipfs_service_mock(api_client_with_dag_import)
+    ipfs_service.dag_import.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_add_car_missing_metadata(api_client_with_dag_import) -> None:
+    car_bytes = build_carv1(DIR_ROOT_CID)
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(car_bytes), filename="dir.car")
+
+    response = await api_client_with_dag_import.post(IPFS_ADD_CAR_URI, data=form_data)
+    body = await response.text()
+    assert response.status == 422, body
+    assert "metadata is required" in body
+
+    ipfs_service = _get_ipfs_service_mock(api_client_with_dag_import)
+    ipfs_service.dag_import.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_add_car_missing_file(api_client_with_dag_import) -> None:
+    message = _build_dir_store_message(DIR_ROOT_CID)
+    form_data = aiohttp.FormData()
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": message, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await api_client_with_dag_import.post(IPFS_ADD_CAR_URI, data=form_data)
+    body = await response.text()
+    assert response.status == 422, body
+    assert "Missing 'file'" in body
+
+    ipfs_service = _get_ipfs_service_mock(api_client_with_dag_import)
+    ipfs_service.dag_import.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_add_car_invalid_signature(api_client_with_dag_import, mocker) -> None:
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+        side_effect=web.HTTPForbidden(),
+    )
+
+    car_bytes = build_carv1(DIR_ROOT_CID)
+    message = _build_dir_store_message(DIR_ROOT_CID)
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(car_bytes), filename="dir.car")
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": message, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await api_client_with_dag_import.post(IPFS_ADD_CAR_URI, data=form_data)
+    assert response.status == 403, await response.text()
+
+    ipfs_service = _get_ipfs_service_mock(api_client_with_dag_import)
+    ipfs_service.dag_import.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_add_car_wrong_item_type(api_client_with_dag_import, mocker) -> None:
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+
+    # Build a message with item_type=storage instead of ipfs.
+    item_content = json.dumps(
+        {
+            "address": "0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+            "time": 1692193373.714271,
+            "item_type": "storage",
+            "item_hash": "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
+            "mime_type": "application/octet-stream",
+        }
+    )
+    bad_message = {
+        **IPFS_MESSAGE_DICT,
+        "item_content": item_content,
+        "item_hash": hashlib.sha256(item_content.encode("utf-8")).hexdigest(),
+    }
+
+    car_bytes = build_carv1(DIR_ROOT_CID)
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(car_bytes), filename="dir.car")
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": bad_message, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await api_client_with_dag_import.post(IPFS_ADD_CAR_URI, data=form_data)
+    body = await response.text()
+    assert response.status == 422, body
+    assert "item_type=ipfs" in body
+
+    ipfs_service = _get_ipfs_service_mock(api_client_with_dag_import)
+    ipfs_service.dag_import.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_add_car_v2_rejected(api_client_with_dag_import, mocker) -> None:
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+
+    car_bytes = build_carv1(DIR_ROOT_CID, version=2)
+    message = _build_dir_store_message(DIR_ROOT_CID)
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(car_bytes), filename="v2.car")
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": message, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await api_client_with_dag_import.post(IPFS_ADD_CAR_URI, data=form_data)
+    body = await response.text()
+    assert response.status == 422, body
+    assert "unsupported CAR version" in body
+
+    ipfs_service = _get_ipfs_service_mock(api_client_with_dag_import)
+    ipfs_service.dag_import.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_add_car_multi_root_rejected(api_client_with_dag_import, mocker) -> None:
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+
+    car_bytes = build_carv1(DIR_ROOT_CID, n_roots=2)
+    message = _build_dir_store_message(DIR_ROOT_CID)
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(car_bytes), filename="multi.car")
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": message, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await api_client_with_dag_import.post(IPFS_ADD_CAR_URI, data=form_data)
+    body = await response.text()
+    assert response.status == 422, body
+    assert "expected exactly 1 root" in body
+
+    ipfs_service = _get_ipfs_service_mock(api_client_with_dag_import)
+    ipfs_service.dag_import.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_add_car_header_root_mismatch(api_client_with_dag_import, mocker) -> None:
+    """CAR header declares a root that does not match the metadata.
+    Expected: 422 'Root CID does not match', no kubo contact."""
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+
+    other_root = "bafybeicndzezzx7zyvuoukheebsegjnokf3vlwm4nlz77pnxllgr2jjelu"
+    car_bytes = build_carv1(other_root)
+    # Metadata still claims DIR_ROOT_CID.
+    message = _build_dir_store_message(DIR_ROOT_CID)
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(car_bytes), filename="mismatch.car")
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": message, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await api_client_with_dag_import.post(IPFS_ADD_CAR_URI, data=form_data)
+    body = await response.text()
+    assert response.status == 422, body
+    assert "Root CID does not match" in body
+
+    ipfs_service = _get_ipfs_service_mock(api_client_with_dag_import)
+    ipfs_service.dag_import.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_add_car_imported_root_mismatch(
+    api_client_with_dag_import,
+    session_factory: DbSessionFactory,
+    mocker,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+) -> None:
+    """CAR header claims DIR_ROOT_CID and metadata agrees, but mocked
+    dag_import returns a different root (simulating a lying header).
+    Expected: 422 'Imported root does not match expected'. Grace period not
+    written because we never recorded `cid` in this code path."""
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+
+    # Force dag_import to return a different CID than expected.
+    ipfs_service = _get_ipfs_service_mock(api_client_with_dag_import)
+    ipfs_service.dag_import = MockAsyncMock(
+        return_value=["bafybeicndzezzx7zyvuoukheebsegjnokf3vlwm4nlz77pnxllgr2jjelu"]
+    )
+
+    # Seed enough balance to clear the pre-import gate so the test can
+    # exercise the post-import mismatch path.
+    with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                chain=Chain.ETH,
+                balance=Decimal(1_000_000),
+                eth_height=0,
+            )
+        )
+        session.commit()
+
+    car_bytes = build_carv1(DIR_ROOT_CID)
+    message = _build_dir_store_message(DIR_ROOT_CID)
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(car_bytes), filename="lying.car")
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": message, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await api_client_with_dag_import.post(IPFS_ADD_CAR_URI, data=form_data)
+    body = await response.text()
+    assert response.status == 422, body
+    assert "Imported root does not match expected" in body
+
+
+@pytest.mark.asyncio
+async def test_add_car_too_large(
+    api_client_with_dag_import, mocker, mock_config
+) -> None:
+    """CAR larger than max_upload_car_size returns 413, no kubo contact."""
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+    # Shrink the cap to make the test fast: 1 KiB.
+    mock_config.ipfs.max_upload_car_size.value = 1024
+
+    # Payload larger than 1 KiB but with a valid header. The size check
+    # raises mid-stream.
+    car_header = build_carv1(DIR_ROOT_CID)
+    car_bytes = car_header + (b"\x00" * 4096)
+    message = _build_dir_store_message(DIR_ROOT_CID)
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(car_bytes), filename="huge.car")
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": message, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await api_client_with_dag_import.post(IPFS_ADD_CAR_URI, data=form_data)
+    assert response.status == 413, await response.text()
+
+    ipfs_service = _get_ipfs_service_mock(api_client_with_dag_import)
+    ipfs_service.dag_import.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_add_car_ipfs_disabled(
+    ccn_test_aiohttp_app, mocker, aiohttp_client
+) -> None:
+    """If ipfs_service is None in app state, return 403."""
+    ccn_test_aiohttp_app[APP_STATE_STORAGE_SERVICE] = StorageService(
+        storage_engine=InMemoryStorageEngine(files={}),
+        ipfs_service=None,  # type: ignore[arg-type]
+        node_cache=mocker.AsyncMock(),
+    )
+    ccn_test_aiohttp_app[APP_STATE_SIGNATURE_VERIFIER] = SignatureVerifier()
+
+    client = await aiohttp_client(ccn_test_aiohttp_app)
+    car_bytes = build_carv1(DIR_ROOT_CID)
+    message = _build_dir_store_message(DIR_ROOT_CID)
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(car_bytes), filename="dir.car")
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": message, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await client.post(IPFS_ADD_CAR_URI, data=form_data)
+    body = await response.text()
+    assert response.status == 403, body
+    assert "IPFS is disabled" in body
+
+
+@pytest.mark.asyncio
+async def test_add_car_insufficient_balance(
+    api_client_with_dag_import,
+    session_factory: DbSessionFactory,
+    mocker,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+) -> None:
+    """Authenticated CAR upload with zero balance is rejected pre-import:
+    402, dag_import not called, no file row, no grace period."""
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+
+    # No AlephBalanceDb row → balance is zero.
+    ipfs_service = _get_ipfs_service_mock(api_client_with_dag_import)
+
+    car_bytes = build_carv1(DIR_ROOT_CID)
+    message = _build_dir_store_message(DIR_ROOT_CID)
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(car_bytes), filename="dir.car")
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": message, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await api_client_with_dag_import.post(IPFS_ADD_CAR_URI, data=form_data)
+    assert response.status == 402, await response.text()
+
+    ipfs_service.dag_import.assert_not_called()
+    with session_factory() as session:
+        assert get_file(session=session, file_hash=DIR_ROOT_CID) is None
+        assert not _has_grace_period(session, DIR_ROOT_CID)
+
+
+@pytest.mark.asyncio
+async def test_add_car_stat_timeout(
+    api_client_with_dag_import,
+    session_factory: DbSessionFactory,
+    mocker,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+) -> None:
+    """If files.stat times out post-import, return 504 and apply grace
+    period with fallback size = CAR file size on disk."""
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+
+    with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                chain=Chain.ETH,
+                balance=Decimal(1_000_000),
+                eth_height=0,
+            )
+        )
+        session.commit()
+
+    ipfs_service = _get_ipfs_service_mock(api_client_with_dag_import)
+    ipfs_service.pinning_client.files.stat = MockAsyncMock(
+        side_effect=TimeoutError(),
+    )
+
+    car_bytes = build_carv1(DIR_ROOT_CID)
+    message = _build_dir_store_message(DIR_ROOT_CID)
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(car_bytes), filename="dir.car")
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": message, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await api_client_with_dag_import.post(IPFS_ADD_CAR_URI, data=form_data)
+    body = await response.text()
+    assert response.status == 504, body
+    assert "Timed out waiting for IPFS stat" in body
+
+    with session_factory() as session:
+        file = get_file(session=session, file_hash=DIR_ROOT_CID)
+        assert file is not None
+        assert file.type == FileType.DIRECTORY
+        # Fallback size = CAR bytes on disk (just the header here).
+        assert file.size == len(car_bytes)
+        assert _has_grace_period(session, DIR_ROOT_CID)
+
+
+@pytest.mark.asyncio
+async def test_add_car_dag_import_failure(
+    api_client_with_dag_import,
+    session_factory: DbSessionFactory,
+    mocker,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+) -> None:
+    """kubo failure during dag_import returns 502, no file row written."""
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+
+    with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                chain=Chain.ETH,
+                balance=Decimal(1_000_000),
+                eth_height=0,
+            )
+        )
+        session.commit()
+
+    ipfs_service = _get_ipfs_service_mock(api_client_with_dag_import)
+    ipfs_service.dag_import = MockAsyncMock(
+        side_effect=RuntimeError("kubo went away"),
+    )
+
+    car_bytes = build_carv1(DIR_ROOT_CID)
+    message = _build_dir_store_message(DIR_ROOT_CID)
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(car_bytes), filename="dir.car")
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": message, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await api_client_with_dag_import.post(IPFS_ADD_CAR_URI, data=form_data)
+    body = await response.text()
+    assert response.status == 502, body
+    assert "Failed to import CAR into IPFS" in body
+
+    with session_factory() as session:
+        assert get_file(session=session, file_hash=DIR_ROOT_CID) is None

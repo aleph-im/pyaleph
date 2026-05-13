@@ -334,6 +334,7 @@ CREDIT_PRECISION_MULTIPLIER = 10000
 
 DEFAULT_MAX_FILE_SIZE = 100 * MiB
 DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE = 25 * MiB
+DEFAULT_MAX_UPLOAD_CAR_SIZE = 4 * GiB
 MIN_STORE_COST_MIB = 25  # Minimum MiB cost for pure STORE messages
 MIN_CREDIT_COST_PER_HOUR = (
     1  # Minimum cost per hour in credits for instances and volumes

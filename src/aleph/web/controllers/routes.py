@@ -134,6 +134,7 @@ def register_routes(app: web.Application, swagger: Optional[SwaggerDocs]):
             accounts.get_resource_consumed_credits_controller,
         ),
         web.post("/api/v0/ipfs/add_file", ipfs.ipfs_add_file),
+        web.post("/api/v0/ipfs/add_car", ipfs.ipfs_add_car),
         web.post(
             "/api/v0/ipfs/add_json",
             storage.add_ipfs_json_controller,
