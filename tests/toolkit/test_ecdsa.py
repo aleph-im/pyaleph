@@ -2,10 +2,16 @@ import base64
 import time
 from unittest.mock import patch
 
+import pytest
+from aiohttp import web
+from aiohttp.test_utils import make_mocked_request
+from configmanager import Config
+
 from aleph.toolkit.ecdsa import (
     create_auth_token,
     generate_key_pair,
     generate_key_pair_from_private_key,
+    require_auth_token,
     sign_message,
     verify_auth_token,
     verify_signature,
@@ -216,3 +222,57 @@ def test_token_roundtrip_with_known_values():
     _, wrong_key = generate_key_pair()
     is_valid_wrong = verify_auth_token(token, wrong_key)
     assert is_valid_wrong is False
+
+
+@pytest.mark.asyncio
+async def test_require_auth_token_unwraps_configmanager_items(monkeypatch):
+    """Regression: require_auth_token must unwrap configmanager Item wrappers.
+
+    In production, ``config.aleph.auth.public_key`` and ``max_token_age`` are
+    ``configmanager.Item`` objects, not raw ``str``/``int``. Passing them
+    straight into ``verify_auth_token`` made ``bytes.fromhex`` and ``int``
+    comparisons raise ``TypeError`` — silently swallowed by the
+    ``except Exception: return False`` — so every token validation
+    returned False.
+    """
+    private_key, public_key = generate_key_pair()
+
+    fake_config = Config(
+        schema={"aleph": {"auth": {"public_key": public_key, "max_token_age": 300}}}
+    )
+    monkeypatch.setattr("aleph.toolkit.ecdsa.get_config", lambda: fake_config)
+
+    @require_auth_token
+    async def handler(request):
+        return web.Response(text="ok")
+
+    token = create_auth_token(private_key)
+    request = make_mocked_request("POST", "/", headers={"X-Auth-Token": token})
+
+    response = await handler(request)
+    assert response.status == 200
+
+
+@pytest.mark.asyncio
+async def test_require_auth_token_rejects_invalid_token_with_item_wrappers(
+    monkeypatch,
+):
+    """Invalid tokens must still be rejected once Item wrappers are unwrapped."""
+    _, public_key = generate_key_pair()
+    other_private_key, _ = generate_key_pair()
+
+    fake_config = Config(
+        schema={"aleph": {"auth": {"public_key": public_key, "max_token_age": 300}}}
+    )
+    monkeypatch.setattr("aleph.toolkit.ecdsa.get_config", lambda: fake_config)
+
+    @require_auth_token
+    async def handler(request):
+        return web.Response(text="ok")
+
+    # Token signed by a different private key — must be rejected as 401.
+    token = create_auth_token(other_private_key)
+    request = make_mocked_request("POST", "/", headers={"X-Auth-Token": token})
+
+    with pytest.raises(web.HTTPUnauthorized):
+        await handler(request)

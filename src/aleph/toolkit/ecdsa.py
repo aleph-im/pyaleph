@@ -132,8 +132,8 @@ def require_auth_token(handler):
         # Get configuration
         config = get_config()
         auth_config = config.aleph.auth
-        public_key = auth_config.public_key
-        max_age = auth_config.max_token_age
+        public_key = auth_config.public_key.value
+        max_age = auth_config.max_token_age.value
 
         # Verify the token
         if not verify_auth_token(auth_token, public_key, max_age):
