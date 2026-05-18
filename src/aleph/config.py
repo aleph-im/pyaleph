@@ -59,6 +59,16 @@ def get_defaults():
                 # Allowed channels for credit balance messages.
                 "channels": ["ALEPH_CREDIT"],
             },
+            "scoring": {
+                # Addresses allowed to publish node scoring metrics.
+                "addresses": [
+                    "0x4D52380D3191274a04846c89c069E6C3F2Ed94e4",
+                ],
+                # Channel scoring messages are published on.
+                "channel": "aleph-scoring",
+                # POST message type that carries the node metrics payload.
+                "metrics_post_type": "aleph-network-metrics",
+            },
             "jobs": {
                 "pending_messages": {
                     # Maximum number of retries for a message.
