@@ -140,7 +140,9 @@ async def main(args: List[str]) -> None:
         session_factory = make_session_factory(engine)
 
         mq_conn = await make_mq_conn(config)
+        stack.push_async_callback(safe_async_cleanup, "mq connection", mq_conn.close())
         mq_channel = await mq_conn.channel()
+        stack.push_async_callback(safe_async_cleanup, "mq channel", mq_channel.close())
 
         node_cache = await init_node_cache(config)
         await stack.enter_async_context(node_cache)
