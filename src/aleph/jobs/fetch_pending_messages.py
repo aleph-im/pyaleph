@@ -24,6 +24,7 @@ from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
+from aleph.toolkit.lifecycle import install_signal_handlers
 from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
 from aleph.toolkit.timestamp import utc_now
@@ -355,7 +356,6 @@ def fetch_pending_messages_subprocess(config_values: Dict):
     """
 
     faulthandler.enable(file=sys.stderr)
-
     setproctitle("aleph.jobs.fetch_messages")
     loop, config = prepare_loop(config_values)
 
@@ -366,8 +366,16 @@ def fetch_pending_messages_subprocess(config_values: Dict):
         max_log_file_size=config.logging.max_log_file_size.value,
     )
 
+    async def _runner():
+        task = asyncio.create_task(fetch_messages_task(config=config))
+        install_signal_handlers(asyncio.get_running_loop(), task.cancel)
+        try:
+            await task
+        except asyncio.CancelledError:
+            LOGGER.info("Fetch messages subprocess cancelled by signal")
+
     try:
-        asyncio.run(fetch_messages_task(config=config))
+        asyncio.run(_runner())
     except KeyboardInterrupt:
         LOGGER.info("Fetch messages subprocess interrupted")
     except SystemExit:
