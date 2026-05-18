@@ -51,10 +51,7 @@ async def configure_aiohttp_app(
             redis_port=config.redis.port.value,
             message_count_cache_ttl=config.perf.message_count_cache_ttl.value,
         )
-        # TODO: find a way to close the node cache when exiting the API process, not closing it causes
-        #       a warning.
         await node_cache.open()
-        # TODO: same, find a way to call await ipfs_service.close() on shutdown
         ipfs_service = IpfsService.new(config)
 
         storage_service = StorageService(
@@ -100,6 +97,8 @@ async def configure_aiohttp_app(
             await safe_async_cleanup("mq channel", mq_channel.close())
             # Closing the p2p client also closes the underlying mq connection.
             await safe_async_cleanup("p2p client", p2p_client.close())
+            await safe_async_cleanup("ipfs service", ipfs_service.close())
+            await safe_async_cleanup("node cache", node_cache.close())
             await safe_async_cleanup("p2p HTTP sessions", close_sessions())
             engine.dispose()
 
