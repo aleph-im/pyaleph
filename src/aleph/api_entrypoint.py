@@ -96,6 +96,10 @@ async def configure_aiohttp_app(
         async def _on_cleanup(_app: web.Application):
             await message_broadcaster.shutdown()
             await status_broadcaster.shutdown()
+            # mq_channel borrows from p2p_client's connection; close it first.
+            await safe_async_cleanup("mq channel", mq_channel.close())
+            # Closing the p2p client also closes the underlying mq connection.
+            await safe_async_cleanup("p2p client", p2p_client.close())
             await safe_async_cleanup("p2p HTTP sessions", close_sessions())
             engine.dispose()
 
