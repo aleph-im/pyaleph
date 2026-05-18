@@ -14,7 +14,8 @@ import asyncio
 import logging
 import os
 import sys
-from multiprocessing import set_start_method
+from contextlib import AsyncExitStack
+from multiprocessing import get_start_method, set_start_method
 from typing import Coroutine, List
 
 import alembic.command
@@ -44,6 +45,7 @@ from aleph.services.storage.garbage_collector import (
     garbage_collector_task,
 )
 from aleph.storage import StorageService
+from aleph.toolkit.lifecycle import install_signal_handlers
 from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
 
@@ -79,7 +81,6 @@ async def main(args: List[str]) -> None:
     Args:
       args ([str]): command line parameter list
     """
-
     args = parse_args(args)
     setup_logging(args.loglevel)
 
@@ -90,7 +91,6 @@ async def main(args: List[str]) -> None:
         save_keys(key_pair, args.key_dir)
         if args.print_key:
             print(key_pair.private_key.impl.export_key().decode("utf-8"))  # type: ignore[attr-defined]
-
         return
 
     LOGGER.info("Loading configuration")
@@ -127,18 +127,24 @@ async def main(args: List[str]) -> None:
         run_db_migrations(config)
     LOGGER.info("Database initialized.")
 
-    engine = make_engine(
-        config,
-        echo=args.loglevel == logging.DEBUG,
-        application_name="aleph-conn-manager",
-    )
-    session_factory = make_session_factory(engine)
+    if get_start_method(allow_none=True) != "spawn":
+        set_start_method("spawn")
 
-    mq_conn = await make_mq_conn(config)
-    mq_channel = await mq_conn.channel()
+    async with AsyncExitStack() as stack:
+        engine = make_engine(
+            config,
+            echo=args.loglevel == logging.DEBUG,
+            application_name="aleph-conn-manager",
+        )
+        session_factory = make_session_factory(engine)
 
-    node_cache = await init_node_cache(config)
-    async with node_cache, IpfsService.new(config) as ipfs_service:
+        mq_conn = await make_mq_conn(config)
+        mq_channel = await mq_conn.channel()
+
+        node_cache = await init_node_cache(config)
+        await stack.enter_async_context(node_cache)
+        ipfs_service = await stack.enter_async_context(IpfsService.new(config))
+
         # Reset the cache
         await node_cache.reset()
 
@@ -178,8 +184,6 @@ async def main(args: List[str]) -> None:
         await repair_node(
             storage_service=storage_service, session_factory=session_factory
         )
-
-        set_start_method("spawn")
 
         tasks: List[Coroutine] = []
 
@@ -225,13 +229,26 @@ async def main(args: List[str]) -> None:
         LOGGER.debug("Initialized cron job task")
 
         LOGGER.debug("Running event loop")
-        await asyncio.gather(*tasks)
+        try:
+            await asyncio.gather(*tasks)
+        except asyncio.CancelledError:
+            LOGGER.info("Shutdown signal received, tasks cancelled")
+            raise
+
+
+async def _signal_aware_main(args: List[str]) -> None:
+    task = asyncio.create_task(main(args), name="pyaleph-main")
+    install_signal_handlers(asyncio.get_running_loop(), task.cancel)
+    try:
+        await task
+    except asyncio.CancelledError:
+        LOGGER.info("pyaleph stopped by shutdown signal")
 
 
 def run():
     """Entry point for console_scripts"""
     try:
-        asyncio.run(main(sys.argv[1:]))
+        asyncio.run(_signal_aware_main(sys.argv[1:]))
     except (KeyNotFoundException, InvalidConfigException):
         sys.exit(1)
 
