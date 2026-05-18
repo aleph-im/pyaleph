@@ -97,6 +97,7 @@ async def configure_aiohttp_app(
             await message_broadcaster.shutdown()
             await status_broadcaster.shutdown()
             await safe_async_cleanup("p2p HTTP sessions", close_sessions())
+            engine.dispose()
 
         app.on_cleanup.append(_on_cleanup)
 
