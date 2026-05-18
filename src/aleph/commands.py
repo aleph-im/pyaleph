@@ -29,7 +29,7 @@ from aleph.chains.connector import ChainConnector
 from aleph.cli.args import parse_args
 from aleph.db.connection import make_db_url, make_engine, make_session_factory
 from aleph.exceptions import InvalidConfigException, KeyNotFoundException
-from aleph.jobs import start_jobs
+from aleph.jobs import JobsRunner, start_jobs
 from aleph.jobs.cron.balance_job import BalanceCronJob
 from aleph.jobs.cron.credit_balance_job import CreditBalanceCronJob
 from aleph.jobs.cron.cron_job import CronJob, cron_job_task
@@ -187,14 +187,17 @@ async def main(args: List[str]) -> None:
 
         tasks: List[Coroutine] = []
 
+        runner = JobsRunner()
         if not args.no_jobs:
             LOGGER.debug("Creating jobs")
-            tasks += start_jobs(
+            runner = start_jobs(
                 config=config,
                 session_factory=session_factory,
                 ipfs_service=ipfs_service,
                 use_processes=True,
             )
+            tasks += runner.tasks
+        stack.push_async_callback(runner.stop)
 
         LOGGER.debug("Initializing p2p")
         p2p_client, p2p_tasks = await p2p.init_p2p(
