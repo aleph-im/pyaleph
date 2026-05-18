@@ -1,15 +1,94 @@
 import logging
+from typing import Any, Dict
 
-from aleph_message.models import ItemHash
-from sqlalchemy import delete, select
+from aleph_message.models import ItemHash, MessageType
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from aleph.db.accessors.files import upsert_file
-from aleph.db.models import AlephCreditBalanceDb, AlephCreditHistoryDb, StoredFileDb
+from aleph.db.accessors.messages import (
+    make_message_status_upsert_query,
+    make_upsert_rejected_message_statement,
+)
+from aleph.db.accessors.vms import delete_vm, delete_vm_updates
+from aleph.db.models import (
+    AlephCreditBalanceDb,
+    AlephCreditHistoryDb,
+    MessageDb,
+    MessageStatusDb,
+    StoredFileDb,
+)
 from aleph.storage import StorageService
+from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.message_status import ErrorCode, MessageStatus
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _wire_message_dict(message: MessageDb) -> Dict[str, Any]:
+    """Snapshot a ``MessageDb`` row as a JSON-serializable wire-format dict
+    suitable for the ``rejected_messages.message`` JSONB column."""
+    data = message.to_dict(exclude=set(MessageDb.DENORMALIZED_COLUMNS))
+
+    if data.get("time") is not None:
+        data["time"] = data["time"].timestamp()
+
+    for key in ("chain", "type", "item_type"):
+        value = data.get(key)
+        if value is not None and hasattr(value, "value"):
+            data[key] = value.value
+
+    return data
+
+
+def mark_processed_message_as_rejected(
+    session: DbSession,
+    message: MessageDb,
+    error_code: ErrorCode,
+    reason: str,
+) -> None:
+    """Transition a processed message into the REJECTED state.
+
+    Mirrors ``mark_pending_message_as_rejected`` for messages that already
+    cleared the pipeline under permissive rules but are no longer valid under
+    current ones (ex: ExecutableContent.metadata used to accept lists, now
+    requires a dict). Cleans up type-specific state (VM rows for
+    program/instance), snapshots the row into ``rejected_messages``, flips
+    ``message_status`` to REJECTED, and deletes the ``messages`` row. The
+    trigger keeps ``message_counts`` consistent; FK cascades clean
+    ``message_confirmations`` and ``account_costs``.
+
+    Does not commit. Caller is responsible for state checks (in particular,
+    that ``message.status_value == MessageStatus.PROCESSED``).
+    """
+    snapshot = _wire_message_dict(message)
+
+    if message.type in (MessageType.program, MessageType.instance):
+        delete_vm(session=session, vm_hash=message.item_hash)
+        _ = list(delete_vm_updates(session=session, vm_hash=message.item_hash))
+
+    session.execute(
+        make_upsert_rejected_message_statement(
+            item_hash=message.item_hash,
+            pending_message_dict=snapshot,
+            error_code=int(error_code),
+            details={"errors": [reason]},
+            exc_traceback=reason,
+            tx_hash=None,
+        )
+    )
+
+    session.execute(
+        make_message_status_upsert_query(
+            item_hash=message.item_hash,
+            new_status=MessageStatus.REJECTED,
+            reception_time=utc_now(),
+            where=MessageStatusDb.status != MessageStatus.REJECTED,
+        )
+    )
+
+    session.execute(delete(MessageDb).where(MessageDb.item_hash == message.item_hash))
 
 
 async def _fix_file_sizes(
@@ -137,6 +216,68 @@ def _repair_credit_balances(session_factory: DbSessionFactory) -> None:
     LOGGER.info("Credit balances repair complete (%d address(es))", len(addresses))
 
 
+_INVALID_METADATA_REASON = (
+    "ExecutableContent.metadata must be a dict; legacy rows with a list value "
+    "no longer parse and surfaced as 500s at the API."
+)
+
+
+def _reject_invalid_program_metadata(session_factory: DbSessionFactory) -> None:
+    """Reject PROGRAM messages whose ``content.metadata`` is a JSON array.
+
+    aleph-message historically accepted ``ExecutableContent.metadata`` as
+    either a dict or a list. The current validator requires a dict, so rows
+    accepted under the old rules trip ``parsed_content`` access and surface as
+    500s on ``GET /api/v0/messages/<hash>``. Moves them to the rejected state
+    so the API can render them the same way nodes that rejected them in the
+    first place do.
+
+    Per-message commits so a single bad row does not roll back the rest.
+    """
+    with session_factory() as session:
+        select_stmt = (
+            select(MessageDb.item_hash)
+            .where(MessageDb.type == MessageType.program)
+            .where(MessageDb.status_value == MessageStatus.PROCESSED)
+            .where(func.jsonb_typeof(MessageDb.content["metadata"]) == "array")
+        )
+        item_hashes = list(session.execute(select_stmt).scalars())
+
+    if not item_hashes:
+        return
+
+    LOGGER.info(
+        "Rejecting %d PROGRAM message(s) with non-dict metadata", len(item_hashes)
+    )
+
+    rejected = 0
+    for item_hash in item_hashes:
+        with session_factory() as session:
+            try:
+                message = session.execute(
+                    select(MessageDb).where(MessageDb.item_hash == item_hash)
+                ).scalar_one_or_none()
+                if message is None or message.status_value != MessageStatus.PROCESSED:
+                    continue
+                mark_processed_message_as_rejected(
+                    session=session,
+                    message=message,
+                    error_code=ErrorCode.INVALID_FORMAT,
+                    reason=_INVALID_METADATA_REASON,
+                )
+                session.commit()
+                rejected += 1
+            except Exception:
+                LOGGER.exception("Failed to reject program %s", item_hash)
+                session.rollback()
+
+    LOGGER.info(
+        "Done: rejected %d / %d PROGRAM message(s) with non-dict metadata",
+        rejected,
+        len(item_hashes),
+    )
+
+
 async def repair_node(
     storage_service: StorageService, session_factory: DbSessionFactory
 ):
@@ -147,3 +288,6 @@ async def repair_node(
 
     LOGGER.info("Repairing credit balances")
     _repair_credit_balances(session_factory)
+
+    LOGGER.info("Rejecting PROGRAM messages with invalid metadata")
+    _reject_invalid_program_metadata(session_factory)
