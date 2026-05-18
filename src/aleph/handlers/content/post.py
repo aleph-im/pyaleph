@@ -18,6 +18,7 @@ from aleph.db.accessors.balances import (
     update_credit_balances_transfer as update_credit_balances_transfer_db,
 )
 from aleph.db.accessors.balances import validate_credit_transfer_balance
+from aleph.db.accessors.metrics import insert_node_metrics
 from aleph.db.accessors.posts import (
     delete_amends,
     delete_post,
@@ -201,12 +202,18 @@ class PostMessageHandler(ContentHandler):
         credit_balances_addresses: List[str],
         credit_balances_post_types: List[str],
         credit_balances_channels: List[str],
+        scoring_addresses: List[str],
+        scoring_channel: str,
+        scoring_metrics_post_type: str,
     ):
         self.balances_addresses = balances_addresses
         self.balances_post_type = balances_post_type
         self.credit_balances_addresses = credit_balances_addresses
         self.credit_balances_post_types = credit_balances_post_types
         self.credit_balances_channels = credit_balances_channels
+        self.scoring_addresses = scoring_addresses
+        self.scoring_channel = scoring_channel
+        self.scoring_metrics_post_type = scoring_metrics_post_type
 
     async def check_dependencies(self, session: DbSession, message: MessageDb):
         content = get_post_content(message)
@@ -329,6 +336,19 @@ class PostMessageHandler(ContentHandler):
                     whitelisted_addresses=self.credit_balances_addresses,
                 )
             LOGGER.info("Done updating credit balances")
+
+        if (
+            content.type == self.scoring_metrics_post_type
+            and content.address in self.scoring_addresses
+            and message.channel == self.scoring_channel
+            and isinstance(content.content, dict)
+        ):
+            LOGGER.info("Persisting scoring metrics from %s", message.item_hash)
+            insert_node_metrics(
+                session=session,
+                item_hash=message.item_hash,
+                content=content.content,
+            )
 
     async def process(self, session: DbSession, messages: List[MessageDb]) -> None:
 
