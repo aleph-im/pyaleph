@@ -32,7 +32,7 @@ dependencies = [
   "alembic==1.18.4",
   "aleph-message @ git+https://github.com/aleph-im/aleph-message@3c71a82ca41245091767eb06889c69753df3658a",
   "aleph-nuls2==0.1.1",
-  "aleph-p2p-client @ git+https://github.com/aleph-im/p2p-service-client-python@cbfebb871db94b2ca580e66104a67cd730c5020c",
+  "aleph-p2p-client @ git+https://github.com/aleph-im/p2p-service-client-python@1e992aaacdb0071a34ffb130cbbba9123509e08b",
   "asyncpg==0.31.0",
   "base58>=1.0.3",
   "coincurve==21.0.0",
