@@ -21,6 +21,7 @@ from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
+from aleph.toolkit.lifecycle import install_signal_handlers
 from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
 from aleph.toolkit.timestamp import utc_now
@@ -236,8 +237,13 @@ def pending_messages_subprocess(config_values: Dict):
         max_log_file_size=config.logging.max_log_file_size.value,
     )
 
+    task = loop.create_task(fetch_and_process_messages_task(config=config))
+    install_signal_handlers(loop, task.cancel)
+
     try:
-        loop.run_until_complete(fetch_and_process_messages_task(config=config))
+        loop.run_until_complete(task)
+    except asyncio.CancelledError:
+        LOGGER.info("Process messages subprocess cancelled by signal")
     except KeyboardInterrupt:
         LOGGER.info("Process messages subprocess interrupted")
     except SystemExit:
@@ -245,3 +251,5 @@ def pending_messages_subprocess(config_values: Dict):
     except BaseException:
         LOGGER.critical("Fatal error in process messages subprocess", exc_info=True)
         raise
+    finally:
+        loop.close()
