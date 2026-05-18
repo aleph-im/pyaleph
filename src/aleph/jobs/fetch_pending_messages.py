@@ -31,7 +31,7 @@ from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSessionFactory
 
 from ..toolkit.rabbitmq import make_mq_conn
-from .job_utils import MessageJob, make_pending_message_queue, prepare_loop
+from .job_utils import MessageJob, make_pending_message_queue, prepare_config
 
 LOGGER = getLogger(__name__)
 
@@ -357,7 +357,7 @@ def fetch_pending_messages_subprocess(config_values: Dict):
 
     faulthandler.enable(file=sys.stderr)
     setproctitle("aleph.jobs.fetch_messages")
-    loop, config = prepare_loop(config_values)
+    config = prepare_config(config_values)
 
     setup_sentry(config)
     setup_logging(

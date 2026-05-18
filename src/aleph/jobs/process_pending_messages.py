@@ -29,7 +29,7 @@ from aleph.types.db_session import DbSessionFactory
 from aleph.types.message_processing_result import MessageProcessingResult
 
 from ..types.message_status import MessageOrigin
-from .job_utils import MessageJob, prepare_loop
+from .job_utils import MessageJob, prepare_config
 
 LOGGER = getLogger(__name__)
 
@@ -226,9 +226,8 @@ def pending_messages_subprocess(config_values: Dict):
     """
 
     faulthandler.enable(file=sys.stderr)
-
     setproctitle("aleph.jobs.messages_task_loop")
-    loop, config = prepare_loop(config_values)
+    config = prepare_config(config_values)
 
     setup_sentry(config)
     setup_logging(
@@ -237,13 +236,16 @@ def pending_messages_subprocess(config_values: Dict):
         max_log_file_size=config.logging.max_log_file_size.value,
     )
 
-    task = loop.create_task(fetch_and_process_messages_task(config=config))
-    install_signal_handlers(loop, task.cancel)
+    async def _runner():
+        task = asyncio.create_task(fetch_and_process_messages_task(config=config))
+        install_signal_handlers(asyncio.get_running_loop(), task.cancel)
+        try:
+            await task
+        except asyncio.CancelledError:
+            LOGGER.info("Process messages subprocess cancelled by signal")
 
     try:
-        loop.run_until_complete(task)
-    except asyncio.CancelledError:
-        LOGGER.info("Process messages subprocess cancelled by signal")
+        asyncio.run(_runner())
     except KeyboardInterrupt:
         LOGGER.info("Process messages subprocess interrupted")
     except SystemExit:
@@ -251,5 +253,3 @@ def pending_messages_subprocess(config_values: Dict):
     except BaseException:
         LOGGER.critical("Fatal error in process messages subprocess", exc_info=True)
         raise
-    finally:
-        loop.close()
