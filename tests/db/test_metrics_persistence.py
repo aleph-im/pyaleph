@@ -7,10 +7,13 @@ from aleph.db.accessors.metrics import (
     _build_ccn_rows,
     _build_crn_rows,
     insert_node_metrics,
+    query_metric_ccn,
+    query_metric_crn,
 )
 from aleph.db.models import CcnMetricDb, CrnMetricDb, MessageDb
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.sort_order import SortOrder
 
 
 def test_build_crn_rows_full_payload():
@@ -239,3 +242,79 @@ def test_insert_node_metrics_missing_metrics_key_is_noop(
             )
             == []
         )
+
+
+def test_query_metric_crn_filters_by_node_and_date(session_factory: DbSessionFactory):
+    item_hash = "abc-test-q1"
+    with session_factory() as session:
+        _seed_scoring_message(session, item_hash)
+        session.add_all(
+            [
+                CrnMetricDb(
+                    item_hash=item_hash,
+                    node_id="node-A",
+                    measured_at=100.0,
+                    base_latency=0.1,
+                ),
+                CrnMetricDb(
+                    item_hash=item_hash,
+                    node_id="node-A",
+                    measured_at=200.0,
+                    base_latency=0.2,
+                ),
+                CrnMetricDb(
+                    item_hash=item_hash,
+                    node_id="node-B",
+                    measured_at=150.0,
+                    base_latency=0.9,
+                ),
+            ]
+        )
+        session.commit()
+
+        result = query_metric_crn(
+            session=session,
+            node_id="node-A",
+            start_date=150.0,
+            end_date=None,
+            sort_order=SortOrder.ASCENDING,
+        )
+
+    # _parse_crn_result returns dict-of-lists keyed by column name. node_id is not exposed.
+    assert "node_id" not in result
+    assert result["measured_at"] == [200.0]
+    assert result["base_latency"] == [0.2]
+
+
+def test_query_metric_ccn_returns_all_columns(session_factory: DbSessionFactory):
+    item_hash = "abc-test-q2"
+    with session_factory() as session:
+        _seed_scoring_message(session, item_hash)
+        session.add(
+            CcnMetricDb(
+                item_hash=item_hash,
+                node_id="ccn-A",
+                measured_at=500.0,
+                base_latency=0.1,
+                base_latency_ipv4=0.11,
+                metrics_latency=0.2,
+                aggregate_latency=0.3,
+                file_download_latency=0.4,
+                pending_messages=5,
+                eth_height_remaining=7,
+            )
+        )
+        session.commit()
+
+        result = query_metric_ccn(
+            session=session,
+            node_id="ccn-A",
+            start_date=400.0,
+            end_date=None,
+            sort_order=SortOrder.ASCENDING,
+        )
+
+    assert result["measured_at"] == [500.0]
+    assert result["base_latency"] == [0.1]
+    assert result["pending_messages"] == [5]
+    assert result["eth_height_remaining"] == [7]

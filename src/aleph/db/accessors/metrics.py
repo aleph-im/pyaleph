@@ -1,9 +1,8 @@
 import time
 from typing import Any, List, Mapping, Optional
 
-from sqlalchemy import insert, select, text
+from sqlalchemy import insert, select
 from sqlalchemy.orm.session import Session
-from sqlalchemy.sql import Select
 
 from aleph.db.models import CcnMetricDb, CrnMetricDb
 from aleph.types.db_session import DbSession
@@ -120,30 +119,6 @@ def _parse_crn_result(result):
     return result_dict
 
 
-def _build_metric_filter(
-    select_stmt: Select,
-    node_id: Optional[str],
-    start_date: Optional[float],
-    end_date: Optional[float],
-    sort_order: Optional[SortOrder],
-):
-    if node_id:
-        select_stmt = select_stmt.where(text("node_id = :node_id")).params(
-            node_id=node_id
-        )
-    if start_date:
-        select_stmt = select_stmt.where(text("measured_at >= :start_date")).params(
-            start_date=start_date
-        )
-    if end_date:
-        select_stmt = select_stmt.where(text("measured_at <= :end_date")).params(
-            end_date=end_date
-        )
-    if sort_order:
-        select_stmt = select_stmt.order_by(text(f"measured_at {sort_order.to_sql()}"))
-    return select_stmt
-
-
 def query_metric_ccn(
     session: Session,
     node_id: Optional[str] = None,
@@ -158,27 +133,30 @@ def query_metric_ccn(
         start_date = end_date - 60 * 60 * 24 * 14
 
     select_stmt = select(
-        text("item_hash"),
-        text("measured_at"),
-        text("base_latency"),
-        text("base_latency_ipv4"),
-        text("metrics_latency"),
-        text("aggregate_latency"),
-        text("file_download_latency"),
-        text("pending_messages"),
-        text("eth_height_remaining"),
-    ).select_from(text("ccn_metric_view"))
-
-    select_stmt = _build_metric_filter(
-        select_stmt=select_stmt,
-        node_id=node_id,
-        start_date=start_date,
-        end_date=end_date,
-        sort_order=sort_order,
+        CcnMetricDb.item_hash,
+        CcnMetricDb.measured_at,
+        CcnMetricDb.base_latency,
+        CcnMetricDb.base_latency_ipv4,
+        CcnMetricDb.metrics_latency,
+        CcnMetricDb.aggregate_latency,
+        CcnMetricDb.file_download_latency,
+        CcnMetricDb.pending_messages,
+        CcnMetricDb.eth_height_remaining,
     )
 
-    result = session.execute(select_stmt).fetchall()
+    if node_id:
+        select_stmt = select_stmt.where(CcnMetricDb.node_id == node_id)
+    if start_date:
+        select_stmt = select_stmt.where(CcnMetricDb.measured_at >= start_date)
+    if end_date:
+        select_stmt = select_stmt.where(CcnMetricDb.measured_at <= end_date)
+    if sort_order:
+        order_col = CcnMetricDb.measured_at
+        select_stmt = select_stmt.order_by(
+            order_col.asc() if sort_order == SortOrder.ASCENDING else order_col.desc()
+        )
 
+    result = session.execute(select_stmt).fetchall()
     return _parse_ccn_result(result=result)
 
 
@@ -196,24 +174,27 @@ def query_metric_crn(
         start_date = end_date - 60 * 60 * 24 * 14
 
     select_stmt = select(
-        text("item_hash"),
-        text("measured_at"),
-        text("base_latency"),
-        text("base_latency_ipv4"),
-        text("full_check_latency"),
-        text("diagnostic_vm_latency"),
-    ).select_from(text("crn_metric_view"))
-
-    select_stmt = _build_metric_filter(
-        select_stmt=select_stmt,
-        node_id=node_id,
-        start_date=start_date,
-        end_date=end_date,
-        sort_order=sort_order,
+        CrnMetricDb.item_hash,
+        CrnMetricDb.measured_at,
+        CrnMetricDb.base_latency,
+        CrnMetricDb.base_latency_ipv4,
+        CrnMetricDb.full_check_latency,
+        CrnMetricDb.diagnostic_vm_latency,
     )
 
-    result = session.execute(select_stmt).fetchall()
+    if node_id:
+        select_stmt = select_stmt.where(CrnMetricDb.node_id == node_id)
+    if start_date:
+        select_stmt = select_stmt.where(CrnMetricDb.measured_at >= start_date)
+    if end_date:
+        select_stmt = select_stmt.where(CrnMetricDb.measured_at <= end_date)
+    if sort_order:
+        order_col = CrnMetricDb.measured_at
+        select_stmt = select_stmt.order_by(
+            order_col.asc() if sort_order == SortOrder.ASCENDING else order_col.desc()
+        )
 
+    result = session.execute(select_stmt).fetchall()
     return _parse_crn_result(result=result)
 
 
