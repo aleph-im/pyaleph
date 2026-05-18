@@ -11,8 +11,10 @@ from aleph.db.connection import make_engine, make_session_factory
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.p2p import init_p2p_client
+from aleph.services.p2p.http import close_sessions
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
+from aleph.toolkit.lifecycle import safe_async_cleanup
 from aleph.toolkit.monitoring import setup_sentry
 from aleph.web import create_aiohttp_app
 from aleph.web.controllers.app_state_getters import (
@@ -94,6 +96,7 @@ async def configure_aiohttp_app(
         async def _on_cleanup(_app: web.Application):
             await message_broadcaster.shutdown()
             await status_broadcaster.shutdown()
+            await safe_async_cleanup("p2p HTTP sessions", close_sessions())
 
         app.on_cleanup.append(_on_cleanup)
 
