@@ -1,10 +1,11 @@
 import time
 from typing import Any, List, Mapping, Optional
 
-from sqlalchemy import select, text
+from sqlalchemy import insert, select, text
 from sqlalchemy.orm.session import Session
 from sqlalchemy.sql import Select
 
+from aleph.db.models import CcnMetricDb, CrnMetricDb
 from aleph.types.db_session import DbSession
 from aleph.types.sort_order import SortOrder, SortOrderForMetrics
 
@@ -38,15 +39,19 @@ def _build_crn_rows(
         measured_at = _coerce_float(entry.get("measured_at"))
         if node_id is None or measured_at is None:
             continue
-        rows.append({
-            "item_hash": item_hash,
-            "node_id": str(node_id),
-            "measured_at": measured_at,
-            "base_latency": _coerce_float(entry.get("base_latency")),
-            "base_latency_ipv4": _coerce_float(entry.get("base_latency_ipv4")),
-            "full_check_latency": _coerce_float(entry.get("full_check_latency")),
-            "diagnostic_vm_latency": _coerce_float(entry.get("diagnostic_vm_latency")),
-        })
+        rows.append(
+            {
+                "item_hash": item_hash,
+                "node_id": str(node_id),
+                "measured_at": measured_at,
+                "base_latency": _coerce_float(entry.get("base_latency")),
+                "base_latency_ipv4": _coerce_float(entry.get("base_latency_ipv4")),
+                "full_check_latency": _coerce_float(entry.get("full_check_latency")),
+                "diagnostic_vm_latency": _coerce_float(
+                    entry.get("diagnostic_vm_latency")
+                ),
+            }
+        )
     return rows
 
 
@@ -61,18 +66,22 @@ def _build_ccn_rows(
         measured_at = _coerce_float(entry.get("measured_at"))
         if node_id is None or measured_at is None:
             continue
-        rows.append({
-            "item_hash": item_hash,
-            "node_id": str(node_id),
-            "measured_at": measured_at,
-            "base_latency": _coerce_float(entry.get("base_latency")),
-            "base_latency_ipv4": _coerce_float(entry.get("base_latency_ipv4")),
-            "metrics_latency": _coerce_float(entry.get("metrics_latency")),
-            "aggregate_latency": _coerce_float(entry.get("aggregate_latency")),
-            "file_download_latency": _coerce_float(entry.get("file_download_latency")),
-            "pending_messages": _coerce_int(entry.get("pending_messages")),
-            "eth_height_remaining": _coerce_int(entry.get("eth_height_remaining")),
-        })
+        rows.append(
+            {
+                "item_hash": item_hash,
+                "node_id": str(node_id),
+                "measured_at": measured_at,
+                "base_latency": _coerce_float(entry.get("base_latency")),
+                "base_latency_ipv4": _coerce_float(entry.get("base_latency_ipv4")),
+                "metrics_latency": _coerce_float(entry.get("metrics_latency")),
+                "aggregate_latency": _coerce_float(entry.get("aggregate_latency")),
+                "file_download_latency": _coerce_float(
+                    entry.get("file_download_latency")
+                ),
+                "pending_messages": _coerce_int(entry.get("pending_messages")),
+                "eth_height_remaining": _coerce_int(entry.get("eth_height_remaining")),
+            }
+        )
     return rows
 
 
@@ -206,3 +215,28 @@ def query_metric_crn(
     result = session.execute(select_stmt).fetchall()
 
     return _parse_crn_result(result=result)
+
+
+def insert_node_metrics(
+    session: DbSession,
+    item_hash: str,
+    content: Mapping[str, Any],
+) -> None:
+    metrics = content.get("metrics") or {}
+    if not isinstance(metrics, Mapping):
+        return
+
+    crn_array = metrics.get("crn") or []
+    ccn_array = metrics.get("ccn") or []
+    if not isinstance(crn_array, list):
+        crn_array = []
+    if not isinstance(ccn_array, list):
+        ccn_array = []
+
+    crn_rows = _build_crn_rows(item_hash, crn_array)
+    ccn_rows = _build_ccn_rows(item_hash, ccn_array)
+
+    if crn_rows:
+        session.execute(insert(CrnMetricDb), crn_rows)
+    if ccn_rows:
+        session.execute(insert(CcnMetricDb), ccn_rows)
