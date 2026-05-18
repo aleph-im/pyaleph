@@ -1,7 +1,7 @@
 import datetime as dt
 
 import pytest
-from aleph_message.models import Chain, ItemType, MessageType
+from aleph_message.models import Chain, ItemHash, ItemType, MessageType
 from sqlalchemy import select
 
 from aleph.db.accessors.messages import get_message_status, get_rejected_message
@@ -45,7 +45,7 @@ def test_reject_invalid_program_metadata_rejects_list_metadata(
     """PROGRAM rows whose content.metadata is a JSON array should be moved to
     REJECTED so the API stops 500ing on them."""
     bad_hash = "bad" + "0" * 61
-    good_hash = "good" + "0" * 60
+    good_hash = "dad" + "0" * 61
 
     with session_factory() as session:
         _seed(
@@ -82,7 +82,7 @@ def test_reject_invalid_program_metadata_rejects_list_metadata(
         assert rejected.message["item_hash"] == bad_hash
         assert rejected.message["content"]["metadata"] == ["legacy-list-value"]
 
-        status = get_message_status(session=session, item_hash=bad_hash)
+        status = get_message_status(session=session, item_hash=ItemHash(bad_hash))
         assert status is not None
         assert status.status == MessageStatus.REJECTED
 
@@ -93,7 +93,7 @@ def test_reject_invalid_program_metadata_rejects_list_metadata(
         assert good is not None
         assert good.status_value == MessageStatus.PROCESSED
 
-        good_status = get_message_status(session=session, item_hash=good_hash)
+        good_status = get_message_status(session=session, item_hash=ItemHash(good_hash))
         assert good_status is not None
         assert good_status.status == MessageStatus.PROCESSED
 
