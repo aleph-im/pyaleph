@@ -1,7 +1,7 @@
 import asyncio
 import datetime as dt
 import logging
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Union
 
 import aio_pika
 from configmanager import Config
@@ -123,22 +123,18 @@ def schedule_next_attempt(
     pending_message.retries += 1
 
 
-def prepare_loop(config_values: Dict) -> Tuple[asyncio.AbstractEventLoop, Config]:
+def prepare_config(config_values: Dict) -> Config:
     """
-    Prepares all the global variables (sigh) needed to run an Aleph subprocess.
+    Loads the application config from values forwarded by the main process.
 
     :param config_values: Dictionary of config values, as provided by the main process.
-    :returns: A preconfigured event loop, and the application config for convenience.
-              Use the event loop as event loop of the process as it is used by Motor. Using another
-              event loop will cause DB calls to fail.
+    :returns: The hydrated application config.
     """
-
-    loop = asyncio.get_event_loop()
 
     config = aleph.config.app_config
     config.load_values(config_values)
 
-    return loop, config
+    return config
 
 
 class MqWatcher:

@@ -30,7 +30,7 @@ from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.db_session import DbSessionFactory
 
 from ..types.message_status import MessageOrigin
-from .job_utils import MqWatcher, make_pending_tx_queue, prepare_loop
+from .job_utils import MqWatcher, make_pending_tx_queue, prepare_config
 
 LOGGER = logging.getLogger(__name__)
 
@@ -180,9 +180,8 @@ async def handle_txs_task(config: Config):
 
 def pending_txs_subprocess(config_values: Dict):
     faulthandler.enable(file=sys.stderr)
-
     setproctitle("aleph.jobs.txs_task_loop")
-    loop, config = prepare_loop(config_values)
+    config = prepare_config(config_values)
 
     setup_sentry(config)
     setup_logging(
@@ -191,13 +190,16 @@ def pending_txs_subprocess(config_values: Dict):
         max_log_file_size=config.logging.max_log_file_size.value,
     )
 
-    task = loop.create_task(handle_txs_task(config))
-    install_signal_handlers(loop, task.cancel)
+    async def _runner():
+        task = asyncio.create_task(handle_txs_task(config))
+        install_signal_handlers(asyncio.get_running_loop(), task.cancel)
+        try:
+            await task
+        except asyncio.CancelledError:
+            LOGGER.info("Pending txs subprocess cancelled by signal")
 
     try:
-        loop.run_until_complete(task)
-    except asyncio.CancelledError:
-        LOGGER.info("Pending txs subprocess cancelled by signal")
+        asyncio.run(_runner())
     except KeyboardInterrupt:
         LOGGER.info("Pending txs subprocess interrupted")
     except SystemExit:
@@ -205,5 +207,3 @@ def pending_txs_subprocess(config_values: Dict):
     except BaseException:
         LOGGER.critical("Fatal error in pending txs subprocess", exc_info=True)
         raise
-    finally:
-        loop.close()
