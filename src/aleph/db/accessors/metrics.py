@@ -1,5 +1,5 @@
 import time
-from typing import Optional
+from typing import Any, List, Mapping, Optional
 
 from sqlalchemy import select, text
 from sqlalchemy.orm.session import Session
@@ -7,6 +7,73 @@ from sqlalchemy.sql import Select
 
 from aleph.types.db_session import DbSession
 from aleph.types.sort_order import SortOrder, SortOrderForMetrics
+
+
+def _coerce_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_int(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _build_crn_rows(
+    item_hash: str, crn_array: List[Mapping[str, Any]]
+) -> List[Mapping[str, Any]]:
+    rows: List[Mapping[str, Any]] = []
+    for entry in crn_array:
+        if not isinstance(entry, Mapping):
+            continue
+        node_id = entry.get("node_id")
+        measured_at = _coerce_float(entry.get("measured_at"))
+        if node_id is None or measured_at is None:
+            continue
+        rows.append({
+            "item_hash": item_hash,
+            "node_id": str(node_id),
+            "measured_at": measured_at,
+            "base_latency": _coerce_float(entry.get("base_latency")),
+            "base_latency_ipv4": _coerce_float(entry.get("base_latency_ipv4")),
+            "full_check_latency": _coerce_float(entry.get("full_check_latency")),
+            "diagnostic_vm_latency": _coerce_float(entry.get("diagnostic_vm_latency")),
+        })
+    return rows
+
+
+def _build_ccn_rows(
+    item_hash: str, ccn_array: List[Mapping[str, Any]]
+) -> List[Mapping[str, Any]]:
+    rows: List[Mapping[str, Any]] = []
+    for entry in ccn_array:
+        if not isinstance(entry, Mapping):
+            continue
+        node_id = entry.get("node_id")
+        measured_at = _coerce_float(entry.get("measured_at"))
+        if node_id is None or measured_at is None:
+            continue
+        rows.append({
+            "item_hash": item_hash,
+            "node_id": str(node_id),
+            "measured_at": measured_at,
+            "base_latency": _coerce_float(entry.get("base_latency")),
+            "base_latency_ipv4": _coerce_float(entry.get("base_latency_ipv4")),
+            "metrics_latency": _coerce_float(entry.get("metrics_latency")),
+            "aggregate_latency": _coerce_float(entry.get("aggregate_latency")),
+            "file_download_latency": _coerce_float(entry.get("file_download_latency")),
+            "pending_messages": _coerce_int(entry.get("pending_messages")),
+            "eth_height_remaining": _coerce_int(entry.get("eth_height_remaining")),
+        })
+    return rows
 
 
 def _parse_ccn_result(result):
