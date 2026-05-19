@@ -90,10 +90,9 @@ class BaseMessageHandler:
     def get_content_handler(self, message_type: MessageType) -> ContentHandler:
         return self.content_handlers[message_type]
 
-    async def verify_signature(self, pending_message: PendingMessageDb):
+    async def verify_signature(self, pending_message: PendingMessageDb) -> None:
         if pending_message.check_message:
-            # TODO: remove type: ignore by deciding the pending message type
-            await self._signature_verifier.verify_signature(pending_message)  # type: ignore
+            await self._signature_verifier.verify_signature(pending_message)
 
     async def fetch_pending_message(
         self, pending_message: PendingMessageDb
@@ -313,10 +312,9 @@ class MessageHandler(BaseMessageHandler):
         super().__init__(storage_service=storage_service, config=config)
         self._signature_verifier = signature_verifier
 
-    async def verify_signature(self, pending_message: PendingMessageDb):
+    async def verify_signature(self, pending_message: PendingMessageDb) -> None:
         if pending_message.check_message:
-            # TODO: remove type: ignore by deciding the pending message type
-            await self._signature_verifier.verify_signature(pending_message)  # type: ignore[arg-type]
+            await self._signature_verifier.verify_signature(pending_message)
 
     @staticmethod
     async def confirm_existing_message(

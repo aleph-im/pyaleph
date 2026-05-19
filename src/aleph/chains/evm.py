@@ -5,16 +5,15 @@ from eth_account import Account
 from eth_account.messages import encode_defunct
 
 from aleph.chains.common import get_verification_buffer
-from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.utils import run_in_executor
 
-from .abc import Verifier
+from .abc import SignableMessage, Verifier
 
 LOGGER = logging.getLogger("chains.evm")
 
 
 class EVMVerifier(Verifier):
-    async def verify_signature(self, message: BasePendingMessage) -> bool:
+    async def verify_signature(self, message: SignableMessage) -> bool:
         """Verifies a signature of a message, return True if verified, false if not"""
 
         verification = get_verification_buffer(message)
