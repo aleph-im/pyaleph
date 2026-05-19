@@ -90,10 +90,6 @@ class BaseMessageHandler:
     def get_content_handler(self, message_type: MessageType) -> ContentHandler:
         return self.content_handlers[message_type]
 
-    async def verify_signature(self, pending_message: PendingMessageDb) -> None:
-        if pending_message.check_message:
-            await self._signature_verifier.verify_signature(pending_message)
-
     async def fetch_pending_message(
         self, pending_message: PendingMessageDb
     ) -> MessageDb:
