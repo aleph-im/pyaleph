@@ -137,6 +137,7 @@ async def main(args: List[str]) -> None:
             echo=args.loglevel == logging.DEBUG,
             application_name="aleph-conn-manager",
         )
+        stack.callback(engine.dispose)
         session_factory = make_session_factory(engine)
 
         mq_conn = await make_mq_conn(config)
