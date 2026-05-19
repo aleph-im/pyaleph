@@ -296,7 +296,7 @@ async def test_storage_add_file_raw_upload(
             b"Hello Aleph.im\n",
             "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f",
             None,
-            "200",
+            "402",
             "0",
         ),
         (

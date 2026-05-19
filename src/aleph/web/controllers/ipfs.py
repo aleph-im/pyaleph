@@ -131,11 +131,11 @@ async def ipfs_add_file(request: web.Request):
                 max_size=max_unauthenticated_upload_file_size,
             )
 
-        # Validate the signed message BEFORE pinning so a bad signature
-        # cannot leave an orphan pin on the IPFS daemon. Note: by this
-        # point the file is already buffered to a temp file (multipart
-        # parts are consumed in arrival order); we gate the pin step,
-        # not the multipart read.
+        # Validate the signed message and balance BEFORE pinning so neither
+        # a bad signature nor an underfunded account leaves an orphan pin on
+        # the IPFS daemon. By this point the file is already buffered to a
+        # temp file (multipart parts are consumed in arrival order); we gate
+        # the pin step, not the multipart read.
         message = None
         message_content = None
         sync = False
@@ -173,7 +173,11 @@ async def ipfs_add_file(request: web.Request):
                     )
                 )
 
-        # Pin to IPFS — side effect: file is now on the local IPFS node.
+            message_content.estimated_size_mib = math.ceil(uploaded_file.size / MiB)
+            with session_factory() as session:
+                _verify_user_balance(session=session, content=message_content)
+
+        # Pin to IPFS, side effect: file is now on the local IPFS node.
         temp_file = await uploaded_file.open_temp_file()
         file_content = await temp_file.read()
         if isinstance(file_content, str):
@@ -181,7 +185,7 @@ async def ipfs_add_file(request: web.Request):
 
         cid = await ipfs_service.add_bytes(file_content)
 
-        # Post-pin: stat, CID match, balance check, persist.
+        # Post-pin: stat, CID match, persist.
         # Failures from this point on must leave the pin covered by the
         # 24 h grace period so the GC doesn't strand it.
         try:
@@ -194,23 +198,13 @@ async def ipfs_add_file(request: web.Request):
                 raise web.HTTPGatewayTimeout(reason="Timed out waiting for IPFS stat")
             size = stats["Size"]
 
-            if message_content is not None:
-                message_content.estimated_size_mib = math.ceil(uploaded_file.size / MiB)
-                if message_content.item_hash != cid:
-                    raise web.HTTPUnprocessableEntity(
-                        reason=(
-                            f"File hash does not match "
-                            f"({cid} != {message_content.item_hash})"
-                        )
+            if message_content is not None and message_content.item_hash != cid:
+                raise web.HTTPUnprocessableEntity(
+                    reason=(
+                        f"File hash does not match "
+                        f"({cid} != {message_content.item_hash})"
                     )
-                with session_factory() as session:
-                    _verify_user_balance(
-                        session=session,
-                        content=message_content,
-                        max_unauthenticated_upload_file_size=(
-                            max_unauthenticated_upload_file_size
-                        ),
-                    )
+                )
 
             with session_factory() as session:
                 upsert_file(

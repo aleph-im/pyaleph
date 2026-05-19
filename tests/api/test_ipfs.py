@@ -1,3 +1,4 @@
+import datetime as dt
 import json
 from decimal import Decimal
 from io import BytesIO
@@ -12,7 +13,7 @@ from in_memory_storage_engine import InMemoryStorageEngine
 
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.files import get_file
-from aleph.db.models import AlephBalanceDb, GracePeriodFilePinDb
+from aleph.db.models import AlephBalanceDb, AlephCreditBalanceDb, GracePeriodFilePinDb
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.files import FileType
@@ -51,6 +52,24 @@ IPFS_MESSAGE_DICT: dict[str, Any] = {
         }
     ),
     "item_hash": "6e717bf3296372a4d7b470a1a29ec2694a78a338002f33c94cb2f518e0c1fdb8",
+}
+
+# Same message but credit-paid. Used to exercise the credit-tier branch in
+# the API-level balance check.
+IPFS_MESSAGE_DICT_CREDIT: dict[str, Any] = {
+    **IPFS_MESSAGE_DICT,
+    "item_content": json.dumps(
+        {
+            "address": "0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+            "time": 1692193373.714271,
+            "item_type": "ipfs",
+            "item_hash": EXPECTED_FILE_CID,
+            "mime_type": "application/octet-stream",
+            "payment": {"type": "credit", "chain": "ETH"},
+        }
+    ),
+    # Outer item_hash = sha256(item_content), required by pydantic.
+    "item_hash": "f87f7b55a8398d8980ef00267b5df574b22dfeb6e6ecf41ee219bf4da00d8217",
 }
 
 
@@ -302,6 +321,17 @@ async def test_auth_upload_cid_mismatch(
         new_callable=mocker.AsyncMock,
     )
 
+    with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                chain=Chain.ETH,
+                balance=Decimal(1000),
+                eth_height=0,
+            )
+        )
+        session.commit()
+
     # Message claims a different CID than the fixture's mocked add_bytes.
     mismatched = {
         **IPFS_MESSAGE_DICT,
@@ -314,7 +344,7 @@ async def test_auth_upload_cid_mismatch(
                 "mime_type": "application/octet-stream",
             }
         ),
-        # Outer item_hash = sha256(item_content) — required by pydantic.
+        # Outer item_hash = sha256(item_content), required by pydantic.
         "item_hash": "dcaa4ab4374b11084ca2fea61d9235f06d658f97adb18af8b4bd659adf0377af",
     }
 
@@ -350,21 +380,20 @@ async def test_auth_upload_insufficient_balance(
     fixture_settings_aggregate_in_db,
 ):
     """
-    File above the unauth threshold with insufficient balance returns 402
-    and leaves the pinned file under a 24 h grace period.
+    Authenticated upload with insufficient balance returns 402 BEFORE the
+    file is pinned, regardless of size. No IPFS write, no file row, no
+    grace-period side effect.
     """
     mocker.patch(
         "aleph.web.controllers.ipfs._verify_message_signature",
         new_callable=mocker.AsyncMock,
     )
+    ipfs_service = _get_ipfs_service_mock(api_client)
 
-    # 26 MiB payload > 25 MiB unauth cap, so balance check fires.
-    payload = b"x" * (26 * 1024 * 1024)
-
-    # No balance row inserted → balance is zero.
-
+    # No balance row inserted; balance is zero. File is tiny, well under
+    # the legacy 25 MiB unauth threshold, to prove size doesn't matter.
     form_data = aiohttp.FormData()
-    form_data.add_field("file", BytesIO(payload))
+    form_data.add_field("file", BytesIO(FILE_CONTENT))
     form_data.add_field(
         "metadata",
         json.dumps({"message": IPFS_MESSAGE_DICT, "sync": False}),
@@ -374,50 +403,10 @@ async def test_auth_upload_insufficient_balance(
     response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
     assert response.status == 402, await response.text()
 
+    ipfs_service.add_bytes.assert_not_called()
     with session_factory() as session:
-        file = get_file(session=session, file_hash=EXPECTED_FILE_CID)
-        assert file is not None
-        assert _has_grace_period(session, EXPECTED_FILE_CID)
-
-
-@pytest.mark.asyncio
-async def test_auth_upload_small_file_skips_balance_check(
-    api_client, session_factory: DbSessionFactory, mocker
-):
-    """
-    For files below max_unauthenticated_upload_file_size, the balance check
-    short-circuits even when balance is zero. Matches /storage/add_file's
-    rule: anything you could have uploaded unauth for free doesn't need a
-    balance check.
-
-    We deliberately do NOT mock _verify_user_balance: its internal threshold
-    short-circuit is exactly what we want to exercise. Zero balance + tiny
-    file → request must succeed.
-    """
-    mocker.patch(
-        "aleph.web.controllers.ipfs._verify_message_signature",
-        new_callable=mocker.AsyncMock,
-    )
-    mocker.patch(
-        "aleph.web.controllers.ipfs.broadcast_and_process_message",
-        new_callable=mocker.AsyncMock,
-        return_value=BroadcastStatus(
-            publication_status=PublicationStatus.from_failures([]),
-            message_status=MessageStatus.PROCESSED,
-        ),
-    )
-
-    # No balance inserted — balance is zero. File is 34 bytes << 25 MiB.
-    form_data = aiohttp.FormData()
-    form_data.add_field("file", BytesIO(FILE_CONTENT))
-    form_data.add_field(
-        "metadata",
-        json.dumps({"message": IPFS_MESSAGE_DICT, "sync": True}),
-        content_type="application/json",
-    )
-
-    response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
-    assert response.status == 200, await response.text()
+        assert get_file(session=session, file_hash=EXPECTED_FILE_CID) is None
+        assert not _has_grace_period(session, EXPECTED_FILE_CID)
 
 
 @pytest.mark.asyncio
@@ -455,6 +444,17 @@ async def test_auth_upload_stat_timeout_applies_grace(
         side_effect=TimeoutError()
     )
 
+    with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                chain=Chain.ETH,
+                balance=Decimal(1000),
+                eth_height=0,
+            )
+        )
+        session.commit()
+
     form_data = aiohttp.FormData()
     form_data.add_field("file", BytesIO(FILE_CONTENT))
     form_data.add_field(
@@ -470,3 +470,106 @@ async def test_auth_upload_stat_timeout_applies_grace(
         file = get_file(session=session, file_hash=EXPECTED_FILE_CID)
         assert file is not None
         assert _has_grace_period(session, EXPECTED_FILE_CID)
+
+
+@pytest.mark.asyncio
+async def test_auth_credit_upload_insufficient_credit_balance(
+    api_client,
+    session_factory: DbSessionFactory,
+    mocker,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """
+    Credit-paid STORE with zero credit balance is rejected pre-pin with 402.
+    An ALEPH token balance is irrelevant: the credit branch reads credits
+    only. The address gets a large ALEPH balance to make this explicit.
+    """
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+    ipfs_service = _get_ipfs_service_mock(api_client)
+
+    # ALEPH balance must not satisfy a credit-paid request.
+    with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                chain=Chain.ETH,
+                balance=Decimal(1_000_000),
+                eth_height=0,
+            )
+        )
+        session.commit()
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(FILE_CONTENT))
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": IPFS_MESSAGE_DICT_CREDIT, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
+    assert response.status == 402, await response.text()
+
+    ipfs_service.add_bytes.assert_not_called()
+    with session_factory() as session:
+        assert get_file(session=session, file_hash=EXPECTED_FILE_CID) is None
+        assert not _has_grace_period(session, EXPECTED_FILE_CID)
+
+
+@pytest.mark.asyncio
+async def test_auth_credit_upload_sufficient_credit_balance(
+    api_client,
+    session_factory: DbSessionFactory,
+    mocker,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """
+    Credit-paid STORE with enough credits to cover the 1-day minimum
+    runtime passes the API check and the file is pinned.
+    """
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+    mocker.patch(
+        "aleph.web.controllers.ipfs.broadcast_and_process_message",
+        new_callable=mocker.AsyncMock,
+        return_value=BroadcastStatus(
+            publication_status=PublicationStatus.from_failures([]),
+            message_status=MessageStatus.PROCESSED,
+        ),
+    )
+
+    # Seed the credit cache directly. The amount is well above one day of
+    # storage cost for a 34-byte file, so the 1-day minimum runtime check
+    # in validate_balance_for_payment is satisfied.
+    with session_factory() as session:
+        session.add(
+            AlephCreditBalanceDb(
+                address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                credit_ref="test-credit-ref",
+                credit_index=0,
+                amount_remaining=1_000_000_000,
+                expiration_date=None,
+                message_timestamp=dt.datetime(2024, 1, 1, tzinfo=dt.timezone.utc),
+            )
+        )
+        session.commit()
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(FILE_CONTENT))
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": IPFS_MESSAGE_DICT_CREDIT, "sync": True}),
+        content_type="application/json",
+    )
+
+    response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
+    assert response.status == 200, await response.text()
+    payload = await response.json()
+    assert payload["hash"] == EXPECTED_FILE_CID
