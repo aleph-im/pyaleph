@@ -4,6 +4,7 @@ import logging
 import math
 import os
 import tempfile
+from pathlib import Path
 from typing import Optional
 
 import aio_pika
@@ -241,8 +242,19 @@ class UploadedFile:
     def get_hash(self) -> str:
         return self._hasher.hexdigest()
 
+    def get_temp_file_path(self) -> Path:
+        """Return the path of the buffered temp file. Only valid after
+        `read_and_validate` has run."""
+        if not self._temp_file_path:
+            raise ValueError("File content has not been validated and read yet.")
+        return Path(self._temp_file_path)
 
-class MultipartUploadedFile(UploadedFile):
+
+class _MultipartUploadedFromPart(UploadedFile):
+    """Common base for files streamed from an aiohttp multipart part.
+    Provides the shared `file_field` attribute and the `_read_chunks`
+    iteration over the part body."""
+
     def __init__(self, file_field: BodyPartReader, max_size: int):
         super().__init__(max_size)
         self.file_field = file_field
@@ -250,6 +262,18 @@ class MultipartUploadedFile(UploadedFile):
     async def _read_chunks(self, chunk_size):
         async for chunk in self.file_field.__aiter__():
             yield chunk
+
+
+class MultipartUploadedFile(_MultipartUploadedFromPart):
+    pass
+
+
+class MultipartUploadedCar(_MultipartUploadedFromPart):
+    """Streams a CARv1 multipart part to a temp file while enforcing
+    max_upload_car_size. Distinct from MultipartUploadedFile so the
+    inherited `hash` field (SHA-256 of bytes) is not surfaced as a
+    pseudo-content-hash. For CAR uploads the IPFS root CID is the only
+    identifier of record."""
 
 
 class RawUploadedFile(UploadedFile):
