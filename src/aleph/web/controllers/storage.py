@@ -15,8 +15,6 @@ from aleph_message.models import ItemHash, ItemType
 from pydantic import ValidationError
 
 from aleph.chains.signature_verifier import SignatureVerifier
-from aleph.db.accessors.balances import get_total_balance
-from aleph.db.accessors.cost import get_total_cost_for_address
 from aleph.db.accessors.files import (
     count_file_pins,
     get_file,
@@ -31,12 +29,17 @@ from aleph.schemas.pending_messages import (
     PendingInlineStoreMessage,
     PendingStoreMessage,
 )
-from aleph.services.cost import get_total_and_detailed_costs
+from aleph.services.cost import get_payment_type, get_total_and_detailed_costs
+from aleph.services.cost_validation import validate_balance_for_payment
 from aleph.storage import StorageService
 from aleph.toolkit.constants import MiB
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.files import FileTag, FileType
-from aleph.types.message_status import InvalidSignature
+from aleph.types.message_status import (
+    InsufficientBalanceException,
+    InsufficientCreditException,
+    InvalidSignature,
+)
 from aleph.utils import item_type_from_hash, run_in_executor
 from aleph.web.controllers.app_state_getters import (
     get_config_from_request,
@@ -154,13 +157,16 @@ def _verify_user_balance(
     session: DbSession,
     content: CostEstimationStoreContent,
 ) -> None:
-    current_balance = get_total_balance(session=session, address=content.address)
-    current_cost = get_total_cost_for_address(session=session, address=content.address)
+    payment_type = get_payment_type(content)
     message_cost, _ = get_total_and_detailed_costs(session, content, "")
-
-    required_balance = current_cost + message_cost
-
-    if current_balance < required_balance:
+    try:
+        validate_balance_for_payment(
+            session=session,
+            address=content.address,
+            message_cost=message_cost,
+            payment_type=payment_type,
+        )
+    except (InsufficientBalanceException, InsufficientCreditException):
         raise web.HTTPPaymentRequired()
 
 
