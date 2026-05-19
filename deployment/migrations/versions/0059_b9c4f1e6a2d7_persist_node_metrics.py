@@ -6,6 +6,14 @@ Create Date: 2026-05-18
 
 Creates crn_metrics and ccn_metrics tables, backfills them from the
 existing JSON-unnesting views, then drops the views.
+
+Backfill ordering: tables are created without indexes or FK, the bulk
+INSERT runs against bare heap tables, then indexes are built in one
+shot on the populated tables (sorted bulk build) and the FK is added
+NOT VALID + VALIDATE-d separately. This avoids per-row index
+maintenance and per-row FK lookups against messages during the
+backfill, which fans out to roughly scoring_messages * nodes_per_msg
+rows.
 """
 
 import sqlalchemy as sa
@@ -22,12 +30,7 @@ def upgrade() -> None:
     op.create_table(
         "crn_metrics",
         sa.Column("id", sa.BigInteger, primary_key=True, autoincrement=True),
-        sa.Column(
-            "item_hash",
-            sa.String,
-            sa.ForeignKey("messages.item_hash", ondelete="CASCADE"),
-            nullable=False,
-        ),
+        sa.Column("item_hash", sa.String, nullable=False),
         sa.Column("node_id", sa.String, nullable=False),
         sa.Column("measured_at", sa.Float, nullable=False),
         sa.Column("base_latency", sa.Float),
@@ -35,24 +38,10 @@ def upgrade() -> None:
         sa.Column("full_check_latency", sa.Float),
         sa.Column("diagnostic_vm_latency", sa.Float),
     )
-    op.create_index(
-        "ix_crn_metrics_item_hash", "crn_metrics", ["item_hash"]
-    )
-    op.create_index(
-        "ix_crn_metrics_node_id_measured_at",
-        "crn_metrics",
-        ["node_id", sa.text("measured_at DESC")],
-    )
-
     op.create_table(
         "ccn_metrics",
         sa.Column("id", sa.BigInteger, primary_key=True, autoincrement=True),
-        sa.Column(
-            "item_hash",
-            sa.String,
-            sa.ForeignKey("messages.item_hash", ondelete="CASCADE"),
-            nullable=False,
-        ),
+        sa.Column("item_hash", sa.String, nullable=False),
         sa.Column("node_id", sa.String, nullable=False),
         sa.Column("measured_at", sa.Float, nullable=False),
         sa.Column("base_latency", sa.Float),
@@ -62,14 +51,6 @@ def upgrade() -> None:
         sa.Column("file_download_latency", sa.Float),
         sa.Column("pending_messages", sa.Integer),
         sa.Column("eth_height_remaining", sa.Integer),
-    )
-    op.create_index(
-        "ix_ccn_metrics_item_hash", "ccn_metrics", ["item_hash"]
-    )
-    op.create_index(
-        "ix_ccn_metrics_node_id_measured_at",
-        "ccn_metrics",
-        ["node_id", sa.text("measured_at DESC")],
     )
 
     op.execute(
@@ -103,6 +84,46 @@ def upgrade() -> None:
         WHERE node_id IS NOT NULL AND measured_at IS NOT NULL
         """
         )
+    )
+
+    op.create_index("ix_crn_metrics_item_hash", "crn_metrics", ["item_hash"])
+    op.create_index(
+        "ix_crn_metrics_node_id_measured_at",
+        "crn_metrics",
+        ["node_id", sa.text("measured_at DESC")],
+    )
+    op.create_index("ix_ccn_metrics_item_hash", "ccn_metrics", ["item_hash"])
+    op.create_index(
+        "ix_ccn_metrics_node_id_measured_at",
+        "ccn_metrics",
+        ["node_id", sa.text("measured_at DESC")],
+    )
+
+    op.execute(
+        text(
+            """
+        ALTER TABLE crn_metrics
+          ADD CONSTRAINT fk_crn_metrics_item_hash
+          FOREIGN KEY (item_hash) REFERENCES messages(item_hash) ON DELETE CASCADE
+          NOT VALID
+        """
+        )
+    )
+    op.execute(
+        text(
+            """
+        ALTER TABLE ccn_metrics
+          ADD CONSTRAINT fk_ccn_metrics_item_hash
+          FOREIGN KEY (item_hash) REFERENCES messages(item_hash) ON DELETE CASCADE
+          NOT VALID
+        """
+        )
+    )
+    op.execute(
+        text("ALTER TABLE crn_metrics VALIDATE CONSTRAINT fk_crn_metrics_item_hash")
+    )
+    op.execute(
+        text("ALTER TABLE ccn_metrics VALIDATE CONSTRAINT fk_ccn_metrics_item_hash")
     )
 
     op.execute(text("DROP VIEW IF EXISTS crn_metric_view"))
