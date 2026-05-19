@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from contextlib import AsyncExitStack
+from contextlib import AbstractAsyncContextManager, AsyncExitStack
 from typing import Dict, Self, Union
 
 from aleph_message.models import Chain
@@ -51,7 +51,7 @@ class ChainConnector:
             if id(connector) in seen:
                 continue
             seen.add(id(connector))
-            if hasattr(connector, "__aexit__"):
+            if isinstance(connector, AbstractAsyncContextManager):
                 await self._exit_stack.enter_async_context(connector)
         return self
 
