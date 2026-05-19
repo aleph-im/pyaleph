@@ -155,3 +155,69 @@ async def test_wrong_channel_does_not_insert_metrics(
 
         assert list(session.execute(select(CrnMetricDb)).scalars()) == []
         assert list(session.execute(select(CcnMetricDb)).scalars()) == []
+
+
+@pytest.mark.asyncio
+async def test_forget_cascades_to_metric_rows(session_factory: DbSessionFactory):
+    handler = _handler()
+    msg = _make_scoring_message(
+        item_hash="hash-forget",
+        content_type=SCORING_POST_TYPE,
+        address=SCORING_SENDER,
+        channel=SCORING_CHANNEL,
+    )
+    with session_factory() as session:
+        session.add(msg)
+        session.flush()
+        await handler.process(session=session, messages=[msg])
+        session.commit()
+
+        # Sanity: rows are there
+        assert (
+            len(
+                list(
+                    session.execute(
+                        select(CrnMetricDb).where(
+                            CrnMetricDb.item_hash == "hash-forget"
+                        )
+                    ).scalars()
+                )
+            )
+            == 1
+        )
+        assert (
+            len(
+                list(
+                    session.execute(
+                        select(CcnMetricDb).where(
+                            CcnMetricDb.item_hash == "hash-forget"
+                        )
+                    ).scalars()
+                )
+            )
+            == 1
+        )
+
+    # Now delete the source message and verify cascade.
+    with session_factory() as session:
+        existing = session.get(MessageDb, "hash-forget")
+        assert existing is not None
+        session.delete(existing)
+        session.commit()
+
+        assert (
+            list(
+                session.execute(
+                    select(CrnMetricDb).where(CrnMetricDb.item_hash == "hash-forget")
+                ).scalars()
+            )
+            == []
+        )
+        assert (
+            list(
+                session.execute(
+                    select(CcnMetricDb).where(CcnMetricDb.item_hash == "hash-forget")
+                ).scalars()
+            )
+            == []
+        )
