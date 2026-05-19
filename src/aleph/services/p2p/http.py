@@ -12,7 +12,7 @@ import aiohttp
 
 LOGGER = logging.getLogger("P2P.HTTP")
 
-SESSIONS = dict()
+SESSIONS: dict[int, aiohttp.ClientSession] = {}
 
 
 async def api_get_request(base_uri, method, timeout=1):
@@ -68,3 +68,17 @@ async def request_hash(
             return content
 
     return None  # Nothing found...
+
+
+async def close_sessions() -> None:
+    """Close and forget every cached aiohttp ClientSession.
+
+    Safe to call multiple times. Closing a session also closes its
+    TCPConnector, releasing connection pool sockets.
+    """
+    while SESSIONS:
+        _timeout, session = SESSIONS.popitem()
+        try:
+            await session.close()
+        except Exception:
+            LOGGER.exception("Error closing P2P HTTP session")

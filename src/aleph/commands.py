@@ -39,13 +39,14 @@ from aleph.services import p2p
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.keys import generate_keypair, save_keys
+from aleph.services.p2p.http import close_sessions
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.services.storage.garbage_collector import (
     GarbageCollector,
     garbage_collector_task,
 )
 from aleph.storage import StorageService
-from aleph.toolkit.lifecycle import install_signal_handlers
+from aleph.toolkit.lifecycle import install_signal_handlers, safe_async_cleanup
 from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
 
@@ -198,6 +199,9 @@ async def main(args: List[str]) -> None:
             )
             tasks += runner.tasks
         stack.push_async_callback(runner.stop)
+        stack.push_async_callback(
+            safe_async_cleanup, "p2p HTTP sessions", close_sessions()
+        )
 
         LOGGER.debug("Initializing p2p")
         p2p_client, p2p_tasks = await p2p.init_p2p(
