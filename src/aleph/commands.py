@@ -214,6 +214,7 @@ async def main(args: List[str]) -> None:
             ipfs_service=ipfs_service,
             node_cache=node_cache,
         )
+        stack.push_async_callback(safe_async_cleanup, "p2p client", p2p_client.close())
         tasks += p2p_tasks
         LOGGER.debug("Initialized p2p")
 
