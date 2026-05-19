@@ -124,7 +124,7 @@ def query_metric_ccn(
     node_id: Optional[str] = None,
     start_date: Optional[float] = None,
     end_date: Optional[float] = None,
-    sort_order: Optional[SortOrder] = None,
+    sort_order: Optional[SortOrderForMetrics] = None,
 ):
     # Default to the last 2 weeks from now, or 2 weeks before the `end_date`.
     if not start_date and not end_date:
@@ -150,11 +150,11 @@ def query_metric_ccn(
         select_stmt = select_stmt.where(CcnMetricDb.measured_at >= start_date)
     if end_date:
         select_stmt = select_stmt.where(CcnMetricDb.measured_at <= end_date)
-    if sort_order:
-        order_col = CcnMetricDb.measured_at
-        select_stmt = select_stmt.order_by(
-            order_col.asc() if sort_order == SortOrder.ASCENDING else order_col.desc()
-        )
+    order_col = CcnMetricDb.measured_at
+    if sort_order == SortOrder.DESCENDING:
+        select_stmt = select_stmt.order_by(order_col.desc())
+    else:
+        select_stmt = select_stmt.order_by(order_col.asc())
 
     result = session.execute(select_stmt).fetchall()
     return _parse_ccn_result(result=result)
@@ -188,11 +188,11 @@ def query_metric_crn(
         select_stmt = select_stmt.where(CrnMetricDb.measured_at >= start_date)
     if end_date:
         select_stmt = select_stmt.where(CrnMetricDb.measured_at <= end_date)
-    if sort_order:
-        order_col = CrnMetricDb.measured_at
-        select_stmt = select_stmt.order_by(
-            order_col.asc() if sort_order == SortOrder.ASCENDING else order_col.desc()
-        )
+    order_col = CrnMetricDb.measured_at
+    if sort_order == SortOrder.DESCENDING:
+        select_stmt = select_stmt.order_by(order_col.desc())
+    else:
+        select_stmt = select_stmt.order_by(order_col.asc())
 
     result = session.execute(select_stmt).fetchall()
     return _parse_crn_result(result=result)
