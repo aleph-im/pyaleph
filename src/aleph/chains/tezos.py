@@ -11,7 +11,7 @@ from nacl.exceptions import BadSignatureError
 from pytezos_crypto.key import Key
 
 import aleph.toolkit.json as aleph_json
-from aleph.chains.abc import ChainReader, Verifier
+from aleph.chains.abc import ChainReader, SignableMessage, Verifier
 from aleph.chains.chain_data_service import PendingTxPublisher
 from aleph.chains.common import get_verification_buffer
 from aleph.db.accessors.chains import get_last_height, upsert_chain_sync_status
@@ -21,7 +21,6 @@ from aleph.schemas.chains.tezos_indexer_response import (
     IndexerResponse,
     SyncStatus,
 )
-from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainEventType, ChainSyncProtocol
 from aleph.types.db_session import DbSession, DbSessionFactory
@@ -86,7 +85,7 @@ def micheline_verification_buffer(
 
 
 def get_tezos_verification_buffer(
-    message: BasePendingMessage, signature_type: TezosSignatureType, dapp_url: str
+    message: SignableMessage, signature_type: TezosSignatureType, dapp_url: str
 ) -> bytes:
     verification_buffer = get_verification_buffer(message)
 
@@ -190,7 +189,7 @@ async def extract_aleph_messages_from_indexer_response(
 
 
 class TezosVerifier(Verifier):
-    async def verify_signature(self, message: BasePendingMessage) -> bool:
+    async def verify_signature(self, message: SignableMessage) -> bool:
         """
         Verifies the cryptographic signature of a message signed with a Tezos key.
         """

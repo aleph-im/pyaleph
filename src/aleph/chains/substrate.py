@@ -4,15 +4,14 @@ import logging
 from substrateinterface import Keypair
 
 from aleph.chains.common import get_verification_buffer
-from aleph.schemas.pending_messages import BasePendingMessage
 
-from .abc import Verifier
+from .abc import SignableMessage, Verifier
 
 LOGGER = logging.getLogger("chains.substrate")
 
 
 class SubstrateConnector(Verifier):
-    async def verify_signature(self, message: BasePendingMessage) -> bool:
+    async def verify_signature(self, message: SignableMessage) -> bool:
         """Verifies a signature of a message, return True if verified, false if not"""
 
         if message.signature is None:

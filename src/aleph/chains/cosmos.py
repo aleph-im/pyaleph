@@ -9,15 +9,14 @@ from cosmospy import pubkey_to_address
 from ecdsa import BadSignatureError
 
 from aleph.chains.common import get_verification_buffer
-from aleph.schemas.pending_messages import BasePendingMessage
 
-from .abc import Verifier
+from .abc import SignableMessage, Verifier
 
 LOGGER = logging.getLogger("chains.cosmos")
 CHAIN_NAME = "CSDK"
 
 
-async def get_signable_message(message: BasePendingMessage) -> Dict:
+async def get_signable_message(message: SignableMessage) -> Dict:
     signable = (get_verification_buffer(message)).decode("utf-8")
     content_message = {
         "type": "signutil/MsgSignText",
@@ -42,7 +41,7 @@ async def get_signable_message(message: BasePendingMessage) -> Dict:
     }
 
 
-async def get_verification_string(message: BasePendingMessage) -> str:
+async def get_verification_string(message: SignableMessage) -> str:
     value = await get_signable_message(message)
     return json.dumps(value, separators=(",", ":"), sort_keys=True)
 
@@ -53,7 +52,7 @@ async def get_hrp(address):
 
 
 class CosmosConnector(Verifier):
-    async def verify_signature(self, message: BasePendingMessage) -> bool:
+    async def verify_signature(self, message: SignableMessage) -> bool:
         """Verifies a signature of a message, return True if verified, false if not"""
 
         if message.signature is None:

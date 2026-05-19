@@ -2,7 +2,7 @@ from typing import Dict
 
 from aleph_message.models import Chain
 
-from aleph.chains.abc import Verifier
+from aleph.chains.abc import SignableMessage, Verifier
 from aleph.chains.avalanche import AvalancheConnector
 from aleph.chains.cosmos import CosmosConnector
 from aleph.chains.ethereum import EthereumVerifier
@@ -12,7 +12,6 @@ from aleph.chains.nuls2 import Nuls2Verifier
 from aleph.chains.solana import SolanaConnector
 from aleph.chains.substrate import SubstrateConnector
 from aleph.chains.tezos import TezosVerifier
-from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.types.message_status import InvalidMessageFormat, InvalidSignature
 
 
@@ -54,7 +53,7 @@ class SignatureVerifier:
             Chain.ZORA: EVMVerifier(),
         }
 
-    async def verify_signature(self, message: BasePendingMessage) -> None:
+    async def verify_signature(self, message: SignableMessage) -> None:
         try:
             verifier = self.verifiers[message.chain]
         except KeyError:

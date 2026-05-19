@@ -2,10 +2,9 @@ import logging
 import struct
 
 from aleph.chains.common import get_verification_buffer
-from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.utils import run_in_executor
 
-from .abc import Verifier
+from .abc import SignableMessage, Verifier
 from .nuls_aleph_sdk import (
     NulsSignature,
     address_from_hash,
@@ -18,7 +17,7 @@ CHAIN_NAME = "NULS"
 
 
 class NulsConnector(Verifier):
-    async def verify_signature(self, message: BasePendingMessage) -> bool:
+    async def verify_signature(self, message: SignableMessage) -> bool:
         """Verifies a signature of a message, return True if verified, false if not"""
 
         if message.signature is None:
