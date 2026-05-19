@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from contextlib import AsyncExitStack
 from typing import Dict, Self, Union
 
 from aleph_message.models import Chain
@@ -39,6 +40,23 @@ class ChainConnector:
 
         self.readers = {}
         self.writers = {}
+        self._exit_stack = AsyncExitStack()
+
+    async def __aenter__(self) -> Self:
+        await self._exit_stack.__aenter__()
+        # A connector can be both a reader and a writer; dedupe by identity so
+        # __aexit__ runs at most once per instance.
+        seen: set[int] = set()
+        for connector in (*self.readers.values(), *self.writers.values()):
+            if id(connector) in seen:
+                continue
+            seen.add(id(connector))
+            if hasattr(connector, "__aexit__"):
+                await self._exit_stack.enter_async_context(connector)
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        await self._exit_stack.__aexit__(exc_type, exc_val, exc_tb)
 
     @classmethod
     async def new(
