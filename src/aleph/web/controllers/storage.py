@@ -153,21 +153,15 @@ async def _verify_message_signature(
 def _verify_user_balance(
     session: DbSession,
     content: CostEstimationStoreContent,
-    max_unauthenticated_upload_file_size: int,
 ) -> None:
-    if content.estimated_size_mib and content.estimated_size_mib > (
-        max_unauthenticated_upload_file_size / MiB
-    ):
-        current_balance = get_total_balance(session=session, address=content.address)
-        current_cost = get_total_cost_for_address(
-            session=session, address=content.address
-        )
-        message_cost, _ = get_total_and_detailed_costs(session, content, "")
+    current_balance = get_total_balance(session=session, address=content.address)
+    current_cost = get_total_cost_for_address(session=session, address=content.address)
+    message_cost, _ = get_total_and_detailed_costs(session, content, "")
 
-        required_balance = current_cost + message_cost
+    required_balance = current_cost + message_cost
 
-        if current_balance < required_balance:
-            raise web.HTTPPaymentRequired()
+    if current_balance < required_balance:
+        raise web.HTTPPaymentRequired()
 
 
 class StorageMetadata(pydantic.BaseModel):
@@ -269,7 +263,6 @@ async def _check_and_add_file(
     message: Optional[PendingStoreMessage],
     uploaded_file: UploadedFile,
     grace_period: int,
-    max_unauthenticated_upload_file_size: int,
 ) -> str:
     file_hash = uploaded_file.get_hash()
     # Perform authentication and balance checks
@@ -299,7 +292,6 @@ async def _check_and_add_file(
             _verify_user_balance(
                 session=session,
                 content=message_content,
-                max_unauthenticated_upload_file_size=max_unauthenticated_upload_file_size,
             )
     else:
         message_content = None
@@ -467,7 +459,6 @@ async def storage_add_file(request: web.Request):
             message=message,
             uploaded_file=uploaded_file,
             grace_period=grace_period,
-            max_unauthenticated_upload_file_size=max_unauthenticated_upload_file_size,
         )
         if message:
             broadcast_status = await broadcast_and_process_message(
