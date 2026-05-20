@@ -6,19 +6,12 @@ from aleph.db.models import MessageDb
 from aleph.types.db_session import DbSession
 
 
-def _check_delegated_authorization(
+def is_sender_authorized_for_owner(
     session: DbSession, sender: str, owner_address: str, message: MessageDb
 ) -> bool:
-    """Check if sender has delegated authorization for the given owner address.
-
-    Args:
-        session: Database session
-        sender: The account trying to perform the action
-        owner_address: The address that owns the content
-        message: The message to check permissions against
-
-    Returns:
-        True if sender has delegated authorization, False otherwise
+    """Check whether `sender` is authorized to act for `owner_address` per
+    the security aggregate, scoped by the type / channel / chain / etc. of
+    `message`.
     """
 
     if sender.lower() == owner_address.lower():
@@ -126,13 +119,13 @@ async def check_sender_authorization(session: DbSession, message: MessageDb) -> 
                         return False
 
                     # Check delegated permissions for original address
-                    return _check_delegated_authorization(
+                    return is_sender_authorized_for_owner(
                         session=session,
                         sender=sender,
                         owner_address=original_address,
                         message=original_message,
                     )
 
-    return _check_delegated_authorization(
+    return is_sender_authorized_for_owner(
         session=session, sender=sender, owner_address=address, message=message
     )
