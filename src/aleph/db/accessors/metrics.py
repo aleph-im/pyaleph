@@ -62,7 +62,9 @@ def _build_crn_rows(
             continue
         node_id = entry.get("node_id")
         measured_at = _coerce_measured_at(entry.get("measured_at"))
-        if node_id is None or measured_at is None:
+        # Reject missing-or-empty node_id: an empty string is unusable
+        # for the (node_id, measured_at) lookups the API serves.
+        if not node_id or measured_at is None:
             continue
         rows.append(
             {
@@ -89,7 +91,9 @@ def _build_ccn_rows(
             continue
         node_id = entry.get("node_id")
         measured_at = _coerce_measured_at(entry.get("measured_at"))
-        if node_id is None or measured_at is None:
+        # Reject missing-or-empty node_id: an empty string is unusable
+        # for the (node_id, measured_at) lookups the API serves.
+        if not node_id or measured_at is None:
             continue
         rows.append(
             {

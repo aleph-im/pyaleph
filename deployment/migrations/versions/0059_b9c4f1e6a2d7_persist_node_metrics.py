@@ -21,8 +21,11 @@ Partition design:
 * Indexes: ix_*_item_hash, ix_*_node_id_measured_at (both built on
   populated tables after backfill, replicated to children via the
   partitioned-index mechanism)
-* FK to messages(item_hash) ON DELETE CASCADE, added NOT VALID then
-  VALIDATE after backfill to skip per-row check during the bulk load
+* FK to messages(item_hash) ON DELETE CASCADE, added after backfill.
+  PG (as of 17) does not support NOT VALID on partitioned tables, so
+  the ADD CONSTRAINT validates each child in one pass; this is still
+  cheaper than the per-row FK check we'd pay if the constraint were
+  present during the bulk INSERT.
 
 The retention cron (metrics_partition) runs daily and is responsible
 for creating next month's partition and dropping past-cutoff

@@ -87,6 +87,19 @@ def test_build_crn_rows_skips_entries_missing_required_fields():
     assert rows[0]["node_id"] == "ok"
 
 
+def test_build_crn_rows_skips_empty_node_id():
+    # An empty-string node_id is unusable for the API's per-node
+    # lookups, so the builder treats it the same as a missing one.
+    rows = _build_crn_rows(
+        "msg-empty",
+        [
+            {"measured_at": 1700000000.0, "node_id": ""},
+            {"measured_at": 1700000001.0, "node_id": "ok"},
+        ],
+    )
+    assert [r["node_id"] for r in rows] == ["ok"]
+
+
 def test_build_crn_rows_non_numeric_field_becomes_none():
     rows = _build_crn_rows(
         "msg-4",
