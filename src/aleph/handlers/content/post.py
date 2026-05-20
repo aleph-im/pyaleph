@@ -1,9 +1,9 @@
 import datetime as dt
 import logging
-from typing import Any, Dict, List, Mapping, Optional, Set, Union
+from typing import Any, Dict, List, Mapping, Optional, Set, Type, TypeVar, Union
 
 from aleph_message.models import Chain, ChainRef, PostContent
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import update
 
 from aleph.db.accessors.balances import get_credit_balance
@@ -79,18 +79,25 @@ def update_balances(session: DbSession, content: Mapping[str, Any]) -> None:
     )
 
 
+T = TypeVar("T", bound=BaseModel)
+
+
+def _parse_credit_content(
+    model_cls: Type[T], content: Mapping[str, Any], *, kind: str
+) -> T:
+    try:
+        return model_cls.model_validate(content)
+    except ValidationError as e:
+        raise InvalidMessageFormat(f"Invalid credit {kind} content: {e.errors()}")
+
+
 def update_credit_balances_distribution(
     session: DbSession,
-    content: Mapping[str, Any],
+    content: CreditDistributionContent,
     message_hash: str,
     message_timestamp: dt.datetime,
 ) -> None:
-    try:
-        parsed = CreditDistributionContent.model_validate(content)
-    except ValidationError as e:
-        raise InvalidMessageFormat(f"Invalid credit distribution content: {e.errors()}")
-
-    dist = parsed.distribution
+    dist = content.distribution
     LOGGER.info("Updating credit balances for %d addresses", len(dist.credits))
 
     update_credit_balances_distribution_db(
@@ -105,16 +112,11 @@ def update_credit_balances_distribution(
 
 def update_credit_balances_expense(
     session: DbSession,
-    content: Mapping[str, Any],
+    content: CreditExpenseContent,
     message_hash: str,
     message_timestamp: dt.datetime,
 ) -> None:
-    try:
-        parsed = CreditExpenseContent.model_validate(content)
-    except ValidationError as e:
-        raise InvalidMessageFormat(f"Invalid credit expense content: {e.errors()}")
-
-    expense = parsed.expense
+    expense = content.expense
     LOGGER.info(
         "Updating credit balances expense for %d addresses", len(expense.credits)
     )
@@ -129,19 +131,13 @@ def update_credit_balances_expense(
 
 def update_credit_balances_transfer(
     session: DbSession,
-    content: Mapping[str, Any],
+    content: CreditTransferContent,
     message_hash: str,
     message_timestamp: dt.datetime,
     sender_address: str,
     whitelisted_addresses: List[str],
 ) -> None:
-
-    try:
-        parsed = CreditTransferContent.model_validate(content)
-    except ValidationError as e:
-        raise InvalidMessageFormat(f"Invalid credit transfer content: {e.errors()}")
-
-    credits_list = parsed.transfer.credits
+    credits_list = content.transfer.credits
 
     # Reject self-transfers
     for entry in credits_list:
@@ -305,7 +301,11 @@ class PostMessageHandler(ContentHandler):
             ):
                 update_credit_balances_distribution(
                     session=session,
-                    content=content.content,
+                    content=_parse_credit_content(
+                        CreditDistributionContent,
+                        content.content,
+                        kind="distribution",
+                    ),
                     message_hash=message.item_hash,
                     message_timestamp=creation_datetime,
                 )
@@ -315,14 +315,18 @@ class PostMessageHandler(ContentHandler):
             ):
                 update_credit_balances_expense(
                     session=session,
-                    content=content.content,
+                    content=_parse_credit_content(
+                        CreditExpenseContent, content.content, kind="expense"
+                    ),
                     message_hash=message.item_hash,
                     message_timestamp=creation_datetime,
                 )
             elif content.type == "aleph_credit_transfer":
                 update_credit_balances_transfer(
                     session=session,
-                    content=content.content,
+                    content=_parse_credit_content(
+                        CreditTransferContent, content.content, kind="transfer"
+                    ),
                     message_hash=message.item_hash,
                     message_timestamp=creation_datetime,
                     sender_address=content.address,
