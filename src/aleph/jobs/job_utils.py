@@ -157,8 +157,12 @@ class MqWatcher:
         self._event = asyncio.Event()
 
     async def _check_for_message(self):
-        async with self.mq_queue.iterator(no_ack=True) as queue_iter:
-            async for _ in queue_iter:
+        # Manual ack (no_ack=False) so that prefetched messages still in the
+        # iterator buffer on shutdown are nack'd with requeue=True by aio_pika,
+        # instead of being logged as "lost for consumer with no_ack".
+        async with self.mq_queue.iterator(no_ack=False) as queue_iter:
+            async for message in queue_iter:
+                await message.ack()
                 self._event.set()
 
     async def __aenter__(self):

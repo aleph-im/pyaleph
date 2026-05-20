@@ -184,6 +184,7 @@ async def main(args: List[str]) -> None:
             pending_tx_publisher=pending_tx_publisher,
             chain_data_service=chain_data_service,
         )
+        await stack.enter_async_context(chain_connector)
 
         await repair_node(
             storage_service=storage_service, session_factory=session_factory

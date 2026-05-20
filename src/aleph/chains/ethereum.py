@@ -108,6 +108,13 @@ class EthereumConnector(ChainWriter):
             pending_tx_publisher=pending_tx_publisher,
         )
 
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        # Closes the aiohttp ClientSession cached by AsyncHTTPProvider.
+        await self.web3_client.provider.disconnect()
+
     @classmethod
     async def new(
         cls,
@@ -377,68 +384,61 @@ class EthereumConnector(ChainWriter):
         )
 
     async def packer(self, config: Config):
-        try:
-            pri_key = HexBytes(config.ethereum.private_key.value)
-            account = Account.from_key(pri_key)
-            address = account.address
+        pri_key = HexBytes(config.ethereum.private_key.value)
+        account = Account.from_key(pri_key)
+        address = account.address
 
-            LOGGER.info("Ethereum Connector set up with address %s" % address)
-            i = 0
-            while True:
-                with self.session_factory() as session:
-                    # Wait for sync operations to complete
-                    if (count_pending_txs(session=session, chain=Chain.ETH)) or (
-                        count_pending_messages(session=session, chain=Chain.ETH)
-                    ) > 1000:
-                        await asyncio.sleep(30)
-                        continue
+        LOGGER.info("Ethereum Connector set up with address %s" % address)
+        i = 0
+        while True:
+            with self.session_factory() as session:
+                # Wait for sync operations to complete
+                if (count_pending_txs(session=session, chain=Chain.ETH)) or (
+                    count_pending_messages(session=session, chain=Chain.ETH)
+                ) > 1000:
+                    await asyncio.sleep(30)
+                    continue
 
-                    if i >= 100:
-                        await asyncio.sleep(30)  # wait three (!!) blocks
-                        i = 0
+                if i >= 100:
+                    await asyncio.sleep(30)  # wait three (!!) blocks
+                    i = 0
 
-                    nonce = await self.web3_client.eth.get_transaction_count(
-                        account.address
+                nonce = await self.web3_client.eth.get_transaction_count(
+                    account.address
+                )
+
+                # Collect all unconfirmed messages using pagination
+                max_unconfirmed = config.aleph.jobs.max_unconfirmed_messages.value
+                all_messages = []
+                offset = 0
+                while True:
+                    batch = list(
+                        get_unconfirmed_messages(
+                            session=session,
+                            limit=500,
+                            offset=offset,
+                        )
                     )
+                    if not batch:
+                        break
+                    all_messages.extend(batch)
+                    offset += len(batch)
+                    if len(batch) < 500 or len(all_messages) >= max_unconfirmed:
+                        break
+                all_messages = all_messages[:max_unconfirmed]
 
-                    # Collect all unconfirmed messages using pagination
-                    max_unconfirmed = config.aleph.jobs.max_unconfirmed_messages.value
-                    all_messages = []
-                    offset = 0
-                    while True:
-                        batch = list(
-                            get_unconfirmed_messages(
-                                session=session,
-                                limit=500,
-                                offset=offset,
-                            )
-                        )
-                        if not batch:
-                            break
-                        all_messages.extend(batch)
-                        offset += len(batch)
-                        if len(batch) < 500 or len(all_messages) >= max_unconfirmed:
-                            break
-                    all_messages = all_messages[:max_unconfirmed]
+            if all_messages:
+                LOGGER.info("Chain sync: %d unconfirmed messages" % len(all_messages))
 
-                if all_messages:
-                    LOGGER.info(
-                        "Chain sync: %d unconfirmed messages" % len(all_messages)
+                try:
+                    response = await self.broadcast_messages(
+                        account=account,
+                        messages=all_messages,
+                        nonce=nonce,
                     )
+                    LOGGER.info("Broadcast %r on %s" % (response, Chain.ETH.value))
+                except Exception:
+                    LOGGER.exception("Error while broadcasting messages to Ethereum")
 
-                    try:
-                        response = await self.broadcast_messages(
-                            account=account,
-                            messages=all_messages,
-                            nonce=nonce,
-                        )
-                        LOGGER.info("Broadcast %r on %s" % (response, Chain.ETH.value))
-                    except Exception:
-                        LOGGER.exception(
-                            "Error while broadcasting messages to Ethereum"
-                        )
-
-                await asyncio.sleep(config.ethereum.commit_delay.value)
-                i += 1
-        finally:
-            await self.web3_client.provider.disconnect()
+            await asyncio.sleep(config.ethereum.commit_delay.value)
+            i += 1
