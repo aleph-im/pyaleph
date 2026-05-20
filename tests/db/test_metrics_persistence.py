@@ -15,6 +15,9 @@ from aleph.types.channel import Channel
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.sort_order import SortOrder
 
+_TS_1 = dt.datetime.fromtimestamp(1700000000.0, tz=dt.timezone.utc)
+_TS_2 = dt.datetime.fromtimestamp(1700000001.0, tz=dt.timezone.utc)
+
 
 def test_build_crn_rows_full_payload():
     item_hash = "msg-1"
@@ -41,7 +44,7 @@ def test_build_crn_rows_full_payload():
     assert rows[0] == {
         "item_hash": "msg-1",
         "node_id": "node-A",
-        "measured_at": 1700000000.0,
+        "measured_at": _TS_1,
         "base_latency": 0.1,
         "base_latency_ipv4": 0.11,
         "full_check_latency": 0.2,
@@ -60,7 +63,7 @@ def test_build_crn_rows_missing_optional_fields():
         {
             "item_hash": "msg-2",
             "node_id": "node-A",
-            "measured_at": 1700000000.0,
+            "measured_at": _TS_1,
             "base_latency": None,
             "base_latency_ipv4": None,
             "full_check_latency": None,
@@ -123,7 +126,7 @@ def test_build_ccn_rows_full_payload():
         {
             "item_hash": "msg-1",
             "node_id": "node-A",
-            "measured_at": 1700000000.0,
+            "measured_at": _TS_1,
             "base_latency": 0.1,
             "base_latency_ipv4": 0.11,
             "metrics_latency": 0.2,
@@ -253,19 +256,19 @@ def test_query_metric_crn_filters_by_node_and_date(session_factory: DbSessionFac
                 CrnMetricDb(
                     item_hash=item_hash,
                     node_id="node-A",
-                    measured_at=100.0,
+                    measured_at=dt.datetime.fromtimestamp(100.0, tz=dt.timezone.utc),
                     base_latency=0.1,
                 ),
                 CrnMetricDb(
                     item_hash=item_hash,
                     node_id="node-A",
-                    measured_at=200.0,
+                    measured_at=dt.datetime.fromtimestamp(200.0, tz=dt.timezone.utc),
                     base_latency=0.2,
                 ),
                 CrnMetricDb(
                     item_hash=item_hash,
                     node_id="node-B",
-                    measured_at=150.0,
+                    measured_at=dt.datetime.fromtimestamp(150.0, tz=dt.timezone.utc),
                     base_latency=0.9,
                 ),
             ]
@@ -294,7 +297,7 @@ def test_query_metric_ccn_returns_all_columns(session_factory: DbSessionFactory)
             CcnMetricDb(
                 item_hash=item_hash,
                 node_id="ccn-A",
-                measured_at=500.0,
+                measured_at=dt.datetime.fromtimestamp(500.0, tz=dt.timezone.utc),
                 base_latency=0.1,
                 base_latency_ipv4=0.11,
                 metrics_latency=0.2,

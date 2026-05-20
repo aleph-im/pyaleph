@@ -23,6 +23,7 @@ from aleph.types.db_session import DbSessionFactory
 
 SCORING_SENDER = "0x4D52380D3191274a04846c89c069E6C3F2Ed94e4"
 _MEASURED_AT = 1700000000.0  # Nov 2023 -- well outside the default 14-day window
+_MEASURED_AT_DT = dt.datetime.fromtimestamp(_MEASURED_AT, tz=dt.timezone.utc)
 
 # The accessors use `if not start_date` to decide whether to apply the 14-day
 # lookback window.  Passing start_date=0 would be falsy and still trigger the
@@ -67,7 +68,7 @@ async def test_get_crn_metrics_returns_persisted_rows(
             CrnMetricDb(
                 item_hash="h-crn",
                 node_id=node_id,
-                measured_at=_MEASURED_AT,
+                measured_at=_MEASURED_AT_DT,
                 base_latency=0.1,
                 base_latency_ipv4=0.11,
                 full_check_latency=0.2,
@@ -99,7 +100,7 @@ async def test_get_ccn_metrics_returns_persisted_rows(
             CcnMetricDb(
                 item_hash="h-ccn",
                 node_id=node_id,
-                measured_at=_MEASURED_AT,
+                measured_at=_MEASURED_AT_DT,
                 base_latency=0.1,
                 base_latency_ipv4=0.11,
                 metrics_latency=0.2,

@@ -1,3 +1,4 @@
+import datetime as dt
 import time
 from typing import Any, List, Mapping, Optional
 
@@ -27,6 +28,31 @@ def _coerce_int(value: Any) -> Optional[int]:
         return None
 
 
+def _coerce_measured_at(value: Any) -> Optional[dt.datetime]:
+    """Scoring payloads carry measured_at as a Unix epoch number. The DB
+    column is TIMESTAMPTZ so the partition key can be a real time. Return
+    None on anything that isn't a usable timestamp."""
+    epoch = _coerce_float(value)
+    if epoch is None:
+        return None
+    try:
+        return dt.datetime.fromtimestamp(epoch, tz=dt.timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def _epoch_to_datetime(value: Optional[float]) -> Optional[dt.datetime]:
+    if value is None:
+        return None
+    return dt.datetime.fromtimestamp(value, tz=dt.timezone.utc)
+
+
+def _datetime_to_epoch(value: Optional[dt.datetime]) -> Optional[float]:
+    if value is None:
+        return None
+    return value.timestamp()
+
+
 def _build_crn_rows(
     item_hash: str, crn_array: List[Mapping[str, Any]]
 ) -> List[Mapping[str, Any]]:
@@ -35,7 +61,7 @@ def _build_crn_rows(
         if not isinstance(entry, Mapping):
             continue
         node_id = entry.get("node_id")
-        measured_at = _coerce_float(entry.get("measured_at"))
+        measured_at = _coerce_measured_at(entry.get("measured_at"))
         if node_id is None or measured_at is None:
             continue
         rows.append(
@@ -62,7 +88,7 @@ def _build_ccn_rows(
         if not isinstance(entry, Mapping):
             continue
         node_id = entry.get("node_id")
-        measured_at = _coerce_float(entry.get("measured_at"))
+        measured_at = _coerce_measured_at(entry.get("measured_at"))
         if node_id is None or measured_at is None:
             continue
         rows.append(
@@ -100,6 +126,12 @@ def _parse_ccn_result(result):
     # Transpose the result and create a dictionary
     result_dict = {key: list(values) for key, values in zip(keys, zip(*result))}
 
+    # API contract serializes measured_at as epoch seconds.
+    if "measured_at" in result_dict:
+        result_dict["measured_at"] = [
+            _datetime_to_epoch(v) for v in result_dict["measured_at"]
+        ]
+
     return result_dict
 
 
@@ -115,6 +147,11 @@ def _parse_crn_result(result):
 
     # Transpose the result and create a dictionary
     result_dict = {key: list(values) for key, values in zip(keys, zip(*result))}
+
+    if "measured_at" in result_dict:
+        result_dict["measured_at"] = [
+            _datetime_to_epoch(v) for v in result_dict["measured_at"]
+        ]
 
     return result_dict
 
@@ -132,6 +169,9 @@ def query_metric_ccn(
     elif end_date and not start_date:
         start_date = end_date - 60 * 60 * 24 * 14
 
+    start_dt = _epoch_to_datetime(start_date)
+    end_dt = _epoch_to_datetime(end_date)
+
     select_stmt = select(
         CcnMetricDb.item_hash,
         CcnMetricDb.measured_at,
@@ -146,10 +186,10 @@ def query_metric_ccn(
 
     if node_id:
         select_stmt = select_stmt.where(CcnMetricDb.node_id == node_id)
-    if start_date:
-        select_stmt = select_stmt.where(CcnMetricDb.measured_at >= start_date)
-    if end_date:
-        select_stmt = select_stmt.where(CcnMetricDb.measured_at <= end_date)
+    if start_dt:
+        select_stmt = select_stmt.where(CcnMetricDb.measured_at >= start_dt)
+    if end_dt:
+        select_stmt = select_stmt.where(CcnMetricDb.measured_at <= end_dt)
     order_col = CcnMetricDb.measured_at
     if sort_order == SortOrder.DESCENDING:
         select_stmt = select_stmt.order_by(order_col.desc())
@@ -173,6 +213,9 @@ def query_metric_crn(
     elif end_date and not start_date:
         start_date = end_date - 60 * 60 * 24 * 14
 
+    start_dt = _epoch_to_datetime(start_date)
+    end_dt = _epoch_to_datetime(end_date)
+
     select_stmt = select(
         CrnMetricDb.item_hash,
         CrnMetricDb.measured_at,
@@ -184,10 +227,10 @@ def query_metric_crn(
 
     if node_id:
         select_stmt = select_stmt.where(CrnMetricDb.node_id == node_id)
-    if start_date:
-        select_stmt = select_stmt.where(CrnMetricDb.measured_at >= start_date)
-    if end_date:
-        select_stmt = select_stmt.where(CrnMetricDb.measured_at <= end_date)
+    if start_dt:
+        select_stmt = select_stmt.where(CrnMetricDb.measured_at >= start_dt)
+    if end_dt:
+        select_stmt = select_stmt.where(CrnMetricDb.measured_at <= end_dt)
     order_col = CrnMetricDb.measured_at
     if sort_order == SortOrder.DESCENDING:
         select_stmt = select_stmt.order_by(order_col.desc())
