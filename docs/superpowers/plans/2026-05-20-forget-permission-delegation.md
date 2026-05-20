@@ -247,11 +247,12 @@ def _insert_processed_message(session, message_dict: dict) -> MessageDb:
 
 
 def _insert_security_aggregate(
-    session, owner: str, authorizations: list[dict], unique_suffix: str = ""
+    session, owner: str, authorizations: list[dict]
 ) -> None:
     aggregate_dt = timestamp_to_datetime(1700000050.0)
     aggregate_content = {"authorizations": authorizations}
-    revision_hash = ("b" + unique_suffix).ljust(64, "0")
+    # Derive a deterministic, unique-per-owner 64-char hex revision hash.
+    revision_hash = owner.lower().removeprefix("0x").ljust(64, "0")
     session.add(
         AggregateDb(
             key="security",
@@ -622,13 +623,11 @@ async def test_cross_owner_multi_target_forget(
             session,
             owner=OWNER,
             authorizations=[{"address": DELEGATE_D2, "types": ["FORGET"]}],
-            unique_suffix="1",
         )
         _insert_security_aggregate(
             session,
             owner=OWNER_2,
             authorizations=[{"address": DELEGATE_D2, "types": ["FORGET"]}],
-            unique_suffix="2",
         )
         _insert_processed_message(
             session,
