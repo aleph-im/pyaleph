@@ -6,19 +6,34 @@ from aleph.db.models import MessageDb
 from aleph.types.db_session import DbSession
 
 
-def _check_delegated_authorization(
+def is_sender_authorized_for_owner(
     session: DbSession, sender: str, owner_address: str, message: MessageDb
 ) -> bool:
-    """Check if sender has delegated authorization for the given owner address.
+    """Check whether `sender` is authorized to act for `owner_address` per
+    the security aggregate.
 
-    Args:
-        session: Database session
-        sender: The account trying to perform the action
-        owner_address: The address that owns the content
-        message: The message to check permissions against
+    `message` is the message whose attributes scope the authorization
+    filters: the aggregate's `types`, `channels`, `chain`, `post_types`,
+    and `aggregate_keys` are matched against `message.type`,
+    `message.channel`, `message.chain`, and (for POST/AGGREGATE)
+    `message.parsed_content.type` / `.key`. Two patterns are valid:
 
-    Returns:
-        True if sender has delegated authorization, False otherwise
+    1. Authorize an inbound operation. Pass the message being submitted
+       (e.g. a POST being created). The check answers: "is `sender`
+       allowed to submit this on behalf of `owner_address`?" This is
+       how `check_sender_authorization` uses it.
+
+    2. Authorize an action against an existing message. Pass the target
+       message (e.g. the message being forgotten). The check answers:
+       "would `sender` have been authorized to create this target under
+       `owner_address`'s aggregate?" This is how
+       `ForgetMessageHandler.check_permissions` uses it, expressing the
+       rule that the right to forget content follows the right to
+       create it.
+
+    In both cases the self-equality short-circuit at the top applies:
+    if `sender == owner_address`, the sender is acting for themselves
+    and no aggregate lookup is needed.
     """
 
     if sender.lower() == owner_address.lower():
@@ -126,13 +141,13 @@ async def check_sender_authorization(session: DbSession, message: MessageDb) -> 
                         return False
 
                     # Check delegated permissions for original address
-                    return _check_delegated_authorization(
+                    return is_sender_authorized_for_owner(
                         session=session,
                         sender=sender,
                         owner_address=original_address,
                         message=original_message,
                     )
 
-    return _check_delegated_authorization(
+    return is_sender_authorized_for_owner(
         session=session, sender=sender, owner_address=address, message=message
     )
