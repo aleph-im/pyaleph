@@ -6,12 +6,7 @@ import pytest
 from aleph_message.models import MessageType
 from message_test_helpers import make_validated_message_from_dict
 
-from aleph.db.models import (
-    AggregateDb,
-    AggregateElementDb,
-    MessageDb,
-    MessageStatusDb,
-)
+from aleph.db.models import AggregateDb, AggregateElementDb, MessageDb, MessageStatusDb
 from aleph.handlers.content.aggregate import AggregateMessageHandler
 from aleph.handlers.content.forget import ForgetMessageHandler
 from aleph.handlers.content.post import PostMessageHandler
@@ -21,7 +16,6 @@ from aleph.toolkit.constants import DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.message_status import MessageStatus, PermissionDenied
-
 
 OWNER = "0xA000000000000000000000000000000000000001"
 OWNER_2 = "0xA000000000000000000000000000000000000002"
@@ -105,9 +99,7 @@ def _insert_processed_message(session, message_dict: dict) -> MessageDb:
     return message
 
 
-def _insert_security_aggregate(
-    session, owner: str, authorizations: list[dict]
-) -> None:
+def _insert_security_aggregate(session, owner: str, authorizations: list[dict]) -> None:
     aggregate_dt = timestamp_to_datetime(1700000050.0)
     aggregate_content = {"authorizations": authorizations}
     # Derive a deterministic, unique-per-owner 64-char hex revision hash.
@@ -325,9 +317,7 @@ async def test_owner_forgets_after_revoking_delegate(
 
     with session_factory() as session:
         # Aggregate exists but does not (any longer) list D1.
-        _insert_security_aggregate(
-            session, owner=OWNER, authorizations=[]
-        )
+        _insert_security_aggregate(session, owner=OWNER, authorizations=[])
         _insert_processed_message(
             session,
             _store_message_dict(
@@ -478,9 +468,7 @@ async def test_forget_by_aggregate_key(
         }
         forget_msg = make_validated_message_from_dict(forget_dict)
 
-        await forget_handler.check_permissions(
-            session=session, message=forget_msg
-        )
+        await forget_handler.check_permissions(session=session, message=forget_msg)
 
 
 @pytest.mark.asyncio
@@ -512,9 +500,7 @@ async def test_stranger_cannot_forget(
         )
 
         with pytest.raises(PermissionDenied):
-            await forget_handler.check_permissions(
-                session=session, message=forget_msg
-            )
+            await forget_handler.check_permissions(session=session, message=forget_msg)
 
 
 @pytest.mark.asyncio
@@ -532,9 +518,7 @@ async def test_revoked_delegate_cannot_forget(
 
     with session_factory() as session:
         # Aggregate exists but D1 is no longer listed.
-        _insert_security_aggregate(
-            session, owner=OWNER, authorizations=[]
-        )
+        _insert_security_aggregate(session, owner=OWNER, authorizations=[])
         _insert_processed_message(
             session,
             _store_message_dict(
@@ -555,9 +539,7 @@ async def test_revoked_delegate_cannot_forget(
         )
 
         with pytest.raises(PermissionDenied):
-            await forget_handler.check_permissions(
-                session=session, message=forget_msg
-            )
+            await forget_handler.check_permissions(session=session, message=forget_msg)
 
 
 @pytest.mark.asyncio
@@ -596,9 +578,7 @@ async def test_delegate_without_forget_scope_cannot_forget(
         )
 
         with pytest.raises(PermissionDenied):
-            await forget_handler.check_permissions(
-                session=session, message=forget_msg
-            )
+            await forget_handler.check_permissions(session=session, message=forget_msg)
 
 
 @pytest.mark.asyncio
@@ -639,9 +619,7 @@ async def test_owner_cannot_forget_delegate_self_signed_content(
         )
 
         with pytest.raises(PermissionDenied):
-            await forget_handler.check_permissions(
-                session=session, message=forget_msg
-            )
+            await forget_handler.check_permissions(session=session, message=forget_msg)
 
 
 @pytest.mark.asyncio
@@ -656,8 +634,9 @@ async def test_forget_all_or_nothing_on_mixed_targets(
     sufficient to guarantee no target is touched; we additionally verify
     both targets are still in PROCESSED state."""
 
-    from aleph.db.accessors.messages import get_message_status
     from aleph_message.models import ItemHash
+
+    from aleph.db.accessors.messages import get_message_status
 
     store_hash_owned = "08" + "0" * 62
     store_hash_other = "09" + "0" * 62
@@ -690,9 +669,7 @@ async def test_forget_all_or_nothing_on_mixed_targets(
         )
 
         with pytest.raises(PermissionDenied):
-            await forget_handler.check_permissions(
-                session=session, message=forget_msg
-            )
+            await forget_handler.check_permissions(session=session, message=forget_msg)
 
         # Neither target should have been touched.
         for target_hash in (store_hash_owned, store_hash_other):
