@@ -323,7 +323,7 @@ class EthereumConnector(ChainWriter):
 
             await asyncio.sleep(poll_interval)
 
-    async def fetcher(self, config: Config):
+    async def fetcher(self, config: Config) -> None:
         message_event_task = self.indexer_reader.fetcher(
             indexer_url=config.aleph.indexer_url.value,
             # The indexer requires the address to be in the same format as the address it was

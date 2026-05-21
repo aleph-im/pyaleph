@@ -83,12 +83,14 @@ def make_balances_by_chain_query(
     return query
 
 
-def get_balances_by_chain(session: DbSession, **kwargs):
+def get_balances_by_chain(session: DbSession, **kwargs: Any) -> Sequence[Any]:
     select_stmt = make_balances_by_chain_query(session=session, **kwargs)
     return (session.execute(select_stmt)).all()
 
 
-def count_balances_by_chain(session: DbSession, pagination: int = 0, **kwargs):
+def count_balances_by_chain(
+    session: DbSession, pagination: int = 0, **kwargs: Any
+) -> int:
     select_stmt = make_balances_by_chain_query(
         session=session, pagination=0, **kwargs
     ).subquery()

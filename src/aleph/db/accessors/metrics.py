@@ -1,6 +1,6 @@
 import datetime as dt
 import time
-from typing import Any, List, Mapping, Optional
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from sqlalchemy import insert, select
 from sqlalchemy.orm.session import Session
@@ -114,7 +114,7 @@ def _build_ccn_rows(
     return rows
 
 
-def _parse_ccn_result(result):
+def _parse_ccn_result(result: Sequence[Any]) -> Dict[str, List[Any]]:
     keys = [
         "item_hash",
         "measured_at",
@@ -139,7 +139,7 @@ def _parse_ccn_result(result):
     return result_dict
 
 
-def _parse_crn_result(result):
+def _parse_crn_result(result: Sequence[Any]) -> Dict[str, List[Any]]:
     keys = [
         "item_hash",
         "measured_at",

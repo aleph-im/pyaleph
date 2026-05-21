@@ -83,7 +83,7 @@ class PendingTxProcessor(MqWatcher):
         else:
             LOGGER.debug("TX contains no message")
 
-    async def process_pending_txs(self, max_concurrent_tasks: int):
+    async def process_pending_txs(self, max_concurrent_tasks: int) -> None:
         """
         Process chain transactions in the Pending TX queue.
         """
@@ -118,7 +118,7 @@ class PendingTxProcessor(MqWatcher):
                 done, _ = await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)
 
 
-async def handle_txs_task(config: Config):
+async def handle_txs_task(config: Config) -> None:
     max_concurrent_tasks = config.aleph.jobs.pending_txs.max_concurrency.value
 
     engine = make_engine(config=config, application_name="aleph-txs")

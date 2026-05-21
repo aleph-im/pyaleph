@@ -4,7 +4,7 @@ import aioipfs
 from configmanager import Config
 
 
-async def get_base_url(config):
+async def get_base_url(config: Config) -> str:
     return "http://{}:{}".format(config.ipfs.host.value, config.ipfs.port.value)
 
 

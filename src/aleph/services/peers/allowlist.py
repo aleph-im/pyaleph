@@ -94,7 +94,7 @@ class PeerAllowlist:
             LOGGER.exception("Failed to load corechannel aggregate")
             return self._cached_ccn_peer_ids
 
-    def _ensure_cache_fresh(self):
+    def _ensure_cache_fresh(self) -> None:
         now = time.monotonic()
         if now - self._cache_timestamp > self._cache_ttl:
             self._cached_ccn_peer_ids = self._refresh_ccn_peer_ids()
