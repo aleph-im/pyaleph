@@ -481,3 +481,223 @@ async def test_forget_by_aggregate_key(
         await forget_handler.check_permissions(
             session=session, message=forget_msg
         )
+
+
+@pytest.mark.asyncio
+async def test_stranger_cannot_forget(
+    session_factory: DbSessionFactory,
+    forget_handler: ForgetMessageHandler,
+):
+    """An address with no delegation from O cannot forget O's content."""
+
+    store_hash = "e" * 64
+    forget_hash = "01" + "0" * 62
+
+    with session_factory() as session:
+        _insert_processed_message(
+            session,
+            _store_message_dict(
+                sender=OWNER, content_address=OWNER, item_hash=store_hash
+            ),
+        )
+        session.commit()
+
+        forget_msg = make_validated_message_from_dict(
+            _forget_message_dict(
+                sender=STRANGER,
+                content_address=STRANGER,
+                item_hash=forget_hash,
+                target_hashes=[store_hash],
+            )
+        )
+
+        with pytest.raises(PermissionDenied):
+            await forget_handler.check_permissions(
+                session=session, message=forget_msg
+            )
+
+
+@pytest.mark.asyncio
+async def test_revoked_delegate_cannot_forget(
+    session_factory: DbSessionFactory,
+    forget_handler: ForgetMessageHandler,
+):
+    """D1 was previously delegated by O and created a STORE with
+    content.address=O. O has since revoked D1. D1 tries to forget
+    that STORE. This is the intended tightening relative to the old
+    sender-equality rule."""
+
+    store_hash = "02" + "0" * 62
+    forget_hash = "03" + "0" * 62
+
+    with session_factory() as session:
+        # Aggregate exists but D1 is no longer listed.
+        _insert_security_aggregate(
+            session, owner=OWNER, authorizations=[]
+        )
+        _insert_processed_message(
+            session,
+            _store_message_dict(
+                sender=DELEGATE_D1,
+                content_address=OWNER,
+                item_hash=store_hash,
+            ),
+        )
+        session.commit()
+
+        forget_msg = make_validated_message_from_dict(
+            _forget_message_dict(
+                sender=DELEGATE_D1,
+                content_address=DELEGATE_D1,
+                item_hash=forget_hash,
+                target_hashes=[store_hash],
+            )
+        )
+
+        with pytest.raises(PermissionDenied):
+            await forget_handler.check_permissions(
+                session=session, message=forget_msg
+            )
+
+
+@pytest.mark.asyncio
+async def test_delegate_without_forget_scope_cannot_forget(
+    session_factory: DbSessionFactory,
+    forget_handler: ForgetMessageHandler,
+):
+    """O grants D1 types=[STORE] only. D1 tries to forget. The per-target
+    check honors the types filter and denies because FORGET is not in
+    D1's scope."""
+
+    store_hash = "04" + "0" * 62
+    forget_hash = "05" + "0" * 62
+
+    with session_factory() as session:
+        _insert_security_aggregate(
+            session,
+            owner=OWNER,
+            authorizations=[{"address": DELEGATE_D1, "types": ["STORE"]}],
+        )
+        _insert_processed_message(
+            session,
+            _store_message_dict(
+                sender=OWNER, content_address=OWNER, item_hash=store_hash
+            ),
+        )
+        session.commit()
+
+        forget_msg = make_validated_message_from_dict(
+            _forget_message_dict(
+                sender=DELEGATE_D1,
+                content_address=DELEGATE_D1,
+                item_hash=forget_hash,
+                target_hashes=[store_hash],
+            )
+        )
+
+        with pytest.raises(PermissionDenied):
+            await forget_handler.check_permissions(
+                session=session, message=forget_msg
+            )
+
+
+@pytest.mark.asyncio
+async def test_owner_cannot_forget_delegate_self_signed_content(
+    session_factory: DbSessionFactory,
+    forget_handler: ForgetMessageHandler,
+):
+    """D1 is delegated by O but signs a STORE with content.address=D1
+    (acting as themselves, not on behalf of O). O has no authorization
+    claim over content owned by D1."""
+
+    store_hash = "06" + "0" * 62
+    forget_hash = "07" + "0" * 62
+
+    with session_factory() as session:
+        _insert_security_aggregate(
+            session,
+            owner=OWNER,
+            authorizations=[{"address": DELEGATE_D1, "types": ["STORE"]}],
+        )
+        _insert_processed_message(
+            session,
+            _store_message_dict(
+                sender=DELEGATE_D1,
+                content_address=DELEGATE_D1,
+                item_hash=store_hash,
+            ),
+        )
+        session.commit()
+
+        forget_msg = make_validated_message_from_dict(
+            _forget_message_dict(
+                sender=OWNER,
+                content_address=OWNER,
+                item_hash=forget_hash,
+                target_hashes=[store_hash],
+            )
+        )
+
+        with pytest.raises(PermissionDenied):
+            await forget_handler.check_permissions(
+                session=session, message=forget_msg
+            )
+
+
+@pytest.mark.asyncio
+async def test_forget_all_or_nothing_on_mixed_targets(
+    session_factory: DbSessionFactory,
+    forget_handler: ForgetMessageHandler,
+):
+    """A FORGET lists two targets: one authorized (owned by O, signed by O)
+    and one not (owned by D1, signed by D1). The whole FORGET must be
+    denied and neither target may be forgotten. Because check_permissions
+    is invoked before process() in the message pipeline, raising here is
+    sufficient to guarantee no target is touched; we additionally verify
+    both targets are still in PROCESSED state."""
+
+    from aleph.db.accessors.messages import get_message_status
+    from aleph_message.models import ItemHash
+
+    store_hash_owned = "08" + "0" * 62
+    store_hash_other = "09" + "0" * 62
+    forget_hash = "0a" + "0" * 62
+
+    with session_factory() as session:
+        _insert_processed_message(
+            session,
+            _store_message_dict(
+                sender=OWNER, content_address=OWNER, item_hash=store_hash_owned
+            ),
+        )
+        _insert_processed_message(
+            session,
+            _store_message_dict(
+                sender=DELEGATE_D1,
+                content_address=DELEGATE_D1,
+                item_hash=store_hash_other,
+            ),
+        )
+        session.commit()
+
+        forget_msg = make_validated_message_from_dict(
+            _forget_message_dict(
+                sender=OWNER,
+                content_address=OWNER,
+                item_hash=forget_hash,
+                target_hashes=[store_hash_owned, store_hash_other],
+            )
+        )
+
+        with pytest.raises(PermissionDenied):
+            await forget_handler.check_permissions(
+                session=session, message=forget_msg
+            )
+
+        # Neither target should have been touched.
+        for target_hash in (store_hash_owned, store_hash_other):
+            status = get_message_status(
+                session=session, item_hash=ItemHash(target_hash)
+            )
+            assert status is not None
+            assert status.status == MessageStatus.PROCESSED
