@@ -225,8 +225,9 @@ async def test_second_delegate_forgets_owner_content(
     session_factory: DbSessionFactory,
     forget_handler: ForgetMessageHandler,
 ):
-    """O grants types=[FORGET] to D2; D2 forgets a STORE that O signed.
-    D2 was never authorized to STORE, only to FORGET."""
+    """O grants types=[STORE] to D2; D2 forgets a STORE that O signed.
+    Because D2 is authorized to create STOREs on behalf of O, D2 can
+    also forget them under the create-implies-delete rule."""
 
     store_hash = "5" * 64
     forget_hash = "6" * 64
@@ -235,7 +236,7 @@ async def test_second_delegate_forgets_owner_content(
         _insert_security_aggregate(
             session,
             owner=OWNER,
-            authorizations=[{"address": DELEGATE_D2, "types": ["FORGET"]}],
+            authorizations=[{"address": DELEGATE_D2, "types": ["STORE"]}],
         )
         _insert_processed_message(
             session,
@@ -262,8 +263,11 @@ async def test_second_delegate_forgets_first_delegates_content(
     session_factory: DbSessionFactory,
     forget_handler: ForgetMessageHandler,
 ):
-    """Original-question scenario: O granted STORE to D1 and FORGET to D2.
-    D1 created a STORE with content.address=O. D2 cleans it up."""
+    """Original-question scenario: O granted STORE delegation to both
+    D1 and D2. D1 created a STORE with content.address=O. D2 cleans it
+    up: under the create-implies-delete rule, any delegate with STORE
+    authority can forget any STORE owned by O, including those created
+    by other delegates."""
 
     store_hash = "7" * 64
     forget_hash = "8" * 64
@@ -274,7 +278,7 @@ async def test_second_delegate_forgets_first_delegates_content(
             owner=OWNER,
             authorizations=[
                 {"address": DELEGATE_D1, "types": ["STORE"]},
-                {"address": DELEGATE_D2, "types": ["FORGET"]},
+                {"address": DELEGATE_D2, "types": ["STORE"]},
             ],
         )
         _insert_processed_message(
@@ -345,9 +349,10 @@ async def test_cross_owner_multi_target_forget(
     session_factory: DbSessionFactory,
     forget_handler: ForgetMessageHandler,
 ):
-    """A single sender (D2) holds FORGET delegation from two different
-    owners. A single FORGET message lists targets owned by both. Per-target
-    authorization succeeds for each."""
+    """A single sender (D2) holds STORE delegation from two different
+    owners. A single FORGET message lists targets (both STOREs) owned by
+    both. Per-target authorization resolves each target against its
+    owner's aggregate and succeeds because D2 could have created either."""
 
     store_hash_o1 = "b" * 64
     store_hash_o2 = "c" * 64
@@ -357,12 +362,12 @@ async def test_cross_owner_multi_target_forget(
         _insert_security_aggregate(
             session,
             owner=OWNER,
-            authorizations=[{"address": DELEGATE_D2, "types": ["FORGET"]}],
+            authorizations=[{"address": DELEGATE_D2, "types": ["STORE"]}],
         )
         _insert_security_aggregate(
             session,
             owner=OWNER_2,
-            authorizations=[{"address": DELEGATE_D2, "types": ["FORGET"]}],
+            authorizations=[{"address": DELEGATE_D2, "types": ["STORE"]}],
         )
         _insert_processed_message(
             session,
@@ -378,8 +383,9 @@ async def test_cross_owner_multi_target_forget(
         )
         session.commit()
 
-        # D2 signs the FORGET as themselves; base check passes trivially
-        # (sender == content.address), per-target checks verify each owner.
+        # D2 signs the FORGET as themselves; the FORGET's own
+        # content.address is not consulted, only the per-target check
+        # against each target owner's aggregate.
         forget_msg = make_validated_message_from_dict(
             _forget_message_dict(
                 sender=DELEGATE_D2,
@@ -543,16 +549,36 @@ async def test_revoked_delegate_cannot_forget(
 
 
 @pytest.mark.asyncio
-async def test_delegate_without_forget_scope_cannot_forget(
+async def test_delegate_with_wrong_type_scope_cannot_forget(
     session_factory: DbSessionFactory,
     forget_handler: ForgetMessageHandler,
 ):
-    """O grants D1 types=[STORE] only. D1 tries to forget. The per-target
-    check honors the types filter and denies because FORGET is not in
-    D1's scope."""
+    """O grants D1 types=[STORE] only. D1 tries to forget a POST owned
+    by O. Under the create-implies-delete rule, the per-target check
+    evaluates against the target's type (POST); D1's STORE-only grant
+    does not match, so the forget is denied."""
 
-    store_hash = "04" + "0" * 62
+    post_hash = "04" + "0" * 62
     forget_hash = "05" + "0" * 62
+
+    post_content = {
+        "address": OWNER,
+        "time": 1700000000.0,
+        "content": {"body": "hello"},
+        "type": "my_post_type",
+    }
+    post_message_dict = {
+        "chain": "ETH",
+        "channel": "TEST",
+        "sender": OWNER,
+        "type": "POST",
+        "time": 1700000000.0,
+        "item_type": "inline",
+        "item_content": json.dumps(post_content, separators=(",", ":")),
+        "item_hash": post_hash,
+        "signature": FAKE_SIG,
+        "content": post_content,
+    }
 
     with session_factory() as session:
         _insert_security_aggregate(
@@ -560,12 +586,7 @@ async def test_delegate_without_forget_scope_cannot_forget(
             owner=OWNER,
             authorizations=[{"address": DELEGATE_D1, "types": ["STORE"]}],
         )
-        _insert_processed_message(
-            session,
-            _store_message_dict(
-                sender=OWNER, content_address=OWNER, item_hash=store_hash
-            ),
-        )
+        _insert_processed_message(session, post_message_dict)
         session.commit()
 
         forget_msg = make_validated_message_from_dict(
@@ -573,7 +594,7 @@ async def test_delegate_without_forget_scope_cannot_forget(
                 sender=DELEGATE_D1,
                 content_address=DELEGATE_D1,
                 item_hash=forget_hash,
-                target_hashes=[store_hash],
+                target_hashes=[post_hash],
             )
         )
 

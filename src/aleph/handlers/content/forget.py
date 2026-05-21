@@ -99,9 +99,11 @@ class ForgetMessageHandler(ContentHandler):
         return content.hashes + aggregate_messages_to_forget
 
     async def check_permissions(self, session: DbSession, message: MessageDb):
-        await super().check_permissions(session=session, message=message)
-
-        # Check that the sender owns the objects it is attempting to forget
+        # FORGET is authorized per-target: a sender can forget a target if
+        # they could have created it under the target owner's security
+        # aggregate. No base check on the FORGET's own content.address is
+        # performed; the FORGET's content.address is a signing convention,
+        # not an authorization gate.
         target_hashes = await self._list_target_messages(
             session=session, forget_message=message
         )
@@ -139,15 +141,19 @@ class ForgetMessageHandler(ContentHandler):
                 )
                 raise CannotForgetForgetMessage(target_hash)
             target_owner = target_message.parsed_content.address
+            # Authorize the sender against the target as if they were
+            # creating it: same owner aggregate, same type/channel/chain
+            # filters, evaluated against the target's attributes.
             if not is_sender_authorized_for_owner(
                 session=session,
                 sender=message.sender,
                 owner_address=target_owner,
-                message=message,
+                message=target_message,
             ):
                 raise PermissionDenied(
                     f"Sender {message.sender} is not authorized to forget message "
-                    f"{target_hash} owned by {target_owner}"
+                    f"{target_hash} owned by {target_owner}: the sender could not "
+                    f"have created this target under the owner's security aggregate"
                 )
 
     async def _forget_by_message_type(
