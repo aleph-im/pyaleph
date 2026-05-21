@@ -131,6 +131,8 @@ class IpfsService:
             if "127.0.0.1" in address and "/tcp" in address and "/p2p" in address:
                 return address.replace("127.0.0.1", public_ip)
 
+        return None
+
     async def get_ipfs_size(
         self, hash: str, timeout: int = 1, tries: int = 1
     ) -> Optional[int]:
@@ -269,18 +271,14 @@ class IpfsService:
         )
 
     async def get_json(self, hash: str, timeout: int = 1, tries: int = 1) -> Any:
-        result = await self.get_ipfs_content(hash, timeout=timeout, tries=tries)
-        if result is not None and result != -1:
-            try:
-                result = await run_in_executor(None, json.loads, result)
-            except json.decoder.JSONDecodeError:
-                # try:
-                #     import json as njson
-                #     result = await loop.run_in_executor(None, njson.loads, result)
-                # except (json.JSONDecodeError, KeyError):
-                LOGGER.exception("Can't decode JSON")
-                result = -1  # never retry, bogus data
-        return result
+        content = await self.get_ipfs_content(hash, timeout=timeout, tries=tries)
+        if content is None:
+            return None
+        try:
+            return await run_in_executor(None, json.loads, content)
+        except json.decoder.JSONDecodeError:
+            LOGGER.exception("Can't decode JSON")
+            return -1  # never retry, bogus data
 
     async def add_json(self, value: bytes) -> str:
         result = await self.pinning_client.add_json(value)
