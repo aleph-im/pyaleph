@@ -12,6 +12,11 @@ def is_sender_authorized_for_owner(
     """Check whether `sender` is authorized to act for `owner_address` per
     the security aggregate, scoped by the type / channel / chain / etc. of
     `message`.
+
+    `message` is the operation being requested (e.g. the FORGET being
+    submitted), NOT the target it acts on. The security aggregate's
+    `types`, `channels`, `chain`, `post_types`, and `aggregate_keys`
+    filters are evaluated against this message's attributes.
     """
 
     if sender.lower() == owner_address.lower():
