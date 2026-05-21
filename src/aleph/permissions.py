@@ -10,13 +10,30 @@ def is_sender_authorized_for_owner(
     session: DbSession, sender: str, owner_address: str, message: MessageDb
 ) -> bool:
     """Check whether `sender` is authorized to act for `owner_address` per
-    the security aggregate, scoped by the type / channel / chain / etc. of
-    `message`.
+    the security aggregate.
 
-    `message` is the operation being requested (e.g. the FORGET being
-    submitted), NOT the target it acts on. The security aggregate's
-    `types`, `channels`, `chain`, `post_types`, and `aggregate_keys`
-    filters are evaluated against this message's attributes.
+    `message` is the message whose attributes scope the authorization
+    filters: the aggregate's `types`, `channels`, `chain`, `post_types`,
+    and `aggregate_keys` are matched against `message.type`,
+    `message.channel`, `message.chain`, and (for POST/AGGREGATE)
+    `message.parsed_content.type` / `.key`. Two patterns are valid:
+
+    1. Authorize an inbound operation. Pass the message being submitted
+       (e.g. a POST being created). The check answers: "is `sender`
+       allowed to submit this on behalf of `owner_address`?" This is
+       how `check_sender_authorization` uses it.
+
+    2. Authorize an action against an existing message. Pass the target
+       message (e.g. the message being forgotten). The check answers:
+       "would `sender` have been authorized to create this target under
+       `owner_address`'s aggregate?" This is how
+       `ForgetMessageHandler.check_permissions` uses it, expressing the
+       rule that the right to forget content follows the right to
+       create it.
+
+    In both cases the self-equality short-circuit at the top applies:
+    if `sender == owner_address`, the sender is acting for themselves
+    and no aggregate lookup is needed.
     """
 
     if sender.lower() == owner_address.lower():
