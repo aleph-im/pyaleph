@@ -1,6 +1,17 @@
 import datetime as dt
 import logging
-from typing import Any, Dict, List, Mapping, Optional, Set, Type, TypeVar, Union
+from typing import (
+    Any,
+    Dict,
+    List,
+    Literal,
+    Mapping,
+    Optional,
+    Set,
+    Type,
+    TypeVar,
+    Union,
+)
 
 from aleph_message.models import Chain, ChainRef, PostContent
 from pydantic import BaseModel, ValidationError
@@ -83,7 +94,10 @@ T = TypeVar("T", bound=BaseModel)
 
 
 def _parse_credit_content(
-    model_cls: Type[T], content: Mapping[str, Any], *, kind: str
+    model_cls: Type[T],
+    content: Mapping[str, Any],
+    *,
+    kind: Literal["distribution", "expense", "transfer"],
 ) -> T:
     try:
         return model_cls.model_validate(content)
