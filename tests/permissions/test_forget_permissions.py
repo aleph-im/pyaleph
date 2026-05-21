@@ -194,3 +194,290 @@ async def test_owner_forgets_delegates_content(
         # raising. Under the old strict-equality rule this raises
         # PermissionDenied (the TDD "red" signal); after Task 3 it succeeds.
         await forget_handler.check_permissions(session=session, message=forget_msg)
+
+
+@pytest.mark.asyncio
+async def test_owner_forgets_own_content(
+    session_factory: DbSessionFactory,
+    forget_handler: ForgetMessageHandler,
+):
+    """Sanity regression: a sender who owns their own content can still
+    forget it without any delegation in play."""
+
+    store_hash = "3" * 64
+    forget_hash = "4" * 64
+
+    with session_factory() as session:
+        _insert_processed_message(
+            session,
+            _store_message_dict(
+                sender=OWNER, content_address=OWNER, item_hash=store_hash
+            ),
+        )
+        session.commit()
+
+        forget_msg = make_validated_message_from_dict(
+            _forget_message_dict(
+                sender=OWNER,
+                content_address=OWNER,
+                item_hash=forget_hash,
+                target_hashes=[store_hash],
+            )
+        )
+
+        await forget_handler.check_permissions(session=session, message=forget_msg)
+
+
+@pytest.mark.asyncio
+async def test_second_delegate_forgets_owner_content(
+    session_factory: DbSessionFactory,
+    forget_handler: ForgetMessageHandler,
+):
+    """O grants types=[FORGET] to D2; D2 forgets a STORE that O signed.
+    D2 was never authorized to STORE, only to FORGET."""
+
+    store_hash = "5" * 64
+    forget_hash = "6" * 64
+
+    with session_factory() as session:
+        _insert_security_aggregate(
+            session,
+            owner=OWNER,
+            authorizations=[{"address": DELEGATE_D2, "types": ["FORGET"]}],
+        )
+        _insert_processed_message(
+            session,
+            _store_message_dict(
+                sender=OWNER, content_address=OWNER, item_hash=store_hash
+            ),
+        )
+        session.commit()
+
+        forget_msg = make_validated_message_from_dict(
+            _forget_message_dict(
+                sender=DELEGATE_D2,
+                content_address=OWNER,
+                item_hash=forget_hash,
+                target_hashes=[store_hash],
+            )
+        )
+
+        await forget_handler.check_permissions(session=session, message=forget_msg)
+
+
+@pytest.mark.asyncio
+async def test_second_delegate_forgets_first_delegates_content(
+    session_factory: DbSessionFactory,
+    forget_handler: ForgetMessageHandler,
+):
+    """Original-question scenario: O granted STORE to D1 and FORGET to D2.
+    D1 created a STORE with content.address=O. D2 cleans it up."""
+
+    store_hash = "7" * 64
+    forget_hash = "8" * 64
+
+    with session_factory() as session:
+        _insert_security_aggregate(
+            session,
+            owner=OWNER,
+            authorizations=[
+                {"address": DELEGATE_D1, "types": ["STORE"]},
+                {"address": DELEGATE_D2, "types": ["FORGET"]},
+            ],
+        )
+        _insert_processed_message(
+            session,
+            _store_message_dict(
+                sender=DELEGATE_D1,
+                content_address=OWNER,
+                item_hash=store_hash,
+            ),
+        )
+        session.commit()
+
+        forget_msg = make_validated_message_from_dict(
+            _forget_message_dict(
+                sender=DELEGATE_D2,
+                content_address=OWNER,
+                item_hash=forget_hash,
+                target_hashes=[store_hash],
+            )
+        )
+
+        await forget_handler.check_permissions(session=session, message=forget_msg)
+
+
+@pytest.mark.asyncio
+async def test_owner_forgets_after_revoking_delegate(
+    session_factory: DbSessionFactory,
+    forget_handler: ForgetMessageHandler,
+):
+    """Regression: an owner can still forget content owned by them
+    (content.address=OWNER) even when their security aggregate has been
+    cleared of all delegations. The new authorization rule does not
+    require any aggregate entry for the owner's self-forget path; this
+    test confirms that revoking past delegations does not accidentally
+    lock the owner out of cleaning up content the delegate created on
+    their behalf."""
+
+    store_hash = "9" * 64
+    forget_hash = "a" * 64
+
+    with session_factory() as session:
+        # Aggregate exists but does not (any longer) list D1.
+        _insert_security_aggregate(
+            session, owner=OWNER, authorizations=[]
+        )
+        _insert_processed_message(
+            session,
+            _store_message_dict(
+                sender=DELEGATE_D1,
+                content_address=OWNER,
+                item_hash=store_hash,
+            ),
+        )
+        session.commit()
+
+        forget_msg = make_validated_message_from_dict(
+            _forget_message_dict(
+                sender=OWNER,
+                content_address=OWNER,
+                item_hash=forget_hash,
+                target_hashes=[store_hash],
+            )
+        )
+
+        await forget_handler.check_permissions(session=session, message=forget_msg)
+
+
+@pytest.mark.asyncio
+async def test_cross_owner_multi_target_forget(
+    session_factory: DbSessionFactory,
+    forget_handler: ForgetMessageHandler,
+):
+    """A single sender (D2) holds FORGET delegation from two different
+    owners. A single FORGET message lists targets owned by both. Per-target
+    authorization succeeds for each."""
+
+    store_hash_o1 = "b" * 64
+    store_hash_o2 = "c" * 64
+    forget_hash = "d" * 64
+
+    with session_factory() as session:
+        _insert_security_aggregate(
+            session,
+            owner=OWNER,
+            authorizations=[{"address": DELEGATE_D2, "types": ["FORGET"]}],
+        )
+        _insert_security_aggregate(
+            session,
+            owner=OWNER_2,
+            authorizations=[{"address": DELEGATE_D2, "types": ["FORGET"]}],
+        )
+        _insert_processed_message(
+            session,
+            _store_message_dict(
+                sender=OWNER, content_address=OWNER, item_hash=store_hash_o1
+            ),
+        )
+        _insert_processed_message(
+            session,
+            _store_message_dict(
+                sender=OWNER_2, content_address=OWNER_2, item_hash=store_hash_o2
+            ),
+        )
+        session.commit()
+
+        # D2 signs the FORGET as themselves; base check passes trivially
+        # (sender == content.address), per-target checks verify each owner.
+        forget_msg = make_validated_message_from_dict(
+            _forget_message_dict(
+                sender=DELEGATE_D2,
+                content_address=DELEGATE_D2,
+                item_hash=forget_hash,
+                target_hashes=[store_hash_o1, store_hash_o2],
+            )
+        )
+
+        await forget_handler.check_permissions(session=session, message=forget_msg)
+
+
+@pytest.mark.asyncio
+async def test_forget_by_aggregate_key(
+    session_factory: DbSessionFactory,
+    forget_handler: ForgetMessageHandler,
+):
+    """O sends a FORGET that uses the `aggregates: [key]` field rather
+    than explicit `hashes`. The handler queries AggregateElementDb where
+    `key == <aggregate_key>` AND `owner == content.address` and uses each
+    returned `item_hash` as a forget target. The per-target authorization
+    check then runs against each underlying AGGREGATE message.
+
+    `ForgetContent.aggregates` is typed as `List[ItemHash]`, so the key
+    value itself must be a valid 64-char hex string. Note that the key
+    (`aggregate_key`) and the underlying message's item_hash
+    (`aggregate_msg_hash`) are distinct values: the key is the lookup
+    column, the item_hash is the target."""
+
+    # aggregate_key must be a valid ItemHash (64-char hex) because
+    # ForgetContent.aggregates is typed as List[ItemHash].
+    aggregate_key = "0e" + "0" * 62
+    aggregate_msg_hash = "0b" + "0" * 62
+    forget_hash = "0c" + "0" * 62
+    aggregate_dt = timestamp_to_datetime(1700000000.0)
+
+    aggregate_content = {
+        "address": OWNER,
+        "time": 1700000000.0,
+        "key": aggregate_key,
+        "content": {"hello": "world"},
+    }
+    aggregate_message_dict = {
+        "chain": "ETH",
+        "channel": "TEST",
+        "sender": OWNER,
+        "type": "AGGREGATE",
+        "time": 1700000000.0,
+        "item_type": "inline",
+        "item_content": json.dumps(aggregate_content, separators=(",", ":")),
+        "item_hash": aggregate_msg_hash,
+        "signature": FAKE_SIG,
+        "content": aggregate_content,
+    }
+
+    with session_factory() as session:
+        _insert_processed_message(session, aggregate_message_dict)
+        session.add(
+            AggregateElementDb(
+                item_hash=aggregate_msg_hash,
+                key=aggregate_key,
+                owner=OWNER,
+                content=aggregate_content["content"],
+                creation_datetime=aggregate_dt,
+            )
+        )
+        session.commit()
+
+        forget_content = {
+            "address": OWNER,
+            "time": 1700000200.0,
+            "hashes": [],
+            "aggregates": [aggregate_key],
+        }
+        forget_dict = {
+            "chain": "ETH",
+            "channel": "TEST",
+            "sender": OWNER,
+            "type": "FORGET",
+            "time": 1700000200.0,
+            "item_type": "inline",
+            "item_content": json.dumps(forget_content, separators=(",", ":")),
+            "item_hash": forget_hash,
+            "signature": FAKE_SIG,
+            "content": forget_content,
+        }
+        forget_msg = make_validated_message_from_dict(forget_dict)
+
+        await forget_handler.check_permissions(
+            session=session, message=forget_msg
+        )
