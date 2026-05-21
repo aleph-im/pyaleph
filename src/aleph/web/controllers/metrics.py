@@ -1,4 +1,3 @@
-import asyncio
 import json
 import platform
 from dataclasses import asdict, dataclass, replace
@@ -10,8 +9,7 @@ import aiohttp
 from aiocache import cached
 from aleph_message.models import Chain
 from dataclasses_json import DataClassJsonMixin
-from requests import HTTPError
-from web3 import Web3
+from web3 import AsyncHTTPProvider, AsyncWeb3
 
 from aleph.config import get_config
 from aleph.db.accessors.chains import get_last_height
@@ -157,16 +155,17 @@ async def fetch_eth_height() -> Optional[int]:
     LOGGER.debug("Fetching ETH height")
     config = get_config()
 
+    if not config.ethereum.enabled.value:
+        return None
+
+    provider = AsyncHTTPProvider(config.ethereum.api_url.value)
     try:
-        if config.ethereum.enabled.value:
-            w3 = Web3(Web3.HTTPProvider(config.ethereum.api_url.value))
-            return await asyncio.get_event_loop().run_in_executor(
-                None, getattr, w3.eth, "block_number"
-            )
-        else:
-            return None
-    except HTTPError:
-        return -1  # We got a boggus value!
+        w3 = AsyncWeb3(provider)
+        return await w3.eth.block_number
+    except aiohttp.ClientResponseError:
+        return -1
+    finally:
+        await provider.disconnect()
 
 
 # Cache metrics for 10 seconds by default
