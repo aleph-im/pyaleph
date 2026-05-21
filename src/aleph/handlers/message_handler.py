@@ -191,6 +191,20 @@ class MessagePublisher(BaseMessageHandler):
                 session.commit()
                 return None
 
+            if check_message and not message.signature:
+                error = InvalidSignature("Missing signature")
+                LOGGER.warning(
+                    "Rejecting message %s: missing signature", message.item_hash
+                )
+                reject_new_pending_message(
+                    session=session,
+                    pending_message=message_dict,
+                    exception=error,
+                    tx_hash=tx_hash,
+                )
+                session.commit()
+                return None
+
             pending_message = PendingMessageDb.from_obj(
                 message,
                 reception_time=reception_time,
