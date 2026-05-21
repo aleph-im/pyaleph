@@ -18,6 +18,7 @@ from sqlalchemy import insert
 
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.aggregates import refresh_aggregate
+from aleph.db.accessors.metrics import insert_node_metrics
 from aleph.db.models import (
     AggregateElementDb,
     ChainTxDb,
@@ -73,6 +74,18 @@ async def _load_fixtures(
                 reception_time=utc_now(),
             )
             session.add(message_status)
+
+            # Populate metric tables for aleph-network-metrics messages so that
+            # the query_metric_ccn / query_metric_crn accessors (which now read
+            # the new persisted tables) can find the data during tests.
+            content = message_dict.get("content", {})
+            if content.get("type") == "aleph-network-metrics":
+                session.flush()
+                insert_node_metrics(
+                    session,
+                    item_hash=message_dict["item_hash"],
+                    content=content.get("content", {}),
+                )
 
         session.commit()
 

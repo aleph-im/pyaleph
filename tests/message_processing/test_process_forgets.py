@@ -46,6 +46,9 @@ def forget_handler(mocker) -> ForgetMessageHandler:
             credit_balances_addresses=["nope"],
             credit_balances_post_types=["no-balances-in-tests"],
             credit_balances_channels=["nope"],
+            scoring_addresses=[],
+            scoring_channel="not-a-scoring-channel",
+            scoring_metrics_post_type="not-a-scoring-post-type",
         ),
         MessageType.program: vm_handler,
         MessageType.store: StoreMessageHandler(

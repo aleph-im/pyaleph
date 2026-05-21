@@ -33,6 +33,7 @@ from aleph.jobs import JobsRunner, start_jobs
 from aleph.jobs.cron.balance_job import BalanceCronJob
 from aleph.jobs.cron.credit_balance_job import CreditBalanceCronJob
 from aleph.jobs.cron.cron_job import CronJob, cron_job_task
+from aleph.jobs.cron.metrics_partition_job import MetricsPartitionCronJob
 from aleph.network import listener_tasks
 from aleph.repair import repair_node
 from aleph.services import p2p
@@ -170,6 +171,11 @@ async def main(args: List[str]) -> None:
                 "credit_balance": CreditBalanceCronJob(
                     session_factory=session_factory,
                     max_unauthenticated_upload_file_size=config.storage.max_unauthenticated_upload_file_size.value,
+                ),
+                "metrics_partition": MetricsPartitionCronJob(
+                    session_factory=session_factory,
+                    retention_months=config.aleph.scoring.retention_months.value,
+                    lookahead_months=config.aleph.scoring.partition_lookahead_months.value,
                 ),
             },
         )

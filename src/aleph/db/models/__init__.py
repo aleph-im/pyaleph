@@ -5,6 +5,7 @@ from .chains import *  # noqa
 from .files import *  # noqa
 from .message_counts import *  # noqa
 from .messages import *  # noqa
+from .metrics import *  # noqa
 from .peers import *  # noqa
 from .pending_messages import *  # noqa
 from .pending_txs import *  # noqa

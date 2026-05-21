@@ -76,6 +76,9 @@ async def test_forget_original_post(
         credit_balances_addresses=[],
         credit_balances_post_types=["no-credit-balances-today"],
         credit_balances_channels=["nope"],
+        scoring_addresses=[],
+        scoring_channel="not-a-scoring-channel",
+        scoring_metrics_post_type="not-a-scoring-post-type",
     )
     with session_factory() as session:
         original_message = get_message_by_item_hash(
@@ -197,6 +200,9 @@ async def test_credit_transfer_non_whitelisted_sender(
             "aleph_credit_expense",
         ],
         credit_balances_channels=["ALEPH_CREDIT"],
+        scoring_addresses=[],
+        scoring_channel="not-a-scoring-channel",
+        scoring_metrics_post_type="not-a-scoring-post-type",
     )
 
     with session_factory() as session:
@@ -268,6 +274,9 @@ async def test_credit_transfer_insufficient_balance_rejected(
             "aleph_credit_expense",
         ],
         credit_balances_channels=["ALEPH_CREDIT"],
+        scoring_addresses=[],
+        scoring_channel="not-a-scoring-channel",
+        scoring_metrics_post_type="not-a-scoring-post-type",
     )
 
     with session_factory() as session:
@@ -302,6 +311,9 @@ async def test_credit_distribution_non_whitelisted_sender_ignored(
             "aleph_credit_expense",
         ],
         credit_balances_channels=["ALEPH_CREDIT"],
+        scoring_addresses=[],
+        scoring_channel="not-a-scoring-channel",
+        scoring_metrics_post_type="not-a-scoring-post-type",
     )
 
     with session_factory() as session:
@@ -334,6 +346,9 @@ def _make_handler() -> PostMessageHandler:
             "aleph_credit_expense",
         ],
         credit_balances_channels=["ALEPH_CREDIT"],
+        scoring_addresses=[],
+        scoring_channel="not-a-scoring-channel",
+        scoring_metrics_post_type="not-a-scoring-post-type",
     )
 
 

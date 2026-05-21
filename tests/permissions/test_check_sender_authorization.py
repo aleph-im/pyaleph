@@ -510,7 +510,16 @@ async def test_amend_different_owner_denied(mocker, session_factory: DbSessionFa
     )
 
     # Create the handler
-    handler = PostMessageHandler([], "", [], [], [])
+    handler = PostMessageHandler(
+        balances_addresses=[],
+        balances_post_type="",
+        credit_balances_addresses=[],
+        credit_balances_post_types=[],
+        credit_balances_channels=[],
+        scoring_addresses=[],
+        scoring_channel="not-a-scoring-channel",
+        scoring_metrics_post_type="not-a-scoring-post-type",
+    )
 
     # Test that the permission check fails due to owner mismatch
     with session_factory() as session:
