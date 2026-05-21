@@ -619,6 +619,48 @@ def test_balance_fix_doesnt_affect_valid_credits(session_factory: DbSessionFacto
         assert balance > 0
 
 
+def test_backdated_expense_cannot_drain_future_grant(
+    session_factory: DbSessionFactory,
+):
+    """A backdated expense must not deduct from a lot whose grant happened
+    after the expense's ``message_timestamp``.
+
+    Messages can arrive out of order in the P2P pipeline, so the eager writer
+    may see a future-dated grant already in the lot cache when an older
+    expense lands. The drain filter must exclude any lot whose
+    ``message_timestamp`` is strictly greater than the expense's, matching
+    what the repair replay would derive from credit_history.
+    """
+
+    grant_timestamp = dt.datetime(2024, 6, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+    expense_timestamp = dt.datetime(2024, 5, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+
+    with session_factory() as session:
+        _give_credits(
+            session=session,
+            address="0xbackdated",
+            amount=1000,
+            expiration_ms=None,
+            msg_hash="future_grant",
+            msg_ts=grant_timestamp,
+        )
+        session.commit()
+
+        update_credit_balances_expense(
+            session=session,
+            credits_list=[
+                {"address": "0xbackdated", "amount": 400, "ref": "backdated_expense"}
+            ],
+            message_hash="backdated_expense_msg",
+            message_timestamp=expense_timestamp,
+        )
+        session.commit()
+
+        # The grant survives in full (1000 * 10_000 precision multiplier).
+        balance = get_credit_balance(session, "0xbackdated")
+        assert balance == 10_000_000
+
+
 def test_fifo_scenario_1_non_expiring_first_equals_0_remaining(
     session_factory: DbSessionFactory,
 ):

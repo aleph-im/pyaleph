@@ -206,7 +206,10 @@ async def test_credit_transfer_non_whitelisted_sender(
     )
 
     with session_factory() as session:
-        # Give the regular sender some credits via a whitelisted distribution
+        # Seed the sender before the transfer message's ``time`` field
+        # (1651050219.0 = 2022-04-27 09:43:39 UTC) so the lot's
+        # message_timestamp precedes the transfer's, otherwise the eager-write
+        # drain correctly refuses to deduct from a future-dated grant.
         update_credit_balances_distribution(
             session=session,
             credits_list=[
@@ -224,7 +227,7 @@ async def test_credit_transfer_non_whitelisted_sender(
             token="ALEPH",
             chain="ETH",
             message_hash="init_dist_hash_abc",
-            message_timestamp=dt.datetime(2023, 1, 1, tzinfo=dt.timezone.utc),
+            message_timestamp=dt.datetime(2022, 1, 1, tzinfo=dt.timezone.utc),
         )
         session.commit()
 
