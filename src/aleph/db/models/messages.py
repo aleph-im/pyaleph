@@ -161,7 +161,7 @@ class MessageDb(Base):
     signature: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     item_type: Mapped[ItemType] = mapped_column(ChoiceType(ItemType), nullable=False)
     item_content: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    content: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    content: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
     time: Mapped[dt.datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, index=True
     )

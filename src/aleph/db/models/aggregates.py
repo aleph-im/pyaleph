@@ -1,5 +1,5 @@
 import datetime as dt
-from typing import Any
+from typing import Any, Dict
 
 from sqlalchemy import TIMESTAMP, Boolean, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import JSONB
@@ -22,7 +22,7 @@ class AggregateElementDb(Base):
     item_hash: Mapped[str] = mapped_column(String, primary_key=True)
     key: Mapped[str] = mapped_column(String, nullable=False)
     owner: Mapped[str] = mapped_column(String, nullable=False)
-    content: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    content: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
     creation_datetime: Mapped[dt.datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False
     )
@@ -44,7 +44,7 @@ class AggregateDb(Base):
 
     key: Mapped[str] = mapped_column(String, primary_key=True)
     owner: Mapped[str] = mapped_column(String, primary_key=True)
-    content: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    content: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
     creation_datetime: Mapped[dt.datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False
     )
