@@ -629,6 +629,11 @@ async def get_account_files(request: web.Request) -> web.Response:
           type: integer
           enum: [-1, 1]
           default: -1
+      - name: file_hash
+        in: query
+        description: If set, only return the file with this hash (if owned by the address).
+        schema:
+          type: string
     responses:
       '200':
         description: Account files
@@ -674,6 +679,7 @@ async def get_account_files(request: web.Request) -> web.Response:
                     after_time=after_time,
                     after_hash=after_hash,
                     cursor_mode=True,
+                    file_hash=query_params.file_hash,
                 )
             )
             _nb_files, total_size = get_address_files_stats(
@@ -712,6 +718,7 @@ async def get_account_files(request: web.Request) -> web.Response:
                 pagination=query_params.pagination,
                 page=query_params.page,
                 sort_order=query_params.sort_order,
+                file_hash=query_params.file_hash,
             )
         )
         nb_files, total_size = get_address_files_stats(session=session, owner=address)
