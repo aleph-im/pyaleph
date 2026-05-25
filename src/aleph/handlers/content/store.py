@@ -42,6 +42,7 @@ from aleph.services.ipfs import IpfsService
 from aleph.storage import StorageService
 from aleph.toolkit.constants import MiB
 from aleph.toolkit.costs import are_store_and_program_free, is_credit_only_required
+from aleph.toolkit.timer import Timer
 from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileType
@@ -56,6 +57,15 @@ from aleph.types.message_status import (
 from aleph.utils import item_type_from_hash, make_file_tag
 
 LOGGER = logging.getLogger(__name__)
+
+# Redis keys for STORE file-fetch metrics, surfaced at /metrics and shared across
+# workers. Used to measure the IPFS thundering-herd fetch behaviour. Filter the
+# `ipfs_fetch` log lines by `type=ipfs` for IPFS-specific timing.
+STORE_FETCH_TOTAL_KEY = "pyaleph_store_fetch_total"
+STORE_FETCH_FAILED_KEY = "pyaleph_store_fetch_failed_total"
+# Sum of successful-fetch durations (milliseconds). Divide by the count of
+# successful fetches (total - failed) for the mean fetch time in Grafana.
+STORE_FETCH_DURATION_MS_SUM_KEY = "pyaleph_store_fetch_duration_ms_sum"
 
 
 def _get_store_content(message: MessageDb) -> StoreContent:
@@ -191,7 +201,27 @@ class StoreMessageHandler(ContentHandler):
             if ipfs_enabled and _should_pin_on_ipfs(
                 file_stats=file_stats, min_file_size_for_pinning=1024 * 1024
             ):
-                await ipfs_service.pin_add(cid=file_hash)
+                await self.storage_service.node_cache.incr(STORE_FETCH_TOTAL_KEY)
+                try:
+                    with Timer() as timer:
+                        await ipfs_service.pin_add(cid=file_hash)
+                except Exception:
+                    await self.storage_service.node_cache.incr(STORE_FETCH_FAILED_KEY)
+                    LOGGER.warning(
+                        "ipfs_fetch hash=%s type=ipfs path=pin size=%s outcome=fail",
+                        file_hash,
+                        file_stats.size,
+                    )
+                    raise
+                await self.storage_service.node_cache.incrby(
+                    STORE_FETCH_DURATION_MS_SUM_KEY, int(timer.elapsed() * 1000)
+                )
+                LOGGER.info(
+                    "ipfs_fetch hash=%s type=ipfs path=pin size=%s duration=%.2f outcome=ok",
+                    file_hash,
+                    file_stats.size,
+                    timer.elapsed(),
+                )
                 upsert_file(
                     session=session,
                     file_hash=file_hash,
@@ -201,19 +231,37 @@ class StoreMessageHandler(ContentHandler):
                 return
 
         # Otherwise, fetch content directly from the Aleph network storage API
+        await self.storage_service.node_cache.incr(STORE_FETCH_TOTAL_KEY)
         try:
-            file_content = await self.storage_service.get_hash_content(
-                file_hash,
-                engine=item_type,
-                tries=4,
-                timeout=15,  # We only end up here for files < 1MB, a short timeout is okay
-                use_network=True,
-                use_ipfs=True,
-                store_value=config.storage.store_files.value,
-            )
+            with Timer() as timer:
+                file_content = await self.storage_service.get_hash_content(
+                    file_hash,
+                    engine=item_type,
+                    tries=4,
+                    timeout=15,  # We only end up here for files < 1MB, a short timeout is okay
+                    use_network=True,
+                    use_ipfs=True,
+                    store_value=config.storage.store_files.value,
+                )
         except AlephStorageException:
+            await self.storage_service.node_cache.incr(STORE_FETCH_FAILED_KEY)
+            LOGGER.warning(
+                "ipfs_fetch hash=%s type=%s path=http outcome=unavailable",
+                file_hash,
+                item_type,
+            )
             raise FileUnavailable("Could not retrieve file from storage at this time")
 
+        await self.storage_service.node_cache.incrby(
+            STORE_FETCH_DURATION_MS_SUM_KEY, int(timer.elapsed() * 1000)
+        )
+        LOGGER.info(
+            "ipfs_fetch hash=%s type=%s path=http size=%s duration=%.2f outcome=ok",
+            file_hash,
+            item_type,
+            len(file_content),
+            timer.elapsed(),
+        )
         upsert_file(
             session=session,
             file_hash=file_hash,

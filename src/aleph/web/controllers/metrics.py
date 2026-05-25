@@ -38,6 +38,12 @@ _WS_BROADCASTER_CONSUMER_RESTARTS_KEY = "pyaleph_ws_broadcaster_consumer_restart
 _WS_STATUS_CONNECTIONS_ACTIVE_KEY = "pyaleph_ws_status_connections_active"
 _WS_STATUS_CONNECTIONS_REJECTED_KEY = "pyaleph_ws_status_connections_rejected_total"
 
+# STORE file-fetch counters. Mirrors the keys in handlers/content/store.py —
+# duplicated here to avoid a circular import. Names match the metric fields.
+_STORE_FETCH_TOTAL_KEY = "pyaleph_store_fetch_total"
+_STORE_FETCH_FAILED_KEY = "pyaleph_store_fetch_failed_total"
+_STORE_FETCH_DURATION_MS_SUM_KEY = "pyaleph_store_fetch_duration_ms_sum"
+
 
 def format_dict_for_prometheus(values: Dict) -> str:
     """Format a dict to a Prometheus tags string"""
@@ -117,6 +123,9 @@ class Metrics(DataClassJsonMixin):
     pyaleph_ws_messages_connections_rejected_total: int = 0
     pyaleph_ws_status_connections_rejected_total: int = 0
     pyaleph_ws_broadcaster_consumer_restarts_total: int = 0
+    pyaleph_store_fetch_total: int = 0
+    pyaleph_store_fetch_failed_total: int = 0
+    pyaleph_store_fetch_duration_ms_sum: int = 0
 
 
 pyaleph_build_info = BuildInfo(
@@ -262,6 +271,15 @@ async def get_metrics_with_ws(
     )
     metrics.pyaleph_ws_status_connections_rejected_total = await _read_int_key(
         node_cache, _WS_STATUS_CONNECTIONS_REJECTED_KEY
+    )
+    metrics.pyaleph_store_fetch_total = await _read_int_key(
+        node_cache, _STORE_FETCH_TOTAL_KEY
+    )
+    metrics.pyaleph_store_fetch_failed_total = await _read_int_key(
+        node_cache, _STORE_FETCH_FAILED_KEY
+    )
+    metrics.pyaleph_store_fetch_duration_ms_sum = await _read_int_key(
+        node_cache, _STORE_FETCH_DURATION_MS_SUM_KEY
     )
 
     # Config-value gauges: same on every worker, read from the local instance.

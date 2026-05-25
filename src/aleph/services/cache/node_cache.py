@@ -68,6 +68,9 @@ class NodeCache:
     async def incr(self, key: CacheKey):
         await self.redis_client.incr(key)
 
+    async def incrby(self, key: CacheKey, amount: int):
+        await self.redis_client.incrby(key, amount)
+
     async def decr(self, key: CacheKey):
         await self.redis_client.decr(key)
 
