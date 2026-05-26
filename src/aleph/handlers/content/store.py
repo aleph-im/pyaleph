@@ -59,13 +59,31 @@ from aleph.utils import item_type_from_hash, make_file_tag
 LOGGER = logging.getLogger(__name__)
 
 # Redis keys for STORE file-fetch metrics, surfaced at /metrics and shared across
-# workers. Used to measure the IPFS thundering-herd fetch behaviour. Filter the
-# `ipfs_fetch` log lines by `type=ipfs` for IPFS-specific timing.
-STORE_FETCH_TOTAL_KEY = "pyaleph_store_fetch_total"
-STORE_FETCH_FAILED_KEY = "pyaleph_store_fetch_failed_total"
-# Sum of successful-fetch durations (milliseconds). Divide by the count of
-# successful fetches (total - failed) for the mean fetch time in Grafana.
-STORE_FETCH_DURATION_MS_SUM_KEY = "pyaleph_store_fetch_duration_ms_sum"
+# workers. Split by item type because the fetch source differs: `storage` files
+# are pulled from CCN HTTP APIs, `ipfs` files come through the IPFS (Kubo) daemon.
+# Tracking them separately lets us compare the two and tell disk-bound from
+# network-bound regressions. Mean = duration_ms_sum / (total - failed) per type.
+STORE_FETCH_IPFS_TOTAL_KEY = "pyaleph_store_fetch_ipfs_total"
+STORE_FETCH_IPFS_FAILED_KEY = "pyaleph_store_fetch_ipfs_failed_total"
+STORE_FETCH_IPFS_DURATION_MS_SUM_KEY = "pyaleph_store_fetch_ipfs_duration_ms_sum"
+STORE_FETCH_STORAGE_TOTAL_KEY = "pyaleph_store_fetch_storage_total"
+STORE_FETCH_STORAGE_FAILED_KEY = "pyaleph_store_fetch_storage_failed_total"
+STORE_FETCH_STORAGE_DURATION_MS_SUM_KEY = "pyaleph_store_fetch_storage_duration_ms_sum"
+
+
+def _store_fetch_keys(item_type: ItemType) -> tuple[str, str, str]:
+    """Return the (total, failed, duration_ms_sum) Redis keys for an item type."""
+    if item_type == ItemType.ipfs:
+        return (
+            STORE_FETCH_IPFS_TOTAL_KEY,
+            STORE_FETCH_IPFS_FAILED_KEY,
+            STORE_FETCH_IPFS_DURATION_MS_SUM_KEY,
+        )
+    return (
+        STORE_FETCH_STORAGE_TOTAL_KEY,
+        STORE_FETCH_STORAGE_FAILED_KEY,
+        STORE_FETCH_STORAGE_DURATION_MS_SUM_KEY,
+    )
 
 
 def _get_store_content(message: MessageDb) -> StoreContent:
@@ -189,6 +207,8 @@ class StoreMessageHandler(ContentHandler):
                 f"Item hash '{file_hash}' is not of the expected type ('{item_type}')"
             )
 
+        total_key, failed_key, duration_key = _store_fetch_keys(item_type)
+
         # For CIDs, pin directories and files > 1MiB
         if item_type == ItemType.ipfs:
             ipfs_service = self.storage_service.ipfs_service
@@ -205,12 +225,12 @@ class StoreMessageHandler(ContentHandler):
                 # between here and the success/failure path leaves the total without a
                 # matching duration or failure entry, marginally skewing the mean — an
                 # acceptable tradeoff for approximate monitoring counters.
-                await self.storage_service.node_cache.incr(STORE_FETCH_TOTAL_KEY)
+                await self.storage_service.node_cache.incr(total_key)
                 try:
                     with Timer() as timer:
                         await ipfs_service.pin_add(cid=file_hash)
                 except Exception:
-                    await self.storage_service.node_cache.incr(STORE_FETCH_FAILED_KEY)
+                    await self.storage_service.node_cache.incr(failed_key)
                     LOGGER.warning(
                         "ipfs_fetch hash=%s type=ipfs path=pin size=%s duration=%.2f outcome=fail",
                         file_hash,
@@ -219,7 +239,7 @@ class StoreMessageHandler(ContentHandler):
                     )
                     raise
                 await self.storage_service.node_cache.incrby(
-                    STORE_FETCH_DURATION_MS_SUM_KEY, round(timer.elapsed() * 1000)
+                    duration_key, round(timer.elapsed() * 1000)
                 )
                 LOGGER.info(
                     "ipfs_fetch hash=%s type=ipfs path=pin size=%s duration=%.2f outcome=ok",
@@ -236,7 +256,7 @@ class StoreMessageHandler(ContentHandler):
                 return
 
         # Otherwise, fetch content directly from the Aleph network storage API
-        await self.storage_service.node_cache.incr(STORE_FETCH_TOTAL_KEY)
+        await self.storage_service.node_cache.incr(total_key)
         try:
             with Timer() as timer:
                 file_content = await self.storage_service.get_hash_content(
@@ -249,7 +269,7 @@ class StoreMessageHandler(ContentHandler):
                     store_value=config.storage.store_files.value,
                 )
         except AlephStorageException:
-            await self.storage_service.node_cache.incr(STORE_FETCH_FAILED_KEY)
+            await self.storage_service.node_cache.incr(failed_key)
             LOGGER.warning(
                 "ipfs_fetch hash=%s type=%s path=http duration=%.2f outcome=unavailable",
                 file_hash,
@@ -259,7 +279,7 @@ class StoreMessageHandler(ContentHandler):
             raise FileUnavailable("Could not retrieve file from storage at this time")
 
         await self.storage_service.node_cache.incrby(
-            STORE_FETCH_DURATION_MS_SUM_KEY, round(timer.elapsed() * 1000)
+            duration_key, round(timer.elapsed() * 1000)
         )
         LOGGER.info(
             "ipfs_fetch hash=%s type=%s path=http size=%s duration=%.2f outcome=ok",

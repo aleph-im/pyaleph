@@ -3,16 +3,21 @@ from typing import Any, Mapping
 from unittest.mock import ANY
 
 import pytest
+from aleph_message.models import ItemType
 from configmanager import Config
 from message_test_helpers import make_validated_message_from_dict
 from sqlalchemy import select
 
 from aleph.db.models import MessageDb, StoredFileDb
 from aleph.handlers.content.store import (
-    STORE_FETCH_DURATION_MS_SUM_KEY,
-    STORE_FETCH_FAILED_KEY,
-    STORE_FETCH_TOTAL_KEY,
+    STORE_FETCH_IPFS_DURATION_MS_SUM_KEY,
+    STORE_FETCH_IPFS_FAILED_KEY,
+    STORE_FETCH_IPFS_TOTAL_KEY,
+    STORE_FETCH_STORAGE_DURATION_MS_SUM_KEY,
+    STORE_FETCH_STORAGE_FAILED_KEY,
+    STORE_FETCH_STORAGE_TOTAL_KEY,
     StoreMessageHandler,
+    _store_fetch_keys,
 )
 from aleph.schemas.message_content import ContentSource, RawContent
 from aleph.services.ipfs import IpfsService
@@ -20,6 +25,25 @@ from aleph.storage import StorageService
 from aleph.toolkit.constants import DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.files import FileType
+
+
+def test_store_fetch_keys_differentiate_by_type():
+    """Metric keys are split by item type so ipfs and storage fetches never
+    share a counter."""
+    ipfs_keys = _store_fetch_keys(ItemType.ipfs)
+    storage_keys = _store_fetch_keys(ItemType.storage)
+
+    assert ipfs_keys == (
+        STORE_FETCH_IPFS_TOTAL_KEY,
+        STORE_FETCH_IPFS_FAILED_KEY,
+        STORE_FETCH_IPFS_DURATION_MS_SUM_KEY,
+    )
+    assert storage_keys == (
+        STORE_FETCH_STORAGE_TOTAL_KEY,
+        STORE_FETCH_STORAGE_FAILED_KEY,
+        STORE_FETCH_STORAGE_DURATION_MS_SUM_KEY,
+    )
+    assert set(ipfs_keys).isdisjoint(storage_keys)
 
 
 @pytest.fixture
@@ -117,11 +141,13 @@ async def test_handle_new_storage_file(
 
     get_hash_content_mock.assert_called_once()
 
-    # http fetch path: total counter incremented and duration recorded, no failure
+    # ipfs item via http path: ipfs counters incremented, duration recorded, no failure
     node_cache = storage_service.node_cache
-    node_cache.incr.assert_any_call(STORE_FETCH_TOTAL_KEY)
-    node_cache.incrby.assert_any_call(STORE_FETCH_DURATION_MS_SUM_KEY, ANY)
-    assert mocker.call(STORE_FETCH_FAILED_KEY) not in node_cache.incr.call_args_list
+    node_cache.incr.assert_any_call(STORE_FETCH_IPFS_TOTAL_KEY)
+    node_cache.incrby.assert_any_call(STORE_FETCH_IPFS_DURATION_MS_SUM_KEY, ANY)
+    assert (
+        mocker.call(STORE_FETCH_IPFS_FAILED_KEY) not in node_cache.incr.call_args_list
+    )
 
 
 @pytest.mark.asyncio
@@ -174,11 +200,13 @@ async def test_handle_new_storage_directory(
 
     assert not storage_engine.called
 
-    # pin path: total counter incremented and duration recorded, no failure
+    # pin path (ipfs): ipfs counters incremented, duration recorded, no failure
     node_cache = storage_service.node_cache
-    node_cache.incr.assert_any_call(STORE_FETCH_TOTAL_KEY)
-    node_cache.incrby.assert_any_call(STORE_FETCH_DURATION_MS_SUM_KEY, ANY)
-    assert mocker.call(STORE_FETCH_FAILED_KEY) not in node_cache.incr.call_args_list
+    node_cache.incr.assert_any_call(STORE_FETCH_IPFS_TOTAL_KEY)
+    node_cache.incrby.assert_any_call(STORE_FETCH_IPFS_DURATION_MS_SUM_KEY, ANY)
+    assert (
+        mocker.call(STORE_FETCH_IPFS_FAILED_KEY) not in node_cache.incr.call_args_list
+    )
 
 
 @pytest.mark.asyncio
@@ -225,8 +253,8 @@ async def test_handle_storage_fetch_failure_metrics(
             )
 
     node_cache = storage_service.node_cache
-    node_cache.incr.assert_any_call(STORE_FETCH_TOTAL_KEY)
-    node_cache.incr.assert_any_call(STORE_FETCH_FAILED_KEY)
+    node_cache.incr.assert_any_call(STORE_FETCH_IPFS_TOTAL_KEY)
+    node_cache.incr.assert_any_call(STORE_FETCH_IPFS_FAILED_KEY)
     node_cache.incrby.assert_not_called()
 
 
