@@ -1039,15 +1039,38 @@ async def test_content_format_full_is_default(
 async def test_content_format_headers_cursor_pagination(
     fixture_messages: Sequence[Dict[str, Any]], ccn_api_client
 ):
-    """headers mode works with cursor pagination."""
+    """headers mode works in the cursor-pagination branch."""
+    # A (non-None) empty cursor activates cursor mode starting from the most
+    # recent message, so this actually exercises the cursor query path.
     response = await ccn_api_client.get(
-        MESSAGES_URI, params={"contentFormat": "headers", "pagination": "2"}
+        MESSAGES_URI,
+        params={"contentFormat": "headers", "pagination": "2", "cursor": ""},
     )
     assert response.status == 200, await response.text()
     data = await response.json()
+    # Cursor-mode response shape: next_cursor instead of pagination_total.
+    assert "next_cursor" in data
+    assert "pagination_total" not in data
+    assert len(data["messages"]) <= 2
     for msg in data["messages"]:
         assert "address" in msg["content"]
         assert "content" not in msg["content"]
+
+    # Follow the cursor to the next page and confirm headers mode persists.
+    if data["next_cursor"]:
+        response2 = await ccn_api_client.get(
+            MESSAGES_URI,
+            params={
+                "contentFormat": "headers",
+                "pagination": "2",
+                "cursor": data["next_cursor"],
+            },
+        )
+        assert response2.status == 200, await response2.text()
+        data2 = await response2.json()
+        for msg in data2["messages"]:
+            assert "address" in msg["content"]
+            assert "content" not in msg["content"]
 
 
 @pytest.mark.asyncio

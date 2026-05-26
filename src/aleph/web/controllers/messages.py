@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from typing import Any, Dict, Iterable, List, Optional, Set
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 import aio_pika.abc
 import aiohttp.web_ws
@@ -295,7 +295,7 @@ class MessageBroadcaster:
 # `address` is emitted for every type from the `owner` column and is handled
 # separately. All source attributes are denormalized columns, so building the
 # reduced content never touches the (deferred) content JSONB.
-_HEADERS_FIELDS: Dict[MessageType, List[tuple]] = {
+_HEADERS_FIELDS: Dict[MessageType, List[Tuple[str, str]]] = {
     MessageType.post: [("type", "content_type"), ("ref", "content_ref")],
     MessageType.aggregate: [("key", "content_key")],
     MessageType.store: [("item_hash", "content_item_hash"), ("ref", "content_ref")],
