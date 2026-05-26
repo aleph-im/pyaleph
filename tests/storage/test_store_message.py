@@ -1,5 +1,6 @@
 import json
 from typing import Any, Mapping
+from unittest.mock import ANY
 
 import pytest
 from configmanager import Config
@@ -7,7 +8,12 @@ from message_test_helpers import make_validated_message_from_dict
 from sqlalchemy import select
 
 from aleph.db.models import MessageDb, StoredFileDb
-from aleph.handlers.content.store import StoreMessageHandler
+from aleph.handlers.content.store import (
+    STORE_FETCH_DURATION_MS_SUM_KEY,
+    STORE_FETCH_FAILED_KEY,
+    STORE_FETCH_TOTAL_KEY,
+    StoreMessageHandler,
+)
 from aleph.schemas.message_content import ContentSource, RawContent
 from aleph.services.ipfs import IpfsService
 from aleph.storage import StorageService
@@ -85,7 +91,9 @@ async def test_handle_new_storage_file(
         ipfs_service=IpfsService(ipfs_client=mock_ipfs_client),
         node_cache=mocker.AsyncMock(),
     )
-    storage_service.get_hash_content = get_hash_content_mock = mocker.AsyncMock(return_value=raw_content)  # type: ignore
+    storage_service.get_hash_content = get_hash_content_mock = mocker.AsyncMock(
+        return_value=raw_content
+    )  # type: ignore
     store_message_handler = StoreMessageHandler(
         storage_service=storage_service,
         grace_period=24,
@@ -108,6 +116,12 @@ async def test_handle_new_storage_file(
     assert stored_file.size == len(raw_content)
 
     get_hash_content_mock.assert_called_once()
+
+    # http fetch path: total counter incremented and duration recorded, no failure
+    node_cache = storage_service.node_cache
+    node_cache.incr.assert_any_call(STORE_FETCH_TOTAL_KEY)
+    node_cache.incrby.assert_any_call(STORE_FETCH_DURATION_MS_SUM_KEY, ANY)
+    assert mocker.call(STORE_FETCH_FAILED_KEY) not in node_cache.incr.call_args_list
 
 
 @pytest.mark.asyncio
@@ -159,6 +173,61 @@ async def test_handle_new_storage_directory(
     assert stored_file.type == FileType.DIRECTORY
 
     assert not storage_engine.called
+
+    # pin path: total counter incremented and duration recorded, no failure
+    node_cache = storage_service.node_cache
+    node_cache.incr.assert_any_call(STORE_FETCH_TOTAL_KEY)
+    node_cache.incrby.assert_any_call(STORE_FETCH_DURATION_MS_SUM_KEY, ANY)
+    assert mocker.call(STORE_FETCH_FAILED_KEY) not in node_cache.incr.call_args_list
+
+
+@pytest.mark.asyncio
+async def test_handle_storage_fetch_failure_metrics(
+    mocker,
+    session_factory: DbSessionFactory,
+    mock_config: Config,
+    fixture_message_directory: MessageDb,
+):
+    """A failed pin increments the failure counter, records no duration, and
+    re-raises so the message is retried."""
+    mock_ipfs_client = mocker.MagicMock()
+    mock_ipfs_client.files.stat = mocker.AsyncMock(
+        return_value={
+            "Hash": "QmPZrod87ceK4yVvXQzRexDcuDgmLxBiNJ1ajLjLoMx9sU",
+            "Size": 0,
+            "CumulativeSize": 4560,
+            "Blocks": 2,
+            "Type": "directory",
+        }
+    )
+
+    storage_service = StorageService(
+        storage_engine=mocker.AsyncMock(),
+        ipfs_service=IpfsService(ipfs_client=mock_ipfs_client),
+        node_cache=mocker.AsyncMock(),
+    )
+    # A non-APIError exception confirms the broad except counts every failure mode.
+    mocker.patch.object(
+        storage_service.ipfs_service,
+        "pin_add",
+        side_effect=RuntimeError("pin failed"),
+    )
+    store_message_handler = StoreMessageHandler(
+        storage_service=storage_service,
+        grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+    )
+
+    with session_factory() as session:
+        with pytest.raises(RuntimeError, match="pin failed"):
+            await store_message_handler.fetch_related_content(
+                session=session, message=fixture_message_directory
+            )
+
+    node_cache = storage_service.node_cache
+    node_cache.incr.assert_any_call(STORE_FETCH_TOTAL_KEY)
+    node_cache.incr.assert_any_call(STORE_FETCH_FAILED_KEY)
+    node_cache.incrby.assert_not_called()
 
 
 @pytest.mark.asyncio

@@ -201,6 +201,10 @@ class StoreMessageHandler(ContentHandler):
             if ipfs_enabled and _should_pin_on_ipfs(
                 file_stats=file_stats, min_file_size_for_pinning=1024 * 1024
             ):
+                # Counted before the fetch so every attempt is represented. A crash
+                # between here and the success/failure path leaves the total without a
+                # matching duration or failure entry, marginally skewing the mean — an
+                # acceptable tradeoff for approximate monitoring counters.
                 await self.storage_service.node_cache.incr(STORE_FETCH_TOTAL_KEY)
                 try:
                     with Timer() as timer:
@@ -208,9 +212,10 @@ class StoreMessageHandler(ContentHandler):
                 except Exception:
                     await self.storage_service.node_cache.incr(STORE_FETCH_FAILED_KEY)
                     LOGGER.warning(
-                        "ipfs_fetch hash=%s type=ipfs path=pin size=%s outcome=fail",
+                        "ipfs_fetch hash=%s type=ipfs path=pin size=%s duration=%.2f outcome=fail",
                         file_hash,
                         file_stats.size,
+                        timer.elapsed(),
                     )
                     raise
                 await self.storage_service.node_cache.incrby(
@@ -246,9 +251,10 @@ class StoreMessageHandler(ContentHandler):
         except AlephStorageException:
             await self.storage_service.node_cache.incr(STORE_FETCH_FAILED_KEY)
             LOGGER.warning(
-                "ipfs_fetch hash=%s type=%s path=http outcome=unavailable",
+                "ipfs_fetch hash=%s type=%s path=http duration=%.2f outcome=unavailable",
                 file_hash,
                 item_type,
+                timer.elapsed(),
             )
             raise FileUnavailable("Could not retrieve file from storage at this time")
 
