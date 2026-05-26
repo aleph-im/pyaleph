@@ -214,7 +214,7 @@ class StoreMessageHandler(ContentHandler):
                     )
                     raise
                 await self.storage_service.node_cache.incrby(
-                    STORE_FETCH_DURATION_MS_SUM_KEY, int(timer.elapsed() * 1000)
+                    STORE_FETCH_DURATION_MS_SUM_KEY, round(timer.elapsed() * 1000)
                 )
                 LOGGER.info(
                     "ipfs_fetch hash=%s type=ipfs path=pin size=%s duration=%.2f outcome=ok",
@@ -253,7 +253,7 @@ class StoreMessageHandler(ContentHandler):
             raise FileUnavailable("Could not retrieve file from storage at this time")
 
         await self.storage_service.node_cache.incrby(
-            STORE_FETCH_DURATION_MS_SUM_KEY, int(timer.elapsed() * 1000)
+            STORE_FETCH_DURATION_MS_SUM_KEY, round(timer.elapsed() * 1000)
         )
         LOGGER.info(
             "ipfs_fetch hash=%s type=%s path=http size=%s duration=%.2f outcome=ok",

@@ -81,5 +81,8 @@ def test_metrics():
         "pyaleph_ws_messages_broadcast_total 0\n"
         "pyaleph_ws_messages_connections_rejected_total 0\n"
         "pyaleph_ws_status_connections_rejected_total 0\n"
-        "pyaleph_ws_broadcaster_consumer_restarts_total 0"
+        "pyaleph_ws_broadcaster_consumer_restarts_total 0\n"
+        "pyaleph_store_fetch_total 0\n"
+        "pyaleph_store_fetch_failed_total 0\n"
+        "pyaleph_store_fetch_duration_ms_sum 0"
     )
