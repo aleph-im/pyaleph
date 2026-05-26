@@ -473,10 +473,25 @@ async def view_messages_list(request: web.Request) -> web.Response:
           default: 0
       - name: excludeContent
         in: query
+        deprecated: true
         schema:
           type: boolean
           default: false
-        description: If true, omit the 'content' field from each message.
+        description: >-
+          Deprecated: use contentFormat=none. If true (and contentFormat is not
+          set), omit the 'content' field from each message.
+      - name: contentFormat
+        in: query
+        schema:
+          type: string
+          enum: [full, headers, none]
+          default: full
+        description: >-
+          Level of content detail. 'full' (default) returns the complete
+          content. 'headers' returns a reduced per-type metadata subset
+          (address; plus type/ref for POST, key for AGGREGATE, item_hash/ref for
+          STORE) without reading the content JSONB. 'none' omits content
+          entirely. Takes precedence over excludeContent.
       - name: pagination
         in: query
         schema:
