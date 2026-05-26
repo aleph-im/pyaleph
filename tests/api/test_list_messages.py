@@ -1062,3 +1062,49 @@ async def test_content_format_invalid_returns_422(
         MESSAGES_URI, params={"contentFormat": "bogus"}
     )
     assert response.status == 422, await response.text()
+
+
+@pytest.mark.asyncio
+async def test_content_format_ws_history_none(
+    fixture_messages: Sequence[Dict[str, Any]],
+    session_factory: DbSessionFactory,
+):
+    """_send_history_to_ws with contentFormat=none strips content."""
+    from unittest.mock import AsyncMock
+
+    from aleph.web.controllers.messages import _send_history_to_ws
+
+    ws = AsyncMock()
+    history = len(fixture_messages)
+    query_params = WsMessageQueryParams(history=history, contentFormat="none")
+    await _send_history_to_ws(
+        ws=ws, session_factory=session_factory, history=history,
+        query_params=query_params,
+    )
+    assert ws.send_str.call_count == len(fixture_messages)
+    for call in ws.send_str.call_args_list:
+        payload = json.loads(call.args[0])
+        assert "content" not in payload
+
+
+@pytest.mark.asyncio
+async def test_content_format_ws_history_headers_degrades_to_none(
+    fixture_messages: Sequence[Dict[str, Any]],
+    session_factory: DbSessionFactory,
+):
+    """WS does not support headers; it degrades to none (content stripped)."""
+    from unittest.mock import AsyncMock
+
+    from aleph.web.controllers.messages import _send_history_to_ws
+
+    ws = AsyncMock()
+    history = len(fixture_messages)
+    query_params = WsMessageQueryParams(history=history, contentFormat="headers")
+    await _send_history_to_ws(
+        ws=ws, session_factory=session_factory, history=history,
+        query_params=query_params,
+    )
+    assert ws.send_str.call_count == len(fixture_messages)
+    for call in ws.send_str.call_args_list:
+        payload = json.loads(call.args[0])
+        assert "content" not in payload

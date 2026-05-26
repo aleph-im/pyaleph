@@ -603,25 +603,28 @@ async def _send_history_to_ws(
     query_params: WsMessageQueryParams,
 ) -> None:
     find_filters = query_params.model_dump(exclude_none=True)
-    exclude_content = find_filters.pop("exclude_content", False)
+    content_format: ContentFormat = query_params.content_format
     find_filters.pop("content_format", None)
+    find_filters.pop("exclude_content", None)
+
+    # The websocket payload supports two states only: content present or absent.
+    # `headers` is not implemented here, so it degrades to `none`.
+    if content_format == ContentFormat.HEADERS:
+        content_format = ContentFormat.NONE
 
     messages_query = make_matching_messages_query(
         pagination=history,
         include_confirmations=True,
         **find_filters,
     )
-    if exclude_content:
+    if content_format != ContentFormat.FULL:
         messages_query = messages_query.options(defer(MessageDb.content))
 
     with session_factory() as session:
         messages = list(session.execute(messages_query).scalars())
 
     for message in reversed(messages):
-        msg_dict = message_to_dict(
-            message,
-            content_format=ContentFormat.NONE if exclude_content else ContentFormat.FULL,
-        )
+        msg_dict = message_to_dict(message, content_format=content_format)
         await ws.send_str(aleph_json.dumps(msg_dict).decode("utf-8"))
 
 
@@ -724,7 +727,9 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
                 LOGGER.info("Could not send history, aborting message websocket")
                 return ws
 
-        client = _WsClient(ws, query_params, query_params.exclude_content)
+        client = _WsClient(
+            ws, query_params, query_params.content_format != ContentFormat.FULL
+        )
         await broadcaster.add(client)
 
         try:
