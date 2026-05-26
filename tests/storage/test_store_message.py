@@ -9,20 +9,20 @@ from message_test_helpers import make_validated_message_from_dict
 from sqlalchemy import select
 
 from aleph.db.models import MessageDb, StoredFileDb
-from aleph.handlers.content.store import (
+from aleph.handlers.content.store import StoreMessageHandler
+from aleph.schemas.message_content import ContentSource, RawContent
+from aleph.services.ipfs import IpfsService
+from aleph.storage import StorageService
+from aleph.toolkit.constants import DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE
+from aleph.toolkit.metrics_keys import (
     STORE_FETCH_IPFS_DURATION_MS_SUM_KEY,
     STORE_FETCH_IPFS_FAILED_KEY,
     STORE_FETCH_IPFS_TOTAL_KEY,
     STORE_FETCH_STORAGE_DURATION_MS_SUM_KEY,
     STORE_FETCH_STORAGE_FAILED_KEY,
     STORE_FETCH_STORAGE_TOTAL_KEY,
-    StoreMessageHandler,
-    _store_fetch_keys,
+    store_fetch_keys,
 )
-from aleph.schemas.message_content import ContentSource, RawContent
-from aleph.services.ipfs import IpfsService
-from aleph.storage import StorageService
-from aleph.toolkit.constants import DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.files import FileType
 
@@ -30,8 +30,8 @@ from aleph.types.files import FileType
 def test_store_fetch_keys_differentiate_by_type():
     """Metric keys are split by item type so ipfs and storage fetches never
     share a counter."""
-    ipfs_keys = _store_fetch_keys(ItemType.ipfs)
-    storage_keys = _store_fetch_keys(ItemType.storage)
+    ipfs_keys = store_fetch_keys(ItemType.ipfs)
+    storage_keys = store_fetch_keys(ItemType.storage)
 
     assert ipfs_keys == (
         STORE_FETCH_IPFS_TOTAL_KEY,
@@ -255,6 +255,66 @@ async def test_handle_storage_fetch_failure_metrics(
     node_cache.incr.assert_any_call(STORE_FETCH_IPFS_TOTAL_KEY)
     node_cache.incr.assert_any_call(STORE_FETCH_IPFS_FAILED_KEY)
     node_cache.incrby.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_handle_new_storage_type_file_uses_storage_counters(
+    mocker,
+    session_factory: DbSessionFactory,
+    mock_config: Config,
+):
+    """A storage-type STORE file goes through the http path and increments the
+    storage counters, leaving the ipfs counters untouched."""
+    file_hash = "315f7313eb97d2c8299e3ee9c19d81f226c44ccf81c387c9fb25c54fced245f5"
+    message_dict: Mapping[str, Any] = {
+        "chain": "ETH",
+        "item_hash": "7e4f914865028356704919810073ec5690ecc4bb0ee3bd6bdb24829fd532398f",
+        "sender": "0xdeadbeef",
+        "type": "STORE",
+        "channel": "TEST",
+        "item_content": json.dumps(
+            {
+                "address": "0xdeadbeef",
+                "item_type": "storage",
+                "item_hash": file_hash,
+                "time": 1645807812.6829665,
+            }
+        ),
+        "item_type": "inline",
+        "signature": "0xfake",
+        "time": 1645807812.6829786,
+    }
+    message = make_validated_message_from_dict(
+        message_dict, raw_content=message_dict["item_content"]
+    )
+
+    raw_content = RawContent(
+        hash=file_hash, source=ContentSource.P2P, value=b"storage bytes"
+    )
+    node_cache = mocker.AsyncMock()
+    storage_service = StorageService(
+        storage_engine=mocker.AsyncMock(),
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=node_cache,
+    )
+    get_hash_content_mock = mocker.AsyncMock(return_value=raw_content)
+    storage_service.get_hash_content = get_hash_content_mock  # type: ignore[method-assign]
+    store_message_handler = StoreMessageHandler(
+        storage_service=storage_service,
+        grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+    )
+
+    with session_factory() as session:
+        await store_message_handler.fetch_related_content(
+            session=session, message=message
+        )
+        session.commit()
+
+    get_hash_content_mock.assert_called_once()
+    node_cache.incr.assert_any_call(STORE_FETCH_STORAGE_TOTAL_KEY)
+    node_cache.incrby.assert_any_call(STORE_FETCH_STORAGE_DURATION_MS_SUM_KEY, ANY)
+    assert mocker.call(STORE_FETCH_IPFS_TOTAL_KEY) not in node_cache.incr.call_args_list
 
 
 @pytest.mark.asyncio

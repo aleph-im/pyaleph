@@ -42,6 +42,7 @@ from aleph.services.ipfs import IpfsService
 from aleph.storage import StorageService
 from aleph.toolkit.constants import MiB
 from aleph.toolkit.costs import are_store_and_program_free, is_credit_only_required
+from aleph.toolkit.metrics_keys import store_fetch_keys
 from aleph.toolkit.timer import Timer
 from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.db_session import DbSession
@@ -57,33 +58,6 @@ from aleph.types.message_status import (
 from aleph.utils import item_type_from_hash, make_file_tag
 
 LOGGER = logging.getLogger(__name__)
-
-# Redis keys for STORE file-fetch metrics, surfaced at /metrics and shared across
-# workers. Split by item type because the fetch source differs: `storage` files
-# are pulled from CCN HTTP APIs, `ipfs` files come through the IPFS (Kubo) daemon.
-# Tracking them separately lets us compare the two and tell disk-bound from
-# network-bound regressions. Mean = duration_ms_sum / (total - failed) per type.
-STORE_FETCH_IPFS_TOTAL_KEY = "pyaleph_store_fetch_ipfs_total"
-STORE_FETCH_IPFS_FAILED_KEY = "pyaleph_store_fetch_ipfs_failed_total"
-STORE_FETCH_IPFS_DURATION_MS_SUM_KEY = "pyaleph_store_fetch_ipfs_duration_ms_sum"
-STORE_FETCH_STORAGE_TOTAL_KEY = "pyaleph_store_fetch_storage_total"
-STORE_FETCH_STORAGE_FAILED_KEY = "pyaleph_store_fetch_storage_failed_total"
-STORE_FETCH_STORAGE_DURATION_MS_SUM_KEY = "pyaleph_store_fetch_storage_duration_ms_sum"
-
-
-def _store_fetch_keys(item_type: ItemType) -> tuple[str, str, str]:
-    """Return the (total, failed, duration_ms_sum) Redis keys for an item type."""
-    if item_type == ItemType.ipfs:
-        return (
-            STORE_FETCH_IPFS_TOTAL_KEY,
-            STORE_FETCH_IPFS_FAILED_KEY,
-            STORE_FETCH_IPFS_DURATION_MS_SUM_KEY,
-        )
-    return (
-        STORE_FETCH_STORAGE_TOTAL_KEY,
-        STORE_FETCH_STORAGE_FAILED_KEY,
-        STORE_FETCH_STORAGE_DURATION_MS_SUM_KEY,
-    )
 
 
 def _get_store_content(message: MessageDb) -> StoreContent:
@@ -207,7 +181,7 @@ class StoreMessageHandler(ContentHandler):
                 f"Item hash '{file_hash}' is not of the expected type ('{item_type}')"
             )
 
-        total_key, failed_key, duration_key = _store_fetch_keys(item_type)
+        total_key, failed_key, duration_key = store_fetch_keys(item_type)
 
         # For CIDs, pin directories and files > 1MiB
         if item_type == ItemType.ipfs:
