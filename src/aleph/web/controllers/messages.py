@@ -47,8 +47,8 @@ from aleph.schemas.messages_query_params import (
 )
 from aleph.services.cache.node_cache import NodeCache
 from aleph.toolkit.cursor import decode_message_cursor, encode_message_cursor
-from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.content_format import ContentFormat
+from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_status import MessageStatus, RemovedMessageReason
 from aleph.web.controllers.app_state_getters import (
     APP_STATE_MESSAGE_BROADCASTER,
@@ -363,8 +363,7 @@ def format_response(
     content_format: ContentFormat = ContentFormat.FULL,
 ) -> web.Response:
     formatted_messages = [
-        message_to_dict(message, content_format=content_format)
-        for message in messages
+        message_to_dict(message, content_format=content_format) for message in messages
     ]
 
     response = format_response_dict(
@@ -527,7 +526,7 @@ async def view_messages_list(request: web.Request) -> web.Response:
 
     find_filters = query_params.model_dump(exclude_none=True)
 
-    content_format: ContentFormat = query_params.content_format
+    content_format: ContentFormat = query_params.content_format or ContentFormat.FULL
     # Both keys are consumed here; neither is a query filter.
     find_filters.pop("content_format", None)
     find_filters.pop("exclude_content", None)
@@ -618,7 +617,7 @@ async def _send_history_to_ws(
     query_params: WsMessageQueryParams,
 ) -> None:
     find_filters = query_params.model_dump(exclude_none=True)
-    content_format: ContentFormat = query_params.content_format
+    content_format: ContentFormat = query_params.content_format or ContentFormat.FULL
     find_filters.pop("content_format", None)
     find_filters.pop("exclude_content", None)
 

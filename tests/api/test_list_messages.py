@@ -1012,9 +1012,7 @@ async def test_content_format_none_matches_exclude_content(
     fixture_messages: Sequence[Dict[str, Any]], ccn_api_client
 ):
     """contentFormat=none drops content just like excludeContent=true."""
-    response = await ccn_api_client.get(
-        MESSAGES_URI, params={"contentFormat": "none"}
-    )
+    response = await ccn_api_client.get(MESSAGES_URI, params={"contentFormat": "none"})
     assert response.status == 200, await response.text()
     data = await response.json()
     assert len(data["messages"]) == len(fixture_messages)
@@ -1028,9 +1026,7 @@ async def test_content_format_full_is_default(
     fixture_messages: Sequence[Dict[str, Any]], ccn_api_client
 ):
     """contentFormat=full returns the complete content (same as no param)."""
-    response = await ccn_api_client.get(
-        MESSAGES_URI, params={"contentFormat": "full"}
-    )
+    response = await ccn_api_client.get(MESSAGES_URI, params={"contentFormat": "full"})
     assert response.status == 200, await response.text()
     data = await response.json()
     for msg in data["messages"]:
@@ -1058,9 +1054,7 @@ async def test_content_format_headers_cursor_pagination(
 async def test_content_format_invalid_returns_422(
     fixture_messages: Sequence[Dict[str, Any]], ccn_api_client
 ):
-    response = await ccn_api_client.get(
-        MESSAGES_URI, params={"contentFormat": "bogus"}
-    )
+    response = await ccn_api_client.get(MESSAGES_URI, params={"contentFormat": "bogus"})
     assert response.status == 422, await response.text()
 
 
@@ -1078,7 +1072,9 @@ async def test_content_format_ws_history_none(
     history = len(fixture_messages)
     query_params = WsMessageQueryParams(history=history, contentFormat="none")
     await _send_history_to_ws(
-        ws=ws, session_factory=session_factory, history=history,
+        ws=ws,
+        session_factory=session_factory,
+        history=history,
         query_params=query_params,
     )
     assert ws.send_str.call_count == len(fixture_messages)
@@ -1101,7 +1097,9 @@ async def test_content_format_ws_history_headers_degrades_to_none(
     history = len(fixture_messages)
     query_params = WsMessageQueryParams(history=history, contentFormat="headers")
     await _send_history_to_ws(
-        ws=ws, session_factory=session_factory, history=history,
+        ws=ws,
+        session_factory=session_factory,
+        history=history,
         query_params=query_params,
     )
     assert ws.send_str.call_count == len(fixture_messages)

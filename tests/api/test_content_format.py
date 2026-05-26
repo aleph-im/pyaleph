@@ -1,6 +1,7 @@
 from aleph_message.models import Chain, ItemType, MessageType
 
 from aleph.db.models import MessageDb
+from aleph.schemas.messages_query_params import MessageQueryParams
 from aleph.types.content_format import ContentFormat
 from aleph.web.controllers.messages import build_headers_content
 
@@ -32,8 +33,13 @@ def _make_message(message_type: MessageType, content: dict) -> MessageDb:
 def test_headers_post_keeps_type_and_ref():
     msg = _make_message(
         MessageType.post,
-        {"address": "0xABC", "time": 1.0, "type": "my-type", "ref": "ref123",
-         "content": {"big": "x" * 1000}},
+        {
+            "address": "0xABC",
+            "time": 1.0,
+            "type": "my-type",
+            "ref": "ref123",
+            "content": {"big": "x" * 1000},
+        },
     )
     assert build_headers_content(msg) == {
         "address": "0xABC",
@@ -61,8 +67,13 @@ def test_headers_aggregate_keeps_key():
 def test_headers_store_keeps_item_hash_and_ref():
     msg = _make_message(
         MessageType.store,
-        {"address": "0xABC", "time": 1.0, "item_type": "ipfs",
-         "item_hash": "Qm123", "ref": "ref456"},
+        {
+            "address": "0xABC",
+            "time": 1.0,
+            "item_type": "ipfs",
+            "item_hash": "Qm123",
+            "ref": "ref456",
+        },
     )
     assert build_headers_content(msg) == {
         "address": "0xABC",
@@ -102,9 +113,6 @@ def test_headers_instance_address_only():
         {"address": "0xABC", "time": 1.0},
     )
     assert build_headers_content(msg) == {"address": "0xABC"}
-
-
-from aleph.schemas.messages_query_params import MessageQueryParams
 
 
 def test_content_format_default_is_full():
