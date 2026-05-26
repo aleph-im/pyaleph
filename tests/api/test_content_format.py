@@ -102,3 +102,36 @@ def test_headers_instance_address_only():
         {"address": "0xABC", "time": 1.0},
     )
     assert build_headers_content(msg) == {"address": "0xABC"}
+
+
+from aleph.schemas.messages_query_params import MessageQueryParams
+
+
+def test_content_format_default_is_full():
+    params = MessageQueryParams.model_validate({})
+    assert params.content_format == ContentFormat.FULL
+
+
+def test_exclude_content_true_resolves_to_none():
+    params = MessageQueryParams.model_validate({"excludeContent": "true"})
+    assert params.content_format == ContentFormat.NONE
+
+
+def test_explicit_content_format_overrides_exclude_content():
+    params = MessageQueryParams.model_validate(
+        {"excludeContent": "true", "contentFormat": "full"}
+    )
+    assert params.content_format == ContentFormat.FULL
+
+
+def test_content_format_headers_parsed():
+    params = MessageQueryParams.model_validate({"contentFormat": "headers"})
+    assert params.content_format == ContentFormat.HEADERS
+
+
+def test_content_format_invalid_rejected():
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        MessageQueryParams.model_validate({"contentFormat": "bogus"})

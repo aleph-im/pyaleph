@@ -3,6 +3,7 @@ from typing import List, Optional
 from aleph_message.models import Chain, ItemHash, MessageType, PaymentType
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from aleph.types.content_format import ContentFormat
 from aleph.types.message_status import MessageStatus
 from aleph.types.sort_order import SortBy, SortOrder
 
@@ -84,7 +85,18 @@ class BaseMessageQueryParams(BaseModel):
     exclude_content: bool = Field(
         default=False,
         alias="excludeContent",
-        description="If true, omit the 'content' field from each message in the response.",
+        description="Deprecated: use contentFormat=none instead. If true (and "
+        "contentFormat is not set), omit the 'content' field from each message.",
+    )
+
+    content_format: Optional[ContentFormat] = Field(
+        default=None,
+        alias="contentFormat",
+        description="Level of content detail: 'full' (default) returns the "
+        "complete content; 'headers' returns a reduced per-type metadata subset "
+        "(address, plus type/ref for POST, key for AGGREGATE, item_hash/ref for "
+        "STORE); 'none' omits content entirely. Takes precedence over "
+        "excludeContent when set.",
     )
 
     start_date: float = Field(
@@ -128,6 +140,17 @@ class BaseMessageQueryParams(BaseModel):
         if start_block and end_block and (end_block < start_block):
             raise ValueError("end block cannot be lower than start block.")
 
+        return self
+
+    @model_validator(mode="after")
+    def resolve_content_format(self):
+        # Collapse the deprecated excludeContent flag into content_format so all
+        # downstream code reads a single concrete value. Explicit contentFormat
+        # always wins.
+        if self.content_format is None:
+            self.content_format = (
+                ContentFormat.NONE if self.exclude_content else ContentFormat.FULL
+            )
         return self
 
     @field_validator(
