@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterable, List, Optional, Set
 import aio_pika.abc
 import aiohttp.web_ws
 from aiohttp import WSCloseCode, WSMsgType, web
-from aleph_message.models import ItemHash
+from aleph_message.models import ItemHash, MessageType
 from configmanager import Config
 from pydantic import ValidationError
 from sqlalchemy.orm import defer
@@ -48,6 +48,7 @@ from aleph.schemas.messages_query_params import (
 from aleph.services.cache.node_cache import NodeCache
 from aleph.toolkit.cursor import decode_message_cursor, encode_message_cursor
 from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.content_format import ContentFormat
 from aleph.types.message_status import MessageStatus, RemovedMessageReason
 from aleph.web.controllers.app_state_getters import (
     APP_STATE_MESSAGE_BROADCASTER,
@@ -288,6 +289,34 @@ class MessageBroadcaster:
             return True
         except (ConnectionResetError, ConnectionError):
             return False
+
+
+# Per-type reduced "headers" content: (output key in content, MessageDb attribute).
+# `address` is emitted for every type from the `owner` column and is handled
+# separately. All source attributes are denormalized columns, so building the
+# reduced content never touches the (deferred) content JSONB.
+_HEADERS_FIELDS: Dict[MessageType, List[tuple]] = {
+    MessageType.post: [("type", "content_type"), ("ref", "content_ref")],
+    MessageType.aggregate: [("key", "content_key")],
+    MessageType.store: [("item_hash", "content_item_hash"), ("ref", "content_ref")],
+    MessageType.program: [],
+    MessageType.instance: [],
+    MessageType.forget: [],
+}
+
+
+def build_headers_content(message: MessageDb) -> Dict[str, Any]:
+    """Reduced ``content`` for ``contentFormat=headers``, built from columns.
+
+    `address` is always included (from ``owner``); the per-type fields in
+    ``_HEADERS_FIELDS`` are included when their column value is not ``None``.
+    """
+    content: Dict[str, Any] = {"address": message.owner}
+    for output_key, attr in _HEADERS_FIELDS.get(message.type, []):
+        value = getattr(message, attr)
+        if value is not None:
+            content[output_key] = value
+    return content
 
 
 def message_to_dict(
