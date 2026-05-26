@@ -110,14 +110,14 @@ async def test_handle_new_storage_file(
     mock_ipfs_client.files.stat = mocker.AsyncMock(return_value=ipfs_stats)
 
     message = fixture_message_file
+    node_cache = mocker.AsyncMock()
     storage_service = StorageService(
         storage_engine=mocker.AsyncMock(),
         ipfs_service=IpfsService(ipfs_client=mock_ipfs_client),
-        node_cache=mocker.AsyncMock(),
+        node_cache=node_cache,
     )
-    storage_service.get_hash_content = get_hash_content_mock = mocker.AsyncMock(
-        return_value=raw_content
-    )  # type: ignore
+    get_hash_content_mock = mocker.AsyncMock(return_value=raw_content)
+    storage_service.get_hash_content = get_hash_content_mock  # type: ignore[method-assign]
     store_message_handler = StoreMessageHandler(
         storage_service=storage_service,
         grace_period=24,
@@ -142,7 +142,6 @@ async def test_handle_new_storage_file(
     get_hash_content_mock.assert_called_once()
 
     # ipfs item via http path: ipfs counters incremented, duration recorded, no failure
-    node_cache = storage_service.node_cache
     node_cache.incr.assert_any_call(STORE_FETCH_IPFS_TOTAL_KEY)
     node_cache.incrby.assert_any_call(STORE_FETCH_IPFS_DURATION_MS_SUM_KEY, ANY)
     assert (
@@ -170,10 +169,11 @@ async def test_handle_new_storage_directory(
     message = fixture_message_directory
     storage_engine = mocker.AsyncMock()
 
+    node_cache = mocker.AsyncMock()
     storage_service = StorageService(
         storage_engine=storage_engine,
         ipfs_service=IpfsService(ipfs_client=mock_ipfs_client),
-        node_cache=mocker.AsyncMock(),
+        node_cache=node_cache,
     )
     store_message_handler = StoreMessageHandler(
         storage_service=storage_service,
@@ -201,7 +201,6 @@ async def test_handle_new_storage_directory(
     assert not storage_engine.called
 
     # pin path (ipfs): ipfs counters incremented, duration recorded, no failure
-    node_cache = storage_service.node_cache
     node_cache.incr.assert_any_call(STORE_FETCH_IPFS_TOTAL_KEY)
     node_cache.incrby.assert_any_call(STORE_FETCH_IPFS_DURATION_MS_SUM_KEY, ANY)
     assert (
@@ -229,10 +228,11 @@ async def test_handle_storage_fetch_failure_metrics(
         }
     )
 
+    node_cache = mocker.AsyncMock()
     storage_service = StorageService(
         storage_engine=mocker.AsyncMock(),
         ipfs_service=IpfsService(ipfs_client=mock_ipfs_client),
-        node_cache=mocker.AsyncMock(),
+        node_cache=node_cache,
     )
     # A non-APIError exception confirms the broad except counts every failure mode.
     mocker.patch.object(
@@ -252,7 +252,6 @@ async def test_handle_storage_fetch_failure_metrics(
                 session=session, message=fixture_message_directory
             )
 
-    node_cache = storage_service.node_cache
     node_cache.incr.assert_any_call(STORE_FETCH_IPFS_TOTAL_KEY)
     node_cache.incr.assert_any_call(STORE_FETCH_IPFS_FAILED_KEY)
     node_cache.incrby.assert_not_called()
