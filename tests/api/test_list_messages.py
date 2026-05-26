@@ -965,3 +965,100 @@ async def test_owners_filter_ws_logic(owners_test_messages):
     query = WsMessageQueryParams(addresses=["owner1"])
     assert message_matches_filters(msg1_aleph, query) is False
     assert message_matches_filters(msg3_aleph, query) is True
+
+
+@pytest.mark.asyncio
+async def test_content_format_headers_per_type(
+    fixture_messages: Sequence[Dict[str, Any]], ccn_api_client
+):
+    """contentFormat=headers returns the reduced per-type content subset."""
+    response = await ccn_api_client.get(
+        MESSAGES_URI, params={"contentFormat": "headers"}
+    )
+    assert response.status == 200, await response.text()
+    data = await response.json()
+
+    by_hash = {m["item_hash"]: m for m in data["messages"]}
+    assert len(by_hash) == len(fixture_messages)
+
+    for original in fixture_messages:
+        msg = by_hash[original["item_hash"]]
+        content = msg["content"]
+        msg_type = original["type"]
+
+        # address always present (sourced from the owner column)
+        assert content["address"] == original["content"]["address"]
+        # heavy nested user payload is never present in headers mode
+        assert "content" not in content
+        # content.time is intentionally omitted; top-level time still present
+        assert "time" not in content
+        assert "time" in msg
+
+        if msg_type == "POST":
+            assert content.get("type") == original["content"].get("type")
+            assert set(content.keys()) <= {"address", "type", "ref"}
+        elif msg_type == "AGGREGATE":
+            assert content["key"] == original["content"]["key"]
+            assert set(content.keys()) == {"address", "key"}
+        elif msg_type == "STORE":
+            assert content["item_hash"] == original["content"]["item_hash"]
+            assert set(content.keys()) <= {"address", "item_hash", "ref"}
+        elif msg_type == "FORGET":
+            assert set(content.keys()) == {"address"}
+
+
+@pytest.mark.asyncio
+async def test_content_format_none_matches_exclude_content(
+    fixture_messages: Sequence[Dict[str, Any]], ccn_api_client
+):
+    """contentFormat=none drops content just like excludeContent=true."""
+    response = await ccn_api_client.get(
+        MESSAGES_URI, params={"contentFormat": "none"}
+    )
+    assert response.status == 200, await response.text()
+    data = await response.json()
+    assert len(data["messages"]) == len(fixture_messages)
+    for msg in data["messages"]:
+        assert "content" not in msg
+        assert "item_hash" in msg
+
+
+@pytest.mark.asyncio
+async def test_content_format_full_is_default(
+    fixture_messages: Sequence[Dict[str, Any]], ccn_api_client
+):
+    """contentFormat=full returns the complete content (same as no param)."""
+    response = await ccn_api_client.get(
+        MESSAGES_URI, params={"contentFormat": "full"}
+    )
+    assert response.status == 200, await response.text()
+    data = await response.json()
+    for msg in data["messages"]:
+        assert "content" in msg
+        # a full content carries the nested time field
+        assert "time" in msg["content"]
+
+
+@pytest.mark.asyncio
+async def test_content_format_headers_cursor_pagination(
+    fixture_messages: Sequence[Dict[str, Any]], ccn_api_client
+):
+    """headers mode works with cursor pagination."""
+    response = await ccn_api_client.get(
+        MESSAGES_URI, params={"contentFormat": "headers", "pagination": "2"}
+    )
+    assert response.status == 200, await response.text()
+    data = await response.json()
+    for msg in data["messages"]:
+        assert "address" in msg["content"]
+        assert "content" not in msg["content"]
+
+
+@pytest.mark.asyncio
+async def test_content_format_invalid_returns_422(
+    fixture_messages: Sequence[Dict[str, Any]], ccn_api_client
+):
+    response = await ccn_api_client.get(
+        MESSAGES_URI, params={"contentFormat": "bogus"}
+    )
+    assert response.status == 422, await response.text()

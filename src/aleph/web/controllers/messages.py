@@ -320,12 +320,14 @@ def build_headers_content(message: MessageDb) -> Dict[str, Any]:
 
 
 def message_to_dict(
-    message: MessageDb, exclude_content: bool = False
+    message: MessageDb, content_format: ContentFormat = ContentFormat.FULL
 ) -> Dict[str, Any]:
-    if exclude_content:
-        message_dict = message.to_dict(exclude={"content"})
-    else:
+    if content_format == ContentFormat.FULL:
         message_dict = message.to_dict()
+    else:
+        message_dict = message.to_dict(exclude={"content"})
+        if content_format == ContentFormat.HEADERS:
+            message_dict["content"] = build_headers_content(message)
     message_dict["time"] = message.time.timestamp()
     confirmations = [
         {"chain": c.chain, "hash": c.hash, "height": c.height}
@@ -358,10 +360,10 @@ def format_response(
     pagination: int,
     page: int,
     total_messages: int,
-    exclude_content: bool = False,
+    content_format: ContentFormat = ContentFormat.FULL,
 ) -> web.Response:
     formatted_messages = [
-        message_to_dict(message, exclude_content=exclude_content)
+        message_to_dict(message, content_format=content_format)
         for message in messages
     ]
 
@@ -510,7 +512,10 @@ async def view_messages_list(request: web.Request) -> web.Response:
 
     find_filters = query_params.model_dump(exclude_none=True)
 
-    exclude_content = find_filters.pop("exclude_content", False)
+    content_format: ContentFormat = query_params.content_format
+    # Both keys are consumed here; neither is a query filter.
+    find_filters.pop("content_format", None)
+    find_filters.pop("exclude_content", None)
     pagination_per_page = query_params.pagination
     cursor = find_filters.pop("cursor", None)
 
@@ -535,7 +540,7 @@ async def view_messages_list(request: web.Request) -> web.Response:
             **find_filters,
         )
 
-        if exclude_content:
+        if content_format != ContentFormat.FULL:
             messages_query = messages_query.options(defer(MessageDb.content))
 
         with session_factory() as session:
@@ -546,7 +551,7 @@ async def view_messages_list(request: web.Request) -> web.Response:
             messages = messages[:pagination_per_page]
 
         formatted = [
-            message_to_dict(m, exclude_content=exclude_content) for m in messages
+            message_to_dict(m, content_format=content_format) for m in messages
         ]
         next_cursor = None
         if has_more and messages:
@@ -570,7 +575,7 @@ async def view_messages_list(request: web.Request) -> web.Response:
             messages_query = make_matching_messages_query(
                 include_confirmations=True, **find_filters
             )
-            if exclude_content:
+            if content_format != ContentFormat.FULL:
                 messages_query = messages_query.options(defer(MessageDb.content))
             messages = list(session.execute(messages_query).scalars())
 
@@ -587,7 +592,7 @@ async def view_messages_list(request: web.Request) -> web.Response:
             pagination=pagination_per_page,
             page=pagination_page,
             total_messages=total_msgs,
-            exclude_content=exclude_content,
+            content_format=content_format,
         )
 
 
@@ -599,6 +604,7 @@ async def _send_history_to_ws(
 ) -> None:
     find_filters = query_params.model_dump(exclude_none=True)
     exclude_content = find_filters.pop("exclude_content", False)
+    find_filters.pop("content_format", None)
 
     messages_query = make_matching_messages_query(
         pagination=history,
@@ -612,7 +618,10 @@ async def _send_history_to_ws(
         messages = list(session.execute(messages_query).scalars())
 
     for message in reversed(messages):
-        msg_dict = message_to_dict(message, exclude_content=exclude_content)
+        msg_dict = message_to_dict(
+            message,
+            content_format=ContentFormat.NONE if exclude_content else ContentFormat.FULL,
+        )
         await ws.send_str(aleph_json.dumps(msg_dict).decode("utf-8"))
 
 
