@@ -237,6 +237,7 @@ def get_address_files_for_api(
     after_time: Optional[dt.datetime] = None,
     after_hash: Optional[str] = None,
     cursor_mode: bool = False,
+    file_hash: Optional[str] = None,
 ) -> Iterable[Row]:
     select_stmt = (
         select(
@@ -249,6 +250,9 @@ def get_address_files_for_api(
         .join(StoredFileDb, MessageFilePinDb.file_hash == StoredFileDb.hash)
         .where(MessageFilePinDb.owner == owner)
     )
+
+    if file_hash is not None:
+        select_stmt = select_stmt.where(MessageFilePinDb.file_hash == file_hash)
 
     if sort_order == SortOrder.DESCENDING:
         order_by_columns: Tuple[UnaryExpression[Any], UnaryExpression[Any]] = (

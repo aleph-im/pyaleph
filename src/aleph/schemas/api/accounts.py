@@ -56,6 +56,11 @@ class GetAccountFilesQueryParams(BaseModel):
     cursor: Optional[str] = Field(
         default=None, description="Opaque cursor for cursor-based pagination."
     )
+    file_hash: Optional[str] = Field(
+        default=None,
+        description="If set, only return the file with this hash (if owned by the address). "
+        "Useful for looking up the STORE message item_hash(es) referencing a specific file.",
+    )
 
 
 class GetBalancesChainsQueryParams(BaseModel):
