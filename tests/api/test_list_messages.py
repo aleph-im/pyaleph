@@ -26,6 +26,7 @@ from aleph.db.models.messages import MessageStatusDb
 from aleph.schemas.messages_query_params import WsMessageQueryParams
 from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.channel import Channel
+from aleph.types.content_format import ContentFormat
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.message_status import MessageStatus
 from aleph.web.controllers.messages import message_matches_filters
@@ -1093,7 +1094,9 @@ async def test_content_format_ws_history_none(
 
     ws = AsyncMock()
     history = len(fixture_messages)
-    query_params = WsMessageQueryParams(history=history, contentFormat="none")
+    query_params = WsMessageQueryParams(
+        history=history, contentFormat=ContentFormat.NONE
+    )
     await _send_history_to_ws(
         ws=ws,
         session_factory=session_factory,
@@ -1118,7 +1121,9 @@ async def test_content_format_ws_history_headers_degrades_to_none(
 
     ws = AsyncMock()
     history = len(fixture_messages)
-    query_params = WsMessageQueryParams(history=history, contentFormat="headers")
+    query_params = WsMessageQueryParams(
+        history=history, contentFormat=ContentFormat.HEADERS
+    )
     await _send_history_to_ws(
         ws=ws,
         session_factory=session_factory,
