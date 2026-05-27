@@ -282,18 +282,21 @@ async def test_auth_upload_rejects_storage_item_type(
 
 @pytest.mark.asyncio
 async def test_auth_upload_exceeding_authenticated_cap(
-    api_client, session_factory: DbSessionFactory, mocker
+    api_client, session_factory: DbSessionFactory, mocker, mock_config
 ):
-    """Authenticated upload above max_upload_file_size (100 MiB) returns 413."""
+    """Authenticated upload above ipfs.max_upload_file_size returns 413."""
     mocker.patch(
         "aleph.web.controllers.ipfs._verify_message_signature",
         new_callable=mocker.AsyncMock,
     )
     ipfs_service = _get_ipfs_service_mock(api_client)
 
-    # Build a 101 MiB payload. The test fixture doesn't care about content
-    # since ipfs_service.add_bytes is mocked.
-    oversized = b"x" * (101 * 1024 * 1024)
+    # Pin the cap to a small value so the test stays fast and stays independent
+    # of the production default, then send a payload one byte over it. The test
+    # fixture doesn't care about content since ipfs_service.add_bytes is mocked.
+    cap = 1 * 1024 * 1024
+    mock_config.ipfs.max_upload_file_size.value = cap
+    oversized = b"x" * (cap + 1)
     form_data = aiohttp.FormData()
     form_data.add_field("file", BytesIO(oversized))
     form_data.add_field(

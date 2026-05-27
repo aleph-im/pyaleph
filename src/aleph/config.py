@@ -6,6 +6,7 @@ from aleph.toolkit.constants import (
     DEFAULT_MAX_FILE_SIZE,
     DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     DEFAULT_MAX_UPLOAD_CAR_SIZE,
+    DEFAULT_MAX_UPLOAD_FILE_SIZE,
 )
 
 
@@ -247,7 +248,7 @@ def get_defaults():
                 "/ip4/62.210.93.220/tcp/4001/p2p/12D3KooWLcmvqojHzUnR7rr8YhFKGDD8z7fmsPyBfAm2rT3sFGAF",
             ],
             # Maximum file size for authenticated uploads via /ipfs/add_file, in bytes.
-            "max_upload_file_size": DEFAULT_MAX_FILE_SIZE,
+            "max_upload_file_size": DEFAULT_MAX_UPLOAD_FILE_SIZE,
             # Maximum file size for unauthenticated uploads via /ipfs/add_file, in bytes.
             "max_unauthenticated_upload_file_size": DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
             # Maximum CAR file size for /ipfs/add_car uploads, in bytes.
