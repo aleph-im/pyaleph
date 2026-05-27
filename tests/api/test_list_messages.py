@@ -26,6 +26,7 @@ from aleph.db.models.messages import MessageStatusDb
 from aleph.schemas.messages_query_params import WsMessageQueryParams
 from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.channel import Channel
+from aleph.types.content_format import ContentFormat
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.message_status import MessageStatus
 from aleph.web.controllers.messages import message_matches_filters
@@ -965,3 +966,171 @@ async def test_owners_filter_ws_logic(owners_test_messages):
     query = WsMessageQueryParams(addresses=["owner1"])
     assert message_matches_filters(msg1_aleph, query) is False
     assert message_matches_filters(msg3_aleph, query) is True
+
+
+@pytest.mark.asyncio
+async def test_content_format_headers_per_type(
+    fixture_messages: Sequence[Dict[str, Any]], ccn_api_client
+):
+    """contentFormat=headers returns the reduced per-type content subset."""
+    response = await ccn_api_client.get(
+        MESSAGES_URI, params={"contentFormat": "headers"}
+    )
+    assert response.status == 200, await response.text()
+    data = await response.json()
+
+    by_hash = {m["item_hash"]: m for m in data["messages"]}
+    assert len(by_hash) == len(fixture_messages)
+
+    for original in fixture_messages:
+        msg = by_hash[original["item_hash"]]
+        content = msg["content"]
+        msg_type = original["type"]
+
+        # address always present (sourced from the owner column)
+        assert content["address"] == original["content"]["address"]
+        # heavy nested user payload is never present in headers mode
+        assert "content" not in content
+        # content.time is intentionally omitted; top-level time still present
+        assert "time" not in content
+        assert "time" in msg
+
+        if msg_type == "POST":
+            assert content.get("type") == original["content"].get("type")
+            assert set(content.keys()) <= {"address", "type", "ref"}
+        elif msg_type == "AGGREGATE":
+            assert content["key"] == original["content"]["key"]
+            assert set(content.keys()) == {"address", "key"}
+        elif msg_type == "STORE":
+            assert content["item_hash"] == original["content"]["item_hash"]
+            assert set(content.keys()) <= {"address", "item_hash", "ref"}
+        elif msg_type == "FORGET":
+            assert set(content.keys()) == {"address"}
+
+
+@pytest.mark.asyncio
+async def test_content_format_none_matches_exclude_content(
+    fixture_messages: Sequence[Dict[str, Any]], ccn_api_client
+):
+    """contentFormat=none drops content just like excludeContent=true."""
+    response = await ccn_api_client.get(MESSAGES_URI, params={"contentFormat": "none"})
+    assert response.status == 200, await response.text()
+    data = await response.json()
+    assert len(data["messages"]) == len(fixture_messages)
+    for msg in data["messages"]:
+        assert "content" not in msg
+        assert "item_hash" in msg
+
+
+@pytest.mark.asyncio
+async def test_content_format_full_is_default(
+    fixture_messages: Sequence[Dict[str, Any]], ccn_api_client
+):
+    """contentFormat=full returns the complete content (same as no param)."""
+    response = await ccn_api_client.get(MESSAGES_URI, params={"contentFormat": "full"})
+    assert response.status == 200, await response.text()
+    data = await response.json()
+    for msg in data["messages"]:
+        assert "content" in msg
+        # a full content carries the nested time field
+        assert "time" in msg["content"]
+
+
+@pytest.mark.asyncio
+async def test_content_format_headers_cursor_pagination(
+    fixture_messages: Sequence[Dict[str, Any]], ccn_api_client
+):
+    """headers mode works in the cursor-pagination branch."""
+    # A (non-None) empty cursor activates cursor mode starting from the most
+    # recent message, so this actually exercises the cursor query path.
+    response = await ccn_api_client.get(
+        MESSAGES_URI,
+        params={"contentFormat": "headers", "pagination": "2", "cursor": ""},
+    )
+    assert response.status == 200, await response.text()
+    data = await response.json()
+    # Cursor-mode response shape: next_cursor instead of pagination_total.
+    assert "next_cursor" in data
+    assert "pagination_total" not in data
+    assert len(data["messages"]) <= 2
+    for msg in data["messages"]:
+        assert "address" in msg["content"]
+        assert "content" not in msg["content"]
+
+    # Follow the cursor to the next page and confirm headers mode persists.
+    if data["next_cursor"]:
+        response2 = await ccn_api_client.get(
+            MESSAGES_URI,
+            params={
+                "contentFormat": "headers",
+                "pagination": "2",
+                "cursor": data["next_cursor"],
+            },
+        )
+        assert response2.status == 200, await response2.text()
+        data2 = await response2.json()
+        for msg in data2["messages"]:
+            assert "address" in msg["content"]
+            assert "content" not in msg["content"]
+
+
+@pytest.mark.asyncio
+async def test_content_format_invalid_returns_422(
+    fixture_messages: Sequence[Dict[str, Any]], ccn_api_client
+):
+    response = await ccn_api_client.get(MESSAGES_URI, params={"contentFormat": "bogus"})
+    assert response.status == 422, await response.text()
+
+
+@pytest.mark.asyncio
+async def test_content_format_ws_history_none(
+    fixture_messages: Sequence[Dict[str, Any]],
+    session_factory: DbSessionFactory,
+):
+    """_send_history_to_ws with contentFormat=none strips content."""
+    from unittest.mock import AsyncMock
+
+    from aleph.web.controllers.messages import _send_history_to_ws
+
+    ws = AsyncMock()
+    history = len(fixture_messages)
+    query_params = WsMessageQueryParams(
+        history=history, contentFormat=ContentFormat.NONE
+    )
+    await _send_history_to_ws(
+        ws=ws,
+        session_factory=session_factory,
+        history=history,
+        query_params=query_params,
+    )
+    assert ws.send_str.call_count == len(fixture_messages)
+    for call in ws.send_str.call_args_list:
+        payload = json.loads(call.args[0])
+        assert "content" not in payload
+
+
+@pytest.mark.asyncio
+async def test_content_format_ws_history_headers_degrades_to_none(
+    fixture_messages: Sequence[Dict[str, Any]],
+    session_factory: DbSessionFactory,
+):
+    """WS does not support headers; it degrades to none (content stripped)."""
+    from unittest.mock import AsyncMock
+
+    from aleph.web.controllers.messages import _send_history_to_ws
+
+    ws = AsyncMock()
+    history = len(fixture_messages)
+    query_params = WsMessageQueryParams(
+        history=history, contentFormat=ContentFormat.HEADERS
+    )
+    await _send_history_to_ws(
+        ws=ws,
+        session_factory=session_factory,
+        history=history,
+        query_params=query_params,
+    )
+    assert ws.send_str.call_count == len(fixture_messages)
+    for call in ws.send_str.call_args_list:
+        payload = json.loads(call.args[0])
+        assert "content" not in payload

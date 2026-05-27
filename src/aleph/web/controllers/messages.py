@@ -1,12 +1,12 @@
 import asyncio
 import json
 import logging
-from typing import Any, Dict, Iterable, List, Optional, Set
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 import aio_pika.abc
 import aiohttp.web_ws
 from aiohttp import WSCloseCode, WSMsgType, web
-from aleph_message.models import ItemHash
+from aleph_message.models import ItemHash, MessageType
 from configmanager import Config
 from pydantic import ValidationError
 from sqlalchemy.orm import defer
@@ -47,6 +47,7 @@ from aleph.schemas.messages_query_params import (
 )
 from aleph.services.cache.node_cache import NodeCache
 from aleph.toolkit.cursor import decode_message_cursor, encode_message_cursor
+from aleph.types.content_format import ContentFormat
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_status import MessageStatus, RemovedMessageReason
 from aleph.web.controllers.app_state_getters import (
@@ -290,13 +291,43 @@ class MessageBroadcaster:
             return False
 
 
+# Per-type reduced "headers" content: (output key in content, MessageDb attribute).
+# `address` is emitted for every type from the `owner` column and is handled
+# separately. All source attributes are denormalized columns, so building the
+# reduced content never touches the (deferred) content JSONB.
+_HEADERS_FIELDS: Dict[MessageType, List[Tuple[str, str]]] = {
+    MessageType.post: [("type", "content_type"), ("ref", "content_ref")],
+    MessageType.aggregate: [("key", "content_key")],
+    MessageType.store: [("item_hash", "content_item_hash"), ("ref", "content_ref")],
+    MessageType.program: [],
+    MessageType.instance: [],
+    MessageType.forget: [],
+}
+
+
+def build_headers_content(message: MessageDb) -> Dict[str, Any]:
+    """Reduced ``content`` for ``contentFormat=headers``, built from columns.
+
+    `address` is always included (from ``owner``); the per-type fields in
+    ``_HEADERS_FIELDS`` are included when their column value is not ``None``.
+    """
+    content: Dict[str, Any] = {"address": message.owner}
+    for output_key, attr in _HEADERS_FIELDS.get(message.type, []):
+        value = getattr(message, attr)
+        if value is not None:
+            content[output_key] = value
+    return content
+
+
 def message_to_dict(
-    message: MessageDb, exclude_content: bool = False
+    message: MessageDb, content_format: ContentFormat = ContentFormat.FULL
 ) -> Dict[str, Any]:
-    if exclude_content:
-        message_dict = message.to_dict(exclude={"content"})
-    else:
+    if content_format == ContentFormat.FULL:
         message_dict = message.to_dict()
+    else:
+        message_dict = message.to_dict(exclude={"content"})
+        if content_format == ContentFormat.HEADERS:
+            message_dict["content"] = build_headers_content(message)
     message_dict["time"] = message.time.timestamp()
     confirmations = [
         {"chain": c.chain, "hash": c.hash, "height": c.height}
@@ -329,11 +360,10 @@ def format_response(
     pagination: int,
     page: int,
     total_messages: int,
-    exclude_content: bool = False,
+    content_format: ContentFormat = ContentFormat.FULL,
 ) -> web.Response:
     formatted_messages = [
-        message_to_dict(message, exclude_content=exclude_content)
-        for message in messages
+        message_to_dict(message, content_format=content_format) for message in messages
     ]
 
     response = format_response_dict(
@@ -442,10 +472,25 @@ async def view_messages_list(request: web.Request) -> web.Response:
           default: 0
       - name: excludeContent
         in: query
+        deprecated: true
         schema:
           type: boolean
           default: false
-        description: If true, omit the 'content' field from each message.
+        description: >-
+          Deprecated: use contentFormat=none. If true (and contentFormat is not
+          set), omit the 'content' field from each message.
+      - name: contentFormat
+        in: query
+        schema:
+          type: string
+          enum: [full, headers, none]
+          default: full
+        description: >-
+          Level of content detail. 'full' (default) returns the complete
+          content. 'headers' returns a reduced per-type metadata subset
+          (address; plus type/ref for POST, key for AGGREGATE, item_hash/ref for
+          STORE) without reading the content JSONB. 'none' omits content
+          entirely. Takes precedence over excludeContent.
       - name: pagination
         in: query
         schema:
@@ -481,7 +526,10 @@ async def view_messages_list(request: web.Request) -> web.Response:
 
     find_filters = query_params.model_dump(exclude_none=True)
 
-    exclude_content = find_filters.pop("exclude_content", False)
+    content_format: ContentFormat = query_params.content_format or ContentFormat.FULL
+    # Both keys are consumed here; neither is a query filter.
+    find_filters.pop("content_format", None)
+    find_filters.pop("exclude_content", None)
     pagination_per_page = query_params.pagination
     cursor = find_filters.pop("cursor", None)
 
@@ -506,7 +554,7 @@ async def view_messages_list(request: web.Request) -> web.Response:
             **find_filters,
         )
 
-        if exclude_content:
+        if content_format != ContentFormat.FULL:
             messages_query = messages_query.options(defer(MessageDb.content))
 
         with session_factory() as session:
@@ -517,7 +565,7 @@ async def view_messages_list(request: web.Request) -> web.Response:
             messages = messages[:pagination_per_page]
 
         formatted = [
-            message_to_dict(m, exclude_content=exclude_content) for m in messages
+            message_to_dict(m, content_format=content_format) for m in messages
         ]
         next_cursor = None
         if has_more and messages:
@@ -541,7 +589,7 @@ async def view_messages_list(request: web.Request) -> web.Response:
             messages_query = make_matching_messages_query(
                 include_confirmations=True, **find_filters
             )
-            if exclude_content:
+            if content_format != ContentFormat.FULL:
                 messages_query = messages_query.options(defer(MessageDb.content))
             messages = list(session.execute(messages_query).scalars())
 
@@ -558,7 +606,7 @@ async def view_messages_list(request: web.Request) -> web.Response:
             pagination=pagination_per_page,
             page=pagination_page,
             total_messages=total_msgs,
-            exclude_content=exclude_content,
+            content_format=content_format,
         )
 
 
@@ -569,21 +617,28 @@ async def _send_history_to_ws(
     query_params: WsMessageQueryParams,
 ) -> None:
     find_filters = query_params.model_dump(exclude_none=True)
-    exclude_content = find_filters.pop("exclude_content", False)
+    content_format: ContentFormat = query_params.content_format or ContentFormat.FULL
+    find_filters.pop("content_format", None)
+    find_filters.pop("exclude_content", None)
+
+    # The websocket payload supports two states only: content present or absent.
+    # `headers` is not implemented here, so it degrades to `none`.
+    if content_format == ContentFormat.HEADERS:
+        content_format = ContentFormat.NONE
 
     messages_query = make_matching_messages_query(
         pagination=history,
         include_confirmations=True,
         **find_filters,
     )
-    if exclude_content:
+    if content_format != ContentFormat.FULL:
         messages_query = messages_query.options(defer(MessageDb.content))
 
     with session_factory() as session:
         messages = list(session.execute(messages_query).scalars())
 
     for message in reversed(messages):
-        msg_dict = message_to_dict(message, exclude_content=exclude_content)
+        msg_dict = message_to_dict(message, content_format=content_format)
         await ws.send_str(aleph_json.dumps(msg_dict).decode("utf-8"))
 
 
@@ -686,7 +741,9 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
                 LOGGER.info("Could not send history, aborting message websocket")
                 return ws
 
-        client = _WsClient(ws, query_params, query_params.exclude_content)
+        client = _WsClient(
+            ws, query_params, query_params.content_format != ContentFormat.FULL
+        )
         await broadcaster.add(client)
 
         try:
