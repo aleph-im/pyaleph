@@ -19,6 +19,7 @@ from aleph_message.models import ItemHash, ItemType, PaymentType, StoreContent
 from aleph.config import get_config
 from aleph.db.accessors.files import (
     delete_file_pin,
+    get_file,
     get_file_tag,
     get_message_file_pin,
     insert_grace_period_file_pin,
@@ -308,9 +309,17 @@ class StoreMessageHandler(ContentHandler):
         engine = content.item_type
         # Initially only do that balance pre-check for ipfs files.
         if engine == ItemType.ipfs and ipfs_enabled:
-            ipfs_byte_size = await self.storage_service.ipfs_service.get_ipfs_size(
-                content.item_hash
-            )
+            # If we already have the file locally (e.g. from a prior add_file
+            # or add_car upload on this node), use the stored size instead of
+            # asking kubo. Avoids a redundant dag.get round-trip and the
+            # rejection risk when the daemon is busy right after upload.
+            stored_file = get_file(session, content.item_hash)
+            if stored_file is not None:
+                ipfs_byte_size: int | None = stored_file.size
+            else:
+                ipfs_byte_size = await self.storage_service.ipfs_service.get_ipfs_size(
+                    content.item_hash
+                )
             if ipfs_byte_size:
                 storage_mib = Decimal(ipfs_byte_size / MiB)
 
