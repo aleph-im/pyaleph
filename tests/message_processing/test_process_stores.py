@@ -460,7 +460,7 @@ async def test_pre_check_balance_small_ipfs_file(mocker, session_factory, mock_c
 
         # Verify that get_ipfs_size was called with correct hash
         ipfs_service.get_ipfs_size.assert_called_once_with(
-            "QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ"
+            "QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ", timeout=30, tries=3
         )
 
 
@@ -515,7 +515,7 @@ async def test_pre_check_balance_large_ipfs_file_insufficient_balance(
 
         # Verify that get_ipfs_size was called with correct hash
         ipfs_service.get_ipfs_size.assert_called_once_with(
-            "QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ"
+            "QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ", timeout=30, tries=3
         )
 
 
@@ -579,7 +579,7 @@ async def test_pre_check_balance_large_ipfs_file_sufficient_balance(
 
         # Verify that get_ipfs_size was called with correct hash
         ipfs_service.get_ipfs_size.assert_called_once_with(
-            "QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ"
+            "QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ", timeout=30, tries=3
         )
 
 
@@ -707,7 +707,7 @@ async def test_pre_check_balance_ipfs_size_none(mocker, session_factory, mock_co
 
         # Verify that get_ipfs_size was called with correct hash
         ipfs_service.get_ipfs_size.assert_called_once_with(
-            "QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ"
+            "QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ", timeout=30, tries=3
         )
 
 
@@ -805,7 +805,7 @@ async def test_pre_check_balance_with_existing_costs(
 
             # Verify that get_ipfs_size was called with correct hash
             ipfs_service.get_ipfs_size.assert_called_once_with(
-                "QmacDVDroxPVY1enhckVco1rTBziwC8hjf731apEKr3QoG"
+                "QmacDVDroxPVY1enhckVco1rTBziwC8hjf731apEKr3QoG", timeout=30, tries=3
             )
 
 
