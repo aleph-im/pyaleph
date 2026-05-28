@@ -205,6 +205,7 @@ class IpfsService:
                     raise FileUnavailable(
                         hash, "could not retrieve IPFS content at this time"
                     )
+                continue
             except (
                 concurrent.futures.CancelledError,
                 aiohttp.client_exceptions.ClientConnectorError,

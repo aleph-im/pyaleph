@@ -205,15 +205,11 @@ async def test_get_ipfs_size_timeout_error():
 
     service = IpfsService(ipfs_client=ipfs_client)
 
+    # A single try should raise FileUnavailable immediately on timeout.
     with pytest.raises(FileUnavailable):
-        # Mock asyncio.sleep to not actually sleep during test
-        with patch("asyncio.sleep", new_callable=AsyncMock):
-            # Execute
-            result = await service.get_ipfs_size("test_hash")
+        await service.get_ipfs_size("test_hash")
 
-        # Assert
-        assert result is None
-        ipfs_client.dag.get.assert_called_once_with("test_hash")
+    ipfs_client.dag.get.assert_called_once_with("test_hash")
 
 
 @pytest.mark.asyncio
