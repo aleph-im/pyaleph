@@ -199,9 +199,11 @@ class IpfsService:
                 await asyncio.sleep(0.5)
                 continue
             except asyncio.TimeoutError:
-                raise FileUnavailable(
-                    hash, "could not retrieve IPFS content at this time"
-                )
+                if try_count >= tries:
+                    raise FileUnavailable(
+                        hash, "could not retrieve IPFS content at this time"
+                    )
+                await asyncio.sleep(0.5)
             except (
                 concurrent.futures.CancelledError,
                 aiohttp.client_exceptions.ClientConnectorError,

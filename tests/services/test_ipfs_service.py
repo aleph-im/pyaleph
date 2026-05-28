@@ -217,6 +217,22 @@ async def test_get_ipfs_size_timeout_error():
 
 
 @pytest.mark.asyncio
+async def test_get_ipfs_size_timeout_error_multiple_tries():
+    """Timeouts should retry up to `tries` times before raising FileUnavailable."""
+    ipfs_client = AsyncMock()
+    ipfs_client.dag.get = AsyncMock(side_effect=asyncio.TimeoutError())
+
+    service = IpfsService(ipfs_client=ipfs_client)
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        with pytest.raises(FileUnavailable):
+            await service.get_ipfs_size("test_hash", tries=3)
+
+    # Should have attempted exactly `tries` times before giving up
+    assert ipfs_client.dag.get.call_count == 3
+
+
+@pytest.mark.asyncio
 async def test_get_ipfs_size_cancelled_error():
     """Test handling of CancelledError"""
     # Setup
