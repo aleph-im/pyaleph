@@ -199,11 +199,12 @@ class IpfsService:
                 await asyncio.sleep(0.5)
                 continue
             except asyncio.TimeoutError:
+                # A timeout already consumed the full `timeout` budget, so it is
+                # its own backoff: retry immediately, or give up once exhausted.
                 if try_count >= tries:
                     raise FileUnavailable(
                         hash, "could not retrieve IPFS content at this time"
                     )
-                await asyncio.sleep(0.5)
             except (
                 concurrent.futures.CancelledError,
                 aiohttp.client_exceptions.ClientConnectorError,
