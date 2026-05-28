@@ -268,6 +268,15 @@ def get_defaults():
             },
             # Timeout for file stat requests (seconds)
             "stat_timeout": 30,
+            # Randomized delay (in seconds, drawn uniformly from [0, value]) before
+            # an IPFS file fetch starts, to spread the thundering herd of CCNs
+            # pulling a newly-announced CID from the origin. A small non-zero
+            # default flattens the burst across the ~90-node fleet without
+            # materially delaying message processing — 5s gives ~18 starts/sec
+            # spread instead of all-at-once, and is negligible against typical
+            # multi-second pin durations. Set to 0 to disable; raise to 30-60
+            # for very large fleets or aggressively bursty workloads.
+            "fetch_jitter_seconds": 5,
         },
         "rabbitmq": {
             # Hostname of the RabbitMQ service.

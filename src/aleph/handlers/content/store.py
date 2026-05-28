@@ -8,6 +8,7 @@ TODO:
 import asyncio
 import datetime as dt
 import logging
+import random
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import List, Set
@@ -124,6 +125,21 @@ async def _get_file_stats_from_ipfs(
         raise
 
 
+async def _apply_fetch_jitter(window_seconds: float, file_hash: str) -> None:
+    """Wait a randomized delay before starting an IPFS fetch.
+
+    Spreads the simultaneous fetch attempts from many CCNs receiving the same
+    STORE message into a rolling wave so early fetchers can become reseeders for
+    later ones before the origin's uplink is saturated. A no-op when the window
+    is zero, so the behaviour is opt-in via ``ipfs.fetch_jitter_seconds``.
+    """
+    if window_seconds <= 0:
+        return
+    delay = random.uniform(0, window_seconds)
+    LOGGER.info("ipfs_fetch_jitter hash=%s delay=%.2f", file_hash, delay)
+    await asyncio.sleep(delay)
+
+
 def _should_pin_on_ipfs(
     file_stats: IpfsFileStats,
     min_file_size_for_pinning: int,
@@ -185,6 +201,7 @@ class StoreMessageHandler(ContentHandler):
 
         # For CIDs, pin directories and files > 1MiB
         if item_type == ItemType.ipfs:
+            await _apply_fetch_jitter(config.ipfs.fetch_jitter_seconds.value, file_hash)
             ipfs_service = self.storage_service.ipfs_service
 
             file_stats = await _get_file_stats_from_ipfs(

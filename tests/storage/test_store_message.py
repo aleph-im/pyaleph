@@ -9,7 +9,7 @@ from message_test_helpers import make_validated_message_from_dict
 from sqlalchemy import select
 
 from aleph.db.models import MessageDb, StoredFileDb
-from aleph.handlers.content.store import StoreMessageHandler
+from aleph.handlers.content.store import StoreMessageHandler, _apply_fetch_jitter
 from aleph.schemas.message_content import ContentSource, RawContent
 from aleph.services.ipfs import IpfsService
 from aleph.storage import StorageService
@@ -25,6 +25,24 @@ from aleph.toolkit.metrics_keys import (
 )
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.files import FileType
+
+
+@pytest.mark.asyncio
+async def test_apply_fetch_jitter_skipped_when_zero(mocker):
+    """fetch_jitter_seconds=0 disables jitter and does not sleep."""
+    sleep_mock = mocker.patch("asyncio.sleep", new_callable=mocker.AsyncMock)
+    await _apply_fetch_jitter(0, "abc")
+    sleep_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_apply_fetch_jitter_sleeps_within_window(mocker):
+    """fetch_jitter_seconds>0 sleeps for a delay drawn from [0, window]."""
+    sleep_mock = mocker.patch("asyncio.sleep", new_callable=mocker.AsyncMock)
+    await _apply_fetch_jitter(30.0, "abc")
+    sleep_mock.assert_called_once()
+    delay = sleep_mock.call_args.args[0]
+    assert 0.0 <= delay <= 30.0
 
 
 def test_store_fetch_keys_differentiate_by_type():
