@@ -199,7 +199,9 @@ class IpfsService:
                 await asyncio.sleep(0.5)
                 continue
             except asyncio.TimeoutError:
-                raise FileUnavailable("Could not retrieve IPFS content at this time")
+                raise FileUnavailable(
+                    hash, "could not retrieve IPFS content at this time"
+                )
             except (
                 concurrent.futures.CancelledError,
                 aiohttp.client_exceptions.ClientConnectorError,
@@ -306,12 +308,10 @@ class IpfsService:
                 tick_timeout -= 1
                 if tick_timeout == 0:
                     if progress is None:
-                        details = "file not found"
+                        reason = "file not found"
                     else:
-                        details = "could not fetch some blocks"
-                    raise FileUnavailable(
-                        f"Could not pin IPFS content at this time ({details})"
-                    )
+                        reason = "could not fetch some blocks"
+                    raise FileUnavailable(cid, f"could not pin IPFS content: {reason}")
             else:
                 # Reset the timeout counter if there is some measure of progress
                 tick_timeout = timeout * 2

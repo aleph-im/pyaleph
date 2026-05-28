@@ -168,8 +168,13 @@ class FileNotFoundException(RetryMessageException):
     on the network.
     """
 
-    def __init__(self, file_hash: str):
-        super().__init__(f"File not found: {file_hash}")
+    def __init__(self, file_hash: str, details: Optional[str] = None):
+        message = f"File not found: {file_hash}"
+        if details:
+            message = f"{message} ({details})"
+        super().__init__(message)
+        self.file_hash = file_hash
+        self.details = details
 
 
 class MessageContentUnavailable(FileNotFoundException):

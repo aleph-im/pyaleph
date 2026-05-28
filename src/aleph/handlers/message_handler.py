@@ -108,7 +108,9 @@ class BaseMessageHandler:
         except (ContentCurrentlyUnavailable, Exception) as e:
             if not isinstance(e, ContentCurrentlyUnavailable):
                 LOGGER.exception("Can't get content of object %s" % item_hash)
-            raise MessageContentUnavailable(f"Could not fetch content for {item_hash}")
+            raise MessageContentUnavailable(
+                item_hash, "could not fetch message content"
+            )
 
         try:
             validated_message = MessageDb.from_pending_message(

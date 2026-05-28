@@ -92,7 +92,9 @@ async def _get_file_stats_from_ipfs(
         except aioipfs.InvalidCIDError as e:
             raise UnknownHashError(f"Invalid IPFS hash from API: '{cid}'") from e
         if stats is None:
-            raise FileUnavailable("Could not retrieve IPFS file stats at this time")
+            raise FileUnavailable(
+                str(cid), "could not retrieve IPFS file stats at this time"
+            )
 
         if stats["Type"] == "file":
             is_folder = False
@@ -114,7 +116,8 @@ async def _get_file_stats_from_ipfs(
             getattr(error, "message", None),
         )
         raise FileUnavailable(
-            f"Timeout ({stat_timeout}s) while retrieving stats of hash {cid}: {getattr(error, 'message', None)}"
+            str(cid),
+            f"timeout {stat_timeout}s retrieving IPFS file stats: {getattr(error, 'message', None)}",
         )
 
     except aioipfs.APIError as error:
@@ -268,7 +271,9 @@ class StoreMessageHandler(ContentHandler):
                 item_type,
                 timer.elapsed(),
             )
-            raise FileUnavailable("Could not retrieve file from storage at this time")
+            raise FileUnavailable(
+                file_hash, "could not retrieve file from storage at this time"
+            )
 
         await self.storage_service.node_cache.incrby(
             duration_key, round(timer.elapsed() * 1000)
@@ -318,7 +323,9 @@ class StoreMessageHandler(ContentHandler):
                 ipfs_byte_size: int | None = stored_file.size
             else:
                 ipfs_byte_size = await self.storage_service.ipfs_service.get_ipfs_size(
-                    content.item_hash
+                    content.item_hash,
+                    timeout=config.ipfs.stat_timeout.value,
+                    tries=3,
                 )
             if ipfs_byte_size:
                 storage_mib = Decimal(ipfs_byte_size / MiB)
