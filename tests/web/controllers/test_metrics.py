@@ -22,7 +22,6 @@ def test_format_dict_for_prometheus():
 
 
 def test_format_dataclass_for_prometheus() -> None:
-
     @dataclass
     class Simple:
         a: int
@@ -81,5 +80,11 @@ def test_metrics():
         "pyaleph_ws_messages_broadcast_total 0\n"
         "pyaleph_ws_messages_connections_rejected_total 0\n"
         "pyaleph_ws_status_connections_rejected_total 0\n"
-        "pyaleph_ws_broadcaster_consumer_restarts_total 0"
+        "pyaleph_ws_broadcaster_consumer_restarts_total 0\n"
+        "pyaleph_store_fetch_ipfs_total 0\n"
+        "pyaleph_store_fetch_ipfs_failed_total 0\n"
+        "pyaleph_store_fetch_ipfs_duration_ms_sum 0\n"
+        "pyaleph_store_fetch_storage_total 0\n"
+        "pyaleph_store_fetch_storage_failed_total 0\n"
+        "pyaleph_store_fetch_storage_duration_ms_sum 0"
     )

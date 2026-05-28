@@ -16,6 +16,14 @@ from aleph.db.accessors.chains import get_last_height
 from aleph.db.accessors.messages import count_matching_messages_fast
 from aleph.db.models import FilePinDb, PeerDb, PendingMessageDb, PendingTxDb
 from aleph.services.cache.node_cache import NodeCache
+from aleph.toolkit.metrics_keys import (
+    STORE_FETCH_IPFS_DURATION_MS_SUM_KEY,
+    STORE_FETCH_IPFS_FAILED_KEY,
+    STORE_FETCH_IPFS_TOTAL_KEY,
+    STORE_FETCH_STORAGE_DURATION_MS_SUM_KEY,
+    STORE_FETCH_STORAGE_FAILED_KEY,
+    STORE_FETCH_STORAGE_TOTAL_KEY,
+)
 from aleph.types.chain_sync import ChainEventType
 from aleph.types.db_session import DbSessionFactory
 from aleph.version import __version__
@@ -117,6 +125,12 @@ class Metrics(DataClassJsonMixin):
     pyaleph_ws_messages_connections_rejected_total: int = 0
     pyaleph_ws_status_connections_rejected_total: int = 0
     pyaleph_ws_broadcaster_consumer_restarts_total: int = 0
+    pyaleph_store_fetch_ipfs_total: int = 0
+    pyaleph_store_fetch_ipfs_failed_total: int = 0
+    pyaleph_store_fetch_ipfs_duration_ms_sum: int = 0
+    pyaleph_store_fetch_storage_total: int = 0
+    pyaleph_store_fetch_storage_failed_total: int = 0
+    pyaleph_store_fetch_storage_duration_ms_sum: int = 0
 
 
 pyaleph_build_info = BuildInfo(
@@ -262,6 +276,24 @@ async def get_metrics_with_ws(
     )
     metrics.pyaleph_ws_status_connections_rejected_total = await _read_int_key(
         node_cache, _WS_STATUS_CONNECTIONS_REJECTED_KEY
+    )
+    metrics.pyaleph_store_fetch_ipfs_total = await _read_int_key(
+        node_cache, STORE_FETCH_IPFS_TOTAL_KEY
+    )
+    metrics.pyaleph_store_fetch_ipfs_failed_total = await _read_int_key(
+        node_cache, STORE_FETCH_IPFS_FAILED_KEY
+    )
+    metrics.pyaleph_store_fetch_ipfs_duration_ms_sum = await _read_int_key(
+        node_cache, STORE_FETCH_IPFS_DURATION_MS_SUM_KEY
+    )
+    metrics.pyaleph_store_fetch_storage_total = await _read_int_key(
+        node_cache, STORE_FETCH_STORAGE_TOTAL_KEY
+    )
+    metrics.pyaleph_store_fetch_storage_failed_total = await _read_int_key(
+        node_cache, STORE_FETCH_STORAGE_FAILED_KEY
+    )
+    metrics.pyaleph_store_fetch_storage_duration_ms_sum = await _read_int_key(
+        node_cache, STORE_FETCH_STORAGE_DURATION_MS_SUM_KEY
     )
 
     # Config-value gauges: same on every worker, read from the local instance.
