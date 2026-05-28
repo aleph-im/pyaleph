@@ -127,6 +127,9 @@ def _create_test_config() -> Config:
     # To test handle_new_storage
     config.storage.store_files.value = True
 
+    # Disable IPFS fetch jitter in tests so fetch_related_content does not sleep.
+    config.ipfs.fetch_jitter_seconds.value = 0
+
     return config
 
 
