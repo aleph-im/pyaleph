@@ -57,8 +57,8 @@ async def test_concurrent_add_starts_single_consumer():
     async def fake_health_loop():
         return
 
-    broadcaster._start_consumer = fake_start_consumer  # type: ignore[method-assign]
-    broadcaster._health_check_loop = fake_health_loop  # type: ignore[method-assign]
+    broadcaster._start_consumer = fake_start_consumer
+    broadcaster._health_check_loop = fake_health_loop
 
     add_task = asyncio.gather(
         broadcaster.add(_make_client()),
@@ -97,9 +97,9 @@ async def test_add_then_remove_starts_and_stops_consumer_once():
     async def fake_health_loop():
         return
 
-    broadcaster._start_consumer = fake_start_consumer  # type: ignore[method-assign]
-    broadcaster._stop_consumer = fake_stop_consumer  # type: ignore[method-assign]
-    broadcaster._health_check_loop = fake_health_loop  # type: ignore[method-assign]
+    broadcaster._start_consumer = fake_start_consumer
+    broadcaster._stop_consumer = fake_stop_consumer
+    broadcaster._health_check_loop = fake_health_loop
 
     client = _make_client()
     await asyncio.wait_for(broadcaster.add(client), timeout=1)
