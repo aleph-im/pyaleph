@@ -575,6 +575,15 @@ async def test_pagination(fixture_messages, ccn_api_client):
     response = await fetch_messages_with_pagination(ccn_api_client, pagination=-10)
     assert response.status == 422
 
+    # Non-numeric page in the path
+    response = await ccn_api_client.get(MESSAGES_PAGE_URI.format(page="abc"))
+    assert response.status == 400
+
+    # Page < 1 in the path
+    for bad_page in (0, -3):
+        response = await ccn_api_client.get(MESSAGES_PAGE_URI.format(page=bad_page))
+        assert response.status == 422, await response.text()
+
 
 @pytest.mark.asyncio()
 @pytest.mark.parametrize("sort_order", [-1, 1])

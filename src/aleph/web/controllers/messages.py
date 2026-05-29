@@ -58,6 +58,7 @@ from aleph.web.controllers.app_state_getters import (
 )
 from aleph.web.controllers.utils import (
     get_item_hash_from_request,
+    get_path_page,
     mq_make_aleph_message_topic_queue,
     validate_cursor_pagination,
 )
@@ -521,8 +522,8 @@ async def view_messages_list(request: web.Request) -> web.Response:
 
     # If called from the messages/page/{page}.json endpoint, override the page
     # parameters with the URL one
-    if url_page_param := request.match_info.get("page"):
-        query_params.page = int(url_page_param)
+    if (url_page := get_path_page(request)) is not None:
+        query_params.page = url_page
 
     find_filters = query_params.model_dump(exclude_none=True)
 
