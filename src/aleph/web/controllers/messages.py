@@ -107,6 +107,11 @@ class MessageBroadcaster:
         self._queue: Optional[aio_pika.abc.AbstractQueue] = None
         self._consumer_tag: Optional[aio_pika.abc.ConsumerTag] = None
         self._health_task: Optional[asyncio.Task] = None
+        # Serializes the consumer lifecycle (start/stop/restart). Without it,
+        # two clients connecting concurrently could both observe
+        # _consumer_tag is None and each start a consumer, binding a second
+        # queue to processed.* so every message gets fanned out more than once.
+        self._consumer_lock = asyncio.Lock()
 
         # Connection limit (same on every worker — from config).
         self.max_connections: int = config.websocket.max_message_connections.value
@@ -166,11 +171,12 @@ class MessageBroadcaster:
         """Restart the consumer after a channel failure."""
         await self._node_cache.incr(WS_BROADCASTER_CONSUMER_RESTARTS_KEY)
         LOGGER.warning("MessageBroadcaster: restarting consumer")
-        await self._stop_consumer()
-        try:
-            await self._start_consumer()
-        except Exception:
-            LOGGER.exception("MessageBroadcaster: failed to restart consumer")
+        async with self._consumer_lock:
+            await self._stop_consumer()
+            try:
+                await self._start_consumer()
+            except Exception:
+                LOGGER.exception("MessageBroadcaster: failed to restart consumer")
 
     async def _health_check_loop(self):
         """Periodic health check that restarts the consumer if the channel dies."""
@@ -189,10 +195,14 @@ class MessageBroadcaster:
             return
         self._clients.add(client)
         await self._node_cache.incr(WS_MESSAGES_CONNECTIONS_ACTIVE_KEY)
-        if self._consumer_tag is None:
-            await self._start_consumer()
-        if self._health_task is None or self._health_task.done():
-            self._health_task = asyncio.create_task(self._health_check_loop())
+        # Start the shared consumer and health task exactly once, even when
+        # many clients connect concurrently. The lock makes the
+        # check-and-start atomic so a second queue is never bound.
+        async with self._consumer_lock:
+            if self._consumer_tag is None:
+                await self._start_consumer()
+            if self._health_task is None or self._health_task.done():
+                self._health_task = asyncio.create_task(self._health_check_loop())
 
     async def remove(self, client: _WsClient):
         # Guard against double-remove: Redis DECR must be idempotent-safe.
@@ -204,14 +214,16 @@ class MessageBroadcaster:
             if self._health_task and not self._health_task.done():
                 self._health_task.cancel()
                 self._health_task = None
-            await self._stop_consumer()
+            async with self._consumer_lock:
+                await self._stop_consumer()
 
     async def shutdown(self):
         """Graceful shutdown — called from aiohttp on_cleanup."""
         if self._health_task and not self._health_task.done():
             self._health_task.cancel()
             self._health_task = None
-        await self._stop_consumer()
+        async with self._consumer_lock:
+            await self._stop_consumer()
         # Decrement the shared active counter once per client this worker
         # owned, so the Redis value reflects only clients still connected
         # through other workers.
