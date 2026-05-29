@@ -1,6 +1,7 @@
 import asyncio
 import datetime as dt
 import logging
+import random
 from typing import Dict, Optional, Union
 
 import aio_pika
@@ -85,15 +86,20 @@ def compute_next_retry_interval(attempts: int) -> dt.timedelta:
     """
     Computes the time interval for the next attempt/retry of a message.
 
-    The interval is computed as 2^attempts and is capped at 5 minutes.
-    The maximum amount of retries is controlled in the node configuration.
+    Uses exponential backoff with full jitter: the interval is drawn
+    uniformly from ``[0, min(2**attempts, MAX_RETRY_INTERVAL)]`` seconds.
+    The jitter decorrelates the next-attempt time across nodes that failed
+    the same attempt at roughly the same moment, so a retry storm does not
+    re-converge into the same instant. The maximum number of retries is
+    controlled in the node configuration.
 
     :param attempts: Current number of attempts.
     :return: The time interval between the previous processing attempt and the next one.
     """
 
-    seconds = 2**attempts
-    return dt.timedelta(seconds=min(seconds, MAX_RETRY_INTERVAL))
+    cap = min(2**attempts, MAX_RETRY_INTERVAL)
+    seconds = random.uniform(0, cap)
+    return dt.timedelta(seconds=seconds)
 
 
 def schedule_next_attempt(
@@ -221,7 +227,6 @@ class MessageJob(MqWatcher):
         pending_message: PendingMessageDb,
         exception: BaseException,
     ) -> Union[RejectedMessage, WillRetryMessage]:
-
         # Assume if the error_code attribute exists, get it, but if not assign to general Internal Error code.
         error_code = (
             exception.error_code
