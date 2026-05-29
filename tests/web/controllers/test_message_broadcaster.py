@@ -109,3 +109,55 @@ async def test_add_then_remove_starts_and_stops_consumer_once():
     await asyncio.wait_for(broadcaster.remove(client), timeout=1)
     assert stop_calls == 1
     assert broadcaster._consumer_tag is None
+
+
+@pytest.mark.asyncio
+async def test_restart_consumer_concurrent_with_add_does_not_deadlock():
+    """A channel-failure restart and a concurrent add() both take the consumer
+    lock; they must serialize without deadlocking and leave one live consumer.
+    """
+    broadcaster = _make_broadcaster()
+
+    start_calls = 0
+    stop_calls = 0
+    enter_start = asyncio.Event()
+    release_start = asyncio.Event()
+
+    async def fake_start_consumer():
+        nonlocal start_calls
+        start_calls += 1
+        # Hold the lock so the concurrent caller is forced to wait on it.
+        enter_start.set()
+        await release_start.wait()
+        broadcaster._consumer_tag = "tag"
+        broadcaster._queue = MagicMock()
+
+    async def fake_stop_consumer():
+        nonlocal stop_calls
+        stop_calls += 1
+        broadcaster._consumer_tag = None
+        broadcaster._queue = None
+
+    async def fake_health_loop():
+        return
+
+    broadcaster._start_consumer = fake_start_consumer
+    broadcaster._stop_consumer = fake_stop_consumer
+    broadcaster._health_check_loop = fake_health_loop
+
+    # Restart grabs the lock first and blocks inside _start_consumer.
+    restart_task = asyncio.create_task(broadcaster._restart_consumer())
+    await asyncio.wait_for(enter_start.wait(), timeout=1)
+
+    # add() must block on the lock rather than starting a second consumer.
+    add_task = asyncio.create_task(broadcaster.add(_make_client()))
+    await asyncio.sleep(0)
+
+    # Let the restart finish; add() then proceeds and sees the consumer is up.
+    release_start.set()
+    await asyncio.wait_for(asyncio.gather(restart_task, add_task), timeout=1)
+
+    # One restart-start; add() must not start a second consumer.
+    assert start_calls == 1
+    assert stop_calls == 1
+    assert broadcaster._consumer_tag is not None
