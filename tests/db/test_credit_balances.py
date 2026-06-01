@@ -1678,7 +1678,7 @@ def test_credit_balance_details_mixed_expiration(session_factory: DbSessionFacto
         session.commit()
 
         total, details = get_credit_balance_with_details(
-            session=session, address="0xdetails2"
+            session=session, address="0xdetails2", now=ts
         )
         assert total == 1800
         # Non-expiring first, then by expiration_date ascending
@@ -1735,7 +1735,7 @@ def test_credit_balance_details_partial_consumption(session_factory: DbSessionFa
         session.commit()
 
         total, details = get_credit_balance_with_details(
-            session=session, address="0xdetails3"
+            session=session, address="0xdetails3", now=ts
         )
         # 1000 - 700 = 300 non-expiring remaining, 500 expiring remaining
         assert total == 800
@@ -1901,7 +1901,7 @@ def test_credit_balance_details_matches_total(session_factory: DbSessionFactory)
         session.commit()
 
         total, details = get_credit_balance_with_details(
-            session=session, address="0xdetails6"
+            session=session, address="0xdetails6", now=ts
         )
         # 1000 - 1000 = 0 non-expiring, 800 - 200 = 600 exp1, 600 exp2
         assert total == 1200
