@@ -2,7 +2,7 @@ import asyncio
 import importlib.resources
 import json
 import logging
-from typing import Any, AsyncIterator, Dict, List, Literal, Self, Tuple, Union
+from typing import Any, AsyncIterator, Dict, List, Literal, Optional, Self, Tuple, Union
 
 from aleph_message.models import Chain
 from configmanager import Config
@@ -46,7 +46,7 @@ class TooManyLogsInRange(GetLogsException):
     end_block: BlockNumber | Literal["latest"]
 
 
-def make_web3_client(rpc_url: URI, chain_id: int, timeout: int) -> AsyncWeb3:
+def make_web3_client(rpc_url: URI, chain_id: int, timeout: float) -> AsyncWeb3:
     web3 = AsyncWeb3(
         AsyncHTTPProvider(
             rpc_url,
@@ -91,6 +91,14 @@ class EthereumConnector(ChainWriter):
         session_factory: DbSessionFactory,
         pending_tx_publisher: PendingTxPublisher,
         chain_data_service: ChainDataService,
+        # Parameters needed to rebuild the web3 client if it wedges on a stale
+        # connection. Safe defaults keep minimal/test constructions working: if
+        # rpc_url/chain_id/contract_address are unset, the reset path skips the
+        # rebuild (no network access) while the timeout still surfaces.
+        rpc_url: Optional[URI] = None,
+        chain_id: Optional[int] = None,
+        client_timeout: float = 60,
+        contract_address: Optional[Union[Address, ChecksumAddress, ENS]] = None,
     ):
         self.web3_client = web3_client
         self.contract = contract
@@ -101,6 +109,10 @@ class EthereumConnector(ChainWriter):
         self.session_factory = session_factory
         self.pending_tx_publisher = pending_tx_publisher
         self.chain_data_service = chain_data_service
+        self.rpc_url = rpc_url
+        self.chain_id = chain_id
+        self.client_timeout = client_timeout
+        self.contract_address = contract_address
 
         self.indexer_reader = AlephIndexerReader(
             chain=Chain.ETH,
@@ -112,8 +124,17 @@ class EthereumConnector(ChainWriter):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        # Closes the aiohttp ClientSession cached by AsyncHTTPProvider.
-        await self.web3_client.provider.disconnect()
+        # Closes the aiohttp ClientSession cached by AsyncHTTPProvider. Bound it
+        # so a wedged provider cannot hang shutdown.
+        try:
+            await asyncio.wait_for(
+                self.web3_client.provider.disconnect(),
+                timeout=self.client_timeout,
+            )
+        except Exception as exc:
+            LOGGER.warning(
+                "Could not cleanly disconnect web3 provider on exit: %s", exc
+            )
 
     @classmethod
     async def new(
@@ -123,12 +144,17 @@ class EthereumConnector(ChainWriter):
         pending_tx_publisher: PendingTxPublisher,
         chain_data_service: ChainDataService,
     ) -> Self:
+        rpc_url = config.ethereum.api_url.value
+        chain_id = config.ethereum.chain_id.value
+        client_timeout = config.ethereum.client_timeout.value
+        contract_address = config.ethereum.sync_contract.value
+
         web3_client = make_web3_client(
-            rpc_url=config.ethereum.api_url.value,
-            chain_id=config.ethereum.chain_id.value,
-            timeout=config.ethereum.client_timeout.value,
+            rpc_url=rpc_url,
+            chain_id=chain_id,
+            timeout=client_timeout,
         )
-        contract = await get_contract(web3_client, config.ethereum.sync_contract.value)
+        contract = await get_contract(web3_client, contract_address)
         return cls(
             web3_client=web3_client,
             contract=contract,
@@ -139,7 +165,48 @@ class EthereumConnector(ChainWriter):
             session_factory=session_factory,
             pending_tx_publisher=pending_tx_publisher,
             chain_data_service=chain_data_service,
+            rpc_url=rpc_url,
+            chain_id=chain_id,
+            client_timeout=client_timeout,
+            contract_address=contract_address,
         )
+
+    async def _reset_web3_client(self) -> None:
+        """
+        Rebuild the web3 client after a hung RPC call.
+
+        The single long-lived AsyncWeb3 client can wedge on a stale TCP
+        connection, causing ``eth.get_logs`` / ``eth.block_number`` to hang
+        forever. When that happens we best-effort disconnect the old provider
+        and build a fresh client so the next retry uses a new connection.
+        """
+        try:
+            # Bound the disconnect: a wedged provider's disconnect() can itself
+            # hang, which would freeze the recovery path we are trying to run.
+            await asyncio.wait_for(
+                self.web3_client.provider.disconnect(),
+                timeout=self.client_timeout,
+            )
+        except Exception as exc:
+            # Best-effort: the old provider may itself be wedged.
+            LOGGER.warning("Could not cleanly disconnect old web3 provider: %s", exc)
+
+        if (
+            self.rpc_url is None
+            or self.chain_id is None
+            or self.contract_address is None
+        ):
+            # Minimal/test constructions cannot rebuild a real client.
+            return
+
+        # Build into locals first, then swap both together: a failure in
+        # get_contract must not leave a new web3_client paired with the old
+        # contract.
+        new_client = make_web3_client(self.rpc_url, self.chain_id, self.client_timeout)
+        new_contract = await get_contract(new_client, self.contract_address)
+        self.web3_client = new_client
+        self.contract = new_contract
+        LOGGER.info("Rebuilt Ethereum web3 client after RPC timeout")
 
     async def get_last_height(self, sync_type: ChainEventType) -> BlockNumber:
         """Returns the last height for which we already have the ethereum data."""
@@ -164,14 +231,28 @@ class EthereumConnector(ChainWriter):
 
         LOGGER.info(f"Fetching logs in range {start_block}..{end_block}")
         try:
-            logs = await self.web3_client.eth.get_logs(
-                {
-                    "address": self.contract.address,
-                    "fromBlock": start_block,
-                    "toBlock": end_block,
-                }
+            # Bound the RPC call: the web3 client can wedge on a stale
+            # connection and hang here forever, freezing the sync. A timeout is
+            # NOT a TooManyLogsInRange (handled below) - it must propagate.
+            logs = await asyncio.wait_for(
+                self.web3_client.eth.get_logs(
+                    {
+                        "address": self.contract.address,
+                        "fromBlock": start_block,
+                        "toBlock": end_block,
+                    }
+                ),
+                timeout=self.client_timeout,
             )
             return logs
+        except asyncio.TimeoutError:
+            LOGGER.warning(
+                "Timed out fetching logs in range %s..%s, recycling web3 client",
+                start_block,
+                end_block,
+            )
+            await self._reset_web3_client()
+            raise
         except Web3RPCError as e:
             # Handle limit exceptions
             if rpc_response := e.rpc_response:
@@ -190,7 +271,19 @@ class EthereumConnector(ChainWriter):
         block_range = max_block_range
 
         while True:
-            last_eth_block = await self.web3_client.eth.block_number
+            try:
+                # Bound the RPC call: a wedged web3 client can hang here
+                # forever, freezing the sync.
+                last_eth_block = await asyncio.wait_for(
+                    self.web3_client.eth.block_number,
+                    timeout=self.client_timeout,
+                )
+            except asyncio.TimeoutError:
+                LOGGER.warning(
+                    "Timed out fetching latest block number, recycling web3 client"
+                )
+                await self._reset_web3_client()
+                raise
             # Note: the range in get_logs is [start, end].
             end_block = min(last_eth_block, BlockNumber(start_block + block_range - 1))
 
