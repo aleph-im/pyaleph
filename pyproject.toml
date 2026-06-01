@@ -30,7 +30,7 @@ dependencies = [
   "aiohttp-swagger3>=0.10.0",
   "aioipfs~=0.7.1",
   "alembic==1.18.4",
-  "aleph-message @ git+https://github.com/aleph-im/aleph-message@3c71a82ca41245091767eb06889c69753df3658a",
+  "aleph-message==1.2.0",
   "aleph-nuls2==0.1.1",
   "aleph-p2p-client @ git+https://github.com/aleph-im/p2p-service-client-python@1e992aaacdb0071a34ffb130cbbba9123509e08b",
   "asyncpg==0.31.0",
