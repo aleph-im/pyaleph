@@ -2,7 +2,17 @@ import asyncio
 import importlib.resources
 import json
 import logging
-from typing import Any, AsyncIterator, Dict, List, Literal, Self, Tuple, Union
+from typing import (
+    Any,
+    AsyncIterator,
+    Dict,
+    List,
+    Literal,
+    Self,
+    Tuple,
+    TypedDict,
+    Union,
+)
 
 from aleph_message.models import Chain
 from configmanager import Config
@@ -15,7 +25,7 @@ from web3.contract import AsyncContract
 from web3.exceptions import MismatchedABI, Web3RPCError
 from web3.gas_strategies.rpc import rpc_gas_price_strategy
 from web3.middleware import LocalFilterMiddleware
-from web3.types import ENS, LogReceipt
+from web3.types import ENS, LogReceipt, Nonce, TxParams
 
 from aleph.db.accessors.chains import get_last_height, upsert_chain_sync_status
 from aleph.db.accessors.messages import get_unconfirmed_messages
@@ -44,6 +54,12 @@ class GetLogsException(Exception): ...
 class TooManyLogsInRange(GetLogsException):
     start_block: BlockNumber
     end_block: BlockNumber | Literal["latest"]
+
+
+class FeeEstimate(TypedDict, total=False):
+    maxFeePerGas: int
+    maxPriorityFeePerGas: int
+    gasPrice: int
 
 
 def make_web3_client(rpc_url: URI, chain_id: int, timeout: int) -> AsyncWeb3:
@@ -337,16 +353,62 @@ class EthereumConnector(ChainWriter):
 
         await asyncio.gather(message_event_task, sync_event_task)
 
-    async def _broadcast_content(self, account, gas_price: int, nonce, content):
-        # Type hints require a fully typed TxParams, but reality works with a minimal dict
-        tx = await self.contract.functions.doEmit(content).build_transaction(
-            {  # type: ignore[arg-type]
-                "chainId": await self.web3_client.eth.chain_id,
-                "gasPrice": gas_price,
-                "nonce": nonce,
-                "from": account.address,
-            }
+    async def _get_fee_estimates(self) -> FeeEstimate:
+        """
+        Estimate gas fees for the next transaction.
+
+        Uses EIP-1559 when fee history is available, with a legacy gas price
+        fallback otherwise. We aim for cheap "slow" inclusion (we are fine
+        waiting for a cheaper slot) by deriving the priority fee from the 25th
+        percentile of recent blocks. The estimate is intentionally left
+        uncapped here: the caller rejects estimates above the configured target
+        so the packer retries later instead of overpaying.
+        """
+        # 25th-percentile priority fee over the last 5 blocks, for a conservative
+        # (slow) tip. Skip empty blocks whose reward list is missing.
+        fee_history = await self.web3_client.eth.fee_history(5, "latest", [25])
+        base_fee_per_gas = fee_history["baseFeePerGas"][-1]
+        priority_fees = [reward[0] for reward in fee_history["reward"] if reward]
+
+        if not priority_fees:
+            # No usable priority data (e.g. only empty blocks): fall back to the
+            # node's legacy gas price with the historical 10% buffer.
+            gas_price = int(await self.web3_client.eth.gas_price * 1.1)
+            return FeeEstimate(gasPrice=gas_price)
+
+        max_priority_fee_per_gas = sum(priority_fees) // len(priority_fees)
+        # maxFeePerGas is only an upper bound; 2x the base fee leaves headroom
+        # for base-fee growth while the transaction waits to be included.
+        max_fee_per_gas = (base_fee_per_gas * 2) + max_priority_fee_per_gas
+
+        return FeeEstimate(
+            maxFeePerGas=max_fee_per_gas,
+            maxPriorityFeePerGas=max_priority_fee_per_gas,
         )
+
+    async def _broadcast_content(
+        self, account, fee_estimate: FeeEstimate, nonce: Nonce, content: str
+    ):
+        # Type hints require a fully typed TxParams, but reality works with a
+        # minimal dict.
+        tx_params: TxParams = {
+            "chainId": await self.web3_client.eth.chain_id,
+            "nonce": nonce,
+            "from": account.address,
+            **fee_estimate,  # type: ignore[typeddict-item]
+        }
+        tx = await self.contract.functions.doEmit(content).build_transaction(tx_params)
+
+        if "maxFeePerGas" in fee_estimate:
+            # web3 7.15.0's async_fill_transaction_defaults inserts a `gasPrice`
+            # key even on an EIP-1559 (type 2) transaction, populated with the
+            # unawaited eth.gas_price coroutine object (RuntimeWarning: coroutine
+            # 'AsyncEth.gas_price' was never awaited). eth_account then rejects
+            # the typed transaction with:
+            #   TypeError: Transaction had invalid fields: {'gasPrice': <coroutine ...>}
+            # Strip the bogus field before signing.
+            tx.pop("gasPrice", None)
+
         signed_tx = account.sign_transaction(tx)
         return await self.web3_client.eth.send_raw_transaction(
             signed_tx.raw_transaction
@@ -356,16 +418,18 @@ class EthereumConnector(ChainWriter):
         self,
         account,
         messages,
-        nonce: int,
+        nonce: Nonce,
     ) -> HexBytes:
         # Type hints are wrong on this method, for some reason it's typed as sync - ignore until fixed
-        gas_price = await self.web3_client.eth.generate_gas_price()  # type: ignore[misc]
-        if gas_price is None:
-            gas_price = await self.web3_client.eth.gas_price
+        fee_estimate = await self._get_fee_estimates()
 
-        if gas_price > self.max_gas_price:
+        # Reject (and let the packer retry later) if even our fee ceiling is
+        # above the configured target, so we wait for a cheaper slot instead of
+        # overpaying.
+        max_fee = fee_estimate.get("maxFeePerGas") or fee_estimate.get("gasPrice")
+        if max_fee and max_fee > self.max_gas_price:
             raise AlephStorageException(
-                f"Gas price too high: {gas_price} > {self.max_gas_price}"
+                f"Gas price too high: {max_fee} > {self.max_gas_price}"
             )
 
         with self.session_factory() as session:
@@ -378,7 +442,7 @@ class EthereumConnector(ChainWriter):
 
         return await self._broadcast_content(
             account,
-            int(gas_price * 1.1),
+            fee_estimate,
             nonce,
             sync_event_payload.json(),
         )
