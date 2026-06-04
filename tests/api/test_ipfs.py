@@ -80,7 +80,7 @@ IPFS_MESSAGE_DICT_CREDIT: dict[str, Any] = {
 async def api_client(ccn_test_aiohttp_app, mocker, aiohttp_client):
     ipfs_service = mocker.AsyncMock()
     ipfs_service.add_bytes = mocker.AsyncMock(return_value=EXPECTED_FILE_CID)
-    ipfs_service.pinning_client.files.stat = mocker.AsyncMock(
+    ipfs_service.pinning_client.return_value.files.stat = mocker.AsyncMock(
         return_value={
             "Hash": EXPECTED_FILE_CID,
             "Size": MOCK_FILE_SIZE,
@@ -446,7 +446,7 @@ async def test_auth_upload_stat_timeout_applies_grace(
     )
     ipfs_service = _get_ipfs_service_mock(api_client)
     # Make stat raise TimeoutError as if asyncio.wait_for timed out.
-    ipfs_service.pinning_client.files.stat = mocker.AsyncMock(
+    ipfs_service.pinning_client.return_value.files.stat = mocker.AsyncMock(
         side_effect=TimeoutError()
     )
 
@@ -630,7 +630,7 @@ async def api_client_with_dag_import(api_client):
     update files.stat to return directory-shaped stats."""
     ipfs_service = _get_ipfs_service_mock(api_client)
     ipfs_service.dag_import = MockAsyncMock(return_value=[DIR_ROOT_CID])
-    ipfs_service.pinning_client.files.stat = MockAsyncMock(
+    ipfs_service.pinning_client.return_value.files.stat = MockAsyncMock(
         return_value={
             "Hash": DIR_ROOT_CID,
             "Size": 0,
@@ -1074,7 +1074,7 @@ async def test_add_car_stat_timeout(
         session.commit()
 
     ipfs_service = _get_ipfs_service_mock(api_client_with_dag_import)
-    ipfs_service.pinning_client.files.stat = MockAsyncMock(
+    ipfs_service.pinning_client.return_value.files.stat = MockAsyncMock(
         side_effect=TimeoutError(),
     )
 

@@ -730,7 +730,7 @@ async def test_pre_check_balance_with_existing_costs(
     ipfs_service = mocker.AsyncMock()
     ipfs_service.get_ipfs_size = AsyncMock(return_value=small_file_size)
     # _get_file_stats_from_ipfs routes through pinning_client now.
-    ipfs_service.pinning_client.files.stat = AsyncMock(
+    ipfs_service.pinning_client.return_value.files.stat = AsyncMock(
         return_value={"Type": "file", "Size": len(small_file_content)}
     )
 

@@ -193,7 +193,7 @@ async def ipfs_add_file(request: web.Request):
         try:
             try:
                 stats = await asyncio.wait_for(
-                    ipfs_service.pinning_client.files.stat(f"/ipfs/{cid}"),
+                    ipfs_service.pinning_client().files.stat(f"/ipfs/{cid}"),
                     config.ipfs.stat_timeout.value,
                 )
             except TimeoutError:
@@ -448,7 +448,7 @@ async def ipfs_add_car(request: web.Request):
         try:
             try:
                 stats = await asyncio.wait_for(
-                    ipfs_service.pinning_client.files.stat(f"/ipfs/{cid}"),
+                    ipfs_service.pinning_client().files.stat(f"/ipfs/{cid}"),
                     config.ipfs.stat_timeout.value,
                 )
             except TimeoutError:
