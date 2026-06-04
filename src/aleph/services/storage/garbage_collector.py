@@ -36,7 +36,9 @@ class GarbageCollector:
         self.storage_service = storage_service
 
     async def _delete_from_ipfs(self, file_hash: ItemHash):
-        ipfs_client = self.storage_service.ipfs_service.ipfs_client
+        # Unpin is a storage operation: route through the pinning service when
+        # configured (falls back to the main daemon otherwise).
+        ipfs_client = self.storage_service.ipfs_service.pinning_client
         try:
             await ipfs_client.pin.rm(file_hash)
         except NotPinnedError:

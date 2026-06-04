@@ -80,7 +80,9 @@ class IpfsFileStats:
 async def _get_file_stats_from_ipfs(
     cid: ItemHash, ipfs_service: IpfsService, stat_timeout: int
 ) -> IpfsFileStats:
-    ipfs_client = ipfs_service.ipfs_client
+    # Stat is a storage operation: when a separate pinning service is
+    # configured, route it there. Falls back to the main daemon otherwise.
+    ipfs_client = ipfs_service.pinning_client
 
     try:
         try:

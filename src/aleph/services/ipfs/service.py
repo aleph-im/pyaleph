@@ -81,8 +81,12 @@ class IpfsService:
         ipfs_client: aioipfs.AsyncIPFS,
         pinning_client: Optional[aioipfs.AsyncIPFS] = None,
     ):
-        self.ipfs_client = ipfs_client  # For P2P operations
-        self.pinning_client = pinning_client or ipfs_client  # For pinning operations
+        # P2P/network role only: swarm, identify, pubsub, peering.
+        self.ipfs_client = ipfs_client
+        # Storage role: pinning, content reads, file stats. Falls back to the
+        # main daemon when no separate pinning service is configured, so
+        # single-daemon deployments behave the same as before.
+        self.pinning_client = pinning_client or ipfs_client
 
     @classmethod
     def new(cls, config: Config) -> Self:
@@ -140,7 +144,7 @@ class IpfsService:
             try_count += 1
             try:
                 dag_node = await asyncio.wait_for(
-                    self.ipfs_client.dag.get(hash), timeout=timeout
+                    self.pinning_client.dag.get(hash), timeout=timeout
                 )
                 result = 0
                 if isinstance(dag_node, str):
@@ -191,7 +195,7 @@ class IpfsService:
                         f"INFO: CID {hash} didn't return a Size field. Executing a block stat operation"
                     )
                     block_stat = await asyncio.wait_for(
-                        self.ipfs_client.block.stat(hash), timeout=timeout
+                        self.pinning_client.block.stat(hash), timeout=timeout
                     )
                     result = block_stat["Size"]
             except aioipfs.APIError:
@@ -226,7 +230,7 @@ class IpfsService:
                 result = cast(
                     bytes,
                     await asyncio.wait_for(
-                        self.ipfs_client.cat(hash, length=MAX_LEN), timeout=timeout
+                        self.pinning_client.cat(hash, length=MAX_LEN), timeout=timeout
                     ),
                 )
                 if len(result) == MAX_LEN:
@@ -254,7 +258,7 @@ class IpfsService:
     def get_ipfs_content_iterator(self, cid: str) -> AsyncIterable[bytes]:
         params = {aioipfs.helpers.ARG_PARAM: cid}
         return _fetch_ipfs_endpoint_streamed(
-            aioipfs_client=self.ipfs_client, endpoint="cat", params=params
+            aioipfs_client=self.pinning_client, endpoint="cat", params=params
         )
 
     def get_ipfs_directory_iterator(self, cid: str) -> AsyncIterable[bytes]:
@@ -265,7 +269,7 @@ class IpfsService:
             "compress": "false",
         }
         return _fetch_ipfs_endpoint_streamed(
-            aioipfs_client=self.ipfs_client, endpoint="get", params=params
+            aioipfs_client=self.pinning_client, endpoint="get", params=params
         )
 
     async def get_json(self, hash, timeout=1, tries=1):
