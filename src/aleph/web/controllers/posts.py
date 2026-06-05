@@ -362,7 +362,7 @@ async def view_posts_list_v0(request: web.Request) -> web.Response:
     return cond_output(request, context, "TODO.html")
 
 
-async def view_posts_list_v1(request) -> web.Response:
+async def view_posts_list_v1(request: web.Request) -> web.Response:
     """
     List posts (v1 format).
 

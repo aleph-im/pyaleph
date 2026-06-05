@@ -6,7 +6,7 @@ import asyncio
 import base64
 import logging
 from random import sample
-from typing import List, Optional, Sequence
+from typing import Any, List, Optional, Sequence
 
 import aiohttp
 
@@ -15,7 +15,9 @@ LOGGER = logging.getLogger("P2P.HTTP")
 SESSIONS: dict[int, aiohttp.ClientSession] = {}
 
 
-async def api_get_request(base_uri, method, timeout=1):
+async def api_get_request(
+    base_uri: str, method: str, timeout: int = 1
+) -> Optional[Any]:
     if timeout not in SESSIONS:
         connector = aiohttp.TCPConnector(limit_per_host=5)
         SESSIONS[timeout] = aiohttp.ClientSession(

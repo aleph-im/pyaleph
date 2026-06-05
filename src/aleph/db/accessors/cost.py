@@ -1,5 +1,5 @@
 from decimal import Decimal
-from typing import Iterable, List, Optional, Tuple
+from typing import Any, Iterable, List, Optional, Sequence, Tuple
 
 from aleph_message.models import PaymentType
 from sqlalchemy import and_, asc, delete, func, select
@@ -44,7 +44,7 @@ def get_total_costs_for_address_grouped_by_message(
     session: DbSession,
     address: str,
     payment_type: Optional[PaymentType] = PaymentType.hold,
-):
+) -> Sequence[Any]:
     if payment_type == PaymentType.hold:
         total_prop = AccountCostsDb.cost_hold
     elif payment_type == PaymentType.superfluid:

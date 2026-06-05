@@ -3,7 +3,7 @@ from aiohttp import web
 from aleph.version import __version__
 
 
-async def version(request):
+async def version(request: web.Request) -> web.Response:
     """
     Get the current API version.
 

@@ -1,10 +1,11 @@
 import argparse
 import logging
+from typing import List
 
 from aleph.version import __version__
 
 
-def parse_args(args):
+def parse_args(args: List[str]) -> argparse.Namespace:
     """Parse command line parameters
 
     Args:

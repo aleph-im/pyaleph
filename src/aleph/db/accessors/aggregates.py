@@ -66,7 +66,12 @@ def get_aggregates_by_owner(
 ) -> Union[AggregateContent, AggregateContentWithInfo]: ...
 
 
-def get_aggregates_by_owner(session, owner, with_info, keys=None):
+def get_aggregates_by_owner(
+    session: DbSession,
+    owner: str,
+    with_info: bool,
+    keys: Optional[Sequence[str]] = None,
+) -> Union[AggregateContent, AggregateContentWithInfo]:
     cache_key = f"{with_info} {keys}"
 
     if (

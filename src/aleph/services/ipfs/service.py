@@ -3,7 +3,7 @@ import concurrent
 import json
 import logging
 import pathlib
-from typing import AsyncIterable, Dict, Optional, Self, Union, cast
+from typing import Any, AsyncIterable, AsyncIterator, Dict, Optional, Self, Union, cast
 
 import aiofiles
 import aiohttp
@@ -98,22 +98,22 @@ class IpfsService:
 
         return cls(ipfs_client=p2p_client, pinning_client=pinning_client)
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> Self:
         return self
 
-    async def close(self):
+    async def close(self) -> None:
         await self.ipfs_client.close()
         # Only close pinning client if it's different from main client
         if self.pinning_client != self.ipfs_client:
             await self.pinning_client.close()
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         await self.close()
 
-    async def connect(self, peer: str) -> Dict:
+    async def connect(self, peer: str) -> Dict[str, Any]:
         return await self.ipfs_client.swarm.connect(peer)
 
-    async def get_public_address(self):
+    async def get_public_address(self) -> Optional[str]:
         public_ip = await get_IP()
 
         addresses = (await self.ipfs_client.id())["Addresses"]
@@ -130,6 +130,8 @@ class IpfsService:
         for address in addresses:
             if "127.0.0.1" in address and "/tcp" in address and "/p2p" in address:
                 return address.replace("127.0.0.1", public_ip)
+
+        return None
 
     async def get_ipfs_size(
         self, hash: str, timeout: int = 1, tries: int = 1
@@ -268,19 +270,15 @@ class IpfsService:
             aioipfs_client=self.ipfs_client, endpoint="get", params=params
         )
 
-    async def get_json(self, hash, timeout=1, tries=1):
-        result = await self.get_ipfs_content(hash, timeout=timeout, tries=tries)
-        if result is not None and result != -1:
-            try:
-                result = await run_in_executor(None, json.loads, result)
-            except json.decoder.JSONDecodeError:
-                # try:
-                #     import json as njson
-                #     result = await loop.run_in_executor(None, njson.loads, result)
-                # except (json.JSONDecodeError, KeyError):
-                LOGGER.exception("Can't decode JSON")
-                result = -1  # never retry, bogus data
-        return result
+    async def get_json(self, hash: str, timeout: int = 1, tries: int = 1) -> Any:
+        content = await self.get_ipfs_content(hash, timeout=timeout, tries=tries)
+        if content is None:
+            return None
+        try:
+            return await run_in_executor(None, json.loads, content)
+        except json.decoder.JSONDecodeError:
+            LOGGER.exception("Can't decode JSON")
+            return -1  # never retry, bogus data
 
     async def add_json(self, value: bytes) -> str:
         result = await self.pinning_client.add_json(value)
@@ -290,7 +288,7 @@ class IpfsService:
         result = await self.pinning_client.add_bytes(value, cid_version=cid_version)
         return result["Hash"]
 
-    async def _pin_add(self, cid: str, timeout: int = 30):
+    async def _pin_add(self, cid: str, timeout: int = 30) -> None:
         # ipfs pin add returns a dictionary with a progress report in terms of blocks
         # and a "Pins" key if the pinning is complete. The dictionary is empty if the daemon
         # cannot find the file on the network.
@@ -320,7 +318,7 @@ class IpfsService:
                 # Reset the timeout counter if there is some measure of progress
                 tick_timeout = timeout * 2
 
-    async def pin_add(self, cid: str, timeout: int = 30, tries: int = 1):
+    async def pin_add(self, cid: str, timeout: int = 30, tries: int = 1) -> None:
         remaining_tries = tries
 
         while remaining_tries:
@@ -381,7 +379,7 @@ class IpfsService:
 
         return parse_dag_import_response(body)
 
-    async def sub(self, topic: str):
+    async def sub(self, topic: str) -> AsyncIterator[Any]:
         ipfs_client = self.ipfs_client
 
         try:
@@ -398,7 +396,7 @@ class IpfsService:
         except Exception:
             LOGGER.exception("Error handling IPFS subscription")
 
-    async def pub(self, topic: str, message: Union[str, bytes]):
+    async def pub(self, topic: str, message: Union[str, bytes]) -> None:
         # aioipfs only accepts strings
         message_str = message if isinstance(message, str) else message.decode("utf-8")
 

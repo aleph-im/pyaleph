@@ -102,17 +102,20 @@ async def initialize_host(
             )
             try:
                 public_ipfs_address = await ipfs_service.get_public_address()
-                tasks.append(
-                    publish_host(
-                        public_ipfs_address,
-                        p2p_client=p2p_client,
-                        ipfs_service=ipfs_service,
-                        p2p_alive_topic=config.p2p.alive_topic.value,
-                        ipfs_alive_topic=config.ipfs.alive_topic.value,
-                        peer_type="IPFS",
-                        use_ipfs=True,
+                if public_ipfs_address is None:
+                    LOGGER.warning("No public IPFS address found, skipping publish")
+                else:
+                    tasks.append(
+                        publish_host(
+                            public_ipfs_address,
+                            p2p_client=p2p_client,
+                            ipfs_service=ipfs_service,
+                            p2p_alive_topic=config.p2p.alive_topic.value,
+                            ipfs_alive_topic=config.ipfs.alive_topic.value,
+                            peer_type="IPFS",
+                            use_ipfs=True,
+                        )
                     )
-                )
             except Exception:
                 LOGGER.exception("Can't publish public IPFS address")
 

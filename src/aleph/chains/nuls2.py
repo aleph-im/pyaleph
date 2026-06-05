@@ -6,7 +6,7 @@ import logging
 import struct
 import time
 from operator import itemgetter
-from typing import AsyncIterator, Dict, Tuple
+from typing import Any, AsyncIterator, Dict, Tuple
 
 import aiohttp
 from aleph_message.models import Chain
@@ -108,7 +108,7 @@ class Nuls2Connector(ChainWriter):
 
     async def _request_transactions(
         self, config, session, start_height
-    ) -> AsyncIterator[Tuple[Dict, TxContext]]:
+    ) -> AsyncIterator[Tuple[Dict[str, Any], TxContext]]:
         """Continuously request data from the NULS blockchain."""
         target_addr = config.nuls2.sync_address.value
         remark = config.nuls2.remark.value
@@ -149,7 +149,7 @@ class Nuls2Connector(ChainWriter):
                 )
                 session.commit()
 
-    async def fetcher(self, config: Config):
+    async def fetcher(self, config: Config) -> None:
         last_stored_height = await self.get_last_height(sync_type=ChainEventType.SYNC)
 
         LOGGER.info("Last block is #%d" % last_stored_height)
@@ -172,7 +172,7 @@ class Nuls2Connector(ChainWriter):
 
                 await asyncio.sleep(10)
 
-    async def packer(self, config: Config):
+    async def packer(self, config: Config) -> None:
         server = get_server(config.nuls2.api_url.value)
         target_addr = config.nuls2.sync_address.value
         remark = config.nuls2.remark.value.encode("utf-8")

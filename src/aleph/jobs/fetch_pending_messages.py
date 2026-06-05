@@ -279,7 +279,7 @@ class PendingMessageFetcher(MessageJob):
         return fetch_iterator
 
 
-async def fetch_messages_task(config: Config):
+async def fetch_messages_task(config: Config) -> None:
     engine = make_engine(config=config, application_name="aleph-fetch")
     session_factory = make_session_factory(engine)
 

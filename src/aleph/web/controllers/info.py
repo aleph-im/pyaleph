@@ -3,7 +3,7 @@ from aiohttp import web
 from aleph.web.controllers.app_state_getters import get_node_cache_from_request
 
 
-async def public_multiaddress(request):
+async def public_multiaddress(request: web.Request) -> web.Response:
     """
     Get the public multiaddresses of this node.
 

@@ -525,7 +525,7 @@ def prepare_content(content):
     return base64.encodebytes(content).decode("utf-8")
 
 
-async def get_hash(request):
+async def get_hash(request: web.Request) -> web.Response:
     """
     Get file content by hash (base64 encoded).
 
@@ -596,7 +596,7 @@ async def get_hash(request):
     return response
 
 
-async def get_raw_hash(request):
+async def get_raw_hash(request: web.Request) -> web.StreamResponse:
     """
     Get raw file content by hash.
 
