@@ -124,11 +124,10 @@ async def ipfs_add_file(request: web.Request):
                 reason="Missing 'file' in multipart form."
             )
 
-        # Narrow the effective cap for unauthenticated requests.
-        if (
-            metadata is None
-            and uploaded_file.size > max_unauthenticated_upload_file_size
-        ):
+        # Narrow the effective cap for unauthenticated requests. `not metadata`
+        # (rather than `is None`) so an empty metadata part counts as
+        # unauthenticated, matching the message-parsing gate below.
+        if not metadata and uploaded_file.size > max_unauthenticated_upload_file_size:
             raise web.HTTPRequestEntityTooLarge(
                 actual_size=uploaded_file.size,
                 max_size=max_unauthenticated_upload_file_size,
@@ -263,9 +262,7 @@ async def ipfs_add_file(request: web.Request):
             status_code = broadcast_status_to_http_status(broadcast_status)
 
         headers = (
-            warn_deprecated_unauthenticated_upload(request)
-            if metadata is None
-            else None
+            warn_deprecated_unauthenticated_upload(request) if not metadata else None
         )
         return web.json_response(
             data={
@@ -470,6 +467,11 @@ async def ipfs_add_car(request: web.Request):
                     file_hash=cid,
                     size=size,
                     file_type=FileType.DIRECTORY,
+                )
+                # Grace pin bridging the gap until the STORE message creates
+                # the permanent pin (see storage.py _check_and_add_file).
+                add_grace_period_for_file(
+                    session=session, file_hash=cid, hours=grace_period
                 )
                 session.commit()
         except Exception:
