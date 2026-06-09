@@ -492,7 +492,6 @@ class IpfsService:
                     params={"arg": f"/ipns/{name}"},
                     outformat="json",
                 )
-        return None
 
     async def sub(self, topic: str):
         ipfs_client = self.ipfs_client
