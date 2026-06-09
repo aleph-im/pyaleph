@@ -29,6 +29,7 @@ from aleph.web.controllers.utils import (
     add_grace_period_for_file,
     broadcast_and_process_message,
     broadcast_status_to_http_status,
+    warn_deprecated_unauthenticated_upload,
 )
 
 logger = logging.getLogger(__name__)
@@ -260,6 +261,9 @@ async def ipfs_add_file(request: web.Request):
             )
             status_code = broadcast_status_to_http_status(broadcast_status)
 
+        headers = (
+            warn_deprecated_unauthenticated_upload(request) if metadata is None else None
+        )
         return web.json_response(
             data={
                 "status": "success",
@@ -268,6 +272,7 @@ async def ipfs_add_file(request: web.Request):
                 "size": size,
             },
             status=status_code,
+            headers=headers,
         )
 
     finally:

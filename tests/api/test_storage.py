@@ -212,6 +212,7 @@ async def add_file_with_message(
     response = await api_client.post(uri, data=form_data)
     response_text = await response.text()
     assert response.status == error_code, response_text
+    assert "Deprecation" not in response.headers
 
 
 async def add_file_with_message_202(
@@ -675,6 +676,22 @@ async def test_storage_add_json_invalid_utf8(api_client):
         headers={"Content-Type": "application/json"},
     )
     assert response.status == 422, await response.text()
+
+
+@pytest.mark.asyncio
+async def test_storage_add_json_deprecation_header(api_client, session_factory):
+    response = await api_client.post(STORAGE_ADD_JSON_URI, json=JSON_CONTENT)
+    assert response.status == 200, await response.text()
+    assert response.headers.get("Deprecation") == "true"
+
+
+@pytest.mark.asyncio
+async def test_storage_add_file_anonymous_deprecation_header(api_client):
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", FILE_CONTENT)
+    response = await api_client.post(STORAGE_ADD_FILE_URI, data=form_data)
+    assert response.status == 200, await response.text()
+    assert response.headers.get("Deprecation") == "true"
 
 
 @pytest.mark.asyncio

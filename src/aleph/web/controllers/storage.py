@@ -55,6 +55,7 @@ from aleph.web.controllers.utils import (
     broadcast_and_process_message,
     broadcast_status_to_http_status,
     mq_make_aleph_message_topic_queue,
+    warn_deprecated_unauthenticated_upload,
 )
 
 logger = logging.getLogger(__name__)
@@ -130,7 +131,9 @@ async def add_ipfs_json_controller(request: web.Request):
         )
         session.commit()
 
-    return web.json_response(output)
+    return web.json_response(
+        output, headers=warn_deprecated_unauthenticated_upload(request)
+    )
 
 
 async def add_storage_json_controller(request: web.Request):
@@ -174,7 +177,9 @@ async def add_storage_json_controller(request: web.Request):
         )
         session.commit()
 
-    return web.json_response(output)
+    return web.json_response(
+        output, headers=warn_deprecated_unauthenticated_upload(request)
+    )
 
 
 async def _verify_message_signature(
@@ -529,7 +534,10 @@ async def storage_add_file(request: web.Request):
             status_code = broadcast_status_to_http_status(broadcast_status)
 
         output = {"status": "success", "hash": file_hash}
-        return web.json_response(data=output, status=status_code)
+        headers = (
+            warn_deprecated_unauthenticated_upload(request) if message is None else None
+        )
+        return web.json_response(data=output, status=status_code, headers=headers)
 
     finally:
         if uploaded_file is not None:
