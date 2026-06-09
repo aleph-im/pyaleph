@@ -6,6 +6,7 @@ from typing import List, Optional, Tuple, TypeAlias, Union
 
 from aleph_message.models import (
     InstanceContent,
+    ItemType,
     PaymentType,
     ProgramContent,
     StoreContent,
@@ -232,6 +233,8 @@ def _get_product_price_type(
     price_aggregate: Union[AggregateDb, dict],
 ) -> ProductPriceType:
     if isinstance(content, (StoreContent, CostEstimationStoreContent)):
+        if isinstance(content, StoreContent) and content.item_type == ItemType.ipns:
+            return ProductPriceType.IPNS
         return ProductPriceType.STORAGE
 
     if isinstance(content, (ProgramContent, CostEstimationProgramContent)):
@@ -807,6 +810,13 @@ def calculate_storage_size(
     content: CostEstimationStoreContent | StoreContent,
 ) -> Optional[Decimal]:
 
+    if (
+        isinstance(content, StoreContent)
+        and content.item_type == ItemType.ipns
+        and content.max_size_mib is not None
+    ):
+        return Decimal(content.max_size_mib)
+
     if isinstance(content, CostEstimationStoreContent) and content.estimated_size_mib:
         storage_mib = Decimal(content.estimated_size_mib)
     else:
@@ -816,6 +826,52 @@ def calculate_storage_size(
         storage_mib = Decimal(file.size / MiB)
 
     return storage_mib
+
+
+def _calculate_ipns_costs(
+    session: DbSession,
+    content: CostEstimationStoreContent | StoreContent,
+    pricing: ProductPricing,
+    item_hash: str,
+) -> List[AccountCostsDb]:
+    """
+    IPNS registrations are billed on the declared quota (max_size_mib), not
+    the resolved content size, plus a flat name fee covering the
+    republish/re-resolve work. Billing therefore never changes without a
+    new message.
+    """
+    payment_type = get_payment_type(content)
+
+    assert content.max_size_mib is not None  # enforced by StoreContent validator
+    quota_mib = Decimal(content.max_size_mib)
+
+    volume = SizedVolume(CostType.STORAGE, quota_mib, item_hash)
+    costs = _get_volumes_costs(
+        session,
+        [volume],
+        payment_type,
+        pricing.price.storage.holding,
+        pricing.price.storage.payg / HOUR,
+        content.address,
+        item_hash,
+        pricing.price.storage.credit / HOUR,
+    )
+
+    if pricing.price.fixed is not None:
+        costs.append(
+            AccountCostsDb(
+                owner=content.address,
+                item_hash=item_hash,
+                type=CostType.IPNS,
+                name=CostType.IPNS.value,
+                payment_type=payment_type,
+                cost_hold=format_cost(pricing.price.fixed.holding),
+                cost_stream=format_cost(pricing.price.fixed.payg / HOUR),
+                cost_credit=format_cost(pricing.price.fixed.credit / HOUR),
+            )
+        )
+
+    return costs
 
 
 def _get_size_from_file_ref(session: DbSession, file_hash: str) -> Optional[float]:
@@ -980,6 +1036,8 @@ def get_detailed_costs(
     pricing = pricing or _get_product_price(session, content, settings)
 
     if isinstance(content, (StoreContent, CostEstimationStoreContent)):
+        if isinstance(content, StoreContent) and content.item_type == ItemType.ipns:
+            return _calculate_ipns_costs(session, content, pricing, item_hash)
         return _calculate_storage_costs(session, content, pricing, item_hash)
     else:
         return _calculate_executable_costs(session, content, pricing, item_hash)

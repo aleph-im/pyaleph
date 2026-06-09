@@ -19,6 +19,7 @@ class ProductPriceType(str, Enum):
     INSTANCE_GPU_PREMIUM = "instance_gpu_premium"
     INSTANCE_CONFIDENTIAL = "instance_confidential"
     INSTANCE_GPU_STANDARD = "instance_gpu_standard"
+    IPNS = "ipns"
 
 
 PRICE_AGGREGATE_OWNER = "0xFba561a84A537fCaa567bb7A2257e7142701ae2A"
@@ -51,6 +52,12 @@ DEFAULT_PRICE_AGGREGATE: Dict[Union[ProductPriceType, str], dict] = {
     ProductPriceType.STORAGE: {
         "price": {
             "storage": {"holding": "0.333333333", "credit": "0.17967489030626108"}
+        }
+    },
+    ProductPriceType.IPNS: {
+        "price": {
+            "storage": {"holding": "0.333333333", "credit": "0.17967489030626108"},
+            "fixed": {"holding": "1", "credit": "0.5"},
         }
     },
     ProductPriceType.INSTANCE: {
