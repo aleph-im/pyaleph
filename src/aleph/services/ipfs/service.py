@@ -1,8 +1,12 @@
 import asyncio
+import base64
 import concurrent
+import datetime as dt
 import json
 import logging
 import pathlib
+import tempfile
+from dataclasses import dataclass
 from typing import AsyncIterable, Dict, Optional, Self, Union, cast
 
 import aiofiles
@@ -18,6 +22,21 @@ from aleph.utils import run_in_executor
 LOGGER = logging.getLogger(__name__)
 
 MAX_LEN = 1024 * 1024 * 100
+
+
+class InvalidIpnsRecordError(Exception):
+    """The IPNS record failed verification against its name."""
+
+
+class IpnsResolutionError(Exception):
+    """The IPNS name could not be resolved from the DHT."""
+
+
+@dataclass(frozen=True)
+class IpnsRecordInfo:
+    value_cid: str
+    sequence: int
+    validity: dt.datetime
 
 
 class DagImportError(Exception):
@@ -399,6 +418,81 @@ class IpfsService:
                     self.storage_client.core.handle_error(response, body)
 
         return parse_dag_import_response(body)
+
+    async def verify_ipns_record(self, record: bytes, name: str) -> IpnsRecordInfo:
+        """
+        Verify a signed IPNS record against its name via kubo and extract
+        the value CID, sequence number and end-of-life.
+        """
+        client = self.storage_client
+        # kubo's name/inspect endpoint takes the record as a file upload;
+        # the aioipfs wrapper only accepts a file path.
+        with tempfile.NamedTemporaryFile() as record_file:
+            record_file.write(record)
+            record_file.flush()
+            response = await client.name.inspect(
+                record=record_file.name, verify=name, dump=False
+            )
+
+        validation = response.get("Validation") or {}
+        if not validation.get("Valid"):
+            raise InvalidIpnsRecordError(
+                validation.get("Reason") or "record failed validation"
+            )
+
+        entry = response["Entry"]
+        value = entry["Value"]
+        if not value.startswith("/ipfs/"):
+            raise InvalidIpnsRecordError(f"unsupported IPNS value: {value}")
+        cid = value.removeprefix("/ipfs/")
+        if "/" in cid:
+            raise InvalidIpnsRecordError(
+                f"IPNS records with sub-path values are not supported: {value}"
+            )
+
+        validity = dt.datetime.fromisoformat(entry["Validity"].replace("Z", "+00:00"))
+        return IpnsRecordInfo(
+            value_cid=cid, sequence=int(entry["Sequence"]), validity=validity
+        )
+
+    async def resolve_ipns_record(self, name: str, timeout: int) -> bytes:
+        """Fetch the current signed record for an IPNS name from the DHT."""
+        client = self.storage_client
+        try:
+            response = await asyncio.wait_for(
+                client.routing.get(f"/ipns/{name}"), timeout
+            )
+        except (asyncio.TimeoutError, aioipfs.APIError) as e:
+            raise IpnsResolutionError(name) from e
+
+        extra = (response or {}).get("Extra")
+        if not extra:
+            raise IpnsResolutionError(name)
+        return base64.b64decode(extra)
+
+    async def put_ipns_record(self, name: str, record: bytes) -> None:
+        """
+        Inject/republish a signed IPNS record into the DHT.
+
+        The aioipfs routing.put wrapper passes the value as a query
+        argument, which kubo rejects for binary records; post the record
+        as a multipart body the way name/inspect does.
+        """
+        from aioipfs import multi
+
+        client = self.storage_client
+        with tempfile.NamedTemporaryFile() as record_file:
+            record_file.write(record)
+            record_file.flush()
+            with multi.FormDataWriter() as mpwriter:
+                mpwriter.append_payload(multi.bytes_payload_from_file(record_file.name))
+                await client.routing.post(
+                    client.routing.url("routing/put"),
+                    mpwriter,
+                    params={"arg": f"/ipns/{name}"},
+                    outformat="json",
+                )
+        return None
 
     async def sub(self, topic: str):
         ipfs_client = self.ipfs_client
