@@ -387,7 +387,8 @@ async def _check_and_add_file(
             file_type=FileType.FILE,
         )
 
-        # For files uploaded without authenticated upload, add a grace period of 1 day.
+        # For files uploaded without authenticated upload, add a grace period
+        # (storage.grace_period config, 6 hours by default).
         if message_content is None:
             add_grace_period_for_file(
                 session=session, file_hash=file_hash, hours=grace_period
