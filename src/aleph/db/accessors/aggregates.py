@@ -13,22 +13,15 @@ from typing import (
     overload,
 )
 
-from sqlalchemy import delete, event, func, literal_column, select, update
+from sqlalchemy import delete, func, literal_column, select, update
 from sqlalchemy.dialects.postgresql import aggregate_order_by, insert
 from sqlalchemy.orm import defer, selectinload
 
-from aleph.cache import cache
 from aleph.db.models import AggregateDb, AggregateElementDb
 from aleph.types.db_session import DbSession
 from aleph.types.sort_order import SortByAggregate, SortOrder
 
 logger = logging.getLogger(__name__)
-
-
-@event.listens_for(AggregateDb, "after_update", propagate=True)
-@event.listens_for(AggregateDb, "after_delete", propagate=True)
-def prune_cache_for_updated_aggregates(mapper, connection, target):
-    cache.delete_namespace(f"aggregates_by_owner:{target.owner}")
 
 
 def aggregate_exists(session: DbSession, key: str, owner: str) -> bool:
@@ -67,14 +60,6 @@ def get_aggregates_by_owner(
 
 
 def get_aggregates_by_owner(session, owner, with_info, keys=None):
-    cache_key = f"{with_info} {keys}"
-
-    if (
-        aggregates := cache.get(cache_key, namespace=f"aggregates_by_owner:{owner}")
-    ) is not None:
-        logging.debug(f"cache hit for aggregates_by_owner on cache key {cache_key}")
-        return aggregates
-
     where_clause = AggregateDb.owner == owner
     if keys:
         where_clause = where_clause & AggregateDb.key.in_(keys)
@@ -100,9 +85,7 @@ def get_aggregates_by_owner(session, owner, with_info, keys=None):
             .filter(where_clause)
             .order_by(AggregateDb.key)
         )
-    result = query.all()
-    cache.set(cache_key, result, namespace="aggregates_by_owner:{owner}")
-    return result
+    return query.all()
 
 
 def get_aggregate_by_key(
