@@ -3,6 +3,11 @@ Asyncio gRPC client for the aleph.im P2P service (release N+).
 
 Replaces the RabbitMQ-based aleph-p2p-client. The method surface mirrors the
 old client so call sites only adapt to the new pubsub message shape.
+
+All public methods raise ``grpc.aio.AioRpcError`` on transport or service
+failure unless the error is mapped to a domain exception (``dial`` maps
+FAILED_PRECONDITION -> DialWrongPeerException, everything else ->
+DialFailedException).
 """
 
 import logging
@@ -30,14 +35,14 @@ class DialWrongPeerException(P2PServiceException):
     pass
 
 
-@dataclass
+@dataclass(frozen=True)
 class NodeInfo:
     peer_id: str
     listen_multiaddrs: List[str]
     external_multiaddrs: List[str]
 
 
-@dataclass
+@dataclass(frozen=True)
 class PubsubMessage:
     topic: str
     sender: str
@@ -45,7 +50,7 @@ class PubsubMessage:
     received_at_millis: int
 
 
-@dataclass
+@dataclass(frozen=True)
 class PeerInfo:
     peer_id: str
     multiaddrs: List[str]
@@ -63,7 +68,20 @@ class P2PGrpcClient:
     async def connect(
         cls, host: str, port: int, timeout: float = 30.0
     ) -> "P2PGrpcClient":
-        channel = grpc.aio.insecure_channel(f"{host}:{port}")
+        """Create a client by connecting to the P2P service at host:port.
+
+        Performs an initial Identify RPC to verify the service is reachable and
+        to capture the local peer ID. If the service is not reachable, raises
+        ``grpc.aio.AioRpcError`` with status UNAVAILABLE or DEADLINE_EXCEEDED.
+        """
+        channel = grpc.aio.insecure_channel(
+            f"{host}:{port}",
+            options=[
+                ("grpc.keepalive_time_ms", 30_000),
+                ("grpc.keepalive_timeout_ms", 10_000),
+                ("grpc.keepalive_permit_without_calls", 1),
+            ],
+        )
         stub = pb_grpc.AlephP2PStub(channel)
         try:
             node_info = await stub.Identify(pb.IdentifyRequest(), timeout=timeout)
@@ -90,6 +108,14 @@ class P2PGrpcClient:
             raise DialFailedException(e.details()) from e
 
     async def publish(self, data: bytes, topic: str, echo: bool = False) -> None:
+        """Publish ``data`` on ``topic``.
+
+        ``echo`` (default False): when True the service redelivers this message
+        on local Subscribe streams for the same topic, mirroring the old
+        client's ``loopback`` parameter.
+
+        Raises ``grpc.aio.AioRpcError`` on transport or service failure.
+        """
         await self._stub.Publish(
             pb.PublishRequest(topic=topic, payload=data, echo=echo)
         )
@@ -102,13 +128,16 @@ class P2PGrpcClient:
 
     async def receive_messages(self, topic: str) -> AsyncIterator[PubsubMessage]:
         stream = self._stub.Subscribe(pb.SubscribeRequest(topic=topic))
-        async for envelope in stream:
-            yield PubsubMessage(
-                topic=envelope.topic,
-                sender=envelope.source_peer_id,
-                data=envelope.payload,
-                received_at_millis=envelope.received_at_millis,
-            )
+        try:
+            async for envelope in stream:
+                yield PubsubMessage(
+                    topic=envelope.topic,
+                    sender=envelope.source_peer_id,
+                    data=envelope.payload,
+                    received_at_millis=envelope.received_at_millis,
+                )
+        finally:
+            stream.cancel()
 
     async def set_preferred_peers(
         self, peers: Sequence[Tuple[str, Sequence[str]]]

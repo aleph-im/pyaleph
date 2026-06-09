@@ -36,10 +36,21 @@ class FakeP2PServicer(pb_grpc.AlephP2PServicer):
         return pb.DialResponse()
 
     async def Publish(self, request, context):
+        if request.topic == "FAIL-TOPIC":
+            await context.abort(grpc.StatusCode.INTERNAL, "forced publish failure")
         self.published.append((request.topic, request.payload, request.echo))
         return pb.PublishResponse()
 
     async def Subscribe(self, request, context):
+        if request.topic == "FAIL-TOPIC":
+            yield pb.PubsubEnvelope(
+                topic=request.topic,
+                source_peer_id="QmRemotePeer",
+                payload=b"message-0",
+                received_at_millis=1000,
+            )
+            await context.abort(grpc.StatusCode.UNAVAILABLE, "service restarting")
+            return
         for i in range(3):
             yield pb.PubsubEnvelope(
                 topic=request.topic,
@@ -153,3 +164,33 @@ async def test_get_peers(client):
     assert len(peers) == 1
     assert peers[0].peer_id == "QmRemotePeer"
     assert peers[0].preferred is True
+
+
+@pytest.mark.asyncio
+async def test_receive_messages_midstream_failure_raises_exception(client):
+    it = client.receive_messages("FAIL-TOPIC")
+    first = await it.__anext__()
+    assert first.data == b"message-0"
+    with pytest.raises(Exception) as exc_info:
+        await it.__anext__()
+    assert isinstance(exc_info.value, grpc.aio.AioRpcError)
+    assert exc_info.value.code() == grpc.StatusCode.UNAVAILABLE
+
+
+@pytest.mark.asyncio
+async def test_publish_failure_raises_aio_rpc_error(client):
+    with pytest.raises(grpc.aio.AioRpcError) as exc_info:
+        await client.publish(data=b"payload", topic="FAIL-TOPIC")
+    assert isinstance(exc_info.value, Exception)
+    assert exc_info.value.code() == grpc.StatusCode.INTERNAL
+
+
+@pytest.mark.asyncio
+async def test_connect_unreachable_raises(fake_service):
+    with pytest.raises(Exception) as exc_info:
+        await P2PGrpcClient.connect(host="127.0.0.1", port=1, timeout=0.5)
+    assert isinstance(exc_info.value, grpc.aio.AioRpcError)
+    assert exc_info.value.code() in (
+        grpc.StatusCode.UNAVAILABLE,
+        grpc.StatusCode.DEADLINE_EXCEEDED,
+    )
