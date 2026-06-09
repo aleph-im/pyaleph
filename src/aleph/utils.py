@@ -23,6 +23,12 @@ def item_type_from_hash(item_hash: str) -> ItemType:
         return ItemType.ipfs
     elif item_hash.startswith("bafy") and len(item_hash) == 59:  # CIDv1
         return ItemType.ipfs
+    elif (
+        item_hash.startswith("k51")
+        and len(item_hash) == 62
+        and set(item_hash[3:]) <= set("0123456789abcdefghijklmnopqrstuvwxyz")
+    ):  # CIDv1 libp2p-key, base36: Ed25519 IPNS name
+        return ItemType.ipns
     elif len(item_hash) == 64:
         return ItemType.storage
     else:
