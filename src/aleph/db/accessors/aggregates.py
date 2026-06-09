@@ -101,7 +101,7 @@ def get_aggregates_by_owner(session, owner, with_info, keys=None):
             .order_by(AggregateDb.key)
         )
     result = query.all()
-    cache.set(cache_key, result, namespace="aggregates_by_owner:{owner}")
+    cache.set(cache_key, result, namespace=f"aggregates_by_owner:{owner}")
     return result
 
 
