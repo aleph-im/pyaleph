@@ -32,7 +32,6 @@ dependencies = [
   "alembic==1.18.4",
   "aleph-message==1.2.0",
   "aleph-nuls2==0.1.1",
-  "grpcio>=1.66",
   "asyncpg==0.31.0",
   "base58>=1.0.3",
   "coincurve==21.0.0",
@@ -43,6 +42,7 @@ dependencies = [
   "dataclasses-json==0.6.7",
   "eth-account==0.13.7",
   "eth-typing==6.0.0",
+  "grpcio>=1.66",
   "gunicorn==26.0.0",
   "hexbytes==1.3.1",
   "msgpack==1.2.0",                                                                                                        # required by aiocache
@@ -341,7 +341,7 @@ allow_redefinition = true
 # [mypy-aleph.toolkit.libp2p_stubs.""]
 # ignore_errors = True
 
-[tool.mypy.overrides]
+[[tool.mypy.overrides]]
 module = "aleph.services.p2p.grpc_generated.*"
 ignore_errors = true
 
