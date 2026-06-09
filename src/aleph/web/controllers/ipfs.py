@@ -190,7 +190,7 @@ async def ipfs_add_file(request: web.Request):
 
         # Post-pin: stat, CID match, persist.
         # Failures from this point on must leave the pin covered by the
-        # 24 h grace period so the GC doesn't strand it.
+        # grace period so the GC doesn't strand it.
         try:
             try:
                 stats = await asyncio.wait_for(
