@@ -84,8 +84,7 @@ async def api_client(ccn_test_aiohttp_app, mocker, aiohttp_client):
     ipfs_service.get_ipfs_content_iterator = mocker.Mock(
         return_value=_mock_ipfs_content_iterator()
     )
-    ipfs_service.pinning_client = mocker.Mock()
-    ipfs_service.pinning_client.return_value.files.stat = mocker.AsyncMock(
+    ipfs_service.storage_client.files.stat = mocker.AsyncMock(
         return_value={
             "Hash": EXPECTED_FILE_CID,
             "Size": 34,

@@ -83,7 +83,7 @@ async def _get_file_stats_from_ipfs(
     # Stat is a storage operation: route through the storage client (which
     # the service maps to the pinning service when configured, otherwise the
     # main daemon).
-    ipfs_client = ipfs_service.pinning_client()
+    ipfs_client = ipfs_service.storage_client
 
     try:
         try:

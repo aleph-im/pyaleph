@@ -83,35 +83,37 @@ class IpfsService:
     ):
         # P2P/network role only: swarm, identify, pubsub, peering.
         self.ipfs_client = ipfs_client
-        # Storage role: pinning, content reads, file stats. When the operator
-        # configures `ipfs.pinning.*` to a separate daemon, that daemon backs
-        # this client. Otherwise it falls back to the main daemon, so
-        # single-daemon deployments behave the same as before. Access via the
-        # ``pinning_client()`` method, not the attribute, so the routing
-        # decision lives in one place if it ever needs to grow.
-        self._pinning_client = pinning_client or ipfs_client
+        # The separate storage daemon configured via `ipfs.pinning.*`, or None
+        # when none is configured. Do NOT use this directly for storage
+        # operations: it is None in single-daemon deployments. Route every
+        # storage-role call through `storage_client` instead; this attribute
+        # only holds the raw config state and is closed in `close`.
+        self.pinning_client = pinning_client
 
-    def pinning_client(self) -> aioipfs.AsyncIPFS:
-        """Return the aioipfs client that serves IPFS storage operations.
+    @property
+    def storage_client(self) -> aioipfs.AsyncIPFS:
+        """Client for storage-role operations: pin/unpin, content reads, file
+        stats, dag/block ops.
 
-        Centralizes the choice between the main daemon and the configured
-        pinning service so callers do not bind to the underlying attribute.
+        Returns the separate pinning daemon when one is configured
+        (`ipfs.pinning.*`), otherwise falls back to the main daemon so
+        single-daemon deployments need no extra config.
         """
-        return self._pinning_client
+        return self.pinning_client or self.ipfs_client
 
     @classmethod
     def new(cls, config: Config) -> Self:
         # Create P2P client (for content retrieval, pubsub)
         p2p_client = make_ipfs_p2p_client(config)
 
-        # Build a separate pinning client when an external pinning service is
-        # configured; otherwise reuse the P2P client so single-daemon
-        # deployments need no extra config.
+        # Build a separate pinning client only when an external pinning service
+        # is configured; otherwise leave it None so `storage_client` falls back
+        # to the P2P client and single-daemon deployments need no extra config.
         if _should_use_separate_pinning_client(config):
             LOGGER.info("Using separate IPFS client for storage operations")
             pinning_client = make_ipfs_pinning_client(config)
         else:
-            pinning_client = p2p_client
+            pinning_client = None
 
         return cls(ipfs_client=p2p_client, pinning_client=pinning_client)
 
@@ -120,9 +122,9 @@ class IpfsService:
 
     async def close(self):
         await self.ipfs_client.close()
-        # Only close the pinning client if it is a separate daemon.
-        if self._pinning_client != self.ipfs_client:
-            await self._pinning_client.close()
+        # Only close the pinning client if a separate daemon was configured.
+        if self.pinning_client is not None:
+            await self.pinning_client.close()
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.close()
@@ -157,7 +159,7 @@ class IpfsService:
             try_count += 1
             try:
                 dag_node = await asyncio.wait_for(
-                    self._pinning_client.dag.get(hash), timeout=timeout
+                    self.storage_client.dag.get(hash), timeout=timeout
                 )
                 result = 0
                 if isinstance(dag_node, str):
@@ -208,7 +210,7 @@ class IpfsService:
                         f"INFO: CID {hash} didn't return a Size field. Executing a block stat operation"
                     )
                     block_stat = await asyncio.wait_for(
-                        self._pinning_client.block.stat(hash), timeout=timeout
+                        self.storage_client.block.stat(hash), timeout=timeout
                     )
                     result = block_stat["Size"]
             except aioipfs.APIError:
@@ -243,7 +245,7 @@ class IpfsService:
                 result = cast(
                     bytes,
                     await asyncio.wait_for(
-                        self._pinning_client.cat(hash, length=MAX_LEN), timeout=timeout
+                        self.storage_client.cat(hash, length=MAX_LEN), timeout=timeout
                     ),
                 )
                 if len(result) == MAX_LEN:
@@ -271,7 +273,7 @@ class IpfsService:
     def get_ipfs_content_iterator(self, cid: str) -> AsyncIterable[bytes]:
         params = {aioipfs.helpers.ARG_PARAM: cid}
         return _fetch_ipfs_endpoint_streamed(
-            aioipfs_client=self._pinning_client, endpoint="cat", params=params
+            aioipfs_client=self.storage_client, endpoint="cat", params=params
         )
 
     def get_ipfs_directory_iterator(self, cid: str) -> AsyncIterable[bytes]:
@@ -282,7 +284,7 @@ class IpfsService:
             "compress": "false",
         }
         return _fetch_ipfs_endpoint_streamed(
-            aioipfs_client=self._pinning_client, endpoint="get", params=params
+            aioipfs_client=self.storage_client, endpoint="get", params=params
         )
 
     async def get_json(self, hash, timeout=1, tries=1):
@@ -300,11 +302,11 @@ class IpfsService:
         return result
 
     async def add_json(self, value: bytes) -> str:
-        result = await self._pinning_client.add_json(value)
+        result = await self.storage_client.add_json(value)
         return result["Hash"]
 
     async def add_bytes(self, value: bytes, cid_version: int = 0) -> str:
-        result = await self._pinning_client.add_bytes(value, cid_version=cid_version)
+        result = await self.storage_client.add_bytes(value, cid_version=cid_version)
         return result["Hash"]
 
     async def _pin_add(self, cid: str, timeout: int = 30):
@@ -318,8 +320,8 @@ class IpfsService:
         tick_timeout = timeout * 2
         last_progress = None
 
-        # Use pinning client instead of main client
-        async for status in self._pinning_client.pin.add(cid):
+        # Pinning is a storage operation: route through the storage client.
+        async for status in self.storage_client.pin.add(cid):
             # If the Pins key appears, the file is pinned.
             if "Pins" in status:
                 break
@@ -364,8 +366,8 @@ class IpfsService:
                 error.
             aioipfs.APIError: on a non-2xx response from kubo.
         """
-        driver = self._pinning_client.core.driver
-        url = self._pinning_client.core.url("dag/import")
+        driver = self.storage_client.core.driver
+        url = self.storage_client.core.url("dag/import")
         params = {
             "pin-roots": "true" if pin_roots else "false",
             "silent": "false",
@@ -394,7 +396,7 @@ class IpfsService:
             ) as response:
                 body = await response.read()
                 if response.status in aioipfs.apis.HTTP_ERROR_CODES:
-                    self._pinning_client.core.handle_error(response, body)
+                    self.storage_client.core.handle_error(response, body)
 
         return parse_dag_import_response(body)
 
