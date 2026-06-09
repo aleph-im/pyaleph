@@ -15,4 +15,10 @@ def test_item_type_from_hash_rejects_bad_ipns_shapes():
     with pytest.raises(UnknownHashError):
         item_type_from_hash(IPNS_NAME[:-1])
     with pytest.raises(UnknownHashError):
+        item_type_from_hash(IPNS_NAME + "a")
+    with pytest.raises(UnknownHashError):
         item_type_from_hash(IPNS_NAME.upper())
+    with pytest.raises(UnknownHashError):
+        # Prefix intact, one uppercase char in the suffix: exercises the
+        # charset check independently of the prefix check.
+        item_type_from_hash(IPNS_NAME[:3] + IPNS_NAME[3].upper() + IPNS_NAME[4:])
