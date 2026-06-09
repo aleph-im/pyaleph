@@ -262,7 +262,9 @@ async def ipfs_add_file(request: web.Request):
             status_code = broadcast_status_to_http_status(broadcast_status)
 
         headers = (
-            warn_deprecated_unauthenticated_upload(request) if metadata is None else None
+            warn_deprecated_unauthenticated_upload(request)
+            if metadata is None
+            else None
         )
         return web.json_response(
             data={

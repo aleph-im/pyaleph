@@ -255,6 +255,7 @@ async def add_file_with_message_202(
     form_data.add_field("metadata", json.dumps(data), content_type="application/json")
     response = await api_client.post(uri, data=form_data)
     assert response.status == error_code, await response.text()
+    assert "Deprecation" not in response.headers
 
 
 @pytest.mark.asyncio
@@ -383,6 +384,7 @@ async def add_json(
 
     post_response = await api_client.post(uri, json=json)
     assert post_response.status == 200, await post_response.text()
+    assert post_response.headers.get("Deprecation") == "true"
     post_response_json = await post_response.json()
     assert post_response_json["status"] == "success"
     file_hash = post_response_json["hash"]
@@ -621,7 +623,9 @@ async def test_storage_add_json_over_size_limit(api_client, mock_config):
     original = mock_config.storage.max_unauthenticated_upload_file_size.value
     try:
         mock_config.storage.max_unauthenticated_upload_file_size.value = 1024
-        response = await api_client.post(STORAGE_ADD_JSON_URI, json={"data": "a" * 2048})
+        response = await api_client.post(
+            STORAGE_ADD_JSON_URI, json={"data": "a" * 2048}
+        )
         assert response.status == 413, await response.text()
     finally:
         mock_config.storage.max_unauthenticated_upload_file_size.value = original

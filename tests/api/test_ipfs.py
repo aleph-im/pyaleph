@@ -123,6 +123,7 @@ async def test_unauth_upload_happy_path(api_client, session_factory: DbSessionFa
     response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
     body = await response.text()
     assert response.status == 200, body
+    assert response.headers.get("Deprecation") == "true"
     payload = await response.json()
     assert payload["status"] == "success"
     assert payload["hash"] == EXPECTED_FILE_CID
@@ -193,6 +194,7 @@ async def test_auth_upload_happy_path(
     response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
     body = await response.text()
     assert response.status == 200, body
+    assert "Deprecation" not in response.headers
     payload = await response.json()
     assert payload["hash"] == EXPECTED_FILE_CID
 
