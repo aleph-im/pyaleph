@@ -364,13 +364,13 @@ def insert_ipns_file_pin(
     name: str,
     created: dt.datetime,
 ) -> None:
-    insert_stmt = insert(FilePinDb).values(
+    insert_stmt = insert(IpnsFilePinDb).values(
         file_hash=file_hash,
         owner=owner,
         item_hash=item_hash,
         ref=name,
         created=created,
-        type=FilePinType.IPNS.value,
+        type=FilePinType.IPNS,
     )
     session.execute(insert_stmt)
 
@@ -379,9 +379,7 @@ def get_ipns_file_pin(
     session: DbSession, name: str, owner: str
 ) -> Optional[IpnsFilePinDb]:
     select_stmt = select(IpnsFilePinDb).where(
-        (IpnsFilePinDb.ref == name)
-        & (IpnsFilePinDb.owner == owner)
-        & (IpnsFilePinDb.type == FilePinType.IPNS.value)
+        (IpnsFilePinDb.ref == name) & (IpnsFilePinDb.owner == owner)
     )
     return session.execute(select_stmt).scalar_one_or_none()
 

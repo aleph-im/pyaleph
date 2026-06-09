@@ -27,11 +27,11 @@ MSG_HASH = "7f2d09b2c4e1a8f3d6b5c2e9a1f4d7b8e3c6a9f2d5b8e1c4a7f0d3b6e9c2a5f8"
 NOW = dt.datetime(2026, 6, 10, tzinfo=dt.timezone.utc)
 
 
-def _upsert(session, sequence=1, item_hash=MSG_HASH, resolved_cid=CID):
+def _upsert(session, sequence=1, item_hash=MSG_HASH, resolved_cid=CID, owner=OWNER):
     upsert_ipns_record(
         session=session,
         name=IPNS_NAME,
-        owner=OWNER,
+        owner=owner,
         item_hash=item_hash,
         record=b"\x0a\x01raw",
         record_sequence=sequence,
@@ -56,6 +56,7 @@ async def test_upsert_and_get_ipns_record(session_factory: DbSessionFactory):
         assert record is not None
         assert record.record_sequence == 1
         assert record.resolved_cid == CID
+        assert record.status == IpnsStatus.OK
 
     with session_factory() as session:
         _upsert(session, sequence=2)
@@ -113,3 +114,25 @@ async def test_ipns_file_pin_lifecycle(session_factory: DbSessionFactory):
         pin = get_ipns_file_pin(session, name=IPNS_NAME, owner=OWNER)
         assert pin.file_hash == cid2
         assert pin.item_hash == msg2
+
+
+@pytest.mark.asyncio
+async def test_multiple_owners_same_ipns_name(session_factory: DbSessionFactory):
+    owner2 = "0x000000000000000000000000000000000000dEaD"
+    with session_factory() as session:
+        upsert_file(session, file_hash=CID, size=1024, file_type=FileType.FILE)
+        _upsert(session, owner=OWNER)
+        _upsert(session, owner=owner2)
+        session.commit()
+
+    with session_factory() as session:
+        records = list(get_ipns_records_by_name(session, name=IPNS_NAME))
+        assert len(records) == 2
+
+        record1 = get_ipns_record(session, name=IPNS_NAME, owner=OWNER)
+        assert record1 is not None
+        assert record1.owner == OWNER
+
+        record2 = get_ipns_record(session, name=IPNS_NAME, owner=owner2)
+        assert record2 is not None
+        assert record2.owner == owner2
