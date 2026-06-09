@@ -32,7 +32,7 @@ dependencies = [
   "alembic==1.18.4",
   "aleph-message==1.2.0",
   "aleph-nuls2==0.1.1",
-  "aleph-p2p-client @ git+https://github.com/aleph-im/p2p-service-client-python@1e992aaacdb0071a34ffb130cbbba9123509e08b",
+  "grpcio>=1.66",
   "asyncpg==0.31.0",
   "base58>=1.0.3",
   "coincurve==21.0.0",
@@ -340,6 +340,10 @@ allow_redefinition = true
 # Ignore the imported code from py-libp2p
 # [mypy-aleph.toolkit.libp2p_stubs.""]
 # ignore_errors = True
+
+[tool.mypy.overrides]
+module = "aleph.services.p2p.grpc_generated.*"
+ignore_errors = true
 
 [tool.yamlfix]
 sequence_style = "keep_style"

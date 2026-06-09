@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+package aleph.p2p.v1;
+
+// Control and pubsub API of the aleph.im P2P service.
+// Errors are returned as gRPC statuses:
+// - Dial: NOT_FOUND (peer unreachable), FAILED_PRECONDITION (peer id mismatch),
+//   INVALID_ARGUMENT (bad peer id / multiaddr), INTERNAL (other).
+// - Publish: INVALID_ARGUMENT (bad topic), INTERNAL (gossipsub error).
+service AlephP2P {
+  // Local node identity and addresses.
+  rpc Identify(IdentifyRequest) returns (NodeInfo);
+  // Dial a remote peer. Returns once the connection is established or failed.
+  rpc Dial(DialRequest) returns (DialResponse);
+  // Publish a message on a gossipsub topic. With echo=true, the message is
+  // also delivered to local Subscribe streams for this topic.
+  rpc Publish(PublishRequest) returns (PublishResponse);
+  // Subscribe to a gossipsub topic. Server stream of received messages.
+  // The per-subscriber buffer is bounded; on overflow the oldest messages
+  // are dropped and counted in metrics.
+  rpc Subscribe(SubscribeRequest) returns (stream PubsubEnvelope);
+  // Replace the full set of preferred peers (registry-backed CCNs).
+  // Preferred peers are protected from pruning and receive a gossipsub
+  // application score bonus. The set is capped server-side.
+  rpc SetPreferredPeers(PreferredPeerSet) returns (SetPreferredPeersResult);
+  // List currently connected peers.
+  rpc GetPeers(GetPeersRequest) returns (PeerList);
+}
+
+message IdentifyRequest {}
+
+message NodeInfo {
+  string peer_id = 1;
+  repeated string listen_multiaddrs = 2;
+  repeated string external_multiaddrs = 3;
+}
+
+message DialRequest {
+  string peer_id = 1;
+  string multiaddr = 2;
+}
+
+message DialResponse {}
+
+message PublishRequest {
+  string topic = 1;
+  bytes payload = 2;
+  bool echo = 3;
+}
+
+message PublishResponse {}
+
+message SubscribeRequest {
+  string topic = 1;
+}
+
+message PubsubEnvelope {
+  string topic = 1;
+  string source_peer_id = 2;
+  bytes payload = 3;
+  uint64 received_at_millis = 4;
+}
+
+message PreferredPeer {
+  string peer_id = 1;
+  // Dial hints for this peer, multiaddr format.
+  repeated string multiaddrs = 2;
+}
+
+message PreferredPeerSet {
+  repeated PreferredPeer peers = 1;
+}
+
+message SetPreferredPeersResult {
+  uint32 accepted = 1;
+  // Number of entries dropped because of the protected-share cap.
+  uint32 truncated = 2;
+}
+
+message GetPeersRequest {}
+
+message PeerInfo {
+  string peer_id = 1;
+  repeated string multiaddrs = 2;
+  bool preferred = 3;
+  double score = 4;
+}
+
+message PeerList {
+  repeated PeerInfo peers = 1;
+}
