@@ -201,8 +201,9 @@ async def test_auth_upload_happy_path(
     with session_factory() as session:
         file = get_file(session=session, file_hash=EXPECTED_FILE_CID)
         assert file is not None
-        # Authenticated uploads do NOT get a grace period (message anchors).
-        assert not _has_grace_period(session, EXPECTED_FILE_CID)
+        # Authenticated uploads must get a grace pin to bridge the gap until
+        # the STORE message is processed and creates the permanent pin.
+        assert _has_grace_period(session, EXPECTED_FILE_CID)
 
 
 @pytest.mark.asyncio

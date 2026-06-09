@@ -387,12 +387,15 @@ async def _check_and_add_file(
             file_type=FileType.FILE,
         )
 
-        # For files uploaded without authenticated upload, add a grace period
-        # (storage.grace_period config, 6 hours by default).
-        if message_content is None:
-            add_grace_period_for_file(
-                session=session, file_hash=file_hash, hours=grace_period
-            )
+        # Pin the file for the grace period (storage.grace_period config).
+        # For anonymous uploads this is the only pin and bounds the file's
+        # lifetime. For authenticated uploads it bridges the gap until the
+        # STORE message is processed and creates the permanent pin; without
+        # it, a garbage collector sweep during a pending-queue backlog could
+        # delete the file before its message is processed.
+        add_grace_period_for_file(
+            session=session, file_hash=file_hash, hours=grace_period
+        )
 
         session.commit()
 

@@ -216,10 +216,11 @@ async def ipfs_add_file(request: web.Request):
                     size=size,
                     file_type=FileType.FILE,
                 )
-                if message_content is None:
-                    add_grace_period_for_file(
-                        session=session, file_hash=cid, hours=grace_period
-                    )
+                # Grace pin for anonymous uploads and as a bridge until the
+                # STORE message creates the permanent pin (see storage.py).
+                add_grace_period_for_file(
+                    session=session, file_hash=cid, hours=grace_period
+                )
                 session.commit()
         except Exception:
             # Bare `Exception` is intentional: any post-pin failure must
