@@ -1,11 +1,12 @@
 import base64
 import hashlib
+import json
 import logging
 import math
 import os
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import aio_pika
 import aiofiles
@@ -59,6 +60,33 @@ from aleph.web.controllers.utils import (
 logger = logging.getLogger(__name__)
 
 
+async def _read_json_body_with_limit(request: web.Request, max_size: int) -> Any:
+    """Read a JSON request body, aborting as soon as it exceeds max_size.
+
+    Unlike request.json(), this does not buffer up to client_max_size
+    (100 MiB) before checking; anonymous endpoints must reject at the
+    unauthenticated upload limit (25 MiB by default).
+    """
+    content_length = request.content_length
+    if content_length is not None and content_length > max_size:
+        raise web.HTTPRequestEntityTooLarge(
+            actual_size=content_length, max_size=max_size
+        )
+
+    buffer = bytearray()
+    async for chunk in request.content.iter_chunked(8192):
+        buffer.extend(chunk)
+        if len(buffer) > max_size:
+            raise web.HTTPRequestEntityTooLarge(
+                actual_size=len(buffer), max_size=max_size
+            )
+
+    try:
+        return json.loads(bytes(buffer))
+    except json.JSONDecodeError:
+        raise web.HTTPUnprocessableEntity(reason="Invalid JSON body")
+
+
 async def add_ipfs_json_controller(request: web.Request):
     """
     Forward the JSON content to IPFS server and return a hash.
@@ -86,7 +114,8 @@ async def add_ipfs_json_controller(request: web.Request):
     config = get_config_from_request(request)
     grace_period = config.storage.grace_period.value
 
-    data = await request.json()
+    max_size = config.storage.max_unauthenticated_upload_file_size.value
+    data = await _read_json_body_with_limit(request, max_size)
     with session_factory() as session:
         output = {
             "status": "success",
@@ -129,7 +158,8 @@ async def add_storage_json_controller(request: web.Request):
     config = get_config_from_request(request)
     grace_period = config.storage.grace_period.value
 
-    data = await request.json()
+    max_size = config.storage.max_unauthenticated_upload_file_size.value
+    data = await _read_json_body_with_limit(request, max_size)
     with session_factory() as session:
         output = {
             "status": "success",
