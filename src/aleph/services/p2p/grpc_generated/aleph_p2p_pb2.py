@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0f\x61leph_p2p.proto\x12\x0c\x61leph.p2p.v1\"\x11\n\x0fIdentifyRequest\"S\n\x08NodeInfo\x12\x0f\n\x07peer_id\x18\x01 \x01(\t\x12\x19\n\x11listen_multiaddrs\x18\x02 \x03(\t\x12\x1b\n\x13\x65xternal_multiaddrs\x18\x03 \x03(\t\"1\n\x0b\x44ialRequest\x12\x0f\n\x07peer_id\x18\x01 \x01(\t\x12\x11\n\tmultiaddr\x18\x02 \x01(\t\"\x0e\n\x0c\x44ialResponse\">\n\x0ePublishRequest\x12\r\n\x05topic\x18\x01 \x01(\t\x12\x0f\n\x07payload\x18\x02 \x01(\x0c\x12\x0c\n\x04\x65\x63ho\x18\x03 \x01(\x08\"\x11\n\x0fPublishResponse\"!\n\x10SubscribeRequest\x12\r\n\x05topic\x18\x01 \x01(\t\"d\n\x0ePubsubEnvelope\x12\r\n\x05topic\x18\x01 \x01(\t\x12\x16\n\x0esource_peer_id\x18\x02 \x01(\t\x12\x0f\n\x07payload\x18\x03 \x01(\x0c\x12\x1a\n\x12received_at_millis\x18\x04 \x01(\x04\"4\n\rPreferredPeer\x12\x0f\n\x07peer_id\x18\x01 \x01(\t\x12\x12\n\nmultiaddrs\x18\x02 \x03(\t\">\n\x10PreferredPeerSet\x12*\n\x05peers\x18\x01 \x03(\x0b\x32\x1b.aleph.p2p.v1.PreferredPeer\">\n\x17SetPreferredPeersResult\x12\x10\n\x08\x61\x63\x63\x65pted\x18\x01 \x01(\r\x12\x11\n\ttruncated\x18\x02 \x01(\r\"\x11\n\x0fGetPeersRequest\"Q\n\x08PeerInfo\x12\x0f\n\x07peer_id\x18\x01 \x01(\t\x12\x12\n\nmultiaddrs\x18\x02 \x03(\t\x12\x11\n\tpreferred\x18\x03 \x01(\x08\x12\r\n\x05score\x18\x04 \x01(\x01\"1\n\x08PeerList\x12%\n\x05peers\x18\x01 \x03(\x0b\x32\x16.aleph.p2p.v1.PeerInfo2\xc0\x03\n\x08\x41lephP2P\x12\x41\n\x08Identify\x12\x1d.aleph.p2p.v1.IdentifyRequest\x1a\x16.aleph.p2p.v1.NodeInfo\x12=\n\x04\x44ial\x12\x19.aleph.p2p.v1.DialRequest\x1a\x1a.aleph.p2p.v1.DialResponse\x12\x46\n\x07Publish\x12\x1c.aleph.p2p.v1.PublishRequest\x1a\x1d.aleph.p2p.v1.PublishResponse\x12K\n\tSubscribe\x12\x1e.aleph.p2p.v1.SubscribeRequest\x1a\x1c.aleph.p2p.v1.PubsubEnvelope0\x01\x12Z\n\x11SetPreferredPeers\x12\x1e.aleph.p2p.v1.PreferredPeerSet\x1a%.aleph.p2p.v1.SetPreferredPeersResult\x12\x41\n\x08GetPeers\x12\x1d.aleph.p2p.v1.GetPeersRequest\x1a\x16.aleph.p2p.v1.PeerListb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0f\x61leph_p2p.proto\x12\x0c\x61leph.p2p.v1\"\x11\n\x0fIdentifyRequest\"[\n\x10IdentifyResponse\x12\x0f\n\x07peer_id\x18\x01 \x01(\t\x12\x19\n\x11listen_multiaddrs\x18\x02 \x03(\t\x12\x1b\n\x13\x65xternal_multiaddrs\x18\x03 \x03(\t\"1\n\x0b\x44ialRequest\x12\x0f\n\x07peer_id\x18\x01 \x01(\t\x12\x11\n\tmultiaddr\x18\x02 \x01(\t\"\x0e\n\x0c\x44ialResponse\">\n\x0ePublishRequest\x12\r\n\x05topic\x18\x01 \x01(\t\x12\x0f\n\x07payload\x18\x02 \x01(\x0c\x12\x0c\n\x04\x65\x63ho\x18\x03 \x01(\x08\"\x11\n\x0fPublishResponse\"!\n\x10SubscribeRequest\x12\r\n\x05topic\x18\x01 \x01(\t\"d\n\x0ePubsubEnvelope\x12\r\n\x05topic\x18\x01 \x01(\t\x12\x16\n\x0esource_peer_id\x18\x02 \x01(\t\x12\x0f\n\x07payload\x18\x03 \x01(\x0c\x12\x1a\n\x12received_at_millis\x18\x04 \x01(\x04\"4\n\rPreferredPeer\x12\x0f\n\x07peer_id\x18\x01 \x01(\t\x12\x12\n\nmultiaddrs\x18\x02 \x03(\t\"F\n\x18SetPreferredPeersRequest\x12*\n\x05peers\x18\x01 \x03(\x0b\x32\x1b.aleph.p2p.v1.PreferredPeer\"@\n\x19SetPreferredPeersResponse\x12\x10\n\x08\x61\x63\x63\x65pted\x18\x01 \x01(\r\x12\x11\n\ttruncated\x18\x02 \x01(\r\"\x11\n\x0fGetPeersRequest\"9\n\x10GetPeersResponse\x12%\n\x05peers\x18\x01 \x03(\x0b\x32\x16.aleph.p2p.v1.PeerInfo\"Q\n\x08PeerInfo\x12\x0f\n\x07peer_id\x18\x01 \x01(\t\x12\x12\n\nmultiaddrs\x18\x02 \x03(\t\x12\x11\n\tpreferred\x18\x03 \x01(\x08\x12\r\n\x05score\x18\x04 \x01(\x01\x32\xda\x03\n\x08\x41lephP2P\x12I\n\x08Identify\x12\x1d.aleph.p2p.v1.IdentifyRequest\x1a\x1e.aleph.p2p.v1.IdentifyResponse\x12=\n\x04\x44ial\x12\x19.aleph.p2p.v1.DialRequest\x1a\x1a.aleph.p2p.v1.DialResponse\x12\x46\n\x07Publish\x12\x1c.aleph.p2p.v1.PublishRequest\x1a\x1d.aleph.p2p.v1.PublishResponse\x12K\n\tSubscribe\x12\x1e.aleph.p2p.v1.SubscribeRequest\x1a\x1c.aleph.p2p.v1.PubsubEnvelope0\x01\x12\x64\n\x11SetPreferredPeers\x12&.aleph.p2p.v1.SetPreferredPeersRequest\x1a\'.aleph.p2p.v1.SetPreferredPeersResponse\x12I\n\x08GetPeers\x12\x1d.aleph.p2p.v1.GetPeersRequest\x1a\x1e.aleph.p2p.v1.GetPeersResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -33,32 +33,32 @@ if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_IDENTIFYREQUEST']._serialized_start=33
   _globals['_IDENTIFYREQUEST']._serialized_end=50
-  _globals['_NODEINFO']._serialized_start=52
-  _globals['_NODEINFO']._serialized_end=135
-  _globals['_DIALREQUEST']._serialized_start=137
-  _globals['_DIALREQUEST']._serialized_end=186
-  _globals['_DIALRESPONSE']._serialized_start=188
-  _globals['_DIALRESPONSE']._serialized_end=202
-  _globals['_PUBLISHREQUEST']._serialized_start=204
-  _globals['_PUBLISHREQUEST']._serialized_end=266
-  _globals['_PUBLISHRESPONSE']._serialized_start=268
-  _globals['_PUBLISHRESPONSE']._serialized_end=285
-  _globals['_SUBSCRIBEREQUEST']._serialized_start=287
-  _globals['_SUBSCRIBEREQUEST']._serialized_end=320
-  _globals['_PUBSUBENVELOPE']._serialized_start=322
-  _globals['_PUBSUBENVELOPE']._serialized_end=422
-  _globals['_PREFERREDPEER']._serialized_start=424
-  _globals['_PREFERREDPEER']._serialized_end=476
-  _globals['_PREFERREDPEERSET']._serialized_start=478
-  _globals['_PREFERREDPEERSET']._serialized_end=540
-  _globals['_SETPREFERREDPEERSRESULT']._serialized_start=542
-  _globals['_SETPREFERREDPEERSRESULT']._serialized_end=604
-  _globals['_GETPEERSREQUEST']._serialized_start=606
-  _globals['_GETPEERSREQUEST']._serialized_end=623
-  _globals['_PEERINFO']._serialized_start=625
-  _globals['_PEERINFO']._serialized_end=706
-  _globals['_PEERLIST']._serialized_start=708
-  _globals['_PEERLIST']._serialized_end=757
-  _globals['_ALEPHP2P']._serialized_start=760
-  _globals['_ALEPHP2P']._serialized_end=1208
+  _globals['_IDENTIFYRESPONSE']._serialized_start=52
+  _globals['_IDENTIFYRESPONSE']._serialized_end=143
+  _globals['_DIALREQUEST']._serialized_start=145
+  _globals['_DIALREQUEST']._serialized_end=194
+  _globals['_DIALRESPONSE']._serialized_start=196
+  _globals['_DIALRESPONSE']._serialized_end=210
+  _globals['_PUBLISHREQUEST']._serialized_start=212
+  _globals['_PUBLISHREQUEST']._serialized_end=274
+  _globals['_PUBLISHRESPONSE']._serialized_start=276
+  _globals['_PUBLISHRESPONSE']._serialized_end=293
+  _globals['_SUBSCRIBEREQUEST']._serialized_start=295
+  _globals['_SUBSCRIBEREQUEST']._serialized_end=328
+  _globals['_PUBSUBENVELOPE']._serialized_start=330
+  _globals['_PUBSUBENVELOPE']._serialized_end=430
+  _globals['_PREFERREDPEER']._serialized_start=432
+  _globals['_PREFERREDPEER']._serialized_end=484
+  _globals['_SETPREFERREDPEERSREQUEST']._serialized_start=486
+  _globals['_SETPREFERREDPEERSREQUEST']._serialized_end=556
+  _globals['_SETPREFERREDPEERSRESPONSE']._serialized_start=558
+  _globals['_SETPREFERREDPEERSRESPONSE']._serialized_end=622
+  _globals['_GETPEERSREQUEST']._serialized_start=624
+  _globals['_GETPEERSREQUEST']._serialized_end=641
+  _globals['_GETPEERSRESPONSE']._serialized_start=643
+  _globals['_GETPEERSRESPONSE']._serialized_end=700
+  _globals['_PEERINFO']._serialized_start=702
+  _globals['_PEERINFO']._serialized_end=783
+  _globals['_ALEPHP2P']._serialized_start=786
+  _globals['_ALEPHP2P']._serialized_end=1260
 # @@protoc_insertion_point(module_scope)

@@ -42,7 +42,7 @@ class AlephP2PStub:
         self.Identify = channel.unary_unary(
                 '/aleph.p2p.v1.AlephP2P/Identify',
                 request_serializer=aleph__p2p__pb2.IdentifyRequest.SerializeToString,
-                response_deserializer=aleph__p2p__pb2.NodeInfo.FromString,
+                response_deserializer=aleph__p2p__pb2.IdentifyResponse.FromString,
                 _registered_method=True)
         self.Dial = channel.unary_unary(
                 '/aleph.p2p.v1.AlephP2P/Dial',
@@ -61,13 +61,13 @@ class AlephP2PStub:
                 _registered_method=True)
         self.SetPreferredPeers = channel.unary_unary(
                 '/aleph.p2p.v1.AlephP2P/SetPreferredPeers',
-                request_serializer=aleph__p2p__pb2.PreferredPeerSet.SerializeToString,
-                response_deserializer=aleph__p2p__pb2.SetPreferredPeersResult.FromString,
+                request_serializer=aleph__p2p__pb2.SetPreferredPeersRequest.SerializeToString,
+                response_deserializer=aleph__p2p__pb2.SetPreferredPeersResponse.FromString,
                 _registered_method=True)
         self.GetPeers = channel.unary_unary(
                 '/aleph.p2p.v1.AlephP2P/GetPeers',
                 request_serializer=aleph__p2p__pb2.GetPeersRequest.SerializeToString,
-                response_deserializer=aleph__p2p__pb2.PeerList.FromString,
+                response_deserializer=aleph__p2p__pb2.GetPeersResponse.FromString,
                 _registered_method=True)
 
 
@@ -132,7 +132,7 @@ def add_AlephP2PServicer_to_server(servicer, server):
             'Identify': grpc.unary_unary_rpc_method_handler(
                     servicer.Identify,
                     request_deserializer=aleph__p2p__pb2.IdentifyRequest.FromString,
-                    response_serializer=aleph__p2p__pb2.NodeInfo.SerializeToString,
+                    response_serializer=aleph__p2p__pb2.IdentifyResponse.SerializeToString,
             ),
             'Dial': grpc.unary_unary_rpc_method_handler(
                     servicer.Dial,
@@ -151,13 +151,13 @@ def add_AlephP2PServicer_to_server(servicer, server):
             ),
             'SetPreferredPeers': grpc.unary_unary_rpc_method_handler(
                     servicer.SetPreferredPeers,
-                    request_deserializer=aleph__p2p__pb2.PreferredPeerSet.FromString,
-                    response_serializer=aleph__p2p__pb2.SetPreferredPeersResult.SerializeToString,
+                    request_deserializer=aleph__p2p__pb2.SetPreferredPeersRequest.FromString,
+                    response_serializer=aleph__p2p__pb2.SetPreferredPeersResponse.SerializeToString,
             ),
             'GetPeers': grpc.unary_unary_rpc_method_handler(
                     servicer.GetPeers,
                     request_deserializer=aleph__p2p__pb2.GetPeersRequest.FromString,
-                    response_serializer=aleph__p2p__pb2.PeerList.SerializeToString,
+                    response_serializer=aleph__p2p__pb2.GetPeersResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -191,7 +191,7 @@ class AlephP2P:
             target,
             '/aleph.p2p.v1.AlephP2P/Identify',
             aleph__p2p__pb2.IdentifyRequest.SerializeToString,
-            aleph__p2p__pb2.NodeInfo.FromString,
+            aleph__p2p__pb2.IdentifyResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -298,8 +298,8 @@ class AlephP2P:
             request,
             target,
             '/aleph.p2p.v1.AlephP2P/SetPreferredPeers',
-            aleph__p2p__pb2.PreferredPeerSet.SerializeToString,
-            aleph__p2p__pb2.SetPreferredPeersResult.FromString,
+            aleph__p2p__pb2.SetPreferredPeersRequest.SerializeToString,
+            aleph__p2p__pb2.SetPreferredPeersResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -326,7 +326,7 @@ class AlephP2P:
             target,
             '/aleph.p2p.v1.AlephP2P/GetPeers',
             aleph__p2p__pb2.GetPeersRequest.SerializeToString,
-            aleph__p2p__pb2.PeerList.FromString,
+            aleph__p2p__pb2.GetPeersResponse.FromString,
             options,
             channel_credentials,
             insecure,

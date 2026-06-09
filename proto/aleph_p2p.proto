@@ -9,7 +9,7 @@ package aleph.p2p.v1;
 // - Publish: INVALID_ARGUMENT (bad topic), INTERNAL (gossipsub error).
 service AlephP2P {
   // Local node identity and addresses.
-  rpc Identify(IdentifyRequest) returns (NodeInfo);
+  rpc Identify(IdentifyRequest) returns (IdentifyResponse);
   // Dial a remote peer. Returns once the connection is established or failed.
   rpc Dial(DialRequest) returns (DialResponse);
   // Publish a message on a gossipsub topic. With echo=true, the message is
@@ -22,14 +22,14 @@ service AlephP2P {
   // Replace the full set of preferred peers (registry-backed CCNs).
   // Preferred peers are protected from pruning and receive a gossipsub
   // application score bonus. The set is capped server-side.
-  rpc SetPreferredPeers(PreferredPeerSet) returns (SetPreferredPeersResult);
+  rpc SetPreferredPeers(SetPreferredPeersRequest) returns (SetPreferredPeersResponse);
   // List currently connected peers.
-  rpc GetPeers(GetPeersRequest) returns (PeerList);
+  rpc GetPeers(GetPeersRequest) returns (GetPeersResponse);
 }
 
 message IdentifyRequest {}
 
-message NodeInfo {
+message IdentifyResponse {
   string peer_id = 1;
   repeated string listen_multiaddrs = 2;
   repeated string external_multiaddrs = 3;
@@ -56,8 +56,11 @@ message SubscribeRequest {
 
 message PubsubEnvelope {
   string topic = 1;
+  // Peer ID of the original message author (gossipsub signed source),
+  // not the peer the message was relayed through.
   string source_peer_id = 2;
   bytes payload = 3;
+  // Local reception time, milliseconds since the Unix epoch.
   uint64 received_at_millis = 4;
 }
 
@@ -67,11 +70,11 @@ message PreferredPeer {
   repeated string multiaddrs = 2;
 }
 
-message PreferredPeerSet {
+message SetPreferredPeersRequest {
   repeated PreferredPeer peers = 1;
 }
 
-message SetPreferredPeersResult {
+message SetPreferredPeersResponse {
   uint32 accepted = 1;
   // Number of entries dropped because of the protected-share cap.
   uint32 truncated = 2;
@@ -79,13 +82,13 @@ message SetPreferredPeersResult {
 
 message GetPeersRequest {}
 
+message GetPeersResponse {
+  repeated PeerInfo peers = 1;
+}
+
 message PeerInfo {
   string peer_id = 1;
   repeated string multiaddrs = 2;
   bool preferred = 3;
   double score = 4;
-}
-
-message PeerList {
-  repeated PeerInfo peers = 1;
 }
