@@ -648,6 +648,36 @@ async def test_storage_add_json_invalid_json(api_client):
 
 
 @pytest.mark.asyncio
+async def test_storage_add_json_over_size_limit_chunked(api_client, mock_config):
+    original = mock_config.storage.max_unauthenticated_upload_file_size.value
+    mock_config.storage.max_unauthenticated_upload_file_size.value = 1024
+    try:
+
+        async def body():
+            for _ in range(4):
+                yield b'"' + b"a" * 1024 + b'"'
+
+        response = await api_client.post(
+            STORAGE_ADD_JSON_URI,
+            data=body(),
+            headers={"Content-Type": "application/json"},
+        )
+        assert response.status == 413, await response.text()
+    finally:
+        mock_config.storage.max_unauthenticated_upload_file_size.value = original
+
+
+@pytest.mark.asyncio
+async def test_storage_add_json_invalid_utf8(api_client):
+    response = await api_client.post(
+        STORAGE_ADD_JSON_URI,
+        data=b"\xff\xfa{",
+        headers={"Content-Type": "application/json"},
+    )
+    assert response.status == 422, await response.text()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "ref",
     [

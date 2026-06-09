@@ -83,7 +83,9 @@ async def _read_json_body_with_limit(request: web.Request, max_size: int) -> Any
 
     try:
         return json.loads(bytes(buffer))
-    except json.JSONDecodeError:
+    except ValueError:
+        # Covers both JSONDecodeError and UnicodeDecodeError: any
+        # undecodable anonymous body is a client error, not a server error.
         raise web.HTTPUnprocessableEntity(reason="Invalid JSON body")
 
 
