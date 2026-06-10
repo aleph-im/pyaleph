@@ -100,6 +100,33 @@ async def test_get_ipns_raw_redirect(
 
 
 @pytest.mark.asyncio
+async def test_get_ipns_raw_no_resolved_cid(
+    ccn_api_client,
+    session_factory: DbSessionFactory,
+):
+    """GET /api/v0/ipns/{name}/raw returns 404 when resolved_cid is None."""
+    with session_factory() as session:
+        upsert_ipns_record(
+            session=session,
+            name=IPNS_NAME,
+            owner=OWNER,
+            item_hash=MSG_HASH,
+            record=b"\x0a\x01raw",
+            record_sequence=42,
+            record_validity=NOW + dt.timedelta(days=365),
+            max_size_mib=100,
+            resolved_cid=None,
+            last_resolved=None,
+            status=IpnsStatus.OK,
+            created=NOW,
+        )
+        session.commit()
+
+    response = await ccn_api_client.get(f"/api/v0/ipns/{IPNS_NAME}/raw")
+    assert response.status == 404
+
+
+@pytest.mark.asyncio
 async def test_list_ipns_by_address(
     ccn_api_client,
     session_factory: DbSessionFactory,

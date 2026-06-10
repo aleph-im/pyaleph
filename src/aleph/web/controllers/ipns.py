@@ -11,6 +11,7 @@ from aiohttp import web
 from aleph_message.models import ItemType
 
 from aleph.db.accessors.ipns import get_ipns_records_by_name, get_ipns_records_by_owner
+from aleph.db.models.ipns import IpnsRecordDb
 from aleph.exceptions import UnknownHashError
 from aleph.utils import item_type_from_hash
 from aleph.web.controllers.app_state_getters import get_session_factory_from_request
@@ -25,7 +26,7 @@ def _validate_ipns_name(name: str) -> None:
         raise web.HTTPUnprocessableEntity(reason=f"Not an IPNS name: '{name}'")
 
 
-def _registration_to_dict(record_db) -> dict:
+def _registration_to_dict(record_db: IpnsRecordDb) -> dict:
     return {
         "owner": record_db.owner,
         "item_hash": record_db.item_hash,
@@ -44,8 +45,8 @@ def _registration_to_dict(record_db) -> dict:
 
 def _best_registration(records):
     # Among multiple owners of the same name, serve the registration with
-    # the highest record sequence (records all verify against the same key).
-    return max(records, key=lambda r: r.record_sequence or 0)
+    # the highest record sequence; tie-break by owner for determinism.
+    return max(records, key=lambda r: (r.record_sequence or 0, r.owner))
 
 
 async def get_ipns_name(request: web.Request) -> web.Response:
