@@ -11,6 +11,7 @@ from aleph.web.controllers import (
     channels,
     info,
     ipfs,
+    ipns,
     main,
     messages,
     p2p,
@@ -138,6 +139,12 @@ def register_routes(app: web.Application, swagger: Optional[SwaggerDocs]):
         web.post(
             "/api/v0/ipfs/add_json",
             storage.add_ipfs_json_controller,
+        ),
+        web.get("/api/v0/ipns/{name}", ipns.get_ipns_name),
+        web.get("/api/v0/ipns/{name}/raw", ipns.get_ipns_raw),
+        web.get(
+            "/api/v0/addresses/{address}/ipns",
+            ipns.list_ipns_by_address,
         ),
         web.post(
             "/api/v0/storage/add_file",
