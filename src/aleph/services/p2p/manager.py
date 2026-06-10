@@ -26,7 +26,11 @@ async def initialize_host(
     port: int = 4025,
     listen: bool = True,
 ) -> List[Coroutine]:
-    from .jobs import reconnect_p2p_job, tidy_http_peers_job
+    from .jobs import (
+        reconnect_p2p_job,
+        refresh_preferred_peers_job,
+        tidy_http_peers_job,
+    )
 
     tasks: List[Coroutine]
 
@@ -42,6 +46,9 @@ async def initialize_host(
         ),
         tidy_http_peers_job(
             config=config, session_factory=session_factory, node_cache=node_cache
+        ),
+        refresh_preferred_peers_job(
+            config=config, session_factory=session_factory, p2p_client=p2p_client
         ),
     ]
     if listen:
