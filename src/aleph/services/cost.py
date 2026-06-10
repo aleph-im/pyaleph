@@ -842,7 +842,10 @@ def _calculate_ipns_costs(
     """
     payment_type = get_payment_type(content)
 
-    assert content.max_size_mib is not None  # enforced by StoreContent validator
+    if content.max_size_mib is None:
+        raise ValueError(
+            f"IPNS store content for message {item_hash} has no max_size_mib"
+        )
     quota_mib = Decimal(content.max_size_mib)
 
     volume = SizedVolume(CostType.STORAGE, quota_mib, item_hash)
@@ -857,6 +860,8 @@ def _calculate_ipns_costs(
         pricing.price.storage.credit / HOUR,
     )
 
+    # STORE messages only allow hold and credit payment types, so the payg
+    # (stream) component of the fee is effectively unused and defaults to 0.
     if pricing.price.fixed is not None:
         costs.append(
             AccountCostsDb(

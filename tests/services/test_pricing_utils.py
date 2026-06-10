@@ -179,6 +179,7 @@ class TestBuildDefaultPricingModel:
             ProductPriceType.INSTANCE_GPU_PREMIUM,
             ProductPriceType.INSTANCE_CONFIDENTIAL,
             ProductPriceType.INSTANCE_GPU_STANDARD,
+            ProductPriceType.IPNS,
             ProductPriceType.WEB3_HOSTING,
         ]
 

@@ -48,3 +48,36 @@ def test_ipns_costs_scale_with_quota(session_factory: DbSessionFactory):
             session, _ipns_content(max_size_mib=1000), MSG_HASH
         )
     assert total_large > total_small
+
+
+def test_ipns_costs_credit_payment(session_factory):
+    content = StoreContent.model_validate(
+        {
+            "address": "0xA07B1214bAe0D5ccAA25449C3149c0aC83658874",
+            "time": 1780000000.0,
+            "item_type": "ipns",
+            "item_hash": IPNS_NAME,
+            "max_size_mib": 100,
+            "payment": {"chain": "ETH", "type": "credit"},
+        }
+    )
+    with session_factory() as session:
+        total, costs = get_total_and_detailed_costs(session, content, MSG_HASH)
+
+    fee_cost = next(c for c in costs if c.type == CostType.IPNS)
+    storage_cost = next(c for c in costs if c.type == CostType.STORAGE)
+    assert fee_cost.cost_credit > Decimal(0)
+    assert storage_cost.cost_credit > Decimal(0)
+    assert total > Decimal(0)
+
+
+def test_product_pricing_parses_fixed_fee():
+    from aleph.toolkit.constants import DEFAULT_PRICE_AGGREGATE, ProductPriceType
+    from aleph.types.cost import ProductPricing
+
+    pricing = ProductPricing.from_aggregate(
+        ProductPriceType.IPNS, DEFAULT_PRICE_AGGREGATE
+    )
+    assert pricing.price.fixed is not None
+    assert pricing.price.fixed.holding == Decimal("1")
+    assert pricing.price.fixed.credit == Decimal("0.5")
