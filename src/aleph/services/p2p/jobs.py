@@ -4,6 +4,9 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
+import grpc
+import grpc.aio
+import multiaddr as multiaddr_lib
 from configmanager import Config
 
 from aleph.db.accessors.aggregates import get_aggregate_by_key
@@ -120,12 +123,26 @@ def preferred_peers_from_aggregate(
 ) -> List[Tuple[str, List[str]]]:
     """
     Extracts (peer_id, [multiaddr, ...]) pairs for CCNs from the corechannel
-    aggregate content. Nodes without a parsable /p2p/ multiaddress are skipped;
-    several records with the same peer ID are merged.
+    aggregate content.
+
+    Only nodes with status "active" are included (the allowlist intentionally
+    does NOT filter by status; preferred slots are a capped resource so we
+    apply the stricter filter here).
+
+    Nodes whose multiaddress fails strict multiaddr parsing are skipped;
+    nodes without a parsable /p2p/ component are also skipped. Several
+    records with the same peer ID are merged.
     """
     peers: Dict[str, List[str]] = {}
     for node in content.get("nodes", []):
+        if node.get("status") != "active":
+            continue
         multiaddress = node.get("multiaddress") or ""
+        try:
+            multiaddr_lib.Multiaddr(multiaddress)
+        except ValueError:
+            LOGGER.debug("Skipping node with invalid multiaddress: %r", multiaddress)
+            continue
         peer_id = extract_peer_id(multiaddress)
         if not peer_id:
             continue
@@ -160,6 +177,12 @@ async def refresh_preferred_peers_job(
 
             if aggregate is not None and aggregate.content is not None:
                 peers = preferred_peers_from_aggregate(aggregate.content)
+                # Drop our own entry: no value in treating self as a preferred peer.
+                peers = [
+                    (peer_id, addrs)
+                    for peer_id, addrs in peers
+                    if peer_id != p2p_client.peer_id
+                ]
                 if peers:
                     accepted, truncated = await p2p_client.set_preferred_peers(peers)
                     LOGGER.info(
@@ -169,6 +192,11 @@ async def refresh_preferred_peers_job(
                         accepted,
                         truncated,
                     )
+        except grpc.aio.AioRpcError as e:
+            if e.code() == grpc.StatusCode.UNIMPLEMENTED:
+                LOGGER.debug("P2P service does not support preferred peers yet")
+            else:
+                LOGGER.exception("Error refreshing preferred peers")
         except Exception:
             LOGGER.exception("Error refreshing preferred peers")
 
