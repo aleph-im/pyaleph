@@ -7,6 +7,7 @@ TODO:
 
 import asyncio
 import base64
+import binascii
 import datetime as dt
 import logging
 import random
@@ -91,7 +92,7 @@ class IpfsFileStats:
 
 
 async def _get_file_stats_from_ipfs(
-    cid: ItemHash, ipfs_service: IpfsService, stat_timeout: int
+    cid: str, ipfs_service: IpfsService, stat_timeout: int
 ) -> IpfsFileStats:
     # Stat is a storage operation: route through the storage client (which
     # the service maps to the pinning service when configured, otherwise the
@@ -337,7 +338,12 @@ class StoreMessageHandler(ContentHandler):
             )
 
         if content.ipns_record is not None:
-            record = base64.b64decode(content.ipns_record)
+            try:
+                record = base64.b64decode(content.ipns_record, validate=True)
+            except binascii.Error as e:
+                raise InvalidMessageFormat(
+                    f"IPNS record for '{name}' is not valid base64: {e}"
+                )
         else:
             # Track-only flow: fetch the current record from the DHT.
             try:
@@ -377,7 +383,7 @@ class StoreMessageHandler(ContentHandler):
             return
 
         file_stats = await _get_file_stats_from_ipfs(
-            cid=ItemHash(record_info.value_cid),
+            cid=record_info.value_cid,
             ipfs_service=ipfs_service,
             stat_timeout=config.ipfs.stat_timeout.value,
         )
@@ -394,6 +400,10 @@ class StoreMessageHandler(ContentHandler):
             file_type=file_stats.file_type,
             size=file_stats.size,
         )
+        # Note: fetch and process commit separately. If the message is
+        # rejected at process time (e.g. balance dropped between stages),
+        # this row and the pin survive until the registration is updated
+        # or forgotten. Accepted as a narrow, self-healing window.
         upsert_ipns_record(
             session=session,
             name=name,
@@ -626,7 +636,10 @@ class StoreMessageHandler(ContentHandler):
 
         record_db = get_ipns_record(session, name=name, owner=owner)
         if record_db is None or record_db.item_hash != message.item_hash:
-            # This message lost the sequence race (stale update): no pin change.
+            # This message lost the sequence race (stale update): no pin
+            # change, and it must not bill either, so drop the cost rows
+            # inserted for it earlier in this transaction.
+            delete_costs_for_message(session=session, item_hash=message.item_hash)
             return
         assert record_db.resolved_cid is not None
 
@@ -659,7 +672,7 @@ class StoreMessageHandler(ContentHandler):
             await self._check_remaining_pins(
                 session=session,
                 storage_hash=old_file_hash,
-                storage_type=item_type_from_hash(old_file_hash),
+                storage_type=ItemType.ipfs,
             )
 
     async def _check_remaining_pins(
@@ -681,7 +694,13 @@ class StoreMessageHandler(ContentHandler):
             return
 
         # Unpin the file from IPFS or remove it from local storage
-        storage_detected: ItemType = item_type_from_hash(storage_hash)
+        try:
+            storage_detected: ItemType = item_type_from_hash(storage_hash)
+        except UnknownHashError:
+            # IPNS records may point at CID shapes the STORE shape matcher
+            # does not recognize (e.g. raw-codec bafk... CIDv1). The hash
+            # still designates IPFS content; skip the cross-check.
+            storage_detected = storage_type
 
         if storage_type != storage_detected:
             raise ValueError(
@@ -718,7 +737,7 @@ class StoreMessageHandler(ContentHandler):
             await self._check_remaining_pins(
                 session=session,
                 storage_hash=pinned_hash,
-                storage_type=item_type_from_hash(pinned_hash),
+                storage_type=ItemType.ipfs,
             )
 
     async def forget_message(self, session: DbSession, message: MessageDb) -> Set[str]:

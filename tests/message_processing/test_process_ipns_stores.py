@@ -12,23 +12,13 @@ from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from aleph_message.models import (
-    Chain,
-    ItemHash,
-    ItemType,
-    MessageType,
-    StoreContent,
-)
+from aleph_message.models import Chain, ItemHash, ItemType, MessageType, StoreContent
 from configmanager import Config
 from sqlalchemy import select
 
 from aleph.db.accessors.files import get_ipns_file_pin
 from aleph.db.accessors.ipns import get_ipns_record, upsert_ipns_record
-from aleph.db.models import (
-    GracePeriodFilePinDb,
-    MessageDb,
-    StoredFileDb,
-)
+from aleph.db.models import GracePeriodFilePinDb, MessageDb, StoredFileDb
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.handlers.content.store import IpfsFileStats, StoreMessageHandler
 from aleph.services.ipfs.service import IpnsRecordInfo, IpnsResolutionError
@@ -729,3 +719,197 @@ async def test_ipns_cost_rows_migrate_on_update(
         record_db = get_ipns_record(session, name=IPNS_NAME, owner=OWNER)
         assert record_db is not None
         assert record_db.item_hash == MSG_HASH_2
+
+
+@pytest.mark.asyncio
+async def test_ipns_stale_update_cost_rows_deleted(
+    mocker,
+    mock_config: Config,
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """
+    Stale update: message A (sequence 1) arrives after message B (sequence 2)
+    has already been processed and won the race.  _process_ipns must delete
+    A's cost rows so the owner is not double-billed.  B's registration, pin,
+    and cost rows must remain intact.
+    """
+    from aleph_message.models import PaymentType
+
+    handler, ipfs_service = _make_handler(mocker)
+    ipfs_service.pin_add = AsyncMock()
+
+    content_a = _make_ipns_content()
+    content_b = _make_ipns_content()
+
+    with session_factory() as session:
+        # Insert both message rows (needed for FK on AccountCostsDb).
+        _insert_message_row(session, item_hash=MSG_HASH_1, content=content_a)
+        _insert_message_row(session, item_hash=MSG_HASH_2, content=content_b)
+        session.flush()
+
+        # Seed registration already pointing at message B (sequence 2 won).
+        _seed_ipns_record(
+            session, item_hash=MSG_HASH_2, resolved_cid=CID_V2, sequence=2
+        )
+        session.flush()
+
+        # Seed cost row for message B (the winner).
+        session.add(
+            AccountCostsDb(
+                owner=OWNER,
+                item_hash=MSG_HASH_2,
+                type=CostType.STORAGE,
+                name="storage",
+                ref=None,
+                payment_type=PaymentType.hold,
+                cost_hold=Decimal("1.0"),
+                cost_stream=Decimal("0"),
+                cost_credit=Decimal("0"),
+            )
+        )
+        # Seed a cost row for message A (stale; the pipeline inserts these
+        # before calling process, so we simulate that here).
+        session.add(
+            AccountCostsDb(
+                owner=OWNER,
+                item_hash=MSG_HASH_1,
+                type=CostType.STORAGE,
+                name="storage",
+                ref=None,
+                payment_type=PaymentType.hold,
+                cost_hold=Decimal("1.0"),
+                cost_stream=Decimal("0"),
+                cost_credit=Decimal("0"),
+            )
+        )
+        session.commit()
+
+    # Process the stale message A (sequence 1, record_db will point at B).
+    message_a = _make_message_db(mocker, item_hash=MSG_HASH_1, content=content_a)
+
+    with session_factory() as session:
+        await handler.process(session=session, messages=[message_a])
+        session.commit()
+
+    with session_factory() as session:
+        # Message A's cost rows must be gone.
+        costs_a = (
+            session.execute(
+                select(AccountCostsDb).where(AccountCostsDb.item_hash == MSG_HASH_1)
+            )
+            .scalars()
+            .all()
+        )
+        assert len(costs_a) == 0
+
+        # Registration still points at B.
+        record_db = get_ipns_record(session, name=IPNS_NAME, owner=OWNER)
+        assert record_db is not None
+        assert record_db.item_hash == MSG_HASH_2
+
+        # B's cost rows untouched.
+        costs_b = (
+            session.execute(
+                select(AccountCostsDb).where(AccountCostsDb.item_hash == MSG_HASH_2)
+            )
+            .scalars()
+            .all()
+        )
+        assert len(costs_b) == 1
+
+
+# ---------------------------------------------------------------------------
+# bafk CID (raw-codec CIDv1) handling
+# ---------------------------------------------------------------------------
+
+# A syntactically valid raw-codec CIDv1 that item_type_from_hash and ItemHash
+# both reject with UnknownHashError / ValueError respectively.
+BAFK_CID = "bafkreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy"
+
+
+@pytest.mark.asyncio
+async def test_ipns_bafk_cid_update_no_exception(
+    mocker,
+    mock_config: Config,
+    session_factory: DbSessionFactory,
+):
+    """
+    An IPNS update where the OLD resolved CID is a raw-codec bafk... CIDv1
+    must not raise an exception when checking remaining pins.  The bafk CID
+    should receive a grace-period pin because it has no other active pins.
+    """
+    handler, ipfs_service = _make_handler(mocker)
+    ipfs_service.verify_ipns_record = AsyncMock(
+        return_value=_record_info(CID_V2, sequence=2)
+    )
+    ipfs_service.pin_add = AsyncMock()
+    ipfs_service.put_ipns_record = AsyncMock()
+
+    with session_factory() as session:
+        # Seed a stored file row for the bafk CID (simulates what fetch
+        # would have done when the name first resolved to this CID).
+        session.add(
+            StoredFileDb(hash=BAFK_CID, size=2 * 1024 * 1024, type=FileType.FILE)
+        )
+        session.flush()
+
+        # Seed registration at sequence 1 pointing at the bafk CID.
+        upsert_ipns_record(
+            session=session,
+            name=IPNS_NAME,
+            owner=OWNER,
+            item_hash=MSG_HASH_1,
+            record=FAKE_RECORD,
+            record_sequence=1,
+            record_validity=VALIDITY,
+            max_size_mib=100,
+            resolved_cid=BAFK_CID,
+            last_resolved=dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc),
+            status=IpnsStatus.OK,
+            created=timestamp_to_datetime(MSG_TIME),
+        )
+        # Seed the IPNS file pin pointing at the bafk CID.
+        from aleph.db.accessors.files import insert_ipns_file_pin
+
+        insert_ipns_file_pin(
+            session=session,
+            file_hash=BAFK_CID,
+            owner=OWNER,
+            item_hash=MSG_HASH_1,
+            name=IPNS_NAME,
+            created=timestamp_to_datetime(MSG_TIME),
+        )
+        # Seed the new target CID as a stored file.
+        session.add(StoredFileDb(hash=CID_V2, size=5 * 1024 * 1024, type=FileType.FILE))
+        session.commit()
+
+    content = _make_ipns_content(max_size_mib=100)
+    message2 = _make_message_db(mocker, item_hash=MSG_HASH_2, content=content)
+
+    with patch(
+        "aleph.handlers.content.store._get_file_stats_from_ipfs",
+        new=AsyncMock(
+            return_value=IpfsFileStats(size=5 * 1024 * 1024, file_type=FileType.FILE)
+        ),
+    ):
+        # Must not raise.
+        with session_factory() as session:
+            await handler.fetch_related_content(session=session, message=message2)
+            await handler.process(session=session, messages=[message2])
+            session.commit()
+
+    with session_factory() as session:
+        # Pin re-pointed to CID_V2.
+        pin = get_ipns_file_pin(session, name=IPNS_NAME, owner=OWNER)
+        assert pin is not None
+        assert pin.file_hash == CID_V2
+
+        # bafk CID has no remaining active pins -> grace-period pin inserted.
+        bafk_file = session.execute(
+            select(StoredFileDb).where(StoredFileDb.hash == BAFK_CID)
+        ).scalar_one_or_none()
+        assert bafk_file is not None
+        grace_pins = [p for p in bafk_file.pins if isinstance(p, GracePeriodFilePinDb)]
+        assert len(grace_pins) == 1
