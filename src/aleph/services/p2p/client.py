@@ -71,8 +71,9 @@ class P2PGrpcClient:
         """Create a client by connecting to the P2P service at host:port.
 
         Performs an initial Identify RPC to verify the service is reachable and
-        to capture the local peer ID. If the service is not reachable, raises
-        ``grpc.aio.AioRpcError`` with status UNAVAILABLE or DEADLINE_EXCEEDED.
+        to capture the local peer ID. ``wait_for_ready=True`` is passed so that
+        container start-ordering races are absorbed within the timeout window;
+        UNAVAILABLE is only surfaced after the deadline is reached.
         """
         channel = grpc.aio.insecure_channel(
             f"{host}:{port}",
@@ -84,7 +85,9 @@ class P2PGrpcClient:
         )
         stub = pb_grpc.AlephP2PStub(channel)
         try:
-            node_info = await stub.Identify(pb.IdentifyRequest(), timeout=timeout)
+            node_info = await stub.Identify(
+                pb.IdentifyRequest(), timeout=timeout, wait_for_ready=True
+            )
         except BaseException:
             await channel.close()
             raise
@@ -119,12 +122,6 @@ class P2PGrpcClient:
         await self._stub.Publish(
             pb.PublishRequest(topic=topic, payload=data, echo=echo)
         )
-
-    async def subscribe(self, topic: str) -> None:
-        # Subscription state lives in the service; opening the Subscribe
-        # stream (receive_messages) is what subscribes. Kept for interface
-        # compatibility with the old client.
-        return None
 
     async def receive_messages(self, topic: str) -> AsyncIterator[PubsubMessage]:
         stream = self._stub.Subscribe(pb.SubscribeRequest(topic=topic))

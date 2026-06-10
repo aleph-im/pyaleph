@@ -1,7 +1,6 @@
 import logging
 from pathlib import Path
 
-import aio_pika
 import sentry_sdk
 from aiohttp import web
 from configmanager import Config
@@ -17,6 +16,7 @@ from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
 from aleph.toolkit.lifecycle import safe_async_cleanup
 from aleph.toolkit.monitoring import setup_sentry
+from aleph.toolkit.rabbitmq import make_mq_conn
 from aleph.web import create_aiohttp_app
 from aleph.web.controllers.app_state_getters import (
     APP_STATE_CONFIG,
@@ -67,12 +67,7 @@ async def configure_aiohttp_app(
         )
 
         # The P2P client no longer carries a RabbitMQ connection; open our own.
-        mq_conn = await aio_pika.connect_robust(
-            host=config.rabbitmq.host.value,
-            port=config.rabbitmq.port.value,
-            login=config.rabbitmq.username.value,
-            password=config.rabbitmq.password.value,
-        )
+        mq_conn = await make_mq_conn(config)
         # Channel for non-WS API operations.
         mq_channel = await mq_conn.channel()
 

@@ -1,19 +1,13 @@
 import asyncio
 import json
 import logging
-from typing import TYPE_CHECKING
 from urllib.parse import unquote
 
 from aleph.db.accessors.peers import upsert_peer
 from aleph.db.models import PeerType
 from aleph.services.ipfs import IpfsService
+from aleph.services.p2p.client import P2PGrpcClient
 from aleph.services.peers.allowlist import PeerAllowlist
-
-if TYPE_CHECKING:
-    # Imported lazily to avoid a circular import:
-    # aleph.services.p2p -> .manager -> aleph.services.peers.monitor
-    from aleph.services.p2p.client import P2PGrpcClient
-
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSessionFactory
 
@@ -64,14 +58,16 @@ async def handle_incoming_host(
 
 
 async def monitor_hosts_p2p(
-    p2p_client: "P2PGrpcClient",
+    p2p_client: P2PGrpcClient,
     session_factory: DbSessionFactory,
     peer_allowlist: PeerAllowlist,
     alive_topic: str,
 ) -> None:
+    backoff = 2.0
     while True:
         try:
             async for alive_message in p2p_client.receive_messages(alive_topic):
+                backoff = 2.0
                 await handle_incoming_host(
                     session_factory=session_factory,
                     peer_allowlist=peer_allowlist,
@@ -81,9 +77,12 @@ async def monitor_hosts_p2p(
                 )
 
         except Exception:
-            LOGGER.exception("Exception in pubsub peers monitoring, resubscribing")
+            LOGGER.exception(
+                "Exception in pubsub peers monitoring, resubscribing in %.1fs", backoff
+            )
 
-        await asyncio.sleep(2)
+        await asyncio.sleep(backoff)
+        backoff = min(backoff * 2, 10.0)
 
 
 async def monitor_hosts_ipfs(

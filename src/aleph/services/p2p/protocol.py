@@ -19,9 +19,11 @@ async def incoming_channel(
 
     seen_hashes: deque[tuple[Any, Any, Any]] = deque([], maxlen=200000)
 
+    backoff = 0.1
     while True:
         try:
             async for message in p2p_client.receive_messages(topic):
+                backoff = 0.1
                 try:
                     LOGGER.debug(
                         "Received new message on topic %s from %s",
@@ -56,6 +58,7 @@ async def incoming_channel(
                     LOGGER.exception("Can't handle message")
 
         except Exception:
-            LOGGER.exception("Exception in pubsub, reconnecting.")
+            LOGGER.exception("Exception in pubsub, reconnecting in %.1fs", backoff)
 
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(backoff)
+        backoff = min(backoff * 2, 10.0)

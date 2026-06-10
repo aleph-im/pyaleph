@@ -1,21 +1,17 @@
 import asyncio
 import json
 import logging
-from typing import TYPE_CHECKING, List, Optional
+from typing import List, Optional
 
 from aleph.services.ipfs import IpfsService
-
-if TYPE_CHECKING:
-    # Imported lazily to avoid a circular import:
-    # aleph.services.p2p -> .manager -> aleph.services.peers.publish
-    from aleph.services.p2p.client import P2PGrpcClient
+from aleph.services.p2p.client import P2PGrpcClient
 
 LOGGER = logging.getLogger("peers.publish")
 
 
 async def publish_host(
     address: str,
-    p2p_client: "P2PGrpcClient",
+    p2p_client: P2PGrpcClient,
     ipfs_service: IpfsService,
     p2p_alive_topic: str,
     ipfs_alive_topic: str,
