@@ -4,11 +4,11 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
-from aleph_p2p_client import AlephP2PServiceClient
 from configmanager import Config
 
 from aleph.db.accessors.peers import get_all_addresses_by_peer_type
 from aleph.db.models import PeerType
+from aleph.services.p2p.client import P2PGrpcClient
 from aleph.types.db_session import DbSessionFactory
 
 from ..cache.node_cache import NodeCache
@@ -27,7 +27,7 @@ LOGGER = logging.getLogger("P2P.jobs")
 
 
 async def reconnect_p2p_job(
-    config: Config, session_factory: DbSessionFactory, p2p_client: AlephP2PServiceClient
+    config: Config, session_factory: DbSessionFactory, p2p_client: P2PGrpcClient
 ) -> None:
     await asyncio.sleep(2)
 

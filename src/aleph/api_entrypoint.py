@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 
+import aio_pika
 import sentry_sdk
 from aiohttp import web
 from configmanager import Config
@@ -65,8 +66,13 @@ async def configure_aiohttp_app(
             max_file_size=config.storage.max_file_size.value,
         )
 
-        # Reuse the connection of the P2P client to avoid opening two connections
-        mq_conn = p2p_client.mq_client.connection
+        # The P2P client no longer carries a RabbitMQ connection; open our own.
+        mq_conn = await aio_pika.connect_robust(
+            host=config.rabbitmq.host.value,
+            port=config.rabbitmq.port.value,
+            login=config.rabbitmq.username.value,
+            password=config.rabbitmq.password.value,
+        )
         # Channel for non-WS API operations.
         mq_channel = await mq_conn.channel()
 
@@ -93,9 +99,8 @@ async def configure_aiohttp_app(
         async def _on_cleanup(_app: web.Application):
             await message_broadcaster.shutdown()
             await status_broadcaster.shutdown()
-            # mq_channel borrows from p2p_client's connection; close it first.
             await safe_async_cleanup("mq channel", mq_channel.close())
-            # Closing the p2p client also closes the underlying mq connection.
+            await safe_async_cleanup("mq connection", mq_conn.close())
             await safe_async_cleanup("p2p client", p2p_client.close())
             await safe_async_cleanup("ipfs service", ipfs_service.close())
             await safe_async_cleanup("node cache", node_cache.close())

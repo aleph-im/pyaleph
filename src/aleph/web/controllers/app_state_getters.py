@@ -9,12 +9,12 @@ from typing import Optional, TypeVar, cast
 
 import aio_pika.abc
 from aiohttp import web
-from aleph_p2p_client import AlephP2PServiceClient
 from configmanager import Config
 
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
+from aleph.services.p2p.client import P2PGrpcClient
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSessionFactory
 
@@ -81,8 +81,8 @@ def get_node_cache_from_request(request: web.Request) -> NodeCache:
     return cast(NodeCache, request.app[APP_STATE_NODE_CACHE])
 
 
-def get_p2p_client_from_request(request: web.Request) -> AlephP2PServiceClient:
-    return cast(AlephP2PServiceClient, request.app[APP_STATE_P2P_CLIENT])
+def get_p2p_client_from_request(request: web.Request) -> P2PGrpcClient:
+    return cast(P2PGrpcClient, request.app[APP_STATE_P2P_CLIENT])
 
 
 def get_session_factory_from_request(request: web.Request) -> DbSessionFactory:

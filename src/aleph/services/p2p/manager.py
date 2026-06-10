@@ -2,11 +2,11 @@ import logging
 import time
 from typing import Coroutine, List
 
-from aleph_p2p_client import AlephP2PServiceClient
 from configmanager import Config
 
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
+from aleph.services.p2p.client import P2PGrpcClient
 from aleph.services.peers.allowlist import PeerAllowlist
 from aleph.services.peers.monitor import monitor_hosts_ipfs, monitor_hosts_p2p
 from aleph.services.peers.publish import publish_host
@@ -20,7 +20,7 @@ async def initialize_host(
     config: Config,
     session_factory: DbSessionFactory,
     node_cache: NodeCache,
-    p2p_client: AlephP2PServiceClient,
+    p2p_client: P2PGrpcClient,
     ipfs_service: IpfsService,
     host: str = "0.0.0.0",
     port: int = 4025,
