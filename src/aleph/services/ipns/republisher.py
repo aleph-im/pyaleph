@@ -73,6 +73,9 @@ class IpnsRepublisher:
         except (IpnsResolutionError, InvalidIpnsRecordError):
             return
 
+        # A NULL stored sequence means we have no baseline (the handler
+        # always sets one, so this only happens via manual intervention):
+        # adopt whatever valid record the DHT returns.
         if (
             record_db.record_sequence is not None
             and record_info.sequence <= record_db.record_sequence
@@ -138,8 +141,15 @@ class IpnsRepublisher:
         with self.session_factory() as session:
             records = list(get_all_ipns_records(session))
             for record_db in records:
-                await self._republish(record_db)
-                await self._re_resolve(session, record_db)
+                try:
+                    await self._republish(record_db)
+                    await self._re_resolve(session, record_db)
+                except Exception:
+                    LOGGER.warning(
+                        "ipns_cycle name=%s outcome=error",
+                        record_db.name,
+                        exc_info=True,
+                    )
             session.commit()
 
 

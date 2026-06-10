@@ -281,3 +281,128 @@ async def test_resolution_failure_tolerated(session_factory: DbSessionFactory, m
         assert row is not None
         assert row.last_republished is not None
         assert row.status == IpnsStatus.OK
+
+
+# ---------------------------------------------------------------------------
+# Case 6: Isolation of per-record failures
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_per_record_failure_isolation(session_factory: DbSessionFactory, mocker):
+    """One record whose _re_resolve fails must not prevent processing of the next record."""
+    # Seed two records with different names
+    IPNS_NAME_1 = IPNS_NAME
+    IPNS_NAME_2 = "k51qzi5uqu5dgy0oo3su6gmrqe3typv1qfx4f2nltgaha8t77ai4rlbrwlqj66"
+
+    with session_factory() as session:
+        # First record
+        upsert_file(
+            session=session,
+            file_hash=OLD_CID,
+            file_type=FileType.FILE,
+            size=1024,
+        )
+        session.flush()
+        upsert_ipns_record(
+            session=session,
+            name=IPNS_NAME_1,
+            owner=OWNER,
+            item_hash=ITEM_HASH,
+            record=RECORD_BYTES,
+            record_sequence=1,
+            record_validity=FUTURE,
+            max_size_mib=100,
+            resolved_cid=OLD_CID,
+            last_resolved=NOW,
+            status=IpnsStatus.OK,
+            created=NOW,
+        )
+        session.flush()
+        insert_ipns_file_pin(
+            session=session,
+            file_hash=OLD_CID,
+            owner=OWNER,
+            item_hash=ITEM_HASH,
+            name=IPNS_NAME_1,
+            created=NOW,
+        )
+        session.flush()
+
+        # Second record (different name, different owner to avoid FK conflicts)
+        OWNER_2 = "0xB07B1214bAe0D5ccAA25449C3149c0aC83658875"
+        ITEM_HASH_2 = "dcba" * 16
+        upsert_file(
+            session=session,
+            file_hash=OLD_CID,
+            file_type=FileType.FILE,
+            size=1024,
+        )
+        session.flush()
+        upsert_ipns_record(
+            session=session,
+            name=IPNS_NAME_2,
+            owner=OWNER_2,
+            item_hash=ITEM_HASH_2,
+            record=RECORD_BYTES,
+            record_sequence=1,
+            record_validity=FUTURE,
+            max_size_mib=100,
+            resolved_cid=OLD_CID,
+            last_resolved=NOW,
+            status=IpnsStatus.OK,
+            created=NOW,
+        )
+        session.flush()
+        insert_ipns_file_pin(
+            session=session,
+            file_hash=OLD_CID,
+            owner=OWNER_2,
+            item_hash=ITEM_HASH_2,
+            name=IPNS_NAME_2,
+            created=NOW,
+        )
+        session.commit()
+
+    # Mock ipfs_service to raise for first name, succeed for second
+    ipfs_service = mocker.MagicMock()
+    ipfs_service.put_ipns_record = mocker.AsyncMock(return_value=None)
+
+    def resolve_side_effect(name, timeout=None):
+        if name == IPNS_NAME_1:
+            raise RuntimeError("Simulated _re_resolve failure for first record")
+        return NEW_RECORD_BYTES
+
+    ipfs_service.resolve_ipns_record = mocker.AsyncMock(side_effect=resolve_side_effect)
+    ipfs_service.verify_ipns_record = mocker.AsyncMock(
+        return_value=IpnsRecordInfo(
+            value_cid=NEW_CID,
+            sequence=2,
+            validity=FUTURE,
+        )
+    )
+    ipfs_service.pin_add = mocker.AsyncMock(return_value=None)
+
+    from aleph.handlers.content.store import IpfsFileStats
+
+    mocker.patch(
+        "aleph.services.ipns.republisher._get_file_stats_from_ipfs",
+        return_value=IpfsFileStats(size=1024, file_type=FileType.FILE),
+    )
+
+    republisher = _make_republisher(session_factory, ipfs_service)
+    # Must not raise despite first record's _re_resolve failure
+    await republisher.run_cycle()
+
+    # Second record should have been adopted successfully
+    with session_factory() as session:
+        row_1 = get_ipns_record(session, name=IPNS_NAME_1, owner=OWNER)
+        assert row_1 is not None
+        # First record still has old CID (exception prevented adoption)
+        assert row_1.resolved_cid == OLD_CID
+
+        row_2 = get_ipns_record(session, name=IPNS_NAME_2, owner=OWNER_2)
+        assert row_2 is not None
+        # Second record was adopted successfully despite first record's failure
+        assert row_2.resolved_cid == NEW_CID
+        assert row_2.record_sequence == 2
+        assert row_2.record == NEW_RECORD_BYTES
+        assert row_2.status == IpnsStatus.OK
