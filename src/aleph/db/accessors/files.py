@@ -393,6 +393,13 @@ def update_ipns_file_pin(
         pin.item_hash = item_hash
 
 
+def delete_ipns_file_pin(session: DbSession, name: str, owner: str) -> None:
+    delete_stmt = delete(IpnsFilePinDb).where(
+        (IpnsFilePinDb.ref == name) & (IpnsFilePinDb.owner == owner)
+    )
+    session.execute(delete_stmt)
+
+
 def refresh_file_tag(session: DbSession, tag: FileTag) -> None:
     coalesced_ref = func.coalesce(MessageFilePinDb.ref, MessageFilePinDb.item_hash)
     select_latest_file_pin_stmt = (

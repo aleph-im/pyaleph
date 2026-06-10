@@ -6,6 +6,7 @@ TODO:
 """
 
 import asyncio
+import base64
 import datetime as dt
 import logging
 import random
@@ -17,17 +18,27 @@ import aioipfs
 from aleph_message.models import ItemHash, ItemType, PaymentType, StoreContent
 
 from aleph.config import get_config
+from aleph.db.accessors.cost import delete_costs_for_message
 from aleph.db.accessors.files import (
     delete_file_pin,
+    delete_ipns_file_pin,
     get_file,
     get_file_tag,
+    get_ipns_file_pin,
     get_message_file_pin,
     insert_grace_period_file_pin,
+    insert_ipns_file_pin,
     insert_message_file_pin,
     is_pinned_file,
     refresh_file_tag,
+    update_ipns_file_pin,
     upsert_file,
     upsert_file_tag,
+)
+from aleph.db.accessors.ipns import (
+    delete_ipns_record,
+    get_ipns_record,
+    upsert_ipns_record,
 )
 from aleph.db.models import MessageDb
 from aleph.db.models.account_costs import AccountCostsDb
@@ -41,6 +52,7 @@ from aleph.services.cost import (
 )
 from aleph.services.cost_validation import validate_balance_for_payment
 from aleph.services.ipfs import IpfsService
+from aleph.services.ipfs.service import InvalidIpnsRecordError, IpnsResolutionError
 from aleph.storage import StorageService
 from aleph.toolkit.constants import MiB
 from aleph.toolkit.costs import are_store_and_program_free, is_credit_only_required
@@ -49,6 +61,7 @@ from aleph.toolkit.timer import Timer
 from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileType
+from aleph.types.ipns import IpnsStatus
 from aleph.types.message_status import (
     FileUnavailable,
     InvalidMessageFormat,
@@ -176,6 +189,12 @@ class StoreMessageHandler(ContentHandler):
         content = message.parsed_content
         assert isinstance(content, StoreContent)
 
+        if content.item_type == ItemType.ipns:
+            record_db = get_ipns_record(
+                session, name=content.item_hash, owner=content.address
+            )
+            return record_db is not None and record_db.item_hash == message.item_hash
+
         file_hash = content.item_hash
         return await self.storage_service.storage_engine.exists(file_hash)
 
@@ -203,6 +222,10 @@ class StoreMessageHandler(ContentHandler):
             raise InvalidMessageFormat(
                 f"Item hash '{file_hash}' is not of the expected type ('{item_type}')"
             )
+
+        if item_type == ItemType.ipns:
+            await self._fetch_ipns(session=session, message=message, content=content)
+            return
 
         total_key, failed_key, duration_key = store_fetch_keys(item_type)
 
@@ -296,6 +319,102 @@ class StoreMessageHandler(ContentHandler):
             size=len(file_content),
         )
 
+    async def _fetch_ipns(
+        self, session: DbSession, message: MessageDb, content: StoreContent
+    ) -> None:
+        config = get_config()
+        if not (config.ipfs.enabled.value and config.ipfs.ipns.enabled.value):
+            raise FileUnavailable(
+                content.item_hash, "IPNS support is disabled on this node"
+            )
+
+        ipfs_service = self.storage_service.ipfs_service
+        name = content.item_hash
+        owner = content.address
+        if content.max_size_mib is None:
+            raise InvalidMessageFormat(
+                f"IPNS store message '{message.item_hash}' has no max_size_mib"
+            )
+
+        if content.ipns_record is not None:
+            record = base64.b64decode(content.ipns_record)
+        else:
+            # Track-only flow: fetch the current record from the DHT.
+            try:
+                record = await ipfs_service.resolve_ipns_record(
+                    name, timeout=config.ipfs.ipns.resolve_timeout.value
+                )
+            except IpnsResolutionError:
+                raise FileUnavailable(
+                    name, "could not resolve the IPNS record from the DHT at this time"
+                )
+
+        try:
+            record_info = await ipfs_service.verify_ipns_record(record, name)
+        except InvalidIpnsRecordError as e:
+            raise InvalidMessageFormat(f"Invalid IPNS record for '{name}': {e}")
+
+        if record_info.validity <= utc_now():
+            raise InvalidMessageFormat(
+                f"IPNS record for '{name}' is already past its end-of-life "
+                f"({record_info.validity.isoformat()})"
+            )
+
+        existing = get_ipns_record(session, name=name, owner=owner)
+        if (
+            existing is not None
+            and existing.record_sequence is not None
+            and record_info.sequence <= existing.record_sequence
+        ):
+            # Records self-order by sequence: a stale or duplicate update is
+            # an idempotent no-op, which also makes out-of-order message
+            # processing safe without any chain logic.
+            LOGGER.info(
+                "ipns_fetch name=%s sequence=%d outcome=stale_noop",
+                name,
+                record_info.sequence,
+            )
+            return
+
+        file_stats = await _get_file_stats_from_ipfs(
+            cid=ItemHash(record_info.value_cid),
+            ipfs_service=ipfs_service,
+            stat_timeout=config.ipfs.stat_timeout.value,
+        )
+        if file_stats.size > content.max_size_mib * MiB:
+            raise InvalidMessageFormat(
+                f"IPNS content for '{name}' exceeds the paid quota "
+                f"({file_stats.size} bytes > {content.max_size_mib} MiB)"
+            )
+
+        await ipfs_service.pin_add(cid=record_info.value_cid)
+        upsert_file(
+            session=session,
+            file_hash=record_info.value_cid,
+            file_type=file_stats.file_type,
+            size=file_stats.size,
+        )
+        upsert_ipns_record(
+            session=session,
+            name=name,
+            owner=owner,
+            item_hash=message.item_hash,
+            record=record,
+            record_sequence=record_info.sequence,
+            record_validity=record_info.validity,
+            max_size_mib=content.max_size_mib,
+            resolved_cid=record_info.value_cid,
+            last_resolved=utc_now(),
+            status=IpnsStatus.OK,
+            created=timestamp_to_datetime(content.time),
+        )
+        # Keep-alive: inject the record into the DHT. Best effort, the
+        # republish task retries every cycle.
+        try:
+            await ipfs_service.put_ipns_record(name, record)
+        except Exception:
+            LOGGER.warning("ipns_put name=%s outcome=fail (will retry in cycle)", name)
+
     async def pre_check_balance(self, session: DbSession, message: MessageDb):
         content = _get_store_content(message)
         assert isinstance(content, StoreContent)
@@ -315,6 +434,19 @@ class StoreMessageHandler(ContentHandler):
         ipfs_enabled = config.ipfs.enabled.value
 
         engine = content.item_type
+
+        if content.item_type == ItemType.ipns:
+            message_cost, _ = get_total_and_detailed_costs(
+                session, content, message.item_hash
+            )
+            validate_balance_for_payment(
+                session=session,
+                address=content.address,
+                message_cost=message_cost,
+                payment_type=payment_type,
+            )
+            return None
+
         # Initially only do that balance pre-check for ipfs files.
         if engine == ItemType.ipfs and ipfs_enabled:
             # If we already have the file locally (e.g. from a prior add_file
@@ -385,10 +517,13 @@ class StoreMessageHandler(ContentHandler):
         storage_size_mib = calculate_storage_size(session, content)
 
         # Allow users to pin small files (only for hold payment type, before cutoff)
+        # IPNS registrations never get the free-file exception as quota is
+        # explicitly paid via max_size_mib.
         if (
             payment_type == PaymentType.hold
             and storage_size_mib
             and storage_size_mib <= (self.max_unauthenticated_upload_file_size / MiB)
+            and content.item_type != ItemType.ipns
         ):
             return costs
 
@@ -478,7 +613,54 @@ class StoreMessageHandler(ContentHandler):
 
     async def process(self, session: DbSession, messages: List[MessageDb]) -> None:
         for message in messages:
-            await self._pin_and_tag_file(session=session, message=message)
+            content = _get_store_content(message)
+            if content.item_type == ItemType.ipns:
+                await self._process_ipns(session=session, message=message)
+            else:
+                await self._pin_and_tag_file(session=session, message=message)
+
+    async def _process_ipns(self, session: DbSession, message: MessageDb) -> None:
+        content = _get_store_content(message)
+        name = content.item_hash
+        owner = content.address
+
+        record_db = get_ipns_record(session, name=name, owner=owner)
+        if record_db is None or record_db.item_hash != message.item_hash:
+            # This message lost the sequence race (stale update): no pin change.
+            return
+        assert record_db.resolved_cid is not None
+
+        pin = get_ipns_file_pin(session, name=name, owner=owner)
+        if pin is None:
+            insert_ipns_file_pin(
+                session=session,
+                file_hash=record_db.resolved_cid,
+                owner=owner,
+                item_hash=message.item_hash,
+                name=name,
+                created=timestamp_to_datetime(content.time),
+            )
+            return
+
+        old_file_hash = pin.file_hash
+        old_item_hash = pin.item_hash
+        update_ipns_file_pin(
+            session=session,
+            name=name,
+            owner=owner,
+            file_hash=record_db.resolved_cid,
+            item_hash=message.item_hash,
+        )
+        if old_item_hash and old_item_hash != message.item_hash:
+            # One logical registration carries one cost line: the superseded
+            # message must stop billing once the update takes over.
+            delete_costs_for_message(session=session, item_hash=old_item_hash)
+        if old_file_hash != record_db.resolved_cid:
+            await self._check_remaining_pins(
+                session=session,
+                storage_hash=old_file_hash,
+                storage_type=item_type_from_hash(old_file_hash),
+            )
 
     async def _check_remaining_pins(
         self, session: DbSession, storage_hash: str, storage_type: ItemType
@@ -518,8 +700,33 @@ class StoreMessageHandler(ContentHandler):
             delete_by=delete_by,
         )
 
+    async def _forget_ipns(self, session: DbSession, message: MessageDb) -> None:
+        content = _get_store_content(message)
+        name = content.item_hash
+        owner = content.address
+
+        record_db = get_ipns_record(session, name=name, owner=owner)
+        if record_db is None or record_db.item_hash != message.item_hash:
+            # Superseded registration message: nothing to tear down.
+            return
+
+        pin = get_ipns_file_pin(session, name=name, owner=owner)
+        delete_ipns_record(session, name=name, owner=owner)
+        if pin is not None:
+            pinned_hash = pin.file_hash
+            delete_ipns_file_pin(session=session, name=name, owner=owner)
+            await self._check_remaining_pins(
+                session=session,
+                storage_hash=pinned_hash,
+                storage_type=item_type_from_hash(pinned_hash),
+            )
+
     async def forget_message(self, session: DbSession, message: MessageDb) -> Set[str]:
         content = _get_store_content(message)
+
+        if content.item_type == ItemType.ipns:
+            await self._forget_ipns(session=session, message=message)
+            return set()
 
         delete_file_pin(session=session, item_hash=message.item_hash)
         refresh_file_tag(
