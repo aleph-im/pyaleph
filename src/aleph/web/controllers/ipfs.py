@@ -50,6 +50,8 @@ async def _verify_ipns_record_and_get_cid(
             reason="IPNS store messages attached to uploads must include ipns_record"
         )
     ipfs_service = get_ipfs_service_from_request(request)
+    if ipfs_service is None:
+        raise web.HTTPForbidden(reason="IPFS is disabled on this node")
     record = base64.b64decode(message_content.ipns_record)
     try:
         record_info = await ipfs_service.verify_ipns_record(
@@ -101,7 +103,7 @@ async def ipfs_add_file(request: web.Request):
                 type: string
                 description: >
                   Optional JSON with a signed STORE message
-                  (item_type=ipfs). When present, the CID computed after
+                  (item_type=ipfs or ipns). When present, the CID computed after
                   pinning must match message.content.item_hash.
     responses:
       '200':
@@ -212,7 +214,7 @@ async def ipfs_add_file(request: web.Request):
             if message_content.item_type not in (ItemType.ipfs, ItemType.ipns):
                 raise web.HTTPUnprocessableEntity(
                     reason=(
-                        "Expected item_type=ipfs in STORE message, "
+                        "Expected item_type=ipfs or item_type=ipns in STORE message, "
                         f"got {message_content.item_type}"
                     )
                 )
@@ -345,7 +347,7 @@ async def ipfs_add_car(request: web.Request):
                 type: string
                 description: >
                   JSON {"message": <PendingInlineStoreMessage>, "sync": bool}.
-                  message.content.item_type must be "ipfs"; item_hash must
+                  message.content.item_type must be "ipfs" or "ipns"; item_hash must
                   equal the CAR's single root CID.
     responses:
       '200':
@@ -435,7 +437,7 @@ async def ipfs_add_car(request: web.Request):
         if message_content.item_type not in (ItemType.ipfs, ItemType.ipns):
             raise web.HTTPUnprocessableEntity(
                 reason=(
-                    "Expected item_type=ipfs in STORE message, "
+                    "Expected item_type=ipfs or item_type=ipns in STORE message, "
                     f"got {message_content.item_type}"
                 )
             )

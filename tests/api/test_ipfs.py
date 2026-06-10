@@ -1337,6 +1337,65 @@ async def test_ipns_add_file_record_value_mismatch(
     assert response.status == 422, body
     assert "IPNS record value does not match" in body
 
+    # Pin happened (record mismatch is a post-pin check), so the file is in DB
+    # with a grace period.
+    with session_factory() as session:
+        file = get_file(session=session, file_hash=EXPECTED_FILE_CID)
+        assert file is not None
+        assert _has_grace_period(session, EXPECTED_FILE_CID)
+
+
+@pytest.mark.asyncio
+async def test_ipns_add_file_invalid_record(
+    api_client,
+    session_factory: DbSessionFactory,
+    mocker,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """IPNS record with invalid signature: 422 and grace period applied."""
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+
+    ipfs_service = _get_ipfs_service_mock(api_client)
+    ipfs_service.verify_ipns_record = MockAsyncMock(
+        side_effect=InvalidIpnsRecordError("bad signature")
+    )
+
+    with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                chain=Chain.ETH,
+                balance=Decimal(1000),
+                eth_height=0,
+            )
+        )
+        session.commit()
+
+    message = _build_ipns_store_message(IPNS_NAME, IPNS_RECORD_B64)
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(FILE_CONTENT))
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": message, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
+    body = await response.text()
+    assert response.status == 422, body
+    assert "Invalid IPNS record" in body
+
+    # Pin happened (record validation is a post-pin check), so the file is in DB
+    # with a grace period.
+    with session_factory() as session:
+        file = get_file(session=session, file_hash=EXPECTED_FILE_CID)
+        assert file is not None
+        assert _has_grace_period(session, EXPECTED_FILE_CID)
+
 
 @pytest.mark.asyncio
 async def test_ipns_add_file_no_record_rejected(
