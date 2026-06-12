@@ -89,6 +89,8 @@ async def pub_json(request: web.Request):
         description: Unauthorized topic
       '422':
         description: Invalid data format
+      '500':
+        description: Publication failed
     """
     request_data = await request.json()
     _validate_request_data(
