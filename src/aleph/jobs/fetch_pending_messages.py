@@ -22,6 +22,7 @@ from aleph.db.models import MessageDb, PendingMessageDb
 from aleph.handlers.message_handler import MessageHandler
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
+from aleph.services.p2p import try_init_p2p_client
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
 from aleph.toolkit.lifecycle import install_signal_handlers
@@ -305,10 +306,12 @@ async def fetch_messages_task(config: Config):
         ) as node_cache,
         IpfsService.new(config) as ipfs_service,
     ):
+        p2p_client = await try_init_p2p_client(config, service_name="fetch-job")
         storage_service = StorageService(
             storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
             ipfs_service=ipfs_service,
             node_cache=node_cache,
+            p2p_client=p2p_client,
         )
         signature_verifier = SignatureVerifier()
         message_handler = MessageHandler(
@@ -324,23 +327,29 @@ async def fetch_messages_task(config: Config):
             pending_message_exchange=pending_message_exchange,
         )
 
-        async with fetcher:
-            while True:
-                try:
-                    fetch_pipeline = fetcher.make_pipeline(
-                        config=config, node_cache=node_cache
-                    )
-                    async for fetched_messages in fetch_pipeline:
-                        for fetched_message in fetched_messages:
-                            LOGGER.info(
-                                "Successfully fetched %s", fetched_message.item_hash
-                            )
+        try:
+            async with fetcher:
+                while True:
+                    try:
+                        fetch_pipeline = fetcher.make_pipeline(
+                            config=config, node_cache=node_cache
+                        )
+                        async for fetched_messages in fetch_pipeline:
+                            for fetched_message in fetched_messages:
+                                LOGGER.info(
+                                    "Successfully fetched %s", fetched_message.item_hash
+                                )
 
-                except Exception:
-                    LOGGER.exception("Unexpected error in pending messages fetch job")
+                    except Exception:
+                        LOGGER.exception(
+                            "Unexpected error in pending messages fetch job"
+                        )
 
-                LOGGER.debug("Waiting 1 second(s) for new pending messages...")
-                await asyncio.sleep(1)
+                    LOGGER.debug("Waiting 1 second(s) for new pending messages...")
+                    await asyncio.sleep(1)
+        finally:
+            if p2p_client is not None:
+                await p2p_client.close()
 
 
 def fetch_pending_messages_subprocess(config_values: Dict):

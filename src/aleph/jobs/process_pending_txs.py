@@ -19,6 +19,7 @@ from aleph.db.models import PendingTxDb
 from aleph.handlers.message_handler import MessagePublisher
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs.service import IpfsService
+from aleph.services.p2p import try_init_p2p_client
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
 from aleph.toolkit.lifecycle import install_signal_handlers
@@ -142,10 +143,12 @@ async def handle_txs_task(config: Config):
         ) as node_cache,
         IpfsService.new(config) as ipfs_service,
     ):
+        p2p_client = await try_init_p2p_client(config, service_name="txs-job")
         storage_service = StorageService(
             storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
             ipfs_service=ipfs_service,
             node_cache=node_cache,
+            p2p_client=p2p_client,
         )
         message_publisher = MessagePublisher(
             session_factory=session_factory,
@@ -163,19 +166,23 @@ async def handle_txs_task(config: Config):
             pending_tx_queue=pending_tx_queue,
         )
 
-        async with pending_tx_processor:
-            while True:
-                try:
-                    await pending_tx_processor.process_pending_txs(
-                        max_concurrent_tasks=max_concurrent_tasks
-                    )
-                except Exception:
-                    LOGGER.exception("Error in pending txs job")
+        try:
+            async with pending_tx_processor:
+                while True:
+                    try:
+                        await pending_tx_processor.process_pending_txs(
+                            max_concurrent_tasks=max_concurrent_tasks
+                        )
+                    except Exception:
+                        LOGGER.exception("Error in pending txs job")
 
-                try:
-                    await asyncio.wait_for(pending_tx_processor.ready(), 5)
-                except TimeoutError:
-                    pass
+                    try:
+                        await asyncio.wait_for(pending_tx_processor.ready(), 5)
+                    except TimeoutError:
+                        pass
+        finally:
+            if p2p_client is not None:
+                await p2p_client.close()
 
 
 def pending_txs_subprocess(config_values: Dict):

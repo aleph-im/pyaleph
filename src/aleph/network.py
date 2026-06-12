@@ -52,6 +52,7 @@ async def listener_tasks(
         storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
         ipfs_service=ipfs_service,
         node_cache=node_cache,
+        p2p_client=p2p_client,
     )
     pending_message_exchange = await mq_channel.declare_exchange(
         name=config.rabbitmq.pending_message_exchange.value,

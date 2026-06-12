@@ -59,6 +59,7 @@ async def configure_aiohttp_app(
             storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
             ipfs_service=ipfs_service,
             node_cache=node_cache,
+            p2p_client=p2p_client,
         )
         signature_verifier = SignatureVerifier()
 

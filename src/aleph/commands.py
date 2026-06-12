@@ -150,6 +150,10 @@ async def main(args: List[str]) -> None:
         await stack.enter_async_context(node_cache)
         ipfs_service = await stack.enter_async_context(IpfsService.new(config))
 
+        LOGGER.debug("Connecting to the P2P service")
+        p2p_client = await p2p.init_p2p_client(config, service_name="network-monitor")
+        stack.push_async_callback(safe_async_cleanup, "p2p client", p2p_client.close())
+
         # Reset the cache
         await node_cache.reset()
 
@@ -157,6 +161,7 @@ async def main(args: List[str]) -> None:
             storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
             ipfs_service=ipfs_service,
             node_cache=node_cache,
+            p2p_client=p2p_client,
         )
         garbage_collector = GarbageCollector(
             session_factory=session_factory, storage_service=storage_service
@@ -214,15 +219,13 @@ async def main(args: List[str]) -> None:
         )
 
         LOGGER.debug("Initializing p2p")
-        p2p_client, p2p_tasks = await p2p.init_p2p(
+        tasks += await p2p.init_p2p_tasks(
             config=config,
             session_factory=session_factory,
-            service_name="network-monitor",
+            p2p_client=p2p_client,
             ipfs_service=ipfs_service,
             node_cache=node_cache,
         )
-        stack.push_async_callback(safe_async_cleanup, "p2p client", p2p_client.close())
-        tasks += p2p_tasks
         LOGGER.debug("Initialized p2p")
 
         LOGGER.debug("Initializing listeners")
