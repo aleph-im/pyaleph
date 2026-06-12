@@ -43,6 +43,11 @@ p2p:
   port: 4025
   control_port: 4030
   reconnect_delay: 60
+  # Used by the p2p-service only: URL of the API server that provides
+  # content to peers requesting it over the fetch protocol.
+  content_provider_url: "http://pyaleph-api:4024"
+  # Used by the p2p-service only: persists known peers across restarts.
+  peerstore_path: /var/lib/p2p-service/peerstore.json
 
 
 rabbitmq:

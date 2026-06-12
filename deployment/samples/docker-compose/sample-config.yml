@@ -48,6 +48,11 @@ p2p:
   control_port: 4030
   listen_port: 4031
   reconnect_delay: 60
+  # Used by the p2p-service only: URL of the API server that provides
+  # content to peers requesting it over the fetch protocol.
+  content_provider_url: "http://pyaleph-api:4024"
+  # Used by the p2p-service only: persists known peers across restarts.
+  peerstore_path: /var/lib/p2p-service/peerstore.json
   peers:
     - /dns/api2.aleph.im/tcp/4025/p2p/QmZkurbY2G2hWay59yiTgQNaQxHSNzKZFt2jbnwJhQcKgV
     - /dns/api3.aleph.im/tcp/4025/p2p/Qmb5b2ZwJm9pVWrppf3D3iMF1bXbjZhbJTwGvKEBMZNxa2

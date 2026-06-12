@@ -4,6 +4,7 @@ volumes:
   pyaleph-ipfs:
   pyaleph-local-storage:
   pyaleph-postgres:
+  pyaleph-p2p-service:
   pyaleph-caddy-data:
   pyaleph-caddy-config:
 
@@ -57,6 +58,7 @@ services:
     volumes:
       - ./config.yml:/etc/p2p-service/config.yml
       - ./keys/node-secret.pkcs8.der:/etc/p2p-service/node-secret.pkcs8.der
+      - pyaleph-p2p-service:/var/lib/p2p-service
     environment:
       RUST_LOG: info
     ports:
