@@ -1,26 +1,21 @@
-import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional, Union, cast
+from typing import Any, Dict, cast
 
 from aiohttp import web
 from configmanager import Config
 from pydantic import BaseModel, Field, ValidationError
 
-from aleph.services.ipfs import IpfsService
-from aleph.services.p2p.client import P2PGrpcClient
-from aleph.services.p2p.pubsub import publish as pub_p2p
 from aleph.toolkit.shield import shielded
-from aleph.types.protocol import Protocol
 from aleph.web.controllers.app_state_getters import (
     get_config_from_request,
-    get_ipfs_service_from_request,
     get_p2p_client_from_request,
 )
 from aleph.web.controllers.utils import (
     PublicationStatus,
     broadcast_and_process_message,
     broadcast_status_to_http_status,
+    pub_on_p2p_topics,
     validate_message_dict,
 )
 
@@ -61,44 +56,12 @@ def _validate_request_data(config: Config, request_data: Dict) -> None:
     validate_message_dict(message_dict)
 
 
-async def _pub_on_p2p_topics(
-    p2p_client: P2PGrpcClient,
-    ipfs_service: Optional[IpfsService],
-    topic: str,
-    payload: Union[str, bytes],
-) -> List[Protocol]:
-    failed_publications = []
-
-    if ipfs_service:
-        try:
-            await asyncio.wait_for(ipfs_service.pub(topic, payload), 10)
-        except Exception:
-            LOGGER.exception("Can't publish on ipfs")
-            failed_publications.append(Protocol.IPFS)
-
-    try:
-        await asyncio.wait_for(
-            pub_p2p(
-                p2p_client,
-                topic,
-                payload,
-                loopback=True,
-            ),
-            10,
-        )
-    except Exception:
-        LOGGER.exception("Can't publish on p2p")
-        failed_publications.append(Protocol.P2P)
-
-    return failed_publications
-
-
 async def pub_json(request: web.Request):
     """
-    Forward the message to P2P host and IPFS server as a pubsub message.
+    Forward the message to the P2P service as a pubsub message.
 
     ---
-    summary: Publish JSON to P2P/IPFS pubsub
+    summary: Publish JSON to P2P pubsub
     tags:
       - P2P
     requestBody:
@@ -132,20 +95,19 @@ async def pub_json(request: web.Request):
         config=get_config_from_request(request), request_data=request_data
     )
 
-    ipfs_service = get_ipfs_service_from_request(request)
     p2p_client = get_p2p_client_from_request(request)
 
-    failed_publications = await _pub_on_p2p_topics(
+    failed_publications = await pub_on_p2p_topics(
         p2p_client=p2p_client,
-        ipfs_service=ipfs_service,
         topic=request_data.get("topic"),
         payload=request_data.get("data"),
+        logger=LOGGER,
     )
     pub_status = PublicationStatus.from_failures(failed_publications)
 
     return web.json_response(
         text=pub_status.model_dump_json(),
-        status=500 if pub_status == "error" else 200,
+        status=500 if pub_status.status == "error" else 200,
     )
 
 
