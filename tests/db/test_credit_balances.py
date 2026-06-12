@@ -2531,3 +2531,142 @@ def test_cursor_pagination_nullable_sort_nulls_on_last_page(
         )
         assert len(all_refs) == 5
         assert len(set(all_refs)) == 5
+
+
+def _insert_time_window_fixtures(session) -> None:
+    """Three credit_history rows for 0xtimefilter: distributions at
+    2026-03-01 and 2026-05-01, one expense at 2026-04-01. Timestamps are
+    after the 2026-02-02 precision cutoff so amounts are stored as-is."""
+    update_credit_balances_distribution(
+        session=session,
+        credits_list=[
+            {
+                "address": "0xtimefilter",
+                "amount": 1000,
+                "price": "0.000001",
+                "tx_hash": "0xtx_march",
+                "provider": "test_provider",
+                "expiration": None,
+                "origin": "test_origin",
+                "ref": "test_ref_march",
+                "payment_method": "credit_purchase",
+            }
+        ],
+        token="ALEPH",
+        chain="ETH",
+        message_hash="time_dist_march",
+        message_timestamp=dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc),
+    )
+    update_credit_balances_expense(
+        session=session,
+        credits_list=[
+            {
+                "address": "0xtimefilter",
+                "amount": 300,
+                "ref": "expense_ref",
+                "execution_id": "exec_1",
+                "node_id": "node_1",
+                "price": "0.000001",
+            }
+        ],
+        message_hash="time_expense_april",
+        message_timestamp=dt.datetime(2026, 4, 1, tzinfo=dt.timezone.utc),
+    )
+    update_credit_balances_distribution(
+        session=session,
+        credits_list=[
+            {
+                "address": "0xtimefilter",
+                "amount": 2000,
+                "price": "0.000001",
+                "tx_hash": "0xtx_may",
+                "provider": "test_provider",
+                "expiration": None,
+                "origin": "test_origin",
+                "ref": "test_ref_may",
+                "payment_method": "credit_purchase",
+            }
+        ],
+        token="ALEPH",
+        chain="ETH",
+        message_hash="time_dist_may",
+        message_timestamp=dt.datetime(2026, 5, 1, tzinfo=dt.timezone.utc),
+    )
+    session.commit()
+
+
+def test_get_address_credit_history_time_filters(session_factory: DbSessionFactory):
+    with session_factory() as session:
+        _insert_time_window_fixtures(session)
+
+        all_entries = get_address_credit_history(
+            session=session, address="0xtimefilter"
+        )
+        assert len(all_entries) == 3
+
+        after = get_address_credit_history(
+            session=session,
+            address="0xtimefilter",
+            start_date=dt.datetime(2026, 3, 15, tzinfo=dt.timezone.utc),
+        )
+        assert {e.credit_ref for e in after} == {
+            "time_expense_april",
+            "time_dist_may",
+        }
+
+        before = get_address_credit_history(
+            session=session,
+            address="0xtimefilter",
+            end_date=dt.datetime(2026, 3, 15, tzinfo=dt.timezone.utc),
+        )
+        assert [e.credit_ref for e in before] == ["time_dist_march"]
+
+        window = get_address_credit_history(
+            session=session,
+            address="0xtimefilter",
+            start_date=dt.datetime(2026, 3, 15, tzinfo=dt.timezone.utc),
+            end_date=dt.datetime(2026, 4, 15, tzinfo=dt.timezone.utc),
+        )
+        assert [e.credit_ref for e in window] == ["time_expense_april"]
+
+        # Bounds are inclusive on both ends
+        exact = get_address_credit_history(
+            session=session,
+            address="0xtimefilter",
+            start_date=dt.datetime(2026, 4, 1, tzinfo=dt.timezone.utc),
+            end_date=dt.datetime(2026, 4, 1, tzinfo=dt.timezone.utc),
+        )
+        assert [e.credit_ref for e in exact] == ["time_expense_april"]
+
+
+def test_count_address_credit_history_time_filters(session_factory: DbSessionFactory):
+    with session_factory() as session:
+        _insert_time_window_fixtures(session)
+
+        assert (
+            count_address_credit_history(session=session, address="0xtimefilter") == 3
+        )
+        assert (
+            count_address_credit_history(
+                session=session,
+                address="0xtimefilter",
+                start_date=dt.datetime(2026, 3, 15, tzinfo=dt.timezone.utc),
+            )
+            == 2
+        )
+        assert (
+            count_address_credit_history(
+                session=session,
+                address="0xtimefilter",
+                end_date=dt.datetime(2026, 3, 15, tzinfo=dt.timezone.utc),
+            )
+            == 1
+        )
+        assert (
+            count_address_credit_history(
+                session=session,
+                address="0xtimefilter",
+                start_date=dt.datetime(2026, 5, 2, tzinfo=dt.timezone.utc),
+            )
+            == 0
+        )

@@ -847,6 +847,8 @@ def _apply_credit_history_filters(
     payment_method: Optional[str] = None,
     has_expiration: Optional[bool] = None,
     exclude_payment_method: Optional[List[str]] = None,
+    start_date: Optional[dt.datetime] = None,
+    end_date: Optional[dt.datetime] = None,
 ) -> Select:
     """Apply common filters to a credit history query."""
     if tx_hash is not None:
@@ -871,6 +873,10 @@ def _apply_credit_history_filters(
         query = query.where(
             AlephCreditHistoryDb.payment_method.notin_(exclude_payment_method)
         )
+    if start_date is not None:
+        query = query.where(AlephCreditHistoryDb.message_timestamp >= start_date)
+    if end_date is not None:
+        query = query.where(AlephCreditHistoryDb.message_timestamp <= end_date)
     return query
 
 
@@ -888,6 +894,8 @@ def get_address_credit_history(
     payment_method: Optional[str] = None,
     has_expiration: Optional[bool] = None,
     exclude_payment_method: Optional[List[str]] = None,
+    start_date: Optional[dt.datetime] = None,
+    end_date: Optional[dt.datetime] = None,
     sort_by: SortByCreditHistory = SortByCreditHistory.MESSAGE_TIMESTAMP,
     sort_order: SortOrder = SortOrder.DESCENDING,
     after_sort_value: Optional[Any] = None,
@@ -940,6 +948,8 @@ def get_address_credit_history(
         payment_method=payment_method,
         has_expiration=has_expiration,
         exclude_payment_method=exclude_payment_method,
+        start_date=start_date,
+        end_date=end_date,
     )
 
     # Cursor-based keyset pagination
@@ -1022,6 +1032,8 @@ def count_address_credit_history(
     payment_method: Optional[str] = None,
     has_expiration: Optional[bool] = None,
     exclude_payment_method: Optional[List[str]] = None,
+    start_date: Optional[dt.datetime] = None,
+    end_date: Optional[dt.datetime] = None,
 ) -> int:
     """
     Count total credit history entries for a specific address with optional filters.
@@ -1041,6 +1053,8 @@ def count_address_credit_history(
         payment_method=payment_method,
         has_expiration=has_expiration,
         exclude_payment_method=exclude_payment_method,
+        start_date=start_date,
+        end_date=end_date,
     )
 
     return session.execute(query).scalar_one()
