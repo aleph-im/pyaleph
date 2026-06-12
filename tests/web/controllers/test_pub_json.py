@@ -7,7 +7,7 @@ import pytest
 async def test_pub_valid_aleph_message(mock_config, ccn_api_client, mocker):
     message_topic = mock_config.aleph.queue_topic.value
 
-    mocker.patch("aleph.web.controllers.p2p.pub_p2p")
+    mocker.patch("aleph.web.controllers.utils.pub_p2p")
 
     message = {
         "chain": "ETH",
@@ -35,7 +35,7 @@ async def test_pub_valid_aleph_message(mock_config, ccn_api_client, mocker):
 async def test_pub_invalid_aleph_message(mock_config, ccn_api_client, mocker):
     message_topic = mock_config.aleph.queue_topic.value
 
-    mocker.patch("aleph.web.controllers.p2p.pub_p2p")
+    mocker.patch("aleph.web.controllers.utils.pub_p2p")
 
     response = await ccn_api_client.post(
         "/api/v0/ipfs/pubsub/pub",
