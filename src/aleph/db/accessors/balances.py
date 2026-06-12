@@ -1138,9 +1138,9 @@ def get_address_credit_history_summary(
     row = session.execute(query).one()
     return CreditHistorySummary(
         entry_count=row.entry_count,
-        total_amount=row.total_amount,
-        total_incoming=row.total_incoming,
-        total_outgoing=row.total_outgoing,
+        total_amount=int(row.total_amount),
+        total_incoming=int(row.total_incoming),
+        total_outgoing=int(row.total_outgoing),
     )
 
 

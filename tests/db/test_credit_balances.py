@@ -2788,6 +2788,14 @@ def test_credit_history_direction_filter_excludes_zero_amounts(
             == []
         )
 
+        zero_summary = get_address_credit_history_summary(
+            session=session, address="0xzero_dir_recipient"
+        )
+        assert zero_summary.entry_count == 1
+        assert zero_summary.total_amount == 0
+        assert zero_summary.total_incoming == 0
+        assert zero_summary.total_outgoing == 0
+
 
 def test_get_address_credit_history_summary(session_factory: DbSessionFactory):
     with session_factory() as session:
@@ -2801,6 +2809,10 @@ def test_get_address_credit_history_summary(session_factory: DbSessionFactory):
         assert summary.total_amount == 2700
         assert summary.total_incoming == 3000
         assert summary.total_outgoing == -300
+        assert summary.total_amount == summary.total_incoming + summary.total_outgoing
+        assert all(
+            isinstance(value, int) and not isinstance(value, bool) for value in summary
+        )
 
         # Composes with time filters
         window = get_address_credit_history_summary(
@@ -2813,6 +2825,7 @@ def test_get_address_credit_history_summary(session_factory: DbSessionFactory):
         assert window.total_amount == -300
         assert window.total_incoming == 0
         assert window.total_outgoing == -300
+        assert window.total_amount == window.total_incoming + window.total_outgoing
 
         # Composes with the direction filter
         outgoing_only = get_address_credit_history_summary(
@@ -2821,8 +2834,13 @@ def test_get_address_credit_history_summary(session_factory: DbSessionFactory):
             direction=CreditFlow.OUTGOING,
         )
         assert outgoing_only.entry_count == 1
+        assert outgoing_only.total_amount == -300
         assert outgoing_only.total_incoming == 0
         assert outgoing_only.total_outgoing == -300
+        assert (
+            outgoing_only.total_amount
+            == outgoing_only.total_incoming + outgoing_only.total_outgoing
+        )
 
         # Empty filtered set: all zeros, no error
         empty = get_address_credit_history_summary(session=session, address="0xnobody")
