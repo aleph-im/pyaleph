@@ -40,7 +40,7 @@ async def test_credit_history_rejects_out_of_range_start_date(ccn_api_client):
 
 
 @pytest.mark.asyncio
-async def test_credit_history_snake_case_time_params_are_ignored(ccn_api_client):
+async def test_credit_history_snake_case_time_params_also_accepted(ccn_api_client):
     # The model uses populate_by_name=True (mirroring the messages query params
     # convention), so snake_case spellings are also accepted as field names.
     # A negative value is therefore still validated and returns 422.
