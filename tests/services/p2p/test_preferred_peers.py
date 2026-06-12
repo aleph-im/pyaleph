@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from aleph.services.p2p.jobs import (
+    api_servers_from_aggregate,
     preferred_peers_from_aggregate,
     refresh_preferred_peers_job,
 )
@@ -100,6 +101,34 @@ def test_skips_invalid_multiaddr():
     }
     result = preferred_peers_from_aggregate(content)
     assert result == [(PEER_B, [MADDR_B])]
+
+
+# ---------------------------------------------------------------------------
+# API server extraction unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_api_servers_from_aggregate_filters_and_normalizes():
+    content = {
+        "nodes": [
+            {"status": "active", "address": "https://api2.aleph.im/"},
+            {"status": "active", "address": "http://ccn.example.org"},
+            {"status": "waiting", "address": "https://inactive.example.org"},
+            {"status": "active", "address": "not-a-url"},
+            {"status": "active", "address": ""},
+            {"status": "active"},
+            {"status": "active", "address": "https://api2.aleph.im"},
+        ]
+    }
+    assert api_servers_from_aggregate(content) == [
+        "https://api2.aleph.im",
+        "http://ccn.example.org",
+    ]
+
+
+def test_api_servers_from_aggregate_empty_content():
+    assert api_servers_from_aggregate({}) == []
+    assert api_servers_from_aggregate({"nodes": []}) == []
 
 
 # ---------------------------------------------------------------------------
