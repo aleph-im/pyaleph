@@ -1,5 +1,4 @@
 import asyncio
-import datetime as dt
 import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
@@ -18,7 +17,6 @@ from aleph.types.db_session import DbSessionFactory
 
 from ..cache.node_cache import NodeCache
 from .http import api_get_request
-from .peers import connect_peer
 
 
 @dataclass
@@ -29,37 +27,6 @@ class PeerStatus:
 
 
 LOGGER = logging.getLogger("P2P.jobs")
-
-
-async def reconnect_p2p_job(
-    config: Config, session_factory: DbSessionFactory, p2p_client: P2PGrpcClient
-) -> None:
-    await asyncio.sleep(2)
-
-    max_peer_age = dt.timedelta(seconds=config.p2p.max_peer_age.value)
-
-    while True:
-        try:
-            peers = set(config.p2p.peers.value)
-
-            last_seen = dt.datetime.now(dt.timezone.utc) - max_peer_age
-            with session_factory() as session:
-                peers |= set(
-                    get_all_addresses_by_peer_type(
-                        session=session, peer_type=PeerType.P2P, last_seen=last_seen
-                    )
-                )
-
-            for peer in peers:
-                try:
-                    await connect_peer(p2p_client=p2p_client, peer_maddr=peer)
-                except Exception:
-                    LOGGER.debug("Can't reconnect to %s" % peer)
-
-        except Exception:
-            LOGGER.exception("Error reconnecting to peers")
-
-        await asyncio.sleep(config.p2p.reconnect_delay.value)
 
 
 async def check_peer(peer_uri: str, timeout: int = 1) -> PeerStatus:
