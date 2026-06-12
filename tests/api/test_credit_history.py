@@ -169,3 +169,36 @@ async def test_credit_history_direction_filter_filters_entries(
     refs = [entry["credit_ref"] for entry in data["credit_history"]]
     assert refs == ["e2e_dir_expense"]
     assert all(entry["amount"] < 0 for entry in data["credit_history"])
+
+
+CREDIT_HISTORY_SUMMARY_URI = "/api/v0/addresses/0xtest/credit_history/summary"
+
+
+@pytest.mark.asyncio
+async def test_credit_history_summary_returns_zeros_for_unknown_address(
+    ccn_api_client,
+):
+    response = await ccn_api_client.get(CREDIT_HISTORY_SUMMARY_URI)
+    assert response.status == 200
+    data = await response.json()
+    assert data["address"] == "0xtest"
+    assert data["entry_count"] == 0
+    assert data["total_amount"] == 0
+    assert data["total_incoming"] == 0
+    assert data["total_outgoing"] == 0
+
+
+@pytest.mark.asyncio
+async def test_credit_history_summary_rejects_negative_start_date(ccn_api_client):
+    response = await ccn_api_client.get(
+        CREDIT_HISTORY_SUMMARY_URI, params={"startDate": "-1"}
+    )
+    assert response.status == 422
+
+
+@pytest.mark.asyncio
+async def test_credit_history_summary_rejects_invalid_direction(ccn_api_client):
+    response = await ccn_api_client.get(
+        CREDIT_HISTORY_SUMMARY_URI, params={"direction": "sideways"}
+    )
+    assert response.status == 422
