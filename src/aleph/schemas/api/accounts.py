@@ -173,6 +173,18 @@ class GetAccountCreditHistoryQueryParams(BaseModel):
         default=None,
         description="Exclude entries matching these payment methods (comma-separated).",
     )
+    start_date: Optional[float] = Field(
+        default=None,
+        ge=0,
+        description="Only return entries with message_timestamp greater than or "
+        "equal to this Unix timestamp (seconds).",
+    )
+    end_date: Optional[float] = Field(
+        default=None,
+        ge=0,
+        description="Only return entries with message_timestamp less than or "
+        "equal to this Unix timestamp (seconds).",
+    )
     sort_by: SortByCreditHistory = Field(
         default=SortByCreditHistory.MESSAGE_TIMESTAMP,
         description="Field to sort by.",
