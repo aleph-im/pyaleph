@@ -827,6 +827,7 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
         in: query
         schema:
           type: string
+          enum: [POST, AGGREGATE, STORE, PROGRAM, INSTANCE, FORGET]
         description: "Filter by billed resource message type (e.g. STORE, INSTANCE, PROGRAM); entries with no resolvable resource match no type"
       - name: sort_by
         in: query
@@ -1133,6 +1134,7 @@ async def get_account_credit_history_summary(request: web.Request) -> web.Respon
         in: query
         schema:
           type: string
+          enum: [POST, AGGREGATE, STORE, PROGRAM, INSTANCE, FORGET]
         description: "Filter by billed resource message type (e.g. STORE, INSTANCE, PROGRAM); entries with no resolvable resource match no type"
     responses:
       '200':

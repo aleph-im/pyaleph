@@ -1,11 +1,13 @@
 import datetime as dt
 
 import pytest
+from aleph_message.models import Chain, ItemType, MessageType
 
 from aleph.db.accessors.balances import (
     update_credit_balances_distribution,
     update_credit_balances_expense,
 )
+from aleph.db.models import MessageDb
 
 CREDIT_HISTORY_URI = "/api/v0/addresses/0xtest/credit_history"
 
@@ -292,3 +294,91 @@ async def test_credit_history_summary_accepts_valid_origin_type(ccn_api_client):
     assert response.status == 200
     data = await response.json()
     assert data["entry_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_credit_history_origin_type_filter_filters_entries(
+    ccn_api_client, session_factory
+):
+    with session_factory() as session:
+        session.add(
+            MessageDb(
+                item_hash="e2e_store_resource",
+                chain=Chain.ETH,
+                sender="0xe2eorigintype",
+                signature=None,
+                item_type=ItemType.storage,
+                type=MessageType.store,
+                item_content=None,
+                content={"address": "0xe2eorigintype", "time": 1772323200.0},
+                size=100,
+                time=dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc),
+            )
+        )
+        session.add(
+            MessageDb(
+                item_hash="e2e_instance_resource",
+                chain=Chain.ETH,
+                sender="0xe2eorigintype",
+                signature=None,
+                item_type=ItemType.storage,
+                type=MessageType.instance,
+                item_content=None,
+                content={"address": "0xe2eorigintype", "time": 1772323200.0},
+                size=100,
+                time=dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc),
+            )
+        )
+        session.flush()
+        update_credit_balances_expense(
+            session=session,
+            credits_list=[
+                {
+                    "address": "0xe2eorigintype",
+                    "amount": 100,
+                    "ref": "e2e_store_resource",
+                    "execution_id": "",
+                    "node_id": "node_e2e_ot_a",
+                    "price": "0.000001",
+                }
+            ],
+            message_hash="e2e_ot_expense_store",
+            message_timestamp=dt.datetime(2026, 4, 1, tzinfo=dt.timezone.utc),
+        )
+        update_credit_balances_expense(
+            session=session,
+            credits_list=[
+                {
+                    "address": "0xe2eorigintype",
+                    "amount": 200,
+                    "ref": "",
+                    "execution_id": "e2e_instance_resource",
+                    "node_id": "node_e2e_ot_b",
+                    "price": "0.000001",
+                }
+            ],
+            message_hash="e2e_ot_expense_instance",
+            message_timestamp=dt.datetime(2026, 4, 2, tzinfo=dt.timezone.utc),
+        )
+        session.commit()
+
+    listing_uri = "/api/v0/addresses/0xe2eorigintype/credit_history"
+    summary_uri = "/api/v0/addresses/0xe2eorigintype/credit_history/summary"
+
+    response = await ccn_api_client.get(listing_uri, params={"originType": "STORE"})
+    assert response.status == 200
+    data = await response.json()
+    refs = [entry["credit_ref"] for entry in data["credit_history"]]
+    assert refs == ["e2e_ot_expense_store"]
+
+    response = await ccn_api_client.get(listing_uri, params={"originType": "INSTANCE"})
+    assert response.status == 200
+    data = await response.json()
+    refs = [entry["credit_ref"] for entry in data["credit_history"]]
+    assert refs == ["e2e_ot_expense_instance"]
+
+    response = await ccn_api_client.get(summary_uri, params={"originType": "INSTANCE"})
+    assert response.status == 200
+    data = await response.json()
+    assert data["entry_count"] == 1
+    assert data["total_amount"] == -200
