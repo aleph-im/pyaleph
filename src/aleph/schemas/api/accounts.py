@@ -175,11 +175,13 @@ class GetAccountCreditHistoryQueryParams(BaseModel):
     )
     start_date: Optional[dt.datetime] = Field(
         default=None,
+        alias="startDate",
         description="Only return entries with message_timestamp greater than or "
         "equal to this Unix timestamp (seconds).",
     )
     end_date: Optional[dt.datetime] = Field(
         default=None,
+        alias="endDate",
         description="Only return entries with message_timestamp less than or "
         "equal to this Unix timestamp (seconds).",
     )
@@ -191,6 +193,8 @@ class GetAccountCreditHistoryQueryParams(BaseModel):
         default=SortOrder.DESCENDING,
         description="Sort direction: 1 (ASC) or -1 (DESC).",
     )
+
+    model_config = ConfigDict(populate_by_name=True)
 
     @field_validator("exclude_payment_method", mode="before")
     def split_exclude_payment_method(cls, v):

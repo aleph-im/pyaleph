@@ -804,12 +804,12 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
         schema:
           type: string
         description: "Comma-separated payment methods to exclude"
-      - name: start_date
+      - name: startDate
         in: query
         schema:
           type: number
         description: "Only return entries with message_timestamp >= this Unix timestamp (seconds)"
-      - name: end_date
+      - name: endDate
         in: query
         schema:
           type: number

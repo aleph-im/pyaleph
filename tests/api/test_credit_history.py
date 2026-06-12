@@ -9,14 +9,14 @@ CREDIT_HISTORY_URI = "/api/v0/addresses/0xtest/credit_history"
 
 @pytest.mark.asyncio
 async def test_credit_history_rejects_negative_start_date(ccn_api_client):
-    response = await ccn_api_client.get(CREDIT_HISTORY_URI, params={"start_date": "-1"})
+    response = await ccn_api_client.get(CREDIT_HISTORY_URI, params={"startDate": "-1"})
     assert response.status == 422
 
 
 @pytest.mark.asyncio
 async def test_credit_history_rejects_non_numeric_end_date(ccn_api_client):
     response = await ccn_api_client.get(
-        CREDIT_HISTORY_URI, params={"end_date": "yesterday"}
+        CREDIT_HISTORY_URI, params={"endDate": "yesterday"}
     )
     assert response.status == 422
 
@@ -26,7 +26,7 @@ async def test_credit_history_accepts_valid_time_filters(ccn_api_client):
     # No data for this address: a valid filtered query returns 404, not 422.
     response = await ccn_api_client.get(
         CREDIT_HISTORY_URI,
-        params={"start_date": "1768000000", "end_date": "1769000000"},
+        params={"startDate": "1768000000", "endDate": "1769000000"},
     )
     assert response.status == 404
 
@@ -34,8 +34,17 @@ async def test_credit_history_accepts_valid_time_filters(ccn_api_client):
 @pytest.mark.asyncio
 async def test_credit_history_rejects_out_of_range_start_date(ccn_api_client):
     response = await ccn_api_client.get(
-        CREDIT_HISTORY_URI, params={"start_date": "1e308"}
+        CREDIT_HISTORY_URI, params={"startDate": "1e308"}
     )
+    assert response.status == 422
+
+
+@pytest.mark.asyncio
+async def test_credit_history_snake_case_time_params_are_ignored(ccn_api_client):
+    # The model uses populate_by_name=True (mirroring the messages query params
+    # convention), so snake_case spellings are also accepted as field names.
+    # A negative value is therefore still validated and returns 422.
+    response = await ccn_api_client.get(CREDIT_HISTORY_URI, params={"start_date": "-1"})
     assert response.status == 422
 
 
@@ -72,7 +81,7 @@ async def test_credit_history_time_filter_filters_entries(
     end = dt.datetime(2026, 4, 15, tzinfo=dt.timezone.utc).timestamp()
     response = await ccn_api_client.get(
         "/api/v0/addresses/0xe2etimefilter/credit_history",
-        params={"start_date": str(start), "end_date": str(end)},
+        params={"startDate": str(start), "endDate": str(end)},
     )
     assert response.status == 200
     data = await response.json()
