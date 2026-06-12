@@ -13,6 +13,7 @@ from pydantic import (
 )
 
 from aleph.schemas.messages_query_params import DEFAULT_PAGE, LIST_FIELD_SEPARATOR
+from aleph.types.credit import CreditFlow
 from aleph.types.files import FileType
 from aleph.types.sort_order import SortByCreditHistory, SortOrder
 
@@ -191,6 +192,12 @@ class GetAccountCreditHistoryQueryParams(BaseModel):
         alias="endDate",
         description="Only return entries with message_timestamp less than or "
         "equal to this Unix timestamp (seconds).",
+    )
+    direction: Optional[CreditFlow] = Field(
+        default=None,
+        description="Filter by entry direction: 'incoming' (amount > 0: "
+        "distributions, received transfers) or 'outgoing' (amount < 0: "
+        "expenses, sent transfers). Zero-amount entries match neither.",
     )
     sort_by: SortByCreditHistory = Field(
         default=SortByCreditHistory.MESSAGE_TIMESTAMP,

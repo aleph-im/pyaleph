@@ -2728,3 +2728,41 @@ def test_count_address_credit_history_direction_filter(
             )
             == 1
         )
+
+
+def test_credit_history_direction_filter_excludes_zero_amounts(
+    session_factory: DbSessionFactory,
+):
+    with session_factory() as session:
+        update_credit_balances_transfer(
+            session=session,
+            credits_list=[{"address": "0xzero_dir_recipient", "amount": 0}],
+            sender_address="0xzero_dir_sender",
+            whitelisted_addresses=["0xzero_dir_sender"],
+            message_hash="zero_amount_direction_msg",
+            message_timestamp=dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc),
+        )
+        session.commit()
+
+        unfiltered = get_address_credit_history(
+            session=session, address="0xzero_dir_recipient"
+        )
+        assert len(unfiltered) == 1
+        assert unfiltered[0].amount == 0
+
+        assert (
+            count_address_credit_history(
+                session=session,
+                address="0xzero_dir_recipient",
+                direction=CreditFlow.INCOMING,
+            )
+            == 0
+        )
+        assert (
+            count_address_credit_history(
+                session=session,
+                address="0xzero_dir_recipient",
+                direction=CreditFlow.OUTGOING,
+            )
+            == 0
+        )

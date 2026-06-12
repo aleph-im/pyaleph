@@ -814,6 +814,12 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
         schema:
           type: number
         description: "Only return entries with message_timestamp <= this Unix timestamp (seconds)"
+      - name: direction
+        in: query
+        schema:
+          type: string
+          enum: [incoming, outgoing]
+        description: "Filter by amount sign: incoming (> 0) or outgoing (< 0); zero-amount entries match neither"
       - name: sort_by
         in: query
         schema:
@@ -906,6 +912,7 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
                     exclude_payment_method=query_params.exclude_payment_method,
                     start_date=query_params.start_date,
                     end_date=query_params.end_date,
+                    direction=query_params.direction,
                     sort_by=query_params.sort_by,
                     sort_order=query_params.sort_order,
                     after_sort_value=after_sort_value,
@@ -980,6 +987,7 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
             exclude_payment_method=query_params.exclude_payment_method,
             start_date=query_params.start_date,
             end_date=query_params.end_date,
+            direction=query_params.direction,
             sort_by=query_params.sort_by,
             sort_order=query_params.sort_order,
         )
@@ -1001,6 +1009,7 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
             exclude_payment_method=query_params.exclude_payment_method,
             start_date=query_params.start_date,
             end_date=query_params.end_date,
+            direction=query_params.direction,
         )
 
         # Convert to response items

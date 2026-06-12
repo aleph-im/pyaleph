@@ -99,3 +99,20 @@ async def test_credit_history_time_filter_filters_entries(
     data = await response.json()
     refs = [entry["credit_ref"] for entry in data["credit_history"]]
     assert refs == ["e2e_dist_march"]
+
+
+@pytest.mark.asyncio
+async def test_credit_history_rejects_invalid_direction(ccn_api_client):
+    response = await ccn_api_client.get(
+        CREDIT_HISTORY_URI, params={"direction": "sideways"}
+    )
+    assert response.status == 422
+
+
+@pytest.mark.asyncio
+async def test_credit_history_accepts_valid_direction(ccn_api_client):
+    # No data for this address: a valid filtered query returns 404, not 422.
+    response = await ccn_api_client.get(
+        CREDIT_HISTORY_URI, params={"direction": "incoming"}
+    )
+    assert response.status == 404
