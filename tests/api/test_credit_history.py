@@ -2,7 +2,10 @@ import datetime as dt
 
 import pytest
 
-from aleph.db.accessors.balances import update_credit_balances_distribution
+from aleph.db.accessors.balances import (
+    update_credit_balances_distribution,
+    update_credit_balances_expense,
+)
 
 CREDIT_HISTORY_URI = "/api/v0/addresses/0xtest/credit_history"
 
@@ -110,9 +113,59 @@ async def test_credit_history_rejects_invalid_direction(ccn_api_client):
 
 
 @pytest.mark.asyncio
-async def test_credit_history_accepts_valid_direction(ccn_api_client):
-    # No data for this address: a valid filtered query returns 404, not 422.
-    response = await ccn_api_client.get(
-        CREDIT_HISTORY_URI, params={"direction": "incoming"}
-    )
-    assert response.status == 404
+async def test_credit_history_direction_filter_filters_entries(
+    ccn_api_client, session_factory
+):
+    with session_factory() as session:
+        update_credit_balances_distribution(
+            session=session,
+            credits_list=[
+                {
+                    "address": "0xe2edirection",
+                    "amount": 1000,
+                    "price": "0.000001",
+                    "tx_hash": "0xtx_e2e_dir",
+                    "provider": "test_provider",
+                    "expiration": None,
+                    "origin": "test_origin",
+                    "ref": "ref_e2e_dir",
+                    "payment_method": "test_payment",
+                }
+            ],
+            token="ALEPH",
+            chain="ETH",
+            message_hash="e2e_dir_dist",
+            message_timestamp=dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc),
+        )
+        update_credit_balances_expense(
+            session=session,
+            credits_list=[
+                {
+                    "address": "0xe2edirection",
+                    "amount": 250,
+                    "ref": "expense_ref_e2e_dir",
+                    "execution_id": "exec_e2e_dir",
+                    "node_id": "node_e2e_dir",
+                    "price": "0.000001",
+                }
+            ],
+            message_hash="e2e_dir_expense",
+            message_timestamp=dt.datetime(2026, 4, 1, tzinfo=dt.timezone.utc),
+        )
+        session.commit()
+
+    uri = "/api/v0/addresses/0xe2edirection/credit_history"
+
+    response = await ccn_api_client.get(uri, params={"direction": "incoming"})
+    assert response.status == 200
+    data = await response.json()
+    refs = [entry["credit_ref"] for entry in data["credit_history"]]
+    assert refs == ["e2e_dir_dist"]
+    assert all(entry["amount"] > 0 for entry in data["credit_history"])
+
+    response = await ccn_api_client.get(uri, params={"direction": "outgoing"})
+    assert response.status == 200
+    data = await response.json()
+    refs = [entry["credit_ref"] for entry in data["credit_history"]]
+    assert refs == ["e2e_dir_expense"]
+    assert all(entry["amount"] < 0 for entry in data["credit_history"])

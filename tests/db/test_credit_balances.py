@@ -2766,3 +2766,23 @@ def test_credit_history_direction_filter_excludes_zero_amounts(
             )
             == 0
         )
+        assert (
+            list(
+                get_address_credit_history(
+                    session=session,
+                    address="0xzero_dir_recipient",
+                    direction=CreditFlow.INCOMING,
+                )
+            )
+            == []
+        )
+        assert (
+            list(
+                get_address_credit_history(
+                    session=session,
+                    address="0xzero_dir_recipient",
+                    direction=CreditFlow.OUTGOING,
+                )
+            )
+            == []
+        )
