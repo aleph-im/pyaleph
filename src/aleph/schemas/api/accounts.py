@@ -2,7 +2,7 @@ import datetime as dt
 from decimal import Decimal
 from typing import Annotated, Dict, List, Optional
 
-from aleph_message.models import Chain
+from aleph_message.models import Chain, MessageType
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -191,6 +191,15 @@ class CreditHistoryFilterParams(BaseModel):
         description="Filter by entry direction: 'incoming' (amount > 0: "
         "distributions, received transfers) or 'outgoing' (amount < 0: "
         "expenses, sent transfers). Zero-amount entries match neither.",
+    )
+    origin_type: Optional[MessageType] = Field(
+        default=None,
+        alias="originType",
+        description="Filter by the message type of the billed resource "
+        "(e.g. STORE for storage, INSTANCE or PROGRAM for compute). Matches "
+        "the type of the message referenced by origin/origin_ref; entries "
+        "whose origin does not resolve to a known message (including "
+        "forgotten messages) never match.",
     )
 
     @field_validator("exclude_payment_method", mode="before")

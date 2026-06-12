@@ -2856,7 +2856,7 @@ def test_get_address_credit_history_summary(session_factory: DbSessionFactory):
 
 def _insert_origin_type_fixtures(session) -> None:
     """Two resource messages (one STORE, one INSTANCE) and one expense row
-    billed against each, for address 0xorigintype."""
+    billed against each, plus a third unresolvable expense, for address 0xorigintype."""
     session.add(
         MessageDb(
             item_hash="store_resource_hash",
@@ -2919,6 +2919,22 @@ def _insert_origin_type_fixtures(session) -> None:
         message_hash="origin_type_expense_instance",
         message_timestamp=dt.datetime(2026, 4, 2, tzinfo=dt.timezone.utc),
     )
+    # Unresolvable billing reference: effective origin is '' and matches no message
+    update_credit_balances_expense(
+        session=session,
+        credits_list=[
+            {
+                "address": "0xorigintype",
+                "amount": 50,
+                "ref": "",
+                "execution_id": "",
+                "node_id": "node_c",
+                "price": "0.000001",
+            }
+        ],
+        message_hash="origin_type_expense_unresolvable",
+        message_timestamp=dt.datetime(2026, 4, 3, tzinfo=dt.timezone.utc),
+    )
     session.commit()
 
 
@@ -2971,3 +2987,23 @@ def test_get_address_credit_history_origin_type_filter(
             )
             == []
         )
+
+        # Unfiltered: all three expense rows, including the unresolvable one
+        unfiltered = get_address_credit_history(session=session, address="0xorigintype")
+        assert len(unfiltered) == 3
+
+        # The unresolvable row matches no origin_type value
+        for message_type in (
+            MessageType.store,
+            MessageType.instance,
+            MessageType.program,
+        ):
+            refs = [
+                e.credit_ref
+                for e in get_address_credit_history(
+                    session=session,
+                    address="0xorigintype",
+                    origin_type=message_type,
+                )
+            ]
+            assert "origin_type_expense_unresolvable" not in refs

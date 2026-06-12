@@ -265,3 +265,30 @@ async def test_credit_history_summary_aggregates_entries(
     assert data["total_amount"] == -250
     assert data["total_incoming"] == 0
     assert data["total_outgoing"] == -250
+
+
+@pytest.mark.asyncio
+async def test_credit_history_rejects_invalid_origin_type(ccn_api_client):
+    response = await ccn_api_client.get(
+        CREDIT_HISTORY_URI, params={"originType": "BANANA"}
+    )
+    assert response.status == 422
+
+
+@pytest.mark.asyncio
+async def test_credit_history_accepts_valid_origin_type(ccn_api_client):
+    # No data for this address: a valid filtered query returns 404, not 422.
+    response = await ccn_api_client.get(
+        CREDIT_HISTORY_URI, params={"originType": "INSTANCE"}
+    )
+    assert response.status == 404
+
+
+@pytest.mark.asyncio
+async def test_credit_history_summary_accepts_valid_origin_type(ccn_api_client):
+    response = await ccn_api_client.get(
+        CREDIT_HISTORY_SUMMARY_URI, params={"originType": "STORE"}
+    )
+    assert response.status == 200
+    data = await response.json()
+    assert data["entry_count"] == 0
