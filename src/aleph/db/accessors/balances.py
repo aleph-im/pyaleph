@@ -17,12 +17,17 @@ from typing import (
     Union,
 )
 
-from aleph_message.models import Chain
+from aleph_message.models import Chain, MessageType
 from sqlalchemy import case, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.sql import ColumnElement, Select
 
-from aleph.db.models import AlephBalanceDb, AlephCreditBalanceDb, AlephCreditHistoryDb
+from aleph.db.models import (
+    AlephBalanceDb,
+    AlephCreditBalanceDb,
+    AlephCreditHistoryDb,
+    MessageDb,
+)
 from aleph.toolkit.constants import (
     CREDIT_PRECISION_CUTOFF_TIMESTAMP,
     CREDIT_PRECISION_MULTIPLIER,
@@ -861,6 +866,7 @@ def _apply_credit_history_filters(
     start_date: Optional[dt.datetime] = None,
     end_date: Optional[dt.datetime] = None,
     direction: Optional[CreditFlow] = None,
+    origin_type: Optional[MessageType] = None,
 ) -> Select:
     """Apply common filters to a credit history query."""
     if tx_hash is not None:
@@ -893,6 +899,19 @@ def _apply_credit_history_filters(
         query = query.where(AlephCreditHistoryDb.amount > 0)
     elif direction == CreditFlow.OUTGOING:
         query = query.where(AlephCreditHistoryDb.amount < 0)
+    if origin_type is not None:
+        effective_origin = func.coalesce(
+            func.nullif(AlephCreditHistoryDb.origin, ""),
+            AlephCreditHistoryDb.origin_ref,
+        )
+        query = query.where(
+            select(MessageDb.item_hash)
+            .where(
+                (MessageDb.item_hash == effective_origin)
+                & (MessageDb.type == origin_type)
+            )
+            .exists()
+        )
     return query
 
 
@@ -913,6 +932,7 @@ def get_address_credit_history(
     start_date: Optional[dt.datetime] = None,
     end_date: Optional[dt.datetime] = None,
     direction: Optional[CreditFlow] = None,
+    origin_type: Optional[MessageType] = None,
     sort_by: SortByCreditHistory = SortByCreditHistory.MESSAGE_TIMESTAMP,
     sort_order: SortOrder = SortOrder.DESCENDING,
     after_sort_value: Optional[Any] = None,
@@ -968,6 +988,7 @@ def get_address_credit_history(
         start_date=start_date,
         end_date=end_date,
         direction=direction,
+        origin_type=origin_type,
     )
 
     # Cursor-based keyset pagination
@@ -1053,6 +1074,7 @@ def count_address_credit_history(
     start_date: Optional[dt.datetime] = None,
     end_date: Optional[dt.datetime] = None,
     direction: Optional[CreditFlow] = None,
+    origin_type: Optional[MessageType] = None,
 ) -> int:
     """
     Count total credit history entries for a specific address with optional filters.
@@ -1075,6 +1097,7 @@ def count_address_credit_history(
         start_date=start_date,
         end_date=end_date,
         direction=direction,
+        origin_type=origin_type,
     )
 
     return session.execute(query).scalar_one()
@@ -1102,6 +1125,7 @@ def get_address_credit_history_summary(
     start_date: Optional[dt.datetime] = None,
     end_date: Optional[dt.datetime] = None,
     direction: Optional[CreditFlow] = None,
+    origin_type: Optional[MessageType] = None,
 ) -> CreditHistorySummary:
     """
     Aggregates over all credit history entries matching the filters, in a
@@ -1134,6 +1158,7 @@ def get_address_credit_history_summary(
         start_date=start_date,
         end_date=end_date,
         direction=direction,
+        origin_type=origin_type,
     )
     row = session.execute(query).one()
     return CreditHistorySummary(
