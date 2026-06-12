@@ -284,13 +284,6 @@ def _get_address_from_request(request: web.Request) -> str:
     return address
 
 
-def _utc_datetime_from_epoch(value: Optional[float]) -> Optional[dt.datetime]:
-    """Convert an epoch-seconds query param to an aware UTC datetime."""
-    if value is None:
-        return None
-    return dt.datetime.fromtimestamp(value, tz=dt.timezone.utc)
-
-
 def _get_chain_from_request(request: web.Request) -> str:
     chain = request.match_info.get("chain")
     if chain is None:
@@ -852,9 +845,6 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
     except ValidationError as e:
         raise web.HTTPUnprocessableEntity(text=e.json())
 
-    start_date = _utc_datetime_from_epoch(query_params.start_date)
-    end_date = _utc_datetime_from_epoch(query_params.end_date)
-
     cursor = query_params.cursor
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
 
@@ -914,8 +904,8 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
                     payment_method=query_params.payment_method,
                     has_expiration=query_params.has_expiration,
                     exclude_payment_method=query_params.exclude_payment_method,
-                    start_date=start_date,
-                    end_date=end_date,
+                    start_date=query_params.start_date,
+                    end_date=query_params.end_date,
                     sort_by=query_params.sort_by,
                     sort_order=query_params.sort_order,
                     after_sort_value=after_sort_value,
@@ -988,8 +978,8 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
             payment_method=query_params.payment_method,
             has_expiration=query_params.has_expiration,
             exclude_payment_method=query_params.exclude_payment_method,
-            start_date=start_date,
-            end_date=end_date,
+            start_date=query_params.start_date,
+            end_date=query_params.end_date,
             sort_by=query_params.sort_by,
             sort_order=query_params.sort_order,
         )
@@ -1009,8 +999,8 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
             payment_method=query_params.payment_method,
             has_expiration=query_params.has_expiration,
             exclude_payment_method=query_params.exclude_payment_method,
-            start_date=start_date,
-            end_date=end_date,
+            start_date=query_params.start_date,
+            end_date=query_params.end_date,
         )
 
         # Convert to response items

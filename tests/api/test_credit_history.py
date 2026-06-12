@@ -1,4 +1,8 @@
+import datetime as dt
+
 import pytest
+
+from aleph.db.accessors.balances import update_credit_balances_distribution
 
 CREDIT_HISTORY_URI = "/api/v0/addresses/0xtest/credit_history"
 
@@ -25,3 +29,52 @@ async def test_credit_history_accepts_valid_time_filters(ccn_api_client):
         params={"start_date": "1768000000", "end_date": "1769000000"},
     )
     assert response.status == 404
+
+
+@pytest.mark.asyncio
+async def test_credit_history_rejects_out_of_range_start_date(ccn_api_client):
+    response = await ccn_api_client.get(
+        CREDIT_HISTORY_URI, params={"start_date": "1e308"}
+    )
+    assert response.status == 422
+
+
+@pytest.mark.asyncio
+async def test_credit_history_time_filter_filters_entries(
+    ccn_api_client, session_factory
+):
+    with session_factory() as session:
+        for month, message_hash in [(3, "e2e_dist_march"), (5, "e2e_dist_may")]:
+            update_credit_balances_distribution(
+                session=session,
+                credits_list=[
+                    {
+                        "address": "0xe2etimefilter",
+                        "amount": 1000,
+                        "price": "0.000001",
+                        "tx_hash": f"0xtx_{message_hash}",
+                        "provider": "test_provider",
+                        "expiration": None,
+                        "origin": "test_origin",
+                        "ref": f"ref_{message_hash}",
+                        "payment_method": "test_payment",
+                    }
+                ],
+                token="ALEPH",
+                chain="ETH",
+                message_hash=message_hash,
+                message_timestamp=dt.datetime(2026, month, 1, tzinfo=dt.timezone.utc),
+            )
+        session.commit()
+
+    # Window covering only the March entry
+    start = dt.datetime(2026, 2, 15, tzinfo=dt.timezone.utc).timestamp()
+    end = dt.datetime(2026, 4, 15, tzinfo=dt.timezone.utc).timestamp()
+    response = await ccn_api_client.get(
+        "/api/v0/addresses/0xe2etimefilter/credit_history",
+        params={"start_date": str(start), "end_date": str(end)},
+    )
+    assert response.status == 200
+    data = await response.json()
+    refs = [entry["credit_ref"] for entry in data["credit_history"]]
+    assert refs == ["e2e_dist_march"]

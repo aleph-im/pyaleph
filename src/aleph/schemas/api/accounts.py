@@ -173,15 +173,13 @@ class GetAccountCreditHistoryQueryParams(BaseModel):
         default=None,
         description="Exclude entries matching these payment methods (comma-separated).",
     )
-    start_date: Optional[float] = Field(
+    start_date: Optional[dt.datetime] = Field(
         default=None,
-        ge=0,
         description="Only return entries with message_timestamp greater than or "
         "equal to this Unix timestamp (seconds).",
     )
-    end_date: Optional[float] = Field(
+    end_date: Optional[dt.datetime] = Field(
         default=None,
-        ge=0,
         description="Only return entries with message_timestamp less than or "
         "equal to this Unix timestamp (seconds).",
     )
@@ -199,6 +197,18 @@ class GetAccountCreditHistoryQueryParams(BaseModel):
         if isinstance(v, str):
             return v.split(LIST_FIELD_SEPARATOR)
         return v
+
+    @field_validator("start_date", "end_date", mode="before")
+    def epoch_seconds_to_datetime(cls, v):
+        if v is None:
+            return None
+        value = float(v)
+        if value < 0:
+            raise ValueError("timestamp must not be negative")
+        try:
+            return dt.datetime.fromtimestamp(value, tz=dt.timezone.utc)
+        except (OverflowError, OSError, ValueError) as exc:
+            raise ValueError(f"invalid Unix timestamp: {v}") from exc
 
 
 class CreditHistoryResponseItem(BaseModel):
