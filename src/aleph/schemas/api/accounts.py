@@ -3,7 +3,14 @@ from decimal import Decimal
 from typing import Annotated, Dict, List, Optional
 
 from aleph_message.models import Chain
-from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PlainSerializer,
+    field_validator,
+    model_validator,
+)
 
 from aleph.schemas.messages_query_params import DEFAULT_PAGE, LIST_FIELD_SEPARATOR
 from aleph.types.files import FileType
@@ -173,6 +180,18 @@ class GetAccountCreditHistoryQueryParams(BaseModel):
         default=None,
         description="Exclude entries matching these payment methods (comma-separated).",
     )
+    start_date: Optional[dt.datetime] = Field(
+        default=None,
+        alias="startDate",
+        description="Only return entries with message_timestamp greater than or "
+        "equal to this Unix timestamp (seconds).",
+    )
+    end_date: Optional[dt.datetime] = Field(
+        default=None,
+        alias="endDate",
+        description="Only return entries with message_timestamp less than or "
+        "equal to this Unix timestamp (seconds).",
+    )
     sort_by: SortByCreditHistory = Field(
         default=SortByCreditHistory.MESSAGE_TIMESTAMP,
         description="Field to sort by.",
@@ -182,11 +201,35 @@ class GetAccountCreditHistoryQueryParams(BaseModel):
         description="Sort direction: 1 (ASC) or -1 (DESC).",
     )
 
+    model_config = ConfigDict(populate_by_name=True)
+
     @field_validator("exclude_payment_method", mode="before")
     def split_exclude_payment_method(cls, v):
         if isinstance(v, str):
             return v.split(LIST_FIELD_SEPARATOR)
         return v
+
+    @field_validator("start_date", "end_date", mode="before")
+    def epoch_seconds_to_datetime(cls, v):
+        if v is None:
+            return None
+        value = float(v)
+        if value < 0:
+            raise ValueError("timestamp must not be negative")
+        try:
+            return dt.datetime.fromtimestamp(value, tz=dt.timezone.utc)
+        except (OverflowError, OSError, ValueError) as exc:
+            raise ValueError(f"invalid Unix timestamp: {v}") from exc
+
+    @model_validator(mode="after")
+    def validate_date_range(self):
+        if (
+            self.start_date is not None
+            and self.end_date is not None
+            and self.end_date < self.start_date
+        ):
+            raise ValueError("end date cannot be lower than start date.")
+        return self
 
 
 class CreditHistoryResponseItem(BaseModel):

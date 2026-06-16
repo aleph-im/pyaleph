@@ -804,6 +804,16 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
         schema:
           type: string
         description: "Comma-separated payment methods to exclude"
+      - name: startDate
+        in: query
+        schema:
+          type: number
+        description: "Only return entries with message_timestamp >= this Unix timestamp (seconds)"
+      - name: endDate
+        in: query
+        schema:
+          type: number
+        description: "Only return entries with message_timestamp <= this Unix timestamp (seconds)"
       - name: sort_by
         in: query
         schema:
@@ -894,6 +904,8 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
                     payment_method=query_params.payment_method,
                     has_expiration=query_params.has_expiration,
                     exclude_payment_method=query_params.exclude_payment_method,
+                    start_date=query_params.start_date,
+                    end_date=query_params.end_date,
                     sort_by=query_params.sort_by,
                     sort_order=query_params.sort_order,
                     after_sort_value=after_sort_value,
@@ -966,6 +978,8 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
             payment_method=query_params.payment_method,
             has_expiration=query_params.has_expiration,
             exclude_payment_method=query_params.exclude_payment_method,
+            start_date=query_params.start_date,
+            end_date=query_params.end_date,
             sort_by=query_params.sort_by,
             sort_order=query_params.sort_order,
         )
@@ -985,6 +999,8 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
             payment_method=query_params.payment_method,
             has_expiration=query_params.has_expiration,
             exclude_payment_method=query_params.exclude_payment_method,
+            start_date=query_params.start_date,
+            end_date=query_params.end_date,
         )
 
         # Convert to response items
