@@ -169,3 +169,99 @@ async def test_credit_history_direction_filter_filters_entries(
     refs = [entry["credit_ref"] for entry in data["credit_history"]]
     assert refs == ["e2e_dir_expense"]
     assert all(entry["amount"] < 0 for entry in data["credit_history"])
+
+
+CREDIT_HISTORY_SUMMARY_URI = "/api/v0/addresses/0xtest/credit_history/summary"
+
+
+@pytest.mark.asyncio
+async def test_credit_history_summary_returns_zeros_for_unknown_address(
+    ccn_api_client,
+):
+    response = await ccn_api_client.get(CREDIT_HISTORY_SUMMARY_URI)
+    assert response.status == 200
+    data = await response.json()
+    assert data["address"] == "0xtest"
+    assert data["entry_count"] == 0
+    assert data["total_amount"] == 0
+    assert data["total_incoming"] == 0
+    assert data["total_outgoing"] == 0
+
+
+@pytest.mark.asyncio
+async def test_credit_history_summary_rejects_negative_start_date(ccn_api_client):
+    response = await ccn_api_client.get(
+        CREDIT_HISTORY_SUMMARY_URI, params={"startDate": "-1"}
+    )
+    assert response.status == 422
+
+
+@pytest.mark.asyncio
+async def test_credit_history_summary_rejects_invalid_direction(ccn_api_client):
+    response = await ccn_api_client.get(
+        CREDIT_HISTORY_SUMMARY_URI, params={"direction": "sideways"}
+    )
+    assert response.status == 422
+
+
+@pytest.mark.asyncio
+async def test_credit_history_summary_aggregates_entries(
+    ccn_api_client, session_factory
+):
+    with session_factory() as session:
+        update_credit_balances_distribution(
+            session=session,
+            credits_list=[
+                {
+                    "address": "0xe2esummary",
+                    "amount": 1000,
+                    "price": "0.000001",
+                    "tx_hash": "0xtx_e2e_summary",
+                    "provider": "test_provider",
+                    "expiration": None,
+                    "origin": "test_origin",
+                    "ref": "ref_e2e_summary",
+                    "payment_method": "test_payment",
+                }
+            ],
+            token="ALEPH",
+            chain="ETH",
+            message_hash="e2e_summary_dist",
+            message_timestamp=dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc),
+        )
+        update_credit_balances_expense(
+            session=session,
+            credits_list=[
+                {
+                    "address": "0xe2esummary",
+                    "amount": 250,
+                    "ref": "expense_ref_e2e_summary",
+                    "execution_id": "exec_e2e_summary",
+                    "node_id": "node_e2e_summary",
+                    "price": "0.000001",
+                }
+            ],
+            message_hash="e2e_summary_expense",
+            message_timestamp=dt.datetime(2026, 4, 1, tzinfo=dt.timezone.utc),
+        )
+        session.commit()
+
+    uri = "/api/v0/addresses/0xe2esummary/credit_history/summary"
+
+    response = await ccn_api_client.get(uri)
+    assert response.status == 200
+    data = await response.json()
+    assert data["address"] == "0xe2esummary"
+    assert data["entry_count"] == 2
+    assert data["total_amount"] == 750
+    assert data["total_incoming"] == 1000
+    assert data["total_outgoing"] == -250
+
+    # A filter flows through to the aggregate
+    response = await ccn_api_client.get(uri, params={"direction": "outgoing"})
+    assert response.status == 200
+    data = await response.json()
+    assert data["entry_count"] == 1
+    assert data["total_amount"] == -250
+    assert data["total_incoming"] == 0
+    assert data["total_outgoing"] == -250

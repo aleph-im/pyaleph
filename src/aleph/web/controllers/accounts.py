@@ -13,6 +13,7 @@ from aleph.db.accessors.balances import (
     count_balances_by_chain,
     count_credit_balances,
     get_address_credit_history,
+    get_address_credit_history_summary,
     get_balances_by_chain,
     get_credit_balance,
     get_credit_balance_with_details,
@@ -37,6 +38,8 @@ from aleph.schemas.api.accounts import (
     GetAccountChannelsResponse,
     GetAccountCreditHistoryQueryParams,
     GetAccountCreditHistoryResponse,
+    GetAccountCreditHistorySummaryQueryParams,
+    GetAccountCreditHistorySummaryResponse,
     GetAccountFilesQueryParams,
     GetAccountFilesResponse,
     GetAccountFilesResponseItem,
@@ -1043,6 +1046,128 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
         )
 
         return web.json_response(text=response.model_dump_json())
+
+
+async def get_account_credit_history_summary(request: web.Request) -> web.Response:
+    """
+    Returns aggregate totals over an account's credit history.
+
+    Accepts the same filters as the credit history listing endpoint and
+    aggregates the whole filtered set in a single query. Always returns 200,
+    with zeros when no entry matches. total_outgoing keeps its negative sign
+    so that total_amount == total_incoming + total_outgoing.
+
+    ---
+    summary: Get account credit history summary
+    tags:
+      - Accounts
+    parameters:
+      - name: address
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: tx_hash
+        in: query
+        schema:
+          type: string
+      - name: token
+        in: query
+        schema:
+          type: string
+      - name: chain
+        in: query
+        schema:
+          type: string
+      - name: provider
+        in: query
+        schema:
+          type: string
+      - name: origin
+        in: query
+        schema:
+          type: string
+      - name: origin_ref
+        in: query
+        schema:
+          type: string
+      - name: payment_method
+        in: query
+        schema:
+          type: string
+      - name: has_expiration
+        in: query
+        schema:
+          type: boolean
+        description: "Filter by presence of expiration_date (true/false)"
+      - name: exclude_payment_method
+        in: query
+        schema:
+          type: string
+        description: "Comma-separated payment methods to exclude"
+      - name: startDate
+        in: query
+        schema:
+          type: number
+        description: "Only count entries with message_timestamp >= this Unix timestamp (seconds)"
+      - name: endDate
+        in: query
+        schema:
+          type: number
+        description: "Only count entries with message_timestamp <= this Unix timestamp (seconds)"
+      - name: direction
+        in: query
+        schema:
+          type: string
+          enum: [incoming, outgoing]
+        description: "Filter by amount sign: incoming (> 0) or outgoing (< 0); zero-amount entries match neither"
+    responses:
+      '200':
+        description: Aggregate totals over the filtered credit history
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetAccountCreditHistorySummaryResponse'
+      '422':
+        description: Validation error
+    """
+    address = _get_address_from_request(request)
+
+    try:
+        query_params = GetAccountCreditHistorySummaryQueryParams.model_validate(
+            request.query
+        )
+    except ValidationError as e:
+        raise web.HTTPUnprocessableEntity(text=e.json())
+
+    session_factory: DbSessionFactory = get_session_factory_from_request(request)
+
+    with session_factory() as session:
+        summary = get_address_credit_history_summary(
+            session=session,
+            address=address,
+            tx_hash=query_params.tx_hash,
+            token=query_params.token,
+            chain=query_params.chain,
+            provider=query_params.provider,
+            origin=query_params.origin,
+            origin_ref=query_params.origin_ref,
+            payment_method=query_params.payment_method,
+            has_expiration=query_params.has_expiration,
+            exclude_payment_method=query_params.exclude_payment_method,
+            start_date=query_params.start_date,
+            end_date=query_params.end_date,
+            direction=query_params.direction,
+        )
+
+    response = GetAccountCreditHistorySummaryResponse(
+        address=address,
+        entry_count=summary.entry_count,
+        total_amount=summary.total_amount,
+        total_incoming=summary.total_incoming,
+        total_outgoing=summary.total_outgoing,
+    )
+    return web.json_response(text=response.model_dump_json())
 
 
 async def get_resource_consumed_credits_controller(

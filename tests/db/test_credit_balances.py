@@ -9,6 +9,7 @@ from sqlalchemy import update as sql_update
 from aleph.db.accessors.balances import (
     count_address_credit_history,
     get_address_credit_history,
+    get_address_credit_history_summary,
     get_consumed_credits_by_resource,
     get_credit_balance,
     get_credit_balance_with_details,
@@ -2786,3 +2787,64 @@ def test_credit_history_direction_filter_excludes_zero_amounts(
             )
             == []
         )
+
+        zero_summary = get_address_credit_history_summary(
+            session=session, address="0xzero_dir_recipient"
+        )
+        assert zero_summary.entry_count == 1
+        assert zero_summary.total_amount == 0
+        assert zero_summary.total_incoming == 0
+        assert zero_summary.total_outgoing == 0
+
+
+def test_get_address_credit_history_summary(session_factory: DbSessionFactory):
+    with session_factory() as session:
+        # Rows for 0xtimefilter: +1000 (March), -300 (April), +2000 (May)
+        _insert_time_window_fixtures(session)
+
+        summary = get_address_credit_history_summary(
+            session=session, address="0xtimefilter"
+        )
+        assert summary.entry_count == 3
+        assert summary.total_amount == 2700
+        assert summary.total_incoming == 3000
+        assert summary.total_outgoing == -300
+        assert summary.total_amount == summary.total_incoming + summary.total_outgoing
+        assert all(
+            isinstance(value, int) and not isinstance(value, bool) for value in summary
+        )
+
+        # Composes with time filters
+        window = get_address_credit_history_summary(
+            session=session,
+            address="0xtimefilter",
+            start_date=dt.datetime(2026, 3, 15, tzinfo=dt.timezone.utc),
+            end_date=dt.datetime(2026, 4, 15, tzinfo=dt.timezone.utc),
+        )
+        assert window.entry_count == 1
+        assert window.total_amount == -300
+        assert window.total_incoming == 0
+        assert window.total_outgoing == -300
+        assert window.total_amount == window.total_incoming + window.total_outgoing
+
+        # Composes with the direction filter
+        outgoing_only = get_address_credit_history_summary(
+            session=session,
+            address="0xtimefilter",
+            direction=CreditFlow.OUTGOING,
+        )
+        assert outgoing_only.entry_count == 1
+        assert outgoing_only.total_amount == -300
+        assert outgoing_only.total_incoming == 0
+        assert outgoing_only.total_outgoing == -300
+        assert (
+            outgoing_only.total_amount
+            == outgoing_only.total_incoming + outgoing_only.total_outgoing
+        )
+
+        # Empty filtered set: all zeros, no error
+        empty = get_address_credit_history_summary(session=session, address="0xnobody")
+        assert empty.entry_count == 0
+        assert empty.total_amount == 0
+        assert empty.total_incoming == 0
+        assert empty.total_outgoing == 0

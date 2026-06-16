@@ -146,18 +146,11 @@ class GetAccountFilesResponse(BaseModel):
     pagination_per_page: int
 
 
-class GetAccountCreditHistoryQueryParams(BaseModel):
-    pagination: int = Field(
-        default=0,
-        ge=0,
-        description="Maximum number of credit history entries to return. Specifying 0 returns all entries.",
-    )
-    page: int = Field(
-        default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
-    )
-    cursor: Optional[str] = Field(
-        default=None, description="Opaque cursor for cursor-based pagination."
-    )
+class CreditHistoryFilterParams(BaseModel):
+    """Filters shared by the credit history listing and summary endpoints."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
     tx_hash: Optional[str] = Field(
         default=None, description="Filter by transaction hash"
     )
@@ -199,16 +192,6 @@ class GetAccountCreditHistoryQueryParams(BaseModel):
         "distributions, received transfers) or 'outgoing' (amount < 0: "
         "expenses, sent transfers). Zero-amount entries match neither.",
     )
-    sort_by: SortByCreditHistory = Field(
-        default=SortByCreditHistory.MESSAGE_TIMESTAMP,
-        description="Field to sort by.",
-    )
-    sort_order: SortOrder = Field(
-        default=SortOrder.DESCENDING,
-        description="Sort direction: 1 (ASC) or -1 (DESC).",
-    )
-
-    model_config = ConfigDict(populate_by_name=True)
 
     @field_validator("exclude_payment_method", mode="before")
     def split_exclude_payment_method(cls, v):
@@ -239,6 +222,32 @@ class GetAccountCreditHistoryQueryParams(BaseModel):
         return self
 
 
+class GetAccountCreditHistoryQueryParams(CreditHistoryFilterParams):
+    pagination: int = Field(
+        default=0,
+        ge=0,
+        description="Maximum number of credit history entries to return. Specifying 0 returns all entries.",
+    )
+    page: int = Field(
+        default=DEFAULT_PAGE, ge=1, description="Offset in pages. Starts at 1."
+    )
+    cursor: Optional[str] = Field(
+        default=None, description="Opaque cursor for cursor-based pagination."
+    )
+    sort_by: SortByCreditHistory = Field(
+        default=SortByCreditHistory.MESSAGE_TIMESTAMP,
+        description="Field to sort by.",
+    )
+    sort_order: SortOrder = Field(
+        default=SortOrder.DESCENDING,
+        description="Sort direction: 1 (ASC) or -1 (DESC).",
+    )
+
+
+class GetAccountCreditHistorySummaryQueryParams(CreditHistoryFilterParams):
+    """The summary endpoint takes only the shared filters."""
+
+
 class CreditHistoryResponseItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -264,6 +273,14 @@ class GetAccountCreditHistoryResponse(BaseModel):
     pagination_page: int
     pagination_total: int
     pagination_per_page: int
+
+
+class GetAccountCreditHistorySummaryResponse(BaseModel):
+    address: str
+    entry_count: int
+    total_amount: int
+    total_incoming: int
+    total_outgoing: int
 
 
 class GetResourceConsumedCreditsResponse(BaseModel):

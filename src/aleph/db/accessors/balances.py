@@ -5,10 +5,20 @@ import time
 from dataclasses import dataclass
 from decimal import Decimal
 from io import StringIO
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import (
+    Any,
+    Dict,
+    List,
+    Mapping,
+    NamedTuple,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+)
 
 from aleph_message.models import Chain
-from sqlalchemy import func, select, text
+from sqlalchemy import case, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.sql import ColumnElement, Select
 
@@ -1068,6 +1078,70 @@ def count_address_credit_history(
     )
 
     return session.execute(query).scalar_one()
+
+
+class CreditHistorySummary(NamedTuple):
+    entry_count: int
+    total_amount: int
+    total_incoming: int
+    total_outgoing: int
+
+
+def get_address_credit_history_summary(
+    session: DbSession,
+    address: str,
+    tx_hash: Optional[str] = None,
+    token: Optional[str] = None,
+    chain: Optional[str] = None,
+    provider: Optional[str] = None,
+    origin: Optional[str] = None,
+    origin_ref: Optional[str] = None,
+    payment_method: Optional[str] = None,
+    has_expiration: Optional[bool] = None,
+    exclude_payment_method: Optional[List[str]] = None,
+    start_date: Optional[dt.datetime] = None,
+    end_date: Optional[dt.datetime] = None,
+    direction: Optional[CreditFlow] = None,
+) -> CreditHistorySummary:
+    """
+    Aggregates over all credit history entries matching the filters, in a
+    single query. Pagination-independent. total_outgoing keeps its negative
+    sign so that total_amount == total_incoming + total_outgoing.
+    """
+    incoming_amount = case(
+        (AlephCreditHistoryDb.amount > 0, AlephCreditHistoryDb.amount), else_=0
+    )
+    outgoing_amount = case(
+        (AlephCreditHistoryDb.amount < 0, AlephCreditHistoryDb.amount), else_=0
+    )
+    query = select(
+        func.count().label("entry_count"),
+        func.coalesce(func.sum(AlephCreditHistoryDb.amount), 0).label("total_amount"),
+        func.coalesce(func.sum(incoming_amount), 0).label("total_incoming"),
+        func.coalesce(func.sum(outgoing_amount), 0).label("total_outgoing"),
+    ).where(AlephCreditHistoryDb.address == address)
+    query = _apply_credit_history_filters(
+        query,
+        tx_hash=tx_hash,
+        token=token,
+        chain=chain,
+        provider=provider,
+        origin=origin,
+        origin_ref=origin_ref,
+        payment_method=payment_method,
+        has_expiration=has_expiration,
+        exclude_payment_method=exclude_payment_method,
+        start_date=start_date,
+        end_date=end_date,
+        direction=direction,
+    )
+    row = session.execute(query).one()
+    return CreditHistorySummary(
+        entry_count=row.entry_count,
+        total_amount=int(row.total_amount),
+        total_incoming=int(row.total_incoming),
+        total_outgoing=int(row.total_outgoing),
+    )
 
 
 def get_total_consumed_credits(

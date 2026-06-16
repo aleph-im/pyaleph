@@ -222,6 +222,20 @@ components:
         pagination_per_page:
           type: integer
 
+    GetAccountCreditHistorySummaryResponse:
+      type: object
+      properties:
+        address:
+          type: string
+        entry_count:
+          type: integer
+        total_amount:
+          type: integer
+        total_incoming:
+          type: integer
+        total_outgoing:
+          type: integer
+
     GetResourceConsumedCreditsResponse:
       type: object
       properties:

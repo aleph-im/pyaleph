@@ -130,6 +130,10 @@ def register_routes(app: web.Application, swagger: Optional[SwaggerDocs]):
             accounts.get_account_credit_history,
         ),
         web.get(
+            "/api/v0/addresses/{address}/credit_history/summary",
+            accounts.get_account_credit_history_summary,
+        ),
+        web.get(
             "/api/v0/messages/{item_hash}/consumed_credits",
             accounts.get_resource_consumed_credits_controller,
         ),
