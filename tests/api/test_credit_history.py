@@ -270,26 +270,27 @@ async def test_credit_history_summary_aggregates_entries(
 
 
 @pytest.mark.asyncio
-async def test_credit_history_rejects_invalid_origin_type(ccn_api_client):
+async def test_credit_history_rejects_invalid_resource_type(ccn_api_client):
+    # An unknown value anywhere in the comma-separated list is rejected.
     response = await ccn_api_client.get(
-        CREDIT_HISTORY_URI, params={"originType": "BANANA"}
+        CREDIT_HISTORY_URI, params={"resourceTypes": "STORE,BANANA"}
     )
     assert response.status == 422
 
 
 @pytest.mark.asyncio
-async def test_credit_history_accepts_valid_origin_type(ccn_api_client):
+async def test_credit_history_accepts_valid_resource_types(ccn_api_client):
     # No data for this address: a valid filtered query returns 404, not 422.
     response = await ccn_api_client.get(
-        CREDIT_HISTORY_URI, params={"originType": "INSTANCE"}
+        CREDIT_HISTORY_URI, params={"resourceTypes": "INSTANCE,PROGRAM"}
     )
     assert response.status == 404
 
 
 @pytest.mark.asyncio
-async def test_credit_history_summary_accepts_valid_origin_type(ccn_api_client):
+async def test_credit_history_summary_accepts_valid_resource_types(ccn_api_client):
     response = await ccn_api_client.get(
-        CREDIT_HISTORY_SUMMARY_URI, params={"originType": "STORE"}
+        CREDIT_HISTORY_SUMMARY_URI, params={"resourceTypes": "STORE"}
     )
     assert response.status == 200
     data = await response.json()
@@ -297,7 +298,7 @@ async def test_credit_history_summary_accepts_valid_origin_type(ccn_api_client):
 
 
 @pytest.mark.asyncio
-async def test_credit_history_origin_type_filter_filters_entries(
+async def test_credit_history_resource_types_filter_filters_entries(
     ccn_api_client, session_factory
 ):
     with session_factory() as session:
@@ -365,19 +366,32 @@ async def test_credit_history_origin_type_filter_filters_entries(
     listing_uri = "/api/v0/addresses/0xe2eorigintype/credit_history"
     summary_uri = "/api/v0/addresses/0xe2eorigintype/credit_history/summary"
 
-    response = await ccn_api_client.get(listing_uri, params={"originType": "STORE"})
+    response = await ccn_api_client.get(listing_uri, params={"resourceTypes": "STORE"})
     assert response.status == 200
     data = await response.json()
     refs = [entry["credit_ref"] for entry in data["credit_history"]]
     assert refs == ["e2e_ot_expense_store"]
 
-    response = await ccn_api_client.get(listing_uri, params={"originType": "INSTANCE"})
+    response = await ccn_api_client.get(
+        listing_uri, params={"resourceTypes": "INSTANCE"}
+    )
     assert response.status == 200
     data = await response.json()
     refs = [entry["credit_ref"] for entry in data["credit_history"]]
     assert refs == ["e2e_ot_expense_instance"]
 
-    response = await ccn_api_client.get(summary_uri, params={"originType": "INSTANCE"})
+    # A comma-separated list matches entries of any of the given types.
+    response = await ccn_api_client.get(
+        listing_uri, params={"resourceTypes": "STORE,INSTANCE"}
+    )
+    assert response.status == 200
+    data = await response.json()
+    refs = {entry["credit_ref"] for entry in data["credit_history"]}
+    assert refs == {"e2e_ot_expense_store", "e2e_ot_expense_instance"}
+
+    response = await ccn_api_client.get(
+        summary_uri, params={"resourceTypes": "INSTANCE"}
+    )
     assert response.status == 200
     data = await response.json()
     assert data["entry_count"] == 1

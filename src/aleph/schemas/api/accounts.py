@@ -192,18 +192,19 @@ class CreditHistoryFilterParams(BaseModel):
         "distributions, received transfers) or 'outgoing' (amount < 0: "
         "expenses, sent transfers). Zero-amount entries match neither.",
     )
-    origin_type: Optional[MessageType] = Field(
+    resource_types: Optional[List[MessageType]] = Field(
         default=None,
-        alias="originType",
-        description="Filter by the message type of the billed resource "
-        "(e.g. STORE for storage, INSTANCE or PROGRAM for compute). Matches "
-        "the type of the message referenced by origin/origin_ref; entries "
-        "whose origin does not resolve to a known message (including "
-        "forgotten messages) never match.",
+        alias="resourceTypes",
+        description="Filter by the message type(s) of the billed resource, "
+        "comma-separated (e.g. STORE for storage, INSTANCE and PROGRAM for "
+        "compute). Matches the type of the message referenced by "
+        "origin/origin_ref; an entry matches if its resource type is any of "
+        "the given values. Entries whose origin does not resolve to a known "
+        "message (including forgotten messages) never match.",
     )
 
-    @field_validator("exclude_payment_method", mode="before")
-    def split_exclude_payment_method(cls, v):
+    @field_validator("exclude_payment_method", "resource_types", mode="before")
+    def split_comma_separated(cls, v):
         if isinstance(v, str):
             return v.split(LIST_FIELD_SEPARATOR)
         return v

@@ -823,12 +823,11 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
           type: string
           enum: [incoming, outgoing]
         description: "Filter by amount sign: incoming (> 0) or outgoing (< 0); zero-amount entries match neither"
-      - name: originType
+      - name: resourceTypes
         in: query
         schema:
           type: string
-          enum: [POST, AGGREGATE, STORE, PROGRAM, INSTANCE, FORGET]
-        description: "Filter by billed resource message type (e.g. STORE, INSTANCE, PROGRAM); entries with no resolvable resource match no type"
+        description: "Comma-separated billed resource message types to match (e.g. STORE for storage, INSTANCE,PROGRAM for compute); allowed values: POST, AGGREGATE, STORE, PROGRAM, INSTANCE, FORGET. Entries with no resolvable resource match no type"
       - name: sort_by
         in: query
         schema:
@@ -922,7 +921,7 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
                     start_date=query_params.start_date,
                     end_date=query_params.end_date,
                     direction=query_params.direction,
-                    origin_type=query_params.origin_type,
+                    resource_types=query_params.resource_types,
                     sort_by=query_params.sort_by,
                     sort_order=query_params.sort_order,
                     after_sort_value=after_sort_value,
@@ -998,7 +997,7 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
             start_date=query_params.start_date,
             end_date=query_params.end_date,
             direction=query_params.direction,
-            origin_type=query_params.origin_type,
+            resource_types=query_params.resource_types,
             sort_by=query_params.sort_by,
             sort_order=query_params.sort_order,
         )
@@ -1021,7 +1020,7 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
             start_date=query_params.start_date,
             end_date=query_params.end_date,
             direction=query_params.direction,
-            origin_type=query_params.origin_type,
+            resource_types=query_params.resource_types,
         )
 
         # Convert to response items
@@ -1130,12 +1129,11 @@ async def get_account_credit_history_summary(request: web.Request) -> web.Respon
           type: string
           enum: [incoming, outgoing]
         description: "Filter by amount sign: incoming (> 0) or outgoing (< 0); zero-amount entries match neither"
-      - name: originType
+      - name: resourceTypes
         in: query
         schema:
           type: string
-          enum: [POST, AGGREGATE, STORE, PROGRAM, INSTANCE, FORGET]
-        description: "Filter by billed resource message type (e.g. STORE, INSTANCE, PROGRAM); entries with no resolvable resource match no type"
+        description: "Comma-separated billed resource message types to match (e.g. STORE for storage, INSTANCE,PROGRAM for compute); allowed values: POST, AGGREGATE, STORE, PROGRAM, INSTANCE, FORGET. Entries with no resolvable resource match no type"
     responses:
       '200':
         description: Aggregate totals over the filtered credit history
@@ -1173,7 +1171,7 @@ async def get_account_credit_history_summary(request: web.Request) -> web.Respon
             start_date=query_params.start_date,
             end_date=query_params.end_date,
             direction=query_params.direction,
-            origin_type=query_params.origin_type,
+            resource_types=query_params.resource_types,
         )
 
     response = GetAccountCreditHistorySummaryResponse(

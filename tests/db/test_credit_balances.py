@@ -2851,10 +2851,10 @@ def test_get_address_credit_history_summary(session_factory: DbSessionFactory):
         assert empty.total_outgoing == 0
 
 
-# ── origin_type filter tests ───────────────────────────────────────────
+# ── resource_types filter tests ───────────────────────────────────────────
 
 
-def _insert_origin_type_fixtures(session) -> None:
+def _insert_resource_type_fixtures(session) -> None:
     """Two resource messages (one STORE, one INSTANCE) and one expense row
     billed against each, plus a third unresolvable expense, for address 0xorigintype."""
     session.add(
@@ -2900,7 +2900,7 @@ def _insert_origin_type_fixtures(session) -> None:
                 "price": "0.000001",
             }
         ],
-        message_hash="origin_type_expense_store",
+        message_hash="resource_type_expense_store",
         message_timestamp=dt.datetime(2026, 4, 1, tzinfo=dt.timezone.utc),
     )
     # Instance billing: resource referenced via execution_id (origin)
@@ -2916,7 +2916,7 @@ def _insert_origin_type_fixtures(session) -> None:
                 "price": "0.000001",
             }
         ],
-        message_hash="origin_type_expense_instance",
+        message_hash="resource_type_expense_instance",
         message_timestamp=dt.datetime(2026, 4, 2, tzinfo=dt.timezone.utc),
     )
     # Unresolvable billing reference: effective origin is '' and matches no message
@@ -2932,37 +2932,37 @@ def _insert_origin_type_fixtures(session) -> None:
                 "price": "0.000001",
             }
         ],
-        message_hash="origin_type_expense_unresolvable",
+        message_hash="resource_type_expense_unresolvable",
         message_timestamp=dt.datetime(2026, 4, 3, tzinfo=dt.timezone.utc),
     )
     session.commit()
 
 
-def test_get_address_credit_history_origin_type_filter(
+def test_get_address_credit_history_resource_types_filter(
     session_factory: DbSessionFactory,
 ):
     with session_factory() as session:
-        _insert_origin_type_fixtures(session)
+        _insert_resource_type_fixtures(session)
 
         storage = get_address_credit_history(
             session=session,
             address="0xorigintype",
-            origin_type=MessageType.store,
+            resource_types=[MessageType.store],
         )
-        assert [e.credit_ref for e in storage] == ["origin_type_expense_store"]
+        assert [e.credit_ref for e in storage] == ["resource_type_expense_store"]
 
         compute = get_address_credit_history(
             session=session,
             address="0xorigintype",
-            origin_type=MessageType.instance,
+            resource_types=[MessageType.instance],
         )
-        assert [e.credit_ref for e in compute] == ["origin_type_expense_instance"]
+        assert [e.credit_ref for e in compute] == ["resource_type_expense_instance"]
 
         assert (
             count_address_credit_history(
                 session=session,
                 address="0xorigintype",
-                origin_type=MessageType.instance,
+                resource_types=[MessageType.instance],
             )
             == 1
         )
@@ -2971,10 +2971,21 @@ def test_get_address_credit_history_origin_type_filter(
         instance_summary = get_address_credit_history_summary(
             session=session,
             address="0xorigintype",
-            origin_type=MessageType.instance,
+            resource_types=[MessageType.instance],
         )
         assert instance_summary.entry_count == 1
         assert instance_summary.total_amount == -200
+
+        # A list matches entries whose resource is any of the given types
+        both = get_address_credit_history(
+            session=session,
+            address="0xorigintype",
+            resource_types=[MessageType.store, MessageType.instance],
+        )
+        assert {e.credit_ref for e in both} == {
+            "resource_type_expense_store",
+            "resource_type_expense_instance",
+        }
 
         # No PROGRAM resources billed for this address
         assert (
@@ -2982,7 +2993,7 @@ def test_get_address_credit_history_origin_type_filter(
                 get_address_credit_history(
                     session=session,
                     address="0xorigintype",
-                    origin_type=MessageType.program,
+                    resource_types=[MessageType.program],
                 )
             )
             == []
@@ -2992,7 +3003,7 @@ def test_get_address_credit_history_origin_type_filter(
         unfiltered = get_address_credit_history(session=session, address="0xorigintype")
         assert len(unfiltered) == 3
 
-        # The unresolvable row matches no origin_type value
+        # The unresolvable row matches no resource_types value
         for message_type in (
             MessageType.store,
             MessageType.instance,
@@ -3003,7 +3014,7 @@ def test_get_address_credit_history_origin_type_filter(
                 for e in get_address_credit_history(
                     session=session,
                     address="0xorigintype",
-                    origin_type=message_type,
+                    resource_types=[message_type],
                 )
             ]
-            assert "origin_type_expense_unresolvable" not in refs
+            assert "resource_type_expense_unresolvable" not in refs
