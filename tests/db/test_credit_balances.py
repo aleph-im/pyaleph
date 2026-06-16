@@ -3,6 +3,7 @@ import time
 from decimal import Decimal
 from typing import Any, Dict, List
 
+from aleph_message.models import Chain, ItemType, MessageType
 from sqlalchemy import select
 from sqlalchemy import update as sql_update
 
@@ -20,7 +21,7 @@ from aleph.db.accessors.balances import (
     update_credit_balances_transfer,
     validate_credit_transfer_balance,
 )
-from aleph.db.models import AlephCreditBalanceDb, AlephCreditHistoryDb
+from aleph.db.models import AlephCreditBalanceDb, AlephCreditHistoryDb, MessageDb
 from aleph.repair import _rebuild_credit_lots_for_address
 from aleph.types.credit import CreditFlow
 from aleph.types.db_session import DbSessionFactory
@@ -2848,3 +2849,172 @@ def test_get_address_credit_history_summary(session_factory: DbSessionFactory):
         assert empty.total_amount == 0
         assert empty.total_incoming == 0
         assert empty.total_outgoing == 0
+
+
+# ── resource_types filter tests ───────────────────────────────────────────
+
+
+def _insert_resource_type_fixtures(session) -> None:
+    """Two resource messages (one STORE, one INSTANCE) and one expense row
+    billed against each, plus a third unresolvable expense, for address 0xorigintype."""
+    session.add(
+        MessageDb(
+            item_hash="store_resource_hash",
+            chain=Chain.ETH,
+            sender="0xorigintype",
+            signature=None,
+            item_type=ItemType.storage,
+            type=MessageType.store,
+            item_content=None,
+            content={"address": "0xorigintype", "time": 1772323200.0},
+            size=100,
+            time=dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc),
+        )
+    )
+    session.add(
+        MessageDb(
+            item_hash="instance_resource_hash",
+            chain=Chain.ETH,
+            sender="0xorigintype",
+            signature=None,
+            item_type=ItemType.storage,
+            type=MessageType.instance,
+            item_content=None,
+            content={"address": "0xorigintype", "time": 1772323200.0},
+            size=100,
+            time=dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc),
+        )
+    )
+    session.flush()
+
+    # Storage billing: resource referenced via ref (origin_ref), no execution_id
+    update_credit_balances_expense(
+        session=session,
+        credits_list=[
+            {
+                "address": "0xorigintype",
+                "amount": 100,
+                "ref": "store_resource_hash",
+                "execution_id": "",
+                "node_id": "node_a",
+                "price": "0.000001",
+            }
+        ],
+        message_hash="resource_type_expense_store",
+        message_timestamp=dt.datetime(2026, 4, 1, tzinfo=dt.timezone.utc),
+    )
+    # Instance billing: resource referenced via execution_id (origin)
+    update_credit_balances_expense(
+        session=session,
+        credits_list=[
+            {
+                "address": "0xorigintype",
+                "amount": 200,
+                "ref": "",
+                "execution_id": "instance_resource_hash",
+                "node_id": "node_b",
+                "price": "0.000001",
+            }
+        ],
+        message_hash="resource_type_expense_instance",
+        message_timestamp=dt.datetime(2026, 4, 2, tzinfo=dt.timezone.utc),
+    )
+    # Unresolvable billing reference: effective origin is '' and matches no message
+    update_credit_balances_expense(
+        session=session,
+        credits_list=[
+            {
+                "address": "0xorigintype",
+                "amount": 50,
+                "ref": "",
+                "execution_id": "",
+                "node_id": "node_c",
+                "price": "0.000001",
+            }
+        ],
+        message_hash="resource_type_expense_unresolvable",
+        message_timestamp=dt.datetime(2026, 4, 3, tzinfo=dt.timezone.utc),
+    )
+    session.commit()
+
+
+def test_get_address_credit_history_resource_types_filter(
+    session_factory: DbSessionFactory,
+):
+    with session_factory() as session:
+        _insert_resource_type_fixtures(session)
+
+        storage = get_address_credit_history(
+            session=session,
+            address="0xorigintype",
+            resource_types=[MessageType.store],
+        )
+        assert [e.credit_ref for e in storage] == ["resource_type_expense_store"]
+
+        compute = get_address_credit_history(
+            session=session,
+            address="0xorigintype",
+            resource_types=[MessageType.instance],
+        )
+        assert [e.credit_ref for e in compute] == ["resource_type_expense_instance"]
+
+        assert (
+            count_address_credit_history(
+                session=session,
+                address="0xorigintype",
+                resource_types=[MessageType.instance],
+            )
+            == 1
+        )
+
+        # Composes with the summary aggregate
+        instance_summary = get_address_credit_history_summary(
+            session=session,
+            address="0xorigintype",
+            resource_types=[MessageType.instance],
+        )
+        assert instance_summary.entry_count == 1
+        assert instance_summary.total_amount == -200
+
+        # A list matches entries whose resource is any of the given types
+        both = get_address_credit_history(
+            session=session,
+            address="0xorigintype",
+            resource_types=[MessageType.store, MessageType.instance],
+        )
+        assert {e.credit_ref for e in both} == {
+            "resource_type_expense_store",
+            "resource_type_expense_instance",
+        }
+
+        # No PROGRAM resources billed for this address
+        assert (
+            list(
+                get_address_credit_history(
+                    session=session,
+                    address="0xorigintype",
+                    resource_types=[MessageType.program],
+                )
+            )
+            == []
+        )
+
+        # Unfiltered: all three expense rows, including the unresolvable one
+        unfiltered = get_address_credit_history(session=session, address="0xorigintype")
+        assert len(unfiltered) == 3
+
+        # The unresolvable row matches no resource_types value
+        for message_type in (
+            MessageType.store,
+            MessageType.instance,
+            MessageType.program,
+        ):
+            refs = [
+                e.credit_ref
+                for e in get_address_credit_history(
+                    session=session,
+                    address="0xorigintype",
+                    resource_types=[message_type],
+                )
+            ]
+            assert "resource_type_expense_unresolvable" not in refs
