@@ -3,7 +3,15 @@ from decimal import Decimal
 from typing import Optional
 
 from aleph_message.models import Chain
-from sqlalchemy import DECIMAL, TIMESTAMP, BigInteger, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    DECIMAL,
+    TIMESTAMP,
+    BigInteger,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 from sqlalchemy_utils.types.choice import ChoiceType
@@ -40,7 +48,7 @@ class AlephCreditHistoryDb(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, autoincrement=True)
 
-    address: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    address: Mapped[str] = mapped_column(String, nullable=False)
     amount: Mapped[int] = mapped_column(BigInteger, nullable=False)
     price: Mapped[Optional[Decimal]] = mapped_column(DECIMAL, nullable=True)
     bonus_amount: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
@@ -66,6 +74,20 @@ class AlephCreditHistoryDb(Base):
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        # Serves the credit-history endpoint: filter by address, ordered by
+        # (message_timestamp, credit_ref, credit_index). The single btree
+        # covers both ASC and DESC since all sort keys share direction, and
+        # supersedes the former standalone index on address.
+        Index(
+            "ix_credit_history_address_timestamp",
+            "address",
+            "message_timestamp",
+            "credit_ref",
+            "credit_index",
+        ),
     )
 
 
