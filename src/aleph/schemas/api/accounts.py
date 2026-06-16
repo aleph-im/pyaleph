@@ -3,7 +3,14 @@ from decimal import Decimal
 from typing import Annotated, Dict, List, Optional
 
 from aleph_message.models import Chain
-from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PlainSerializer,
+    field_validator,
+    model_validator,
+)
 
 from aleph.schemas.messages_query_params import DEFAULT_PAGE, LIST_FIELD_SEPARATOR
 from aleph.types.files import FileType
@@ -213,6 +220,16 @@ class GetAccountCreditHistoryQueryParams(BaseModel):
             return dt.datetime.fromtimestamp(value, tz=dt.timezone.utc)
         except (OverflowError, OSError, ValueError) as exc:
             raise ValueError(f"invalid Unix timestamp: {v}") from exc
+
+    @model_validator(mode="after")
+    def validate_date_range(self):
+        if (
+            self.start_date is not None
+            and self.end_date is not None
+            and self.end_date < self.start_date
+        ):
+            raise ValueError("end date cannot be lower than start date.")
+        return self
 
 
 class CreditHistoryResponseItem(BaseModel):

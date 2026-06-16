@@ -40,11 +40,23 @@ async def test_credit_history_rejects_out_of_range_start_date(ccn_api_client):
 
 
 @pytest.mark.asyncio
-async def test_credit_history_snake_case_time_params_also_accepted(ccn_api_client):
+async def test_credit_history_validates_snake_case_params(ccn_api_client):
     # The model uses populate_by_name=True (mirroring the messages query params
     # convention), so snake_case spellings are also accepted as field names.
-    # A negative value is therefore still validated and returns 422.
+    # The 422 (rather than the 404 an unbound param would yield) proves the
+    # snake_case alias was bound and then validated against the negative value.
     response = await ccn_api_client.get(CREDIT_HISTORY_URI, params={"start_date": "-1"})
+    assert response.status == 422
+
+
+@pytest.mark.asyncio
+async def test_credit_history_rejects_inverted_date_range(ccn_api_client):
+    # Mirrors the messages query params convention: end_date < start_date is
+    # rejected up front rather than silently returning empty results.
+    response = await ccn_api_client.get(
+        CREDIT_HISTORY_URI,
+        params={"startDate": "1769000000", "endDate": "1768000000"},
+    )
     assert response.status == 422
 
 
