@@ -21,6 +21,7 @@ from aleph.db.accessors.balances import (
 )
 from aleph.db.models import AlephCreditBalanceDb, AlephCreditHistoryDb
 from aleph.repair import _rebuild_credit_lots_for_address
+from aleph.types.credit import CreditFlow
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.sort_order import SortByCreditHistory, SortOrder
 
@@ -2669,4 +2670,119 @@ def test_count_address_credit_history_time_filters(session_factory: DbSessionFac
                 start_date=dt.datetime(2026, 5, 2, tzinfo=dt.timezone.utc),
             )
             == 0
+        )
+
+
+def test_get_address_credit_history_direction_filter(
+    session_factory: DbSessionFactory,
+):
+    with session_factory() as session:
+        _insert_time_window_fixtures(session)
+
+        incoming = get_address_credit_history(
+            session=session,
+            address="0xtimefilter",
+            direction=CreditFlow.INCOMING,
+        )
+        assert {e.credit_ref for e in incoming} == {"time_dist_march", "time_dist_may"}
+        assert all(e.amount > 0 for e in incoming)
+
+        outgoing = get_address_credit_history(
+            session=session,
+            address="0xtimefilter",
+            direction=CreditFlow.OUTGOING,
+        )
+        assert [e.credit_ref for e in outgoing] == ["time_expense_april"]
+        assert outgoing[0].amount < 0
+        assert outgoing[0].payment_method == "credit_expense"
+
+        # Composes with time filters
+        recent_incoming = get_address_credit_history(
+            session=session,
+            address="0xtimefilter",
+            direction=CreditFlow.INCOMING,
+            start_date=dt.datetime(2026, 4, 15, tzinfo=dt.timezone.utc),
+        )
+        assert [e.credit_ref for e in recent_incoming] == ["time_dist_may"]
+
+
+def test_count_address_credit_history_direction_filter(
+    session_factory: DbSessionFactory,
+):
+    with session_factory() as session:
+        _insert_time_window_fixtures(session)
+
+        assert (
+            count_address_credit_history(
+                session=session,
+                address="0xtimefilter",
+                direction=CreditFlow.INCOMING,
+            )
+            == 2
+        )
+        assert (
+            count_address_credit_history(
+                session=session,
+                address="0xtimefilter",
+                direction=CreditFlow.OUTGOING,
+            )
+            == 1
+        )
+
+
+def test_credit_history_direction_filter_excludes_zero_amounts(
+    session_factory: DbSessionFactory,
+):
+    with session_factory() as session:
+        update_credit_balances_transfer(
+            session=session,
+            credits_list=[{"address": "0xzero_dir_recipient", "amount": 0}],
+            sender_address="0xzero_dir_sender",
+            whitelisted_addresses=["0xzero_dir_sender"],
+            message_hash="zero_amount_direction_msg",
+            message_timestamp=dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc),
+        )
+        session.commit()
+
+        unfiltered = get_address_credit_history(
+            session=session, address="0xzero_dir_recipient"
+        )
+        assert len(unfiltered) == 1
+        assert unfiltered[0].amount == 0
+
+        assert (
+            count_address_credit_history(
+                session=session,
+                address="0xzero_dir_recipient",
+                direction=CreditFlow.INCOMING,
+            )
+            == 0
+        )
+        assert (
+            count_address_credit_history(
+                session=session,
+                address="0xzero_dir_recipient",
+                direction=CreditFlow.OUTGOING,
+            )
+            == 0
+        )
+        assert (
+            list(
+                get_address_credit_history(
+                    session=session,
+                    address="0xzero_dir_recipient",
+                    direction=CreditFlow.INCOMING,
+                )
+            )
+            == []
+        )
+        assert (
+            list(
+                get_address_credit_history(
+                    session=session,
+                    address="0xzero_dir_recipient",
+                    direction=CreditFlow.OUTGOING,
+                )
+            )
+            == []
         )

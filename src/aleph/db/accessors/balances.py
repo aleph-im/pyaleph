@@ -18,6 +18,7 @@ from aleph.toolkit.constants import (
     CREDIT_PRECISION_MULTIPLIER,
 )
 from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
+from aleph.types.credit import CreditFlow
 from aleph.types.db_session import DbSession
 from aleph.types.sort_order import SortByCreditHistory, SortOrder
 
@@ -849,6 +850,7 @@ def _apply_credit_history_filters(
     exclude_payment_method: Optional[List[str]] = None,
     start_date: Optional[dt.datetime] = None,
     end_date: Optional[dt.datetime] = None,
+    direction: Optional[CreditFlow] = None,
 ) -> Select:
     """Apply common filters to a credit history query."""
     if tx_hash is not None:
@@ -877,6 +879,10 @@ def _apply_credit_history_filters(
         query = query.where(AlephCreditHistoryDb.message_timestamp >= start_date)
     if end_date is not None:
         query = query.where(AlephCreditHistoryDb.message_timestamp <= end_date)
+    if direction == CreditFlow.INCOMING:
+        query = query.where(AlephCreditHistoryDb.amount > 0)
+    elif direction == CreditFlow.OUTGOING:
+        query = query.where(AlephCreditHistoryDb.amount < 0)
     return query
 
 
@@ -896,6 +902,7 @@ def get_address_credit_history(
     exclude_payment_method: Optional[List[str]] = None,
     start_date: Optional[dt.datetime] = None,
     end_date: Optional[dt.datetime] = None,
+    direction: Optional[CreditFlow] = None,
     sort_by: SortByCreditHistory = SortByCreditHistory.MESSAGE_TIMESTAMP,
     sort_order: SortOrder = SortOrder.DESCENDING,
     after_sort_value: Optional[Any] = None,
@@ -950,6 +957,7 @@ def get_address_credit_history(
         exclude_payment_method=exclude_payment_method,
         start_date=start_date,
         end_date=end_date,
+        direction=direction,
     )
 
     # Cursor-based keyset pagination
@@ -1034,6 +1042,7 @@ def count_address_credit_history(
     exclude_payment_method: Optional[List[str]] = None,
     start_date: Optional[dt.datetime] = None,
     end_date: Optional[dt.datetime] = None,
+    direction: Optional[CreditFlow] = None,
 ) -> int:
     """
     Count total credit history entries for a specific address with optional filters.
@@ -1055,6 +1064,7 @@ def count_address_credit_history(
         exclude_payment_method=exclude_payment_method,
         start_date=start_date,
         end_date=end_date,
+        direction=direction,
     )
 
     return session.execute(query).scalar_one()
