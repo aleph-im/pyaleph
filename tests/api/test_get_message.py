@@ -12,16 +12,19 @@ from aleph.db.models import (
     PendingMessageDb,
     RejectedMessageDb,
 )
+from aleph.db.models.messages import RemovedMessageDb
 from aleph.schemas.api.messages import (
     ForgottenMessageStatus,
     PendingMessageStatus,
     ProcessedMessageStatus,
     RejectedMessageStatus,
+    RemovedMessageStatus,
+    RemovingMessageStatus,
 )
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
-from aleph.types.message_status import ErrorCode, MessageStatus
+from aleph.types.message_status import ErrorCode, MessageStatus, RemovedMessageReason
 
 MESSAGE_URI = "/api/v0/messages/{}"
 MESSAGE_CONTENT_URI = "/api/v0/messages/{}/content"
@@ -168,11 +171,54 @@ def fixture_messages_with_status(
         )
     ]
 
+    # Credit-paid store message removed for insufficient credits. The
+    # messages row is deleted at removal, so only the snapshot remains.
+    removed_messages = [
+        RemovedMessageDb(
+            item_hash="a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+            chain=Chain.ETH,
+            sender="0xD7722B35140a3E87A41003b8b6195eF918c2D727",
+            owner="0xD7722B35140a3E87A41003b8b6195eF918c2D727",
+            signature="0xremovedsig",
+            item_type=ItemType.inline,
+            type=MessageType.store,
+            payment_type="credit",
+            size=154,
+            time=timestamp_to_datetime(1645794065.439),
+            channel=Channel("TEST"),
+            removed_at=timestamp_to_datetime(1645794165.439),
+        )
+    ]
+
+    # Hold-paid store message in the removing grace period.
+    removing_messages = [
+        MessageDb(
+            item_hash="b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3",
+            chain=Chain.ETH,
+            sender="0xB68B9D4f3771c246233823ed1D3Add451055F9Ef",
+            signature="0xremovingsig",
+            item_type=ItemType.inline,
+            type=MessageType.store,
+            item_content=None,
+            content={
+                "address": "0xB68B9D4f3771c246233823ed1D3Add451055F9Ef",
+                "time": 1645794065.439,
+                "item_type": "storage",
+                "item_hash": "QmTQPocJ8n3r7jhwYxmCDR5bJ4SNsEhdVm8WwkNbGctgJF",
+            },
+            size=154,
+            time=timestamp_to_datetime(1645794065.439),
+            channel=Channel("TEST"),
+        )
+    ]
+
     messages_dict: Mapping[MessageStatus, Sequence[Any]] = {
         MessageStatus.PENDING: pending_messages,
         MessageStatus.PROCESSED: processed_messages,
         MessageStatus.FORGOTTEN: forgotten_messages,
         MessageStatus.REJECTED: rejected_messages,
+        MessageStatus.REMOVING: removing_messages,
+        MessageStatus.REMOVED: removed_messages,
     }
 
     with session_factory() as session:
@@ -256,6 +302,40 @@ async def test_get_rejected_message_status(
 
         # Check that the traceback is not included in the response
         assert "traceback" not in response_json
+
+
+@pytest.mark.parametrize(
+    "status, status_cls, expected_reason",
+    [
+        (
+            MessageStatus.REMOVED,
+            RemovedMessageStatus,
+            RemovedMessageReason.CREDIT_INSUFFICIENT,
+        ),
+        (
+            MessageStatus.REMOVING,
+            RemovingMessageStatus,
+            RemovedMessageReason.BALANCE_INSUFFICIENT,
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_get_removed_message_reason_matches_payment_type(
+    fixture_messages_with_status: Mapping[MessageStatus, Sequence[Any]],
+    ccn_api_client,
+    status,
+    status_cls,
+    expected_reason,
+):
+    """The removal reason reflects the message payment type: credit-paid removals
+    report credit_insufficient, hold/superfluid ones report balance_insufficient."""
+    for message in fixture_messages_with_status[status]:
+        response = await ccn_api_client.get(MESSAGE_URI.format(message.item_hash))
+        assert response.status == 200, await response.text()
+        parsed_response = status_cls.model_validate(await response.json())
+        assert parsed_response.status == status
+        assert parsed_response.item_hash == message.item_hash
+        assert parsed_response.reason == expected_reason
 
 
 @pytest.mark.asyncio

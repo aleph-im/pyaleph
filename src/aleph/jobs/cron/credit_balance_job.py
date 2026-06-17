@@ -23,7 +23,7 @@ from aleph.db.models.cron_jobs import CronJobDb
 from aleph.db.models.messages import MessageDb, MessageStatusDb
 from aleph.jobs.cron.cron_job import BaseCronJob
 from aleph.services.cost import calculate_storage_size
-from aleph.toolkit.constants import CREDIT_ONLY_CUTOFF_TIMESTAMP, MiB
+from aleph.toolkit.constants import CREDIT_ONLY_CUTOFF_TIMESTAMP, DAY, MiB
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_status import MessageStatus
@@ -65,11 +65,18 @@ class CreditBalanceCronJob(BaseCronJob):
                         f"Checking credit message {item_hash} with cost {cost} credits"
                     )
 
-                    # For credits, check if balance is insufficient for minimum 1-day runtime
-                    # Cost is per hour, so multiply by 24 for daily requirement
-                    daily_cost = cost * 24
+                    # For credits, check if balance is insufficient for minimum 1-day
+                    # runtime. Costs in account_costs are stored per-second, so multiply
+                    # by DAY (seconds per day) to get the per-day requirement, matching
+                    # the ingest-time check in cost_validation.validate_balance_for_payment.
+                    daily_cost = cost * DAY
                     should_remove = remaining_credits < daily_cost
-                    remaining_credits = max(0, remaining_credits - cost)
+                    # Reserve a full day of this resource's runtime so the next
+                    # resource is checked against what is actually left, matching the
+                    # per-day threshold above (decrementing by the per-second cost
+                    # would let an account keep many resources it cannot afford for a
+                    # day, which the ingest-time check already rejects).
+                    remaining_credits = max(0, remaining_credits - daily_cost)
 
                     status = get_message_status(session, item_hash)
                     if status is None:
