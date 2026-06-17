@@ -48,7 +48,10 @@ dependencies = [
   "msgpack==1.2.0",                                                                                                        # required by aiocache
   "multiaddr==0.2.0",                                                                                                      # for libp2p-stubs
   "orjson>=3.7.7",                                                                                                         # Minimum version for Python 3.11
-  "protobuf==7.35.1",
+  # Held on the 6.x line: the committed gRPC stubs (services/p2p/grpc_generated)
+  # are protobuf-6 gencode and the runtime version guard requires a major-6
+  # runtime. Lift this only by regenerating the stubs against a protobuf-7 toolchain.
+  "protobuf>=6.33.5,<7",
   "psycopg2-binary==2.9.12",                                                                                               # Note: psycopg3 is not yet supported by SQLAlchemy
   "pycryptodome==3.23.0",
   "pydantic==2.13.4",
