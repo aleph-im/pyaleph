@@ -6,8 +6,10 @@ import asyncio
 import json
 import logging
 from hashlib import sha256
-from typing import Any, Final, Optional, cast
+from typing import Any, Final, List, Optional, cast
 
+import grpc
+import grpc.aio
 from aleph_message.models import ItemType
 
 import aleph.toolkit.json as aleph_json
@@ -25,6 +27,7 @@ from aleph.schemas.message_content import (
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.ipfs.common import get_cid_version
+from aleph.services.p2p.client import FetchNotFoundException, P2PGrpcClient
 from aleph.services.p2p.http import request_hash as p2p_http_request_hash
 from aleph.services.storage.engine import StorageEngine
 from aleph.types.db_session import DbSession
@@ -58,10 +61,12 @@ class StorageService:
         storage_engine: StorageEngine,
         ipfs_service: IpfsService,
         node_cache: NodeCache,
+        p2p_client: Optional[P2PGrpcClient] = None,
     ):
         self.storage_engine = storage_engine
         self.ipfs_service = ipfs_service
         self.node_cache = node_cache
+        self.p2p_client = p2p_client
 
     async def get_message_content(
         self, message: AlephBaseMessage | PendingMessageDb
@@ -104,6 +109,38 @@ class StorageService:
             value=content,
             raw_value=item_content,
         )
+
+    async def _fetch_content_from_p2p_service(
+        self, content_hash: str
+    ) -> Optional[bytes]:
+        """
+        Fetches content from peers through the P2P service Fetch RPC.
+        Returns None on any failure; the caller falls through to the next
+        source. The returned bytes are NOT verified yet.
+        """
+        if self.p2p_client is None:
+            return None
+
+        chunks: List[bytes] = []
+        try:
+            async for chunk in self.p2p_client.fetch(content_hash):
+                chunks.append(chunk)
+        except FetchNotFoundException:
+            return None
+        except grpc.aio.AioRpcError as e:
+            if e.code() == grpc.StatusCode.UNIMPLEMENTED:
+                LOGGER.debug("P2P service does not support the fetch protocol yet")
+            else:
+                LOGGER.warning("P2P fetch failed for %s: %s", content_hash, e.code())
+            return None
+        except Exception:
+            LOGGER.exception("P2P fetch failed for %s", content_hash)
+            return None
+
+        if not chunks:
+            return None
+        content = b"".join(chunks)
+        return content if content else None
 
     async def _fetch_content_from_network(
         self, content_hash: str, engine: ItemType, timeout: int
@@ -203,20 +240,35 @@ class StorageService:
             source = ContentSource.DB
 
         if content is None and use_network:
+            content = await self._fetch_content_from_p2p_service(content_hash)
+            if content is not None:
+                try:
+                    await self._verify_content_hash(content, engine, content_hash)
+                    source = ContentSource.P2P
+                except InvalidContent:
+                    LOGGER.warning(
+                        "Discarding peer-fetched content for %s: hash mismatch",
+                        content_hash,
+                    )
+                    content = None
+
+        if content is None and use_ipfs and engine == ItemType.ipfs:
+            config = get_config()
+            if config.ipfs.enabled.value:
+                content = await self.ipfs_service.get_ipfs_content(
+                    content_hash, timeout=timeout, tries=tries
+                )
+                if content is not None:
+                    source = ContentSource.IPFS
+
+        # Legacy HTTP fallback, kept for peers that predate the fetch
+        # protocol. Deleted in release N+2 together with services/p2p/http.py.
+        if content is None and use_network:
             content = await self._fetch_content_from_network(
                 content_hash, engine, timeout
             )
-            source = ContentSource.P2P
-
-        if content is None:
-            if use_ipfs and engine == ItemType.ipfs:
-                config = get_config()
-                ipfs_enabled = config.ipfs.enabled.value
-                if ipfs_enabled:
-                    content = await self.ipfs_service.get_ipfs_content(
-                        content_hash, timeout=timeout, tries=tries
-                    )
-                    source = ContentSource.IPFS
+            if content is not None:
+                source = ContentSource.P2P
 
         if content is None:
             raise ContentCurrentlyUnavailable(

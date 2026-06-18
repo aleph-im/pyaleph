@@ -107,3 +107,19 @@ class PeerInfo(_message.Message):
     preferred: bool
     score: float
     def __init__(self, peer_id: _Optional[str] = ..., multiaddrs: _Optional[_Iterable[str]] = ..., preferred: _Optional[bool] = ..., score: _Optional[float] = ...) -> None: ...
+
+class FetchRequest(_message.Message):
+    __slots__ = ("item_hash", "preferred_peer_ids")
+    ITEM_HASH_FIELD_NUMBER: _ClassVar[int]
+    PREFERRED_PEER_IDS_FIELD_NUMBER: _ClassVar[int]
+    item_hash: str
+    preferred_peer_ids: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, item_hash: _Optional[str] = ..., preferred_peer_ids: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class FetchChunk(_message.Message):
+    __slots__ = ("data", "total_size")
+    DATA_FIELD_NUMBER: _ClassVar[int]
+    TOTAL_SIZE_FIELD_NUMBER: _ClassVar[int]
+    data: bytes
+    total_size: int
+    def __init__(self, data: _Optional[bytes] = ..., total_size: _Optional[int] = ...) -> None: ...

@@ -19,7 +19,6 @@ import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.files import insert_grace_period_file_pin
 from aleph.schemas.messages_query_params import DEFAULT_MESSAGES_PER_PAGE
 from aleph.schemas.pending_messages import BasePendingMessage, parse_message
-from aleph.services.ipfs import IpfsService
 from aleph.services.p2p.client import P2PGrpcClient
 from aleph.services.p2p.pubsub import publish as pub_p2p
 from aleph.toolkit.shield import shielded
@@ -33,7 +32,6 @@ from aleph.types.message_status import (
 from aleph.types.protocol import Protocol
 from aleph.web.controllers.app_state_getters import (
     get_config_from_request,
-    get_ipfs_service_from_request,
     get_mq_channel_from_request,
     get_p2p_client_from_request,
 )
@@ -253,31 +251,25 @@ class PublicationStatus(BaseModel):
 
     @classmethod
     def from_failures(cls, failed_publications: List[Protocol]):
-        status = {
-            0: "success",
-            1: "warning",
-            2: "error",
-        }[len(failed_publications)]
+        # Since release N+1, messages are only published on the P2P topic:
+        # either the publication succeeds or it fails entirely.
+        status = "success" if not failed_publications else "error"
         return cls(status=status, failed=failed_publications)
 
 
 async def pub_on_p2p_topics(
     p2p_client: P2PGrpcClient,
-    ipfs_service: Optional[IpfsService],
     topic: str,
     payload: Union[str, bytes],
     logger: logging.Logger,
 ) -> List[Protocol]:
+    """
+    Publishes a payload on the P2P pubsub topic.
 
-    failed_publications = []
-
-    if ipfs_service:
-        try:
-            await asyncio.wait_for(ipfs_service.pub(topic, payload), 10)
-        except Exception:
-            logger.exception("Can't publish on ipfs")
-            failed_publications.append(Protocol.IPFS)
-
+    Since release N+1, broadcast no longer goes to IPFS pubsub: the P2P
+    publish must succeed (old nodes still receive the message because the
+    gossipsub layer is wire-compatible across the fleet).
+    """
     try:
         await asyncio.wait_for(
             pub_p2p(
@@ -290,9 +282,8 @@ async def pub_on_p2p_topics(
         )
     except Exception:
         logger.exception("Can't publish on p2p")
-        failed_publications.append(Protocol.P2P)
-
-    return failed_publications
+        return [Protocol.P2P]
+    return []
 
 
 class BroadcastStatus(BaseModel):
@@ -353,7 +344,7 @@ async def broadcast_and_process_message(
     else:
         mq_queue = None
 
-    # We publish the message on P2P topics early, for 3 reasons:
+    # We publish the message on the P2P topic early, for 3 reasons:
     # 1. Just because this node is unable to process the message does not
     #    necessarily mean the message is incorrect (ex: bug in a new version).
     # 2. If the publication fails after the processing, we end up in a situation where
@@ -361,7 +352,6 @@ async def broadcast_and_process_message(
     #    causing sync issues on the network.
     # 3. The message is currently fed to this node using the P2P service client
     #    loopback mechanism.
-    ipfs_service = get_ipfs_service_from_request(request)
     p2p_client = get_p2p_client_from_request(request)
 
     message_topic = config.aleph.queue_topic.value
@@ -369,7 +359,6 @@ async def broadcast_and_process_message(
 
     failed_publications = await pub_on_p2p_topics(
         p2p_client=p2p_client,
-        ipfs_service=ipfs_service,
         topic=message_topic,
         payload=aleph_json.dumps(message_dict),
         logger=logger,

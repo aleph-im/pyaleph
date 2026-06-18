@@ -43,6 +43,15 @@ p2p:
   port: 4025
   control_port: 4030
   reconnect_delay: 60
+  # Used by the p2p-service only: pyaleph's content directory (mounted
+  # read-only into the p2p-service), served to peers over the fetch protocol.
+  content_dir: /var/lib/pyaleph
+  # Used by the p2p-service only: IPFS (Kubo) RPC of the node that holds
+  # pinned content, for serving CID content to peers (local blocks only).
+  # If you offload IPFS storage via ipfs.pinning, point this at that node.
+  ipfs_api_url: "http://ipfs:5001"
+  # Used by the p2p-service only: persists known peers across restarts.
+  peerstore_path: /var/lib/p2p-service/peerstore.json
 
 
 rabbitmq:

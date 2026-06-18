@@ -6,6 +6,7 @@ import pytest_asyncio
 from aleph.services.p2p.client import (
     DialFailedException,
     DialWrongPeerException,
+    FetchNotFoundException,
     P2PGrpcClient,
 )
 from aleph.services.p2p.grpc_generated import aleph_p2p_pb2 as pb
@@ -19,6 +20,7 @@ class FakeP2PServicer(pb_grpc.AlephP2PServicer):
         self.published = []
         self.preferred = []
         self.dialed = []
+        self.fetch_requests = []
 
     async def Identify(self, request, context):
         return pb.IdentifyResponse(
@@ -74,6 +76,16 @@ class FakeP2PServicer(pb_grpc.AlephP2PServicer):
                 )
             ]
         )
+
+    async def Fetch(self, request, context):
+        self.fetch_requests.append(request)
+        if request.item_hash == "missing":
+            await context.abort(grpc.StatusCode.NOT_FOUND, "not found")
+        if request.item_hash == "broken":
+            yield pb.FetchChunk(data=b"partial", total_size=100)
+            await context.abort(grpc.StatusCode.ABORTED, "peer failed mid-stream")
+        yield pb.FetchChunk(data=b"hello ", total_size=11)
+        yield pb.FetchChunk(data=b"world", total_size=11)
 
 
 @pytest_asyncio.fixture
@@ -194,3 +206,26 @@ async def test_connect_unreachable_raises(fake_service):
         grpc.StatusCode.UNAVAILABLE,
         grpc.StatusCode.DEADLINE_EXCEEDED,
     )
+
+
+@pytest.mark.asyncio
+async def test_fetch_yields_chunks(client):
+    chunks = [chunk async for chunk in client.fetch("a" * 64)]
+    assert b"".join(chunks) == b"hello world"
+
+
+@pytest.mark.asyncio
+async def test_fetch_not_found_raises(client):
+    with pytest.raises(FetchNotFoundException):
+        async for _ in client.fetch("missing"):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_fetch_aborted_propagates(client):
+    received = []
+    with pytest.raises(grpc.aio.AioRpcError) as exc_info:
+        async for chunk in client.fetch("broken"):
+            received.append(chunk)
+    assert exc_info.value.code() == grpc.StatusCode.ABORTED
+    assert received == [b"partial"]

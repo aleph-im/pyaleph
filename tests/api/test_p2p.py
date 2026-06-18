@@ -4,6 +4,11 @@ import json
 import pytest
 from configmanager import Config
 
+from aleph.web.controllers.app_state_getters import (
+    APP_STATE_P2P_CLIENT,
+    APP_STATE_STORAGE_SERVICE,
+)
+
 P2P_PUB_URI = "/api/v0/p2p/pubsub/pub"
 POST_MESSAGES_URI = "/api/v0/messages"
 
@@ -31,6 +36,68 @@ async def test_pubsub_pub_valid_message(ccn_api_client, mock_config: Config):
     response_json = await response.json()
 
     assert response_json["status"] == "success"
+    assert response_json["failed"] == []
+
+    # Since release N+1, broadcast only goes through the P2P service.
+    p2p_client = ccn_api_client.app[APP_STATE_P2P_CLIENT]
+    p2p_client.publish.assert_awaited_once()
+    ipfs_service = ccn_api_client.app[APP_STATE_STORAGE_SERVICE].ipfs_service
+    ipfs_service.pub.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_pubsub_pub_p2p_failure(ccn_api_client, mock_config: Config):
+    """If the P2P publish fails, the publication is an error: there is no
+    IPFS pubsub fallback anymore."""
+    message_topic = mock_config.aleph.queue_topic.value
+
+    p2p_client = ccn_api_client.app[APP_STATE_P2P_CLIENT]
+    p2p_client.publish.side_effect = Exception("p2p service is down")
+
+    response = await ccn_api_client.post(
+        P2P_PUB_URI, json={"topic": message_topic, "data": json.dumps(MESSAGE_DICT)}
+    )
+    assert response.status == 500, await response.text()
+    response_json = await response.json()
+
+    assert response_json["status"] == "error"
+    assert response_json["failed"] == ["p2p"]
+
+    ipfs_service = ccn_api_client.app[APP_STATE_STORAGE_SERVICE].ipfs_service
+    ipfs_service.pub.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_post_message_async_p2p_failure(ccn_api_client):
+    """Broadcasting a message requires the P2P publish to succeed."""
+    p2p_client = ccn_api_client.app[APP_STATE_P2P_CLIENT]
+    p2p_client.publish.side_effect = Exception("p2p service is down")
+
+    response = await ccn_api_client.post(
+        POST_MESSAGES_URI, json={"message": MESSAGE_DICT, "sync": False}
+    )
+    assert response.status == 500, await response.text()
+    response_json = await response.json()
+
+    assert response_json["publication_status"]["status"] == "error"
+    assert response_json["publication_status"]["failed"] == ["p2p"]
+    assert response_json["message_status"] is None
+
+
+@pytest.mark.asyncio
+async def test_post_message_async_success(ccn_api_client):
+    response = await ccn_api_client.post(
+        POST_MESSAGES_URI, json={"message": MESSAGE_DICT, "sync": False}
+    )
+    assert response.status == 202, await response.text()
+    response_json = await response.json()
+
+    assert response_json["publication_status"]["status"] == "success"
+    assert response_json["publication_status"]["failed"] == []
+    assert response_json["message_status"] == "pending"
+
+    ipfs_service = ccn_api_client.app[APP_STATE_STORAGE_SERVICE].ipfs_service
+    ipfs_service.pub.assert_not_called()
 
 
 @pytest.mark.asyncio

@@ -1,12 +1,15 @@
 import json
-from typing import AsyncIterable, Dict, Optional
+from hashlib import sha256
+from typing import AsyncIterable, Dict, List, Optional
 
 import pytest
+from aleph_message.models import ItemType
 
 from aleph.exceptions import InvalidContent
 from aleph.schemas.message_content import ContentSource
 from aleph.schemas.pending_messages import parse_message
 from aleph.services.ipfs import IpfsService
+from aleph.services.p2p.client import FetchNotFoundException
 from aleph.services.storage.engine import StorageEngine
 from aleph.storage import StorageService
 
@@ -44,6 +47,139 @@ class MockStorageEngine(StorageEngine):
         return filename in self.files
 
 
+class MockFetchClient:
+    def __init__(self, content: Optional[bytes], error: Optional[Exception] = None):
+        self.content = content
+        self.error = error
+        self.requested_hashes: List[str] = []
+
+    async def fetch(self, item_hash: str, preferred_peer_ids=()):
+        self.requested_hashes.append(item_hash)
+        if self.error is not None:
+            raise self.error
+        if self.content is None:
+            raise FetchNotFoundException(item_hash)
+        for i in range(0, len(self.content), 4):
+            yield self.content[i : i + 4]
+
+
+@pytest.mark.asyncio
+async def test_hash_content_from_p2p_fetch(mocker):
+    expected_content = b"in tartiflette we trust"
+    content_hash = sha256(expected_content).hexdigest()
+
+    http_mock = mocker.patch("aleph.storage.p2p_http_request_hash")
+    fetch_client = MockFetchClient(expected_content)
+
+    storage_manager = StorageService(
+        MockStorageEngine(files={}),
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
+        p2p_client=fetch_client,
+    )
+
+    content = await storage_manager.get_hash_content(
+        content_hash,
+        engine=ItemType.storage,
+        use_network=True,
+        use_ipfs=False,
+        store_value=False,
+    )
+    assert content.value == expected_content
+    assert content.hash == content_hash
+    assert content.source == ContentSource.P2P
+    assert fetch_client.requested_hashes == [content_hash]
+    http_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_hash_content_p2p_fetch_bad_hash_falls_through(mocker):
+    expected_content = b"the genuine article"
+    content_hash = sha256(expected_content).hexdigest()
+
+    http_mock = mocker.patch(
+        "aleph.storage.p2p_http_request_hash", return_value=expected_content
+    )
+    fetch_client = MockFetchClient(b"counterfeit content from a malicious peer")
+
+    storage_manager = StorageService(
+        MockStorageEngine(files={}),
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
+        p2p_client=fetch_client,
+    )
+
+    content = await storage_manager.get_hash_content(
+        content_hash,
+        engine=ItemType.storage,
+        use_network=True,
+        use_ipfs=False,
+        store_value=False,
+    )
+    assert content.value == expected_content
+    assert content.source == ContentSource.P2P
+    assert fetch_client.requested_hashes == [content_hash]
+    http_mock.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_hash_content_p2p_fetch_not_found_falls_through(mocker):
+    expected_content = b"nobody on the mesh had it"
+    content_hash = sha256(expected_content).hexdigest()
+
+    http_mock = mocker.patch(
+        "aleph.storage.p2p_http_request_hash", return_value=expected_content
+    )
+    fetch_client = MockFetchClient(None)
+
+    storage_manager = StorageService(
+        MockStorageEngine(files={}),
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
+        p2p_client=fetch_client,
+    )
+
+    content = await storage_manager.get_hash_content(
+        content_hash,
+        engine=ItemType.storage,
+        use_network=True,
+        use_ipfs=False,
+        store_value=False,
+    )
+    assert content.value == expected_content
+    assert content.source == ContentSource.P2P
+    assert fetch_client.requested_hashes == [content_hash]
+    http_mock.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_hash_content_without_p2p_client_uses_legacy_path(mocker):
+    expected_content = b"old reliable"
+    content_hash = sha256(expected_content).hexdigest()
+
+    http_mock = mocker.patch(
+        "aleph.storage.p2p_http_request_hash", return_value=expected_content
+    )
+
+    storage_manager = StorageService(
+        MockStorageEngine(files={}),
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
+        p2p_client=None,
+    )
+
+    content = await storage_manager.get_hash_content(
+        content_hash,
+        engine=ItemType.storage,
+        use_network=True,
+        use_ipfs=False,
+        store_value=False,
+    )
+    assert content.value == expected_content
+    assert content.source == ContentSource.P2P
+    http_mock.assert_called_once()
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "use_network,use_ipfs", [(False, False), (True, False), (False, True), (True, True)]
@@ -76,10 +212,14 @@ async def test_hash_content_from_network(mocker, use_ipfs: bool):
     mocker.patch("aleph.storage.p2p_http_request_hash", return_value=expected_content)
     mocker.patch.object(StorageService, "_verify_content_hash")
 
+    # IPFS comes before the legacy HTTP fallback in the fetch order; make it miss.
+    ipfs_service = mocker.AsyncMock()
+    ipfs_service.get_ipfs_content.return_value = None
+
     # No files in the local storage
     storage_manager = StorageService(
         MockStorageEngine(files={}),
-        ipfs_service=mocker.AsyncMock(),
+        ipfs_service=ipfs_service,
         node_cache=mocker.AsyncMock(),
     )
 
@@ -103,9 +243,13 @@ async def test_hash_content_from_network_store_value(mocker, use_ipfs: bool):
         StorageService, "_verify_content_hash", return_value=content_hash
     )
 
+    # IPFS comes before the legacy HTTP fallback in the fetch order; make it miss.
+    ipfs_service = mocker.AsyncMock()
+    ipfs_service.get_ipfs_content.return_value = None
+
     storage_manager = StorageService(
         MockStorageEngine(files={}),
-        ipfs_service=mocker.AsyncMock(),
+        ipfs_service=ipfs_service,
         node_cache=mocker.AsyncMock(),
     )
 

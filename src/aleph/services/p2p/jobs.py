@@ -1,5 +1,4 @@
 import asyncio
-import datetime as dt
 import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
@@ -10,15 +9,12 @@ import multiaddr as multiaddr_lib
 from configmanager import Config
 
 from aleph.db.accessors.aggregates import get_aggregate_by_key
-from aleph.db.accessors.peers import get_all_addresses_by_peer_type
-from aleph.db.models import PeerType
 from aleph.services.p2p.client import P2PGrpcClient
 from aleph.services.peers.allowlist import CORECHANNEL_KEY, extract_peer_id
 from aleph.types.db_session import DbSessionFactory
 
 from ..cache.node_cache import NodeCache
 from .http import api_get_request
-from .peers import connect_peer
 
 
 @dataclass
@@ -29,37 +25,6 @@ class PeerStatus:
 
 
 LOGGER = logging.getLogger("P2P.jobs")
-
-
-async def reconnect_p2p_job(
-    config: Config, session_factory: DbSessionFactory, p2p_client: P2PGrpcClient
-) -> None:
-    await asyncio.sleep(2)
-
-    max_peer_age = dt.timedelta(seconds=config.p2p.max_peer_age.value)
-
-    while True:
-        try:
-            peers = set(config.p2p.peers.value)
-
-            last_seen = dt.datetime.now(dt.timezone.utc) - max_peer_age
-            with session_factory() as session:
-                peers |= set(
-                    get_all_addresses_by_peer_type(
-                        session=session, peer_type=PeerType.P2P, last_seen=last_seen
-                    )
-                )
-
-            for peer in peers:
-                try:
-                    await connect_peer(p2p_client=p2p_client, peer_maddr=peer)
-                except Exception:
-                    LOGGER.debug("Can't reconnect to %s" % peer)
-
-        except Exception:
-            LOGGER.exception("Error reconnecting to peers")
-
-        await asyncio.sleep(config.p2p.reconnect_delay.value)
 
 
 async def check_peer(peer_uri: str, timeout: int = 1) -> PeerStatus:
@@ -74,12 +39,32 @@ async def check_peer(peer_uri: str, timeout: int = 1) -> PeerStatus:
     return PeerStatus(peer_uri=peer_uri, is_online=False, version=None)
 
 
+def api_servers_from_aggregate(content: Dict[str, Any]) -> List[str]:
+    """
+    Extracts the HTTP API endpoints of active CCNs from the corechannel
+    aggregate. Replaces the ALIVE-fed peers table as the source of the
+    legacy HTTP fallback server list: stake-authenticated, and available
+    as soon as the node has synced the aggregate.
+    """
+    servers: List[str] = []
+    for node in content.get("nodes", []):
+        if node.get("status") != "active":
+            continue
+        address = (node.get("address") or "").strip().rstrip("/")
+        if not address.startswith(("http://", "https://")):
+            continue
+        if address not in servers:
+            servers.append(address)
+    return servers
+
+
 async def tidy_http_peers_job(
     config: Config, session_factory: DbSessionFactory, node_cache: NodeCache
 ) -> None:
-    """Check that HTTP peers are reachable, else remove them from the list"""
+    """Keeps node_cache.api_servers in sync with reachable active CCN APIs."""
     from aleph.services.utils import get_IP
 
+    corechannel_address = config.aleph.corechannel.address.value
     my_ip = await get_IP()
     await asyncio.sleep(2)
 
@@ -88,32 +73,37 @@ async def tidy_http_peers_job(
 
         try:
             with session_factory() as session:
-                peers = get_all_addresses_by_peer_type(
-                    session=session, peer_type=PeerType.HTTP
+                aggregate = get_aggregate_by_key(
+                    session=session,
+                    owner=corechannel_address,
+                    key=CORECHANNEL_KEY,
                 )
 
-            for peer in peers:
-                if my_ip in peer:
-                    continue
+            candidates = (
+                api_servers_from_aggregate(aggregate.content)
+                if aggregate is not None and aggregate.content is not None
+                else []
+            )
 
-                jobs.append(check_peer(peer))
+            for server in candidates:
+                if my_ip in server:
+                    continue
+                jobs.append(check_peer(server))
             peer_statuses = await asyncio.gather(*jobs)
 
-            for peer_status in peer_statuses:
-                peer_in_api_servers = await node_cache.has_api_server(
-                    peer_status.peer_uri
-                )
-
-                if peer_status.is_online:
-                    if not peer_in_api_servers:
-                        await node_cache.add_api_server(peer_status.peer_uri)
-
-                else:
-                    if peer_in_api_servers:
-                        await node_cache.remove_api_server(peer_status.peer_uri)
+            # Add reachable registry servers, drop anything cached that is
+            # now unreachable or no longer in the registry.
+            reachable = {
+                status.peer_uri for status in peer_statuses if status.is_online
+            }
+            cached = await node_cache.get_api_servers()
+            for server in reachable - cached:
+                await node_cache.add_api_server(server)
+            for server in cached - reachable:
+                await node_cache.remove_api_server(server)
 
         except Exception:
-            LOGGER.exception("Error reconnecting to peers")
+            LOGGER.exception("Error refreshing the API server list")
 
         await asyncio.sleep(config.p2p.reconnect_delay.value)
 

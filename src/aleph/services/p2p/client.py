@@ -35,6 +35,10 @@ class DialWrongPeerException(P2PServiceException):
     pass
 
 
+class FetchNotFoundException(Exception):
+    """No reachable peer could provide the requested content."""
+
+
 @dataclass(frozen=True)
 class NodeInfo:
     peer_id: str
@@ -159,6 +163,31 @@ class P2PGrpcClient:
             )
             for peer in result.peers
         ]
+
+    async def fetch(
+        self, item_hash: str, preferred_peer_ids: Sequence[str] = ()
+    ) -> AsyncIterator[bytes]:
+        """
+        Fetches hash-addressed content from peers via the P2P service.
+        Yields raw chunks; the CALLER must verify the content hash before
+        using or persisting anything.
+
+        Raises FetchNotFoundException when the service returns NOT_FOUND.
+        Raises grpc.aio.AioRpcError for other transport or service failures.
+        """
+        request = pb.FetchRequest(
+            item_hash=item_hash, preferred_peer_ids=list(preferred_peer_ids)
+        )
+        stream = self._stub.Fetch(request)
+        try:
+            async for chunk in stream:
+                yield chunk.data
+        except grpc.aio.AioRpcError as e:
+            if e.code() == grpc.StatusCode.NOT_FOUND:
+                raise FetchNotFoundException(item_hash) from e
+            raise
+        finally:
+            stream.cancel()
 
     async def close(self) -> None:
         await self._channel.close()

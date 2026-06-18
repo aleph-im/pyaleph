@@ -25,6 +25,9 @@ service AlephP2P {
   rpc SetPreferredPeers(SetPreferredPeersRequest) returns (SetPreferredPeersResponse);
   // List currently connected peers.
   rpc GetPeers(GetPeersRequest) returns (GetPeersResponse);
+  // Retrieve hash-addressed content from peers over the /aleph/fetch/1.0.0
+  // libp2p protocol. Server-streaming: chunks arrive as the content is fetched.
+  rpc Fetch(FetchRequest) returns (stream FetchChunk);
 }
 
 message IdentifyRequest {}
@@ -91,4 +94,16 @@ message PeerInfo {
   repeated string multiaddrs = 2;
   bool preferred = 3;
   double score = 4;
+}
+
+message FetchRequest {
+  string item_hash = 1;
+  // Optional dial/order hints; tried first. Invalid entries are skipped.
+  repeated string preferred_peer_ids = 2;
+}
+
+message FetchChunk {
+  bytes data = 1;
+  // Total content size in bytes; set on every chunk.
+  uint64 total_size = 2;
 }

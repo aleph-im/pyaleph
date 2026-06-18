@@ -19,6 +19,7 @@ from aleph.db.connection import make_engine, make_session_factory
 from aleph.handlers.message_handler import MessageHandler
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
+from aleph.services.p2p import try_init_p2p_client
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
 from aleph.toolkit.lifecycle import install_signal_handlers
@@ -168,10 +169,12 @@ async def fetch_and_process_messages_task(config: Config):
         ) as node_cache,
         IpfsService.new(config) as ipfs_service,
     ):
+        p2p_client = await try_init_p2p_client(config, service_name="process-job")
         storage_service = StorageService(
             storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
             ipfs_service=ipfs_service,
             node_cache=node_cache,
+            p2p_client=p2p_client,
         )
         signature_verifier = SignatureVerifier()
         message_handler = MessageHandler(
@@ -192,30 +195,34 @@ async def fetch_and_process_messages_task(config: Config):
             mq_heartbeat=config.rabbitmq.heartbeat.value,
         )
 
-        async with pending_message_processor:
-            while True:
-                with session_factory() as session:
+        try:
+            async with pending_message_processor:
+                while True:
+                    with session_factory() as session:
+                        try:
+                            message_processing_pipeline = (
+                                pending_message_processor.make_pipeline()
+                            )
+                            async for processing_results in message_processing_pipeline:
+                                for result in processing_results:
+                                    LOGGER.info(
+                                        "Successfully processed %s", result.item_hash
+                                    )
+
+                        except Exception:
+                            LOGGER.exception("Error in pending messages job")
+                            session.rollback()
+
+                    LOGGER.info("Waiting for new pending messages...")
+                    # We still loop periodically for retried messages as we do not bother sending a message
+                    # on the MQ for these.
                     try:
-                        message_processing_pipeline = (
-                            pending_message_processor.make_pipeline()
-                        )
-                        async for processing_results in message_processing_pipeline:
-                            for result in processing_results:
-                                LOGGER.info(
-                                    "Successfully processed %s", result.item_hash
-                                )
-
-                    except Exception:
-                        LOGGER.exception("Error in pending messages job")
-                        session.rollback()
-
-                LOGGER.info("Waiting for new pending messages...")
-                # We still loop periodically for retried messages as we do not bother sending a message
-                # on the MQ for these.
-                try:
-                    await asyncio.wait_for(pending_message_processor.ready(), 1)
-                except TimeoutError:
-                    pass
+                        await asyncio.wait_for(pending_message_processor.ready(), 1)
+                    except TimeoutError:
+                        pass
+        finally:
+            if p2p_client is not None:
+                await p2p_client.close()
 
 
 def pending_messages_subprocess(config_values: Dict):

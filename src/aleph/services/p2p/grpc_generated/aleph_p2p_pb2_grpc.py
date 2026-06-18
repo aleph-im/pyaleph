@@ -69,6 +69,11 @@ class AlephP2PStub:
                 request_serializer=aleph__p2p__pb2.GetPeersRequest.SerializeToString,
                 response_deserializer=aleph__p2p__pb2.GetPeersResponse.FromString,
                 _registered_method=True)
+        self.Fetch = channel.unary_stream(
+                '/aleph.p2p.v1.AlephP2P/Fetch',
+                request_serializer=aleph__p2p__pb2.FetchRequest.SerializeToString,
+                response_deserializer=aleph__p2p__pb2.FetchChunk.FromString,
+                _registered_method=True)
 
 
 class AlephP2PServicer:
@@ -126,6 +131,15 @@ class AlephP2PServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def Fetch(self, request, context):
+        """Fetch hash-addressed content from peers. Server-streaming: the content
+        is delivered in chunks. NOT_FOUND is returned when no peer could serve
+        the content within the deadline.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AlephP2PServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -158,6 +172,11 @@ def add_AlephP2PServicer_to_server(servicer, server):
                     servicer.GetPeers,
                     request_deserializer=aleph__p2p__pb2.GetPeersRequest.FromString,
                     response_serializer=aleph__p2p__pb2.GetPeersResponse.SerializeToString,
+            ),
+            'Fetch': grpc.unary_stream_rpc_method_handler(
+                    servicer.Fetch,
+                    request_deserializer=aleph__p2p__pb2.FetchRequest.FromString,
+                    response_serializer=aleph__p2p__pb2.FetchChunk.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -327,6 +346,33 @@ class AlephP2P:
             '/aleph.p2p.v1.AlephP2P/GetPeers',
             aleph__p2p__pb2.GetPeersRequest.SerializeToString,
             aleph__p2p__pb2.GetPeersResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Fetch(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/aleph.p2p.v1.AlephP2P/Fetch',
+            aleph__p2p__pb2.FetchRequest.SerializeToString,
+            aleph__p2p__pb2.FetchChunk.FromString,
             options,
             channel_credentials,
             insecure,
