@@ -112,7 +112,7 @@ class FakeP2PClient:
 
     def __init__(self, peer_id: str = "SELF_PEER_ID"):
         self.peer_id = peer_id
-        self.calls: List[List[Tuple[str, List[str]]]] = []
+        self.calls: List[List[Tuple[str, Sequence[str]]]] = []
         self._ready_event: Optional[asyncio.Event] = None
 
     def set_ready_event(self, event: asyncio.Event) -> None:
