@@ -867,6 +867,7 @@ def _apply_credit_history_filters(
     end_date: Optional[dt.datetime] = None,
     direction: Optional[CreditFlow] = None,
     resource_types: Optional[List[MessageType]] = None,
+    vm_hash: Optional[str] = None,
 ) -> Select:
     """Apply common filters to a credit history query."""
     if tx_hash is not None:
@@ -912,6 +913,14 @@ def _apply_credit_history_filters(
             )
             .exists()
         )
+    if vm_hash is not None:
+        query = query.where(
+            func.coalesce(
+                func.nullif(AlephCreditHistoryDb.origin, ""),
+                AlephCreditHistoryDb.origin_ref,
+            )
+            == vm_hash
+        )
     return query
 
 
@@ -933,6 +942,7 @@ def get_address_credit_history(
     end_date: Optional[dt.datetime] = None,
     direction: Optional[CreditFlow] = None,
     resource_types: Optional[List[MessageType]] = None,
+    vm_hash: Optional[str] = None,
     sort_by: SortByCreditHistory = SortByCreditHistory.MESSAGE_TIMESTAMP,
     sort_order: SortOrder = SortOrder.DESCENDING,
     after_sort_value: Optional[Any] = None,
@@ -989,6 +999,7 @@ def get_address_credit_history(
         end_date=end_date,
         direction=direction,
         resource_types=resource_types,
+        vm_hash=vm_hash,
     )
 
     # Cursor-based keyset pagination
@@ -1075,6 +1086,7 @@ def count_address_credit_history(
     end_date: Optional[dt.datetime] = None,
     direction: Optional[CreditFlow] = None,
     resource_types: Optional[List[MessageType]] = None,
+    vm_hash: Optional[str] = None,
 ) -> int:
     """
     Count total credit history entries for a specific address with optional filters.
@@ -1098,6 +1110,7 @@ def count_address_credit_history(
         end_date=end_date,
         direction=direction,
         resource_types=resource_types,
+        vm_hash=vm_hash,
     )
 
     return session.execute(query).scalar_one()
@@ -1126,6 +1139,7 @@ def get_address_credit_history_summary(
     end_date: Optional[dt.datetime] = None,
     direction: Optional[CreditFlow] = None,
     resource_types: Optional[List[MessageType]] = None,
+    vm_hash: Optional[str] = None,
 ) -> CreditHistorySummary:
     """
     Aggregates over all credit history entries matching the filters, in a
@@ -1159,6 +1173,7 @@ def get_address_credit_history_summary(
         end_date=end_date,
         direction=direction,
         resource_types=resource_types,
+        vm_hash=vm_hash,
     )
     row = session.execute(query).one()
     return CreditHistorySummary(
