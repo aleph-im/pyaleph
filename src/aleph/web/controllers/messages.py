@@ -300,7 +300,7 @@ class MessageBroadcaster:
             payload = json_no_content if client.exclude_content else json_full
             await client.ws.send_str(payload)
             return True
-        except (ConnectionResetError, ConnectionError):
+        except ConnectionError:
             return False
 
 
@@ -750,7 +750,7 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
                     history=history,
                     query_params=query_params,
                 )
-            except ConnectionResetError:
+            except ConnectionError:
                 LOGGER.info("Could not send history, aborting message websocket")
                 return ws
 

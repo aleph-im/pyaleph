@@ -139,7 +139,7 @@ class StatusBroadcaster:
         try:
             await ws.send_json(payload)
             return True
-        except (ConnectionResetError, ConnectionError):
+        except ConnectionError:
             return False
 
 
