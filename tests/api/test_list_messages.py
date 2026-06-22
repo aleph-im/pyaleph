@@ -938,6 +938,60 @@ async def test_exclude_content_ws_history_default(
 
 
 @pytest.mark.asyncio
+async def test_ws_history_connection_error_is_swallowed(mocker):
+    """A lost peer during history streaming must abort the WS, not 500.
+
+    aiohttp raises a *bare* ``ConnectionError("Connection lost")`` (not
+    ``ConnectionResetError``) when the client drops mid-stream. ``messages_ws``
+    must catch it and return cleanly instead of letting it escape to the request
+    handler and be logged as a server error.
+    """
+    from contextlib import asynccontextmanager
+    from unittest.mock import AsyncMock, MagicMock
+
+    import aleph.web.controllers.messages as messages_module
+
+    # messages_ws builds its own WebSocketResponse; swap it for a mock.
+    ws = AsyncMock()
+    ws.closed = False
+    mocker.patch.object(messages_module.web, "WebSocketResponse", return_value=ws)
+
+    # The history send blows up the way aiohttp does on a vanished peer.
+    mocker.patch.object(
+        messages_module,
+        "_send_history_to_ws",
+        side_effect=ConnectionError("Connection lost"),
+    )
+
+    config = MagicMock()
+    config.websocket.heartbeat.value = 1
+    mocker.patch.object(messages_module, "get_config_from_request", return_value=config)
+    mocker.patch.object(
+        messages_module, "get_session_factory_from_request", return_value=MagicMock()
+    )
+
+    @asynccontextmanager
+    async def _slot():
+        yield
+
+    broadcaster = MagicMock()
+    broadcaster.is_at_capacity = False
+    broadcaster.acquire_slot = _slot
+    broadcaster.add = AsyncMock()
+    broadcaster.remove = AsyncMock()
+
+    request = MagicMock()
+    request.query = {"history": "10"}
+    request.app.__getitem__.return_value = broadcaster
+
+    # Must not raise, and must bail out before registering the client.
+    result = await messages_module.messages_ws(request)
+
+    assert result is ws
+    broadcaster.add.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_owners_filter_ws_logic(owners_test_messages):
     # Test the logic used by WebSocket filtering
     # hash1: sender1, owner1
