@@ -3,7 +3,6 @@ from typing import Any, Coroutine, Dict, List
 from urllib.parse import unquote
 
 import aio_pika.abc
-from aleph_p2p_client import AlephP2PServiceClient
 
 import aleph.toolkit.json as aleph_json
 from aleph.handlers.message_handler import MessagePublisher
@@ -11,6 +10,7 @@ from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.ipfs.common import make_ipfs_p2p_client
 from aleph.services.ipfs.pubsub import incoming_channel as incoming_ipfs_channel
+from aleph.services.p2p.client import P2PGrpcClient
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSessionFactory
@@ -40,7 +40,7 @@ async def listener_tasks(
     config,
     session_factory: DbSessionFactory,
     node_cache: NodeCache,
-    p2p_client: AlephP2PServiceClient,
+    p2p_client: P2PGrpcClient,
     mq_channel: aio_pika.abc.AbstractChannel,
 ) -> List[Coroutine]:
     from aleph.services.p2p.protocol import incoming_channel as incoming_p2p_channel

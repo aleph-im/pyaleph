@@ -3,16 +3,15 @@ import json
 import logging
 from typing import List, Optional
 
-from aleph_p2p_client import AlephP2PServiceClient
-
 from aleph.services.ipfs import IpfsService
+from aleph.services.p2p.client import P2PGrpcClient
 
 LOGGER = logging.getLogger("peers.publish")
 
 
 async def publish_host(
     address: str,
-    p2p_client: AlephP2PServiceClient,
+    p2p_client: P2PGrpcClient,
     ipfs_service: IpfsService,
     p2p_alive_topic: str,
     ipfs_alive_topic: str,

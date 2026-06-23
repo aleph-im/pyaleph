@@ -1,29 +1,23 @@
 from typing import Coroutine, List, Tuple
 
-from aleph_p2p_client import AlephP2PServiceClient, make_p2p_service_client
 from configmanager import Config
 
 from aleph.services.ipfs import IpfsService
 from aleph.types.db_session import DbSessionFactory
 
 from ..cache.node_cache import NodeCache
+from .client import P2PGrpcClient
 from .manager import initialize_host
 
 
-async def init_p2p_client(config: Config, service_name: str) -> AlephP2PServiceClient:
-    p2p_client = await make_p2p_service_client(
-        service_name=service_name,
-        mq_host=config.p2p.mq_host.value,
-        mq_port=config.rabbitmq.port.value,
-        mq_username=config.rabbitmq.username.value,
-        mq_password=config.rabbitmq.password.value,
-        mq_pub_exchange_name=config.rabbitmq.pub_exchange.value,
-        mq_sub_exchange_name=config.rabbitmq.sub_exchange.value,
-        http_host=config.p2p.daemon_host.value,
-        http_port=config.p2p.control_port.value,
+async def init_p2p_client(config: Config, service_name: str) -> P2PGrpcClient:
+    # service_name was used for RabbitMQ queue naming by the old client;
+    # kept in the signature to avoid churn at call sites.
+    _ = service_name
+    return await P2PGrpcClient.connect(
+        host=config.p2p.daemon_host.value,
+        port=config.p2p.control_port.value,
     )
-
-    return p2p_client
 
 
 async def init_p2p(
@@ -33,7 +27,7 @@ async def init_p2p(
     ipfs_service: IpfsService,
     node_cache: NodeCache,
     listen: bool = True,
-) -> Tuple[AlephP2PServiceClient, List[Coroutine]]:
+) -> Tuple[P2PGrpcClient, List[Coroutine]]:
 
     p2p_client = await init_p2p_client(config, service_name)
 

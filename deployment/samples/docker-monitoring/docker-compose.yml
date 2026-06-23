@@ -51,14 +51,12 @@ services:
 
   p2p-service:
     restart: always
-    image: alephim/p2p-service:0.1.3
+    image: alephim/p2p-service:2.0.0
     networks:
       - pyaleph
     volumes:
       - ./config.yml:/etc/p2p-service/config.yml
       - ./keys/node-secret.pkcs8.der:/etc/p2p-service/node-secret.pkcs8.der
-    depends_on:
-      - rabbitmq
     environment:
       RUST_LOG: info
     ports:

@@ -12,7 +12,6 @@ import aiohttp_jinja2
 from aiohttp import web
 from aiohttp.web_request import FileField
 from aleph_message.models import ItemHash
-from aleph_p2p_client import AlephP2PServiceClient
 from configmanager import Config
 from pydantic import BaseModel
 
@@ -21,6 +20,7 @@ from aleph.db.accessors.files import insert_grace_period_file_pin
 from aleph.schemas.messages_query_params import DEFAULT_MESSAGES_PER_PAGE
 from aleph.schemas.pending_messages import BasePendingMessage, parse_message
 from aleph.services.ipfs import IpfsService
+from aleph.services.p2p.client import P2PGrpcClient
 from aleph.services.p2p.pubsub import publish as pub_p2p
 from aleph.toolkit.shield import shielded
 from aleph.toolkit.timestamp import utc_now
@@ -262,7 +262,7 @@ class PublicationStatus(BaseModel):
 
 
 async def pub_on_p2p_topics(
-    p2p_client: AlephP2PServiceClient,
+    p2p_client: P2PGrpcClient,
     ipfs_service: Optional[IpfsService],
     topic: str,
     payload: Union[str, bytes],
