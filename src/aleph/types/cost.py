@@ -36,14 +36,17 @@ class ProductComputeUnit:
 class ProductPrice:
     storage: ProductPriceOptions
     compute_unit: Optional[ProductPriceOptions]
+    fixed: Optional[ProductPriceOptions]
 
     def __init__(
         self,
         storage: ProductPriceOptions,
         compute_unit: Optional[ProductPriceOptions] = None,
+        fixed: Optional[ProductPriceOptions] = None,
     ):
         self.storage = storage
         self.compute_unit = compute_unit
+        self.fixed = fixed
 
 
 class ProductTier:
@@ -109,6 +112,8 @@ class ProductPricing:
                 for tier in tiers
             ]
 
+        fixed = price.get("fixed", None)
+
         pricing = ProductPricing(
             price_type=price_type,
             price=ProductPrice(
@@ -124,6 +129,15 @@ class ProductPricing:
                         price["compute_unit"].get("credit", None),
                     )
                     if compute_unit
+                    else None
+                ),
+                fixed=(
+                    ProductPriceOptions(
+                        fixed.get("holding", None),
+                        fixed.get("payg", None),
+                        fixed.get("credit", None),
+                    )
+                    if fixed and isinstance(fixed, dict)
                     else None
                 ),
             ),
@@ -152,6 +166,7 @@ class CostType(str, Enum):
     EXECUTION_PROGRAM_VOLUME_RUNTIME = "EXECUTION_PROGRAM_VOLUME_RUNTIME"
     EXECUTION_PROGRAM_VOLUME_DATA = "EXECUTION_PROGRAM_VOLUME_DATA"
     STORAGE = "STORAGE"
+    IPNS = "IPNS"
 
 
 class VolumeCost:

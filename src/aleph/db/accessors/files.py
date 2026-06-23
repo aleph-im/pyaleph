@@ -16,6 +16,7 @@ from ..models.files import (
     FilePinType,
     FileTagDb,
     GracePeriodFilePinDb,
+    IpnsFilePinDb,
     MessageFilePinDb,
     StoredFileDb,
     TxFilePinDb,
@@ -353,6 +354,50 @@ def upsert_file_tag(
         where=FileTagDb.last_updated < last_updated,
     )
     session.execute(upsert_stmt)
+
+
+def insert_ipns_file_pin(
+    session: DbSession,
+    file_hash: str,
+    owner: str,
+    item_hash: str,
+    name: str,
+    created: dt.datetime,
+) -> None:
+    insert_stmt = insert(IpnsFilePinDb).values(
+        file_hash=file_hash,
+        owner=owner,
+        item_hash=item_hash,
+        ref=name,
+        created=created,
+        type=FilePinType.IPNS,
+    )
+    session.execute(insert_stmt)
+
+
+def get_ipns_file_pin(
+    session: DbSession, name: str, owner: str
+) -> Optional[IpnsFilePinDb]:
+    select_stmt = select(IpnsFilePinDb).where(
+        (IpnsFilePinDb.ref == name) & (IpnsFilePinDb.owner == owner)
+    )
+    return session.execute(select_stmt).scalar_one_or_none()
+
+
+def update_ipns_file_pin(
+    session: DbSession, name: str, owner: str, file_hash: str, item_hash: str
+) -> None:
+    pin = get_ipns_file_pin(session=session, name=name, owner=owner)
+    if pin is not None:
+        pin.file_hash = file_hash
+        pin.item_hash = item_hash
+
+
+def delete_ipns_file_pin(session: DbSession, name: str, owner: str) -> None:
+    delete_stmt = delete(IpnsFilePinDb).where(
+        (IpnsFilePinDb.ref == name) & (IpnsFilePinDb.owner == owner)
+    )
+    session.execute(delete_stmt)
 
 
 def refresh_file_tag(session: DbSession, tag: FileTag) -> None:

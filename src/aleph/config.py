@@ -266,6 +266,18 @@ def get_defaults():
                 # Timeout for pinning operations (seconds)
                 "timeout": 60,
             },
+            # IPNS support configuration
+            "ipns": {
+                # Whether to process IPNS store messages and run the
+                # republish/re-resolve task.
+                "enabled": True,
+                # Interval between republish/re-resolve cycles, in hours.
+                # Kubo IPNS records expire from the DHT within ~24-48h, so
+                # the period must stay well below that.
+                "republish_period_hours": 4,
+                # Timeout for resolving an IPNS record from the DHT (seconds).
+                "resolve_timeout": 60,
+            },
             # Timeout for file stat requests (seconds)
             "stat_timeout": 30,
             # Randomized delay (in seconds, drawn uniformly from [0, value]) before

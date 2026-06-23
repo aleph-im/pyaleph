@@ -27,6 +27,8 @@ class FilePinType(str, Enum):
     TX = "tx"
     # A file with a grace period (=no one paying for the file, but we keep it around for a while).
     GRACE_PERIOD = "grace_period"
+    # A file pinned because an IPNS registration currently points at it.
+    IPNS = "ipns"
 
 
 class StoredFileDb(Base):
@@ -126,6 +128,15 @@ class GracePeriodFilePinDb(FilePinDb):
 
     __mapper_args__ = {
         "polymorphic_identity": FilePinType.GRACE_PERIOD.value,
+    }
+
+
+class IpnsFilePinDb(FilePinDb):
+    # `ref` stores the IPNS name so the single pin of a registration can be
+    # looked up and re-pointed when the name resolves to a new CID.
+
+    __mapper_args__ = {
+        "polymorphic_identity": FilePinType.IPNS.value,
     }
 
 

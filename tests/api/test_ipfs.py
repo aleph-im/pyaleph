@@ -1,3 +1,4 @@
+import base64
 import datetime as dt
 import hashlib
 import json
@@ -17,6 +18,7 @@ from in_memory_storage_engine import InMemoryStorageEngine
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.files import get_file
 from aleph.db.models import AlephBalanceDb, AlephCreditBalanceDb, GracePeriodFilePinDb
+from aleph.services.ipfs.service import InvalidIpnsRecordError, IpnsRecordInfo
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.files import FileType
@@ -1151,3 +1153,463 @@ async def test_add_car_dag_import_failure(
 
     with session_factory() as session:
         assert get_file(session=session, file_hash=DIR_ROOT_CID) is None
+
+
+# ---------------------------------------------------------------------------
+# IPNS upload tests (add_file and add_car with item_type=ipns)
+# ---------------------------------------------------------------------------
+
+# A real-looking IPNS name (k51 multibase-encoded Ed25519 public key).
+IPNS_NAME = "k51qzi5uqu5dlvj2baxnqndepeb86cbk3ng7n3i46uzyxzyqj2xjonzllnv0v8"
+# Arbitrary bytes that stand in for the signed IPNS record wire format.
+# IpfsService.verify_ipns_record is mocked away so the exact content doesn't
+# matter.
+IPNS_RECORD_BYTES = b"\x0a\x10fake-ipns-record-bytes"
+IPNS_RECORD_B64 = base64.b64encode(IPNS_RECORD_BYTES).decode()
+
+
+def _build_ipns_store_message(ipns_name: str, ipns_record_b64: str) -> dict:
+    """Build a PendingInlineStoreMessage dict with item_type=ipns.
+
+    The outer message uses item_type=inline so that item_content is a JSON
+    string; the inner StoreContent has item_type=ipns.  The outer item_hash
+    must equal sha256(item_content) or pydantic rejects it.
+    """
+    item_content = json.dumps(
+        {
+            "address": "0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+            "time": 1692193373.714271,
+            "item_type": "ipns",
+            "item_hash": ipns_name,
+            "max_size_mib": 10,
+            "ipns_record": ipns_record_b64,
+        }
+    )
+    outer_hash = hashlib.sha256(item_content.encode("utf-8")).hexdigest()
+    return {
+        "chain": "ETH",
+        "sender": "0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+        "type": "STORE",
+        "channel": "null",
+        "signature": "0x" + "00" * 65,
+        "time": 1692193373.7144432,
+        "item_type": "inline",
+        "item_content": item_content,
+        "item_hash": outer_hash,
+    }
+
+
+def _build_ipns_store_message_no_record(ipns_name: str) -> dict:
+    """Build an IPNS STORE message without an embedded record (track-only)."""
+    item_content = json.dumps(
+        {
+            "address": "0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+            "time": 1692193373.714271,
+            "item_type": "ipns",
+            "item_hash": ipns_name,
+            "max_size_mib": 10,
+        }
+    )
+    outer_hash = hashlib.sha256(item_content.encode("utf-8")).hexdigest()
+    return {
+        "chain": "ETH",
+        "sender": "0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+        "type": "STORE",
+        "channel": "null",
+        "signature": "0x" + "00" * 65,
+        "time": 1692193373.7144432,
+        "item_type": "inline",
+        "item_content": item_content,
+        "item_hash": outer_hash,
+    }
+
+
+@pytest.mark.asyncio
+async def test_ipns_add_file_record_matches_upload(
+    api_client,
+    session_factory: DbSessionFactory,
+    mocker,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """IPNS STORE metadata accepted when record value_cid == uploaded CID."""
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+    mocker.patch(
+        "aleph.web.controllers.ipfs.broadcast_and_process_message",
+        new_callable=mocker.AsyncMock,
+        return_value=BroadcastStatus(
+            publication_status=PublicationStatus.from_failures([]),
+            message_status=MessageStatus.PROCESSED,
+        ),
+    )
+
+    # Mock verify_ipns_record to return a record whose value_cid equals the
+    # CID the (mocked) IPFS daemon will produce for the uploaded file.
+    ipfs_service = _get_ipfs_service_mock(api_client)
+    ipfs_service.verify_ipns_record = MockAsyncMock(
+        return_value=IpnsRecordInfo(
+            value_cid=EXPECTED_FILE_CID,
+            sequence=1,
+            validity=dt.datetime(2030, 1, 1, tzinfo=dt.timezone.utc),
+        )
+    )
+
+    with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                chain=Chain.ETH,
+                balance=Decimal(1000),
+                eth_height=0,
+            )
+        )
+        session.commit()
+
+    message = _build_ipns_store_message(IPNS_NAME, IPNS_RECORD_B64)
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(FILE_CONTENT))
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": message, "sync": True}),
+        content_type="application/json",
+    )
+
+    response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
+    body = await response.text()
+    assert response.status == 200, body
+    payload = await response.json()
+    assert payload["hash"] == EXPECTED_FILE_CID
+
+    ipfs_service.verify_ipns_record.assert_called_once_with(
+        IPNS_RECORD_BYTES, IPNS_NAME
+    )
+
+
+@pytest.mark.asyncio
+async def test_ipns_add_file_record_value_mismatch(
+    api_client,
+    session_factory: DbSessionFactory,
+    mocker,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """IPNS record that points to a different CID than the uploaded file: 422."""
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+
+    other_cid = "QmY8HD3jCfJ5K6t4VYQvkFBni2LpasVusLGkCrtjkfntSA"
+    ipfs_service = _get_ipfs_service_mock(api_client)
+    ipfs_service.verify_ipns_record = MockAsyncMock(
+        return_value=IpnsRecordInfo(
+            value_cid=other_cid,  # different from EXPECTED_FILE_CID
+            sequence=1,
+            validity=dt.datetime(2030, 1, 1, tzinfo=dt.timezone.utc),
+        )
+    )
+
+    with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                chain=Chain.ETH,
+                balance=Decimal(1000),
+                eth_height=0,
+            )
+        )
+        session.commit()
+
+    message = _build_ipns_store_message(IPNS_NAME, IPNS_RECORD_B64)
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(FILE_CONTENT))
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": message, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
+    body = await response.text()
+    assert response.status == 422, body
+    assert "IPNS record value does not match" in body
+
+    # Pin happened (record mismatch is a post-pin check), so the file is in DB
+    # with a grace period.
+    with session_factory() as session:
+        file = get_file(session=session, file_hash=EXPECTED_FILE_CID)
+        assert file is not None
+        assert _has_grace_period(session, EXPECTED_FILE_CID)
+
+
+@pytest.mark.asyncio
+async def test_ipns_add_file_invalid_record(
+    api_client,
+    session_factory: DbSessionFactory,
+    mocker,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """IPNS record with invalid signature: 422 and grace period applied."""
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+
+    ipfs_service = _get_ipfs_service_mock(api_client)
+    ipfs_service.verify_ipns_record = MockAsyncMock(
+        side_effect=InvalidIpnsRecordError("bad signature")
+    )
+
+    with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                chain=Chain.ETH,
+                balance=Decimal(1000),
+                eth_height=0,
+            )
+        )
+        session.commit()
+
+    message = _build_ipns_store_message(IPNS_NAME, IPNS_RECORD_B64)
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(FILE_CONTENT))
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": message, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
+    body = await response.text()
+    assert response.status == 422, body
+    assert "Invalid IPNS record" in body
+
+    # Pin happened (record validation is a post-pin check), so the file is in DB
+    # with a grace period.
+    with session_factory() as session:
+        file = get_file(session=session, file_hash=EXPECTED_FILE_CID)
+        assert file is not None
+        assert _has_grace_period(session, EXPECTED_FILE_CID)
+
+
+@pytest.mark.asyncio
+async def test_ipns_add_file_no_record_rejected(
+    api_client,
+    session_factory: DbSessionFactory,
+    mocker,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """IPNS STORE metadata without an embedded record is rejected with 422."""
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+
+    with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                chain=Chain.ETH,
+                balance=Decimal(1000),
+                eth_height=0,
+            )
+        )
+        session.commit()
+
+    message = _build_ipns_store_message_no_record(IPNS_NAME)
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(FILE_CONTENT))
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": message, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
+    body = await response.text()
+    assert response.status == 422, body
+    assert "must include ipns_record" in body
+
+
+@pytest.mark.asyncio
+async def test_ipfs_add_file_cid_mismatch_preserved(
+    api_client,
+    session_factory: DbSessionFactory,
+    mocker,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """Non-IPNS upload with mismatched item_hash still returns 422 (regression)."""
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+
+    with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                chain=Chain.ETH,
+                balance=Decimal(1000),
+                eth_height=0,
+            )
+        )
+        session.commit()
+
+    mismatched_item_content = json.dumps(
+        {
+            "address": "0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+            "time": 1692193373.714271,
+            "item_type": "ipfs",
+            "item_hash": "QmY8HD3jCfJ5K6t4VYQvkFBni2LpasVusLGkCrtjkfntSA",
+            "mime_type": "application/octet-stream",
+        }
+    )
+    mismatched = {
+        **IPFS_MESSAGE_DICT,
+        "item_content": mismatched_item_content,
+        "item_hash": hashlib.sha256(
+            mismatched_item_content.encode("utf-8")
+        ).hexdigest(),
+    }
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(FILE_CONTENT))
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": mismatched, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
+    body = await response.text()
+    assert response.status == 422, body
+    assert "File hash does not match" in body
+
+
+# ---------------------------------------------------------------------------
+# CAR + IPNS upload tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ipns_add_car_record_matches_upload(
+    api_client_with_dag_import,
+    session_factory: DbSessionFactory,
+    mocker,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """IPNS STORE metadata on add_car: accepted when record value_cid == CAR root."""
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+    mocker.patch(
+        "aleph.web.controllers.ipfs.broadcast_and_process_message",
+        new_callable=mocker.AsyncMock,
+        return_value=BroadcastStatus(
+            publication_status=PublicationStatus.from_failures([]),
+            message_status=MessageStatus.PROCESSED,
+        ),
+    )
+
+    ipfs_service = _get_ipfs_service_mock(api_client_with_dag_import)
+    # The record value_cid matches the CAR root CID.
+    ipfs_service.verify_ipns_record = MockAsyncMock(
+        return_value=IpnsRecordInfo(
+            value_cid=DIR_ROOT_CID,
+            sequence=1,
+            validity=dt.datetime(2030, 1, 1, tzinfo=dt.timezone.utc),
+        )
+    )
+    # dag_import returns the same root.
+    ipfs_service.dag_import = MockAsyncMock(return_value=[DIR_ROOT_CID])
+
+    with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                chain=Chain.ETH,
+                balance=Decimal(1000),
+                eth_height=0,
+            )
+        )
+        session.commit()
+
+    car_bytes = build_carv1(DIR_ROOT_CID)
+    message = _build_ipns_store_message(IPNS_NAME, IPNS_RECORD_B64)
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(car_bytes), filename="dir.car")
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": message, "sync": True}),
+        content_type="application/json",
+    )
+
+    response = await api_client_with_dag_import.post(IPFS_ADD_CAR_URI, data=form_data)
+    body = await response.text()
+    assert response.status == 200, body
+    payload = await response.json()
+    assert payload["hash"] == DIR_ROOT_CID
+
+
+@pytest.mark.asyncio
+async def test_ipns_add_car_record_value_mismatch(
+    api_client_with_dag_import,
+    session_factory: DbSessionFactory,
+    mocker,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """IPNS record value_cid differs from CAR root: 422, no dag_import call."""
+    mocker.patch(
+        "aleph.web.controllers.ipfs._verify_message_signature",
+        new_callable=mocker.AsyncMock,
+    )
+
+    other_cid = "bafybeicndzezzx7zyvuoukheebsegjnokf3vlwm4nlz77pnxllgr2jjelu"
+    ipfs_service = _get_ipfs_service_mock(api_client_with_dag_import)
+    ipfs_service.verify_ipns_record = MockAsyncMock(
+        return_value=IpnsRecordInfo(
+            value_cid=other_cid,  # different from DIR_ROOT_CID
+            sequence=1,
+            validity=dt.datetime(2030, 1, 1, tzinfo=dt.timezone.utc),
+        )
+    )
+
+    with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                chain=Chain.ETH,
+                balance=Decimal(1000),
+                eth_height=0,
+            )
+        )
+        session.commit()
+
+    car_bytes = build_carv1(DIR_ROOT_CID)
+    message = _build_ipns_store_message(IPNS_NAME, IPNS_RECORD_B64)
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(car_bytes), filename="dir.car")
+    form_data.add_field(
+        "metadata",
+        json.dumps({"message": message, "sync": False}),
+        content_type="application/json",
+    )
+
+    response = await api_client_with_dag_import.post(IPFS_ADD_CAR_URI, data=form_data)
+    body = await response.text()
+    assert response.status == 422, body
+    assert "Root CID does not match" in body
+
+    ipfs_service.dag_import.assert_not_called()

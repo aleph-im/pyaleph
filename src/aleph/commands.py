@@ -39,6 +39,7 @@ from aleph.repair import repair_node
 from aleph.services import p2p
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
+from aleph.services.ipns.republisher import IpnsRepublisher, ipns_republisher_task
 from aleph.services.keys import generate_keypair, save_keys
 from aleph.services.p2p.http import close_sessions
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
@@ -161,6 +162,14 @@ async def main(args: List[str]) -> None:
         garbage_collector = GarbageCollector(
             session_factory=session_factory, storage_service=storage_service
         )
+        if config.ipfs.enabled.value and config.ipfs.ipns.enabled.value:
+            ipns_republisher = IpnsRepublisher(
+                session_factory=session_factory,
+                ipfs_service=ipfs_service,
+                grace_period_hours=config.storage.grace_period.value,
+                stat_timeout=config.ipfs.stat_timeout.value,
+                resolve_timeout=config.ipfs.ipns.resolve_timeout.value,
+            )
         cron_job = CronJob(
             session_factory=session_factory,
             jobs={
@@ -241,6 +250,13 @@ async def main(args: List[str]) -> None:
             garbage_collector_task(config=config, garbage_collector=garbage_collector)
         )
         LOGGER.debug("Initialized garbage collector task")
+
+        if config.ipfs.enabled.value and config.ipfs.ipns.enabled.value:
+            LOGGER.debug("Initializing IPNS republisher task")
+            tasks.append(
+                ipns_republisher_task(config=config, republisher=ipns_republisher)
+            )
+            LOGGER.debug("Initialized IPNS republisher task")
 
         LOGGER.debug("Initializing cron job task")
         tasks.append(cron_job_task(config=config, cron_job=cron_job))

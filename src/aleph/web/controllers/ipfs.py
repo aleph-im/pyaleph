@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import logging
 import math
 
@@ -9,6 +10,7 @@ from pydantic import ValidationError
 
 from aleph.db.accessors.files import upsert_file
 from aleph.schemas.cost_estimation_messages import CostEstimationStoreContent
+from aleph.services.ipfs.service import InvalidIpnsRecordError
 from aleph.toolkit.car import InvalidCarFile, read_carv1_root
 from aleph.toolkit.constants import MiB
 from aleph.types.files import FileType
@@ -32,6 +34,48 @@ from aleph.web.controllers.utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+async def _verify_ipns_record_and_get_cid(
+    request: web.Request, message_content: CostEstimationStoreContent
+) -> str:
+    """Decode and verify the IPNS record embedded in *message_content*.
+
+    Returns the CID that the record points to (``value_cid``).  Raises
+    :class:`aiohttp.web.HTTPUnprocessableEntity` if the record is absent or
+    invalid.
+    """
+    if message_content.ipns_record is None:
+        raise web.HTTPUnprocessableEntity(
+            reason="IPNS store messages attached to uploads must include ipns_record"
+        )
+    ipfs_service = get_ipfs_service_from_request(request)
+    if ipfs_service is None:
+        raise web.HTTPForbidden(reason="IPFS is disabled on this node")
+    record = base64.b64decode(message_content.ipns_record)
+    try:
+        record_info = await ipfs_service.verify_ipns_record(
+            record, message_content.item_hash
+        )
+    except InvalidIpnsRecordError as e:
+        raise web.HTTPUnprocessableEntity(reason=f"Invalid IPNS record: {e}")
+    return record_info.value_cid
+
+
+async def _check_ipns_upload(
+    request: web.Request, message_content: CostEstimationStoreContent, cid: str
+) -> None:
+    """For IPNS STORE metadata the uploaded CID must match the value inside
+    the signed record, not the message item_hash (which is the IPNS name).
+    """
+    value_cid = await _verify_ipns_record_and_get_cid(request, message_content)
+    if value_cid != cid:
+        raise web.HTTPUnprocessableEntity(
+            reason=(
+                f"IPNS record value does not match the uploaded file "
+                f"({cid} != {value_cid})"
+            )
+        )
 
 
 async def ipfs_add_file(request: web.Request):
@@ -59,7 +103,7 @@ async def ipfs_add_file(request: web.Request):
                 type: string
                 description: >
                   Optional JSON with a signed STORE message
-                  (item_type=ipfs). When present, the CID computed after
+                  (item_type=ipfs or ipns). When present, the CID computed after
                   pinning must match message.content.item_hash.
     responses:
       '200':
@@ -167,10 +211,10 @@ async def ipfs_add_file(request: web.Request):
                 raise web.HTTPUnprocessableEntity(
                     reason=f"Invalid store message content: {e.json()}"
                 )
-            if message_content.item_type != ItemType.ipfs:
+            if message_content.item_type not in (ItemType.ipfs, ItemType.ipns):
                 raise web.HTTPUnprocessableEntity(
                     reason=(
-                        "Expected item_type=ipfs in STORE message, "
+                        "Expected item_type=ipfs or item_type=ipns in STORE message, "
                         f"got {message_content.item_type}"
                     )
                 )
@@ -200,13 +244,16 @@ async def ipfs_add_file(request: web.Request):
                 raise web.HTTPGatewayTimeout(reason="Timed out waiting for IPFS stat")
             size = stats["Size"]
 
-            if message_content is not None and message_content.item_hash != cid:
-                raise web.HTTPUnprocessableEntity(
-                    reason=(
-                        f"File hash does not match "
-                        f"({cid} != {message_content.item_hash})"
+            if message_content is not None:
+                if message_content.item_type == ItemType.ipns:
+                    await _check_ipns_upload(request, message_content, cid)
+                elif message_content.item_hash != cid:
+                    raise web.HTTPUnprocessableEntity(
+                        reason=(
+                            f"File hash does not match "
+                            f"({cid} != {message_content.item_hash})"
+                        )
                     )
-                )
 
             with session_factory() as session:
                 upsert_file(
@@ -300,7 +347,7 @@ async def ipfs_add_car(request: web.Request):
                 type: string
                 description: >
                   JSON {"message": <PendingInlineStoreMessage>, "sync": bool}.
-                  message.content.item_type must be "ipfs"; item_hash must
+                  message.content.item_type must be "ipfs" or "ipns"; item_hash must
                   equal the CAR's single root CID.
     responses:
       '200':
@@ -387,10 +434,10 @@ async def ipfs_add_car(request: web.Request):
             raise web.HTTPUnprocessableEntity(
                 reason=f"Invalid store message content: {e.json()}"
             )
-        if message_content.item_type != ItemType.ipfs:
+        if message_content.item_type not in (ItemType.ipfs, ItemType.ipns):
             raise web.HTTPUnprocessableEntity(
                 reason=(
-                    "Expected item_type=ipfs in STORE message, "
+                    "Expected item_type=ipfs or item_type=ipns in STORE message, "
                     f"got {message_content.item_type}"
                 )
             )
@@ -403,11 +450,26 @@ async def ipfs_add_car(request: web.Request):
             car_root = read_carv1_root(car_path)
         except InvalidCarFile as e:
             raise web.HTTPUnprocessableEntity(reason=f"Invalid CAR file: {e}")
-        expected_root = message_content.item_hash
-        if car_root != expected_root:
-            raise web.HTTPUnprocessableEntity(
-                reason=(f"Root CID does not match " f"({car_root} != {expected_root})")
+        if message_content.item_type == ItemType.ipns:
+            # For IPNS, the expected root is the CID inside the signed record,
+            # not the item_hash (which is the IPNS name).
+            expected_root = await _verify_ipns_record_and_get_cid(
+                request, message_content
             )
+            if car_root != expected_root:
+                raise web.HTTPUnprocessableEntity(
+                    reason=(
+                        f"Root CID does not match " f"({car_root} != {expected_root})"
+                    )
+                )
+        else:
+            expected_root = message_content.item_hash
+            if car_root != expected_root:
+                raise web.HTTPUnprocessableEntity(
+                    reason=(
+                        f"Root CID does not match " f"({car_root} != {expected_root})"
+                    )
+                )
 
         # Balance check BEFORE dag_import so an underfunded request leaves no
         # pin on kubo. CAR file size is a conservative overestimate of the
