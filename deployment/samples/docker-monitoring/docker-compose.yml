@@ -105,7 +105,7 @@ services:
 
   ipfs:
     restart: always
-    image: ipfs/kubo:v0.37.0
+    image: ipfs/kubo:v0.41.0
     ports:
       - "4001:4001"
       - "4001:4001/udp"
@@ -118,7 +118,7 @@ services:
       - IPFS_TELEMETRY=off
     networks:
       - pyaleph
-    command: ["daemon", "--enable-pubsub-experiment", "--enable-gc", "--migrate"]
+    command: ["daemon", "--enable-gc", "--migrate"]
 
   prometheus:
     restart: always
