@@ -123,6 +123,7 @@ async def test_unauth_upload_happy_path(api_client, session_factory: DbSessionFa
     response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
     body = await response.text()
     assert response.status == 200, body
+    assert response.headers.get("Deprecation") == "true"
     payload = await response.json()
     assert payload["status"] == "success"
     assert payload["hash"] == EXPECTED_FILE_CID
@@ -193,14 +194,16 @@ async def test_auth_upload_happy_path(
     response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
     body = await response.text()
     assert response.status == 200, body
+    assert "Deprecation" not in response.headers
     payload = await response.json()
     assert payload["hash"] == EXPECTED_FILE_CID
 
     with session_factory() as session:
         file = get_file(session=session, file_hash=EXPECTED_FILE_CID)
         assert file is not None
-        # Authenticated uploads do NOT get a grace period (message anchors).
-        assert not _has_grace_period(session, EXPECTED_FILE_CID)
+        # Authenticated uploads must get a grace pin to bridge the gap until
+        # the STORE message is processed and creates the permanent pin.
+        assert _has_grace_period(session, EXPECTED_FILE_CID)
 
 
 @pytest.mark.asyncio
@@ -700,8 +703,9 @@ async def test_add_car_success(
         assert file is not None
         assert file.type == FileType.DIRECTORY
         assert file.size == MOCK_DIR_SIZE
-        # Authenticated success: no grace period.
-        assert not _has_grace_period(session, DIR_ROOT_CID)
+        # Bridge grace pin: written on success so the GC cannot reap the pin
+        # before the STORE message is processed and creates the permanent pin.
+        assert _has_grace_period(session, DIR_ROOT_CID)
 
     ipfs_service = _get_ipfs_service_mock(api_client_with_dag_import)
     ipfs_service.dag_import.assert_called_once()
@@ -1151,3 +1155,25 @@ async def test_add_car_dag_import_failure(
 
     with session_factory() as session:
         assert get_file(session=session, file_hash=DIR_ROOT_CID) is None
+
+
+@pytest.mark.asyncio
+async def test_empty_metadata_treated_as_unauthenticated(
+    api_client, session_factory: DbSessionFactory
+):
+    """A multipart request with an empty metadata field (b"") must be treated
+    as unauthenticated: the Deprecation header must be present and a grace pin
+    must be written, identical to a request with no metadata field at all."""
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(FILE_CONTENT))
+    form_data.add_field("metadata", b"")
+
+    response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
+    body = await response.text()
+    assert response.status == 200, body
+    assert response.headers.get("Deprecation") == "true"
+
+    with session_factory() as session:
+        file = get_file(session=session, file_hash=EXPECTED_FILE_CID)
+        assert file is not None
+        assert _has_grace_period(session, EXPECTED_FILE_CID)

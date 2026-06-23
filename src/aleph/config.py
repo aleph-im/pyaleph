@@ -141,9 +141,9 @@ def get_defaults():
             # Whether to store files on the node.
             "store_files": True,
             # Interval between garbage collector runs, expressed in hours.
-            "garbage_collector_period": 24,
+            "garbage_collector_period": 4,
             # Grace period for files, expressed in hours.
-            "grace_period": 24,
+            "grace_period": 6,
             # Maximum file size for authenticated uploads, in bytes.
             "max_file_size": DEFAULT_MAX_FILE_SIZE,
             # Maximum file size for unauthenticated uploads, in bytes.

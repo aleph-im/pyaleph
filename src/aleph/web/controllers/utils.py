@@ -447,6 +447,24 @@ def get_item_hash_from_request(request: web.Request) -> ItemHash:
     return item_hash
 
 
+UPLOAD_DEPRECATION_HEADERS: Dict[str, str] = {"Deprecation": "true"}
+
+
+def warn_deprecated_unauthenticated_upload(request: web.Request) -> Dict[str, str]:
+    """Log and return deprecation headers for anonymous upload requests.
+
+    Unauthenticated uploads are deprecated and will be removed; the log
+    line lets node operators spot remaining anonymous traffic.
+    """
+    logging.getLogger(__name__).warning(
+        "Deprecated unauthenticated upload on %s from %s. This path will be "
+        "removed in a future release; uploads will require a signed message.",
+        request.path,
+        request.remote,
+    )
+    return dict(UPLOAD_DEPRECATION_HEADERS)
+
+
 CURSOR_MAX_PAGINATION = 200
 
 

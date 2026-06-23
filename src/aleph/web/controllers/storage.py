@@ -1,11 +1,12 @@
 import base64
 import hashlib
+import json
 import logging
 import math
 import os
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import aio_pika
 import aiofiles
@@ -54,9 +55,39 @@ from aleph.web.controllers.utils import (
     broadcast_and_process_message,
     broadcast_status_to_http_status,
     mq_make_aleph_message_topic_queue,
+    warn_deprecated_unauthenticated_upload,
 )
 
 logger = logging.getLogger(__name__)
+
+
+async def _read_json_body_with_limit(request: web.Request, max_size: int) -> Any:
+    """Read a JSON request body, aborting as soon as it exceeds max_size.
+
+    Unlike request.json(), this does not buffer up to client_max_size
+    (100 MiB) before checking; anonymous endpoints must reject at the
+    unauthenticated upload limit (25 MiB by default).
+    """
+    content_length = request.content_length
+    if content_length is not None and content_length > max_size:
+        raise web.HTTPRequestEntityTooLarge(
+            actual_size=content_length, max_size=max_size
+        )
+
+    buffer = bytearray()
+    async for chunk in request.content.iter_chunked(8192):
+        buffer.extend(chunk)
+        if len(buffer) > max_size:
+            raise web.HTTPRequestEntityTooLarge(
+                actual_size=len(buffer), max_size=max_size
+            )
+
+    try:
+        return json.loads(bytes(buffer))
+    except ValueError:
+        # Covers both JSONDecodeError and UnicodeDecodeError: any
+        # undecodable anonymous body is a client error, not a server error.
+        raise web.HTTPUnprocessableEntity(reason="Invalid JSON body")
 
 
 async def add_ipfs_json_controller(request: web.Request):
@@ -86,7 +117,8 @@ async def add_ipfs_json_controller(request: web.Request):
     config = get_config_from_request(request)
     grace_period = config.storage.grace_period.value
 
-    data = await request.json()
+    max_size = config.storage.max_unauthenticated_upload_file_size.value
+    data = await _read_json_body_with_limit(request, max_size)
     with session_factory() as session:
         output = {
             "status": "success",
@@ -99,7 +131,9 @@ async def add_ipfs_json_controller(request: web.Request):
         )
         session.commit()
 
-    return web.json_response(output)
+    return web.json_response(
+        output, headers=warn_deprecated_unauthenticated_upload(request)
+    )
 
 
 async def add_storage_json_controller(request: web.Request):
@@ -129,7 +163,8 @@ async def add_storage_json_controller(request: web.Request):
     config = get_config_from_request(request)
     grace_period = config.storage.grace_period.value
 
-    data = await request.json()
+    max_size = config.storage.max_unauthenticated_upload_file_size.value
+    data = await _read_json_body_with_limit(request, max_size)
     with session_factory() as session:
         output = {
             "status": "success",
@@ -142,7 +177,9 @@ async def add_storage_json_controller(request: web.Request):
         )
         session.commit()
 
-    return web.json_response(output)
+    return web.json_response(
+        output, headers=warn_deprecated_unauthenticated_upload(request)
+    )
 
 
 async def _verify_message_signature(
@@ -350,11 +387,15 @@ async def _check_and_add_file(
             file_type=FileType.FILE,
         )
 
-        # For files uploaded without authenticated upload, add a grace period of 1 day.
-        if message_content is None:
-            add_grace_period_for_file(
-                session=session, file_hash=file_hash, hours=grace_period
-            )
+        # Pin the file for the grace period (storage.grace_period config).
+        # For anonymous uploads this is the only pin and bounds the file's
+        # lifetime. For authenticated uploads it bridges the gap until the
+        # STORE message is processed and creates the permanent pin; without
+        # it, a garbage collector sweep during a pending-queue backlog could
+        # delete the file before its message is processed.
+        add_grace_period_for_file(
+            session=session, file_hash=file_hash, hours=grace_period
+        )
 
         session.commit()
 
@@ -497,7 +538,10 @@ async def storage_add_file(request: web.Request):
             status_code = broadcast_status_to_http_status(broadcast_status)
 
         output = {"status": "success", "hash": file_hash}
-        return web.json_response(data=output, status=status_code)
+        headers = (
+            warn_deprecated_unauthenticated_upload(request) if message is None else None
+        )
+        return web.json_response(data=output, status=status_code, headers=headers)
 
     finally:
         if uploaded_file is not None:

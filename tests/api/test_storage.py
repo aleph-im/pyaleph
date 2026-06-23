@@ -15,6 +15,7 @@ from in_memory_storage_engine import InMemoryStorageEngine
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.files import get_file, upsert_file, upsert_file_tag
 from aleph.db.models import AlephBalanceDb
+from aleph.db.models.files import GracePeriodFilePinDb
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.files import FileTag, FileType
@@ -212,6 +213,7 @@ async def add_file_with_message(
     response = await api_client.post(uri, data=form_data)
     response_text = await response.text()
     assert response.status == error_code, response_text
+    assert "Deprecation" not in response.headers
 
 
 async def add_file_with_message_202(
@@ -254,6 +256,7 @@ async def add_file_with_message_202(
     form_data.add_field("metadata", json.dumps(data), content_type="application/json")
     response = await api_client.post(uri, data=form_data)
     assert response.status == error_code, await response.text()
+    assert "Deprecation" not in response.headers
 
 
 @pytest.mark.asyncio
@@ -361,6 +364,57 @@ async def test_storage_add_file_with_message_202(
 
 
 @pytest.mark.asyncio
+async def test_storage_authenticated_upload_leaves_grace_pin(
+    api_client,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+    session_factory: DbSessionFactory,
+    mocker,
+):
+    """Authenticated uploads must create a grace-period pin immediately.
+
+    Without the pin, a GC sweep during a pending-queue backlog could delete
+    the file before the STORE message is processed and creates the permanent pin.
+    """
+    file_content = b"Hello Aleph.im\n"
+    expected_hash = "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f"
+
+    mocker.patch(
+        "aleph.web.controllers.storage.broadcast_and_process_message",
+        return_value=BroadcastStatus(
+            publication_status=PublicationStatus.from_failures([]),
+            message_status=MessageStatus.PROCESSED,
+        ),
+    )
+
+    with session_factory() as session:
+        session.add(
+            AlephBalanceDb(
+                address="0x6dA130FD646f826C1b8080C07448923DF9a79aaA",
+                chain=Chain.ETH,
+                balance=Decimal(1000),
+                eth_height=0,
+            )
+        )
+        session.commit()
+
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(file_content))
+    data = {"message": MESSAGE_DICT, "sync": True}
+    form_data.add_field("metadata", json.dumps(data), content_type="application/json")
+
+    response = await api_client.post(STORAGE_ADD_FILE_URI, data=form_data)
+    response_text = await response.text()
+    assert response.status == 200, response_text
+
+    with session_factory() as session:
+        grace_pins = (
+            session.query(GracePeriodFilePinDb).filter_by(file_hash=expected_hash).all()
+        )
+        assert grace_pins, "authenticated upload must leave a grace period pin"
+
+
+@pytest.mark.asyncio
 async def test_ipfs_add_file(api_client, session_factory: DbSessionFactory):
     await add_file(
         api_client,
@@ -382,6 +436,7 @@ async def add_json(
 
     post_response = await api_client.post(uri, json=json)
     assert post_response.status == 200, await post_response.text()
+    assert post_response.headers.get("Deprecation") == "true"
     post_response_json = await post_response.json()
     assert post_response_json["status"] == "success"
     file_hash = post_response_json["hash"]
@@ -613,6 +668,86 @@ async def test_ipfs_add_json(api_client, session_factory: DbSessionFactory):
         # creating a second fixture.
         expected_file_hash=ItemHash(EXPECTED_FILE_CID),
     )
+
+
+@pytest.mark.asyncio
+async def test_storage_add_json_over_size_limit(api_client, mock_config):
+    original = mock_config.storage.max_unauthenticated_upload_file_size.value
+    try:
+        mock_config.storage.max_unauthenticated_upload_file_size.value = 1024
+        response = await api_client.post(
+            STORAGE_ADD_JSON_URI, json={"data": "a" * 2048}
+        )
+        assert response.status == 413, await response.text()
+    finally:
+        mock_config.storage.max_unauthenticated_upload_file_size.value = original
+
+
+@pytest.mark.asyncio
+async def test_ipfs_add_json_over_size_limit(api_client, mock_config):
+    original = mock_config.storage.max_unauthenticated_upload_file_size.value
+    try:
+        mock_config.storage.max_unauthenticated_upload_file_size.value = 1024
+        response = await api_client.post(IPFS_ADD_JSON_URI, json={"data": "a" * 2048})
+        assert response.status == 413, await response.text()
+    finally:
+        mock_config.storage.max_unauthenticated_upload_file_size.value = original
+
+
+@pytest.mark.asyncio
+async def test_storage_add_json_invalid_json(api_client):
+    response = await api_client.post(
+        STORAGE_ADD_JSON_URI,
+        data=b"{not valid json",
+        headers={"Content-Type": "application/json"},
+    )
+    assert response.status == 422, await response.text()
+
+
+@pytest.mark.asyncio
+async def test_storage_add_json_over_size_limit_chunked(api_client, mock_config):
+    original = mock_config.storage.max_unauthenticated_upload_file_size.value
+    mock_config.storage.max_unauthenticated_upload_file_size.value = 1024
+    try:
+
+        async def body():
+            for _ in range(4):
+                yield b'"' + b"a" * 1024 + b'"'
+
+        response = await api_client.post(
+            STORAGE_ADD_JSON_URI,
+            data=body(),
+            headers={"Content-Type": "application/json"},
+        )
+        assert response.status == 413, await response.text()
+    finally:
+        mock_config.storage.max_unauthenticated_upload_file_size.value = original
+
+
+@pytest.mark.asyncio
+async def test_storage_add_json_invalid_utf8(api_client):
+    response = await api_client.post(
+        STORAGE_ADD_JSON_URI,
+        data=b"\xff\xfa{",
+        headers={"Content-Type": "application/json"},
+    )
+    assert response.status == 422, await response.text()
+
+
+@pytest.mark.asyncio
+async def test_storage_add_json_deprecation_header(api_client, session_factory):
+    response = await api_client.post(STORAGE_ADD_JSON_URI, json=JSON_CONTENT)
+    assert response.status == 200, await response.text()
+    assert response.headers.get("Deprecation") == "true"
+
+
+@pytest.mark.asyncio
+async def test_storage_add_file_anonymous_deprecation_header(api_client):
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", FILE_CONTENT)
+    response = await api_client.post(STORAGE_ADD_FILE_URI, data=form_data)
+    assert response.status == 200, await response.text()
+    assert response.headers.get("Deprecation") == "true"
 
 
 @pytest.mark.asyncio
