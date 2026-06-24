@@ -396,3 +396,103 @@ async def test_credit_history_resource_types_filter_filters_entries(
     data = await response.json()
     assert data["entry_count"] == 1
     assert data["total_amount"] == -200
+
+
+@pytest.mark.asyncio
+async def test_credit_history_accepts_valid_vm_hash(ccn_api_client):
+    # No data for this address: a valid filtered query returns 404, not 422.
+    response = await ccn_api_client.get(
+        CREDIT_HISTORY_URI, params={"vmHash": "some_vm_hash"}
+    )
+    assert response.status == 404
+
+
+@pytest.mark.asyncio
+async def test_credit_history_summary_accepts_valid_vm_hash(ccn_api_client):
+    response = await ccn_api_client.get(
+        CREDIT_HISTORY_SUMMARY_URI, params={"vmHash": "some_vm_hash"}
+    )
+    assert response.status == 200
+    data = await response.json()
+    assert data["entry_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_credit_history_vm_hash_filter_filters_entries(
+    ccn_api_client, session_factory
+):
+    with session_factory() as session:
+        # Expense referencing the target VM via origin (execution_id).
+        update_credit_balances_expense(
+            session=session,
+            credits_list=[
+                {
+                    "address": "0xe2evmhash",
+                    "amount": 100,
+                    "ref": "",
+                    "execution_id": "target_vm",
+                    "node_id": "node_e2e_vm_a",
+                    "price": "0.000001",
+                }
+            ],
+            message_hash="e2e_vm_expense_origin",
+            message_timestamp=dt.datetime(2026, 4, 1, tzinfo=dt.timezone.utc),
+        )
+        # Expense referencing the target VM via origin_ref (ref), origin empty.
+        update_credit_balances_expense(
+            session=session,
+            credits_list=[
+                {
+                    "address": "0xe2evmhash",
+                    "amount": 200,
+                    "ref": "target_vm",
+                    "execution_id": "",
+                    "node_id": "node_e2e_vm_b",
+                    "price": "0.000001",
+                }
+            ],
+            message_hash="e2e_vm_expense_originref",
+            message_timestamp=dt.datetime(2026, 4, 2, tzinfo=dt.timezone.utc),
+        )
+        # Unrelated expense for a different VM.
+        update_credit_balances_expense(
+            session=session,
+            credits_list=[
+                {
+                    "address": "0xe2evmhash",
+                    "amount": 300,
+                    "ref": "",
+                    "execution_id": "other_vm",
+                    "node_id": "node_e2e_vm_c",
+                    "price": "0.000001",
+                }
+            ],
+            message_hash="e2e_vm_expense_other",
+            message_timestamp=dt.datetime(2026, 4, 3, tzinfo=dt.timezone.utc),
+        )
+        session.commit()
+
+    listing_uri = "/api/v0/addresses/0xe2evmhash/credit_history"
+    summary_uri = "/api/v0/addresses/0xe2evmhash/credit_history/summary"
+
+    # Listing: matches the two entries for target_vm regardless of column.
+    response = await ccn_api_client.get(listing_uri, params={"vmHash": "target_vm"})
+    assert response.status == 200
+    data = await response.json()
+    refs = {entry["credit_ref"] for entry in data["credit_history"]}
+    assert refs == {"e2e_vm_expense_origin", "e2e_vm_expense_originref"}
+
+    # Summary: aggregates only the matching entries (both outgoing).
+    response = await ccn_api_client.get(summary_uri, params={"vmHash": "target_vm"})
+    assert response.status == 200
+    data = await response.json()
+    assert data["entry_count"] == 2
+    assert data["total_amount"] == -300
+    assert data["total_incoming"] == 0
+    assert data["total_outgoing"] == -300
+
+    # Composes with direction: incoming + target_vm matches nothing -> 404.
+    response = await ccn_api_client.get(
+        listing_uri, params={"vmHash": "target_vm", "direction": "incoming"}
+    )
+    assert response.status == 404
