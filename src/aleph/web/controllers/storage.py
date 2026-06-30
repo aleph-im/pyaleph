@@ -86,7 +86,14 @@ async def add_ipfs_json_controller(request: web.Request):
     config = get_config_from_request(request)
     grace_period = config.storage.grace_period.value
 
-    data = await request.json()
+    # Unauthenticated JSON upload, buffered fully in memory by request.json().
+    # The app-wide client_max_size is now aiohttp's small default, so lift it to
+    # this endpoint's own cap (the unauthenticated content limit) for the body
+    # read only. The original request keeps the app state used afterwards.
+    body_request = request.clone(
+        client_max_size=config.ipfs.max_unauthenticated_upload_file_size.value
+    )
+    data = await body_request.json()
     with session_factory() as session:
         output = {
             "status": "success",
@@ -129,7 +136,14 @@ async def add_storage_json_controller(request: web.Request):
     config = get_config_from_request(request)
     grace_period = config.storage.grace_period.value
 
-    data = await request.json()
+    # Unauthenticated JSON upload, buffered fully in memory by request.json().
+    # The app-wide client_max_size is now aiohttp's small default, so lift it to
+    # this endpoint's own cap (the unauthenticated content limit) for the body
+    # read only. The original request keeps the app state used afterwards.
+    body_request = request.clone(
+        client_max_size=config.storage.max_unauthenticated_upload_file_size.value
+    )
+    data = await body_request.json()
     with session_factory() as session:
         output = {
             "status": "success",
@@ -426,9 +440,15 @@ async def storage_add_file(request: web.Request):
     metadata = None
     uploaded_file: Optional[UploadedFile] = None
 
+    # The app-wide client_max_size is now aiohttp's small default; lift it to
+    # this endpoint's own cap for body reading (both the multipart and raw
+    # paths). The original request keeps the app state used by the rest of the
+    # handler; the clone shares the underlying payload.
+    body_request = request.clone(client_max_size=max_file_size)
+
     try:
         if request.content_type == "multipart/form-data":
-            reader = await request.multipart()
+            reader = await body_request.multipart()
             async for part in reader:
                 if part is None:
                     raise web.HTTPBadRequest(
@@ -444,7 +464,7 @@ async def storage_add_file(request: web.Request):
                     metadata = await part.read(decode=True)
         else:
             uploaded_file = RawUploadedFile(
-                request=request, max_size=max_unauthenticated_upload_file_size
+                request=body_request, max_size=max_unauthenticated_upload_file_size
             )
             await uploaded_file.read_and_validate()
 

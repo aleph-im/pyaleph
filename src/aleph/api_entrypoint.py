@@ -61,9 +61,7 @@ async def configure_aiohttp_app(
         )
         signature_verifier = SignatureVerifier()
 
-        app = create_aiohttp_app(
-            max_file_size=config.storage.max_file_size.value,
-        )
+        app = create_aiohttp_app()
 
         # Reuse the connection of the P2P client to avoid opening two connections
         mq_conn = p2p_client.mq_client.connection

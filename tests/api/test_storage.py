@@ -819,3 +819,49 @@ async def test_get_file_metadata(api_client, session_factory: DbSessionFactory):
         assert data["type"] == "dir"
         assert data["size"] == dir_size
         assert data["download_url"] == f"/api/v0/storage/raw/{dir_hash}"
+
+
+# The app-wide client_max_size is now aiohttp's 1 MiB default; these guard the
+# per-route caps that keep the larger endpoints working after that change.
+_ONE_MIB = 1024 * 1024
+
+
+@pytest.mark.asyncio
+async def test_add_storage_json_above_global_cap(
+    api_client, session_factory: DbSessionFactory
+):
+    """JSON larger than the app-wide client_max_size (1 MiB) but within the
+    unauthenticated limit must be accepted. add_storage_json reads the body
+    with request.json() (buffered), which aiohttp gates by client_max_size on
+    every version, so this actively guards the per-route lift even on the
+    pinned aiohttp 3.13.x. Without the lift the request would 413 at 1 MiB.
+    """
+    big_json = {"data": "x" * (2 * _ONE_MIB)}  # ~2 MiB, above the 1 MiB global
+    response = await api_client.post(STORAGE_ADD_JSON_URI, json=big_json)
+    assert response.status == 200, await response.text()
+
+
+@pytest.mark.asyncio
+async def test_add_storage_json_above_unauthenticated_cap(
+    api_client, session_factory: DbSessionFactory
+):
+    """JSON larger than max_unauthenticated_upload_file_size (25 MiB) is still
+    rejected, so the per-route lift raises the cap rather than removing it."""
+    huge_json = {"data": "x" * (26 * _ONE_MIB)}  # ~26 MiB, above the 25 MiB cap
+    response = await api_client.post(STORAGE_ADD_JSON_URI, json=huge_json)
+    assert response.status == 413, await response.text()
+
+
+@pytest.mark.asyncio
+async def test_storage_add_file_above_global_cap(
+    api_client, session_factory: DbSessionFactory
+):
+    """A multipart file upload larger than the app-wide client_max_size (1 MiB)
+    but within the unauthenticated limit succeeds. Guards the per-route lift on
+    aiohttp >= 3.14 (production); on 3.13.x multipart was never gated by the
+    global cap.
+    """
+    form = aiohttp.FormData()
+    form.add_field("file", BytesIO(b"\0" * (2 * _ONE_MIB)))  # above the 1 MiB global
+    response = await api_client.post(STORAGE_ADD_FILE_URI, data=form)
+    assert response.status == 200, await response.text()
