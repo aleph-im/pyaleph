@@ -9,9 +9,15 @@ import jinja2
 from aiohttp import web
 from aiohttp_swagger3 import SwaggerDocs, SwaggerInfo, SwaggerUiSettings
 
-from aleph.toolkit.constants import DEFAULT_MAX_FILE_SIZE
 from aleph.version import get_version
 from aleph.web.controllers.routes import register_routes
+
+# Default app-wide aiohttp client_max_size, capping every request body read via
+# request.json()/.read()/.post(). Endpoints that accept larger uploads raise it
+# per-route with Request.clone() (see ipfs.py / storage.py). Kept at aiohttp's
+# own default (1 MiB) so buffered endpoints are not exposed to large in-memory
+# bodies; message submissions are bounded well below this by MAX_INLINE_SIZE.
+DEFAULT_CLIENT_MAX_SIZE = 1024 * 1024
 
 
 def init_cors(app: web.Application):
@@ -35,7 +41,7 @@ def init_cors(app: web.Application):
 
 def create_aiohttp_app(
     with_swagger: bool = True,
-    max_file_size: int = DEFAULT_MAX_FILE_SIZE,
+    max_file_size: int = DEFAULT_CLIENT_MAX_SIZE,
 ) -> web.Application:
     app = web.Application(client_max_size=max_file_size)
 
