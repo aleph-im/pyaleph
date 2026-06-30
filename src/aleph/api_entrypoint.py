@@ -61,10 +61,6 @@ async def configure_aiohttp_app(
         )
         signature_verifier = SignatureVerifier()
 
-        # Use aiohttp's small default client_max_size for the app. Upload
-        # endpoints raise it per-route via Request.clone() (see ipfs.py /
-        # storage.py); wiring it to storage.max_file_size would have exposed
-        # every buffered endpoint to that size in memory.
         app = create_aiohttp_app()
 
         # Reuse the connection of the P2P client to avoid opening two connections
