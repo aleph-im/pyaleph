@@ -865,3 +865,47 @@ async def test_storage_add_file_above_global_cap(
     form.add_field("file", BytesIO(b"\0" * (2 * _ONE_MIB)))  # above the 1 MiB global
     response = await api_client.post(STORAGE_ADD_FILE_URI, data=form)
     assert response.status == 200, await response.text()
+
+
+STORAGE_LIMITS_URI = "/api/v0/storage/limits.json"
+
+
+@pytest.mark.asyncio
+async def test_get_storage_limits(api_client):
+    """The limits endpoint exposes the node's configured upload caps, grouped
+    by storage engine, straight from config."""
+    from aleph.toolkit.constants import (
+        DEFAULT_MAX_FILE_SIZE,
+        DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+        DEFAULT_MAX_UPLOAD_CAR_SIZE,
+        DEFAULT_MAX_UPLOAD_FILE_SIZE,
+    )
+
+    response = await api_client.get(STORAGE_LIMITS_URI)
+    assert response.status == 200, await response.text()
+
+    data = await response.json()
+    assert data == {
+        "storage": {
+            "max_file_size": DEFAULT_MAX_FILE_SIZE,
+            "max_unauthenticated_upload_file_size": (
+                DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE
+            ),
+        },
+        "ipfs": {
+            "max_upload_file_size": DEFAULT_MAX_UPLOAD_FILE_SIZE,
+            "max_upload_car_size": DEFAULT_MAX_UPLOAD_CAR_SIZE,
+            "max_unauthenticated_upload_file_size": (
+                DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE
+            ),
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_storage_limits_not_captured_by_hash_route(api_client):
+    """ "limits.json" must hit the limits handler, not the /storage/{file_hash}
+    route (which would treat it as a file hash)."""
+    response = await api_client.get(STORAGE_LIMITS_URI)
+    assert response.status == 200, await response.text()
+    assert "storage" in await response.json()

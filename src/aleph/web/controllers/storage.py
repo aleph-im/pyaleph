@@ -927,3 +927,78 @@ async def get_file_pins_count(request: web.Request) -> web.Response:
     with session_factory() as session:
         count = count_file_pins(session=session, file_hash=item_hash)
     return web.json_response(data=count)
+
+
+class StorageEngineLimits(pydantic.BaseModel):
+    max_file_size: int
+    max_unauthenticated_upload_file_size: int
+
+
+class IpfsEngineLimits(pydantic.BaseModel):
+    max_upload_file_size: int
+    max_upload_car_size: int
+    max_unauthenticated_upload_file_size: int
+
+
+class UploadLimitsResponse(pydantic.BaseModel):
+    storage: StorageEngineLimits
+    ipfs: IpfsEngineLimits
+
+
+async def get_storage_limits(request: web.Request) -> web.Response:
+    """
+    Return this node's upload size limits, in bytes.
+
+    Lets clients pick the right storage engine for a given file size without
+    relying on trial-and-error 413s. These limits are per-node configuration
+    and may differ between CCNs, so they should be discovered rather than
+    hardcoded. Files larger than ``storage.max_file_size`` must be uploaded
+    through the IPFS engine (``/api/v0/ipfs/add_file``).
+
+    ---
+    summary: Get upload size limits
+    tags:
+      - Storage
+    responses:
+      '200':
+        description: Upload size limits in bytes, grouped by storage engine.
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                storage:
+                  type: object
+                  properties:
+                    max_file_size:
+                      type: integer
+                    max_unauthenticated_upload_file_size:
+                      type: integer
+                ipfs:
+                  type: object
+                  properties:
+                    max_upload_file_size:
+                      type: integer
+                    max_upload_car_size:
+                      type: integer
+                    max_unauthenticated_upload_file_size:
+                      type: integer
+    """
+    config = get_config_from_request(request)
+
+    limits = UploadLimitsResponse(
+        storage=StorageEngineLimits(
+            max_file_size=config.storage.max_file_size.value,
+            max_unauthenticated_upload_file_size=(
+                config.storage.max_unauthenticated_upload_file_size.value
+            ),
+        ),
+        ipfs=IpfsEngineLimits(
+            max_upload_file_size=config.ipfs.max_upload_file_size.value,
+            max_upload_car_size=config.ipfs.max_upload_car_size.value,
+            max_unauthenticated_upload_file_size=(
+                config.ipfs.max_unauthenticated_upload_file_size.value
+            ),
+        ),
+    )
+    return web.json_response(data=limits.model_dump())
