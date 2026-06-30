@@ -18,10 +18,16 @@ from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.files import get_file
 from aleph.db.models import AlephBalanceDb, AlephCreditBalanceDb, GracePeriodFilePinDb
 from aleph.storage import StorageService
+from aleph.toolkit.constants import MiB
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.files import FileType
 from aleph.types.message_status import MessageStatus
+from aleph.web import create_aiohttp_app
 from aleph.web.controllers.app_state_getters import (
+    APP_STATE_CONFIG,
+    APP_STATE_NODE_CACHE,
+    APP_STATE_P2P_CLIENT,
+    APP_STATE_SESSION_FACTORY,
     APP_STATE_SIGNATURE_VERIFIER,
     APP_STATE_STORAGE_SERVICE,
 )
@@ -1151,3 +1157,92 @@ async def test_add_car_dag_import_failure(
 
     with session_factory() as session:
         assert get_file(session=session, file_hash=DIR_ROOT_CID) is None
+
+
+# Global aiohttp body cap for the app below. Deliberately smaller than the
+# IPFS upload limit so an upload sized between the two exercises the per-route
+# client_max_size lift.
+SMALL_GLOBAL_CAP = 1 * MiB
+IPFS_ROUTE_CAP = 8 * MiB
+
+
+@pytest_asyncio.fixture
+async def small_global_cap_client(
+    mock_config, session_factory, node_cache, mocker, aiohttp_client
+):
+    """API client whose aiohttp app has a deliberately small global
+    client_max_size, smaller than ipfs.max_upload_file_size.
+
+    This mirrors production: ``api_entrypoint`` wires the app-wide
+    ``client_max_size`` to ``storage.max_file_size`` via ``create_aiohttp_app``,
+    while ``/ipfs/add_file`` is meant to allow up to
+    ``ipfs.max_upload_file_size``.
+    """
+    app = create_aiohttp_app(with_swagger=False, max_file_size=SMALL_GLOBAL_CAP)
+
+    # Per-endpoint IPFS limits, independent of the small global cap.
+    mock_config.ipfs.max_upload_file_size.value = IPFS_ROUTE_CAP
+    mock_config.ipfs.max_unauthenticated_upload_file_size.value = IPFS_ROUTE_CAP
+
+    ipfs_service = mocker.AsyncMock()
+    ipfs_service.add_bytes = mocker.AsyncMock(return_value=EXPECTED_FILE_CID)
+    ipfs_service.storage_client.files.stat = mocker.AsyncMock(
+        return_value={
+            "Hash": EXPECTED_FILE_CID,
+            "Size": MOCK_FILE_SIZE,
+            "CumulativeSize": 42,
+            "Blocks": 0,
+            "Type": "file",
+        }
+    )
+
+    app[APP_STATE_CONFIG] = mock_config
+    app[APP_STATE_NODE_CACHE] = node_cache
+    app[APP_STATE_P2P_CLIENT] = mocker.AsyncMock()
+    app[APP_STATE_SESSION_FACTORY] = session_factory
+    app[APP_STATE_STORAGE_SERVICE] = StorageService(
+        storage_engine=InMemoryStorageEngine(files={}),
+        ipfs_service=ipfs_service,
+        node_cache=mocker.AsyncMock(),
+    )
+    app[APP_STATE_SIGNATURE_VERIFIER] = SignatureVerifier()
+
+    return await aiohttp_client(app)
+
+
+@pytest.mark.asyncio
+async def test_ipfs_upload_above_global_cap_within_route_limit(small_global_cap_client):
+    """Regression: an IPFS upload larger than the app-wide client_max_size
+    (wired to storage.max_file_size) but within ipfs.max_upload_file_size must
+    succeed.
+
+    Before the per-route client_max_size lift, aiohttp >= 3.14 rejected the
+    request body at the global cap (HTTP 413 "Maximum request body size N
+    exceeded.") before the IPFS handler's own limit applied, so
+    ipfs.max_upload_file_size was unreachable above storage.max_file_size. This
+    assertion actively guards that regression on aiohttp >= 3.14 (which
+    production runs); on 3.13.x, where client_max_size did not gate streamed
+    multipart, it passes regardless.
+    """
+    # Above the 1 MiB global cap, below the 8 MiB IPFS cap.
+    payload = b"\0" * (4 * MiB)
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(payload))
+
+    response = await small_global_cap_client.post(IPFS_ADD_FILE_URI, data=form_data)
+    assert response.status == 200, await response.text()
+
+
+@pytest.mark.asyncio
+async def test_ipfs_upload_above_route_limit_is_rejected(small_global_cap_client):
+    """A file larger than ipfs.max_upload_file_size is still rejected, so the
+    per-route lift raises the cap to the configured limit rather than removing
+    it. Holds on every aiohttp version via the handler's own streaming check.
+    """
+    # Above the 8 MiB IPFS cap.
+    payload = b"\0" * (10 * MiB)
+    form_data = aiohttp.FormData()
+    form_data.add_field("file", BytesIO(payload))
+
+    response = await small_global_cap_client.post(IPFS_ADD_FILE_URI, data=form_data)
+    assert response.status == 413, await response.text()
