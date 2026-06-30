@@ -99,12 +99,23 @@ async def ipfs_add_file(request: web.Request):
                 reason="Expected Content-Type: multipart/form-data"
             )
 
+        # aiohttp enforces the app-wide client_max_size (wired to
+        # storage.max_file_size) on every request body, including streamed
+        # multipart parts. Without lifting it here the IPFS upload limit could
+        # never exceed storage.max_file_size, so ipfs.max_upload_file_size
+        # would be silently capped. Clone the request with this endpoint's own
+        # cap for body reading only; the original request keeps the app state
+        # used by the rest of the handler (clone() does not carry app/match
+        # info). The clone shares the underlying payload, so this does not
+        # buffer or re-read anything.
+        body_request = request.clone(client_max_size=max_upload_file_size)
+
         # Read the largest allowed limit here; we narrow it later once we
         # know whether metadata is present. This means unauthenticated
         # requests get a two-step check: the initial streaming cap is
         # max_upload_file_size, and a secondary check afterwards enforces
         # max_unauthenticated_upload_file_size.
-        reader = await request.multipart()
+        reader = await body_request.multipart()
         async for part in reader:
             if part is None:
                 raise web.HTTPBadRequest(reason="Invalid multipart structure")
@@ -340,7 +351,12 @@ async def ipfs_add_car(request: web.Request):
                 reason="Expected Content-Type: multipart/form-data"
             )
 
-        reader = await request.multipart()
+        # Lift the app-wide client_max_size (storage.max_file_size) to this
+        # endpoint's CAR cap for body reading only; see ipfs_add_file for the
+        # rationale. The clone shares the underlying payload.
+        body_request = request.clone(client_max_size=max_upload_car_size)
+
+        reader = await body_request.multipart()
         async for part in reader:
             if part is None:
                 raise web.HTTPBadRequest(reason="Invalid multipart structure")
