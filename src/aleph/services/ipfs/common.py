@@ -11,22 +11,27 @@ async def get_base_url(config):
 def make_ipfs_client(
     host: str,
     port: int,
-    timeout: int = 60,
     scheme: str = "http",
     debug_level: int = logging.WARNING,
 ) -> aioipfs.AsyncIPFS:
+    # We do not pass a read_timeout: aioipfs 0.7.1 ignores that argument.
+    # AsyncIPFS.__init__ stores it in self._read_timeout but builds its client
+    # session via get_session() called with no arguments, so the value never
+    # reaches aiohttp. The effective timeouts are aioipfs's own session
+    # defaults (total=1800s / 30 min, sock_read=600s / 10 min), which are
+    # generous enough for large uploads. Passing a value here would be
+    # silently discarded, so we keep the surface honest by not accepting one.
     return aioipfs.AsyncIPFS(
         host=host,
         port=port,
         scheme=scheme,
-        read_timeout=timeout,
         conns_max=25,
         conns_max_per_host=10,
         debug=debug_level,
     )
 
 
-def make_ipfs_p2p_client(config: Config, timeout: int = 60) -> aioipfs.AsyncIPFS:
+def make_ipfs_p2p_client(config: Config) -> aioipfs.AsyncIPFS:
     """Create IPFS client for P2P operations (pubsub, content retrieval)."""
     # Always use main IPFS config for P2P operations
     host = config.ipfs.host.value
@@ -34,10 +39,10 @@ def make_ipfs_p2p_client(config: Config, timeout: int = 60) -> aioipfs.AsyncIPFS
     scheme = config.ipfs.scheme.value
     debug_level = config.logging.level.value <= logging.DEBUG
 
-    return make_ipfs_client(host, port, timeout, scheme, debug_level)
+    return make_ipfs_client(host, port, scheme, debug_level)
 
 
-def make_ipfs_pinning_client(config: Config, timeout: int = 60) -> aioipfs.AsyncIPFS:
+def make_ipfs_pinning_client(config: Config) -> aioipfs.AsyncIPFS:
     """Create IPFS client for pinning operations."""
     # Use pinning specific config if provided, otherwise use main config
     if (
@@ -54,13 +59,9 @@ def make_ipfs_pinning_client(config: Config, timeout: int = 60) -> aioipfs.Async
         port = int(config.ipfs.port.value)
         scheme = config.ipfs.scheme.value
 
-    # Get pinning-specific timeout if available
-    if hasattr(config.ipfs, "pinning") and hasattr(config.ipfs.pinning, "timeout"):
-        timeout = int(config.ipfs.pinning.timeout.value)
-
     debug_level = config.logging.level.value <= logging.DEBUG
 
-    return make_ipfs_client(host, port, timeout, scheme, debug_level)
+    return make_ipfs_client(host, port, scheme, debug_level)
 
 
 def get_cid_version(ipfs_hash: str) -> int:

@@ -263,8 +263,10 @@ def get_defaults():
                 "port": 5001,
                 # Scheme of the ipfs pinning service.
                 "scheme": "http",
-                # Timeout for pinning operations (seconds)
-                "timeout": 60,
+                # NOTE: there is deliberately no pinning timeout here. The
+                # aioipfs client ignores read_timeout (see make_ipfs_client),
+                # so the pin duration is governed by aioipfs's own session
+                # defaults (30 min total / 10 min inter-read).
             },
             # Timeout for file stat requests (seconds)
             "stat_timeout": 30,
