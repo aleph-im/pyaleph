@@ -85,6 +85,8 @@ IPFS_MESSAGE_DICT_CREDIT: dict[str, Any] = {
 @pytest_asyncio.fixture
 async def api_client(ccn_test_aiohttp_app, mocker, aiohttp_client):
     ipfs_service = mocker.AsyncMock()
+    # /ipfs/add_file streams the upload to IPFS via add_file (not add_bytes).
+    ipfs_service.add_file = mocker.AsyncMock(return_value=EXPECTED_FILE_CID)
     ipfs_service.add_bytes = mocker.AsyncMock(return_value=EXPECTED_FILE_CID)
     ipfs_service.storage_client.files.stat = mocker.AsyncMock(
         return_value={
@@ -219,7 +221,7 @@ async def test_auth_upload_bad_signature(
         new_callable=mocker.AsyncMock,
         side_effect=web.HTTPForbidden(),
     )
-    # Spy on add_bytes to confirm we never called it.
+    # Spy on add_file (the pin call) to confirm we never pinned.
     ipfs_service = _get_ipfs_service_mock(api_client)
 
     form_data = aiohttp.FormData()
@@ -237,7 +239,7 @@ async def test_auth_upload_bad_signature(
     # that the body contains the verifier's reason so the test can't pass on
     # an unrelated 403.
     assert "Forbidden" in body
-    ipfs_service.add_bytes.assert_not_called()
+    ipfs_service.add_file.assert_not_called()
 
     with session_factory() as session:
         assert get_file(session=session, file_hash=EXPECTED_FILE_CID) is None
@@ -283,7 +285,7 @@ async def test_auth_upload_rejects_storage_item_type(
     body = await response.text()
     assert response.status == 422, body
     assert "item_type=ipfs" in body
-    ipfs_service.add_bytes.assert_not_called()
+    ipfs_service.add_file.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -299,7 +301,7 @@ async def test_auth_upload_exceeding_authenticated_cap(
 
     # Pin the cap to a small value so the test stays fast and stays independent
     # of the production default, then send a payload one byte over it. The test
-    # fixture doesn't care about content since ipfs_service.add_bytes is mocked.
+    # fixture doesn't care about content since ipfs_service.add_file is mocked.
     cap = 1 * 1024 * 1024
     mock_config.ipfs.max_upload_file_size.value = cap
     oversized = b"x" * (cap + 1)
@@ -313,7 +315,7 @@ async def test_auth_upload_exceeding_authenticated_cap(
 
     response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
     assert response.status == 413, await response.text()
-    ipfs_service.add_bytes.assert_not_called()
+    ipfs_service.add_file.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -344,7 +346,7 @@ async def test_auth_upload_cid_mismatch(
         )
         session.commit()
 
-    # Message claims a different CID than the fixture's mocked add_bytes.
+    # Message claims a different CID than the fixture's mocked add_file.
     mismatched = {
         **IPFS_MESSAGE_DICT,
         "item_content": json.dumps(
@@ -415,7 +417,7 @@ async def test_auth_upload_insufficient_balance(
     response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
     assert response.status == 402, await response.text()
 
-    ipfs_service.add_bytes.assert_not_called()
+    ipfs_service.add_file.assert_not_called()
     with session_factory() as session:
         assert get_file(session=session, file_hash=EXPECTED_FILE_CID) is None
         assert not _has_grace_period(session, EXPECTED_FILE_CID)
@@ -434,7 +436,7 @@ async def test_auth_upload_malformed_metadata(
 
     response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
     assert response.status == 422, await response.text()
-    ipfs_service.add_bytes.assert_not_called()
+    ipfs_service.add_file.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -526,7 +528,7 @@ async def test_auth_credit_upload_insufficient_credit_balance(
     response = await api_client.post(IPFS_ADD_FILE_URI, data=form_data)
     assert response.status == 402, await response.text()
 
-    ipfs_service.add_bytes.assert_not_called()
+    ipfs_service.add_file.assert_not_called()
     with session_factory() as session:
         assert get_file(session=session, file_hash=EXPECTED_FILE_CID) is None
         assert not _has_grace_period(session, EXPECTED_FILE_CID)
@@ -1185,6 +1187,7 @@ async def small_global_cap_client(
     mock_config.ipfs.max_unauthenticated_upload_file_size.value = IPFS_ROUTE_CAP
 
     ipfs_service = mocker.AsyncMock()
+    ipfs_service.add_file = mocker.AsyncMock(return_value=EXPECTED_FILE_CID)
     ipfs_service.add_bytes = mocker.AsyncMock(return_value=EXPECTED_FILE_CID)
     ipfs_service.storage_client.files.stat = mocker.AsyncMock(
         return_value={

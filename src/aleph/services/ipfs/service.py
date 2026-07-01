@@ -309,6 +309,35 @@ class IpfsService:
         result = await self.storage_client.add_bytes(value, cid_version=cid_version)
         return result["Hash"]
 
+    async def add_file(
+        self, file_path: Union[str, pathlib.Path], cid_version: int = 0
+    ) -> str:
+        """Add a file to IPFS by streaming it from disk.
+
+        Unlike add_bytes, this does not buffer the whole file in memory:
+        aioipfs streams the file from ``file_path`` in chunks. Used by the
+        upload endpoints, where a single file can be up to 1 GiB and reading
+        it fully into RAM would be wasteful (and, at scale, a memory-pressure
+        risk).
+
+        The resulting CID is identical to ``add_bytes`` for the same content:
+        the CID is derived from the file bytes only. The filename is not part
+        of it because we do not wrap the file in a directory.
+        """
+        # ``add`` is an async generator yielding one entry per file added.
+        # We add a single file (no directory wrapping), so exactly one entry
+        # is produced; keep the last one defensively.
+        result: Optional[Dict] = None
+        async for entry in self.storage_client.add(
+            str(file_path), cid_version=cid_version
+        ):
+            result = entry
+
+        if result is None:
+            raise ValueError(f"IPFS add returned no entry for {file_path}")
+
+        return result["Hash"]
+
     async def _pin_add(self, cid: str, timeout: int = 30):
         # ipfs pin add returns a dictionary with a progress report in terms of blocks
         # and a "Pins" key if the pinning is complete. The dictionary is empty if the daemon
