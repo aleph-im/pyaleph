@@ -151,6 +151,9 @@ def register_routes(app: web.Application, swagger: Optional[SwaggerDocs]):
             "/api/v0/storage/add_json",
             storage.add_storage_json_controller,
         ),
+        # Register the literal path before the {file_hash} route below, which
+        # would otherwise capture "limits.json" as a hash.
+        web.get("/api/v0/storage/limits.json", storage.get_storage_limits),
         web.get("/api/v0/storage/{file_hash}", storage.get_hash),
         web.get("/api/v0/storage/raw/{file_hash}", storage.get_raw_hash),
         web.get(
