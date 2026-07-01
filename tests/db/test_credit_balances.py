@@ -3105,3 +3105,169 @@ def test_resource_filter_matches_effective_origin(session_factory: DbSessionFact
             )
             == 0
         )
+
+
+# ---------------------------------------------------------------------------
+# Batch expense semantics: one expense message carrying many addresses.
+#
+# These pin the behaviour the set-based drain must preserve: each address is
+# drained independently in FIFO order, over-draw on one address never bleeds
+# into another, and a full -amount history row is written per entry regardless
+# of how much was actually consumed.
+# ---------------------------------------------------------------------------
+
+MULT = 10_000  # precision multiplier for pre-2026-02-02 messages
+
+_T1 = dt.datetime(2024, 3, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+_T2 = dt.datetime(2024, 3, 2, 12, 0, 0, tzinfo=dt.timezone.utc)
+_EXPENSE_TS = dt.datetime(2024, 3, 3, 12, 0, 0, tzinfo=dt.timezone.utc)
+
+
+def test_expense_batch_multiple_addresses_independent_fifo(
+    session_factory: DbSessionFactory,
+):
+    """One expense message with several addresses drains each independently.
+
+    A: two non-expiring lots (300 @ T1, 300 @ T2), expense 400 -> FIFO drains
+       the T1 lot fully then 100 from the T2 lot -> 200 remaining.
+    B: single lot 1000, expense 250 -> 750 remaining.
+    C: single lot 100, expense 500 (over-draw) -> 0 remaining, excess dropped.
+    """
+    with session_factory() as session:
+        _give_credits(session, "0xA", 300, None, "a1", _T1)
+        _give_credits(session, "0xA", 300, None, "a2", _T2)
+        _give_credits(session, "0xB", 1000, None, "b1", _T1)
+        _give_credits(session, "0xC", 100, None, "c1", _T1)
+        session.commit()
+
+        update_credit_balances_expense(
+            session=session,
+            credits_list=[
+                {"address": "0xA", "amount": 400, "ref": "exp_a"},
+                {"address": "0xB", "amount": 250, "ref": "exp_b"},
+                {"address": "0xC", "amount": 500, "ref": "exp_c"},
+            ],
+            message_hash="batch_expense",
+            message_timestamp=_EXPENSE_TS,
+        )
+        session.commit()
+
+        assert get_credit_balance(session, "0xA") == 200 * MULT
+        assert get_credit_balance(session, "0xB") == 750 * MULT
+        assert get_credit_balance(session, "0xC") == 0
+
+        # The A lots drain in FIFO order: a1 emptied, a2 partially consumed.
+        a1 = session.execute(
+            select(AlephCreditBalanceDb.amount_remaining).where(
+                AlephCreditBalanceDb.address == "0xA",
+                AlephCreditBalanceDb.credit_ref == "a1",
+            )
+        ).scalar_one()
+        a2 = session.execute(
+            select(AlephCreditBalanceDb.amount_remaining).where(
+                AlephCreditBalanceDb.address == "0xA",
+                AlephCreditBalanceDb.credit_ref == "a2",
+            )
+        ).scalar_one()
+        assert a1 == 0
+        assert a2 == 200 * MULT
+
+        # A full -amount history row is written per entry, over-draw included.
+        rows = {
+            r.address: r.amount
+            for r in session.execute(
+                select(AlephCreditHistoryDb).where(
+                    AlephCreditHistoryDb.credit_ref == "batch_expense"
+                )
+            ).scalars()
+        }
+        assert rows == {"0xA": -400 * MULT, "0xB": -250 * MULT, "0xC": -500 * MULT}
+
+
+def test_expense_batch_matches_sequential_single_expenses(
+    session_factory: DbSessionFactory,
+):
+    """Draining N addresses in one message equals N single-address messages.
+
+    Builds identical lot state under two disjoint address namespaces, applies
+    the expenses as one batch on one side and as separate messages on the
+    other, and asserts every resulting balance matches.
+    """
+    specs = [
+        # (suffix, lots [(amount, ts, ref)], expense_amount)
+        ("p", [(500, _T1, "l1"), (500, _T2, "l2")], 700),
+        ("q", [(1000, _T1, "l1")], 999),
+        ("r", [(100, _T1, "l1"), (100, _T2, "l2")], 250),  # over-draw
+        ("s", [(0, _T1, "l1")], 0),  # empty lot, zero expense
+    ]
+
+    with session_factory() as session:
+        for suffix, lots, _ in specs:
+            for amount, ts, ref in lots:
+                if amount:
+                    _give_credits(session, f"batch_{suffix}", amount, None, ref, ts)
+                    _give_credits(session, f"seq_{suffix}", amount, None, ref, ts)
+        session.commit()
+
+        # Batch: a single expense message for all addresses.
+        update_credit_balances_expense(
+            session=session,
+            credits_list=[
+                {"address": f"batch_{s}", "amount": amt, "ref": f"e_{s}"}
+                for s, _, amt in specs
+            ],
+            message_hash="equiv_batch",
+            message_timestamp=_EXPENSE_TS,
+        )
+
+        # Sequential: one expense message per address.
+        for suffix, _, amt in specs:
+            update_credit_balances_expense(
+                session=session,
+                credits_list=[{"address": f"seq_{suffix}", "amount": amt, "ref": "e"}],
+                message_hash=f"equiv_seq_{suffix}",
+                message_timestamp=_EXPENSE_TS,
+            )
+        session.commit()
+
+        for suffix, _, _ in specs:
+            assert get_credit_balance(session, f"batch_{suffix}") == get_credit_balance(
+                session, f"seq_{suffix}"
+            ), suffix
+
+
+def test_expense_same_address_multiple_entries_drains_sequentially(
+    session_factory: DbSessionFactory,
+):
+    """Two entries for the same address in one message drain cumulatively.
+
+    A single 500 lot with two 300 expense entries: the first consumes 300, the
+    second consumes the remaining 200 (excess dropped), leaving 0. Both entries
+    still record a full -300 history row.
+    """
+    with session_factory() as session:
+        _give_credits(session, "0xD", 500, None, "d1", _T1)
+        session.commit()
+
+        update_credit_balances_expense(
+            session=session,
+            credits_list=[
+                {"address": "0xD", "amount": 300, "ref": "d_first"},
+                {"address": "0xD", "amount": 300, "ref": "d_second"},
+            ],
+            message_hash="dup_expense",
+            message_timestamp=_EXPENSE_TS,
+        )
+        session.commit()
+
+        assert get_credit_balance(session, "0xD") == 0
+
+        history = sorted(
+            (r.credit_index, r.amount)
+            for r in session.execute(
+                select(AlephCreditHistoryDb).where(
+                    AlephCreditHistoryDb.credit_ref == "dup_expense"
+                )
+            ).scalars()
+        )
+        assert history == [(0, -300 * MULT), (1, -300 * MULT)]
