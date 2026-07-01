@@ -333,23 +333,26 @@ class IpfsService:
         ``AttributeError`` on aiohttp >= 3.13. ``BufferedReaderPayload`` is the
         correct payload for a file object and streams it straight from disk.
         """
-        file_path = str(file_path)
-        # add_generic and _build_add_params live on the CoreAPI, which
-        # AsyncIPFS exposes as ``.core`` (only a handful of core methods are
-        # proxied on the client itself, and these two are not among them).
+        path = pathlib.Path(file_path)
+        # ``cid-version`` is a kubo /api/v0/add query parameter (stable across
+        # aioipfs versions), so we build the params dict directly rather than
+        # coupling to aioipfs's private _build_add_params. add_generic and the
+        # FormDataWriter have no public equivalent, so those we do reach for on
+        # the CoreAPI (AsyncIPFS.core): the client proxies only a handful of
+        # core methods and add_generic is not among them.
+        params = {"cid-version": str(cid_version)}
         core = self.storage_client.core
-        params = core._build_add_params(cid_version=cid_version)
 
         result: Optional[Dict] = None
-        with open(file_path, "rb") as fd:
+        with open(path, "rb") as fd:
             with aioipfs.multi.FormDataWriter() as mpwriter:
                 file_payload = aiohttp.payload.BufferedReaderPayload(
                     fd,
                     content_type="application/octet-stream",
-                    headers={"Abspath": file_path},
+                    headers={"Abspath": str(path)},
                 )
                 file_payload.set_content_disposition(
-                    "form-data", name="file", filename=pathlib.Path(file_path).name
+                    "form-data", name="file", filename=path.name
                 )
                 mpwriter.append_payload(file_payload)
 

@@ -286,13 +286,10 @@ def _add_generic_capture(entries, captured):
 
 
 def _make_storage_client(add_generic):
-    """AsyncMock storage client whose ``.core`` exposes the real
-    _build_add_params (a pure param mapper) and a caller-supplied add_generic,
-    mirroring aioipfs.AsyncIPFS.core (CoreAPI)."""
+    """AsyncMock storage client whose ``.core`` exposes a caller-supplied
+    add_generic, mirroring aioipfs.AsyncIPFS.core (CoreAPI)."""
     ipfs_client = AsyncMock()
-    core = ipfs_client.core
-    core.add_generic = add_generic
-    core._build_add_params = aioipfs.api.CoreAPI._build_add_params.__get__(core)
+    ipfs_client.core.add_generic = add_generic
     return ipfs_client
 
 
@@ -319,8 +316,8 @@ async def test_add_file_streams_from_disk_with_buffered_reader(tmp_path):
     cid = await service.add_file(file_path, cid_version=0)
 
     assert cid == "QmStreamedCid"
-    # cid_version is forwarded as the IPFS query param.
-    assert captured["params"]["cid-version"] == "0"
+    # cid_version is forwarded as the kubo /api/v0/add query param.
+    assert captured["params"] == {"cid-version": "0"}
     # The file is streamed from disk, not buffered in memory.
     payloads = [part[0] for part in captured["mpart"]._parts]
     assert any(isinstance(p, BufferedReaderPayload) for p in payloads)
