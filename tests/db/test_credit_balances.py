@@ -3020,8 +3020,8 @@ def test_get_address_credit_history_resource_types_filter(
             assert "resource_type_expense_unresolvable" not in refs
 
 
-def test_vm_hash_filter_matches_effective_origin(session_factory: DbSessionFactory):
-    """vm_hash matches the entry's effective origin, whether the hash is held
+def test_resource_filter_matches_effective_origin(session_factory: DbSessionFactory):
+    """resource matches the entry's effective origin, whether the hash is held
     in the origin column or the origin_ref column."""
     ts = dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc)
 
@@ -3069,20 +3069,20 @@ def test_vm_hash_filter_matches_effective_origin(session_factory: DbSessionFacto
         session.commit()
 
         results = get_address_credit_history(
-            session=session, address="0xvmhash", vm_hash="vm_target"
+            session=session, address="0xvmhash", resource="vm_target"
         )
         refs = {entry.credit_ref for entry in results}
         assert refs == {"ref_in_origin", "ref_in_origin_ref"}
 
         summary = get_address_credit_history_summary(
-            session=session, address="0xvmhash", vm_hash="vm_target"
+            session=session, address="0xvmhash", resource="vm_target"
         )
         assert summary.entry_count == 2
         assert summary.total_amount == -300
 
         assert (
             count_address_credit_history(
-                session=session, address="0xvmhash", vm_hash="vm_target"
+                session=session, address="0xvmhash", resource="vm_target"
             )
             == 2
         )
@@ -3090,18 +3090,18 @@ def test_vm_hash_filter_matches_effective_origin(session_factory: DbSessionFacto
         # A hash that matches nothing yields an empty result / zero summary.
         assert (
             get_address_credit_history(
-                session=session, address="0xvmhash", vm_hash="nonexistent"
+                session=session, address="0xvmhash", resource="nonexistent"
             )
             == []
         )
         empty_summary = get_address_credit_history_summary(
-            session=session, address="0xvmhash", vm_hash="nonexistent"
+            session=session, address="0xvmhash", resource="nonexistent"
         )
         assert empty_summary.entry_count == 0
         assert empty_summary.total_amount == 0
         assert (
             count_address_credit_history(
-                session=session, address="0xvmhash", vm_hash="nonexistent"
+                session=session, address="0xvmhash", resource="nonexistent"
             )
             == 0
         )

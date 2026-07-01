@@ -399,18 +399,18 @@ async def test_credit_history_resource_types_filter_filters_entries(
 
 
 @pytest.mark.asyncio
-async def test_credit_history_accepts_valid_vm_hash(ccn_api_client):
+async def test_credit_history_accepts_valid_resource(ccn_api_client):
     # No data for this address: a valid filtered query returns 404, not 422.
     response = await ccn_api_client.get(
-        CREDIT_HISTORY_URI, params={"vmHash": "some_vm_hash"}
+        CREDIT_HISTORY_URI, params={"resource": "some_resource_hash"}
     )
     assert response.status == 404
 
 
 @pytest.mark.asyncio
-async def test_credit_history_summary_accepts_valid_vm_hash(ccn_api_client):
+async def test_credit_history_summary_accepts_valid_resource(ccn_api_client):
     response = await ccn_api_client.get(
-        CREDIT_HISTORY_SUMMARY_URI, params={"vmHash": "some_vm_hash"}
+        CREDIT_HISTORY_SUMMARY_URI, params={"resource": "some_resource_hash"}
     )
     assert response.status == 200
     data = await response.json()
@@ -418,7 +418,7 @@ async def test_credit_history_summary_accepts_valid_vm_hash(ccn_api_client):
 
 
 @pytest.mark.asyncio
-async def test_credit_history_vm_hash_filter_filters_entries(
+async def test_credit_history_resource_filter_filters_entries(
     ccn_api_client, session_factory
 ):
     with session_factory() as session:
@@ -476,14 +476,14 @@ async def test_credit_history_vm_hash_filter_filters_entries(
     summary_uri = "/api/v0/addresses/0xe2evmhash/credit_history/summary"
 
     # Listing: matches the two entries for target_vm regardless of column.
-    response = await ccn_api_client.get(listing_uri, params={"vmHash": "target_vm"})
+    response = await ccn_api_client.get(listing_uri, params={"resource": "target_vm"})
     assert response.status == 200
     data = await response.json()
     refs = {entry["credit_ref"] for entry in data["credit_history"]}
     assert refs == {"e2e_vm_expense_origin", "e2e_vm_expense_originref"}
 
     # Summary: aggregates only the matching entries (both outgoing).
-    response = await ccn_api_client.get(summary_uri, params={"vmHash": "target_vm"})
+    response = await ccn_api_client.get(summary_uri, params={"resource": "target_vm"})
     assert response.status == 200
     data = await response.json()
     assert data["entry_count"] == 2
@@ -493,6 +493,6 @@ async def test_credit_history_vm_hash_filter_filters_entries(
 
     # Composes with direction: incoming + target_vm matches nothing -> 404.
     response = await ccn_api_client.get(
-        listing_uri, params={"vmHash": "target_vm", "direction": "incoming"}
+        listing_uri, params={"resource": "target_vm", "direction": "incoming"}
     )
     assert response.status == 404
