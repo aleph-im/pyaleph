@@ -4,11 +4,11 @@ import logging
 from typing import Any, Dict, List, Optional, Union, cast
 
 from aiohttp import web
-from aleph_p2p_client import AlephP2PServiceClient
 from configmanager import Config
 from pydantic import BaseModel, Field, ValidationError
 
 from aleph.services.ipfs import IpfsService
+from aleph.services.p2p.client import P2PGrpcClient
 from aleph.services.p2p.pubsub import publish as pub_p2p
 from aleph.toolkit.shield import shielded
 from aleph.types.protocol import Protocol
@@ -62,7 +62,7 @@ def _validate_request_data(config: Config, request_data: Dict) -> None:
 
 
 async def _pub_on_p2p_topics(
-    p2p_client: AlephP2PServiceClient,
+    p2p_client: P2PGrpcClient,
     ipfs_service: Optional[IpfsService],
     topic: str,
     payload: Union[str, bytes],

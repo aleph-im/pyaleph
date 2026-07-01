@@ -113,11 +113,12 @@ def get_defaults():
             "http_port": 4024,
             # Port used for P2P communication between nodes.
             "port": 4025,
-            # Port used to communicate with the local P2P service.
+            # Port used to communicate with the local P2P service (gRPC).
             "control_port": 4030,
             # Hostname of the P2P service.
             "daemon_host": "p2p-service",
             # Hostname of the RabbitMQ service, as viewed by the Core Channel Node code.
+            # Still used for the node's own RabbitMQ connections (make_mq_conn); no longer used by the P2P client.
             "mq_host": "rabbitmq",
             # Delay between connection attempts to other nodes on the network.
             "reconnect_delay": 60,

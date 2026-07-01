@@ -14,7 +14,7 @@ CORECHANNEL_KEY = "corechannel"
 DEFAULT_CACHE_TTL = 300  # 5 minutes
 
 
-def _extract_peer_id(multiaddress: str) -> Optional[str]:
+def extract_peer_id(multiaddress: str) -> Optional[str]:
     """Extract the peer ID from a multiaddress ending with /p2p/<peer_id>."""
     parts = multiaddress.split("/p2p/")
     if len(parts) == 2 and parts[1]:
@@ -50,7 +50,7 @@ class PeerAllowlist:
     ) -> "PeerAllowlist":
         bootstrap_peer_ids: Set[str] = set()
         for peer_maddr in config.p2p.peers.value:
-            peer_id = _extract_peer_id(peer_maddr)
+            peer_id = extract_peer_id(peer_maddr)
             if peer_id:
                 bootstrap_peer_ids.add(peer_id)
 
@@ -81,7 +81,7 @@ class PeerAllowlist:
             for node in aggregate.content.get("nodes", []):
                 multiaddress = node.get("multiaddress", "")
                 if multiaddress:
-                    peer_id = _extract_peer_id(multiaddress)
+                    peer_id = extract_peer_id(multiaddress)
                     if peer_id:
                         peer_ids.add(peer_id)
 
