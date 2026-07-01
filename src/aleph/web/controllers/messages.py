@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 import aio_pika.abc
 import aiohttp.web_ws
 from aiohttp import WSCloseCode, WSMsgType, web
-from aleph_message.models import ItemHash, MessageType
+from aleph_message.models import ItemHash, MessageType, PaymentType
 from configmanager import Config
 from pydantic import ValidationError
 from sqlalchemy.orm import defer
@@ -777,6 +777,22 @@ async def messages_ws(request: web.Request) -> web.WebSocketResponse:
     return ws
 
 
+def _removal_reason(message_db: MessageDb) -> RemovedMessageReason:
+    """Reason matching the message's payment type.
+
+    Credit-paid messages are removed by the credit balance cron when credits run
+    out; hold/superfluid messages by the token balance cron. Reporting the matching
+    reason avoids surfacing ``balance_insufficient`` for a credit shortfall.
+
+    Uses the persisted ``payment_type`` column (set at ingestion) rather than
+    re-parsing the content, so it reflects what was stored and avoids a redundant
+    content validation on every removed-message read.
+    """
+    if message_db.payment_type == PaymentType.credit.value:
+        return RemovedMessageReason.CREDIT_INSUFFICIENT
+    return RemovedMessageReason.BALANCE_INSUFFICIENT
+
+
 def _get_message_with_status(
     session: DbSession,
     status_db: MessageStatusDb,
@@ -851,7 +867,7 @@ def _get_message_with_status(
             item_hash=item_hash,
             reception_time=reception_time,
             message=message,
-            reason=RemovedMessageReason.BALANCE_INSUFFICIENT,
+            reason=_removal_reason(message_db),
         )
 
     if status == MessageStatus.REMOVED:
@@ -866,7 +882,7 @@ def _get_message_with_status(
             item_hash=item_hash,
             reception_time=reception_time,
             message=message,
-            reason=RemovedMessageReason.BALANCE_INSUFFICIENT,
+            reason=_removal_reason(message_db),
         )
 
     raise NotImplementedError(f"Unknown message status: {status}")
