@@ -272,41 +272,70 @@ async def test_get_ipfs_size_success_after_retry():
     assert ipfs_client.dag.get.call_count == 2
 
 
-@pytest.mark.asyncio
-async def test_add_file_streams_from_path_and_returns_cid():
-    """add_file streams the file from its path via aioipfs.add (an async
-    generator) instead of buffering it in memory, and returns the CID."""
-    calls = []
+def _add_generic_capture(entries, captured):
+    """Build a fake add_generic that records the multipart/params it receives
+    and yields the given entries, mimicking aioipfs.add_generic."""
 
-    async def fake_add(*files, **kwargs):
-        calls.append((files, kwargs))
-        # aioipfs.add yields one entry per file added.
-        yield {"Name": files[0], "Hash": "QmStreamedCid", "Size": "34"}
+    async def fake_add_generic(mpart, params=None):
+        captured["mpart"] = mpart
+        captured["params"] = params
+        for entry in entries:
+            yield entry
 
+    return fake_add_generic
+
+
+def _make_storage_client(add_generic):
+    """AsyncMock storage client whose ``.core`` exposes a caller-supplied
+    add_generic, mirroring aioipfs.AsyncIPFS.core (CoreAPI)."""
     ipfs_client = AsyncMock()
-    ipfs_client.add = fake_add
+    ipfs_client.core.add_generic = add_generic
+    return ipfs_client
+
+
+@pytest.mark.asyncio
+async def test_add_file_streams_from_disk_with_buffered_reader(tmp_path):
+    """Regression for the getbuffer crash: aioipfs 0.7.1's add() wraps a single
+    file in aiohttp's BytesIOPayload, which calls getbuffer() on the raw file
+    object and raises AttributeError on aiohttp >= 3.13. add_file must build the
+    multipart with a streaming BufferedReaderPayload (never an in-memory
+    BytesIOPayload/BytesPayload) so uploads are not buffered in RAM."""
+    from aiohttp.payload import BufferedReaderPayload, BytesIOPayload, BytesPayload
+
+    file_path = tmp_path / "upload.bin"
+    file_path.write_bytes(b"hello ipfs streaming")
+
+    captured: dict = {}
+    ipfs_client = _make_storage_client(
+        _add_generic_capture(
+            [{"Name": "upload.bin", "Hash": "QmStreamedCid", "Size": "20"}], captured
+        )
+    )
     service = IpfsService(ipfs_client=ipfs_client)
 
-    cid = await service.add_file("/tmp/upload.bin")
+    cid = await service.add_file(file_path, cid_version=0)
 
     assert cid == "QmStreamedCid"
-    # The path is forwarded as a string; add_bytes must not be used.
-    assert calls == [(("/tmp/upload.bin",), {"cid_version": 0})]
+    # cid_version is forwarded as the kubo /api/v0/add query param.
+    assert captured["params"] == {"cid-version": "0"}
+    # The file is streamed from disk, not buffered in memory.
+    payloads = [part[0] for part in captured["mpart"]._parts]
+    assert any(isinstance(p, BufferedReaderPayload) for p in payloads)
+    assert not any(isinstance(p, (BytesIOPayload, BytesPayload)) for p in payloads)
+    # add_bytes (the in-memory path) must not be used.
     ipfs_client.add_bytes.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_add_file_raises_when_no_entry_returned():
-    """If aioipfs.add yields nothing (should not happen for a real file), we
-    fail loudly rather than returning a bogus CID."""
+async def test_add_file_raises_when_no_entry_returned(tmp_path):
+    """If the add endpoint yields nothing (should not happen for a real file),
+    we fail loudly rather than returning a bogus CID."""
+    file_path = tmp_path / "upload.bin"
+    file_path.write_bytes(b"data")
 
-    async def empty_add(*files, **kwargs):
-        return
-        yield  # pragma: no cover - marks this as an async generator
-
-    ipfs_client = AsyncMock()
-    ipfs_client.add = empty_add
+    captured: dict = {}
+    ipfs_client = _make_storage_client(_add_generic_capture([], captured))
     service = IpfsService(ipfs_client=ipfs_client)
 
     with pytest.raises(ValueError):
-        await service.add_file("/tmp/upload.bin")
+        await service.add_file(file_path)

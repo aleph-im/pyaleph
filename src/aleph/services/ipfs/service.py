@@ -7,7 +7,9 @@ from typing import AsyncIterable, Dict, Optional, Self, Union, cast
 
 import aiofiles
 import aiohttp
+import aiohttp.payload
 import aioipfs
+import aioipfs.multi
 from configmanager import Config
 
 from aleph.services.ipfs.common import make_ipfs_p2p_client, make_ipfs_pinning_client
@@ -314,24 +316,51 @@ class IpfsService:
     ) -> str:
         """Add a file to IPFS by streaming it from disk.
 
-        Unlike add_bytes, this does not buffer the whole file in memory:
-        aioipfs streams the file from ``file_path`` in chunks. Used by the
-        upload endpoints, where a single file can be up to 1 GiB and reading
-        it fully into RAM would be wasteful (and, at scale, a memory-pressure
-        risk).
+        Unlike add_bytes, this does not buffer the whole file in memory: the
+        file is streamed from ``file_path`` in chunks. Used by the upload
+        endpoints, where a single file can be up to 1 GiB and reading it fully
+        into RAM would be wasteful (and, at scale, a memory-pressure risk).
 
         The resulting CID is identical to ``add_bytes`` for the same content:
         the CID is derived from the file bytes only. The filename is not part
         of it because we do not wrap the file in a directory.
+
+        We build the multipart request ourselves instead of calling
+        ``aioipfs.AsyncIPFS.add``: aioipfs 0.7.1 (the latest release) wraps a
+        single file in aiohttp's ``BytesIOPayload``, whose ``__init__`` calls
+        ``value.getbuffer()`` on the raw file object. A plain file is an
+        ``io.BufferedReader``, which has no ``getbuffer``, so ``add`` raises
+        ``AttributeError`` on aiohttp >= 3.13. ``BufferedReaderPayload`` is the
+        correct payload for a file object and streams it straight from disk.
         """
-        # ``add`` is an async generator yielding one entry per file added.
-        # We add a single file (no directory wrapping), so exactly one entry
-        # is produced; keep the last one defensively.
+        path = pathlib.Path(file_path)
+        # ``cid-version`` is a kubo /api/v0/add query parameter (stable across
+        # aioipfs versions), so we build the params dict directly rather than
+        # coupling to aioipfs's private _build_add_params. add_generic and the
+        # FormDataWriter have no public equivalent, so those we do reach for on
+        # the CoreAPI (AsyncIPFS.core): the client proxies only a handful of
+        # core methods and add_generic is not among them.
+        params = {"cid-version": str(cid_version)}
+        core = self.storage_client.core
+
         result: Optional[Dict] = None
-        async for entry in self.storage_client.add(
-            str(file_path), cid_version=cid_version
-        ):
-            result = entry
+        with open(path, "rb") as fd:
+            with aioipfs.multi.FormDataWriter() as mpwriter:
+                file_payload = aiohttp.payload.BufferedReaderPayload(
+                    fd,
+                    content_type="application/octet-stream",
+                    headers={"Abspath": str(path)},
+                )
+                file_payload.set_content_disposition(
+                    "form-data", name="file", filename=path.name
+                )
+                mpwriter.append_payload(file_payload)
+
+                # add_generic yields one entry per file added. We add a single
+                # file (no directory wrapping), so exactly one entry is
+                # produced; keep the last one defensively.
+                async for entry in core.add_generic(mpwriter, params=params):
+                    result = entry
 
         if result is None:
             raise ValueError(f"IPFS add returned no entry for {file_path}")
