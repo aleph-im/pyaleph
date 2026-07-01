@@ -202,6 +202,15 @@ class CreditHistoryFilterParams(BaseModel):
         "the given values. Entries whose origin does not resolve to a known "
         "message (including forgotten messages) never match.",
     )
+    resource: Optional[str] = Field(
+        default=None,
+        description="Filter by the hash of the billed resource (e.g. a VM's "
+        "INSTANCE/PROGRAM message hash, or a STORE file's message hash). Matches "
+        "the entry's effective origin (coalesce(nullif(origin, ''), origin_ref)) "
+        "- the message hash of the resource being billed. Unlike resourceTypes "
+        "this compares the entry's own columns and does not require the "
+        "referenced message to still exist, so forgotten resources still match.",
+    )
 
     @field_validator("exclude_payment_method", "resource_types", mode="before")
     def split_comma_separated(cls, v):

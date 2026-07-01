@@ -828,6 +828,11 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
         schema:
           type: string
         description: "Comma-separated billed resource message types to match (e.g. STORE for storage, INSTANCE,PROGRAM for compute); allowed values: POST, AGGREGATE, STORE, PROGRAM, INSTANCE, FORGET. Entries with no resolvable resource match no type"
+      - name: resource
+        in: query
+        schema:
+          type: string
+        description: "Filter by the billed resource's message hash (e.g. a VM's INSTANCE/PROGRAM hash, or a STORE file's hash); matches the entry's effective origin (coalesce(nullif(origin,''), origin_ref))"
       - name: sort_by
         in: query
         schema:
@@ -922,6 +927,7 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
                     end_date=query_params.end_date,
                     direction=query_params.direction,
                     resource_types=query_params.resource_types,
+                    resource=query_params.resource,
                     sort_by=query_params.sort_by,
                     sort_order=query_params.sort_order,
                     after_sort_value=after_sort_value,
@@ -998,6 +1004,7 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
             end_date=query_params.end_date,
             direction=query_params.direction,
             resource_types=query_params.resource_types,
+            resource=query_params.resource,
             sort_by=query_params.sort_by,
             sort_order=query_params.sort_order,
         )
@@ -1021,6 +1028,7 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
             end_date=query_params.end_date,
             direction=query_params.direction,
             resource_types=query_params.resource_types,
+            resource=query_params.resource,
         )
 
         # Convert to response items
@@ -1134,6 +1142,11 @@ async def get_account_credit_history_summary(request: web.Request) -> web.Respon
         schema:
           type: string
         description: "Comma-separated billed resource message types to match (e.g. STORE for storage, INSTANCE,PROGRAM for compute); allowed values: POST, AGGREGATE, STORE, PROGRAM, INSTANCE, FORGET. Entries with no resolvable resource match no type"
+      - name: resource
+        in: query
+        schema:
+          type: string
+        description: "Filter by the billed resource's message hash (e.g. a VM's INSTANCE/PROGRAM hash, or a STORE file's hash); matches the entry's effective origin (coalesce(nullif(origin,''), origin_ref))"
     responses:
       '200':
         description: Aggregate totals over the filtered credit history
@@ -1172,6 +1185,7 @@ async def get_account_credit_history_summary(request: web.Request) -> web.Respon
             end_date=query_params.end_date,
             direction=query_params.direction,
             resource_types=query_params.resource_types,
+            resource=query_params.resource,
         )
 
     response = GetAccountCreditHistorySummaryResponse(
