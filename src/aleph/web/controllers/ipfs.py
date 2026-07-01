@@ -191,12 +191,10 @@ async def ipfs_add_file(request: web.Request):
                 _verify_user_balance(session=session, content=message_content)
 
         # Pin to IPFS, side effect: file is now on the local IPFS node.
-        temp_file = await uploaded_file.open_temp_file()
-        file_content = await temp_file.read()
-        if isinstance(file_content, str):
-            file_content = file_content.encode("utf-8")
-
-        cid = await ipfs_service.add_bytes(file_content)
+        # Stream the file straight from its temp path instead of reading it
+        # fully into memory: uploads can be up to 1 GiB and add_bytes would
+        # buffer the whole payload in RAM.
+        cid = await ipfs_service.add_file(uploaded_file.get_temp_file_path())
 
         # Post-pin: stat, CID match, persist.
         # Failures from this point on must leave the pin covered by the

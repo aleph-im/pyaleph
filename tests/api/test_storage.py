@@ -69,13 +69,7 @@ MESSAGE_DICT = {
 async def api_client(ccn_test_aiohttp_app, mocker, aiohttp_client):
     ipfs_service = mocker.AsyncMock()
     ipfs_service.add_bytes = mocker.AsyncMock(return_value=EXPECTED_FILE_CID)
-    ipfs_service.add_file = mocker.AsyncMock(
-        return_value={
-            "Hash": EXPECTED_FILE_CID,
-            "Size": 34,
-            "Name": "hello-earthlings.txt",
-        }
-    )
+    ipfs_service.add_file = mocker.AsyncMock(return_value=EXPECTED_FILE_CID)
     ipfs_service.get_ipfs_content = mocker.AsyncMock(return_value=FILE_CONTENT)
 
     async def _mock_ipfs_content_iterator(*args, **kwargs):

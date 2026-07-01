@@ -270,3 +270,43 @@ async def test_get_ipfs_size_success_after_retry():
     # Assert
     assert result == 9876
     assert ipfs_client.dag.get.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_add_file_streams_from_path_and_returns_cid():
+    """add_file streams the file from its path via aioipfs.add (an async
+    generator) instead of buffering it in memory, and returns the CID."""
+    calls = []
+
+    async def fake_add(*files, **kwargs):
+        calls.append((files, kwargs))
+        # aioipfs.add yields one entry per file added.
+        yield {"Name": files[0], "Hash": "QmStreamedCid", "Size": "34"}
+
+    ipfs_client = AsyncMock()
+    ipfs_client.add = fake_add
+    service = IpfsService(ipfs_client=ipfs_client)
+
+    cid = await service.add_file("/tmp/upload.bin")
+
+    assert cid == "QmStreamedCid"
+    # The path is forwarded as a string; add_bytes must not be used.
+    assert calls == [(("/tmp/upload.bin",), {"cid_version": 0})]
+    ipfs_client.add_bytes.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_add_file_raises_when_no_entry_returned():
+    """If aioipfs.add yields nothing (should not happen for a real file), we
+    fail loudly rather than returning a bogus CID."""
+
+    async def empty_add(*files, **kwargs):
+        return
+        yield  # pragma: no cover - marks this as an async generator
+
+    ipfs_client = AsyncMock()
+    ipfs_client.add = empty_add
+    service = IpfsService(ipfs_client=ipfs_client)
+
+    with pytest.raises(ValueError):
+        await service.add_file("/tmp/upload.bin")
