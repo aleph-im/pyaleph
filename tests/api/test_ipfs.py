@@ -85,9 +85,8 @@ IPFS_MESSAGE_DICT_CREDIT: dict[str, Any] = {
 @pytest_asyncio.fixture
 async def api_client(ccn_test_aiohttp_app, mocker, aiohttp_client):
     ipfs_service = mocker.AsyncMock()
-    # /ipfs/add_file streams the upload to IPFS via add_file (not add_bytes).
+    # /ipfs/add_file streams the upload to IPFS via add_file (the pin call).
     ipfs_service.add_file = mocker.AsyncMock(return_value=EXPECTED_FILE_CID)
-    ipfs_service.add_bytes = mocker.AsyncMock(return_value=EXPECTED_FILE_CID)
     ipfs_service.storage_client.files.stat = mocker.AsyncMock(
         return_value={
             "Hash": EXPECTED_FILE_CID,
@@ -1188,7 +1187,6 @@ async def small_global_cap_client(
 
     ipfs_service = mocker.AsyncMock()
     ipfs_service.add_file = mocker.AsyncMock(return_value=EXPECTED_FILE_CID)
-    ipfs_service.add_bytes = mocker.AsyncMock(return_value=EXPECTED_FILE_CID)
     ipfs_service.storage_client.files.stat = mocker.AsyncMock(
         return_value={
             "Hash": EXPECTED_FILE_CID,
