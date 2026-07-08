@@ -59,6 +59,9 @@ class AlephCreditHistoryDb(Base):
     origin: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     origin_ref: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     payment_method: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # v2 aggregated expense entries only (one entry per address); NULL otherwise.
+    expense_count: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    expense_size_mib: Mapped[Optional[Decimal]] = mapped_column(DECIMAL, nullable=True)
     credit_ref: Mapped[str] = mapped_column(String, nullable=False, primary_key=True)
     credit_index: Mapped[int] = mapped_column(Integer, nullable=False, primary_key=True)
     expiration_date: Mapped[Optional[dt.datetime]] = mapped_column(

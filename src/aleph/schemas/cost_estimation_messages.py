@@ -86,7 +86,9 @@ class CostEstimationProgramContent(ProgramContent):
 
 
 class CostEstimationStoreContent(StoreContent):
-    estimated_size_mib: Optional[int] = None
+    # float so exact byte sizes (size / MiB) can be estimated, e.g. when
+    # pricing forgotten STORE messages from their preserved metadata.
+    estimated_size_mib: Optional[float] = None
 
 
 class BaseCostEstimationMessage(AlephBaseMessage, Generic[MType, ContentType]):

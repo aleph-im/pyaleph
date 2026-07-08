@@ -1,9 +1,10 @@
 import datetime as dt
 import logging
-from typing import List
+from typing import List, cast
 
 from aleph_message.models import ItemHash, MessageType, PaymentType
 from sqlalchemy import update
+from sqlalchemy.engine import CursorResult
 
 from aleph.db.accessors.balances import (
     get_credit_balance,
@@ -12,9 +13,11 @@ from aleph.db.accessors.balances import (
 from aleph.db.accessors.cost import get_total_costs_for_address_grouped_by_message
 from aleph.db.accessors.files import update_file_pin_grace_period
 from aleph.db.accessors.messages import (
+    delete_removed_message,
     get_message_by_item_hash,
     get_message_status,
     make_message_status_upsert_query,
+    upsert_removed_message_size,
 )
 from aleph.db.models.cron_jobs import CronJobDb
 from aleph.db.models.messages import MessageDb, MessageStatusDb
@@ -130,20 +133,32 @@ class CreditBalanceCronJob(BaseCronJob):
                     delete_by=delete_by,
                 )
 
-            session.execute(
-                make_message_status_upsert_query(
-                    item_hash=item_hash,
-                    new_status=MessageStatus.REMOVING,
-                    reception_time=now,
-                    where=(MessageStatusDb.status == MessageStatus.PROCESSED),
+            result = cast(
+                CursorResult,
+                session.execute(
+                    make_message_status_upsert_query(
+                        item_hash=item_hash,
+                        new_status=MessageStatus.REMOVING,
+                        reception_time=now,
+                        where=(MessageStatusDb.status == MessageStatus.PROCESSED),
+                    )
+                ),
+            )
+            # Only when this call actually performed the PROCESSED->REMOVING
+            # flip: a message on another transition (e.g. already REMOVED)
+            # must not get its denormalized status clobbered or a removal
+            # record written under it.
+            if result.rowcount > 0:
+                # Dual-write to messages table (trigger handles message_counts)
+                session.execute(
+                    update(MessageDb)
+                    .where(MessageDb.item_hash == item_hash)
+                    .values(status_value=MessageStatus.REMOVING)
                 )
-            )
-            # Dual-write to messages table (trigger handles message_counts)
-            session.execute(
-                update(MessageDb)
-                .where(MessageDb.item_hash == item_hash)
-                .values(status_value=MessageStatus.REMOVING)
-            )
+                # Snapshot the file size while the files row still exists;
+                # the garbage collector stamps removed_at at
+                # REMOVING->REMOVED.
+                upsert_removed_message_size(session=session, item_hash=item_hash)
 
     async def recover_messages(self, session: DbSession, messages: List[ItemHash]):
         for item_hash in messages:
@@ -158,17 +173,26 @@ class CreditBalanceCronJob(BaseCronJob):
                     delete_by=None,
                 )
 
-            session.execute(
-                make_message_status_upsert_query(
-                    item_hash=item_hash,
-                    new_status=MessageStatus.PROCESSED,
-                    reception_time=utc_now(),
-                    where=(MessageStatusDb.status == MessageStatus.REMOVING),
+            result = cast(
+                CursorResult,
+                session.execute(
+                    make_message_status_upsert_query(
+                        item_hash=item_hash,
+                        new_status=MessageStatus.PROCESSED,
+                        reception_time=utc_now(),
+                        where=(MessageStatusDb.status == MessageStatus.REMOVING),
+                    )
+                ),
+            )
+            # Only when this call actually performed the REMOVING->PROCESSED
+            # flip: if the garbage collector already finalized
+            # REMOVING->REMOVED, the message must not reappear as processed
+            # and the removal record (size/removed_at) must survive.
+            if result.rowcount > 0:
+                # Dual-write to messages table (trigger handles message_counts)
+                session.execute(
+                    update(MessageDb)
+                    .where(MessageDb.item_hash == item_hash)
+                    .values(status_value=MessageStatus.PROCESSED)
                 )
-            )
-            # Dual-write to messages table (trigger handles message_counts)
-            session.execute(
-                update(MessageDb)
-                .where(MessageDb.item_hash == item_hash)
-                .values(status_value=MessageStatus.PROCESSED)
-            )
+                delete_removed_message(session=session, item_hash=item_hash)

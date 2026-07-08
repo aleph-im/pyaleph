@@ -23,11 +23,13 @@ from aleph.types.message_status import (
 from aleph.types.sort_order import SortBy, SortByMessageType, SortOrder
 
 from ..models.chains import ChainTxDb
+from ..models.files import StoredFileDb
 from ..models.messages import (
     ForgottenMessageDb,
     MessageDb,
     MessageStatusDb,
     RejectedMessageDb,
+    RemovedMessageDb,
     message_confirmations,
 )
 from ..models.pending_messages import PendingMessageDb
@@ -528,8 +530,263 @@ def get_forgotten_message(
     ).scalar()
 
 
+def make_matching_forgotten_messages_query(
+    hashes: Optional[Sequence[ItemHash]] = None,
+    addresses: Optional[Sequence[str]] = None,
+    owners: Optional[Sequence[str]] = None,
+    chains: Optional[Sequence[Chain]] = None,
+    message_type: Optional[MessageType] = None,
+    message_types: Optional[Sequence[MessageType]] = None,
+    channels: Optional[Sequence[str]] = None,
+    payment_types: Optional[Sequence[PaymentType]] = None,
+    start_date: Optional[Union[float, dt.datetime]] = None,
+    end_date: Optional[Union[float, dt.datetime]] = None,
+    sort_order: SortOrder = SortOrder.DESCENDING,
+    page: int = 1,
+    pagination: int = 20,
+    # Non-filter query params (sort_by, ...) are passed through by callers;
+    # unsupported narrowing filters are rejected upstream with a 400.
+    **kwargs,
+) -> Select:
+    """
+    Filters on the forgotten_messages table. Unlike live-message queries, date
+    filters and time sorting apply to `forgotten_at` (the deletion time), not
+    `time`: the purpose of this query is windowed gap-detection by deletion
+    time. Legacy rows with NULL `forgotten_at` are excluded by date filters
+    (SQL comparison semantics) and sorted last otherwise.
+    """
+    select_stmt = select(ForgottenMessageDb)
+
+    start_datetime = coerce_to_datetime(start_date)
+    end_datetime = coerce_to_datetime(end_date)
+
+    if hashes:
+        select_stmt = select_stmt.where(ForgottenMessageDb.item_hash.in_(hashes))
+    if addresses:
+        select_stmt = select_stmt.where(ForgottenMessageDb.sender.in_(addresses))
+    if owners:
+        select_stmt = select_stmt.where(ForgottenMessageDb.owner.in_(owners))
+    if chains:
+        select_stmt = select_stmt.where(ForgottenMessageDb.chain.in_(chains))
+    if message_types:
+        select_stmt = select_stmt.where(ForgottenMessageDb.type.in_(message_types))
+    if message_type:
+        select_stmt = select_stmt.where(ForgottenMessageDb.type == message_type)
+    if channels:
+        select_stmt = select_stmt.where(ForgottenMessageDb.channel.in_(channels))
+    if payment_types:
+        select_stmt = select_stmt.where(
+            ForgottenMessageDb.payment_type.in_([pt.value for pt in payment_types])
+        )
+    if start_datetime:
+        select_stmt = select_stmt.where(
+            ForgottenMessageDb.forgotten_at >= start_datetime
+        )
+    if end_datetime:
+        select_stmt = select_stmt.where(ForgottenMessageDb.forgotten_at < end_datetime)
+
+    if sort_order == SortOrder.DESCENDING:
+        order_by_columns = (
+            nullslast(ForgottenMessageDb.forgotten_at.desc()),
+            ForgottenMessageDb.item_hash.asc(),
+        )
+    else:
+        order_by_columns = (
+            nullslast(ForgottenMessageDb.forgotten_at.asc()),
+            ForgottenMessageDb.item_hash.asc(),
+        )
+    select_stmt = select_stmt.order_by(*order_by_columns)
+
+    if page > 1:
+        select_stmt = select_stmt.offset((page - 1) * pagination)
+    if pagination:
+        select_stmt = select_stmt.limit(pagination)
+
+    return select_stmt
+
+
+def count_matching_forgotten_messages(
+    session: DbSession,
+    **kwargs,  # Same as make_matching_forgotten_messages_query
+) -> int:
+    select_stmt = (
+        make_matching_forgotten_messages_query(**{**kwargs, "page": 1, "pagination": 0})
+        .order_by(None)
+        .subquery()
+    )
+    select_count_stmt = select(func.count()).select_from(select_stmt)
+    return session.execute(select_count_stmt).scalar_one()
+
+
+def get_removed_message(
+    session: DbSession, item_hash: str
+) -> Optional[RemovedMessageDb]:
+    return session.execute(
+        select(RemovedMessageDb).where(RemovedMessageDb.item_hash == item_hash)
+    ).scalar()
+
+
+def upsert_removed_message_size(session: DbSession, item_hash: str) -> None:
+    """
+    Snapshot the file size of a message entering REMOVING. The garbage
+    collector deletes the files row before the status flips to REMOVED, so
+    the size must be captured while the message is still alive. The size is
+    NULL for non-STORE messages.
+    """
+    size_subquery = (
+        select(StoredFileDb.size)
+        .where(StoredFileDb.hash == MessageDb.content_item_hash)
+        .scalar_subquery()
+    )
+    insert_stmt = insert(RemovedMessageDb).from_select(
+        ["item_hash", "size"],
+        select(MessageDb.item_hash, size_subquery).where(
+            MessageDb.item_hash == item_hash
+        ),
+    )
+    upsert_stmt = insert_stmt.on_conflict_do_update(
+        constraint="removed_messages_pkey",
+        set_={"size": insert_stmt.excluded.size},
+    )
+    session.execute(upsert_stmt)
+
+
+def delete_removed_message(session: DbSession, item_hash: str) -> None:
+    """Discard the removal record (REMOVING->PROCESSED recovery or forget)."""
+    session.execute(
+        delete(RemovedMessageDb).where(RemovedMessageDb.item_hash == item_hash)
+    )
+
+
+def mark_removed_message(
+    session: DbSession, item_hash: str, removed_at: dt.datetime
+) -> None:
+    """
+    Stamp the removal time at REMOVING->REMOVED. Inserts a row without size
+    for messages that were already REMOVING before the size snapshot existed.
+    """
+    upsert_stmt = (
+        insert(RemovedMessageDb)
+        .values(item_hash=item_hash, size=None, removed_at=removed_at)
+        .on_conflict_do_update(
+            constraint="removed_messages_pkey",
+            set_={"removed_at": removed_at},
+        )
+    )
+    session.execute(upsert_stmt)
+
+
+def make_matching_removed_messages_query(
+    hashes: Optional[Sequence[ItemHash]] = None,
+    addresses: Optional[Sequence[str]] = None,
+    owners: Optional[Sequence[str]] = None,
+    chains: Optional[Sequence[Chain]] = None,
+    message_type: Optional[MessageType] = None,
+    message_types: Optional[Sequence[MessageType]] = None,
+    channels: Optional[Sequence[str]] = None,
+    payment_types: Optional[Sequence[PaymentType]] = None,
+    start_date: Optional[Union[float, dt.datetime]] = None,
+    end_date: Optional[Union[float, dt.datetime]] = None,
+    sort_order: SortOrder = SortOrder.DESCENDING,
+    page: int = 1,
+    pagination: int = 20,
+    include_confirmations: bool = False,
+    # Non-filter query params (sort_by, ...) are passed through by callers;
+    # unsupported narrowing filters are rejected upstream with a 400.
+    **kwargs,
+) -> Select:
+    """
+    REMOVED messages joined with their removal record. Like forgotten
+    queries, date filters and time sorting apply to `removed_at`, not `time`:
+    the purpose of this query is windowed gap-detection by removal time.
+    Legacy rows without a removal record (or not yet stamped) are excluded by
+    date filters (SQL comparison semantics) and sorted last otherwise.
+    """
+    select_stmt = (
+        select(MessageDb, RemovedMessageDb)
+        .join(
+            RemovedMessageDb,
+            RemovedMessageDb.item_hash == MessageDb.item_hash,
+            isouter=True,
+        )
+        .where(MessageDb.status_value == MessageStatus.REMOVED)
+    )
+
+    if include_confirmations:
+        select_stmt = select_stmt.options(
+            selectinload(MessageDb.confirmations).options(
+                load_only(ChainTxDb.hash, ChainTxDb.chain, ChainTxDb.height)
+            )
+        )
+
+    start_datetime = coerce_to_datetime(start_date)
+    end_datetime = coerce_to_datetime(end_date)
+
+    if hashes:
+        select_stmt = select_stmt.where(MessageDb.item_hash.in_(hashes))
+    if addresses:
+        select_stmt = select_stmt.where(MessageDb.sender.in_(addresses))
+    if owners:
+        select_stmt = select_stmt.where(MessageDb.owner.in_(owners))
+    if chains:
+        select_stmt = select_stmt.where(MessageDb.chain.in_(chains))
+    if message_types:
+        select_stmt = select_stmt.where(MessageDb.type.in_(message_types))
+    if message_type:
+        select_stmt = select_stmt.where(MessageDb.type == message_type)
+    if channels:
+        select_stmt = select_stmt.where(MessageDb.channel.in_(channels))
+    if payment_types:
+        # Billing semantics: the absence of a payment field means hold, so
+        # implicit-hold messages (NULL column) must match paymentTypes=hold.
+        select_stmt = select_stmt.where(
+            func.coalesce(MessageDb.payment_type, "hold").in_(
+                [pt.value for pt in payment_types]
+            )
+        )
+    if start_datetime:
+        select_stmt = select_stmt.where(RemovedMessageDb.removed_at >= start_datetime)
+    if end_datetime:
+        select_stmt = select_stmt.where(RemovedMessageDb.removed_at < end_datetime)
+
+    if sort_order == SortOrder.DESCENDING:
+        order_by_columns = (
+            nullslast(RemovedMessageDb.removed_at.desc()),
+            MessageDb.item_hash.asc(),
+        )
+    else:
+        order_by_columns = (
+            nullslast(RemovedMessageDb.removed_at.asc()),
+            MessageDb.item_hash.asc(),
+        )
+    select_stmt = select_stmt.order_by(*order_by_columns)
+
+    if page > 1:
+        select_stmt = select_stmt.offset((page - 1) * pagination)
+    if pagination:
+        select_stmt = select_stmt.limit(pagination)
+
+    return select_stmt
+
+
+def count_matching_removed_messages(
+    session: DbSession,
+    **kwargs,  # Same as make_matching_removed_messages_query
+) -> int:
+    select_stmt = (
+        make_matching_removed_messages_query(**{**kwargs, "page": 1, "pagination": 0})
+        .order_by(None)
+        .subquery()
+    )
+    select_count_stmt = select(func.count()).select_from(select_stmt)
+    return session.execute(select_count_stmt).scalar_one()
+
+
 def forget_message(
-    session: DbSession, item_hash: str, forget_message_hash: str
+    session: DbSession,
+    item_hash: str,
+    forget_message_hash: str,
+    forgotten_at: dt.datetime,
 ) -> None:
     """
     Marks a processed message as forgotten.
@@ -540,7 +797,15 @@ def forget_message(
     :param session: DB session.
     :param item_hash: Hash of the message to forget.
     :param forget_message_hash: Hash of the forget message.
+    :param forgotten_at: Time of the FORGET message.
     """
+
+    # File size preserved for billing (STORE messages; NULL otherwise).
+    size_subquery = (
+        select(StoredFileDb.size)
+        .where(StoredFileDb.hash == MessageDb.content_item_hash)
+        .scalar_subquery()
+    )
 
     # Copy to forgotten_messages for backward compat during transition
     copy_row_stmt = insert(ForgottenMessageDb).from_select(
@@ -554,6 +819,10 @@ def forget_message(
             "time",
             "channel",
             "forgotten_by",
+            "owner",
+            "payment_type",
+            "size",
+            "forgotten_at",
         ],
         select(
             MessageDb.item_hash,
@@ -565,6 +834,12 @@ def forget_message(
             MessageDb.time,
             MessageDb.channel,
             literal(f"{{{forget_message_hash}}}"),
+            MessageDb.owner,
+            # Messages without an explicit payment field are hold-paid;
+            # capture the effective payment type so billing can rely on it.
+            func.coalesce(MessageDb.payment_type, "hold"),
+            size_subquery,
+            literal(forgotten_at),
         ).where(MessageDb.item_hash == item_hash),
     )
     session.execute(copy_row_stmt)
@@ -585,6 +860,9 @@ def forget_message(
         .values(status=MessageStatus.FORGOTTEN)
         .where(MessageStatusDb.item_hash == item_hash)
     )
+
+    # The target may have been REMOVING: forgetting supersedes removal.
+    delete_removed_message(session=session, item_hash=item_hash)
 
     delete_costs_for_message(
         session=session,

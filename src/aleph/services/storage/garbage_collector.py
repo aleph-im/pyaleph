@@ -18,6 +18,7 @@ from aleph.db.accessors.messages import (
     get_matching_hashes,
     get_one_message_by_item_hash,
     make_message_status_upsert_query,
+    mark_removed_message,
 )
 from aleph.db.models.messages import MessageDb, MessageStatusDb
 from aleph.storage import StorageService
@@ -94,7 +95,7 @@ class GarbageCollector:
                     # If all resources have been deleted, update status to REMOVED
                     if resources_deleted:
                         now = utc_now()
-                        session.execute(
+                        result = session.execute(
                             make_message_status_upsert_query(
                                 item_hash=item_hash,
                                 new_status=MessageStatus.REMOVED,
@@ -104,12 +105,25 @@ class GarbageCollector:
                                 ),
                             )
                         )
-                        # Dual-write to messages table (trigger handles message_counts)
-                        session.execute(
-                            sa_update(MessageDb)
-                            .where(MessageDb.item_hash == item_hash)
-                            .values(status_value=MessageStatus.REMOVED)
-                        )
+                        # Only when this call actually performed the
+                        # REMOVING->REMOVED flip: a concurrent recovery may
+                        # have just returned the message to PROCESSED, and it
+                        # must not reappear as removed with a bogus
+                        # removed_at.
+                        if result.rowcount > 0:
+                            # Dual-write to messages table (trigger handles
+                            # message_counts)
+                            session.execute(
+                                sa_update(MessageDb)
+                                .where(MessageDb.item_hash == item_hash)
+                                .values(status_value=MessageStatus.REMOVED)
+                            )
+                            # Stamp the removal time on the record snapshotted
+                            # at PROCESSED->REMOVING (inserted without size if
+                            # the message predates the snapshot).
+                            mark_removed_message(
+                                session=session, item_hash=item_hash, removed_at=now
+                            )
 
                 except Exception as err:
                     LOGGER.error(

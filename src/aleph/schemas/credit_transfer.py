@@ -120,7 +120,14 @@ class CreditExpenseEntry(BaseModel):
     execution_id: Optional[str] = None
     node_id: Optional[str] = None
     price: Optional[str] = None
-    time: Optional[float] = None  # accepted but ignored
+    time: Optional[float] = None  # v2: total billed seconds; not persisted
+    # v2 aggregated entries (one entry per address); NULL on v1 entries.
+    count: Optional[int] = Field(
+        default=None, ge=0, description="Files aggregated into this entry"
+    )
+    size: Optional[Decimal] = Field(
+        default=None, ge=0, description="Total MiB billed for this address"
+    )
 
     @field_validator("address")
     @classmethod

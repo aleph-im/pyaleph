@@ -191,6 +191,16 @@ class RemovedMessageStatus(BaseMessageStatus):
     status: MessageStatus = MessageStatus.REMOVED
     message: AlephMessage
     reason: RemovedMessageReason
+    # Removal record: file-size snapshot taken at PROCESSED->REMOVING and
+    # removal time stamped at REMOVING->REMOVED (NULL for legacy removals).
+    removed_at: Optional[dt.datetime] = None
+    size: Optional[int] = None
+
+    @field_serializer("removed_at")
+    def serialize_removed_at(
+        self, value: Optional[dt.datetime], _info
+    ) -> Optional[float]:
+        return value.timestamp() if value is not None else None
 
 
 class ForgottenMessage(BaseModel):
@@ -204,6 +214,21 @@ class ForgottenMessage(BaseModel):
     item_hash: str
     time: dt.datetime
     channel: Optional[str] = None
+    # Billing metadata preserved at forget time (NULL for legacy rows).
+    owner: Optional[str] = None
+    payment_type: Optional[str] = None
+    size: Optional[int] = None
+    forgotten_at: Optional[dt.datetime] = None
+
+    @field_serializer("time")
+    def serialize_time(self, dt: dt.datetime, _info) -> float:
+        return dt.timestamp()
+
+    @field_serializer("forgotten_at")
+    def serialize_forgotten_at(
+        self, value: Optional[dt.datetime], _info
+    ) -> Optional[float]:
+        return value.timestamp() if value is not None else None
 
 
 class ForgottenMessageStatus(BaseMessageStatus):

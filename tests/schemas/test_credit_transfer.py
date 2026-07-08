@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 import pytest
 from pydantic import ValidationError
 
@@ -340,6 +342,54 @@ class TestCreditExpenseContent:
         with pytest.raises(ValidationError, match="not be empty"):
             CreditExpenseContent.model_validate(
                 {"expense": {"credits": [{"address": "", "amount": 10}]}}
+            )
+
+    def test_v2_aggregated_entry(self):
+        entry = CreditExpenseContent.model_validate(
+            {
+                "expense": {
+                    "credits": [
+                        {
+                            "address": "0xabc",
+                            "amount": 500,
+                            "ref": "storage",
+                            "count": 42,
+                            "size": 1024.5,
+                            "time": 3600.0,
+                        }
+                    ]
+                }
+            }
+        ).expense.credits[0]
+        assert entry.count == 42
+        assert entry.size == Decimal("1024.5")
+        assert entry.time == 3600.0
+
+    def test_v1_entry_leaves_v2_fields_none(self):
+        entry = CreditExpenseContent.model_validate(
+            {"expense": {"credits": [{"address": "0xabc", "amount": 500}]}}
+        ).expense.credits[0]
+        assert entry.count is None
+        assert entry.size is None
+
+    def test_negative_count_rejected(self):
+        with pytest.raises(ValidationError):
+            CreditExpenseContent.model_validate(
+                {
+                    "expense": {
+                        "credits": [{"address": "0xabc", "amount": 10, "count": -1}]
+                    }
+                }
+            )
+
+    def test_negative_size_rejected(self):
+        with pytest.raises(ValidationError):
+            CreditExpenseContent.model_validate(
+                {
+                    "expense": {
+                        "credits": [{"address": "0xabc", "amount": 10, "size": -0.5}]
+                    }
+                }
             )
 
     def test_float_time_accepted(self):

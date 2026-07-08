@@ -496,3 +496,48 @@ async def test_credit_history_resource_filter_filters_entries(
         listing_uri, params={"resource": "target_vm", "direction": "incoming"}
     )
     assert response.status == 404
+
+
+@pytest.mark.asyncio
+async def test_credit_history_exposes_v2_expense_aggregates(
+    ccn_api_client, session_factory
+):
+    """v2 aggregated expense entries expose expense_count/expense_size_mib."""
+    with session_factory() as session:
+        update_credit_balances_expense(
+            session=session,
+            credits_list=[
+                {
+                    "address": "0xe2ev2expense",
+                    "amount": 750,
+                    "ref": "storage",
+                    "count": 3,
+                    "size": 512.25,
+                },
+                # v1-style entry, no aggregates
+                {
+                    "address": "0xe2ev2expense",
+                    "amount": 100,
+                    "ref": "v1_ref",
+                },
+            ],
+            message_hash="e2e_v2_expense",
+            message_timestamp=dt.datetime(2026, 4, 2, tzinfo=dt.timezone.utc),
+        )
+        session.commit()
+
+    response = await ccn_api_client.get(
+        "/api/v0/addresses/0xe2ev2expense/credit_history"
+    )
+    assert response.status == 200
+    data = await response.json()
+
+    entries = {entry["origin_ref"]: entry for entry in data["credit_history"]}
+
+    v2_entry = entries["storage"]
+    assert v2_entry["expense_count"] == 3
+    assert float(v2_entry["expense_size_mib"]) == 512.25
+
+    v1_entry = entries["v1_ref"]
+    assert v1_entry["expense_count"] is None
+    assert v1_entry["expense_size_mib"] is None

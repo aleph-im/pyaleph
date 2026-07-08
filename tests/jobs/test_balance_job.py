@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 import pytest_asyncio
-from aleph_message.models import Chain, ItemType, MessageType, PaymentType
+from aleph_message.models import Chain, ItemHash, ItemType, MessageType, PaymentType
 
 from aleph.db.accessors.messages import get_message_status
 from aleph.db.models.account_costs import AccountCostsDb
@@ -16,7 +16,7 @@ from aleph.db.models.files import (
     MessageFilePinDb,
     StoredFileDb,
 )
-from aleph.db.models.messages import MessageDb, MessageStatusDb
+from aleph.db.models.messages import MessageDb, MessageStatusDb, RemovedMessageDb
 from aleph.jobs.cron.balance_job import BalanceCronJob
 from aleph.toolkit.constants import (
     DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
@@ -282,11 +282,16 @@ async def fixture_message_for_recovery(session_factory, now, fixture_base_data):
         message, STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT + 2000, now
     )
 
+    # Size snapshot taken when the message entered REMOVING
+    removed_message = RemovedMessageDb(item_hash=message_hash, size=30 * MiB)
+
     with session_factory() as session:
         session.add_all([message])
         session.commit()
 
-        session.add_all([wallet, file, file_pin, message_status, message_cost])
+        session.add_all(
+            [wallet, file, file_pin, message_status, message_cost, removed_message]
+        )
         session.commit()
 
     return {
@@ -332,6 +337,15 @@ async def test_balance_job_marks_messages_for_removal(
         assert (
             24.5 <= time_diff.total_seconds() / 3600 <= 25.5
         )  # Between 24.5 and 25.5 hours
+
+        # The file size must be snapshotted in removed_messages (two-phase
+        # removal record); removed_at stays NULL until the GC flips the status
+        removed_message = session.get(
+            RemovedMessageDb, fixture_message_for_removal["message_hash"]
+        )
+        assert removed_message is not None
+        assert removed_message.size == 30 * MiB
+        assert removed_message.removed_at is None
 
 
 @pytest.mark.asyncio
@@ -392,3 +406,51 @@ async def test_balance_job_recovers_messages_with_sufficient_balance(
         )
 
         assert len(grace_period_pins) == 0
+
+        # The removal record must be discarded on recovery
+        removed_message = session.get(
+            RemovedMessageDb, fixture_message_for_recovery["message_hash"]
+        )
+        assert removed_message is None
+
+
+@pytest.mark.asyncio
+async def test_balance_job_recover_keeps_removed_message(
+    session_factory, balance_job, now
+):
+    """
+    A recovery attempt racing with the garbage collector must not resurrect
+    a finalized removal: the REMOVING->PROCESSED flip does not happen (the
+    message is already REMOVED), so the denormalized status and the removal
+    record must survive.
+    """
+    message_hash = "feed5678" * 8
+    file_hash = "8765" * 16
+
+    message, file, _, _ = create_store_message(
+        message_hash, "0xtestaddress9", file_hash, now
+    )
+    message.status_value = MessageStatus.REMOVED
+    message_status = MessageStatusDb(
+        item_hash=message_hash,
+        status=MessageStatus.REMOVED,
+        reception_time=now,
+    )
+    removed_message = RemovedMessageDb(
+        item_hash=message_hash, size=30 * MiB, removed_at=now
+    )
+
+    with session_factory() as session:
+        session.add_all([message, file, message_status, removed_message])
+        session.commit()
+
+        await balance_job.recover_messages(session, [ItemHash(message_hash)])
+        session.commit()
+
+        fetched_message = session.get(MessageDb, message_hash)
+        assert fetched_message is not None
+        assert fetched_message.status_value == MessageStatus.REMOVED
+
+        fetched_removed_message = session.get(RemovedMessageDb, message_hash)
+        assert fetched_removed_message is not None
+        assert fetched_removed_message.removed_at == now

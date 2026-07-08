@@ -173,6 +173,7 @@ class ForgetMessageHandler(ContentHandler):
             session=session,
             item_hash=message.item_hash,
             forget_message_hash=forgotten_by.item_hash,
+            forgotten_at=forgotten_by.time,
         )
 
         additional_messages_to_forget = await self._forget_by_message_type(
@@ -184,6 +185,7 @@ class ForgetMessageHandler(ContentHandler):
                 session=session,
                 item_hash=item_hash,
                 forget_message_hash=forgotten_by.item_hash,
+                forgotten_at=forgotten_by.time,
             )
 
     async def _forget_item_hash(

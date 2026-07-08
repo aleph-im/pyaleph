@@ -136,6 +136,10 @@ def fixture_messages_with_status(
             forgotten_by=[
                 "e3b24727335e34016247c0d37e2b0203bb8c2d76deddafc1700b4cf0e13845c5"
             ],
+            owner="0xB68B9D4f3771c246233823ed1D3Add451055F9Ef",
+            payment_type="credit",
+            size=1024 * 1024,
+            forgotten_at=timestamp_to_datetime(1645794100),
         )
     ]
 
@@ -277,6 +281,18 @@ async def test_get_forgotten_message_status(
         assert parsed_response.message.time == forgotten_message.time
 
         assert parsed_response.forgotten_by == forgotten_message.forgotten_by
+
+        # Billing metadata preserved at forget time
+        assert parsed_response.message.owner == forgotten_message.owner
+        assert parsed_response.message.payment_type == forgotten_message.payment_type
+        assert parsed_response.message.size == forgotten_message.size
+        assert parsed_response.message.forgotten_at == forgotten_message.forgotten_at
+        # time and forgotten_at are serialized as epoch floats
+        assert response_json["message"]["time"] == forgotten_message.time.timestamp()
+        assert (
+            response_json["message"]["forgotten_at"]
+            == forgotten_message.forgotten_at.timestamp()
+        )
 
         # Check that the content is not included in the response, somehow
         assert "item_content" not in response_json

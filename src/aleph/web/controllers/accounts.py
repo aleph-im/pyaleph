@@ -961,6 +961,8 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
                 "credit_index": entry.credit_index,
                 "expiration_date": entry.expiration_date,
                 "message_timestamp": entry.message_timestamp,
+                "expense_count": entry.expense_count,
+                "expense_size_mib": entry.expense_size_mib,
             }
             for entry in cursor_entries
         ]
@@ -1049,6 +1051,8 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
                 "credit_index": entry.credit_index,
                 "expiration_date": entry.expiration_date,
                 "message_timestamp": entry.message_timestamp,
+                "expense_count": entry.expense_count,
+                "expense_size_mib": entry.expense_size_mib,
             }
             for entry in credit_history_entries
         ]
