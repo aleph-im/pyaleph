@@ -322,6 +322,7 @@ _HEADERS_FIELDS: Dict[MessageType, List[Tuple[str, str]]] = {
     MessageType.program: [],
     MessageType.instance: [],
     MessageType.forget: [],
+    MessageType.v_program: [],
 }
 
 

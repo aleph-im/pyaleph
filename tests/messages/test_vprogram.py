@@ -4,6 +4,7 @@ from aleph_message.models import MessageType, VerifiableProgramContent
 
 from aleph.db.models.messages import CONTENT_TYPE_MAP, extract_tags
 from aleph.schemas.pending_messages import PendingVProgramMessage, parse_message
+from aleph.schemas.api.messages import VProgramMessage, format_message_dict
 
 VPROGRAM_CONTENT = {
     "address": "0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
@@ -79,3 +80,13 @@ def test_extract_tags_vprogram():
     content = {**VPROGRAM_CONTENT, "metadata": {"tags": ["snp", "demo"]}}
     assert extract_tags(MessageType.v_program, content) == ["snp", "demo"]
     assert extract_tags(MessageType.v_program, VPROGRAM_CONTENT) is None
+
+
+def test_format_message_dict_vprogram():
+    message = _message_dict()
+    message["confirmed"] = False
+    message["confirmations"] = []
+    formatted = format_message_dict(message)
+    assert isinstance(formatted, VProgramMessage)
+    assert formatted.type == MessageType.v_program
+    assert formatted.content.runtime.ref == "cafe" * 16
