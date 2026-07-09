@@ -9,6 +9,7 @@ from aleph_message.models import (
     PaymentType,
     ProgramContent,
     StoreContent,
+    VerifiableProgramContent,
 )
 from aleph_message.models.execution.environment import (
     HostRequirements,
@@ -28,6 +29,7 @@ from aleph.schemas.cost_estimation_messages import (
     CostEstimationInstanceContent,
     CostEstimationProgramContent,
     CostEstimationStoreContent,
+    CostEstimationVProgramContent,
 )
 from aleph.toolkit.constants import (
     DEFAULT_PRICE_AGGREGATE,
@@ -57,14 +59,20 @@ from aleph.types.settings import Settings
 logger = logging.getLogger(__name__)
 
 CostComputableContent: TypeAlias = (
-    CostEstimationContent | InstanceContent | ProgramContent | StoreContent
+    CostEstimationContent
+    | InstanceContent
+    | ProgramContent
+    | StoreContent
+    | VerifiableProgramContent
 )
 
 CostComputableExecutableContent: TypeAlias = (
     CostEstimationInstanceContent
     | CostEstimationProgramContent
+    | CostEstimationVProgramContent
     | InstanceContent
     | ProgramContent
+    | VerifiableProgramContent
 )
 
 
@@ -241,6 +249,11 @@ def _get_product_price_type(
             if is_on_demand
             else ProductPriceType.PROGRAM_PERSISTENT
         )
+
+    if isinstance(content, (VerifiableProgramContent, CostEstimationVProgramContent)):
+        # V-Programs are SEV-SNP confidential VMs; price them like
+        # confidential instances until they get a dedicated tier.
+        return ProductPriceType.INSTANCE_CONFIDENTIAL
 
     return _get_product_instance_type(content, settings, price_aggregate)
 
@@ -858,6 +871,8 @@ def _get_estimated_size_from_content(
                 CostEstimationInstanceContent,
                 ProgramContent,
                 CostEstimationProgramContent,
+                VerifiableProgramContent,
+                CostEstimationVProgramContent,
             ),
         ):
             # Extract volume index from name (format: "#0:/mount/path")
@@ -922,6 +937,8 @@ def get_cost_component_size_mib(
                 CostEstimationInstanceContent,
                 ProgramContent,
                 CostEstimationProgramContent,
+                VerifiableProgramContent,
+                CostEstimationVProgramContent,
             ),
         ):
             # Extract volume index from name (format: "#0:/mount/path")

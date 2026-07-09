@@ -16,6 +16,7 @@ from aleph_message.models import (
     MessageType,
     ProgramContent,
     StoreContent,
+    VerifiableProgramContent,
 )
 from aleph_message.models.execution.program import (
     CodeContent,
@@ -91,6 +92,18 @@ class CostEstimationStoreContent(StoreContent):
     estimated_size_mib: Optional[float] = None
 
 
+class CostEstimationVProgramContent(VerifiableProgramContent):
+    # Type should be defined as Sequence instead of List in aleph-message
+    volumes: Sequence[CostEstimationMachineVolume] = Field(  # type: ignore[assignment]
+        default=[], description="Volumes to mount on the filesystem"
+    )
+
+    # Fields required by VerifiableProgramContent but irrelevant for cost
+    # estimation, mirroring CostEstimationInstanceContent.
+    time: Optional[float] = None  # type: ignore[assignment]
+    allow_amend: bool = False
+
+
 class BaseCostEstimationMessage(AlephBaseMessage, Generic[MType, ContentType]):
     """
     A raw Aleph message, sent by users to estimate costs before reaching the network
@@ -126,10 +139,19 @@ class CostEstimationStoreMessage(
     pass
 
 
+class CostEstimationVProgramMessage(
+    BaseCostEstimationMessage[
+        Literal[MessageType.v_program], CostEstimationVProgramContent
+    ]
+):
+    pass
+
+
 CostEstimationMessage: TypeAlias = (
     CostEstimationInstanceMessage
     | CostEstimationProgramMessage
     | CostEstimationStoreMessage
+    | CostEstimationVProgramMessage
 )
 
 
@@ -137,14 +159,19 @@ CostEstimationContent: TypeAlias = (
     CostEstimationInstanceContent
     | CostEstimationProgramContent
     | CostEstimationStoreContent
+    | CostEstimationVProgramContent
 )
 
 
 CostEstimationExecutableContent: TypeAlias = (
-    CostEstimationInstanceContent | CostEstimationProgramContent
+    CostEstimationInstanceContent
+    | CostEstimationProgramContent
+    | CostEstimationVProgramContent
 )
 CostEstimationExecutableMessage: TypeAlias = (
-    CostEstimationInstanceMessage | CostEstimationProgramMessage
+    CostEstimationInstanceMessage
+    | CostEstimationProgramMessage
+    | CostEstimationVProgramMessage
 )
 
 
@@ -155,6 +182,7 @@ COST_MESSAGE_TYPE_TO_CLASS: Dict[
     MessageType.instance: CostEstimationInstanceMessage,
     MessageType.program: CostEstimationProgramMessage,
     MessageType.store: CostEstimationStoreMessage,
+    MessageType.v_program: CostEstimationVProgramMessage,
 }
 
 
@@ -162,6 +190,7 @@ COST_MESSAGE_TYPE_TO_CONTENT: Dict[MessageType, Type[CostEstimationContent]] = {
     MessageType.instance: CostEstimationInstanceContent,
     MessageType.program: CostEstimationProgramContent,
     MessageType.store: CostEstimationStoreContent,
+    MessageType.v_program: CostEstimationVProgramContent,
 }
 
 
