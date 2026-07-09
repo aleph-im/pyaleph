@@ -563,7 +563,7 @@ async def view_messages_list(request: web.Request) -> web.Response:
         in: query
         schema:
           type: string
-          enum: [POST, AGGREGATE, STORE, PROGRAM, INSTANCE, FORGET]
+          enum: [POST, AGGREGATE, STORE, PROGRAM, INSTANCE, FORGET, V-PROGRAM]
       - name: msgTypes
         in: query
         schema:
