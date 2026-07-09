@@ -9,7 +9,7 @@ from aleph.db.models import AlephCreditBalanceDb, MessageStatusDb, PendingMessag
 from aleph.schemas.message_content import ContentSource, MessageContent
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSessionFactory
-from aleph.types.message_status import MessageStatus
+from aleph.types.message_status import ErrorCode, MessageStatus
 from aleph.web.controllers.app_state_getters import APP_STATE_STORAGE_SERVICE
 
 # Note: fixture_vprogram_message and user_credit_balance are redefined here
@@ -22,6 +22,8 @@ SENDER = VPROGRAM_CONTENT["address"]
 
 PRICE_URI = f"/api/v0/price/{VPROGRAM_ITEM_HASH}"
 PRICE_ESTIMATE_URI = "/api/v0/price/estimate"
+MESSAGES_URI = "/api/v0/messages.json"
+MESSAGE_URI = f"/api/v0/messages/{VPROGRAM_ITEM_HASH}"
 
 
 @pytest.fixture
@@ -125,3 +127,86 @@ async def test_vprogram_message_price(
     result = await response.json()
     assert float(result["cost"]) > 0
     assert result["payment_type"] == "credit"
+
+
+@pytest.mark.asyncio
+async def test_vprogram_in_messages_list(
+    ccn_api_client,
+    session_factory,
+    message_processor,
+    fixture_vprogram_message,
+    user_credit_balance,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    pipeline = message_processor.make_pipeline()
+    _ = [message async for message in pipeline]
+
+    # Filter by msgType (singular, deprecated but still supported).
+    response = await ccn_api_client.get(MESSAGES_URI, params={"msgType": "V-PROGRAM"})
+    assert response.status == 200, await response.text()
+    messages = (await response.json())["messages"]
+    assert len(messages) == 1
+    assert messages[0]["item_hash"] == VPROGRAM_ITEM_HASH
+    assert messages[0]["content"]["verification"]["backend"] == "sev_snp"
+
+    # Filter by msgTypes (plural).
+    response = await ccn_api_client.get(
+        MESSAGES_URI, params={"msgTypes": "V-PROGRAM,INSTANCE"}
+    )
+    assert response.status == 200, await response.text()
+    assert any(
+        m["item_hash"] == VPROGRAM_ITEM_HASH
+        for m in (await response.json())["messages"]
+    )
+
+    # Single-message endpoint.
+    response = await ccn_api_client.get(MESSAGE_URI)
+    assert response.status == 200, await response.text()
+    result = await response.json()
+    assert result["status"] == "processed"
+    assert result["message"]["item_hash"] == VPROGRAM_ITEM_HASH
+    assert result["message"]["content"]["verification"]["backend"] == "sev_snp"
+
+    # Headers content format must not crash on the new type.
+    response = await ccn_api_client.get(
+        MESSAGES_URI, params={"msgType": "V-PROGRAM", "contentFormat": "headers"}
+    )
+    assert response.status == 200, await response.text()
+    headers_messages = (await response.json())["messages"]
+    assert len(headers_messages) == 1
+    assert headers_messages[0]["content"] == {"address": SENDER}
+
+
+@pytest.mark.asyncio
+async def test_vprogram_pending_display(
+    ccn_api_client,
+    fixture_vprogram_message,
+):
+    # Not processed yet: the message must be visible as pending.
+    response = await ccn_api_client.get(MESSAGE_URI)
+    assert response.status == 200, await response.text()
+    result = await response.json()
+    assert result["status"] == "pending"
+    assert result["messages"][0]["item_hash"] == VPROGRAM_ITEM_HASH
+
+
+@pytest.mark.asyncio
+async def test_vprogram_rejected_display(
+    ccn_api_client,
+    session_factory,
+    message_processor,
+    fixture_vprogram_message,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    # No credit balance: processing rejects the message, and the rejected
+    # message is still visible through the single-message endpoint.
+    pipeline = message_processor.make_pipeline()
+    _ = [message async for message in pipeline]
+
+    response = await ccn_api_client.get(MESSAGE_URI)
+    assert response.status == 200, await response.text()
+    result = await response.json()
+    assert result["status"] == "rejected"
+    assert result["error_code"] == ErrorCode.CREDIT_INSUFFICIENT.value
