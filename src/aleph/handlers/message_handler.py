@@ -33,6 +33,7 @@ from aleph.handlers.content.forget import ForgetMessageHandler
 from aleph.handlers.content.post import PostMessageHandler
 from aleph.handlers.content.store import StoreMessageHandler
 from aleph.handlers.content.vm import VmMessageHandler
+from aleph.handlers.content.vprogram import VProgramMessageHandler
 from aleph.schemas.pending_messages import parse_message
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
@@ -83,6 +84,7 @@ class BaseMessageHandler:
                 grace_period=config.storage.grace_period.value,
                 max_unauthenticated_upload_file_size=config.storage.max_unauthenticated_upload_file_size.value,
             ),
+            MessageType.v_program: VProgramMessageHandler(),
         }
 
         self.content_handlers[MessageType.forget] = ForgetMessageHandler(
