@@ -31,6 +31,7 @@ from aleph_message.models import (
     PostContent,
     ProgramContent,
     StoreContent,
+    VerifiableProgramContent,
 )
 from pydantic import ValidationError, field_validator, model_validator
 
@@ -157,6 +158,12 @@ class PendingInlineStoreMessage(PendingStoreMessage):
     item_type: Literal[ItemType.inline]
 
 
+class PendingVProgramMessage(
+    BasePendingMessage[Literal[MessageType.v_program], VerifiableProgramContent]
+):
+    pass
+
+
 MESSAGE_TYPE_TO_CLASS: Dict[
     Any,
     Type[
@@ -166,6 +173,7 @@ MESSAGE_TYPE_TO_CLASS: Dict[
         | PendingPostMessage
         | PendingProgramMessage
         | PendingStoreMessage
+        | PendingVProgramMessage
     ],
 ] = {
     MessageType.aggregate: PendingAggregateMessage,
@@ -174,6 +182,7 @@ MESSAGE_TYPE_TO_CLASS: Dict[
     MessageType.post: PendingPostMessage,
     MessageType.program: PendingProgramMessage,
     MessageType.store: PendingStoreMessage,
+    MessageType.v_program: PendingVProgramMessage,
 }
 
 
