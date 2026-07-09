@@ -35,9 +35,7 @@ VPROGRAM_CONTENT = {
     "volumes": [],
 }
 
-VPROGRAM_ITEM_HASH = (
-    "2db283ee7e186f569534df4e42a333fe2a08fffba00e0c82cdb0801cfece387e"
-)
+VPROGRAM_ITEM_HASH = "2db283ee7e186f569534df4e42a333fe2a08fffba00e0c82cdb0801cfece387e"
 
 VPROGRAM_MESSAGE_DICT = {
     "chain": "ETH",

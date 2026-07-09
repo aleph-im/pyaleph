@@ -74,7 +74,11 @@ def extract_tags(
         tags = inner.get("tags") if isinstance(inner, dict) else None
     elif message_type == MessageType.store:
         tags = content_dict.get("tags")
-    elif message_type in (MessageType.instance, MessageType.program, MessageType.v_program):
+    elif message_type in (
+        MessageType.instance,
+        MessageType.program,
+        MessageType.v_program,
+    ):
         metadata = content_dict.get("metadata")
         tags = metadata.get("tags") if isinstance(metadata, dict) else None
     else:
