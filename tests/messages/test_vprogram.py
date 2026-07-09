@@ -36,7 +36,7 @@ VPROGRAM_CONTENT = {
 }
 
 VPROGRAM_ITEM_HASH = (
-    "9fb2fec7177e541fd069160c1f11324eb388117752f2f32a713bbc10c9a59962"
+    "2db283ee7e186f569534df4e42a333fe2a08fffba00e0c82cdb0801cfece387e"
 )
 
 VPROGRAM_MESSAGE_DICT = {
@@ -58,7 +58,7 @@ VPROGRAM_MESSAGE_DICT = {
 
 def _message_dict() -> dict:
     message = dict(VPROGRAM_MESSAGE_DICT)
-    message["item_content"] = json.dumps(VPROGRAM_CONTENT)
+    message["item_content"] = json.dumps(VPROGRAM_CONTENT, separators=(",", ":"))
     return message
 
 
