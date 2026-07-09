@@ -1,4 +1,5 @@
 from decimal import Decimal
+from typing import cast
 
 import pytest
 from aleph_message.models import VerifiableProgramContent
@@ -48,3 +49,9 @@ def test_vprogram_detailed_costs(
     # tier; the credit price is per hour in the aggregate.
     assert Decimal(execution.cost_credit) > 0
     assert execution.owner == VPROGRAM_CONTENT["address"]
+
+    # Verity-bound volumes are STORE-paid artifacts, not execution volumes:
+    # no cost row should reference the verified volume's ref.
+    volumes = cast(list, VPROGRAM_CONTENT["volumes"])
+    verified_volume_ref = volumes[0]["ref"]
+    assert all(c.ref != verified_volume_ref for c in costs)

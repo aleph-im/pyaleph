@@ -11,7 +11,7 @@ VPROGRAM_CONTENT = {
     "time": 1719502000.0,
     "allow_amend": False,
     "payment": {"type": "credit"},
-    "environment": {"internet": True, "aleph_api": False},
+    "environment": {"internet": True},
     "resources": {"vcpus": 2, "memory": 2048, "seconds": 30},
     "runtime": {
         "ref": "cafecafecafecafecafecafecafecafecafecafecafecafecafecafecafecafe",
@@ -33,10 +33,17 @@ VPROGRAM_CONTENT = {
             }
         ],
     },
-    "volumes": [],
+    "volumes": [
+        {
+            "ref": "da" * 32,
+            "hash_tree": "d5" * 32,
+            "roothash": "ef" * 32,
+            "comment": "model weights",
+        }
+    ],
 }
 
-VPROGRAM_ITEM_HASH = "2db283ee7e186f569534df4e42a333fe2a08fffba00e0c82cdb0801cfece387e"
+VPROGRAM_ITEM_HASH = "4c319b6bdf98f1e90f2bf8c69da175679fa21ca27d4547bbfa32f77dd3b49fe6"
 
 VPROGRAM_MESSAGE_DICT = {
     "chain": "ETH",

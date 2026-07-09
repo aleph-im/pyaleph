@@ -93,11 +93,6 @@ class CostEstimationStoreContent(StoreContent):
 
 
 class CostEstimationVProgramContent(VerifiableProgramContent):
-    # Type should be defined as Sequence instead of List in aleph-message
-    volumes: Sequence[CostEstimationMachineVolume] = Field(  # type: ignore[assignment]
-        default=[], description="Volumes to mount on the filesystem"
-    )
-
     # Fields required by VerifiableProgramContent but irrelevant for cost
     # estimation, mirroring CostEstimationInstanceContent.
     time: Optional[float] = None  # type: ignore[assignment]

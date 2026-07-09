@@ -16,6 +16,7 @@ from aleph_message.models.execution.environment import (
     InstanceEnvironment,
 )
 from aleph_message.models.execution.volume import ImmutableVolume
+from aleph_message.models.execution.vprogram import VerifiedVolume
 
 from aleph.db.accessors.aggregates import get_aggregate_by_key
 from aleph.db.accessors.cost import get_message_costs
@@ -467,6 +468,11 @@ def _get_execution_volumes_costs(
                 )
 
     for i, volume in enumerate(content.volumes):
+        if isinstance(volume, VerifiedVolume):
+            # Verity-bound volumes (V-Programs) are STORE-paid artifacts like
+            # the workload and carry no execution-volume cost in phase 1.
+            continue
+
         # NOTE: There are legacy volumes with no "mount" property set
         # or with same values for different volumes causing unique key constraint errors
         name_prefix = f"#{i}"
@@ -871,8 +877,6 @@ def _get_estimated_size_from_content(
                 CostEstimationInstanceContent,
                 ProgramContent,
                 CostEstimationProgramContent,
-                VerifiableProgramContent,
-                CostEstimationVProgramContent,
             ),
         ):
             # Extract volume index from name (format: "#0:/mount/path")
@@ -937,8 +941,6 @@ def get_cost_component_size_mib(
                 CostEstimationInstanceContent,
                 ProgramContent,
                 CostEstimationProgramContent,
-                VerifiableProgramContent,
-                CostEstimationVProgramContent,
             ),
         ):
             # Extract volume index from name (format: "#0:/mount/path")
