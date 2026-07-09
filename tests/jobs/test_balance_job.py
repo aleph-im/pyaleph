@@ -421,16 +421,13 @@ async def test_balance_job_recover_keeps_removed_message(
     """
     A recovery attempt racing with the garbage collector must not resurrect
     a finalized removal: the REMOVING->PROCESSED flip does not happen (the
-    message is already REMOVED), so the denormalized status and the removal
-    record must survive.
+    message is already REMOVED and its messages row deleted), so the
+    removal record must survive and no messages row must reappear.
     """
     message_hash = "feed5678" * 8
-    file_hash = "8765" * 16
 
-    message, file, _, _ = create_store_message(
-        message_hash, "0xtestaddress9", file_hash, now
-    )
-    message.status_value = MessageStatus.REMOVED
+    # Finalized removal: message_status REMOVED, snapshot present, no
+    # messages row (deleted by the garbage collector).
     message_status = MessageStatusDb(
         item_hash=message_hash,
         status=MessageStatus.REMOVED,
@@ -441,15 +438,17 @@ async def test_balance_job_recover_keeps_removed_message(
     )
 
     with session_factory() as session:
-        session.add_all([message, file, message_status, removed_message])
+        session.add_all([message_status, removed_message])
         session.commit()
 
         await balance_job.recover_messages(session, [ItemHash(message_hash)])
         session.commit()
 
-        fetched_message = session.get(MessageDb, message_hash)
-        assert fetched_message is not None
-        assert fetched_message.status_value == MessageStatus.REMOVED
+        fetched_status = get_message_status(session=session, item_hash=message_hash)
+        assert fetched_status is not None
+        assert fetched_status.status == MessageStatus.REMOVED
+
+        assert session.get(MessageDb, message_hash) is None
 
         fetched_removed_message = session.get(RemovedMessageDb, message_hash)
         assert fetched_removed_message is not None

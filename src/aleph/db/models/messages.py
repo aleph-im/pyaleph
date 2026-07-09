@@ -348,6 +348,9 @@ class ForgottenMessageDb(Base):
     owner: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     payment_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     size: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    # Sender-supplied time of the forgetting FORGET message. Like the live
+    # list's default time sort/cursor, windowed consumers assume the gap a
+    # backdated FORGET can introduce.
     forgotten_at: Mapped[Optional[dt.datetime]] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
@@ -366,27 +369,59 @@ class ForgottenMessageDb(Base):
 
 class RemovedMessageDb(Base):
     """
-    Billing metadata for messages removed by the balance/credit-balance cron
-    jobs. Two-phase lifecycle: the file size is snapshotted at
-    PROCESSED->REMOVING (while the files row still exists — the garbage
-    collector deletes it before the status flips to REMOVED), the row is
-    deleted on REMOVING->PROCESSED recovery, and removed_at is stamped by
-    the garbage collector at REMOVING->REMOVED.
+    Snapshot of a message removed by the balance/credit-balance cron jobs,
+    mirroring forgotten_messages: at REMOVING->REMOVED the messages row is
+    deleted and this snapshot becomes the only record of the message.
+
+    Two-phase lifecycle: the file size is snapshotted at PROCESSED->REMOVING
+    (while the files row still exists — the garbage collector deletes it
+    before the status flips to REMOVED), the row is deleted on
+    REMOVING->PROCESSED recovery, and the remaining metadata is copied from
+    the messages row and stamped with removed_at by the garbage collector at
+    REMOVING->REMOVED, right before the messages row is deleted.
     """
 
     __tablename__ = "removed_messages"
 
     item_hash: Mapped[str] = mapped_column(String, primary_key=True)
-    # files.size snapshot taken while the message was alive (NULL for
-    # non-STORE messages or when the size could not be resolved).
+    # Metadata copied from the messages row at REMOVING->REMOVED (the row is
+    # deleted right after). NULL while the message is still REMOVING — the
+    # messages row is the source of truth until the flip.
+    type: Mapped[Optional[MessageType]] = mapped_column(
+        ChoiceType(MessageType), nullable=True
+    )
+    chain: Mapped[Optional[Chain]] = mapped_column(ChoiceType(Chain), nullable=True)
+    sender: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    signature: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    item_type: Mapped[Optional[ItemType]] = mapped_column(
+        ChoiceType(ItemType), nullable=True
+    )
+    time: Mapped[Optional[dt.datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    channel: Mapped[Optional[Channel]] = mapped_column(String, nullable=True)
+    owner: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # Effective payment type (NULL payment coalesced to hold at copy time).
+    payment_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # files.size snapshot taken at PROCESSED->REMOVING while the message was
+    # alive (NULL for non-STORE messages or when the size could not be
+    # resolved).
     size: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
-    # NULL while the message is still REMOVING.
+    # Stamped by the garbage collector at REMOVING->REMOVED. Node-local and
+    # NOT deterministic across nodes: each node's GC finalizes removals on
+    # its own schedule, and — unlike forgotten_at — there is no
+    # sender-declared removal time to share (removal is a node-local balance
+    # decision). Consumers windowing on it must not expect two nodes to
+    # agree. NULL while the message is still REMOVING and for legacy rows
+    # (removed before this table recorded removal times).
     removed_at: Mapped[Optional[dt.datetime]] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
 
     __table_args__ = (
-        # The removed list endpoint windows/sorts on removed_at.
+        # The removed list endpoint filters by owner and windows/sorts on
+        # removed_at.
+        Index("ix_removed_messages_owner_removed_at", "owner", "removed_at"),
         Index("ix_removed_messages_removed_at", "removed_at"),
     )
 

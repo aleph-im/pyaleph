@@ -8,9 +8,12 @@ Adds owner, payment_type, size and forgotten_at columns to
 forgotten_messages so forgotten STORE messages remain priceable and
 deletions can be windowed by deletion time.
 
-forgotten_at is backfilled from the first forgetting FORGET message still
-present in the messages table. owner/payment_type/size cannot be recovered
-for legacy rows (the source messages rows are already deleted) and stay NULL.
+forgotten_at is the sender-supplied time of the forgetting FORGET message,
+backfilled from the first FORGET still present in the messages table — the
+same value on every node, consistent with the declared-time semantics the
+live message list uses for sorting, date filters and cursors.
+owner/payment_type/size cannot be recovered for legacy rows (the source
+messages rows are already deleted) and stay NULL.
 
 The forgotten list endpoint filters by owner and windows/sorts on
 forgotten_at, so a composite (owner, forgotten_at) index and a plain
@@ -54,7 +57,6 @@ def upgrade() -> None:
         """
         )
     )
-
     # CREATE INDEX CONCURRENTLY cannot run inside a transaction block.
     connection = op.get_bind()
 

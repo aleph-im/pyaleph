@@ -552,8 +552,11 @@ def make_matching_forgotten_messages_query(
     Filters on the forgotten_messages table. Unlike live-message queries, date
     filters and time sorting apply to `forgotten_at` (the deletion time), not
     `time`: the purpose of this query is windowed gap-detection by deletion
-    time. Legacy rows with NULL `forgotten_at` are excluded by date filters
-    (SQL comparison semantics) and sorted last otherwise.
+    time. forgotten_at is the sender-supplied FORGET time — the same
+    declared-time semantics (and gap assumption) as the live list's default
+    time sort, date filters and cursors. Legacy rows with NULL `forgotten_at`
+    are excluded by date filters (SQL comparison semantics) and sorted last
+    otherwise.
     """
     select_stmt = select(ForgottenMessageDb)
 
@@ -575,8 +578,14 @@ def make_matching_forgotten_messages_query(
     if channels:
         select_stmt = select_stmt.where(ForgottenMessageDb.channel.in_(channels))
     if payment_types:
+        # Billing semantics: the absence of a payment field means hold, so
+        # legacy rows (NULL payment_type, forgotten before the metadata
+        # columns existed) must match paymentTypes=hold — same coalescing as
+        # the removed-messages query.
         select_stmt = select_stmt.where(
-            ForgottenMessageDb.payment_type.in_([pt.value for pt in payment_types])
+            func.coalesce(ForgottenMessageDb.payment_type, "hold").in_(
+                [pt.value for pt in payment_types]
+            )
         )
     if start_datetime:
         select_stmt = select_stmt.where(
@@ -658,22 +667,75 @@ def delete_removed_message(session: DbSession, item_hash: str) -> None:
     )
 
 
-def mark_removed_message(
-    session: DbSession, item_hash: str, removed_at: dt.datetime
-) -> None:
+def remove_message(session: DbSession, item_hash: str, removed_at: dt.datetime) -> None:
     """
-    Stamp the removal time at REMOVING->REMOVED. Inserts a row without size
-    for messages that were already REMOVING before the size snapshot existed.
+    Finalizes a removal at REMOVING->REMOVED, mirroring forget_message():
+    copies the billing metadata of the messages row into the removal record
+    (whose size was snapshotted when the message entered REMOVING — the
+    files row no longer exists at this point) and deletes the messages row.
+    Confirmations, costs and metrics follow via ON DELETE CASCADE.
+
+    Messages that were already REMOVING before the size snapshot existed get
+    a record without size.
+
+    removed_at is the node's own finalization time: node-local and NOT
+    deterministic across nodes (see RemovedMessageDb.removed_at).
+
+    Expects the caller to have performed the guarded REMOVING->REMOVED
+    status flip, and to call this only when the flip actually happened.
     """
-    upsert_stmt = (
-        insert(RemovedMessageDb)
-        .values(item_hash=item_hash, size=None, removed_at=removed_at)
-        .on_conflict_do_update(
-            constraint="removed_messages_pkey",
-            set_={"removed_at": removed_at},
-        )
+    copy_row_stmt = insert(RemovedMessageDb).from_select(
+        [
+            "item_hash",
+            "type",
+            "chain",
+            "sender",
+            "signature",
+            "item_type",
+            "time",
+            "channel",
+            "owner",
+            "payment_type",
+            "removed_at",
+        ],
+        select(
+            MessageDb.item_hash,
+            MessageDb.type,
+            MessageDb.chain,
+            MessageDb.sender,
+            MessageDb.signature,
+            MessageDb.item_type,
+            MessageDb.time,
+            MessageDb.channel,
+            MessageDb.owner,
+            # Messages without an explicit payment field are hold-paid;
+            # capture the effective payment type so billing can rely on it.
+            func.coalesce(MessageDb.payment_type, "hold"),
+            literal(removed_at),
+        ).where(MessageDb.item_hash == item_hash),
+    )
+    upsert_stmt = copy_row_stmt.on_conflict_do_update(
+        constraint="removed_messages_pkey",
+        # Everything except size, which only the PROCESSED->REMOVING
+        # snapshot knows.
+        set_={
+            "type": copy_row_stmt.excluded.type,
+            "chain": copy_row_stmt.excluded.chain,
+            "sender": copy_row_stmt.excluded.sender,
+            "signature": copy_row_stmt.excluded.signature,
+            "item_type": copy_row_stmt.excluded.item_type,
+            "time": copy_row_stmt.excluded.time,
+            "channel": copy_row_stmt.excluded.channel,
+            "owner": copy_row_stmt.excluded.owner,
+            "payment_type": copy_row_stmt.excluded.payment_type,
+            "removed_at": copy_row_stmt.excluded.removed_at,
+        },
     )
     session.execute(upsert_stmt)
+
+    # Delete the message from the messages table (the trigger handles
+    # message_counts; confirmations/costs/metrics cascade).
+    session.execute(delete(MessageDb).where(MessageDb.item_hash == item_hash))
 
 
 def make_matching_removed_messages_query(
@@ -690,57 +752,54 @@ def make_matching_removed_messages_query(
     sort_order: SortOrder = SortOrder.DESCENDING,
     page: int = 1,
     pagination: int = 20,
-    include_confirmations: bool = False,
     # Non-filter query params (sort_by, ...) are passed through by callers;
     # unsupported narrowing filters are rejected upstream with a 400.
     **kwargs,
 ) -> Select:
     """
-    REMOVED messages joined with their removal record. Like forgotten
-    queries, date filters and time sorting apply to `removed_at`, not `time`:
-    the purpose of this query is windowed gap-detection by removal time.
-    Legacy rows without a removal record (or not yet stamped) are excluded by
-    date filters (SQL comparison semantics) and sorted last otherwise.
+    Filters on the removed_messages snapshots. The join with message_status
+    keeps records of still-REMOVING messages (size-only phase-1 snapshots)
+    out of the results — message_status is the arbiter of the lifecycle.
+
+    Like forgotten queries, date filters and time sorting apply to
+    `removed_at`, not `time`. removed_at is node-local (each node's GC
+    finalizes removals on its own schedule — see RemovedMessageDb), so
+    windows are only meaningful against the same node. Legacy rows without a
+    removal time are excluded by date filters (SQL comparison semantics) and
+    sorted last otherwise.
     """
     select_stmt = (
-        select(MessageDb, RemovedMessageDb)
+        select(RemovedMessageDb)
         .join(
-            RemovedMessageDb,
-            RemovedMessageDb.item_hash == MessageDb.item_hash,
-            isouter=True,
+            MessageStatusDb,
+            MessageStatusDb.item_hash == RemovedMessageDb.item_hash,
         )
-        .where(MessageDb.status_value == MessageStatus.REMOVED)
+        .where(MessageStatusDb.status == MessageStatus.REMOVED)
     )
-
-    if include_confirmations:
-        select_stmt = select_stmt.options(
-            selectinload(MessageDb.confirmations).options(
-                load_only(ChainTxDb.hash, ChainTxDb.chain, ChainTxDb.height)
-            )
-        )
 
     start_datetime = coerce_to_datetime(start_date)
     end_datetime = coerce_to_datetime(end_date)
 
     if hashes:
-        select_stmt = select_stmt.where(MessageDb.item_hash.in_(hashes))
+        select_stmt = select_stmt.where(RemovedMessageDb.item_hash.in_(hashes))
     if addresses:
-        select_stmt = select_stmt.where(MessageDb.sender.in_(addresses))
+        select_stmt = select_stmt.where(RemovedMessageDb.sender.in_(addresses))
     if owners:
-        select_stmt = select_stmt.where(MessageDb.owner.in_(owners))
+        select_stmt = select_stmt.where(RemovedMessageDb.owner.in_(owners))
     if chains:
-        select_stmt = select_stmt.where(MessageDb.chain.in_(chains))
+        select_stmt = select_stmt.where(RemovedMessageDb.chain.in_(chains))
     if message_types:
-        select_stmt = select_stmt.where(MessageDb.type.in_(message_types))
+        select_stmt = select_stmt.where(RemovedMessageDb.type.in_(message_types))
     if message_type:
-        select_stmt = select_stmt.where(MessageDb.type == message_type)
+        select_stmt = select_stmt.where(RemovedMessageDb.type == message_type)
     if channels:
-        select_stmt = select_stmt.where(MessageDb.channel.in_(channels))
+        select_stmt = select_stmt.where(RemovedMessageDb.channel.in_(channels))
     if payment_types:
         # Billing semantics: the absence of a payment field means hold, so
-        # implicit-hold messages (NULL column) must match paymentTypes=hold.
+        # legacy rows (NULL payment_type) must match paymentTypes=hold —
+        # new snapshots already store the coalesced effective type.
         select_stmt = select_stmt.where(
-            func.coalesce(MessageDb.payment_type, "hold").in_(
+            func.coalesce(RemovedMessageDb.payment_type, "hold").in_(
                 [pt.value for pt in payment_types]
             )
         )
@@ -752,12 +811,12 @@ def make_matching_removed_messages_query(
     if sort_order == SortOrder.DESCENDING:
         order_by_columns = (
             nullslast(RemovedMessageDb.removed_at.desc()),
-            MessageDb.item_hash.asc(),
+            RemovedMessageDb.item_hash.asc(),
         )
     else:
         order_by_columns = (
             nullslast(RemovedMessageDb.removed_at.asc()),
-            MessageDb.item_hash.asc(),
+            RemovedMessageDb.item_hash.asc(),
         )
     select_stmt = select_stmt.order_by(*order_by_columns)
 

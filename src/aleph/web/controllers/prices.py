@@ -25,7 +25,6 @@ from aleph.db.accessors.cost import (
     get_resources_with_costs,
     make_costs_upsert_query,
 )
-from aleph.db.accessors.files import get_file
 from aleph.db.accessors.messages import (
     get_forgotten_message,
     get_message_by_item_hash,
@@ -203,6 +202,10 @@ def _price_store_from_billing_metadata(
         # MIN_STORE_COST_MIB floor and the pricing aggregate apply exactly as
         # for live STORE messages. estimated_size_mib = size / MiB matches the
         # live calculation Decimal(file.size / MiB) bit for bit.
+        # content.item_hash carries the *message* hash, not the stored file
+        # hash a real STORE content would carry: it is only used to label
+        # cost rows, never for file lookups, because estimated_size_mib
+        # short-circuits calculate_storage_size.
         content = CostEstimationStoreContent(
             address=owner,
             time=time,
@@ -280,37 +283,36 @@ def _price_removed_store_message(
     session: DbSession, item_hash: ItemHash, include_size: bool
 ) -> web.Response:
     """
-    Price a removed STORE message live. The messages row survives removal,
-    so owner and payment type come from it; the size comes from the
-    removed_messages snapshot, falling back to a live files lookup (messages
-    removed before the snapshot existed and whose file was not collected
-    yet). Raises 410 Gone when the size is unresolvable or the message is
-    not a STORE.
+    Price a removed STORE message live from the billing metadata preserved
+    in removed_messages (the messages row is deleted at removal, mirroring
+    forgotten messages). Raises 410 Gone when the metadata is missing
+    (legacy rows, size never snapshotted) or the message is not a STORE.
     """
     gone = web.HTTPGone(body=f"This message has been removed: {item_hash}")
 
-    message = get_message_by_item_hash(session=session, item_hash=item_hash)
-    if message is None or message.type != MessageType.store or message.owner is None:
-        raise gone
-
     removed_message = get_removed_message(session=session, item_hash=item_hash)
-    size = removed_message.size if removed_message else None
-    if size is None and message.content_item_hash:
-        file = get_file(session, message.content_item_hash)
-        size = file.size if file else None
-    if size is None:
+    if (
+        removed_message is None
+        or removed_message.type != MessageType.store
+        or removed_message.owner is None
+        or removed_message.size is None
+        or removed_message.time is None
+    ):
         raise gone
 
-    payment_type_value = message.payment_type or PaymentType.hold.value
+    # Snapshots store the effective payment type (coalesced at removal);
+    # legacy rows may still carry NULL, which means hold everywhere in
+    # pyaleph.
+    payment_type_value = removed_message.payment_type or PaymentType.hold.value
 
     return _price_store_from_billing_metadata(
         session=session,
         item_hash=item_hash,
         include_size=include_size,
-        owner=message.owner,
+        owner=removed_message.owner,
         payment_type_value=payment_type_value,
-        size=size,
-        time=message.time.timestamp(),
+        size=removed_message.size,
+        time=removed_message.time.timestamp(),
         gone=gone,
     )
 

@@ -1,9 +1,10 @@
 import datetime as dt
+from typing import Optional
 
 import pytest
 from aleph_message.models import Chain, ItemType, MessageType
 
-from aleph.db.models.messages import MessageDb, MessageStatusDb, RemovedMessageDb
+from aleph.db.models.messages import MessageStatusDb, RemovedMessageDb
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
@@ -21,59 +22,52 @@ STORE_CREDIT_HASH = "aaaa1111111111111111111111111111111111111111111111111111111
 STORE_HOLD_HASH = "bbbb111111111111111111111111111111111111111111111111111111111111"
 POST_HASH = "cccc111111111111111111111111111111111111111111111111111111111111"
 LEGACY_STORE_HASH = "dddd111111111111111111111111111111111111111111111111111111111111"
+REMOVING_STORE_HASH = "eeee111111111111111111111111111111111111111111111111111111111111"
 
 REMOVED_AT_CREDIT = 1652786500.0
 REMOVED_AT_HOLD = 1652787000.0
 REMOVED_AT_POST = 1652787500.0
 
 
-def _make_removed_message(
+def _removed_snapshot(
     item_hash: str,
     message_type: MessageType,
     sender: str,
     owner: str,
     channel: str,
     time: float,
-    payment_type: str = "",
+    payment_type: str,
+    size: Optional[int],
+    removed_at: Optional[float],
 ) -> tuple:
-    content = {"address": owner, "time": time}
-    if message_type == MessageType.store:
-        content.update(
-            {
-                "item_hash": item_hash[::-1],
-                "item_type": ItemType.storage.value,
-            }
-        )
-        if payment_type:
-            content["payment"] = {"type": payment_type}
-    else:
-        content.update({"type": "test", "content": {"body": "test"}})
-
-    message = MessageDb(
+    snapshot = RemovedMessageDb(
         item_hash=item_hash,
-        sender=sender,
-        chain=Chain.ETH,
         type=message_type,
-        time=timestamp_to_datetime(time),
-        item_type=ItemType.inline,
+        chain=Chain.ETH,
+        sender=sender,
         signature=f"sig-{item_hash[:4]}",
-        size=1000,
+        item_type=ItemType.inline,
+        time=timestamp_to_datetime(time),
         channel=Channel(channel),
-        content=content,
-        status_value=MessageStatus.REMOVED,
+        owner=owner,
+        payment_type=payment_type,
+        size=size,
+        removed_at=(
+            timestamp_to_datetime(removed_at) if removed_at is not None else None
+        ),
     )
     status = MessageStatusDb(
         item_hash=item_hash,
         status=MessageStatus.REMOVED,
         reception_time=dt.datetime(2022, 1, 1, tzinfo=dt.timezone.utc),
     )
-    return message, status
+    return snapshot, status
 
 
 @pytest.fixture
 def fixture_removed_messages(session_factory: DbSessionFactory):
     rows = [
-        *_make_removed_message(
+        *_removed_snapshot(
             STORE_CREDIT_HASH,
             MessageType.store,
             sender=SENDER_A,
@@ -81,13 +75,10 @@ def fixture_removed_messages(session_factory: DbSessionFactory):
             channel="TEST",
             time=1652786100,
             payment_type="credit",
-        ),
-        RemovedMessageDb(
-            item_hash=STORE_CREDIT_HASH,
             size=4 * 1024 * 1024,
-            removed_at=timestamp_to_datetime(REMOVED_AT_CREDIT),
+            removed_at=REMOVED_AT_CREDIT,
         ),
-        *_make_removed_message(
+        *_removed_snapshot(
             STORE_HOLD_HASH,
             MessageType.store,
             sender=SENDER_B,
@@ -95,33 +86,48 @@ def fixture_removed_messages(session_factory: DbSessionFactory):
             channel="TEST",
             time=1652786200,
             payment_type="hold",
-        ),
-        RemovedMessageDb(
-            item_hash=STORE_HOLD_HASH,
             size=10 * 1024 * 1024,
-            removed_at=timestamp_to_datetime(REMOVED_AT_HOLD),
+            removed_at=REMOVED_AT_HOLD,
         ),
-        *_make_removed_message(
+        *_removed_snapshot(
             POST_HASH,
             MessageType.post,
             sender=SENDER_A,
             owner=OWNER_A,
             channel="OTHER",
             time=1652786300,
-        ),
-        RemovedMessageDb(
-            item_hash=POST_HASH,
+            payment_type="hold",
             size=None,
-            removed_at=timestamp_to_datetime(REMOVED_AT_POST),
+            removed_at=REMOVED_AT_POST,
         ),
-        # Legacy row: removed before the removal record existed
-        *_make_removed_message(
-            LEGACY_STORE_HASH,
-            MessageType.store,
+        # Legacy row: moved by migration 0063 with an unknown removal time
+        # and NULL payment_type (pre-coalescing removal)
+        RemovedMessageDb(
+            item_hash=LEGACY_STORE_HASH,
+            type=MessageType.store,
+            chain=Chain.ETH,
             sender=SENDER_B,
+            signature="sig-dddd",
+            item_type=ItemType.inline,
+            time=timestamp_to_datetime(1652786400),
+            channel=Channel("TEST"),
             owner=OWNER_B,
-            channel="TEST",
-            time=1652786400,
+        ),
+        MessageStatusDb(
+            item_hash=LEGACY_STORE_HASH,
+            status=MessageStatus.REMOVED,
+            reception_time=dt.datetime(2022, 1, 1, tzinfo=dt.timezone.utc),
+        ),
+        # Phase-1 record of a message still REMOVING (size-only snapshot):
+        # must never appear in the removed listing.
+        RemovedMessageDb(
+            item_hash=REMOVING_STORE_HASH,
+            size=1024,
+        ),
+        MessageStatusDb(
+            item_hash=REMOVING_STORE_HASH,
+            status=MessageStatus.REMOVING,
+            reception_time=dt.datetime(2022, 1, 1, tzinfo=dt.timezone.utc),
         ),
     ]
 
@@ -140,6 +146,7 @@ async def test_list_removed_messages(fixture_removed_messages, ccn_api_client):
     data = await response.json()
 
     messages = data["messages"]
+    # The still-REMOVING phase-1 record is excluded
     assert data["pagination_total"] == 4
     # Sorted by removed_at DESC, legacy NULL rows last
     assert [msg["item_hash"] for msg in messages] == [
@@ -154,14 +161,21 @@ async def test_list_removed_messages(fixture_removed_messages, ccn_api_client):
     assert credit_store["type"] == "STORE"
     assert credit_store["chain"] == "ETH"
     assert credit_store["sender"] == SENDER_A
+    assert credit_store["signature"] == "sig-aaaa"
     assert credit_store["item_type"] == "inline"
     assert credit_store["time"] == 1652786100.0
-    assert credit_store["content"]["address"] == OWNER_A
-    # size is the file-size snapshot taken at removal
+    assert credit_store["channel"] == "TEST"
+    assert credit_store["owner"] == OWNER_A
+    assert credit_store["payment_type"] == "credit"
+    # size is the file-size snapshot taken while the message was alive
     assert credit_store["size"] == 4 * 1024 * 1024
     assert credit_store["removed_at"] == REMOVED_AT_CREDIT
+    # Skeletons carry no content (the messages row is deleted at removal)
+    assert "content" not in credit_store
+    assert "item_content" not in credit_store
 
     legacy_store = messages[3]
+    assert legacy_store["payment_type"] is None
     assert legacy_store["size"] is None
     assert legacy_store["removed_at"] is None
 
@@ -215,7 +229,7 @@ async def test_list_removed_messages_rejects_cursor(
 async def test_list_removed_messages_rejects_unsupported_filters(
     fixture_removed_messages, ccn_api_client
 ):
-    """Filters the removed query cannot narrow return 400."""
+    """Filters on data not preserved in removed_messages return 400."""
     unsupported_params = [
         {"refs": "some-ref"},
         {"contentTypes": "file"},
@@ -286,7 +300,7 @@ async def test_list_removed_messages_filters(fixture_removed_messages, ccn_api_c
     assert [msg["item_hash"] for msg in data["messages"]] == [STORE_CREDIT_HASH]
 
     # paymentTypes: absence of a payment field means hold (billing
-    # semantics), so NULL-payment rows match paymentTypes=hold
+    # semantics), so the legacy NULL-payment row matches paymentTypes=hold
     response = await ccn_api_client.get(
         MESSAGES_URI, params={"msgStatuses": "removed", "paymentTypes": "credit"}
     )
@@ -327,7 +341,7 @@ async def test_list_removed_messages_date_filters_use_removed_at(
     fixture_removed_messages, ccn_api_client
 ):
     # Window covers the credit and hold stores only; the legacy row without a
-    # removal record is excluded, the POST row falls after the window.
+    # removal time is excluded, the POST row falls after the window.
     response = await ccn_api_client.get(
         MESSAGES_URI,
         params={
@@ -379,7 +393,7 @@ async def test_list_removed_messages_pagination(
 
 @pytest.mark.asyncio
 async def test_get_removed_message_status(fixture_removed_messages, ccn_api_client):
-    """GET /messages/{hash} exposes the removal record on REMOVED messages."""
+    """GET /messages/{hash} rebuilds REMOVED messages from their snapshot."""
     response = await ccn_api_client.get(MESSAGE_URI.format(STORE_CREDIT_HASH))
     assert response.status == 200, await response.text()
     data = await response.json()
@@ -388,6 +402,11 @@ async def test_get_removed_message_status(fixture_removed_messages, ccn_api_clie
     assert data["removed_at"] == REMOVED_AT_CREDIT
     assert data["size"] == 4 * 1024 * 1024
     assert data["message"]["item_hash"] == STORE_CREDIT_HASH
+    assert data["message"]["owner"] == OWNER_A
+    assert data["message"]["payment_type"] == "credit"
+    assert data["message"]["time"] == 1652786100.0
+    # The messages row is gone: skeletons carry no content
+    assert "content" not in data["message"]
 
     # Legacy removal: record fields are null
     response = await ccn_api_client.get(MESSAGE_URI.format(LEGACY_STORE_HASH))

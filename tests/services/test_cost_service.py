@@ -1079,8 +1079,6 @@ def test_store_min_cost_floor_applies_to_credit(
     fixture_settings_aggregate_in_db,
 ):
     """Credit-paid STOREs below MIN_STORE_COST_MIB are billed as MIN_STORE_COST_MIB."""
-    assert MIN_STORE_COST_MIB == 100
-
     with session_factory() as session:
         small_cost, _ = get_total_and_detailed_costs(
             session, _make_store_content(1, PaymentType.credit), "hash-small"

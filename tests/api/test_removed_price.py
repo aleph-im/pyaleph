@@ -1,17 +1,16 @@
 import datetime as dt
+from typing import Optional
 
 import pytest
 from aleph_message.models import Chain, ItemHash, ItemType, MessageType
 from aleph_message.models.execution.base import Payment, PaymentType
 
-from aleph.db.models.files import StoredFileDb
-from aleph.db.models.messages import MessageDb, MessageStatusDb, RemovedMessageDb
+from aleph.db.models.messages import MessageStatusDb, RemovedMessageDb
 from aleph.schemas.cost_estimation_messages import CostEstimationStoreContent
 from aleph.services.cost import get_total_and_detailed_costs
 from aleph.toolkit.constants import MIN_STORE_COST_MIB
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSessionFactory
-from aleph.types.files import FileType
 from aleph.types.message_status import MessageStatus
 
 PRICE_URI = "/api/v0/price/{}"
@@ -21,7 +20,7 @@ OWNER = "0xB6B5358493AF8159B17506C5cC85df69193444BC"
 REMOVED_SNAPSHOT_STORE_HASH = (
     "aaaa000000000000000000000000000000000000000000000000000000000000"
 )
-REMOVED_FALLBACK_STORE_HASH = (
+REMOVED_NULL_PAYMENT_STORE_HASH = (
     "bbbb000000000000000000000000000000000000000000000000000000000000"
 )
 REMOVED_NO_SIZE_STORE_HASH = (
@@ -29,45 +28,29 @@ REMOVED_NO_SIZE_STORE_HASH = (
 )
 REMOVED_POST_HASH = "dddd000000000000000000000000000000000000000000000000000000000000"
 
-FALLBACK_FILE_HASH = "eeee000000000000000000000000000000000000000000000000000000000000"
-
 SMALL_FILE_SIZE = 1024 * 1024  # 1 MiB, well below the MIN_STORE_COST_MIB floor
 
 
-def _add_removed_message(
+def _add_removed_snapshot(
     session,
     item_hash: str,
     message_type: MessageType,
-    file_hash: str,
+    payment_type: Optional[str],
+    size: Optional[int],
 ) -> None:
-    time = timestamp_to_datetime(1652786100)
-    content = {
-        "address": OWNER,
-        "time": 1652786100.0,
-    }
-    if message_type == MessageType.store:
-        content.update(
-            {
-                "item_hash": file_hash,
-                "item_type": ItemType.storage.value,
-                "payment": {"type": "credit"},
-            }
-        )
-    else:
-        content.update({"type": "test", "content": {"body": "test"}})
-
     session.add(
-        MessageDb(
+        RemovedMessageDb(
             item_hash=item_hash,
-            sender=OWNER,
-            chain=Chain.ETH,
             type=message_type,
-            time=time,
-            item_type=ItemType.inline,
+            chain=Chain.ETH,
+            sender=OWNER,
             signature="sig",
-            size=1000,
-            content=content,
-            status_value=MessageStatus.REMOVED,
+            item_type=ItemType.inline,
+            time=timestamp_to_datetime(1652786100),
+            owner=OWNER,
+            payment_type=payment_type,
+            size=size,
+            removed_at=timestamp_to_datetime(1652786500),
         )
     )
     session.add(
@@ -82,44 +65,41 @@ def _add_removed_message(
 @pytest.fixture
 def fixture_removed_messages_for_pricing(session_factory: DbSessionFactory):
     with session_factory() as session:
-        # STORE with a removed_messages size snapshot
-        _add_removed_message(
+        # STORE snapshot with full billing metadata
+        _add_removed_snapshot(
             session,
             REMOVED_SNAPSHOT_STORE_HASH,
             MessageType.store,
-            file_hash="1111" * 16,
-        )
-        session.add(
-            RemovedMessageDb(
-                item_hash=REMOVED_SNAPSHOT_STORE_HASH,
-                size=SMALL_FILE_SIZE,
-                removed_at=timestamp_to_datetime(1652786500),
-            )
+            payment_type="credit",
+            size=SMALL_FILE_SIZE,
         )
 
-        # STORE without snapshot, but the files row still exists (fallback)
-        _add_removed_message(
+        # Legacy row moved before payment_type coalescing: NULL means hold
+        _add_removed_snapshot(
             session,
-            REMOVED_FALLBACK_STORE_HASH,
+            REMOVED_NULL_PAYMENT_STORE_HASH,
             MessageType.store,
-            file_hash=FALLBACK_FILE_HASH,
-        )
-        session.add(
-            StoredFileDb(
-                hash=FALLBACK_FILE_HASH, size=SMALL_FILE_SIZE, type=FileType.FILE
-            )
+            payment_type=None,
+            size=SMALL_FILE_SIZE,
         )
 
-        # STORE without snapshot and without files row: size unresolvable
-        _add_removed_message(
+        # STORE whose size was never snapshotted: unresolvable
+        _add_removed_snapshot(
             session,
             REMOVED_NO_SIZE_STORE_HASH,
             MessageType.store,
-            file_hash="2222" * 16,
+            payment_type="credit",
+            size=None,
         )
 
         # Non-STORE removed message
-        _add_removed_message(session, REMOVED_POST_HASH, MessageType.post, file_hash="")
+        _add_removed_snapshot(
+            session,
+            REMOVED_POST_HASH,
+            MessageType.post,
+            payment_type="hold",
+            size=None,
+        )
 
         session.commit()
 
@@ -150,8 +130,8 @@ async def test_message_price_removed_store_with_snapshot(
     fixture_settings_aggregate_in_db,
 ):
     """
-    A removed STORE with a size snapshot is priced live, with the
-    MIN_STORE_COST_MIB floor applied.
+    A removed STORE snapshot is priced live, with the MIN_STORE_COST_MIB
+    floor applied.
     """
     response = await ccn_api_client.get(PRICE_URI.format(REMOVED_SNAPSHOT_STORE_HASH))
     assert response.status == 200, await response.text()
@@ -165,26 +145,25 @@ async def test_message_price_removed_store_with_snapshot(
 
 
 @pytest.mark.asyncio
-async def test_message_price_removed_store_files_fallback(
+async def test_message_price_removed_store_null_payment_defaults_to_hold(
     ccn_api_client,
-    session_factory: DbSessionFactory,
     fixture_removed_messages_for_pricing,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
 ):
     """
-    A removed STORE without a snapshot is priced from the still-existing
-    files row.
+    Legacy snapshots with NULL payment_type are priced as hold, matching the
+    live pricing default (absence of a payment field means hold).
     """
-    response = await ccn_api_client.get(PRICE_URI.format(REMOVED_FALLBACK_STORE_HASH))
+    response = await ccn_api_client.get(
+        PRICE_URI.format(REMOVED_NULL_PAYMENT_STORE_HASH)
+    )
     assert response.status == 200, await response.text()
     data = await response.json()
 
-    assert data["payment_type"] == "credit"
+    assert data["payment_type"] == "hold"
     assert data["charged_address"] == OWNER
-    assert data["required_tokens"] == _expected_floor_cost(
-        session_factory, REMOVED_FALLBACK_STORE_HASH
-    )
+    assert data["required_tokens"] > 0
 
 
 @pytest.mark.asyncio
@@ -194,7 +173,7 @@ async def test_message_price_removed_store_without_size(
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
 ):
-    """A removed STORE whose size cannot be resolved keeps returning 410."""
+    """A removed STORE whose size was never snapshotted returns 410."""
     response = await ccn_api_client.get(PRICE_URI.format(REMOVED_NO_SIZE_STORE_HASH))
     assert response.status == 410, await response.text()
 

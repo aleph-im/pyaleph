@@ -28,6 +28,7 @@ from aleph.db.models import (
     StoredFileDb,
     message_confirmations,
 )
+from aleph.db.models.messages import RemovedMessageDb
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.channel import Channel
@@ -735,3 +736,107 @@ async def test_migration_0061_column_additions_are_rerunnable(
             )
         )
         session.commit()
+
+
+@pytest.mark.asyncio
+async def test_migration_0063_moves_removed_messages(
+    session_factory: DbSessionFactory,
+):
+    """
+    Check the semantics of the 0063 migration data move: existing REMOVED
+    messages are copied into removed_messages (size best-effort from a
+    still-existing files row, removed_at unknown -> NULL) and their messages
+    rows are deleted.
+    """
+    removed_hash = "beefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeef"
+    file_hash = "feedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeed"
+    file_size = 7 * 1024 * 1024
+
+    with session_factory() as session:
+        session.add(
+            MessageDb(
+                item_hash=removed_hash,
+                sender="0x51A58800b26AA1451aaA803d1746687cB88E0500",
+                chain=Chain.ETH,
+                type=MessageType.store,
+                time=dt.datetime(2022, 1, 1, tzinfo=dt.timezone.utc),
+                item_type=ItemType.inline,
+                signature="sig",
+                size=1000,
+                content={
+                    "address": "0x51A58800b26AA1451aaA803d1746687cB88E0500",
+                    "time": 1640995200.0,
+                    "item_hash": file_hash,
+                    "item_type": "storage",
+                },
+                status_value=MessageStatus.REMOVED,
+            )
+        )
+        session.add(
+            MessageStatusDb(
+                item_hash=removed_hash,
+                status=MessageStatus.REMOVED,
+                reception_time=dt.datetime(2022, 1, 2, tzinfo=dt.timezone.utc),
+            )
+        )
+        session.add(StoredFileDb(hash=file_hash, size=file_size, type=FileType.FILE))
+        session.commit()
+
+        # Same statements as migration 0063
+        session.execute(
+            text(
+                """
+                INSERT INTO removed_messages (
+                    item_hash, type, chain, sender, signature, item_type, time,
+                    channel, owner, payment_type, size, removed_at
+                )
+                SELECT
+                    m.item_hash, m.type, m.chain, m.sender, m.signature,
+                    m.item_type, m.time, m.channel, m.owner,
+                    COALESCE(m.payment_type, 'hold'),
+                    f.size,
+                    NULL
+                FROM messages m
+                JOIN message_status ms ON ms.item_hash = m.item_hash
+                LEFT JOIN files f ON f.hash = m.content_item_hash
+                WHERE ms.status = 'removed'
+                ON CONFLICT (item_hash) DO UPDATE SET
+                    type = EXCLUDED.type,
+                    chain = EXCLUDED.chain,
+                    sender = EXCLUDED.sender,
+                    signature = EXCLUDED.signature,
+                    item_type = EXCLUDED.item_type,
+                    time = EXCLUDED.time,
+                    channel = EXCLUDED.channel,
+                    owner = EXCLUDED.owner,
+                    payment_type = EXCLUDED.payment_type,
+                    size = COALESCE(removed_messages.size, EXCLUDED.size)
+                """
+            )
+        )
+        session.execute(
+            text(
+                """
+                DELETE FROM messages m
+                USING message_status ms
+                WHERE ms.item_hash = m.item_hash
+                  AND ms.status = 'removed'
+                """
+            )
+        )
+        session.commit()
+
+        snapshot = session.get(RemovedMessageDb, removed_hash)
+        assert snapshot is not None
+        assert snapshot.type == MessageType.store
+        assert snapshot.sender == "0x51A58800b26AA1451aaA803d1746687cB88E0500"
+        # content.address is denormalized into messages.owner at insert time
+        assert snapshot.owner == "0x51A58800b26AA1451aaA803d1746687cB88E0500"
+        # No payment field: absence means hold
+        assert snapshot.payment_type == "hold"
+        # Size backfilled from the still-existing files row
+        assert snapshot.size == file_size
+        # Removal time unknown for legacy rows
+        assert snapshot.removed_at is None
+
+        assert session.get(MessageDb, removed_hash) is None

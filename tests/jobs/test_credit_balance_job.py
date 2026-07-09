@@ -1,7 +1,7 @@
 import pytest
 from aleph_message.models import Chain, ItemHash, ItemType, MessageType
 
-from aleph.db.accessors.messages import get_removed_message
+from aleph.db.accessors.messages import get_message_status, get_removed_message
 from aleph.db.models.files import (
     FilePinType,
     GracePeriodFilePinDb,
@@ -130,6 +130,21 @@ async def test_credit_balance_job_delete_skips_snapshot_without_flip(
         assert removed_message is None
 
 
+def _add_finalized_removal(session, removed_at) -> None:
+    """Finalized removal: status REMOVED, snapshot present, messages row
+    deleted by the garbage collector."""
+    session.add(
+        MessageStatusDb(
+            item_hash=MESSAGE_HASH,
+            status=MessageStatus.REMOVED,
+            reception_time=utc_now(),
+        )
+    )
+    session.add(
+        RemovedMessageDb(item_hash=MESSAGE_HASH, size=FILE_SIZE, removed_at=removed_at)
+    )
+
+
 @pytest.mark.asyncio
 async def test_credit_balance_job_recover_keeps_record_after_gc_stamp(
     session_factory: DbSessionFactory, credit_balance_job: CreditBalanceCronJob
@@ -137,17 +152,13 @@ async def test_credit_balance_job_recover_keeps_record_after_gc_stamp(
     """
     A recovery attempt racing with the garbage collector must not destroy a
     finalized removal record: the REMOVING->PROCESSED flip does not happen
-    (the message is already REMOVED), so the record survives.
+    (the message is already REMOVED), so the record survives and no
+    messages row reappears.
     """
     removed_at = utc_now()
 
     with session_factory() as session:
-        _add_store_message(session, MessageStatus.REMOVED)
-        session.add(
-            RemovedMessageDb(
-                item_hash=MESSAGE_HASH, size=FILE_SIZE, removed_at=removed_at
-            )
-        )
+        _add_finalized_removal(session, removed_at)
         session.commit()
 
         await credit_balance_job.recover_messages(session, [ItemHash(MESSAGE_HASH)])
@@ -158,12 +169,12 @@ async def test_credit_balance_job_recover_keeps_record_after_gc_stamp(
         assert removed_message.size == FILE_SIZE
         assert removed_message.removed_at == removed_at
 
-        # The denormalized status must not be clobbered either: the message
-        # would otherwise disappear from removed-message listings and show
-        # up as processed.
-        message = session.get(MessageDb, MESSAGE_HASH)
-        assert message is not None
-        assert message.status_value == MessageStatus.REMOVED
+        # The message must not reappear as processed: the guarded flip did
+        # not happen and no messages row exists for a finalized removal.
+        status = get_message_status(session=session, item_hash=ItemHash(MESSAGE_HASH))
+        assert status is not None
+        assert status.status == MessageStatus.REMOVED
+        assert session.get(MessageDb, MESSAGE_HASH) is None
 
 
 @pytest.mark.asyncio
@@ -172,26 +183,21 @@ async def test_credit_balance_job_delete_keeps_removed_status(
 ):
     """
     A removal attempt on an already-REMOVED message must not flip its
-    denormalized status back to REMOVING nor write a removal record over
-    the finalized one.
+    status back to REMOVING nor write a removal record over the finalized
+    one.
     """
     removed_at = utc_now()
 
     with session_factory() as session:
-        _add_store_message(session, MessageStatus.REMOVED)
-        session.add(
-            RemovedMessageDb(
-                item_hash=MESSAGE_HASH, size=FILE_SIZE, removed_at=removed_at
-            )
-        )
+        _add_finalized_removal(session, removed_at)
         session.commit()
 
         await credit_balance_job.delete_messages(session, [ItemHash(MESSAGE_HASH)])
         session.commit()
 
-        message = session.get(MessageDb, MESSAGE_HASH)
-        assert message is not None
-        assert message.status_value == MessageStatus.REMOVED
+        status = get_message_status(session=session, item_hash=ItemHash(MESSAGE_HASH))
+        assert status is not None
+        assert status.status == MessageStatus.REMOVED
 
         removed_message = get_removed_message(session=session, item_hash=MESSAGE_HASH)
         assert removed_message is not None

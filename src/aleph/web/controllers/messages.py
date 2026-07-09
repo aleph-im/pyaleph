@@ -41,6 +41,7 @@ from aleph.schemas.api.messages import (
     PostMessage,
     ProcessedMessageStatus,
     RejectedMessageStatus,
+    RemovedMessage,
     RemovedMessageStatus,
     RemovingMessageStatus,
     format_message,
@@ -436,7 +437,9 @@ def _list_forgotten_messages(
         )
 
         # If the result set is smaller than the page size, we already know
-        # the total count without running a separate COUNT query.
+        # the total count without running a separate COUNT query. Known
+        # trade-off (shared with the live-message listing): a page past the
+        # end of the result set overestimates the total.
         if (
             query_params.pagination
             and len(forgotten_messages) < query_params.pagination
@@ -459,19 +462,12 @@ def _list_forgotten_messages(
     return web.json_response(text=aleph_json.dumps(response).decode("utf-8"))
 
 
-def removed_message_to_dict(
-    message: MessageDb, removed_message: Optional[RemovedMessageDb]
-) -> Dict[str, Any]:
-    message_dict = message_to_dict(message)
+def removed_message_to_dict(message: RemovedMessageDb) -> Dict[str, Any]:
+    # The RemovedMessage schema owns the serialization rules (epoch-float
+    # time fields), so both the single-message endpoint and this list share
+    # one serializer.
+    message_dict = RemovedMessage.model_validate(message).model_dump()
     message_dict["status"] = MessageStatus.REMOVED
-    # File-size snapshot taken at removal time (shadows the message content
-    # size of live items; documented in the swagger docstring).
-    message_dict["size"] = removed_message.size if removed_message else None
-    message_dict["removed_at"] = (
-        removed_message.removed_at.timestamp()
-        if removed_message is not None and removed_message.removed_at is not None
-        else None
-    )
     return message_dict
 
 
@@ -479,9 +475,10 @@ def _list_removed_messages(
     request: web.Request, query_params: MessageQueryParams
 ) -> web.Response:
     """
-    Removed-only variant of the message list: messages joined with their
-    removal record. Date filters and time sorting apply to `removed_at`
-    (removal time), not `time`.
+    Removed-only variant of the message list, served from the
+    removed_messages snapshots (the messages rows are deleted at removal).
+    Date filters and time sorting apply to `removed_at` (node-local removal
+    time), not `time`.
     """
     find_filters = query_params.model_dump(exclude_none=True)
     # Consumed by the caller or meaningless for removed queries.
@@ -490,26 +487,27 @@ def _list_removed_messages(
 
     session_factory = get_session_factory_from_request(request)
     with session_factory() as session:
-        rows = session.execute(
-            make_matching_removed_messages_query(
-                include_confirmations=True, **find_filters
-            )
-        ).all()
+        removed_messages = list(
+            session.execute(
+                make_matching_removed_messages_query(**find_filters)
+            ).scalars()
+        )
 
         # If the result set is smaller than the page size, we already know
-        # the total count without running a separate COUNT query.
-        if query_params.pagination and len(rows) < query_params.pagination:
-            total_msgs = (query_params.page - 1) * query_params.pagination + len(rows)
+        # the total count without running a separate COUNT query. Known
+        # trade-off (shared with the live-message listing): a page past the
+        # end of the result set overestimates the total.
+        if query_params.pagination and len(removed_messages) < query_params.pagination:
+            total_msgs = (query_params.page - 1) * query_params.pagination + len(
+                removed_messages
+            )
         else:
             total_msgs = count_matching_removed_messages(
                 session=session, **find_filters
             )
 
         response = format_response_dict(
-            messages=[
-                removed_message_to_dict(message, removed_message)
-                for message, removed_message in rows
-            ],
+            messages=[removed_message_to_dict(rm) for rm in removed_messages],
             pagination=query_params.pagination,
             page=query_params.page,
             total_messages=total_msgs,
@@ -576,19 +574,23 @@ async def view_messages_list(request: web.Request) -> web.Response:
         description: >-
           Accepted message statuses (comma-separated). 'forgotten' and
           'removed' are terminal statuses that must be the only status
-          requested (otherwise 400): 'forgotten' switches the query to the
-          forgotten_messages table, 'removed' joins messages with their
-          removal record. Supported filters are then msgTypes, addresses,
-          owners, chains, channels, hashes, paymentTypes and
-          startDate/endDate; date filters and time sorting apply to the
-          termination time (forgotten_at / removed_at), not to the message
-          time. Legacy rows without a termination time are excluded by date
-          filters and sorted last otherwise. Removed items carry
-          status/removed_at, and their 'size' field is the file-size snapshot
-          taken at removal (not the message content size). Unsupported
-          narrowing filters (refs, contentTypes, contentHashes, contentKeys,
-          tags, startBlock/endBlock) and cursor pagination are rejected
-          with 400.
+          requested (otherwise 400): both switch the query to the
+          corresponding snapshot table (forgotten_messages /
+          removed_messages — the messages row is deleted at termination)
+          and return message skeletons without content. Supported filters
+          are then msgTypes, addresses, owners, chains, channels, hashes,
+          paymentTypes and startDate/endDate; date filters and time sorting
+          apply to the termination time (forgotten_at / removed_at), not to
+          the message time. forgotten_at is the sender-supplied FORGET time
+          — the same declared-time semantics as the default time sort and
+          cursors of the live list; removed_at is the node-local removal
+          time (not deterministic across nodes). Legacy rows without a
+          termination time are excluded by date filters and sorted last
+          otherwise. The 'size' field of both skeletons is the file-size
+          snapshot preserved for billing (not the message content size).
+          Unsupported narrowing filters (refs, contentTypes, contentHashes,
+          contentKeys, tags, startBlock/endBlock) and cursor pagination are
+          rejected with 400.
       - name: addresses
         in: query
         schema:
@@ -1041,22 +1043,19 @@ def _get_message_with_status(
         )
 
     if status == MessageStatus.REMOVED:
-        message_db = get_message_by_item_hash(
-            session=session, item_hash=ItemHash(item_hash)
-        )
-        if not message_db:
-            raise web.HTTPNotFound()
-
+        # The messages row is deleted at removal (mirroring forgotten
+        # messages): the snapshot is the only record left.
         removed_message_db = get_removed_message(session=session, item_hash=item_hash)
+        if not removed_message_db:
+            raise web.HTTPGone(body=f"This message has been removed: {item_hash}")
 
-        message = format_message(message_db)
         return RemovedMessageStatus(
             item_hash=item_hash,
             reception_time=reception_time,
-            message=message,
+            message=RemovedMessage.model_validate(removed_message_db),
             reason=RemovedMessageReason.BALANCE_INSUFFICIENT,
-            removed_at=(removed_message_db.removed_at if removed_message_db else None),
-            size=removed_message_db.size if removed_message_db else None,
+            removed_at=removed_message_db.removed_at,
+            size=removed_message_db.size,
         )
 
     raise NotImplementedError(f"Unknown message status: {status}")

@@ -218,14 +218,24 @@ async def test_check_and_update_removing_messages(
         assert legacy_status is not None
         assert legacy_status.status == MessageStatus.REMOVED
 
-        # The removal record of the removable message keeps its size snapshot
-        # and gets removed_at stamped
+        # The removal record of the removable message keeps its size
+        # snapshot, gets the billing metadata copied and removed_at stamped,
+        # and the messages row is deleted (forgotten-style)
         removed_message = get_removed_message(
             session=session, item_hash=fixture_removing_messages["removable_message"]
         )
         assert removed_message is not None
         assert removed_message.size == 1000
         assert removed_message.removed_at is not None
+        assert removed_message.type == MessageType.store
+        assert removed_message.sender == "0xsender1"
+        assert removed_message.time is not None
+        # No explicit payment field on the message: absence means hold
+        assert removed_message.payment_type == "hold"
+        assert (
+            session.get(MessageDb, fixture_removing_messages["removable_message"])
+            is None
+        )
 
         # The legacy message gets a removal record without size
         legacy_removed_message = get_removed_message(
@@ -234,16 +244,24 @@ async def test_check_and_update_removing_messages(
         assert legacy_removed_message is not None
         assert legacy_removed_message.size is None
         assert legacy_removed_message.removed_at is not None
+        assert legacy_removed_message.sender == "0xsender3"
+        assert (
+            session.get(MessageDb, fixture_removing_messages["legacy_message"]) is None
+        )
 
-        # The pinned message stays REMOVING: no removal time stamped
+        # The pinned message stays REMOVING: no removal record, row alive
         pinned_removed_message = get_removed_message(
             session=session, item_hash=fixture_removing_messages["pinned_message"]
         )
         assert pinned_removed_message is None
+        assert (
+            session.get(MessageDb, fixture_removing_messages["pinned_message"])
+            is not None
+        )
 
         # The concurrently recovered message must not reappear as removed:
-        # the guarded flip did not happen, so no phantom removal record and
-        # message_status stays PROCESSED
+        # the guarded flip did not happen, so no phantom removal record,
+        # message_status stays PROCESSED and the messages row survives
         recovered_status = get_message_status(
             session=session, item_hash=fixture_removing_messages["recovered_message"]
         )
@@ -254,3 +272,52 @@ async def test_check_and_update_removing_messages(
             session=session, item_hash=fixture_removing_messages["recovered_message"]
         )
         assert recovered_removed_message is None
+        assert (
+            session.get(MessageDb, fixture_removing_messages["recovered_message"])
+            is not None
+        )
+
+
+@pytest.mark.asyncio
+async def test_check_removing_messages_rolls_back_flip_on_stamp_failure(
+    session_factory: DbSessionFactory,
+    gc: GarbageCollector,
+    fixture_removing_messages,
+    monkeypatch,
+):
+    """
+    A failure between the REMOVING->REMOVED flip and the snapshot/deletion
+    must roll back the whole per-message savepoint: a REMOVED message
+    without removal record would be invisible to date-windowed queries.
+    """
+
+    def failing_remove_message(**_kwargs):
+        raise RuntimeError("snapshot failed")
+
+    monkeypatch.setattr(
+        "aleph.services.storage.garbage_collector.remove_message",
+        failing_remove_message,
+    )
+
+    # Must not raise: per-message errors are logged and skipped
+    await gc._check_and_update_removing_messages()
+
+    with session_factory() as session:
+        # The status flip was rolled back together with the failed snapshot
+        removable_status = get_message_status(
+            session=session, item_hash=fixture_removing_messages["removable_message"]
+        )
+        assert removable_status is not None
+        assert removable_status.status == MessageStatus.REMOVING
+
+        # The messages row is untouched
+        message = session.get(MessageDb, fixture_removing_messages["removable_message"])
+        assert message is not None
+        assert message.status_value == MessageStatus.REMOVING
+
+        # No removed_at was stamped on the phase-1 snapshot record
+        removed_message = get_removed_message(
+            session=session, item_hash=fixture_removing_messages["removable_message"]
+        )
+        assert removed_message is not None
+        assert removed_message.removed_at is None

@@ -5,7 +5,6 @@ import logging
 from aioipfs import NotPinnedError
 from aleph_message.models import ItemHash, ItemType, MessageType
 from configmanager import Config
-from sqlalchemy import update as sa_update
 
 from aleph.db.accessors.cost import delete_costs_for_forgotten_and_deleted_messages
 from aleph.db.accessors.files import delete_file as delete_file_db
@@ -18,9 +17,9 @@ from aleph.db.accessors.messages import (
     get_matching_hashes,
     get_one_message_by_item_hash,
     make_message_status_upsert_query,
-    mark_removed_message,
+    remove_message,
 )
-from aleph.db.models.messages import MessageDb, MessageStatusDb
+from aleph.db.models.messages import MessageStatusDb
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSessionFactory
@@ -79,51 +78,56 @@ class GarbageCollector:
 
             for item_hash in removing_hashes:
                 try:
-                    # For STORE messages, check if the file is still pinned
-                    # We need to get message details to check its type
-                    message = get_one_message_by_item_hash(
-                        session=session, item_hash=item_hash
-                    )
-
-                    resources_deleted = True
-
-                    if message and message.type == MessageType.store:
-                        # Check if the file is still pinned (by item_hash cause there could be other messages pinning the same file_hash)
-                        if file_pin_exists(session=session, item_hash=item_hash):
-                            resources_deleted = False
-
-                    # If all resources have been deleted, update status to REMOVED
-                    if resources_deleted:
-                        now = utc_now()
-                        result = session.execute(
-                            make_message_status_upsert_query(
-                                item_hash=item_hash,
-                                new_status=MessageStatus.REMOVED,
-                                reception_time=now,
-                                where=(
-                                    MessageStatusDb.status == MessageStatus.REMOVING
-                                ),
-                            )
+                    # One savepoint per message: the status flip, the
+                    # metadata snapshot and the messages-row deletion must
+                    # land (or roll back) together — a partial commit would
+                    # leave a REMOVED message without removal record, or a
+                    # snapshot next to a live row. The savepoint also keeps
+                    # a failed statement from poisoning the shared
+                    # transaction for the remaining messages of the batch.
+                    with session.begin_nested():
+                        # For STORE messages, check if the file is still pinned
+                        # We need to get message details to check its type
+                        message = get_one_message_by_item_hash(
+                            session=session, item_hash=item_hash
                         )
-                        # Only when this call actually performed the
-                        # REMOVING->REMOVED flip: a concurrent recovery may
-                        # have just returned the message to PROCESSED, and it
-                        # must not reappear as removed with a bogus
-                        # removed_at.
-                        if result.rowcount > 0:
-                            # Dual-write to messages table (trigger handles
-                            # message_counts)
-                            session.execute(
-                                sa_update(MessageDb)
-                                .where(MessageDb.item_hash == item_hash)
-                                .values(status_value=MessageStatus.REMOVED)
+
+                        resources_deleted = True
+
+                        if message and message.type == MessageType.store:
+                            # Check if the file is still pinned (by item_hash cause there could be other messages pinning the same file_hash)
+                            if file_pin_exists(session=session, item_hash=item_hash):
+                                resources_deleted = False
+
+                        # If all resources have been deleted, update status to REMOVED
+                        if resources_deleted:
+                            now = utc_now()
+                            result = session.execute(
+                                make_message_status_upsert_query(
+                                    item_hash=item_hash,
+                                    new_status=MessageStatus.REMOVED,
+                                    reception_time=now,
+                                    where=(
+                                        MessageStatusDb.status == MessageStatus.REMOVING
+                                    ),
+                                )
                             )
-                            # Stamp the removal time on the record snapshotted
-                            # at PROCESSED->REMOVING (inserted without size if
-                            # the message predates the snapshot).
-                            mark_removed_message(
-                                session=session, item_hash=item_hash, removed_at=now
-                            )
+                            # Only when this call actually performed the
+                            # REMOVING->REMOVED flip: a concurrent recovery may
+                            # have just returned the message to PROCESSED, and
+                            # it must not reappear as removed with a bogus
+                            # removed_at.
+                            if result.rowcount > 0:
+                                # Copy the billing metadata onto the removal
+                                # record (snapshotted at PROCESSED->REMOVING;
+                                # created without size if the message predates
+                                # the snapshot) and delete the messages row,
+                                # mirroring the forgotten flow.
+                                remove_message(
+                                    session=session,
+                                    item_hash=item_hash,
+                                    removed_at=now,
+                                )
 
                 except Exception as err:
                     LOGGER.error(

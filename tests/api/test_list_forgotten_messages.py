@@ -224,7 +224,9 @@ async def test_list_forgotten_messages_filters(
     data = await response.json()
     assert [msg["item_hash"] for msg in data["messages"]] == [STORE_CREDIT_HASH]
 
-    # paymentTypes (legacy rows with NULL payment_type never match)
+    # paymentTypes: absence of a payment field means hold (billing
+    # semantics), so NULL-payment rows (legacy included) match
+    # paymentTypes=hold — same coalescing as the removed query
     response = await ccn_api_client.get(
         MESSAGES_URI, params={"msgStatuses": "forgotten", "paymentTypes": "credit"}
     )
@@ -237,7 +239,27 @@ async def test_list_forgotten_messages_filters(
     )
     assert response.status == 200, await response.text()
     data = await response.json()
-    assert [msg["item_hash"] for msg in data["messages"]] == [STORE_HOLD_HASH]
+    assert {msg["item_hash"] for msg in data["messages"]} == {
+        STORE_HOLD_HASH,
+        POST_HASH,
+        LEGACY_STORE_HASH,
+    }
+
+    # combined with msgTypes=STORE: the implicit-hold legacy STORE matches
+    response = await ccn_api_client.get(
+        MESSAGES_URI,
+        params={
+            "msgStatuses": "forgotten",
+            "paymentTypes": "hold",
+            "msgTypes": "STORE",
+        },
+    )
+    assert response.status == 200, await response.text()
+    data = await response.json()
+    assert {msg["item_hash"] for msg in data["messages"]} == {
+        STORE_HOLD_HASH,
+        LEGACY_STORE_HASH,
+    }
 
 
 @pytest.mark.asyncio

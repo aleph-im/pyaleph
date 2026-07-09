@@ -336,13 +336,7 @@ DEFAULT_MAX_FILE_SIZE = 100 * MiB
 DEFAULT_MAX_UPLOAD_FILE_SIZE = 1 * GiB
 DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE = 25 * MiB
 DEFAULT_MAX_UPLOAD_CAR_SIZE = 4 * GiB
-# Minimum MiB billed for pure STORE messages, applied to credit payment only
-# (services/cost.py::_calculate_storage_costs). Bumped 25 -> 100 as a
-# small-file spam deterrent. Transitional inconsistency after the bump:
-# precomputed account_costs rows keep the old floor until a cost
-# recalculation runs, while estimates and forgotten/removed pricing use the
-# new floor immediately.
-MIN_STORE_COST_MIB = 100
+MIN_STORE_COST_MIB = 25  # Minimum MiB cost for pure STORE messages
 MIN_CREDIT_COST_PER_HOUR = (
     1  # Minimum cost per hour in credits for instances and volumes
 )
