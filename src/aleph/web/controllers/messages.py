@@ -322,6 +322,7 @@ _HEADERS_FIELDS: Dict[MessageType, List[Tuple[str, str]]] = {
     MessageType.program: [],
     MessageType.instance: [],
     MessageType.forget: [],
+    MessageType.v_program: [],
 }
 
 
@@ -562,7 +563,7 @@ async def view_messages_list(request: web.Request) -> web.Response:
         in: query
         schema:
           type: string
-          enum: [POST, AGGREGATE, STORE, PROGRAM, INSTANCE, FORGET]
+          enum: [POST, AGGREGATE, STORE, PROGRAM, INSTANCE, FORGET, V-PROGRAM]
       - name: msgTypes
         in: query
         schema:

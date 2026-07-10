@@ -75,7 +75,7 @@ from aleph.utils import safe_getattr
 LOGGER = logging.getLogger(__name__)
 
 
-def _get_vm_content(message: MessageDb) -> ExecutableContent:
+def _get_vm_content(message: MessageDb) -> Union[InstanceContent, ProgramContent]:
     content = message.parsed_content
     if not isinstance(content, (InstanceContent, ProgramContent)):
         raise InvalidMessageFormat(

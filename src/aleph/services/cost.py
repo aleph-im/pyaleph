@@ -9,12 +9,14 @@ from aleph_message.models import (
     PaymentType,
     ProgramContent,
     StoreContent,
+    VerifiableProgramContent,
 )
 from aleph_message.models.execution.environment import (
     HostRequirements,
     InstanceEnvironment,
 )
 from aleph_message.models.execution.volume import ImmutableVolume
+from aleph_message.models.execution.vprogram import VerifiedVolume
 
 from aleph.db.accessors.aggregates import get_aggregate_by_key
 from aleph.db.accessors.cost import get_message_costs
@@ -28,6 +30,7 @@ from aleph.schemas.cost_estimation_messages import (
     CostEstimationInstanceContent,
     CostEstimationProgramContent,
     CostEstimationStoreContent,
+    CostEstimationVProgramContent,
 )
 from aleph.toolkit.constants import (
     DEFAULT_PRICE_AGGREGATE,
@@ -57,14 +60,20 @@ from aleph.types.settings import Settings
 logger = logging.getLogger(__name__)
 
 CostComputableContent: TypeAlias = (
-    CostEstimationContent | InstanceContent | ProgramContent | StoreContent
+    CostEstimationContent
+    | InstanceContent
+    | ProgramContent
+    | StoreContent
+    | VerifiableProgramContent
 )
 
 CostComputableExecutableContent: TypeAlias = (
     CostEstimationInstanceContent
     | CostEstimationProgramContent
+    | CostEstimationVProgramContent
     | InstanceContent
     | ProgramContent
+    | VerifiableProgramContent
 )
 
 
@@ -241,6 +250,11 @@ def _get_product_price_type(
             if is_on_demand
             else ProductPriceType.PROGRAM_PERSISTENT
         )
+
+    if isinstance(content, (VerifiableProgramContent, CostEstimationVProgramContent)):
+        # V-Programs are SEV-SNP confidential VMs; price them like
+        # confidential instances until they get a dedicated tier.
+        return ProductPriceType.INSTANCE_CONFIDENTIAL
 
     return _get_product_instance_type(content, settings, price_aggregate)
 
@@ -454,6 +468,11 @@ def _get_execution_volumes_costs(
                 )
 
     for i, volume in enumerate(content.volumes):
+        if isinstance(volume, VerifiedVolume):
+            # Verity-bound volumes (V-Programs) are STORE-paid artifacts like
+            # the workload and carry no execution-volume cost in phase 1.
+            continue
+
         # NOTE: There are legacy volumes with no "mount" property set
         # or with same values for different volumes causing unique key constraint errors
         name_prefix = f"#{i}"

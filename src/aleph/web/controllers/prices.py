@@ -141,6 +141,7 @@ async def get_executable_message(session: DbSession, item_hash: ItemHash) -> Mes
         MessageType.instance,
         MessageType.program,
         MessageType.store,
+        MessageType.v_program,
     ):
         raise web.HTTPBadRequest(
             body=f"Message is not an executable or store message: {item_hash}"
@@ -574,7 +575,12 @@ async def recalculate_message_costs(request: web.Request):
                 select(MessageDb)
                 .where(
                     MessageDb.type.in_(
-                        [MessageType.instance, MessageType.program, MessageType.store]
+                        [
+                            MessageType.instance,
+                            MessageType.program,
+                            MessageType.store,
+                            MessageType.v_program,
+                        ]
                     )
                 )
                 .order_by(MessageDb.time.asc())

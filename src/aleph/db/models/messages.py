@@ -12,6 +12,7 @@ from aleph_message.models import (
     PostContent,
     ProgramContent,
     StoreContent,
+    VerifiableProgramContent,
 )
 from pydantic import ValidationError
 from sqlalchemy import (
@@ -44,6 +45,7 @@ CONTENT_TYPE_MAP: Dict[MessageType, Type[BaseContent]] = {
     MessageType.post: PostContent,
     MessageType.program: ProgramContent,
     MessageType.store: StoreContent,
+    MessageType.v_program: VerifiableProgramContent,
 }
 
 
@@ -56,7 +58,7 @@ def extract_tags(
 
     * POST + AGGREGATE: ``content -> 'content' -> 'tags'``
     * STORE:            ``content -> 'tags'``
-    * INSTANCE/PROGRAM: ``content -> 'metadata' -> 'tags'``
+    * INSTANCE/PROGRAM/V-PROGRAM: ``content -> 'metadata' -> 'tags'``
 
     Returns ``None`` when the message carries no tags so the caller can
     leave the column NULL, distinguishable from an explicitly empty list.
@@ -72,7 +74,11 @@ def extract_tags(
         tags = inner.get("tags") if isinstance(inner, dict) else None
     elif message_type == MessageType.store:
         tags = content_dict.get("tags")
-    elif message_type in (MessageType.instance, MessageType.program):
+    elif message_type in (
+        MessageType.instance,
+        MessageType.program,
+        MessageType.v_program,
+    ):
         metadata = content_dict.get("metadata")
         tags = metadata.get("tags") if isinstance(metadata, dict) else None
     else:

@@ -24,6 +24,7 @@ from aleph_message.models import (
     PostContent,
     ProgramContent,
     StoreContent,
+    VerifiableProgramContent,
 )
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
@@ -92,6 +93,11 @@ class ProgramMessage(BaseMessage[Literal[MessageType.program], ProgramContent]):
 class StoreMessage(BaseMessage[Literal[MessageType.store], StoreContent]): ...
 
 
+class VProgramMessage(
+    BaseMessage[Literal[MessageType.v_program], VerifiableProgramContent]
+): ...
+
+
 MESSAGE_CLS_DICT: Dict[
     Any,
     Type[
@@ -101,6 +107,7 @@ MESSAGE_CLS_DICT: Dict[
         | PostMessage
         | ProgramMessage
         | StoreMessage
+        | VProgramMessage
     ],
 ] = {
     MessageType.aggregate: AggregateMessage,
@@ -109,6 +116,7 @@ MESSAGE_CLS_DICT: Dict[
     MessageType.post: PostMessage,
     MessageType.program: ProgramMessage,
     MessageType.store: StoreMessage,
+    MessageType.v_program: VProgramMessage,
 }
 
 
@@ -120,6 +128,7 @@ AlephMessage = Annotated[
         PostMessage,
         ProgramMessage,
         StoreMessage,
+        VProgramMessage,
     ],
     Field(discriminator="type"),
 ]
