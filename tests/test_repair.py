@@ -2,11 +2,20 @@ import datetime as dt
 
 import pytest
 from aleph_message.models import Chain, ItemHash, ItemType, MessageType
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from aleph.db.accessors.messages import get_message_status, get_rejected_message
-from aleph.db.models import MessageDb, MessageStatusDb
-from aleph.repair import _reject_invalid_program_metadata
+from aleph.db.accessors.vms import get_vms_dependent_volumes, get_vprogram
+from aleph.db.models import (
+    MessageDb,
+    MessageStatusDb,
+    VProgramDb,
+    VProgramVerifiedVolumeDb,
+)
+from aleph.repair import (
+    _reject_invalid_program_metadata,
+    mark_processed_message_as_rejected,
+)
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
@@ -178,3 +187,85 @@ def test_reject_invalid_program_metadata_skips_valid_programs(
             is not None
         )
         assert get_rejected_message(session=session, item_hash=item_hash) is None
+
+
+def test_mark_processed_vprogram_as_rejected_deletes_vms_rows(
+    session_factory: DbSessionFactory,
+):
+    """Rejecting a processed V-PROGRAM must delete its vms representation:
+    the vms rows have no FK to messages, and an orphaned row would keep
+    blocking forgets of the files it references."""
+    vprogram_hash = "feed" + "0" * 60
+    workload_ref = "3c" * 32
+
+    message = MessageDb(
+        item_hash=vprogram_hash,
+        chain=Chain.ETH,
+        sender="0x0000000000000000000000000000000000000001",
+        signature="0xsig",
+        item_type=ItemType.inline,
+        type=MessageType.v_program,
+        content={"address": "0xabc", "time": 1700000000.0},
+        size=100,
+        time=timestamp_to_datetime(1700000000.0),
+        channel=Channel("TEST"),
+    )
+    vprogram_row = VProgramDb(
+        item_hash=vprogram_hash,
+        owner="0xabc",
+        allow_amend=False,
+        environment_reproducible=False,
+        environment_internet=True,
+        environment_aleph_api=False,
+        environment_shared_cache=False,
+        resources_vcpus=2,
+        resources_memory=2048,
+        resources_seconds=30,
+        created=timestamp_to_datetime(1700000000.0),
+        runtime_ref="2b" * 32,
+        runtime_comment="",
+        workload_ref=workload_ref,
+        workload_hash_tree="4d" * 32,
+        workload_roothash="ab" * 32,
+        verified_volumes=[
+            VProgramVerifiedVolumeDb(
+                position=0,
+                ref="5e" * 32,
+                hash_tree="6f" * 32,
+                roothash="cd" * 32,
+                comment="",
+            )
+        ],
+    )
+
+    with session_factory() as session:
+        _seed(session, message)
+        session.add(vprogram_row)
+        session.commit()
+
+    with session_factory() as session:
+        message_db = session.execute(
+            select(MessageDb).where(MessageDb.item_hash == vprogram_hash)
+        ).scalar_one()
+        mark_processed_message_as_rejected(
+            session=session,
+            message=message_db,
+            error_code=ErrorCode.INVALID_FORMAT,
+            reason="test rejection",
+        )
+        session.commit()
+
+    with session_factory() as session:
+        status = get_message_status(session=session, item_hash=ItemHash(vprogram_hash))
+        assert status is not None
+        assert status.status == MessageStatus.REJECTED
+
+        assert get_vprogram(session=session, item_hash=vprogram_hash) is None
+        remaining_volumes = session.execute(
+            select(func.count()).select_from(VProgramVerifiedVolumeDb)
+        ).scalar_one()
+        assert remaining_volumes == 0
+        # The referenced files are forgettable again.
+        assert (
+            get_vms_dependent_volumes(session=session, volume_hash=workload_ref) is None
+        )

@@ -53,8 +53,8 @@ def mark_processed_message_as_rejected(
     Mirrors ``mark_pending_message_as_rejected`` for messages that already
     cleared the pipeline under permissive rules but are no longer valid under
     current ones (ex: ExecutableContent.metadata used to accept lists, now
-    requires a dict). Cleans up type-specific state (VM rows for
-    program/instance), snapshots the row into ``rejected_messages``, flips
+    requires a dict). Cleans up type-specific state (vms rows for the
+    executable types), snapshots the row into ``rejected_messages``, flips
     ``message_status`` to REJECTED, and deletes the ``messages`` row. The
     trigger keeps ``message_counts`` consistent; FK cascades clean
     ``message_confirmations`` and ``account_costs``.
@@ -64,7 +64,14 @@ def mark_processed_message_as_rejected(
     """
     snapshot = _wire_message_dict(message)
 
-    if message.type in (MessageType.program, MessageType.instance):
+    # The vms rows have no FK to messages: without an explicit delete_vm, a
+    # rejected executable would leave an orphaned vms row that keeps blocking
+    # forgets of the files it references (get_vms_dependent_volumes).
+    if message.type in (
+        MessageType.program,
+        MessageType.instance,
+        MessageType.v_program,
+    ):
         delete_vm(session=session, vm_hash=message.item_hash)
         _ = list(delete_vm_updates(session=session, vm_hash=message.item_hash))
 
