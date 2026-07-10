@@ -185,12 +185,56 @@ class RemovingMessageStatus(BaseMessageStatus):
     reason: RemovedMessageReason
 
 
+class RemovedMessage(BaseModel):
+    """
+    Skeleton of a removed message, rebuilt from the removed_messages
+    snapshot: the messages row is deleted at removal, mirroring forgotten
+    messages. Metadata fields are NULL for legacy rows (removed before the
+    snapshot existed).
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    sender: Optional[str] = None
+    chain: Optional[Chain] = None
+    signature: Optional[str] = None
+    type: Optional[MessageType] = None
+    item_type: Optional[ItemType] = None
+    item_hash: str
+    time: Optional[dt.datetime] = None
+    channel: Optional[str] = None
+    # Billing metadata preserved at removal.
+    owner: Optional[str] = None
+    payment_type: Optional[str] = None
+    size: Optional[int] = None
+    # Node-local removal finalization time — NOT deterministic across nodes
+    # (each node's GC finalizes removals on its own schedule); the removed
+    # list windows and sorts on it.
+    removed_at: Optional[dt.datetime] = None
+
+    @field_serializer("time", "removed_at")
+    def serialize_optional_datetime(
+        self, value: Optional[dt.datetime], _info
+    ) -> Optional[float]:
+        return value.timestamp() if value is not None else None
+
+
 class RemovedMessageStatus(BaseMessageStatus):
     model_config = ConfigDict(from_attributes=True)
 
     status: MessageStatus = MessageStatus.REMOVED
-    message: AlephMessage
+    message: RemovedMessage
     reason: RemovedMessageReason
+    # Removal record: file-size snapshot taken at PROCESSED->REMOVING and
+    # removal time stamped at REMOVING->REMOVED (NULL for legacy removals).
+    removed_at: Optional[dt.datetime] = None
+    size: Optional[int] = None
+
+    @field_serializer("removed_at")
+    def serialize_removed_at(
+        self, value: Optional[dt.datetime], _info
+    ) -> Optional[float]:
+        return value.timestamp() if value is not None else None
 
 
 class ForgottenMessage(BaseModel):
@@ -204,6 +248,23 @@ class ForgottenMessage(BaseModel):
     item_hash: str
     time: dt.datetime
     channel: Optional[str] = None
+    # Billing metadata preserved at forget time (NULL for legacy rows).
+    owner: Optional[str] = None
+    payment_type: Optional[str] = None
+    size: Optional[int] = None
+    # Sender-supplied time of the forgetting FORGET message; the forgotten
+    # list windows and sorts on it.
+    forgotten_at: Optional[dt.datetime] = None
+
+    @field_serializer("time")
+    def serialize_time(self, dt: dt.datetime, _info) -> float:
+        return dt.timestamp()
+
+    @field_serializer("forgotten_at")
+    def serialize_forgotten_at(
+        self, value: Optional[dt.datetime], _info
+    ) -> Optional[float]:
+        return value.timestamp() if value is not None else None
 
 
 class ForgottenMessageStatus(BaseMessageStatus):

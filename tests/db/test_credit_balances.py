@@ -124,6 +124,49 @@ def test_update_credit_balances_expense(session_factory: DbSessionFactory):
         assert expense_record.credit_index == 0
         assert expense_record.expiration_date is None
         assert expense_record.message_timestamp == message_timestamp
+        # v1 entries leave the v2 aggregate columns NULL
+        assert expense_record.expense_count is None
+        assert expense_record.expense_size_mib is None
+
+
+def test_update_credit_balances_expense_v2_aggregated(
+    session_factory: DbSessionFactory,
+):
+    """v2 aggregated expense entries persist count and size."""
+    credits_list = [
+        {
+            "address": "0x456",
+            "amount": 500,
+            "ref": "storage",
+            "count": 12,
+            "size": Decimal("2048.5"),
+            "time": 43200.0,  # total billed seconds; not persisted
+        }
+    ]
+
+    message_timestamp = dt.datetime(2026, 3, 2, 12, 0, 0, tzinfo=dt.timezone.utc)
+
+    with session_factory() as session:
+        update_credit_balances_expense(
+            session=session,
+            credits_list=credits_list,
+            message_hash="expense_msg_v2_123",
+            message_timestamp=message_timestamp,
+        )
+        session.commit()
+
+        expense_record = (
+            session.query(AlephCreditHistoryDb)
+            .filter_by(address="0x456", credit_ref="expense_msg_v2_123")
+            .first()
+        )
+
+        assert expense_record is not None
+        assert expense_record.amount == -500  # no multiplier after the cutoff
+        assert expense_record.origin_ref == "storage"
+        assert expense_record.payment_method == "credit_expense"
+        assert expense_record.expense_count == 12
+        assert expense_record.expense_size_mib == Decimal("2048.5")
 
 
 def test_update_credit_balances_expense_with_new_fields(

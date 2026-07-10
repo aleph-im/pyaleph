@@ -28,7 +28,12 @@ from aleph.services.cost import (
     get_cost_component_size_mib,
     get_total_and_detailed_costs,
 )
-from aleph.toolkit.constants import HOUR, MIN_CREDIT_COST_PER_HOUR, MiB
+from aleph.toolkit.constants import (
+    HOUR,
+    MIN_CREDIT_COST_PER_HOUR,
+    MIN_STORE_COST_MIB,
+    MiB,
+)
 from aleph.types.cost import CostType
 from aleph.types.db_session import DbSessionFactory
 
@@ -1051,3 +1056,64 @@ def test_compute_cost_unknown_gpu_raises_error(
                 content=fixture_unknown_gpu_instance_message,
                 item_hash="gpu_unknown",
             )
+
+
+def _make_store_content(size_mib: float, payment_type: PaymentType):
+    return CostEstimationStoreContent.model_validate(
+        {
+            "address": "0xA07B1214bAe0D5ccAA25449C3149c0aC83658874",
+            "time": 1701099523.849,
+            "item_type": "storage",
+            "item_hash": (
+                "734a1287a2b7b5be060312ff5b05ad1bcf838950492e3428f2ac6437a1acad26"
+            ),
+            "payment": Payment(type=payment_type),
+            "estimated_size_mib": size_mib,
+        }
+    )
+
+
+def test_store_min_cost_floor_applies_to_credit(
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """Credit-paid STOREs below MIN_STORE_COST_MIB are billed as MIN_STORE_COST_MIB."""
+    with session_factory() as session:
+        small_cost, _ = get_total_and_detailed_costs(
+            session, _make_store_content(1, PaymentType.credit), "hash-small"
+        )
+        floor_cost, _ = get_total_and_detailed_costs(
+            session,
+            _make_store_content(MIN_STORE_COST_MIB, PaymentType.credit),
+            "hash-floor",
+        )
+        above_cost, _ = get_total_and_detailed_costs(
+            session,
+            _make_store_content(MIN_STORE_COST_MIB * 2, PaymentType.credit),
+            "hash-above",
+        )
+
+    assert small_cost > 0
+    assert small_cost == floor_cost
+    assert above_cost > floor_cost
+
+
+def test_store_min_cost_floor_does_not_apply_to_hold(
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """The MIN_STORE_COST_MIB floor only applies to credit payment."""
+    with session_factory() as session:
+        small_cost, _ = get_total_and_detailed_costs(
+            session, _make_store_content(1, PaymentType.hold), "hash-small"
+        )
+        floor_cost, _ = get_total_and_detailed_costs(
+            session,
+            _make_store_content(MIN_STORE_COST_MIB, PaymentType.hold),
+            "hash-floor",
+        )
+
+    assert small_cost > 0
+    assert small_cost < floor_cost

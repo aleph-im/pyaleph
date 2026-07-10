@@ -284,6 +284,9 @@ class CreditHistoryResponseItem(BaseModel):
     credit_index: int
     expiration_date: Optional[dt.datetime] = None
     message_timestamp: dt.datetime
+    # v2 aggregated expense entries only; NULL otherwise.
+    expense_count: Optional[int] = None
+    expense_size_mib: Optional[Decimal] = None
 
 
 class GetAccountCreditHistoryResponse(BaseModel):

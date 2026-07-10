@@ -13,16 +13,22 @@ from sqlalchemy.orm import defer
 
 import aleph.toolkit.json as aleph_json
 from aleph.db.accessors.messages import (
+    count_matching_forgotten_messages,
     count_matching_hashes,
+    count_matching_removed_messages,
     get_forgotten_message,
     get_matching_hashes,
     get_message_by_item_hash,
     get_message_status,
     get_rejected_message,
+    get_removed_message,
+    make_matching_forgotten_messages_query,
     make_matching_messages_query,
+    make_matching_removed_messages_query,
 )
 from aleph.db.accessors.pending_messages import get_pending_messages
 from aleph.db.models import MessageDb, MessageStatusDb
+from aleph.db.models.messages import ForgottenMessageDb, RemovedMessageDb
 from aleph.schemas.api.messages import (
     AlephMessage,
     ForgottenMessage,
@@ -35,6 +41,7 @@ from aleph.schemas.api.messages import (
     PostMessage,
     ProcessedMessageStatus,
     RejectedMessageStatus,
+    RemovedMessage,
     RemovedMessageStatus,
     RemovingMessageStatus,
     format_message,
@@ -368,6 +375,147 @@ def format_response_dict(
     }
 
 
+def forgotten_message_to_dict(message: ForgottenMessageDb) -> Dict[str, Any]:
+    # The ForgottenMessage schema owns the serialization rules (epoch-float
+    # time fields), so both the single-message endpoint and this list share
+    # one serializer.
+    message_dict = ForgottenMessage.model_validate(message).model_dump()
+    message_dict["status"] = MessageStatus.FORGOTTEN
+    message_dict["forgotten_by"] = message.forgotten_by
+    return message_dict
+
+
+def _validate_terminal_status_query_params(
+    query_params: MessageQueryParams, status_value: str
+) -> None:
+    """
+    Shared validation for forgotten/removed-only queries: cursor pagination
+    and filters over data these queries cannot narrow are rejected instead of
+    being silently ignored.
+    """
+    if query_params.cursor is not None:
+        raise web.HTTPBadRequest(
+            text=f"Cursor pagination is not supported for {status_value} "
+            "message queries"
+        )
+    unsupported_filters = {
+        "refs": query_params.refs,
+        "contentTypes": query_params.content_types,
+        "contentHashes": query_params.content_hashes,
+        "contentKeys": query_params.content_keys,
+        "tags": query_params.tags,
+        "startBlock": query_params.start_block,
+        "endBlock": query_params.end_block,
+    }
+    offending = [name for name, value in unsupported_filters.items() if value]
+    if offending:
+        raise web.HTTPBadRequest(
+            text=f"Filters not supported for {status_value} message queries: "
+            + ", ".join(offending)
+        )
+
+
+def _list_forgotten_messages(
+    request: web.Request, query_params: MessageQueryParams
+) -> web.Response:
+    """
+    Forgotten-only variant of the message list, served from the
+    forgotten_messages table. Date filters and time sorting apply to
+    `forgotten_at` (deletion time), not `time`.
+    """
+    find_filters = query_params.model_dump(exclude_none=True)
+    # Consumed by the caller or meaningless for forgotten queries.
+    for key in ("content_format", "exclude_content", "cursor", "message_statuses"):
+        find_filters.pop(key, None)
+
+    session_factory = get_session_factory_from_request(request)
+    with session_factory() as session:
+        forgotten_messages = list(
+            session.execute(
+                make_matching_forgotten_messages_query(**find_filters)
+            ).scalars()
+        )
+
+        # If the result set is smaller than the page size, we already know
+        # the total count without running a separate COUNT query. Known
+        # trade-off (shared with the live-message listing): a page past the
+        # end of the result set overestimates the total.
+        if (
+            query_params.pagination
+            and len(forgotten_messages) < query_params.pagination
+        ):
+            total_msgs = (query_params.page - 1) * query_params.pagination + len(
+                forgotten_messages
+            )
+        else:
+            total_msgs = count_matching_forgotten_messages(
+                session=session, **find_filters
+            )
+
+        response = format_response_dict(
+            messages=[forgotten_message_to_dict(fm) for fm in forgotten_messages],
+            pagination=query_params.pagination,
+            page=query_params.page,
+            total_messages=total_msgs,
+        )
+
+    return web.json_response(text=aleph_json.dumps(response).decode("utf-8"))
+
+
+def removed_message_to_dict(message: RemovedMessageDb) -> Dict[str, Any]:
+    # The RemovedMessage schema owns the serialization rules (epoch-float
+    # time fields), so both the single-message endpoint and this list share
+    # one serializer.
+    message_dict = RemovedMessage.model_validate(message).model_dump()
+    message_dict["status"] = MessageStatus.REMOVED
+    return message_dict
+
+
+def _list_removed_messages(
+    request: web.Request, query_params: MessageQueryParams
+) -> web.Response:
+    """
+    Removed-only variant of the message list, served from the
+    removed_messages snapshots (the messages rows are deleted at removal).
+    Date filters and time sorting apply to `removed_at` (node-local removal
+    time), not `time`.
+    """
+    find_filters = query_params.model_dump(exclude_none=True)
+    # Consumed by the caller or meaningless for removed queries.
+    for key in ("content_format", "exclude_content", "cursor", "message_statuses"):
+        find_filters.pop(key, None)
+
+    session_factory = get_session_factory_from_request(request)
+    with session_factory() as session:
+        removed_messages = list(
+            session.execute(
+                make_matching_removed_messages_query(**find_filters)
+            ).scalars()
+        )
+
+        # If the result set is smaller than the page size, we already know
+        # the total count without running a separate COUNT query. Known
+        # trade-off (shared with the live-message listing): a page past the
+        # end of the result set overestimates the total.
+        if query_params.pagination and len(removed_messages) < query_params.pagination:
+            total_msgs = (query_params.page - 1) * query_params.pagination + len(
+                removed_messages
+            )
+        else:
+            total_msgs = count_matching_removed_messages(
+                session=session, **find_filters
+            )
+
+        response = format_response_dict(
+            messages=[removed_message_to_dict(rm) for rm in removed_messages],
+            pagination=query_params.pagination,
+            page=query_params.page,
+            total_messages=total_msgs,
+        )
+
+    return web.json_response(text=aleph_json.dumps(response).decode("utf-8"))
+
+
 def format_response(
     messages: Iterable[MessageDb],
     pagination: int,
@@ -423,6 +571,26 @@ async def view_messages_list(request: web.Request) -> web.Response:
         in: query
         schema:
           type: string
+        description: >-
+          Accepted message statuses (comma-separated). 'forgotten' and
+          'removed' are terminal statuses that must be the only status
+          requested (otherwise 400): both switch the query to the
+          corresponding snapshot table (forgotten_messages /
+          removed_messages — the messages row is deleted at termination)
+          and return message skeletons without content. Supported filters
+          are then msgTypes, addresses, owners, chains, channels, hashes,
+          paymentTypes and startDate/endDate; date filters and time sorting
+          apply to the termination time (forgotten_at / removed_at), not to
+          the message time. forgotten_at is the sender-supplied FORGET time
+          — the same declared-time semantics as the default time sort and
+          cursors of the live list; removed_at is the node-local removal
+          time (not deterministic across nodes). Legacy rows without a
+          termination time are excluded by date filters and sorted last
+          otherwise. The 'size' field of both skeletons is the file-size
+          snapshot preserved for billing (not the message content size).
+          Unsupported narrowing filters (refs, contentTypes, contentHashes,
+          contentKeys, tags, startBlock/endBlock) and cursor pagination are
+          rejected with 400.
       - name: addresses
         in: query
         schema:
@@ -536,6 +704,26 @@ async def view_messages_list(request: web.Request) -> web.Response:
     # parameters with the URL one
     if (url_page := get_path_page(request)) is not None:
         query_params.page = url_page
+
+    # Forgotten/removed-only queries run against dedicated tables (or joins)
+    # and sort on the termination time. Mixing them with other statuses
+    # would require a UNION across heterogeneous shapes, so it is rejected.
+    message_statuses = set(query_params.message_statuses or [])
+    terminal_statuses = message_statuses & {
+        MessageStatus.FORGOTTEN,
+        MessageStatus.REMOVED,
+    }
+    if terminal_statuses:
+        if len(message_statuses) > 1:
+            raise web.HTTPBadRequest(
+                text="msgStatuses=forgotten/removed cannot be combined with "
+                "other statuses"
+            )
+        status = next(iter(terminal_statuses))
+        _validate_terminal_status_query_params(query_params, status.value)
+        if status == MessageStatus.FORGOTTEN:
+            return _list_forgotten_messages(request, query_params)
+        return _list_removed_messages(request, query_params)
 
     find_filters = query_params.model_dump(exclude_none=True)
 
@@ -855,18 +1043,19 @@ def _get_message_with_status(
         )
 
     if status == MessageStatus.REMOVED:
-        message_db = get_message_by_item_hash(
-            session=session, item_hash=ItemHash(item_hash)
-        )
-        if not message_db:
-            raise web.HTTPNotFound()
+        # The messages row is deleted at removal (mirroring forgotten
+        # messages): the snapshot is the only record left.
+        removed_message_db = get_removed_message(session=session, item_hash=item_hash)
+        if not removed_message_db:
+            raise web.HTTPGone(body=f"This message has been removed: {item_hash}")
 
-        message = format_message(message_db)
         return RemovedMessageStatus(
             item_hash=item_hash,
             reception_time=reception_time,
-            message=message,
+            message=RemovedMessage.model_validate(removed_message_db),
             reason=RemovedMessageReason.BALANCE_INSUFFICIENT,
+            removed_at=removed_message_db.removed_at,
+            size=removed_message_db.size,
         )
 
     raise NotImplementedError(f"Unknown message status: {status}")

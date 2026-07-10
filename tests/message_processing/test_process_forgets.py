@@ -239,6 +239,18 @@ async def test_forget_store_message(
         assert len(file.pins) == 1
         assert isinstance(file.pins[0], GracePeriodFilePinDb)
 
+        # Check that the billing metadata was preserved in forgotten_messages
+        forgotten_message = get_forgotten_message(
+            session=session, item_hash=ItemHash(pending_message.item_hash)
+        )
+        assert forgotten_message
+        assert forgotten_message.owner == "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106"
+        # The STORE content carries no payment field: absence means hold
+        assert forgotten_message.payment_type == "hold"
+        # Size of the stored file (b"Test")
+        assert forgotten_message.size == 4
+        assert forgotten_message.forgotten_at == pending_forget_message.time
+
 
 @pytest.mark.asyncio
 async def test_forget_forget_message(

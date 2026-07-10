@@ -1,5 +1,6 @@
 import datetime as dt
 from copy import copy
+from typing import Any, Dict
 
 import pytest
 import pytz
@@ -19,11 +20,20 @@ from aleph.db.accessors.messages import (
     make_message_upsert_query,
     message_exists,
 )
-from aleph.db.models import ChainTxDb, MessageDb, MessageStatusDb, message_confirmations
+from aleph.db.models import (
+    ChainTxDb,
+    ForgottenMessageDb,
+    MessageDb,
+    MessageStatusDb,
+    StoredFileDb,
+    message_confirmations,
+)
+from aleph.db.models.messages import RemovedMessageDb
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.channel import Channel
 from aleph.types.db_session import DbSessionFactory
+from aleph.types.files import FileType
 from aleph.types.message_status import MessageStatus
 
 
@@ -419,12 +429,14 @@ async def test_forget_message(
     forget_message_hash = (
         "d06251c954d4c75476c749e80b8f2a4962d20282b28b3e237e30b0a76157df2d"
     )
+    forgotten_at = dt.datetime(2023, 5, 1, tzinfo=dt.timezone.utc)
 
     with session_factory() as session:
         forget_message(
             session=session,
             item_hash=fixture_message.item_hash,
             forget_message_hash=forget_message_hash,
+            forgotten_at=forgotten_at,
         )
         session.commit()
 
@@ -455,6 +467,14 @@ async def test_forget_message(
         assert forgotten_message.time == fixture_message.time
         assert forgotten_message.channel == fixture_message.channel
         assert forgotten_message.forgotten_by == [forget_message_hash]
+
+        # Billing metadata preserved at forget time
+        assert forgotten_message.owner == fixture_message.owner
+        # No payment field on the message: absence means hold
+        assert forgotten_message.payment_type == "hold"
+        # No file linked to this (aggregate) message
+        assert forgotten_message.size is None
+        assert forgotten_message.forgotten_at == forgotten_at
 
         # Now, add a hash to forgotten_by
         new_forget_message_hash = (
@@ -526,6 +546,7 @@ async def test_forget_message_with_confirmations(
             session=session,
             item_hash=fixture_message.item_hash,
             forget_message_hash=forget_message_hash,
+            forgotten_at=dt.datetime(2023, 5, 1, tzinfo=dt.timezone.utc),
         )
         session.commit()
 
@@ -591,3 +612,231 @@ async def test_payment_type_persisted_after_upsert(
         )
         assert fetched is not None
         assert fetched.payment_type == "credit"
+
+
+@pytest.mark.asyncio
+async def test_forget_store_credit_message_preserves_billing_metadata(
+    session_factory: DbSessionFactory,
+):
+    """Forgetting a credit-paid STORE preserves owner/payment_type/size/forgotten_at."""
+    message = make_validated_message_from_dict(STORE_CREDIT_MESSAGE)
+    store_content: Dict[str, Any] = STORE_CREDIT_MESSAGE["content"]  # type: ignore[assignment]
+    file_hash = store_content["item_hash"]
+    file_size = 5 * 1024 * 1024
+
+    with session_factory() as session:
+        session.execute(make_message_upsert_query(message))
+        session.add(
+            MessageStatusDb(
+                item_hash=message.item_hash,
+                status=MessageStatus.PROCESSED,
+                reception_time=message.time,
+            )
+        )
+        session.add(StoredFileDb(hash=file_hash, size=file_size, type=FileType.FILE))
+        session.commit()
+
+    forget_message_hash = (
+        "0223e74dbae53b45da6a443fa18fd2a25f88677c82ed2de93f17ab24f78f58cf"
+    )
+    forgotten_at = dt.datetime(2026, 2, 20, 12, 0, tzinfo=dt.timezone.utc)
+
+    with session_factory() as session:
+        forget_message(
+            session=session,
+            item_hash=message.item_hash,
+            forget_message_hash=forget_message_hash,
+            forgotten_at=forgotten_at,
+        )
+        session.commit()
+
+        forgotten_message = get_forgotten_message(
+            session=session, item_hash=ItemHash(message.item_hash)
+        )
+        assert forgotten_message
+        assert forgotten_message.owner == store_content["address"]
+        assert forgotten_message.payment_type == "credit"
+        assert forgotten_message.size == file_size
+        assert forgotten_message.forgotten_at == forgotten_at
+
+
+@pytest.mark.asyncio
+async def test_migration_backfill_forgotten_at(
+    session_factory: DbSessionFactory, fixture_message: MessageDb
+):
+    """
+    Check the semantics of the 0061 migration backfill: forgotten_at is set
+    from the time of the first forgetting FORGET message still present in
+    the messages table.
+    """
+    forget_message_hash = fixture_message.item_hash
+    forgotten_hash = "cafecafecafecafecafecafecafecafecafecafecafecafecafecafecafecafe"
+
+    with session_factory() as session:
+        # The FORGET message (any message with a known hash/time works here)
+        session.add(fixture_message)
+        # A legacy forgotten_messages row without forgotten_at
+        session.add(
+            ForgottenMessageDb(
+                item_hash=forgotten_hash,
+                type=MessageType.store,
+                chain=Chain.ETH,
+                sender="0x51A58800b26AA1451aaA803d1746687cB88E0500",
+                signature="sig",
+                item_type=ItemType.inline,
+                time=dt.datetime(2022, 1, 1, tzinfo=dt.timezone.utc),
+                channel=Channel("TEST"),
+                forgotten_by=[forget_message_hash],
+            )
+        )
+        session.commit()
+
+        # Same statement as migration 0061
+        session.execute(
+            text(
+                """
+                UPDATE forgotten_messages fm
+                SET forgotten_at = m.time
+                FROM messages m
+                WHERE m.item_hash = fm.forgotten_by[1]
+                  AND fm.forgotten_at IS NULL
+                """
+            )
+        )
+        session.commit()
+
+        forgotten_message = get_forgotten_message(
+            session=session, item_hash=forgotten_hash
+        )
+        assert forgotten_message
+        assert forgotten_message.forgotten_at == fixture_message.time
+
+
+@pytest.mark.asyncio
+async def test_migration_0061_column_additions_are_rerunnable(
+    session_factory: DbSessionFactory,
+):
+    """
+    Check the rerunnability of the 0061 migration column additions: the
+    CONCURRENT index step commits the ALTER TABLE statements before alembic
+    stamps the revision, so a rerun after an index failure re-executes them
+    against a table that already has the columns and must not error.
+    """
+    with session_factory() as session:
+        # Same statement as migration 0061, run against a schema where the
+        # columns already exist (the test schema is created from the models).
+        session.execute(
+            text(
+                """
+                ALTER TABLE forgotten_messages ADD COLUMN IF NOT EXISTS owner VARCHAR;
+                ALTER TABLE forgotten_messages ADD COLUMN IF NOT EXISTS payment_type VARCHAR;
+                ALTER TABLE forgotten_messages ADD COLUMN IF NOT EXISTS size BIGINT;
+                ALTER TABLE forgotten_messages ADD COLUMN IF NOT EXISTS forgotten_at TIMESTAMPTZ;
+                """
+            )
+        )
+        session.commit()
+
+
+@pytest.mark.asyncio
+async def test_migration_0063_moves_removed_messages(
+    session_factory: DbSessionFactory,
+):
+    """
+    Check the semantics of the 0063 migration data move: existing REMOVED
+    messages are copied into removed_messages (size best-effort from a
+    still-existing files row, removed_at unknown -> NULL) and their messages
+    rows are deleted.
+    """
+    removed_hash = "beefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeef"
+    file_hash = "feedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeed"
+    file_size = 7 * 1024 * 1024
+
+    with session_factory() as session:
+        session.add(
+            MessageDb(
+                item_hash=removed_hash,
+                sender="0x51A58800b26AA1451aaA803d1746687cB88E0500",
+                chain=Chain.ETH,
+                type=MessageType.store,
+                time=dt.datetime(2022, 1, 1, tzinfo=dt.timezone.utc),
+                item_type=ItemType.inline,
+                signature="sig",
+                size=1000,
+                content={
+                    "address": "0x51A58800b26AA1451aaA803d1746687cB88E0500",
+                    "time": 1640995200.0,
+                    "item_hash": file_hash,
+                    "item_type": "storage",
+                },
+                status_value=MessageStatus.REMOVED,
+            )
+        )
+        session.add(
+            MessageStatusDb(
+                item_hash=removed_hash,
+                status=MessageStatus.REMOVED,
+                reception_time=dt.datetime(2022, 1, 2, tzinfo=dt.timezone.utc),
+            )
+        )
+        session.add(StoredFileDb(hash=file_hash, size=file_size, type=FileType.FILE))
+        session.commit()
+
+        # Same statements as migration 0063
+        session.execute(
+            text(
+                """
+                INSERT INTO removed_messages (
+                    item_hash, type, chain, sender, signature, item_type, time,
+                    channel, owner, payment_type, size, removed_at
+                )
+                SELECT
+                    m.item_hash, m.type, m.chain, m.sender, m.signature,
+                    m.item_type, m.time, m.channel, m.owner,
+                    COALESCE(m.payment_type, 'hold'),
+                    f.size,
+                    NULL
+                FROM messages m
+                JOIN message_status ms ON ms.item_hash = m.item_hash
+                LEFT JOIN files f ON f.hash = m.content_item_hash
+                WHERE ms.status = 'removed'
+                ON CONFLICT (item_hash) DO UPDATE SET
+                    type = EXCLUDED.type,
+                    chain = EXCLUDED.chain,
+                    sender = EXCLUDED.sender,
+                    signature = EXCLUDED.signature,
+                    item_type = EXCLUDED.item_type,
+                    time = EXCLUDED.time,
+                    channel = EXCLUDED.channel,
+                    owner = EXCLUDED.owner,
+                    payment_type = EXCLUDED.payment_type,
+                    size = COALESCE(removed_messages.size, EXCLUDED.size)
+                """
+            )
+        )
+        session.execute(
+            text(
+                """
+                DELETE FROM messages m
+                USING message_status ms
+                WHERE ms.item_hash = m.item_hash
+                  AND ms.status = 'removed'
+                """
+            )
+        )
+        session.commit()
+
+        snapshot = session.get(RemovedMessageDb, removed_hash)
+        assert snapshot is not None
+        assert snapshot.type == MessageType.store
+        assert snapshot.sender == "0x51A58800b26AA1451aaA803d1746687cB88E0500"
+        # content.address is denormalized into messages.owner at insert time
+        assert snapshot.owner == "0x51A58800b26AA1451aaA803d1746687cB88E0500"
+        # No payment field: absence means hold
+        assert snapshot.payment_type == "hold"
+        # Size backfilled from the still-existing files row
+        assert snapshot.size == file_size
+        # Removal time unknown for legacy rows
+        assert snapshot.removed_at is None
+
+        assert session.get(MessageDb, removed_hash) is None

@@ -1,11 +1,12 @@
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Iterable, Optional, Sequence, Tuple
 
 from aiohttp import web
 from aiohttp.web_exceptions import HTTPException
-from aleph_message.models import ExecutableContent, ItemHash, MessageType
+from aleph_message.models import ExecutableContent, ItemHash, ItemType, MessageType
+from aleph_message.models.execution.base import Payment, PaymentType
 from dataclasses_json import DataClassJsonMixin
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
@@ -24,8 +25,14 @@ from aleph.db.accessors.cost import (
     get_resources_with_costs,
     make_costs_upsert_query,
 )
-from aleph.db.accessors.messages import get_message_by_item_hash, get_message_status
+from aleph.db.accessors.messages import (
+    get_forgotten_message,
+    get_message_by_item_hash,
+    get_message_status,
+    get_removed_message,
+)
 from aleph.db.models import MessageDb
+from aleph.db.models.account_costs import AccountCostsDb
 from aleph.schemas.api.costs import (
     CostComponentDetail,
     CostsFiltersResponse,
@@ -38,6 +45,7 @@ from aleph.schemas.api.costs import (
 )
 from aleph.schemas.cost_estimation_messages import (
     CostEstimationInstanceContent,
+    CostEstimationStoreContent,
     validate_cost_estimation_message_content,
     validate_cost_estimation_message_dict,
 )
@@ -141,9 +149,182 @@ async def get_executable_message(session: DbSession, item_hash: ItemHash) -> Mes
     return message
 
 
+def _make_cost_detail(
+    cost: AccountCostsDb, size_mib: Optional[float]
+) -> EstimatedCostDetailResponse:
+    return EstimatedCostDetailResponse(
+        type=(cost.type.value if hasattr(cost.type, "value") else str(cost.type)),
+        name=cost.name,
+        cost_hold=str(cost.cost_hold),
+        cost_stream=str(cost.cost_stream),
+        cost_credit=str(cost.cost_credit),
+        size_mib=size_mib,
+    )
+
+
+def _build_costs_response(
+    payment_type: PaymentType,
+    required_tokens: Decimal,
+    charged_address: str,
+    costs_with_sizes: Iterable[Tuple[AccountCostsDb, Optional[float]]],
+) -> web.Response:
+    model = {
+        "required_tokens": float(required_tokens),
+        "payment_type": payment_type,
+        "cost": format_cost_str(required_tokens),
+        "detail": [
+            _make_cost_detail(cost, size_mib) for cost, size_mib in costs_with_sizes
+        ],
+        "charged_address": charged_address,
+    }
+
+    response = EstimatedCostsResponse.model_validate(model)
+
+    return web.json_response(text=aleph_json.dumps(response).decode("utf-8"))
+
+
+def _price_store_from_billing_metadata(
+    session: DbSession,
+    item_hash: ItemHash,
+    include_size: bool,
+    owner: str,
+    payment_type_value: str,
+    size: int,
+    time: float,
+    gone: web.HTTPGone,
+) -> web.Response:
+    """
+    Price a terminated (forgotten/removed) STORE message live from its
+    preserved billing metadata.
+    """
+    try:
+        # Synthetic content routed through the estimation path so the
+        # MIN_STORE_COST_MIB floor and the pricing aggregate apply exactly as
+        # for live STORE messages. estimated_size_mib = size / MiB matches the
+        # live calculation Decimal(file.size / MiB) bit for bit.
+        # content.item_hash carries the *message* hash, not the stored file
+        # hash a real STORE content would carry: it is only used to label
+        # cost rows, never for file lookups, because estimated_size_mib
+        # short-circuits calculate_storage_size.
+        content = CostEstimationStoreContent(
+            address=owner,
+            time=time,
+            item_type=ItemType.storage,
+            item_hash=item_hash,
+            payment=Payment(type=PaymentType(payment_type_value)),
+            estimated_size_mib=size / MiB,
+        )
+    except (ValidationError, ValueError):
+        raise gone
+
+    try:
+        payment_type = get_payment_type(content)
+        required_tokens, costs = get_total_and_detailed_costs(
+            session, content, item_hash
+        )
+    except RuntimeError as e:
+        raise web.HTTPNotFound(reason=str(e))
+
+    costs_with_sizes = [
+        (
+            cost,
+            (
+                get_cost_component_size_mib(session, cost, content)
+                if include_size
+                else None
+            ),
+        )
+        for cost in costs
+    ]
+
+    return _build_costs_response(
+        payment_type, required_tokens, content.address, costs_with_sizes
+    )
+
+
+def _price_forgotten_store_message(
+    session: DbSession, item_hash: ItemHash, include_size: bool
+) -> web.Response:
+    """
+    Price a forgotten STORE message live from the billing metadata preserved
+    in forgotten_messages (owner, size). Raises 410 Gone when the metadata is
+    missing (messages forgotten before it was captured) or the message is not
+    a STORE.
+    """
+    gone = web.HTTPGone(body=f"This message has been forgotten: {item_hash}")
+
+    forgotten_message = get_forgotten_message(session=session, item_hash=item_hash)
+    if (
+        forgotten_message is None
+        or forgotten_message.type != MessageType.store
+        or forgotten_message.owner is None
+        or forgotten_message.size is None
+    ):
+        raise gone
+
+    # Rows captured before payment_type was coalesced at forget time may
+    # store NULL: the absence of a payment field means hold everywhere in
+    # pyaleph, so apply the same default the live pricing path uses.
+    payment_type_value = forgotten_message.payment_type or PaymentType.hold.value
+
+    return _price_store_from_billing_metadata(
+        session=session,
+        item_hash=item_hash,
+        include_size=include_size,
+        owner=forgotten_message.owner,
+        payment_type_value=payment_type_value,
+        size=forgotten_message.size,
+        time=forgotten_message.time.timestamp(),
+        gone=gone,
+    )
+
+
+def _price_removed_store_message(
+    session: DbSession, item_hash: ItemHash, include_size: bool
+) -> web.Response:
+    """
+    Price a removed STORE message live from the billing metadata preserved
+    in removed_messages (the messages row is deleted at removal, mirroring
+    forgotten messages). Raises 410 Gone when the metadata is missing
+    (legacy rows, size never snapshotted) or the message is not a STORE.
+    """
+    gone = web.HTTPGone(body=f"This message has been removed: {item_hash}")
+
+    removed_message = get_removed_message(session=session, item_hash=item_hash)
+    if (
+        removed_message is None
+        or removed_message.type != MessageType.store
+        or removed_message.owner is None
+        or removed_message.size is None
+        or removed_message.time is None
+    ):
+        raise gone
+
+    # Snapshots store the effective payment type (coalesced at removal);
+    # legacy rows may still carry NULL, which means hold everywhere in
+    # pyaleph.
+    payment_type_value = removed_message.payment_type or PaymentType.hold.value
+
+    return _price_store_from_billing_metadata(
+        session=session,
+        item_hash=item_hash,
+        include_size=include_size,
+        owner=removed_message.owner,
+        payment_type_value=payment_type_value,
+        size=removed_message.size,
+        time=removed_message.time.timestamp(),
+        gone=gone,
+    )
+
+
 async def message_price(request: web.Request):
     """
     Returns the price of an executable message.
+
+    Forgotten and removed STORE messages whose billing metadata was preserved
+    (forgotten_messages / removed_messages, with a live files fallback for
+    removed) are priced live from that metadata instead of returning 410
+    Gone.
 
     ---
     summary: Get message price
@@ -164,6 +345,8 @@ async def message_price(request: web.Request):
               $ref: '#/components/schemas/EstimatedCostsResponse'
       '404':
         description: Message not found
+      '410':
+        description: Message forgotten or removed, and not priceable
     """
 
     include_size = request.query.get("include_size", "false").lower() == "true"
@@ -171,6 +354,13 @@ async def message_price(request: web.Request):
     session_factory = get_session_factory_from_request(request)
     with session_factory() as session:
         item_hash = get_item_hash_from_request(request)
+
+        message_status_db = get_message_status(session=session, item_hash=item_hash)
+        if message_status_db and message_status_db.status == MessageStatus.FORGOTTEN:
+            return _price_forgotten_store_message(session, item_hash, include_size)
+        if message_status_db and message_status_db.status == MessageStatus.REMOVED:
+            return _price_removed_store_message(session, item_hash, include_size)
+
         message = await get_executable_message(session, item_hash)
         content: ExecutableContent = message.parsed_content
 
@@ -186,44 +376,25 @@ async def message_price(request: web.Request):
         # Optionally enrich detail with file sizes (single joined query).
         # Falls back to content-based sizes (PERSISTENT) when DB join yields nothing.
         if include_size:
-            costs_with_sizes = get_message_costs_with_file_sizes(session, item_hash)
+            costs_with_file_sizes = get_message_costs_with_file_sizes(
+                session, item_hash
+            )
         else:
-            costs_with_sizes = [(cost, None) for cost in costs]
+            costs_with_file_sizes = [(cost, None) for cost in costs]
 
-        detail_list = []
-        for cost, file_size_bytes in costs_with_sizes:
+        costs_with_sizes = []
+        for cost, file_size_bytes in costs_with_file_sizes:
             if file_size_bytes is not None:
                 size_mib: Optional[float] = float(file_size_bytes / MiB)
             elif include_size:
                 size_mib = get_cost_component_size_mib(session, cost, content)
             else:
                 size_mib = None
-            detail_list.append(
-                EstimatedCostDetailResponse(
-                    type=(
-                        cost.type.value
-                        if hasattr(cost.type, "value")
-                        else str(cost.type)
-                    ),
-                    name=cost.name,
-                    cost_hold=str(cost.cost_hold),
-                    cost_stream=str(cost.cost_stream),
-                    cost_credit=str(cost.cost_credit),
-                    size_mib=size_mib,
-                )
-            )
+            costs_with_sizes.append((cost, size_mib))
 
-    model = {
-        "required_tokens": float(required_tokens),
-        "payment_type": payment_type,
-        "cost": format_cost_str(required_tokens),
-        "detail": detail_list,
-        "charged_address": content.address,
-    }
-
-    response = EstimatedCostsResponse.model_validate(model)
-
-    return web.json_response(text=aleph_json.dumps(response).decode("utf-8"))
+    return _build_costs_response(
+        payment_type, required_tokens, content.address, costs_with_sizes
+    )
 
 
 class PubMessageRequest(BaseModel):
@@ -281,35 +452,14 @@ async def message_price_estimate(request: web.Request):
             raise web.HTTPNotFound(reason=str(e))
 
         # Enrich detail with size information
-        detail_list = []
-        for cost in costs:
-            size_mib = get_cost_component_size_mib(session, cost, content)
-            detail_list.append(
-                EstimatedCostDetailResponse(
-                    type=(
-                        cost.type.value
-                        if hasattr(cost.type, "value")
-                        else str(cost.type)
-                    ),
-                    name=cost.name,
-                    cost_hold=str(cost.cost_hold),
-                    cost_stream=str(cost.cost_stream),
-                    cost_credit=str(cost.cost_credit),
-                    size_mib=size_mib,
-                )
-            )
+        costs_with_sizes = [
+            (cost, get_cost_component_size_mib(session, cost, content))
+            for cost in costs
+        ]
 
-    model = {
-        "required_tokens": float(required_tokens),
-        "payment_type": payment_type,
-        "cost": format_cost_str(required_tokens),
-        "detail": detail_list,
-        "charged_address": content.address,
-    }
-
-    response = EstimatedCostsResponse.model_validate(model)
-
-    return web.json_response(text=aleph_json.dumps(response).decode("utf-8"))
+    return _build_costs_response(
+        payment_type, required_tokens, content.address, costs_with_sizes
+    )
 
 
 async def instance_cost_estimate(request: web.Request):
@@ -367,35 +517,14 @@ async def instance_cost_estimate(request: web.Request):
         except RuntimeError as e:
             raise web.HTTPNotFound(reason=str(e))
 
-        detail_list = []
-        for cost in costs:
-            size_mib = get_cost_component_size_mib(session, cost, content)
-            detail_list.append(
-                EstimatedCostDetailResponse(
-                    type=(
-                        cost.type.value
-                        if hasattr(cost.type, "value")
-                        else str(cost.type)
-                    ),
-                    name=cost.name,
-                    cost_hold=str(cost.cost_hold),
-                    cost_stream=str(cost.cost_stream),
-                    cost_credit=str(cost.cost_credit),
-                    size_mib=size_mib,
-                )
-            )
+        costs_with_sizes = [
+            (cost, get_cost_component_size_mib(session, cost, content))
+            for cost in costs
+        ]
 
-    model = {
-        "required_tokens": float(required_tokens),
-        "payment_type": payment_type,
-        "cost": format_cost_str(required_tokens),
-        "detail": detail_list,
-        "charged_address": content.address,
-    }
-
-    response = EstimatedCostsResponse.model_validate(model)
-
-    return web.json_response(text=aleph_json.dumps(response).decode("utf-8"))
+    return _build_costs_response(
+        payment_type, required_tokens, content.address, costs_with_sizes
+    )
 
 
 @require_auth_token

@@ -537,7 +537,7 @@ def _bulk_insert_credit_history(
 
     # Column specification for credit history
     # Include the new message_timestamp and bonus_amount fields
-    copy_columns = "address, amount, credit_ref, credit_index, message_timestamp, last_update, price, bonus_amount, tx_hash, expiration_date, token, chain, origin, provider, origin_ref, payment_method"
+    copy_columns = "address, amount, credit_ref, credit_index, message_timestamp, last_update, price, bonus_amount, tx_hash, expiration_date, token, chain, origin, provider, origin_ref, payment_method, expense_count, expense_size_mib"
 
     csv_credit_history = StringIO("\n".join(csv_rows))
     cursor.copy_expert(
@@ -635,6 +635,8 @@ def update_credit_balances_distribution(
                 provider,
                 origin_ref,
                 payment_method,
+                "",
+                "",
             )
         )
 
@@ -666,6 +668,9 @@ def update_credit_balances_expense(
         origin = credit_entry.get("execution_id", "")
         tx_hash = credit_entry.get("node_id", "")
         price = credit_entry.get("price", "")
+        # v2 aggregated entries carry the file count and total billed MiB.
+        expense_count = credit_entry.get("count")
+        expense_size_mib = credit_entry.get("size")
 
         _consume_address_credits(
             session=session,
@@ -692,6 +697,8 @@ def update_credit_balances_expense(
                 "ALEPH",
                 origin_ref,
                 "credit_expense",
+                expense_count if expense_count is not None else "",
+                expense_size_mib if expense_size_mib is not None else "",
             )
         )
 
@@ -783,6 +790,8 @@ def update_credit_balances_transfer(
                     "ALEPH",
                     "",
                     "credit_transfer",
+                    "",
+                    "",
                 )
             )
             index += 1
@@ -806,6 +815,8 @@ def update_credit_balances_transfer(
                     "ALEPH",
                     "",
                     "credit_transfer",
+                    "",
+                    "",
                 )
             )
             index += 1
