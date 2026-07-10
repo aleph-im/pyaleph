@@ -321,3 +321,61 @@ async def test_check_removing_messages_rolls_back_flip_on_stamp_failure(
         )
         assert removed_message is not None
         assert removed_message.removed_at is None
+
+
+@pytest.mark.asyncio
+async def test_check_and_update_removing_vprogram_message(
+    session_factory: DbSessionFactory, gc: GarbageCollector
+):
+    """V-PROGRAMs ride the generic (non-STORE) removal path: no file-pin
+    gate, REMOVING -> REMOVED in one GC pass, billing metadata (owner,
+    credit payment type) copied onto the removal record and the messages
+    row deleted."""
+    now = utc_now()
+    vprogram_hash = "beef" * 16
+
+    vprogram_message = MessageDb(
+        item_hash=vprogram_hash,
+        sender="0xsender1",
+        chain=Chain.ETH,
+        type=MessageType.v_program,
+        time=now,
+        item_type=ItemType.inline,
+        signature="sig-vprogram",
+        size=500,
+        # The GC never parses content; owner and payment_type are derived
+        # from it by the MessageDb constructor. V-Programs are credit-only.
+        content={
+            "address": "0xsender1",
+            "time": now.timestamp(),
+            "payment": {"type": "credit"},
+        },
+        status_value=MessageStatus.REMOVING,
+    )
+    vprogram_status = MessageStatusDb(
+        item_hash=vprogram_hash,
+        status=MessageStatus.REMOVING,
+        reception_time=now,
+    )
+
+    with session_factory() as session:
+        session.add_all([vprogram_message, vprogram_status])
+        session.commit()
+
+    await gc._check_and_update_removing_messages()
+
+    with session_factory() as session:
+        status = get_message_status(session=session, item_hash=vprogram_hash)
+        assert status is not None
+        assert status.status == MessageStatus.REMOVED
+
+        removed_message = get_removed_message(session=session, item_hash=vprogram_hash)
+        assert removed_message is not None
+        assert removed_message.type == MessageType.v_program
+        assert removed_message.sender == "0xsender1"
+        assert removed_message.owner == "0xsender1"
+        assert removed_message.payment_type == "credit"
+        assert removed_message.removed_at is not None
+
+        # The messages row is deleted at removal, mirroring forgotten messages
+        assert session.get(MessageDb, vprogram_hash) is None
