@@ -1,4 +1,5 @@
 import json
+from typing import Any, Dict
 
 from aleph_message.models import MessageType, VerifiableProgramContent
 
@@ -6,7 +7,7 @@ from aleph.db.models.messages import CONTENT_TYPE_MAP, extract_tags
 from aleph.schemas.api.messages import VProgramMessage, format_message_dict
 from aleph.schemas.pending_messages import PendingVProgramMessage, parse_message
 
-VPROGRAM_CONTENT = {
+VPROGRAM_CONTENT: Dict[str, Any] = {
     "address": "0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
     "time": 1719502000.0,
     "allow_amend": False,

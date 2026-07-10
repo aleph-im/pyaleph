@@ -14,6 +14,8 @@ from aleph.db.models.vms import (
     VmBaseDb,
     VmInstanceDb,
     VmVersionDb,
+    VProgramDb,
+    VProgramVerifiedVolumeDb,
 )
 from aleph.types.db_session import DbSession
 from aleph.types.vms import VmVersion
@@ -26,6 +28,11 @@ def get_instance(session: DbSession, item_hash: str) -> Optional[VmInstanceDb]:
 
 def get_program(session: DbSession, item_hash: str) -> Optional[ProgramDb]:
     select_stmt = select(ProgramDb).where(ProgramDb.item_hash == item_hash)
+    return session.execute(select_stmt).scalar_one_or_none()
+
+
+def get_vprogram(session: DbSession, item_hash: str) -> Optional[VProgramDb]:
+    select_stmt = select(VProgramDb).where(VProgramDb.item_hash == item_hash)
     return session.execute(select_stmt).scalar_one_or_none()
 
 
@@ -83,6 +90,11 @@ def get_vms_dependent_volumes(
             RootfsVolumeDb.instance_hash == VmBaseDb.item_hash,
             isouter=True,
         )
+        .join(
+            VProgramVerifiedVolumeDb,
+            VProgramVerifiedVolumeDb.vm_hash == VmBaseDb.item_hash,
+            isouter=True,
+        )
         .where(
             or_(
                 ImmutableVolumeDb.ref == volume_hash,
@@ -90,10 +102,22 @@ def get_vms_dependent_volumes(
                 DataVolumeDb.ref == volume_hash,
                 RuntimeDb.ref == volume_hash,
                 RootfsVolumeDb.parent_ref == volume_hash,
+                # V-Program refs: the runtime manifest and workload live in
+                # columns on the vms table (same table as VmBaseDb, so no
+                # join is needed); hash trees are store files too.
+                VProgramDb.runtime_ref == volume_hash,
+                VProgramDb.workload_ref == volume_hash,
+                VProgramDb.workload_hash_tree == volume_hash,
+                VProgramVerifiedVolumeDb.ref == volume_hash,
+                VProgramVerifiedVolumeDb.hash_tree == volume_hash,
             )
         )
+        # Several rows can match (e.g. two VMs sharing a runtime, or two
+        # volumes of one VM referencing the same file); any one of them is
+        # enough to block the forget.
+        .limit(1)
     )
-    return session.execute(statement).scalar_one_or_none()
+    return session.execute(statement).scalars().first()
 
 
 def upsert_vm_version(

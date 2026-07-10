@@ -7,6 +7,7 @@ VmVersion = NewType("VmVersion", str)
 class VmType(str, Enum):
     INSTANCE = "instance"
     PROGRAM = "program"
+    VPROGRAM = "vprogram"
 
 
 class CpuArchitecture(str, Enum):
