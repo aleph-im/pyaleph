@@ -1,6 +1,6 @@
 import pytest
 import pytest_asyncio
-from aleph_message.models import Chain, ItemType, MessageType
+from aleph_message.models import Chain, ItemHash, ItemType, MessageType
 
 from aleph.db.accessors.messages import get_message_status, get_removed_message
 from aleph.db.models.files import FilePinType, MessageFilePinDb, StoredFileDb
@@ -332,7 +332,7 @@ async def test_check_and_update_removing_vprogram_message(
     credit payment type) copied onto the removal record and the messages
     row deleted."""
     now = utc_now()
-    vprogram_hash = "beef" * 16
+    vprogram_hash = ItemHash("beef" * 16)
 
     vprogram_message = MessageDb(
         item_hash=vprogram_hash,
