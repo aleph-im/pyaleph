@@ -139,6 +139,4 @@ class CreditRepairStateDb(Base):
         TIMESTAMP(timezone=True), nullable=False
     )
 
-    __table_args__ = (
-        CheckConstraint("id = 1", name="credit_repair_state_single_row"),
-    )
+    __table_args__ = (CheckConstraint("id = 1", name="credit_repair_state_single_row"),)

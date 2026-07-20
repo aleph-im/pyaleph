@@ -7,7 +7,10 @@ from sqlalchemy import delete, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import aliased
 
-from aleph.db.accessors.balances import get_credit_repair_state, upsert_credit_repair_state
+from aleph.db.accessors.balances import (
+    get_credit_repair_state,
+    upsert_credit_repair_state,
+)
 from aleph.db.accessors.files import upsert_file
 from aleph.db.accessors.messages import (
     make_message_status_upsert_query,
@@ -356,9 +359,7 @@ def _repair_credit_balances(session_factory: DbSessionFactory) -> None:
     with session_factory() as session:
         state = get_credit_repair_state(session)
         new_watermark = (
-            session.execute(
-                select(func.max(AlephCreditHistoryDb.last_update))
-            ).scalar()
+            session.execute(select(func.max(AlephCreditHistoryDb.last_update))).scalar()
             or _EPOCH
         )
 
