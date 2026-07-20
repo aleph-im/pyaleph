@@ -2,7 +2,7 @@ import logging
 from typing import Any, Dict, Set
 
 from aleph_message.models import ItemHash, MessageType
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import aliased
 
@@ -170,6 +170,60 @@ def _find_structural_violations(session: DbSession) -> Set[str]:
         .distinct()
     )
     return set(session.execute(stmt).scalars())
+
+
+# Per-address totals check. SUM(cache) == SUM(ledger) holds exactly whenever
+# every drain fully landed. A drain leaves leftover (cache > ledger) only if
+# valid funds were insufficient at its instant, which requires an expiring
+# grant (expiry bounce) or a negative running ledger sum (over-draw, silently
+# dropped by both the eager writer and the replay). So: cache < ledger is
+# always a bug; strict equality is additionally required for addresses with
+# no drains, or with no expiring grants and a never-negative running sum
+# (computed in replay order). Over-approximating "bounce possible" only
+# weakens the check for that address — never a false flag.
+_CONSERVATION_SCREEN_SQL = text(
+    """
+    WITH ledger AS (
+        SELECT address,
+               SUM(amount) AS ledger_sum,
+               bool_or(amount < 0) AS has_drain,
+               bool_or(amount > 0 AND expiration_date IS NOT NULL)
+                   AS has_expiring_grant,
+               MIN(running_sum) AS min_running_sum
+        FROM (
+            SELECT address, amount, expiration_date,
+                   SUM(amount) OVER (
+                       PARTITION BY address
+                       ORDER BY message_timestamp, credit_ref, credit_index
+                   ) AS running_sum
+            FROM credit_history
+        ) ordered
+        GROUP BY address
+    ),
+    cache AS (
+        SELECT address, SUM(amount_remaining) AS cache_sum
+        FROM credit_balances
+        GROUP BY address
+    )
+    SELECT ledger.address
+    FROM ledger
+    LEFT JOIN cache USING (address)
+    WHERE COALESCE(cache.cache_sum, 0) < ledger.ledger_sum
+       OR (
+            (NOT ledger.has_drain
+             OR (NOT ledger.has_expiring_grant AND ledger.min_running_sum >= 0))
+            AND COALESCE(cache.cache_sum, 0) <> ledger.ledger_sum
+          )
+    """
+)
+
+
+def _find_conservation_violations(session: DbSession) -> Set[str]:
+    """Addresses whose cache total is impossible given their ledger total.
+
+    See the SQL comment for the exact rule. Pure read; over-flagging is safe.
+    """
+    return set(session.execute(_CONSERVATION_SCREEN_SQL).scalars())
 
 
 def _rebuild_credit_lots_for_address(session: DbSession, address: str) -> None:

@@ -11,7 +11,7 @@ from aleph.db.accessors.balances import (
     upsert_credit_repair_state,
 )
 from aleph.db.models import AlephCreditBalanceDb, AlephCreditHistoryDb
-from aleph.repair import _find_structural_violations
+from aleph.repair import _find_conservation_violations, _find_structural_violations
 from aleph.types.db_session import DbSessionFactory
 
 
@@ -165,3 +165,86 @@ def test_structural_screen_flags_mismatched_expiration(
         session.commit()
 
         assert _find_structural_violations(session) == {"0xaaa"}
+
+
+def test_conservation_screen_clean(session_factory: DbSessionFactory):
+    with session_factory() as session:
+        _grant(session, "0xaaa", 1000, "grant_a", TS_GRANT)
+        _spend(session, "0xaaa", 300, "spend_a", TS_SPEND)
+        session.commit()
+
+        assert _find_conservation_violations(session) == set()
+
+
+def test_conservation_screen_flags_over_drain(session_factory: DbSessionFactory):
+    """Cache total below ledger total is a definite bug in any regime."""
+    with session_factory() as session:
+        _grant(session, "0xaaa", 1000, "grant_a", TS_GRANT)
+        _spend(session, "0xaaa", 300, "spend_a", TS_SPEND)
+        # Tamper: over-drain the lot to zero (still >= 0 and <= grant, so the
+        # structural screen stays quiet — this is S2's job).
+        session.execute(
+            update(AlephCreditBalanceDb)
+            .where(AlephCreditBalanceDb.credit_ref == "grant_a")
+            .values(amount_remaining=0)
+        )
+        session.commit()
+
+        assert _find_conservation_violations(session) == {"0xaaa"}
+
+
+def test_conservation_screen_flags_under_drain_strict_address(
+    session_factory: DbSessionFactory,
+):
+    """No expiring grants, never-negative running sum: equality is required,
+    so an un-applied drain (cache too high) is flagged."""
+    with session_factory() as session:
+        _grant(session, "0xaaa", 1000, "grant_a", TS_GRANT)
+        _spend(session, "0xaaa", 300, "spend_a", TS_SPEND)
+        grant_amount = session.execute(
+            select(AlephCreditHistoryDb.amount).where(
+                AlephCreditHistoryDb.credit_ref == "grant_a"
+            )
+        ).scalar_one()
+        # Tamper: pretend the drain never touched the lot (== grant, so the
+        # structural screen stays quiet).
+        session.execute(
+            update(AlephCreditBalanceDb)
+            .where(AlephCreditBalanceDb.credit_ref == "grant_a")
+            .values(amount_remaining=grant_amount)
+        )
+        session.commit()
+
+        assert _find_conservation_violations(session) == {"0xaaa"}
+
+
+def test_conservation_screen_allows_expiry_bounce(session_factory: DbSessionFactory):
+    """An expense arriving after the only credit expired legitimately leaves
+    cache_sum > ledger_sum; must NOT be flagged."""
+    expiry = dt.datetime(2026, 1, 15, tzinfo=dt.timezone.utc)
+    after_expiry = dt.datetime(2026, 2, 1, tzinfo=dt.timezone.utc)
+    with session_factory() as session:
+        _grant(session, "0xaaa", 1000, "grant_a", TS_GRANT, expiration=expiry)
+        _spend(session, "0xaaa", 400, "spend_a", after_expiry)  # bounces
+        session.commit()
+
+        # Sanity: the drain bounced (lot untouched), ledger went down anyway.
+        remaining = session.execute(
+            select(AlephCreditBalanceDb.amount_remaining).where(
+                AlephCreditBalanceDb.credit_ref == "grant_a"
+            )
+        ).scalar_one()
+        assert remaining > 0
+
+        assert _find_conservation_violations(session) == set()
+
+
+def test_conservation_screen_allows_overdraft(session_factory: DbSessionFactory):
+    """Spending more than granted silently drops the excess (both eager and
+    replay); cache_sum > ledger_sum is legitimate here; must NOT be flagged."""
+    with session_factory() as session:
+        _grant(session, "0xaaa", 100, "grant_a", TS_GRANT)
+        _spend(session, "0xaaa", 500, "spend_a", TS_SPEND)  # over-draw
+        session.commit()
+
+        assert _find_conservation_violations(session) == set()
