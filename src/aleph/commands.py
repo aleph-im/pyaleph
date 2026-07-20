@@ -192,9 +192,12 @@ async def main(args: List[str]) -> None:
         )
         await stack.enter_async_context(chain_connector)
 
-        await repair_node(
-            storage_service=storage_service, session_factory=session_factory
-        )
+        if args.repair:
+            await repair_node(
+                storage_service=storage_service, session_factory=session_factory
+            )
+        else:
+            LOGGER.info("Repair operations disabled by CLI arguments")
 
         tasks: List[Coroutine] = []
 
