@@ -26,6 +26,7 @@ from aleph.db.models import (
     AlephBalanceDb,
     AlephCreditBalanceDb,
     AlephCreditHistoryDb,
+    CreditRepairStateDb,
     MessageDb,
 )
 from aleph.toolkit.constants import (
@@ -1286,3 +1287,32 @@ def get_consumed_credits_by_resource(
 
     results = session.execute(query).all()
     return {row.resource_hash: row.consumed_credits for row in results}
+
+
+def get_credit_repair_state(session: DbSession) -> Optional[CreditRepairStateDb]:
+    """Fetch the single credit repair bookkeeping row, if any."""
+    return session.get(CreditRepairStateDb, 1)
+
+
+def upsert_credit_repair_state(
+    session: DbSession,
+    policy_version: int,
+    history_watermark: dt.datetime,
+    last_run: dt.datetime,
+) -> None:
+    """Insert or overwrite the single credit repair bookkeeping row."""
+    stmt = pg_insert(CreditRepairStateDb).values(
+        id=1,
+        policy_version=policy_version,
+        history_watermark=history_watermark,
+        last_run=last_run,
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[CreditRepairStateDb.id],
+        set_={
+            "policy_version": stmt.excluded.policy_version,
+            "history_watermark": stmt.excluded.history_watermark,
+            "last_run": stmt.excluded.last_run,
+        },
+    )
+    session.execute(stmt)
