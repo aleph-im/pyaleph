@@ -224,6 +224,57 @@ class ProgramDb(VmBaseDb):
     )
 
 
+class VProgramVerifiedVolumeDb(Base):
+    """A verity-bound read-only volume of a V-Program.
+
+    Volumes are positional: the measured cmdline carries the roothashes in
+    list order, so `position` preserves the message's volume order.
+    """
+
+    __tablename__ = "vprogram_verified_volumes"
+
+    vm_hash: Mapped[str] = mapped_column(
+        ForeignKey("vms.item_hash", ondelete="CASCADE"), primary_key=True
+    )
+    position: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ref: Mapped[str] = mapped_column(String, nullable=False)
+    hash_tree: Mapped[str] = mapped_column(String, nullable=False)
+    roothash: Mapped[str] = mapped_column(String, nullable=False)
+    comment: Mapped[str] = mapped_column(String, nullable=False)
+
+    vprogram: Mapped["VProgramDb"] = relationship(
+        "VProgramDb", back_populates="verified_volumes"
+    )
+
+
+class VProgramDb(VmBaseDb):
+    """A verifiable program (V-PROGRAM).
+
+    The runtime manifest and the workload are single refs, so they live in
+    columns (like ProgramDb's scalar fields); the verified volume list gets
+    its own table. There is no use_latest anywhere: V-Programs pin exact
+    item hashes, and they are immutable (the schema rejects allow_amend and
+    replaces), so they also keep no vm_versions rows.
+    """
+
+    __mapper_args__ = {
+        "polymorphic_identity": VmType.VPROGRAM.value,
+    }
+
+    runtime_ref: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    runtime_comment: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    workload_ref: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    workload_hash_tree: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    workload_roothash: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    verified_volumes: Mapped[List[VProgramVerifiedVolumeDb]] = relationship(
+        VProgramVerifiedVolumeDb,
+        back_populates="vprogram",
+        uselist=True,
+        order_by=VProgramVerifiedVolumeDb.position,
+    )
+
+
 class VmVersionDb(Base):
     __tablename__ = "vm_versions"
 
