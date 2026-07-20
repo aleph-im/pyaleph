@@ -1,10 +1,16 @@
+import datetime as dt
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Set
 
 from aleph_message.models import ItemHash, MessageType
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import aliased
 
+from aleph.db.accessors.balances import (
+    get_credit_repair_state,
+    upsert_credit_repair_state,
+)
 from aleph.db.accessors.files import upsert_file
 from aleph.db.accessors.messages import (
     make_message_status_upsert_query,
@@ -24,6 +30,15 @@ from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_status import ErrorCode, MessageStatus
 
 LOGGER = logging.getLogger(__name__)
+
+# Version of the lot-cache drain policy implemented by
+# _rebuild_credit_lots_for_address and the eager writers in
+# aleph.db.accessors.balances. Bump whenever the drain semantics change (order,
+# expiration handling, ...): a mismatch with the stored
+# credit_repair_state.policy_version forces a full rebuild on the next boot.
+REPAIR_POLICY_VERSION = 1
+
+_EPOCH = dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)
 
 
 def _wire_message_dict(message: MessageDb) -> Dict[str, Any]:
@@ -133,6 +148,135 @@ async def _fix_file_sizes(
         )
 
 
+def _find_structural_violations(session: DbSession) -> Set[str]:
+    """Addresses whose cache rows are structurally inconsistent with their
+    granting ``credit_history`` row.
+
+    Flags: orphan lots (no history row for the PK), lots pointing at another
+    address's or a negative (drain) history row, negative remainders,
+    remainders above the granted amount, and mismatched expiration or
+    timestamp. Zero-amount grants are legitimate (zero-amount transfer
+    fallback rows), hence ``amount < 0`` rather than ``<= 0``.
+
+    Pure read; over-flagging is safe (worst case an unneeded rebuild).
+    """
+    grant = aliased(AlephCreditHistoryDb)
+    stmt = (
+        select(AlephCreditBalanceDb.address)
+        .outerjoin(
+            grant,
+            (grant.credit_ref == AlephCreditBalanceDb.credit_ref)
+            & (grant.credit_index == AlephCreditBalanceDb.credit_index),
+        )
+        .where(
+            grant.credit_ref.is_(None)
+            | (grant.address != AlephCreditBalanceDb.address)
+            | (grant.amount < 0)
+            | (AlephCreditBalanceDb.amount_remaining < 0)
+            | (AlephCreditBalanceDb.amount_remaining > grant.amount)
+            | AlephCreditBalanceDb.expiration_date.is_distinct_from(
+                grant.expiration_date
+            )
+            | AlephCreditBalanceDb.message_timestamp.is_distinct_from(
+                grant.message_timestamp
+            )
+        )
+        .distinct()
+    )
+    return set(session.execute(stmt).scalars())
+
+
+# Per-address totals check. SUM(cache) == SUM(ledger) holds exactly whenever
+# every drain fully landed. A drain leaves leftover (cache > ledger) only if
+# valid funds were insufficient at its instant, which requires an expiring
+# grant (expiry bounce) or a negative running ledger sum (over-draw, silently
+# dropped by both the eager writer and the replay). So: cache < ledger is
+# always a bug; strict equality is additionally required for addresses with
+# no drains, or with no expiring grants and a never-negative running sum
+# (computed in replay order). Over-approximating "bounce possible" only
+# weakens the check for that address — never a false flag.
+# min_running_sum < 0 also covers backdated expenses (an expense whose
+# message_timestamp precedes every grant runs first in replay order), which is
+# what makes the eager writer's message_timestamp lower bound safe here.
+_CONSERVATION_SCREEN_SQL = text(
+    """
+    WITH ledger AS (
+        SELECT address,
+               SUM(amount) AS ledger_sum,
+               bool_or(amount < 0) AS has_drain,
+               bool_or(amount > 0 AND expiration_date IS NOT NULL)
+                   AS has_expiring_grant,
+               MIN(running_sum) AS min_running_sum
+        FROM (
+            SELECT address, amount, expiration_date,
+                   SUM(amount) OVER (
+                       PARTITION BY address
+                       ORDER BY message_timestamp, credit_ref, credit_index
+                   ) AS running_sum
+            FROM credit_history
+        ) ordered
+        GROUP BY address
+    ),
+    cache AS (
+        SELECT address, SUM(amount_remaining) AS cache_sum
+        FROM credit_balances
+        GROUP BY address
+    )
+    SELECT ledger.address
+    FROM ledger
+    LEFT JOIN cache USING (address)
+    WHERE COALESCE(cache.cache_sum, 0) < ledger.ledger_sum
+       OR (
+            (NOT ledger.has_drain
+             OR (NOT ledger.has_expiring_grant AND ledger.min_running_sum >= 0))
+            AND COALESCE(cache.cache_sum, 0) <> ledger.ledger_sum
+          )
+    """
+)
+
+
+def _find_conservation_violations(session: DbSession) -> Set[str]:
+    """Addresses whose cache total is impossible given their ledger total.
+
+    See the SQL comment for the exact rule. Pure read; over-flagging is safe.
+    """
+    return set(session.execute(_CONSERVATION_SCREEN_SQL).scalars())
+
+
+# The eager writers apply rows in arrival order; the replay applies them in
+# (message_timestamp, credit_ref, credit_index) order. The two agree unless a
+# row was inserted after a row it replay-precedes AND a drain is involved
+# (grant/grant order never changes the outcome; drains pick lots by replay
+# order, so a late grant can retroactively change what an already-applied
+# drain should have consumed, and vice versa). credit_history.id is never
+# populated (not in the bulk-insert column list, no sequence), so insertion
+# order is proxied by last_update, set once per writer call. Rows at or below
+# the watermark were reconciled by a previous repair run.
+_INVERSION_SCREEN_SQL = text(
+    """
+    SELECT DISTINCT late.address
+    FROM credit_history late
+    JOIN credit_history early
+      ON early.address = late.address
+     AND early.last_update < late.last_update
+     AND (early.message_timestamp, early.credit_ref, early.credit_index)
+         > (late.message_timestamp, late.credit_ref, late.credit_index)
+     AND (late.amount < 0 OR early.amount < 0)
+    WHERE late.last_update > :watermark
+    """
+)
+
+
+def _find_order_inversions(session: DbSession, watermark: dt.datetime) -> Set[str]:
+    """Addresses with out-of-order credit rows inserted since ``watermark``.
+
+    Pure read; over-flagging is safe (the rebuild replay is the fixpoint).
+    """
+    return set(
+        session.execute(_INVERSION_SCREEN_SQL, {"watermark": watermark}).scalars()
+    )
+
+
 def _rebuild_credit_lots_for_address(session: DbSession, address: str) -> None:
     """Replay ``credit_history`` chronologically and replace this address's
     lot rows with the resulting state.
@@ -201,26 +345,83 @@ def _rebuild_credit_lots_for_address(session: DbSession, address: str) -> None:
 def _repair_credit_balances(session_factory: DbSessionFactory) -> None:
     """Bootstrap or repair the credit_balances lot cache from credit_history.
 
-    Rebuilds lots for every address that has any credit_history rows. Idempotent
-    and runs on every startup; after the initial bootstrap it is a bounded
-    full-table scan plus per-address rebuild, which is acceptable given typical
-    address counts.
+    The cache is written in the same transaction as the append-only history,
+    so drift can only come from out-of-order message arrival, a drain-policy
+    code change, or a writer bug. Cheap set-based screens detect each class
+    and only flagged addresses get the per-address delete-and-replay; a clean
+    boot performs no cache writes. A full rebuild happens only on bootstrap
+    (no ``credit_repair_state`` row) or when ``REPAIR_POLICY_VERSION``
+    changed. Known residual: a total-preserving misattribution bug (right
+    total drained from the wrong lot) is invisible to the screens until its
+    effects change a total.
+
+    Crash-safe: the state row is only advanced after all rebuilds committed;
+    a crash mid-repair re-screens with the old watermark next boot and
+    re-rebuilds (idempotent).
     """
     with session_factory() as session:
-        addresses = list(
-            session.execute(select(AlephCreditHistoryDb.address).distinct()).scalars()
+        state = get_credit_repair_state(session)
+        new_watermark = (
+            session.execute(select(func.max(AlephCreditHistoryDb.last_update))).scalar()
+            or _EPOCH
         )
 
-    LOGGER.info("Repairing credit_balances for %d address(es)", len(addresses))
+    if state is None or state.policy_version != REPAIR_POLICY_VERSION:
+        reason = (
+            "bootstrap"
+            if state is None
+            else f"policy version {state.policy_version} -> {REPAIR_POLICY_VERSION}"
+        )
+        with session_factory() as session:
+            flagged = set(
+                session.execute(
+                    select(AlephCreditHistoryDb.address).distinct()
+                ).scalars()
+            )
+        LOGGER.info(
+            "Credit balances: full rebuild (%s), %d address(es)",
+            reason,
+            len(flagged),
+        )
+    else:
+        with session_factory() as session:
+            structural = _find_structural_violations(session)
+            conservation = _find_conservation_violations(session)
+            inversions = _find_order_inversions(session, state.history_watermark)
+        flagged = structural | conservation | inversions
+        if flagged:
+            LOGGER.warning(
+                "Credit cache drift detected (%d structural, %d conservation, "
+                "%d out-of-order): rebuilding %d address(es), e.g. %s",
+                len(structural),
+                len(conservation),
+                len(inversions),
+                len(flagged),
+                sorted(flagged)[:10],
+            )
+        else:
+            LOGGER.info("Credit balances clean, nothing to repair")
 
-    for i, address in enumerate(addresses):
+    for i, address in enumerate(sorted(flagged)):
         with session_factory() as session:
             _rebuild_credit_lots_for_address(session, address)
             session.commit()
         if (i + 1) % 500 == 0:
-            LOGGER.info("Repaired %d / %d", i + 1, len(addresses))
+            LOGGER.info("Repaired %d / %d", i + 1, len(flagged))
 
-    LOGGER.info("Credit balances repair complete (%d address(es))", len(addresses))
+    with session_factory() as session:
+        upsert_credit_repair_state(
+            session,
+            policy_version=REPAIR_POLICY_VERSION,
+            history_watermark=new_watermark,
+            last_run=utc_now(),
+        )
+        session.commit()
+
+    if flagged:
+        LOGGER.info(
+            "Credit balances repair complete (%d address(es) rebuilt)", len(flagged)
+        )
 
 
 _INVALID_METADATA_REASON = (
