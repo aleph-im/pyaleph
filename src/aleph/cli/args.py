@@ -30,6 +30,14 @@ def parse_args(args):
     )
     parser.add_argument("--no-jobs", action="store_true", dest="no_jobs", default=False)
     parser.add_argument(
+        "--repair",
+        dest="repair",
+        help="Run repair operations at startup (enabled by default). "
+        "Use --no-repair to skip them.",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         dest="loglevel",
