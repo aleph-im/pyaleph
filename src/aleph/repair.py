@@ -7,6 +7,7 @@ from sqlalchemy import delete, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import aliased
 
+from aleph.db.accessors.balances import get_credit_repair_state, upsert_credit_repair_state
 from aleph.db.accessors.files import upsert_file
 from aleph.db.accessors.messages import (
     make_message_status_upsert_query,
@@ -26,6 +27,15 @@ from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_status import ErrorCode, MessageStatus
 
 LOGGER = logging.getLogger(__name__)
+
+# Version of the lot-cache drain policy implemented by
+# _rebuild_credit_lots_for_address and the eager writers in
+# aleph.db.accessors.balances. Bump whenever the drain semantics change (order,
+# expiration handling, ...): a mismatch with the stored
+# credit_repair_state.policy_version forces a full rebuild on the next boot.
+REPAIR_POLICY_VERSION = 1
+
+_EPOCH = dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)
 
 
 def _wire_message_dict(message: MessageDb) -> Dict[str, Any]:
@@ -329,26 +339,85 @@ def _rebuild_credit_lots_for_address(session: DbSession, address: str) -> None:
 def _repair_credit_balances(session_factory: DbSessionFactory) -> None:
     """Bootstrap or repair the credit_balances lot cache from credit_history.
 
-    Rebuilds lots for every address that has any credit_history rows. Idempotent
-    and runs on every startup; after the initial bootstrap it is a bounded
-    full-table scan plus per-address rebuild, which is acceptable given typical
-    address counts.
+    The cache is written in the same transaction as the append-only history,
+    so drift can only come from out-of-order message arrival, a drain-policy
+    code change, or a writer bug. Cheap set-based screens detect each class
+    and only flagged addresses get the per-address delete-and-replay; a clean
+    boot performs no cache writes. A full rebuild happens only on bootstrap
+    (no ``credit_repair_state`` row) or when ``REPAIR_POLICY_VERSION``
+    changed. Known residual: a total-preserving misattribution bug (right
+    total drained from the wrong lot) is invisible to the screens until its
+    effects change a total.
+
+    Crash-safe: the state row is only advanced after all rebuilds committed;
+    a crash mid-repair re-screens with the old watermark next boot and
+    re-rebuilds (idempotent).
     """
     with session_factory() as session:
-        addresses = list(
-            session.execute(select(AlephCreditHistoryDb.address).distinct()).scalars()
+        state = get_credit_repair_state(session)
+        new_watermark = (
+            session.execute(
+                select(func.max(AlephCreditHistoryDb.last_update))
+            ).scalar()
+            or _EPOCH
         )
 
-    LOGGER.info("Repairing credit_balances for %d address(es)", len(addresses))
+    if state is None or state.policy_version != REPAIR_POLICY_VERSION:
+        reason = (
+            "bootstrap"
+            if state is None
+            else f"policy version {state.policy_version} -> {REPAIR_POLICY_VERSION}"
+        )
+        with session_factory() as session:
+            flagged = set(
+                session.execute(
+                    select(AlephCreditHistoryDb.address).distinct()
+                ).scalars()
+            )
+        LOGGER.info(
+            "Credit balances: full rebuild (%s), %d address(es)",
+            reason,
+            len(flagged),
+        )
+    else:
+        with session_factory() as session:
+            structural = _find_structural_violations(session)
+            conservation = _find_conservation_violations(session)
+            inversions = _find_order_inversions(session, state.history_watermark)
+        flagged = structural | conservation | inversions
+        if flagged:
+            LOGGER.warning(
+                "Credit cache drift detected (%d structural, %d conservation, "
+                "%d out-of-order): rebuilding %d address(es), e.g. %s",
+                len(structural),
+                len(conservation),
+                len(inversions),
+                len(flagged),
+                sorted(flagged)[:10],
+            )
+        else:
+            LOGGER.info("Credit balances clean, nothing to repair")
 
-    for i, address in enumerate(addresses):
+    for i, address in enumerate(sorted(flagged)):
         with session_factory() as session:
             _rebuild_credit_lots_for_address(session, address)
             session.commit()
         if (i + 1) % 500 == 0:
-            LOGGER.info("Repaired %d / %d", i + 1, len(addresses))
+            LOGGER.info("Repaired %d / %d", i + 1, len(flagged))
 
-    LOGGER.info("Credit balances repair complete (%d address(es))", len(addresses))
+    with session_factory() as session:
+        upsert_credit_repair_state(
+            session,
+            policy_version=REPAIR_POLICY_VERSION,
+            history_watermark=new_watermark,
+            last_run=utc_now(),
+        )
+        session.commit()
+
+    if flagged:
+        LOGGER.info(
+            "Credit balances repair complete (%d address(es) rebuilt)", len(flagged)
+        )
 
 
 _INVALID_METADATA_REASON = (

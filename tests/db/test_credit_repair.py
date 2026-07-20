@@ -2,7 +2,7 @@
 
 import datetime as dt
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from aleph.db.accessors.balances import (
     get_credit_repair_state,
@@ -12,9 +12,11 @@ from aleph.db.accessors.balances import (
 )
 from aleph.db.models import AlephCreditBalanceDb, AlephCreditHistoryDb
 from aleph.repair import (
+    REPAIR_POLICY_VERSION,
     _find_conservation_violations,
     _find_order_inversions,
     _find_structural_violations,
+    _repair_credit_balances,
 )
 from aleph.types.db_session import DbSessionFactory
 
@@ -324,3 +326,128 @@ def test_inversion_screen_flags_backdated_drain(session_factory: DbSessionFactor
         session.commit()
 
         assert _find_order_inversions(session, watermark=T2) == {"0xaaa"}
+
+
+def _seed_drained_and_live(session):
+    """0xaaa: fully drained lot (zero row left by the eager writer — its
+    presence/absence distinguishes a skip from a rebuild). 0xbbb: live lot."""
+    _grant(session, "0xaaa", 1000, "grant_a", TS_GRANT)
+    _spend(session, "0xaaa", 1000, "spend_a", TS_SPEND)
+    _grant(session, "0xbbb", 500, "grant_b", TS_GRANT)
+
+
+def _zero_row_count(session, address):
+    return session.execute(
+        select(func.count())
+        .select_from(AlephCreditBalanceDb)
+        .where(
+            AlephCreditBalanceDb.address == address,
+            AlephCreditBalanceDb.amount_remaining == 0,
+        )
+    ).scalar_one()
+
+
+def _write_current_state(session):
+    """State row as a previous successful repair would have left it."""
+    max_last_update = session.execute(
+        select(func.max(AlephCreditHistoryDb.last_update))
+    ).scalar_one()
+    upsert_credit_repair_state(
+        session,
+        policy_version=REPAIR_POLICY_VERSION,
+        history_watermark=max_last_update,
+        last_run=max_last_update,
+    )
+
+
+def test_repair_skips_when_clean(session_factory: DbSessionFactory):
+    with session_factory() as session:
+        _seed_drained_and_live(session)
+        _write_current_state(session)
+        session.commit()
+
+    _repair_credit_balances(session_factory)
+
+    with session_factory() as session:
+        # Skip, not rebuild: the eager writer's zero row survived (a rebuild
+        # would have purged it).
+        assert _zero_row_count(session, "0xaaa") == 1
+        # State row refreshed.
+        state = get_credit_repair_state(session)
+        assert state is not None
+        assert state.policy_version == REPAIR_POLICY_VERSION
+
+
+def test_repair_bootstrap_rebuilds_everything(session_factory: DbSessionFactory):
+    with session_factory() as session:
+        _seed_drained_and_live(session)
+        session.commit()  # no state row: bootstrap
+
+    _repair_credit_balances(session_factory)
+
+    with session_factory() as session:
+        # Full rebuild purges the zero row and creates the state row.
+        assert _zero_row_count(session, "0xaaa") == 0
+        state = get_credit_repair_state(session)
+        assert state is not None
+        assert state.policy_version == REPAIR_POLICY_VERSION
+        max_last_update = session.execute(
+            select(func.max(AlephCreditHistoryDb.last_update))
+        ).scalar_one()
+        assert state.history_watermark == max_last_update
+
+
+def test_repair_full_rebuild_on_policy_version_change(
+    session_factory: DbSessionFactory,
+):
+    with session_factory() as session:
+        _seed_drained_and_live(session)
+        max_last_update = session.execute(
+            select(func.max(AlephCreditHistoryDb.last_update))
+        ).scalar_one()
+        upsert_credit_repair_state(
+            session,
+            policy_version=REPAIR_POLICY_VERSION - 1,  # stale policy
+            history_watermark=max_last_update,
+            last_run=max_last_update,
+        )
+        session.commit()
+
+    _repair_credit_balances(session_factory)
+
+    with session_factory() as session:
+        assert _zero_row_count(session, "0xaaa") == 0  # rebuilt
+        state = get_credit_repair_state(session)
+        assert state is not None
+        assert state.policy_version == REPAIR_POLICY_VERSION
+
+
+def test_repair_rebuilds_only_flagged_addresses(session_factory: DbSessionFactory):
+    with session_factory() as session:
+        _seed_drained_and_live(session)
+        _write_current_state(session)
+        # Corrupt only 0xbbb: over-drain its lot (S2 flags it).
+        session.execute(
+            update(AlephCreditBalanceDb)
+            .where(AlephCreditBalanceDb.address == "0xbbb")
+            .values(amount_remaining=0)
+        )
+        session.commit()
+
+    _repair_credit_balances(session_factory)
+
+    with session_factory() as session:
+        # 0xbbb was rebuilt back to its full grant...
+        bbb_remaining = session.execute(
+            select(func.sum(AlephCreditBalanceDb.amount_remaining)).where(
+                AlephCreditBalanceDb.address == "0xbbb"
+            )
+        ).scalar_one()
+        bbb_granted = session.execute(
+            select(AlephCreditHistoryDb.amount).where(
+                AlephCreditHistoryDb.credit_ref == "grant_b"
+            )
+        ).scalar_one()
+        assert bbb_remaining == bbb_granted
+        # ...while 0xaaa was left alone (zero row survived).
+        assert _zero_row_count(session, "0xaaa") == 1
