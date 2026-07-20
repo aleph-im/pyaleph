@@ -173,6 +173,26 @@ def test_structural_screen_flags_mismatched_expiration(
         assert _find_structural_violations(session) == {"0xaaa"}
 
 
+def test_structural_screen_flags_cross_address_lot(session_factory: DbSessionFactory):
+    """A cache lot pointing at another address's grant is corruption: no real
+    writer can produce it (lot and history row always share the address)."""
+    with session_factory() as session:
+        _grant(session, "0xaaa", 1000, "grant_a", TS_GRANT)
+        session.add(
+            AlephCreditBalanceDb(
+                address="0xeeee",
+                credit_ref="grant_a",
+                credit_index=0,
+                amount_remaining=10,
+                expiration_date=None,
+                message_timestamp=TS_GRANT,
+            )
+        )
+        session.commit()
+
+        assert _find_structural_violations(session) == {"0xeeee"}
+
+
 def test_conservation_screen_clean(session_factory: DbSessionFactory):
     with session_factory() as session:
         _grant(session, "0xaaa", 1000, "grant_a", TS_GRANT)

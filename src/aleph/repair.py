@@ -195,6 +195,9 @@ def _find_structural_violations(session: DbSession) -> Set[str]:
 # no drains, or with no expiring grants and a never-negative running sum
 # (computed in replay order). Over-approximating "bounce possible" only
 # weakens the check for that address — never a false flag.
+# min_running_sum < 0 also covers backdated expenses (an expense whose
+# message_timestamp precedes every grant runs first in replay order), which is
+# what makes the eager writer's message_timestamp lower bound safe here.
 _CONSERVATION_SCREEN_SQL = text(
     """
     WITH ledger AS (
