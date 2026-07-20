@@ -11,7 +11,11 @@ from aleph.db.accessors.balances import (
     upsert_credit_repair_state,
 )
 from aleph.db.models import AlephCreditBalanceDb, AlephCreditHistoryDb
-from aleph.repair import _find_conservation_violations, _find_structural_violations
+from aleph.repair import (
+    _find_conservation_violations,
+    _find_order_inversions,
+    _find_structural_violations,
+)
 from aleph.types.db_session import DbSessionFactory
 
 
@@ -248,3 +252,75 @@ def test_conservation_screen_allows_overdraft(session_factory: DbSessionFactory)
         session.commit()
 
         assert _find_conservation_violations(session) == set()
+
+
+def _history_row(address, amount, ref, ts, last_update, index=0, expiration=None):
+    """Raw history row with a controlled insertion time (last_update)."""
+    return AlephCreditHistoryDb(
+        address=address,
+        amount=amount,
+        credit_ref=ref,
+        credit_index=index,
+        expiration_date=expiration,
+        message_timestamp=ts,
+        last_update=last_update,
+    )
+
+
+T1 = dt.datetime(2026, 3, 1, 10, 0, 0, tzinfo=dt.timezone.utc)
+T2 = dt.datetime(2026, 3, 1, 11, 0, 0, tzinfo=dt.timezone.utc)
+T3 = dt.datetime(2026, 3, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+MT_EARLY = dt.datetime(2026, 2, 1, tzinfo=dt.timezone.utc)
+MT_MID = dt.datetime(2026, 2, 10, tzinfo=dt.timezone.utc)
+MT_LATE = dt.datetime(2026, 2, 20, tzinfo=dt.timezone.utc)
+
+
+def test_inversion_screen_flags_late_grant_before_applied_drain(
+    session_factory: DbSessionFactory,
+):
+    """A grant inserted (T3) after a drain (T2) it replay-precedes (MT_MID <
+    MT_LATE) is an inversion: the drain was applied without seeing it."""
+    with session_factory() as session:
+        session.add(_history_row("0xaaa", 1000, "g1", MT_EARLY, T1))
+        session.add(_history_row("0xaaa", -500, "e1", MT_LATE, T2))
+        session.add(_history_row("0xaaa", 200, "g2", MT_MID, T3))  # late arrival
+        session.commit()
+
+        assert _find_order_inversions(session, watermark=T2) == {"0xaaa"}
+
+
+def test_inversion_screen_respects_watermark(session_factory: DbSessionFactory):
+    """The same inversion is NOT re-flagged once the watermark has passed the
+    late row's insertion time (a prior repair already reconciled it)."""
+    with session_factory() as session:
+        session.add(_history_row("0xaaa", 1000, "g1", MT_EARLY, T1))
+        session.add(_history_row("0xaaa", -500, "e1", MT_LATE, T2))
+        session.add(_history_row("0xaaa", 200, "g2", MT_MID, T3))
+        session.commit()
+
+        assert _find_order_inversions(session, watermark=T3) == set()
+
+
+def test_inversion_screen_ignores_grant_grant_inversions(
+    session_factory: DbSessionFactory,
+):
+    """Two grants arriving out of order cannot change the final state (lots
+    are independent until a drain is involved); must NOT be flagged."""
+    with session_factory() as session:
+        session.add(_history_row("0xaaa", 1000, "g1", MT_MID, T1))
+        session.add(_history_row("0xaaa", 200, "g2", MT_EARLY, T2))  # late, grant
+        session.commit()
+
+        assert _find_order_inversions(session, watermark=T1) == set()
+
+
+def test_inversion_screen_flags_backdated_drain(session_factory: DbSessionFactory):
+    """A drain inserted late with an early timestamp replay-precedes an
+    already-applied drain — flag it (rebuild decides if state differs)."""
+    with session_factory() as session:
+        session.add(_history_row("0xaaa", 1000, "g1", MT_EARLY, T1))
+        session.add(_history_row("0xaaa", -500, "e1", MT_LATE, T2))
+        session.add(_history_row("0xaaa", -100, "e2", MT_MID, T3))  # backdated
+        session.commit()
+
+        assert _find_order_inversions(session, watermark=T2) == {"0xaaa"}

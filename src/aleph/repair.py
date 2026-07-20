@@ -1,3 +1,4 @@
+import datetime as dt
 import logging
 from typing import Any, Dict, Set
 
@@ -224,6 +225,40 @@ def _find_conservation_violations(session: DbSession) -> Set[str]:
     See the SQL comment for the exact rule. Pure read; over-flagging is safe.
     """
     return set(session.execute(_CONSERVATION_SCREEN_SQL).scalars())
+
+
+# The eager writers apply rows in arrival order; the replay applies them in
+# (message_timestamp, credit_ref, credit_index) order. The two agree unless a
+# row was inserted after a row it replay-precedes AND a drain is involved
+# (grant/grant order never changes the outcome; drains pick lots by replay
+# order, so a late grant can retroactively change what an already-applied
+# drain should have consumed, and vice versa). credit_history.id is never
+# populated (not in the bulk-insert column list, no sequence), so insertion
+# order is proxied by last_update, set once per writer call. Rows at or below
+# the watermark were reconciled by a previous repair run.
+_INVERSION_SCREEN_SQL = text(
+    """
+    SELECT DISTINCT late.address
+    FROM credit_history late
+    JOIN credit_history early
+      ON early.address = late.address
+     AND early.last_update < late.last_update
+     AND (early.message_timestamp, early.credit_ref, early.credit_index)
+         > (late.message_timestamp, late.credit_ref, late.credit_index)
+     AND (late.amount < 0 OR early.amount < 0)
+    WHERE late.last_update > :watermark
+    """
+)
+
+
+def _find_order_inversions(session: DbSession, watermark: dt.datetime) -> Set[str]:
+    """Addresses with out-of-order credit rows inserted since ``watermark``.
+
+    Pure read; over-flagging is safe (the rebuild replay is the fixpoint).
+    """
+    return set(
+        session.execute(_INVERSION_SCREEN_SQL, {"watermark": watermark}).scalars()
+    )
 
 
 def _rebuild_credit_lots_for_address(session: DbSession, address: str) -> None:
