@@ -1,9 +1,10 @@
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Set
 
 from aleph_message.models import ItemHash, MessageType
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import aliased
 
 from aleph.db.accessors.files import upsert_file
 from aleph.db.accessors.messages import (
@@ -131,6 +132,44 @@ async def _fix_file_sizes(
             file_type=file.type,
             size=len(file_content),
         )
+
+
+def _find_structural_violations(session: DbSession) -> Set[str]:
+    """Addresses whose cache rows are structurally inconsistent with their
+    granting ``credit_history`` row.
+
+    Flags: orphan lots (no history row for the PK), lots pointing at another
+    address's or a negative (drain) history row, negative remainders,
+    remainders above the granted amount, and mismatched expiration or
+    timestamp. Zero-amount grants are legitimate (zero-amount transfer
+    fallback rows), hence ``amount < 0`` rather than ``<= 0``.
+
+    Pure read; over-flagging is safe (worst case an unneeded rebuild).
+    """
+    grant = aliased(AlephCreditHistoryDb)
+    stmt = (
+        select(AlephCreditBalanceDb.address)
+        .outerjoin(
+            grant,
+            (grant.credit_ref == AlephCreditBalanceDb.credit_ref)
+            & (grant.credit_index == AlephCreditBalanceDb.credit_index),
+        )
+        .where(
+            grant.credit_ref.is_(None)
+            | (grant.address != AlephCreditBalanceDb.address)
+            | (grant.amount < 0)
+            | (AlephCreditBalanceDb.amount_remaining < 0)
+            | (AlephCreditBalanceDb.amount_remaining > grant.amount)
+            | AlephCreditBalanceDb.expiration_date.is_distinct_from(
+                grant.expiration_date
+            )
+            | AlephCreditBalanceDb.message_timestamp.is_distinct_from(
+                grant.message_timestamp
+            )
+        )
+        .distinct()
+    )
+    return set(session.execute(stmt).scalars())
 
 
 def _rebuild_credit_lots_for_address(session: DbSession, address: str) -> None:
