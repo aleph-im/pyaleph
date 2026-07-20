@@ -4,7 +4,7 @@ Revision ID: a7c3e9f2d5b1
 Revises: f4b8a2d7c1e9
 Create Date: 2026-07-10
 
-V-Programs get a row in the single-inheritance vms table (type='vprogram').
+V-Programs get a row in the single-inheritance vms table (type='v-program').
 The runtime manifest and workload are single refs, so they live in nullable
 columns on vms (like the program-specific columns); the positional verified
 volume list gets its own table, cascading on vms deletion like the other
