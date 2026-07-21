@@ -13,8 +13,12 @@ echo "Updating IPFS config file..."
 # Enable the V1+V2 service
 ipfs config AutoNAT.ServiceMode 'enabled'
 
-# Only announce recursively pinned CIDs
-ipfs config Reprovider.Strategy 'pinned'
+# Only announce recursively pinned CIDs (Reprovider.* keys were removed in kubo 0.38)
+ipfs config Provide.Strategy 'pinned'
+
+# Pubsub must be enabled via config in kubo 0.38+; the legacy --enable-pubsub-experiment
+# daemon flag is a no-op (logs a deprecation error without enabling pubsub).
+ipfs config Pubsub.Enabled --json 'true'
 
 # ONLY use the Amino DHT (no HTTP routers).
 ipfs config Routing.Type "dhtserver"
