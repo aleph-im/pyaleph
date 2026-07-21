@@ -18,7 +18,8 @@ from typing import (
 )
 
 from aleph_message.models import Chain, MessageType
-from sqlalchemy import case, func, select, text
+from sqlalchemy import BigInteger, String, bindparam, case, func, select, text
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.sql import ColumnElement, Select
 
@@ -643,6 +644,122 @@ def update_credit_balances_distribution(
     _bulk_insert_credit_history(session, csv_rows)
 
 
+# FIFO drain of every eligible lot for a whole expense batch in one UPDATE.
+#
+# ``requested`` sums the per-entry amounts for each address (repeated addresses
+# in one message add up, exactly as sequential per-entry draining would, since
+# lots never go negative). ``ranked`` walks each address's lots in emission
+# order and exposes ``prev_cumulative``: the summed ``amount_remaining`` of all
+# strictly-earlier lots. A lot therefore yields
+# ``LEAST(amount_remaining, requested - prev_cumulative)``; lots whose earlier
+# siblings already cover the request (``prev_cumulative >= requested``) drop out
+# via the final WHERE clause, and any over-draw is silently capped because a
+# lot is never decremented below zero.
+_CONSUME_CREDITS_BATCH_SQL = text(
+    """
+    WITH requested AS (
+        SELECT address, SUM(amount)::bigint AS requested
+        FROM unnest(:addresses, :amounts) AS t(address, amount)
+        GROUP BY address
+    ),
+    ranked AS (
+        SELECT
+            cb.address,
+            cb.credit_ref,
+            cb.credit_index,
+            cb.amount_remaining,
+            r.requested,
+            COALESCE(
+                SUM(cb.amount_remaining) OVER (
+                    PARTITION BY cb.address
+                    ORDER BY
+                        cb.message_timestamp ASC,
+                        cb.credit_ref ASC,
+                        cb.credit_index ASC
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                ),
+                0
+            ) AS prev_cumulative
+        FROM credit_balances cb
+        JOIN requested r ON r.address = cb.address
+        WHERE cb.amount_remaining > 0
+          AND cb.message_timestamp <= :expense_ts
+          AND (cb.expiration_date IS NULL OR cb.expiration_date > :expense_ts)
+    )
+    UPDATE credit_balances cb
+    SET amount_remaining =
+            cb.amount_remaining
+            - LEAST(ranked.amount_remaining, ranked.requested - ranked.prev_cumulative),
+        last_update = now()
+    FROM ranked
+    WHERE cb.address = ranked.address
+      AND cb.credit_ref = ranked.credit_ref
+      AND cb.credit_index = ranked.credit_index
+      AND ranked.requested > ranked.prev_cumulative
+    """
+).bindparams(
+    bindparam("addresses", type_=ARRAY(String)),
+    bindparam("amounts", type_=ARRAY(BigInteger)),
+)
+
+# Lock the batch's eligible lots up front in a deterministic global order.
+# A window function forbids FOR UPDATE in the same query, so the lock is a
+# separate statement; ordering by address then emission order gives every
+# concurrent writer the same lock order, serialising same-address writers (as
+# the row-by-row FOR UPDATE did) without deadlocking.
+_LOCK_CREDITS_BATCH_SQL = text(
+    """
+    SELECT 1
+    FROM credit_balances
+    WHERE address = ANY(:addresses)
+      AND amount_remaining > 0
+      AND message_timestamp <= :expense_ts
+      AND (expiration_date IS NULL OR expiration_date > :expense_ts)
+    ORDER BY address, message_timestamp, credit_ref, credit_index
+    FOR UPDATE
+    """
+).bindparams(bindparam("addresses", type_=ARRAY(String)))
+
+
+def _consume_credits_batch(
+    session: DbSession,
+    addresses: Sequence[str],
+    amounts: Sequence[int],
+    message_timestamp: dt.datetime,
+) -> None:
+    """Drain the still-valid lots of every address in an expense message at once.
+
+    ``addresses`` and ``amounts`` are parallel arrays holding one entry per
+    expense line (post precision multiplier). This is the set-based equivalent
+    of calling :func:`_consume_address_credits` once per entry: same eligibility
+    (still-funded, granted at or before the expense, not yet expired at the
+    expense instant) and same FIFO order (``message_timestamp``, ``credit_ref``,
+    ``credit_index``). Multiple lines for one address sum together; over-draw is
+    silently dropped because lots never go negative.
+    """
+    # Only positive amounts consume anything, mirroring the ``amount <= 0``
+    # short-circuit in _consume_address_credits.
+    filtered = [(addr, amt) for addr, amt in zip(addresses, amounts) if amt > 0]
+    if not filtered:
+        return
+
+    addr_array = [addr for addr, _ in filtered]
+    amt_array = [amt for _, amt in filtered]
+
+    session.execute(
+        _LOCK_CREDITS_BATCH_SQL,
+        {"addresses": addr_array, "expense_ts": message_timestamp},
+    )
+    session.execute(
+        _CONSUME_CREDITS_BATCH_SQL,
+        {
+            "addresses": addr_array,
+            "amounts": amt_array,
+            "expense_ts": message_timestamp,
+        },
+    )
+
+
 def update_credit_balances_expense(
     session: DbSession,
     credits_list: Sequence[Dict[str, Any]],
@@ -659,6 +776,8 @@ def update_credit_balances_expense(
 
     last_update = utc_now()
     csv_rows = []
+    addresses: List[str] = []
+    amounts: List[int] = []
 
     for index, credit_entry in enumerate(credits_list):
         address = credit_entry["address"]
@@ -672,12 +791,8 @@ def update_credit_balances_expense(
         expense_count = credit_entry.get("count")
         expense_size_mib = credit_entry.get("size")
 
-        _consume_address_credits(
-            session=session,
-            address=address,
-            amount=amount,
-            message_timestamp=message_timestamp,
-        )
+        addresses.append(address)
+        amounts.append(amount)
 
         csv_rows.append(
             _format_csv_row(
@@ -701,6 +816,18 @@ def update_credit_balances_expense(
                 expense_size_mib if expense_size_mib is not None else "",
             )
         )
+
+    # Drain every address's lots for the whole message in two set-based
+    # statements instead of a SELECT ... FOR UPDATE + flush per address. The
+    # per-address loop turned into one DB round-trip per address (tens of
+    # thousands for a large expense batch); the set-based drain collapses that
+    # to a single lock + a single UPDATE.
+    _consume_credits_batch(
+        session=session,
+        addresses=addresses,
+        amounts=amounts,
+        message_timestamp=message_timestamp,
+    )
 
     _bulk_insert_credit_history(session, csv_rows)
 
