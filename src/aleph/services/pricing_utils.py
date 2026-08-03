@@ -20,6 +20,29 @@ from aleph.types.cost import ProductPricing
 from aleph.types.db_session import DbSession
 
 
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Recursively merge ``override`` onto a copy of ``base``.
+
+    Nested dicts are merged key-by-key so a *partial* override inherits any
+    leaf it does not set from ``base`` instead of dropping it. Non-dict values
+    (and dict-vs-non-dict conflicts) are taken from ``override``.
+
+    Used to backfill the pricing model from ``DEFAULT_PRICE_AGGREGATE``: a
+    pricing aggregate update that replaced e.g. ``INSTANCE.price.compute_unit``
+    without a ``credit`` field — as happened on chain during the 2025-02 →
+    2025-10 window, before credit pricing existed — otherwise resolves to
+    ``cost_credit = 0`` for every item priced in that window.
+    """
+    result = dict(base)
+    for key, value in override.items():
+        existing = result.get(key)
+        if isinstance(existing, dict) and isinstance(value, dict):
+            result[key] = _deep_merge(existing, value)
+        else:
+            result[key] = value
+    return result
+
+
 def build_pricing_model_from_aggregate(
     aggregate_content: Dict[Union[ProductPriceType, str], dict],
 ) -> Dict[ProductPriceType, ProductPricing]:
@@ -113,11 +136,28 @@ def get_pricing_timeline(
     for element in pricing_elements:
         elements_so_far.append(element)
 
-        # Merge all elements up to this point to get the cumulative state
+        # Merge all elements up to this point to get the cumulative state.
+        # The shallow aggregate-merge semantics (how on-chain elements combine
+        # with each other) are unchanged.
         merged_content = merge_aggregate_elements(elements_so_far)
 
+        # Backfill missing leaves from the default aggregate, but only for the
+        # product types actually present on chain — types never priced on
+        # chain stay absent, preserving the timeline's semantics. This rescues
+        # a partial update that replaced e.g. INSTANCE.price.compute_unit
+        # without a `credit` field (as happened during the 2025-02 → 2025-10
+        # window, before credit pricing existed on chain): the credit leaf
+        # falls back to the default instead of resolving to cost_credit=0.
+        # On-chain values always win where present.
+        full_content = {
+            price_type: _deep_merge(
+                DEFAULT_PRICE_AGGREGATE.get(price_type, {}), pricing_data
+            )
+            for price_type, pricing_data in merged_content.items()
+        }
+
         # Build pricing model from the merged content
-        pricing_model = build_pricing_model_from_aggregate(merged_content)
+        pricing_model = build_pricing_model_from_aggregate(full_content)
         timeline.append((element.creation_datetime, pricing_model))
 
     return timeline
