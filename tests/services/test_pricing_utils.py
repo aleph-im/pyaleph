@@ -335,6 +335,52 @@ class TestGetPricingTimeline:
             assert program_pricing.price.storage.holding == Decimal("0.1")
             assert program_pricing.price.compute_unit.holding == Decimal("100")
 
+    def test_pricing_timeline_backfills_missing_credit_from_default(
+        self, session_factory
+    ):
+        """Regression: an INSTANCE compute_unit published WITHOUT a `credit`
+        field — the on-chain shape during the 2025-02 → 2025-10 gap window,
+        before credit pricing existed — must inherit the default credit price
+        (14250) instead of resolving to cost_credit=0. On-chain values that
+        ARE set still win."""
+        base_time = dt.datetime(2025, 3, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+        gap_element = AggregateElementDb(
+            item_hash="gap_window_instance",
+            key=PRICE_AGGREGATE_KEY,
+            owner=PRICE_AGGREGATE_OWNER,
+            content={
+                ProductPriceType.INSTANCE: {
+                    "price": {
+                        "storage": {"payg": "0.000000977", "holding": "0.05"},
+                        # compute_unit WITHOUT `credit` — the gap-window shape
+                        "compute_unit": {"payg": "0.055", "holding": "1000"},
+                    },
+                    "tiers": [{"id": "tier-3", "compute_units": 4}],
+                    "compute_unit": {
+                        "vcpus": 1,
+                        "disk_mib": 20480,
+                        "memory_mib": 2048,
+                    },
+                }
+            },
+            creation_datetime=base_time,
+        )
+
+        with session_factory() as session:
+            session.add(gap_element)
+            session.commit()
+
+            timeline = get_pricing_timeline(session)
+
+        _, model = timeline[-1]
+        instance = model[ProductPriceType.INSTANCE]
+
+        # credit backfilled from DEFAULT_PRICE_AGGREGATE, not zeroed
+        assert instance.price.compute_unit.credit == Decimal("14250")
+        # on-chain values still win for the leaves that WERE set
+        assert instance.price.compute_unit.holding == Decimal("1000")
+        assert instance.price.compute_unit.payg == Decimal("0.055")
+
 
 class TestPricingTimelineIntegration:
     """Integration tests for pricing timeline with real message types."""
