@@ -2,7 +2,7 @@
   "AutoNAT": {
     "ServiceMode": "enabled"
   },
-  "Reprovider": {
+  "Provide": {
     "Strategy": "pinned"
   },
   "Routing": {
