@@ -1,15 +1,23 @@
 import copy
 import datetime as dt
 import json
+from typing import List
 
 import pytest
-from aleph_message.models import Chain, ItemHash, ItemType, MessageType
+from aleph_message.models import (
+    Chain,
+    ItemHash,
+    ItemType,
+    MessageType,
+    VerifiableProgramContent,
+)
 from message_test_helpers import process_pending_messages
 from messages.test_vprogram import VPROGRAM_CONTENT, VPROGRAM_ITEM_HASH
 from more_itertools import one
 from sqlalchemy import func, select
 
 from aleph.db.accessors.cost import get_message_costs
+from aleph.db.accessors.files import find_file_pins, insert_message_file_pin
 from aleph.db.accessors.messages import (
     get_message_by_item_hash,
     get_message_status,
@@ -20,17 +28,60 @@ from aleph.db.models import (
     AlephCreditBalanceDb,
     MessageStatusDb,
     PendingMessageDb,
+    StoredFileDb,
     VProgramVerifiedVolumeDb,
 )
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.schemas.api.messages import format_message
 from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.files import FileType
 from aleph.types.message_processing_result import ProcessedMessage, RejectedMessage
 from aleph.types.message_status import ErrorCode, MessageStatus
 from aleph.types.vms import VmType
 
 SENDER = "0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba"
+
+
+def get_vprogram_store_refs(content: VerifiableProgramContent) -> List[str]:
+    refs = [
+        str(content.runtime.ref),
+        str(content.workload.ref),
+        str(content.workload.hash_tree),
+    ]
+    for volume in content.volumes:
+        refs.append(str(volume.ref))
+        refs.append(str(volume.hash_tree))
+    return refs
+
+
+def insert_vprogram_refs(session: DbSession, message: PendingMessageDb):
+    """
+    Insert the file pins referenced by the V-Program to make it processable.
+    Refs that are already pinned (e.g. by a real STORE message) are skipped.
+    """
+
+    assert message.item_content
+    content = VerifiableProgramContent.model_validate_json(message.item_content)
+    refs = set(get_vprogram_store_refs(content))
+    refs -= set(find_file_pins(session=session, item_hashes=refs))
+
+    created = dt.datetime(2023, 1, 1, tzinfo=dt.timezone.utc)
+
+    for ref in refs:
+        # As in the program tests, the file hash just has to be a valid hash:
+        # use the reversed ref.
+        file_hash = ref[::-1]
+        session.add(StoredFileDb(hash=file_hash, size=1024 * 1024, type=FileType.FILE))
+        session.flush()
+        insert_message_file_pin(
+            session=session,
+            file_hash=file_hash,
+            owner=content.address,
+            item_hash=ref,
+            ref=None,
+            created=created,
+        )
 
 
 @pytest.fixture
@@ -89,6 +140,10 @@ async def test_process_vprogram(
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
 ):
+    with session_factory() as session:
+        insert_vprogram_refs(session, fixture_vprogram_message)
+        session.commit()
+
     pipeline = message_processor.make_pipeline()
     _ = [message async for message in pipeline]
 
@@ -160,6 +215,10 @@ async def test_process_vprogram_insufficient_credit(
     fixture_settings_aggregate_in_db,
 ):
     # No credit balance is seeded: processing must reject the message.
+    with session_factory() as session:
+        insert_vprogram_refs(session, fixture_vprogram_message)
+        session.commit()
+
     pipeline = message_processor.make_pipeline()
     _ = [message async for message in pipeline]
 
@@ -175,6 +234,50 @@ async def test_process_vprogram_insufficient_credit(
         )
         assert rejected is not None
         assert rejected.error_code == ErrorCode.CREDIT_INSUFFICIENT
+
+
+@pytest.mark.asyncio
+async def test_process_vprogram_missing_refs(
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    fixture_vprogram_message: PendingMessageDb,
+    user_credit_balance,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """A V-PROGRAM whose store references (runtime manifest, workload image
+    and hash tree, verified volumes and their hash trees) are unknown to the
+    node must not be processed, mirroring programs with missing volumes."""
+
+    # No refs are seeded: all five store references are missing.
+    pipeline = message_processor.make_pipeline()
+    _ = [message async for message in pipeline]
+
+    with session_factory() as session:
+        assert (
+            get_vprogram(session=session, item_hash=fixture_vprogram_message.item_hash)
+            is None
+        )
+
+        status = get_message_status(
+            session=session, item_hash=ItemHash(fixture_vprogram_message.item_hash)
+        )
+        assert status is not None
+        assert status.status == MessageStatus.REJECTED
+
+        rejected = get_rejected_message(
+            session=session, item_hash=fixture_vprogram_message.item_hash
+        )
+        assert rejected is not None
+        assert rejected.error_code == ErrorCode.VM_VOLUME_NOT_FOUND
+
+        assert fixture_vprogram_message.item_content
+        content = VerifiableProgramContent.model_validate_json(
+            fixture_vprogram_message.item_content
+        )
+        assert isinstance(rejected.details, dict)
+        assert set(rejected.details["errors"]) == set(get_vprogram_store_refs(content))
+        assert rejected.traceback is None
 
 
 def _pending_message(
@@ -259,6 +362,11 @@ async def test_forget_store_used_by_vprogram_is_blocked(
             )
         )
         assert isinstance(store_result, ProcessedMessage)
+
+        # The workload ref is pinned by the STORE message processed above;
+        # seed the other references (runtime, hash trees, volume) so the
+        # dependency check passes.
+        insert_vprogram_refs(session, vprogram_message)
 
         vprogram_result = one(
             await process_pending_messages(
