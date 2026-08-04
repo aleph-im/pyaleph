@@ -14,7 +14,7 @@ echo "Updating IPFS config file..."
 ipfs config AutoNAT.ServiceMode 'enabled'
 
 # Only announce recursively pinned CIDs
-ipfs config Reprovider.Strategy 'pinned'
+ipfs config Provide.Strategy 'pinned'
 
 # ONLY use the Amino DHT (no HTTP routers).
 ipfs config Routing.Type "dhtserver"
