@@ -147,7 +147,7 @@ def upgrade() -> None:
     #    manual repair SQL already ran and created the table.
     conn.execute(sa.text(f"""
             CREATE TABLE IF NOT EXISTS {BACKUP_TABLE}
-                (LIKE credit_history INCLUDING DEFAULTS)
+                (LIKE credit_history INCLUDING DEFAULTS INCLUDING INDEXES)
             """))
     conn.execute(sa.text(f"""
             INSERT INTO {BACKUP_TABLE}
@@ -166,7 +166,7 @@ def upgrade() -> None:
         sa.text(f"DELETE FROM credit_history ch WHERE {BAD_ROWS_PREDICATE}")
     ).rowcount
     logger.info(
-        "Removed %d double-charged credit_history row(s) " "(backup in %s)",
+        "Removed %d double-charged credit_history row(s) (backup in %s)",
         deleted,
         BACKUP_TABLE,
     )
