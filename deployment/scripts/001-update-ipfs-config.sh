@@ -13,6 +13,9 @@ echo "Updating IPFS config file..."
 # Enable the V1+V2 service
 ipfs config AutoNAT.ServiceMode 'enabled'
 
+# CCNs propagate messages over pubsub, so the daemon must have it enabled
+ipfs config Pubsub.Enabled --json 'true'
+
 # Only announce recursively pinned CIDs
 ipfs config Provide.Strategy 'pinned'
 
