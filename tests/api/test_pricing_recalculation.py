@@ -109,6 +109,11 @@ def sample_messages(session_factory):
         from aleph.types.message_status import MessageStatus
 
         for msg in [instance_message, program_message, store_message]:
+            # Recalculation orders by observed time (confirmation/reception),
+            # not the sender-supplied time. Anchor reception_time on the
+            # staggered message time so the chronological order is deterministic
+            # (MessageDb.__init__ otherwise defaults it to ~utc_now() for all).
+            msg.reception_time = msg.time
             status = MessageStatusDb(
                 item_hash=msg.item_hash,
                 status=MessageStatus.PROCESSED,
@@ -478,7 +483,7 @@ class TestRecalculateMessageCosts:
 
             assert response.status == 200
 
-            # Should have processed in chronological order based on message.time
+            # Should have processed in chronological order based on observed time
             expected_order = [
                 "6e46535560b4372551e39a531e2ec24f6869766624921631e84e56598c8942b1",
                 "5369766624921631e84e56598c8942b16e46535560b4372551e39a531e2ec24f",
