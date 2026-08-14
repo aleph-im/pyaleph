@@ -3148,3 +3148,92 @@ def test_resource_filter_matches_effective_origin(session_factory: DbSessionFact
             )
             == 0
         )
+
+
+def _credit_message(item_hash: str, first_confirmed_at, reception_time) -> MessageDb:
+    return MessageDb(
+        item_hash=item_hash,
+        chain=Chain.ETH,
+        sender="0x0000000000000000000000000000000000000001",
+        signature="0xsig",
+        item_type=ItemType.inline,
+        type=MessageType.post,
+        content={"time": 0.0},
+        size=100,
+        time=dt.datetime(2020, 1, 1, tzinfo=dt.timezone.utc),
+        first_confirmed_at=first_confirmed_at,
+        reception_time=reception_time,
+    )
+
+
+def test_repair_reanchors_lot_timestamp_on_confirmation(
+    session_factory: DbSessionFactory,
+):
+    """Repair re-derives a lot's timestamp from the referenced message's trusted
+    observed time (confirmation), overriding the forgeable timestamp stored on
+    the history row. This is what makes replay deterministic across nodes: once a
+    message confirms, every node rebuilds the same ordering regardless of when it
+    locally received the message.
+    """
+    address = "0xreanchor"
+    forged_stored_ts = dt.datetime(2020, 1, 1, tzinfo=dt.timezone.utc)
+    confirmation_ts = dt.datetime(2026, 6, 1, tzinfo=dt.timezone.utc)
+    msg_hash = "confirmed_grant_ref"
+
+    with session_factory() as session:
+        session.add(
+            _credit_message(
+                item_hash=msg_hash,
+                first_confirmed_at=confirmation_ts,
+                reception_time=dt.datetime(2026, 7, 1, tzinfo=dt.timezone.utc),
+            )
+        )
+        session.add(
+            AlephCreditHistoryDb(
+                address=address,
+                amount=1000,
+                credit_ref=msg_hash,
+                credit_index=0,
+                message_timestamp=forged_stored_ts,
+                last_update=confirmation_ts,
+                expiration_date=None,
+            )
+        )
+        session.flush()
+
+        _rebuild_credit_lots_for_address(session, address)
+
+        lot = session.query(AlephCreditBalanceDb).filter_by(address=address).one()
+        # The lot is anchored on the confirmation time, not the forged stored
+        # timestamp, so a later expense's eligibility window is computed against
+        # the trusted time on every node.
+        assert lot.message_timestamp == confirmation_ts
+
+
+def test_repair_falls_back_to_history_timestamp_when_message_absent(
+    session_factory: DbSessionFactory,
+):
+    """When no message row backs the history entry (e.g. forgotten), repair keeps
+    the stored history timestamp, preserving existing behaviour.
+    """
+    address = "0xfallback"
+    stored_ts = dt.datetime(2025, 3, 1, tzinfo=dt.timezone.utc)
+
+    with session_factory() as session:
+        session.add(
+            AlephCreditHistoryDb(
+                address=address,
+                amount=1000,
+                credit_ref="orphan_ref_no_message",
+                credit_index=0,
+                message_timestamp=stored_ts,
+                last_update=stored_ts,
+                expiration_date=None,
+            )
+        )
+        session.flush()
+
+        _rebuild_credit_lots_for_address(session, address)
+
+        lot = session.query(AlephCreditBalanceDb).filter_by(address=address).one()
+        assert lot.message_timestamp == stored_ts

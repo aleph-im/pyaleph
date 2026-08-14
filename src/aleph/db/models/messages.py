@@ -25,6 +25,7 @@ from sqlalchemy import (
     String,
     Table,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -241,6 +242,29 @@ class MessageDb(Base):
     @property
     def confirmed(self) -> bool:
         return bool(self.confirmations)
+
+    @property
+    def observed_time(self) -> dt.datetime:
+        """Trusted timestamp for economic and grandfathering decisions.
+
+        The sender-supplied ``time`` (envelope) and ``content.time`` are both
+        signed by the sender and freely forgeable; they must never gate credit
+        accounting, cost/pricing, storage tiers, or cutoff eligibility. This
+        returns the on-chain confirmation time when available (deterministic
+        across nodes) and otherwise the node-local reception time. Neither can
+        be backdated by the sender. Before confirmation nodes may briefly
+        disagree on reception time; the confirmation time re-anchors them on
+        replay/repair.
+        """
+        return self.first_confirmed_at or self.reception_time
+
+    @classmethod
+    def observed_time_expr(cls):
+        """SQL counterpart of :pyattr:`observed_time` for use in queries
+        (ordering, filtering, replay). ``COALESCE(first_confirmed_at,
+        reception_time)`` — the trusted, non-sender-controlled timestamp.
+        """
+        return func.coalesce(cls.first_confirmed_at, cls.reception_time)
 
     @property
     def parsed_content(self):
