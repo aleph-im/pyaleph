@@ -378,6 +378,13 @@ class ForgottenMessageDb(Base):
     owner: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     payment_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     size: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    # Trusted observed time (confirmation or reception) snapshotted from the
+    # messages row at forget time. Used for pricing-model selection so a
+    # backdated STORE cannot be priced against an older model. NULL for legacy
+    # rows forgotten before this column existed (pricing falls back to time).
+    observed_time: Mapped[Optional[dt.datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
     # Sender-supplied time of the forgetting FORGET message. Like the live
     # list's default time sort/cursor, windowed consumers assume the gap a
     # backdated FORGET can introduce.
@@ -433,6 +440,13 @@ class RemovedMessageDb(Base):
     owner: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     # Effective payment type (NULL payment coalesced to hold at copy time).
     payment_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # Trusted observed time (confirmation or reception) copied from the messages
+    # row at REMOVING->REMOVED. Used for pricing-model selection so a backdated
+    # STORE cannot be priced against an older model. NULL while REMOVING and for
+    # legacy rows (pricing falls back to time).
+    observed_time: Mapped[Optional[dt.datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
     # files.size snapshot taken at PROCESSED->REMOVING while the message was
     # alive (NULL for non-STORE messages or when the size could not be
     # resolved).

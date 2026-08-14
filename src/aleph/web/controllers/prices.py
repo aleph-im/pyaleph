@@ -275,7 +275,9 @@ def _price_forgotten_store_message(
         owner=forgotten_message.owner,
         payment_type_value=payment_type_value,
         size=forgotten_message.size,
-        time=forgotten_message.time.timestamp(),
+        # Prefer the trusted observed time captured at forget time; fall back to
+        # the sender-supplied time only for legacy rows that predate the column.
+        time=(forgotten_message.observed_time or forgotten_message.time).timestamp(),
         gone=gone,
     )
 
@@ -313,7 +315,9 @@ def _price_removed_store_message(
         owner=removed_message.owner,
         payment_type_value=payment_type_value,
         size=removed_message.size,
-        time=removed_message.time.timestamp(),
+        # Prefer the trusted observed time captured at removal; fall back to the
+        # sender-supplied time only for legacy rows that predate the column.
+        time=(removed_message.observed_time or removed_message.time).timestamp(),
         gone=gone,
     )
 

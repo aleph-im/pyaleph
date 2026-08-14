@@ -658,6 +658,10 @@ async def test_forget_store_credit_message_preserves_billing_metadata(
         assert forgotten_message.payment_type == "credit"
         assert forgotten_message.size == file_size
         assert forgotten_message.forgotten_at == forgotten_at
+        # The trusted observed time is snapshotted from the messages row so the
+        # forgotten STORE can still be priced against the correct model. It is
+        # the confirmation/reception time, not the sender-supplied time.
+        assert forgotten_message.observed_time == message.reception_time
 
 
 @pytest.mark.asyncio

@@ -26,13 +26,14 @@ def are_store_and_program_free(message: MessageDb) -> bool:
     height: Optional[int] = (
         message.confirmations[0].height if len(message.confirmations) > 0 else None
     )
-    # Never trust the sender-supplied ``time``: use the observed (confirmation
-    # or reception) time so a backdated message cannot claim the free legacy tier.
-    date: dt.datetime = message.observed_time
 
     if height is not None:
         return height < STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT
     else:
+        # Never trust the sender-supplied ``time``: use the observed
+        # (confirmation or reception) time so a backdated message cannot claim
+        # the free legacy tier.
+        date: dt.datetime = message.observed_time
         return date < timestamp_to_datetime(STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP)
 
 
