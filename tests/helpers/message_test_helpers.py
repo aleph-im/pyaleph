@@ -33,7 +33,9 @@ def make_validated_message_from_dict(
         raw_content = message_dict["item_content"]
 
     pending_message = PendingMessageDb.from_message_dict(
-        message_dict, fetched=True, reception_time=dt.datetime(2022, 1, 1)
+        message_dict,
+        fetched=True,
+        reception_time=dt.datetime(2022, 1, 1, tzinfo=dt.timezone.utc),
     )
     return MessageDb.from_pending_message(
         pending_message=pending_message,

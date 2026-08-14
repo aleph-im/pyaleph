@@ -137,6 +137,7 @@ def create_message_db(mocker):
         message.item_content = json.dumps(content.model_dump())
         message.parsed_content = content
         message.time = timestamp_to_datetime(time)
+        message.observed_time = message.time
         message.channel = Channel("TEST")
 
         return message
@@ -403,6 +404,7 @@ async def test_pre_check_balance_free_store_message(
         message.time = timestamp_to_datetime(
             STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP - 1
         )
+        message.observed_time = message.time
         content = StoreContent(
             address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
             time=STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP - 1,
@@ -446,6 +448,7 @@ async def test_pre_check_balance_small_ipfs_file(mocker, session_factory, mock_c
         message.time = timestamp_to_datetime(
             STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
         )
+        message.observed_time = message.time
         content = StoreContent(
             address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
             time=STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1,
@@ -497,6 +500,7 @@ async def test_pre_check_balance_large_ipfs_file_insufficient_balance(
         message.time = timestamp_to_datetime(
             STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
         )
+        message.observed_time = message.time
         content = StoreContent(
             address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
             time=STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1,
@@ -554,6 +558,7 @@ async def test_pre_check_balance_large_ipfs_file_sufficient_balance(
         message.time = timestamp_to_datetime(
             STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
         )
+        message.observed_time = message.time
         content = StoreContent(
             address=address,
             time=STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1,
@@ -607,6 +612,7 @@ async def test_pre_check_balance_non_ipfs_file(mocker, session_factory, mock_con
         message.time = timestamp_to_datetime(
             STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
         )
+        message.observed_time = message.time
         content = StoreContent(
             address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
             time=STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1,
@@ -654,6 +660,7 @@ async def test_pre_check_balance_ipfs_disabled(mocker, session_factory):
             message.time = timestamp_to_datetime(
                 STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
             )
+            message.observed_time = message.time
             content = StoreContent(
                 address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
                 time=STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1,
@@ -693,6 +700,7 @@ async def test_pre_check_balance_ipfs_size_none(mocker, session_factory, mock_co
         message.time = timestamp_to_datetime(
             STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
         )
+        message.observed_time = message.time
         content = StoreContent(
             address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
             time=STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1,
@@ -753,6 +761,7 @@ async def test_pre_check_balance_with_existing_costs(
         message.time = timestamp_to_datetime(
             STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
         )
+        message.observed_time = message.time
         content = StoreContent(
             address=address,
             time=STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1,
@@ -848,6 +857,7 @@ async def test_new_store_message_requires_credits(
         # Create a message after the credit-only cutoff with credit payment
         message = mocker.MagicMock(spec=MessageDb)
         message.time = timestamp_to_datetime(CREDIT_ONLY_CUTOFF_TIMESTAMP + 1)
+        message.observed_time = message.time
         message.confirmations = []
         message.item_hash = "test-hash"
         content = StoreContent(
@@ -896,6 +906,7 @@ async def test_new_store_message_with_sufficient_credits(
         # Create a message after the credit-only cutoff with credit payment
         message = mocker.MagicMock(spec=MessageDb)
         message.time = timestamp_to_datetime(CREDIT_ONLY_CUTOFF_TIMESTAMP + 1)
+        message.observed_time = message.time
         message.confirmations = []
         message.item_hash = "test-hash"
         content = StoreContent(
@@ -953,6 +964,7 @@ async def test_legacy_store_message_uses_hold_payment(
         # Create a message BEFORE the credit-only cutoff (legacy message)
         message = mocker.MagicMock(spec=MessageDb)
         message.time = timestamp_to_datetime(CREDIT_ONLY_CUTOFF_TIMESTAMP - 1)
+        message.observed_time = message.time
         message.confirmations = []
         content = StoreContent(
             address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
@@ -1002,6 +1014,7 @@ async def test_new_store_small_file_still_requires_credits(
         # Create a message after the credit-only cutoff with a small file and credit payment
         message = mocker.MagicMock(spec=MessageDb)
         message.time = timestamp_to_datetime(CREDIT_ONLY_CUTOFF_TIMESTAMP + 1)
+        message.observed_time = message.time
         message.confirmations = []
         message.item_hash = "test-hash"
         content = StoreContent(
@@ -1045,6 +1058,7 @@ async def test_legacy_store_small_file_no_balance_required(
         # Create a legacy message with a small file
         message = mocker.MagicMock(spec=MessageDb)
         message.time = timestamp_to_datetime(CREDIT_ONLY_CUTOFF_TIMESTAMP - 1)
+        message.observed_time = message.time
         message.confirmations = []
         content = StoreContent(
             address="0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106",
@@ -1087,6 +1101,7 @@ async def test_new_store_hold_payment_rejected(mocker, session_factory, mock_con
         # Create a message after the cutoff WITHOUT payment field (defaults to hold)
         message = mocker.MagicMock(spec=MessageDb)
         message.time = timestamp_to_datetime(CREDIT_ONLY_CUTOFF_TIMESTAMP + 1)
+        message.observed_time = message.time
         message.confirmations = []
         message.item_hash = "test-hash"
         content = StoreContent(
@@ -1135,6 +1150,7 @@ async def test_legacy_store_large_file_requires_balance(
         # Create a legacy message with a large file
         message = mocker.MagicMock(spec=MessageDb)
         message.time = timestamp_to_datetime(CREDIT_ONLY_CUTOFF_TIMESTAMP - 1)
+        message.observed_time = message.time
         message.confirmations = []
         content = StoreContent(
             address=address,
@@ -1182,6 +1198,7 @@ async def test_legacy_store_large_file_with_balance(
         # Create a legacy message with a large file
         message = mocker.MagicMock(spec=MessageDb)
         message.time = timestamp_to_datetime(CREDIT_ONLY_CUTOFF_TIMESTAMP - 1)
+        message.observed_time = message.time
         message.confirmations = []
         content = StoreContent(
             address=address,
@@ -1243,6 +1260,7 @@ async def test_legacy_store_with_credit_payment_requires_credits(
         # Create a legacy message with credit payment explicitly set
         message = mocker.MagicMock(spec=MessageDb)
         message.time = timestamp_to_datetime(CREDIT_ONLY_CUTOFF_TIMESTAMP - 1)
+        message.observed_time = message.time
         message.confirmations = []
         message.item_hash = "test-hash"
         content = StoreContent(
@@ -1291,6 +1309,7 @@ async def test_legacy_store_with_credit_payment_and_credits(
         # Create a legacy message with credit payment explicitly set
         message = mocker.MagicMock(spec=MessageDb)
         message.time = timestamp_to_datetime(CREDIT_ONLY_CUTOFF_TIMESTAMP - 1)
+        message.observed_time = message.time
         message.confirmations = []
         message.item_hash = "test-hash"
         content = StoreContent(

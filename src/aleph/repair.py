@@ -140,33 +140,42 @@ def _rebuild_credit_lots_for_address(session: DbSession, address: str) -> None:
     Idempotent: clears existing lots for the address first, then rebuilds. Safe
     to interrupt at address granularity (callers commit per-address).
 
-    Replays in emission order ``(message_timestamp, credit_ref, credit_index)
-    ASC``, the same ordering the eager writers see. Each positive history row
-    becomes a lot; each negative row drains lots in emission order, skipping
-    any whose expiration is at or before the negative row's
-    ``message_timestamp`` (so an expense from the past does not drain a lot
-    that had already expired at that moment).
+    Replays in emission order ``(observed_time, credit_ref, credit_index)
+    ASC``. ``observed_time`` is re-derived from the referenced message's trusted
+    time (``COALESCE(first_confirmed_at, reception_time)``), not the
+    sender-supplied timestamp stored on the history row, so replay converges to
+    the same result on every node once messages confirm. It falls back to the
+    stored ``message_timestamp`` when the message row is absent (e.g. forgotten).
+    Each positive history row becomes a lot; each negative row drains lots in
+    emission order, skipping any whose expiration is at or before the negative
+    row's observed time (so an expense from the past does not drain a lot that
+    had already expired at that moment).
     """
     session.execute(
         delete(AlephCreditBalanceDb).where(AlephCreditBalanceDb.address == address)
     )
 
-    records = (
-        session.execute(
-            select(AlephCreditHistoryDb)
-            .where(AlephCreditHistoryDb.address == address)
-            .order_by(
-                AlephCreditHistoryDb.message_timestamp.asc(),
-                AlephCreditHistoryDb.credit_ref.asc(),
-                AlephCreditHistoryDb.credit_index.asc(),
-            )
+    # Re-derive the trusted time from the referenced message; fall back to the
+    # stored history timestamp when the message is gone.
+    observed_ts = func.coalesce(
+        MessageDb.first_confirmed_at,
+        MessageDb.reception_time,
+        AlephCreditHistoryDb.message_timestamp,
+    ).label("observed_ts")
+
+    records = session.execute(
+        select(AlephCreditHistoryDb, observed_ts)
+        .outerjoin(MessageDb, MessageDb.item_hash == AlephCreditHistoryDb.credit_ref)
+        .where(AlephCreditHistoryDb.address == address)
+        .order_by(
+            observed_ts.asc(),
+            AlephCreditHistoryDb.credit_ref.asc(),
+            AlephCreditHistoryDb.credit_index.asc(),
         )
-        .scalars()
-        .all()
-    )
+    ).all()
 
     lots: list[dict] = []
-    for record in records:
+    for record, record_ts in records:
         if record.amount > 0:
             lots.append(
                 {
@@ -174,7 +183,7 @@ def _rebuild_credit_lots_for_address(session: DbSession, address: str) -> None:
                     "credit_index": record.credit_index,
                     "amount_remaining": int(record.amount),
                     "expiration_date": record.expiration_date,
-                    "message_timestamp": record.message_timestamp,
+                    "message_timestamp": record_ts,
                 }
             )
         else:
@@ -186,7 +195,7 @@ def _rebuild_credit_lots_for_address(session: DbSession, address: str) -> None:
                     continue
                 if (
                     lot["expiration_date"] is not None
-                    and lot["expiration_date"] <= record.message_timestamp
+                    and lot["expiration_date"] <= record_ts
                 ):
                     continue
                 take = min(lot["amount_remaining"], remaining)

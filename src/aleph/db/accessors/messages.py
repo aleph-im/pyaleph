@@ -696,6 +696,7 @@ def remove_message(session: DbSession, item_hash: str, removed_at: dt.datetime) 
             "channel",
             "owner",
             "payment_type",
+            "observed_time",
             "removed_at",
         ],
         select(
@@ -711,6 +712,9 @@ def remove_message(session: DbSession, item_hash: str, removed_at: dt.datetime) 
             # Messages without an explicit payment field are hold-paid;
             # capture the effective payment type so billing can rely on it.
             func.coalesce(MessageDb.payment_type, "hold"),
+            # Trusted time for pricing; the messages row is deleted below so it
+            # cannot be recovered by joining back later.
+            MessageDb.observed_time_expr(),
             literal(removed_at),
         ).where(MessageDb.item_hash == item_hash),
     )
@@ -728,6 +732,7 @@ def remove_message(session: DbSession, item_hash: str, removed_at: dt.datetime) 
             "channel": copy_row_stmt.excluded.channel,
             "owner": copy_row_stmt.excluded.owner,
             "payment_type": copy_row_stmt.excluded.payment_type,
+            "observed_time": copy_row_stmt.excluded.observed_time,
             "removed_at": copy_row_stmt.excluded.removed_at,
         },
     )
@@ -881,6 +886,7 @@ def forget_message(
             "owner",
             "payment_type",
             "size",
+            "observed_time",
             "forgotten_at",
         ],
         select(
@@ -898,6 +904,9 @@ def forget_message(
             # capture the effective payment type so billing can rely on it.
             func.coalesce(MessageDb.payment_type, "hold"),
             size_subquery,
+            # Trusted time for pricing; the messages row is deleted below so it
+            # cannot be recovered by joining back later.
+            MessageDb.observed_time_expr(),
             literal(forgotten_at),
         ).where(MessageDb.item_hash == item_hash),
     )

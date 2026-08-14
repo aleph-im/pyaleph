@@ -118,8 +118,11 @@ class CreditBalanceCronJob(BaseCronJob):
                     session, message.parsed_content
                 )
 
-                # Small file exception only applies to messages before credit-only cutoff
-                message_timestamp = message.time.timestamp()
+                # Small file exception only applies to messages before the
+                # credit-only cutoff. Use the observed (confirmation or
+                # reception) time, never the sender-supplied time, so a backdated
+                # STORE cannot claim the free legacy small-file exception.
+                message_timestamp = message.observed_time.timestamp()
                 is_legacy_message = message_timestamp < CREDIT_ONLY_CUTOFF_TIMESTAMP
 
                 if (

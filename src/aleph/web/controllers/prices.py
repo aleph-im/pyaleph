@@ -275,7 +275,9 @@ def _price_forgotten_store_message(
         owner=forgotten_message.owner,
         payment_type_value=payment_type_value,
         size=forgotten_message.size,
-        time=forgotten_message.time.timestamp(),
+        # Prefer the trusted observed time captured at forget time; fall back to
+        # the sender-supplied time only for legacy rows that predate the column.
+        time=(forgotten_message.observed_time or forgotten_message.time).timestamp(),
         gone=gone,
     )
 
@@ -313,7 +315,9 @@ def _price_removed_store_message(
         owner=removed_message.owner,
         payment_type_value=payment_type_value,
         size=removed_message.size,
-        time=removed_message.time.timestamp(),
+        # Prefer the trusted observed time captured at removal; fall back to the
+        # sender-supplied time only for legacy rows that predate the column.
+        time=(removed_message.observed_time or removed_message.time).timestamp(),
         gone=gone,
     )
 
@@ -583,7 +587,7 @@ async def recalculate_message_costs(request: web.Request):
                         ]
                     )
                 )
-                .order_by(MessageDb.time.asc())
+                .order_by(MessageDb.observed_time_expr().asc())
             )
             result = session.execute(select_stmt)
             messages_to_recalculate = result.scalars().all()
@@ -610,10 +614,14 @@ async def recalculate_message_costs(request: web.Request):
 
         for message in messages_to_recalculate:
             try:
-                # Find the applicable pricing model for this message's timestamp
+                # Find the applicable pricing model for this message's timestamp.
+                # Anchor on the observed (confirmation or reception) time, never
+                # the sender-supplied time, so a backdated message cannot be
+                # priced against an older, cheaper pricing model.
+                message_time = message.observed_time
                 while (
                     current_pricing_index < len(pricing_timeline) - 1
-                    and pricing_timeline[current_pricing_index + 1][0] <= message.time
+                    and pricing_timeline[current_pricing_index + 1][0] <= message_time
                 ):
                     current_pricing_index += 1
 
@@ -621,7 +629,7 @@ async def recalculate_message_costs(request: web.Request):
                 pricing_timestamp = pricing_timeline[current_pricing_index][0]
 
                 LOGGER.debug(
-                    f"Message {message.item_hash} at {message.time} using pricing from {pricing_timestamp}"
+                    f"Message {message.item_hash} at {message_time} using pricing from {pricing_timestamp}"
                 )
 
                 # Delete existing cost entries for this message

@@ -25,6 +25,7 @@ from sqlalchemy import (
     String,
     Table,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -243,6 +244,29 @@ class MessageDb(Base):
         return bool(self.confirmations)
 
     @property
+    def observed_time(self) -> dt.datetime:
+        """Trusted timestamp for economic and grandfathering decisions.
+
+        The sender-supplied ``time`` (envelope) and ``content.time`` are both
+        signed by the sender and freely forgeable; they must never gate credit
+        accounting, cost/pricing, storage tiers, or cutoff eligibility. This
+        returns the on-chain confirmation time when available (deterministic
+        across nodes) and otherwise the node-local reception time. Neither can
+        be backdated by the sender. Before confirmation nodes may briefly
+        disagree on reception time; the confirmation time re-anchors them on
+        replay/repair.
+        """
+        return self.first_confirmed_at or self.reception_time
+
+    @classmethod
+    def observed_time_expr(cls):
+        """SQL counterpart of :pyattr:`observed_time` for use in queries
+        (ordering, filtering, replay). ``COALESCE(first_confirmed_at,
+        reception_time)`` — the trusted, non-sender-controlled timestamp.
+        """
+        return func.coalesce(cls.first_confirmed_at, cls.reception_time)
+
+    @property
     def parsed_content(self):
         if getattr(self, "_parsed_content", None) is None:
             self._parsed_content = validate_message_content(self.type, self.content)
@@ -354,6 +378,13 @@ class ForgottenMessageDb(Base):
     owner: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     payment_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     size: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    # Trusted observed time (confirmation or reception) snapshotted from the
+    # messages row at forget time. Used for pricing-model selection so a
+    # backdated STORE cannot be priced against an older model. NULL for legacy
+    # rows forgotten before this column existed (pricing falls back to time).
+    observed_time: Mapped[Optional[dt.datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
     # Sender-supplied time of the forgetting FORGET message. Like the live
     # list's default time sort/cursor, windowed consumers assume the gap a
     # backdated FORGET can introduce.
@@ -409,6 +440,13 @@ class RemovedMessageDb(Base):
     owner: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     # Effective payment type (NULL payment coalesced to hold at copy time).
     payment_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # Trusted observed time (confirmation or reception) copied from the messages
+    # row at REMOVING->REMOVED. Used for pricing-model selection so a backdated
+    # STORE cannot be priced against an older model. NULL while REMOVING and for
+    # legacy rows (pricing falls back to time).
+    observed_time: Mapped[Optional[dt.datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
     # files.size snapshot taken at PROCESSED->REMOVING while the message was
     # alive (NULL for non-STORE messages or when the size could not be
     # resolved).

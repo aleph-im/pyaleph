@@ -138,6 +138,43 @@ def _make_credit_transfer_message_raw(
     )
 
 
+def _make_credit_transfer_message_at(
+    sender: str,
+    recipient: str,
+    amount: int,
+    msg_hash: str,
+    content_time: float,
+) -> MessageDb:
+    """Build a credit transfer whose sender-supplied ``time`` fields are set to
+    ``content_time`` (both the envelope and the content), so tests can forge a
+    backdated timestamp. Callers still control the trusted anchor by assigning
+    ``reception_time`` / ``first_confirmed_at`` on the returned object.
+    """
+    item_content = json.dumps(
+        {
+            "address": sender,
+            "time": content_time,
+            "content": {
+                "transfer": {"credits": [{"address": recipient, "amount": amount}]}
+            },
+            "type": "aleph_credit_transfer",
+        }
+    )
+    return make_validated_message_from_dict(
+        {
+            "chain": "ETH",
+            "item_hash": msg_hash,
+            "sender": sender,
+            "type": "POST",
+            "channel": "ALEPH_CREDIT",
+            "item_content": item_content,
+            "item_type": "inline",
+            "signature": "0xsig",
+            "time": content_time,
+        }
+    )
+
+
 def _make_credit_distribution_message(
     sender: str, recipient: str, amount: int, msg_hash: str
 ) -> MessageDb:
@@ -260,6 +297,157 @@ async def test_credit_transfer_non_whitelisted_sender(
 
         new_balance = get_credit_balance(session, REGULAR_SENDER)
         assert new_balance == initial_balance - 1_000_000
+
+
+def _credit_transfer_handler() -> PostMessageHandler:
+    return PostMessageHandler(
+        balances_addresses=[],
+        balances_post_type="balance",
+        credit_balances_addresses=[WHITELISTED_ADDRESS],
+        credit_balances_post_types=[
+            "aleph_credit_distribution",
+            "aleph_credit_transfer",
+            "aleph_credit_expense",
+        ],
+        credit_balances_channels=["ALEPH_CREDIT"],
+        scoring_addresses=[],
+        scoring_channel="not-a-scoring-channel",
+        scoring_metrics_post_type="not-a-scoring-post-type",
+    )
+
+
+@pytest.mark.asyncio
+async def test_credit_transfer_backdated_time_cannot_mint(
+    session_factory: DbSessionFactory,
+):
+    """A backdated sender-supplied ``time`` must not create credits from nothing.
+
+    Credit accounting anchors on the trusted observed time (confirmation or
+    reception), never the forgeable ``content.time``. Backdating the transfer
+    below the sender's own grant used to leave the sender undebited (no eligible
+    lot) while still crediting the recipient, and backdating below the precision
+    cutoff used to inflate the grant 10,000x. Both must be closed here.
+    """
+    handler = _credit_transfer_handler()
+
+    # Trusted anchor: message observed well after the grant, past the precision
+    # cutoff (2026-02-02). Content time is forged far in the past.
+    reception_time = dt.datetime(2026, 7, 1, tzinfo=dt.timezone.utc)
+    grant_time = dt.datetime(2026, 6, 1, tzinfo=dt.timezone.utc)
+    forged_content_time = dt.datetime(2020, 1, 1, tzinfo=dt.timezone.utc).timestamp()
+
+    with session_factory() as session:
+        update_credit_balances_distribution(
+            session=session,
+            credits_list=[
+                {
+                    "address": REGULAR_SENDER,
+                    "amount": 1_000_000,
+                    "price": "1.0",
+                    "tx_hash": "0xinit",
+                    "provider": "test",
+                    "origin": "test",
+                    "ref": "ref",
+                    "payment_method": "crypto",
+                }
+            ],
+            token="ALEPH",
+            chain="ETH",
+            message_hash="init_dist_backdate",
+            message_timestamp=grant_time,
+        )
+        session.commit()
+
+        initial_balance = get_credit_balance(session, REGULAR_SENDER)
+        assert initial_balance == 1_000_000
+
+        transfer_msg = _make_credit_transfer_message_at(
+            sender=REGULAR_SENDER,
+            recipient=RECIPIENT_ADDRESS,
+            amount=100,
+            msg_hash="b" * 64,
+            content_time=forged_content_time,
+        )
+        transfer_msg.reception_time = reception_time
+        transfer_msg.first_confirmed_at = None
+
+        await handler.process_post(session=session, message=transfer_msg)
+        session.commit()
+
+        records = (
+            session.query(AlephCreditHistoryDb).filter_by(credit_ref="b" * 64).all()
+        )
+        recipient_record = next(r for r in records if r.amount > 0)
+        sender_record = next(r for r in records if r.amount < 0)
+
+        # No precision amplification: 100 credits transferred as 100, not 1,000,000.
+        assert recipient_record.amount == 100
+        assert sender_record.amount == -100
+        # No minting: the sender is actually debited and conservation holds.
+        assert get_credit_balance(session, REGULAR_SENDER) == initial_balance - 100
+        assert get_credit_balance(session, RECIPIENT_ADDRESS) == 100
+
+
+@pytest.mark.asyncio
+async def test_credit_transfer_uses_confirmation_time_for_history(
+    session_factory: DbSessionFactory,
+):
+    """A genuinely historical (on-chain confirmed) message keeps its old-format
+    semantics: observed time is the confirmation time, so a pre-cutoff
+    confirmation still applies the 10,000x precision multiplier even though the
+    node received it recently (new-node backfill).
+    """
+    handler = _credit_transfer_handler()
+
+    # Confirmation time differs from the sender-supplied content time so the
+    # stored message_timestamp proves which one the code trusted.
+    confirmation_time = dt.datetime(2023, 5, 1, tzinfo=dt.timezone.utc)
+    content_time = dt.datetime(2023, 3, 1, tzinfo=dt.timezone.utc)
+    grant_time = dt.datetime(2023, 1, 1, tzinfo=dt.timezone.utc)
+
+    with session_factory() as session:
+        update_credit_balances_distribution(
+            session=session,
+            credits_list=[
+                {
+                    "address": REGULAR_SENDER,
+                    "amount": 1000,
+                    "price": "1.0",
+                    "tx_hash": "0xinit",
+                    "provider": "test",
+                    "origin": "test",
+                    "ref": "ref",
+                    "payment_method": "crypto",
+                }
+            ],
+            token="ALEPH",
+            chain="ETH",
+            message_hash="init_dist_hist",
+            message_timestamp=grant_time,
+        )
+        session.commit()
+
+        transfer_msg = _make_credit_transfer_message_at(
+            sender=REGULAR_SENDER,
+            recipient=RECIPIENT_ADDRESS,
+            amount=100,
+            msg_hash="c" * 64,
+            content_time=content_time.timestamp(),
+        )
+        # Received recently, but confirmed on-chain long ago: the confirmation
+        # time is the trusted anchor.
+        transfer_msg.reception_time = dt.datetime(2026, 7, 1, tzinfo=dt.timezone.utc)
+        transfer_msg.first_confirmed_at = confirmation_time
+
+        await handler.process_post(session=session, message=transfer_msg)
+        session.commit()
+
+        records = (
+            session.query(AlephCreditHistoryDb).filter_by(credit_ref="c" * 64).all()
+        )
+        recipient_record = next(r for r in records if r.amount > 0)
+        assert recipient_record.amount == 1_000_000  # 100 * 10000 (pre-cutoff)
+        assert recipient_record.message_timestamp == confirmation_time
 
 
 @pytest.mark.asyncio

@@ -230,6 +230,9 @@ async def test_check_and_update_removing_messages(
         assert removed_message.type == MessageType.store
         assert removed_message.sender == "0xsender1"
         assert removed_message.time is not None
+        # Trusted observed time is snapshotted from the messages row (no
+        # confirmation here, so it equals the reception time) for later pricing.
+        assert removed_message.observed_time is not None
         # No explicit payment field on the message: absence means hold
         assert removed_message.payment_type == "hold"
         assert (

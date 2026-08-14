@@ -274,6 +274,10 @@ class PostMessageHandler(ContentHandler):
         content = get_post_content(message)
 
         creation_datetime = timestamp_to_datetime(content.time)
+        # Credit accounting must anchor on the trusted observed time, never the
+        # sender-supplied content.time (forgeable): backdating it below a grant
+        # or below the precision cutoff would mint / inflate credits.
+        observed_time = message.observed_time
         ref = get_post_content_ref(content.ref)
 
         post = PostDb(
@@ -328,7 +332,7 @@ class PostMessageHandler(ContentHandler):
                         kind="distribution",
                     ),
                     message_hash=message.item_hash,
-                    message_timestamp=creation_datetime,
+                    message_timestamp=observed_time,
                 )
             elif (
                 content.type == "aleph_credit_expense"
@@ -340,7 +344,7 @@ class PostMessageHandler(ContentHandler):
                         CreditExpenseContent, content.content, kind="expense"
                     ),
                     message_hash=message.item_hash,
-                    message_timestamp=creation_datetime,
+                    message_timestamp=observed_time,
                 )
             elif content.type == "aleph_credit_transfer":
                 update_credit_balances_transfer(
@@ -349,7 +353,7 @@ class PostMessageHandler(ContentHandler):
                         CreditTransferContent, content.content, kind="transfer"
                     ),
                     message_hash=message.item_hash,
-                    message_timestamp=creation_datetime,
+                    message_timestamp=observed_time,
                     sender_address=content.address,
                     whitelisted_addresses=self.credit_balances_addresses,
                 )
