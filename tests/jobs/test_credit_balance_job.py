@@ -481,11 +481,12 @@ async def test_credit_job_caps_messages_per_run(
 
     def _count_removing() -> int:
         with session_factory() as session:
-            return sum(
-                get_message_status(session=session, item_hash=h).status
-                == MessageStatus.REMOVING
-                for h in item_hashes
-            )
+            statuses = [
+                get_message_status(session=session, item_hash=h) for h in item_hashes
+            ]
+        return sum(
+            s is not None and s.status == MessageStatus.REMOVING for s in statuses
+        )
 
     with session_factory() as session:
         cron_job = session.query(CronJobDb).filter_by(id=fixture_base_cron).one()
