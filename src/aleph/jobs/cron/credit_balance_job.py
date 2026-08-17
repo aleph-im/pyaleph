@@ -1,3 +1,4 @@
+import asyncio
 import datetime as dt
 import logging
 from typing import List, cast
@@ -30,6 +31,16 @@ from aleph.types.message_status import MessageStatus
 
 LOGGER = logging.getLogger(__name__)
 
+# Commit and yield the event loop every this many messages, so a large account
+# cannot hold one long transaction (and the message_counts counter-row locks its
+# trigger takes) or monopolise the shared event loop.
+COMMIT_CHUNK = 500
+
+# Cap the mutations performed per run so a burst (many accounts, or one account
+# with tens of thousands of resources) drains over several bounded ticks instead
+# of one runaway tick. The remainder is idempotently handled by the next run.
+MAX_MESSAGES_PER_RUN = 5000
+
 
 class CreditBalanceCronJob(BaseCronJob):
     def __init__(
@@ -48,7 +59,19 @@ class CreditBalanceCronJob(BaseCronJob):
                 f"Checking '{len(accounts)}' updated credit balance accounts..."
             )
 
+            # Budget the mutations performed this run so one tick cannot process
+            # an unbounded batch; the remainder is idempotently handled next run.
+            budget = MAX_MESSAGES_PER_RUN
+
             for address in accounts:
+                if budget <= 0:
+                    LOGGER.info(
+                        "Per-run message cap (%d) reached; remaining accounts "
+                        "will be handled on the next run.",
+                        MAX_MESSAGES_PER_RUN,
+                    )
+                    break
+
                 remaining_credits = get_credit_balance(session, address)
 
                 to_delete = []
@@ -58,11 +81,17 @@ class CreditBalanceCronJob(BaseCronJob):
                     session, address, PaymentType.credit
                 )
 
-                for item_hash, height, cost, _ in credit_costs:
+                for index, (item_hash, _height, cost, _) in enumerate(
+                    credit_costs, start=1
+                ):
                     status = get_message_status(session, item_hash)
+                    if status is None:
+                        continue
 
-                    LOGGER.info(
-                        f"Checking credit message {item_hash} with cost {cost} credits"
+                    LOGGER.debug(
+                        "Checking credit message %s with cost %s credits",
+                        item_hash,
+                        cost,
                     )
 
                     # For credits, check if balance is insufficient for minimum 1-day
@@ -78,36 +107,38 @@ class CreditBalanceCronJob(BaseCronJob):
                     # day, which the ingest-time check already rejects).
                     remaining_credits = max(0, remaining_credits - daily_cost)
 
-                    status = get_message_status(session, item_hash)
-                    if status is None:
-                        continue
-
                     if should_remove:
                         if (
                             status.status != MessageStatus.REMOVING
                             and status.status != MessageStatus.REMOVED
                         ):
                             to_delete.append(item_hash)
-                    else:
-                        if status.status == MessageStatus.REMOVING:
-                            to_recover.append(item_hash)
+                    elif status.status == MessageStatus.REMOVING:
+                        to_recover.append(item_hash)
 
-                if len(to_delete) > 0:
+                    # Yield during the read-only scan so a large account cannot
+                    # monopolise the shared event loop.
+                    if index % COMMIT_CHUNK == 0:
+                        await asyncio.sleep(0)
+
+                if to_delete:
                     LOGGER.info(
                         f"'{len(to_delete)}' credit-paid messages to delete for account '{address}'..."
                     )
-                    await self.delete_messages(session, to_delete)
+                    budget -= await self.delete_messages(session, to_delete[:budget])
 
-                if len(to_recover) > 0:
+                if budget > 0 and to_recover:
                     LOGGER.info(
                         f"'{len(to_recover)}' credit-paid messages to recover for account '{address}'..."
                     )
-                    await self.recover_messages(session, to_recover)
+                    budget -= await self.recover_messages(session, to_recover[:budget])
 
                 session.commit()
 
-    async def delete_messages(self, session: DbSession, messages: List[ItemHash]):
-        for item_hash in messages:
+    async def delete_messages(
+        self, session: DbSession, messages: List[ItemHash]
+    ) -> int:
+        for index, item_hash in enumerate(messages, start=1):
             message = get_message_by_item_hash(session, item_hash)
 
             if message is None:
@@ -170,8 +201,19 @@ class CreditBalanceCronJob(BaseCronJob):
                 # REMOVING->REMOVED.
                 upsert_removed_message_size(session=session, item_hash=item_hash)
 
-    async def recover_messages(self, session: DbSession, messages: List[ItemHash]):
-        for item_hash in messages:
+            # Commit in chunks so the transaction — and the message_counts
+            # counter-row locks its trigger takes — stays small, and yield so
+            # other event-loop tasks (API, other crons) keep running.
+            if index % COMMIT_CHUNK == 0:
+                session.commit()
+                await asyncio.sleep(0)
+
+        return len(messages)
+
+    async def recover_messages(
+        self, session: DbSession, messages: List[ItemHash]
+    ) -> int:
+        for index, item_hash in enumerate(messages, start=1):
             message = get_message_by_item_hash(session, item_hash)
             if message is None:
                 continue
@@ -206,3 +248,12 @@ class CreditBalanceCronJob(BaseCronJob):
                     .values(status_value=MessageStatus.PROCESSED)
                 )
                 delete_removed_message(session=session, item_hash=item_hash)
+
+            # Commit in chunks so the transaction — and the message_counts
+            # counter-row locks its trigger takes — stays small, and yield so
+            # other event-loop tasks (API, other crons) keep running.
+            if index % COMMIT_CHUNK == 0:
+                session.commit()
+                await asyncio.sleep(0)
+
+        return len(messages)
