@@ -84,16 +84,6 @@ class CreditBalanceCronJob(BaseCronJob):
                 for index, (item_hash, _height, cost, _) in enumerate(
                     credit_costs, start=1
                 ):
-                    status = get_message_status(session, item_hash)
-                    if status is None:
-                        continue
-
-                    LOGGER.debug(
-                        "Checking credit message %s with cost %s credits",
-                        item_hash,
-                        cost,
-                    )
-
                     # For credits, check if balance is insufficient for minimum 1-day
                     # runtime. Costs in account_costs are stored per-second, so multiply
                     # by DAY (seconds per day) to get the per-day requirement, matching
@@ -104,8 +94,21 @@ class CreditBalanceCronJob(BaseCronJob):
                     # resource is checked against what is actually left, matching the
                     # per-day threshold above (decrementing by the per-second cost
                     # would let an account keep many resources it cannot afford for a
-                    # day, which the ingest-time check already rejects).
+                    # day, which the ingest-time check already rejects). Decrement
+                    # before the status lookup/None-check so a cost row without a
+                    # message-status row still reserves balance, preserving the
+                    # original running-balance semantics.
                     remaining_credits = max(0, remaining_credits - daily_cost)
+
+                    status = get_message_status(session, item_hash)
+                    if status is None:
+                        continue
+
+                    LOGGER.debug(
+                        "Checking credit message %s with cost %s credits",
+                        item_hash,
+                        cost,
+                    )
 
                     if should_remove:
                         if (
@@ -121,7 +124,7 @@ class CreditBalanceCronJob(BaseCronJob):
                     if index % COMMIT_CHUNK == 0:
                         await asyncio.sleep(0)
 
-                if to_delete:
+                if budget > 0 and to_delete:
                     LOGGER.info(
                         f"'{len(to_delete)}' credit-paid messages to delete for account '{address}'..."
                     )

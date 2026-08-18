@@ -521,3 +521,67 @@ async def test_balance_job_caps_messages_per_run(
 
     await balance_job.run(now, cron_job)
     assert _count_removing() == 5
+
+
+@pytest.mark.asyncio
+async def test_balance_job_caps_recovery_per_run(
+    session_factory, balance_job, fixture_base_data, now, monkeypatch
+):
+    """The cap also bounds the recover path: a run recovers at most
+    MAX_MESSAGES_PER_RUN REMOVING messages, and successive runs drain the rest."""
+    monkeypatch.setattr("aleph.jobs.cron.balance_job.MAX_MESSAGES_PER_RUN", 2)
+    monkeypatch.setattr("aleph.jobs.cron.balance_job.COMMIT_CHUNK", 1)
+
+    wallet_address = "0xcaprecovers"
+    item_hashes = [f"{(i + 32):02x}" * 32 for i in range(5)]
+
+    # Balance comfortably covers every message: all should recover.
+    with session_factory() as session:
+        session.add(create_wallet(wallet_address, "10000.0", now))
+        session.commit()
+
+    for i, item_hash in enumerate(item_hashes):
+        message, file, file_pin, message_status = create_store_message(
+            item_hash, wallet_address, f"{(i + 32):04x}" * 16, now,
+            status=MessageStatus.REMOVING,
+        )
+        message.confirmations = [
+            ChainTxDb(
+                hash=f"0xrtx{i}",
+                chain=Chain.ETH,
+                height=STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT + 1000,
+                datetime=now,
+                publisher="0xabadbabe",
+                protocol=ChainSyncProtocol.OFF_CHAIN_SYNC,
+                protocol_version=1,
+                content="Qmsomething",
+            )
+        ]
+        cost = create_message_cost(wallet_address, item_hash, "15.0")
+        removed = RemovedMessageDb(item_hash=item_hash, size=30 * MiB)
+        with session_factory() as session:
+            session.add(message)
+            session.commit()
+            session.add_all([file, file_pin, message_status, cost, removed])
+            session.commit()
+
+    def _count_processed() -> int:
+        with session_factory() as session:
+            statuses = [
+                get_message_status(session=session, item_hash=h) for h in item_hashes
+            ]
+        return sum(
+            s is not None and s.status == MessageStatus.PROCESSED for s in statuses
+        )
+
+    with session_factory() as session:
+        cron_job = session.query(CronJobDb).filter_by(id="balance_check_base").one()
+
+    await balance_job.run(now, cron_job)
+    assert _count_processed() == 2
+
+    await balance_job.run(now, cron_job)
+    assert _count_processed() == 4
+
+    await balance_job.run(now, cron_job)
+    assert _count_processed() == 5

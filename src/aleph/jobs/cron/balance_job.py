@@ -110,7 +110,7 @@ class BalanceCronJob(BaseCronJob):
                     if index % COMMIT_CHUNK == 0:
                         await asyncio.sleep(0)
 
-                if to_delete:
+                if budget > 0 and to_delete:
                     LOGGER.info(
                         f"'{len(to_delete)}' messages to delete for account '{address}'..."
                     )
