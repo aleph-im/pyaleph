@@ -127,6 +127,8 @@ class BalanceCronJob(BaseCronJob):
     async def delete_messages(
         self, session: DbSession, messages: List[ItemHash]
     ) -> int:
+        """Return the number of messages attempted (including skipped no-ops),
+        used by the caller to decrement the per-run budget."""
         for index, item_hash in enumerate(messages, start=1):
             message = get_message_by_item_hash(session, item_hash)
 
@@ -193,6 +195,8 @@ class BalanceCronJob(BaseCronJob):
     async def recover_messages(
         self, session: DbSession, messages: List[ItemHash]
     ) -> int:
+        """Return the number of messages attempted (including skipped no-ops),
+        used by the caller to decrement the per-run budget."""
         for index, item_hash in enumerate(messages, start=1):
             message = get_message_by_item_hash(session, item_hash)
             if message is None:

@@ -453,3 +453,71 @@ async def test_balance_job_recover_keeps_removed_message(
         fetched_removed_message = session.get(RemovedMessageDb, message_hash)
         assert fetched_removed_message is not None
         assert fetched_removed_message.removed_at == now
+
+
+@pytest.mark.asyncio
+async def test_balance_job_caps_messages_per_run(
+    session_factory, balance_job, fixture_base_data, now, monkeypatch
+):
+    """A single run must flip at most MAX_MESSAGES_PER_RUN messages; the rest are
+    idempotently picked up by later runs (twin of the credit-job cap test).
+
+    Guards against one tick processing an unbounded batch, which blocks the event
+    loop and holds one huge transaction. COMMIT_CHUNK is shrunk too so the
+    chunked-commit path runs.
+    """
+    monkeypatch.setattr("aleph.jobs.cron.balance_job.MAX_MESSAGES_PER_RUN", 2)
+    monkeypatch.setattr("aleph.jobs.cron.balance_job.COMMIT_CHUNK", 1)
+
+    wallet_address = "0xcapmanystores"
+    item_hashes = [f"{i:02x}" * 32 for i in range(5)]
+
+    # Balance far below the total hold cost: every store is unaffordable.
+    with session_factory() as session:
+        session.add(create_wallet(wallet_address, "10.0", now))
+        session.commit()
+
+    for i, item_hash in enumerate(item_hashes):
+        message, file, file_pin, message_status = create_store_message(
+            item_hash, wallet_address, f"{i:04x}" * 16, now
+        )
+        message.confirmations = [
+            ChainTxDb(
+                hash=f"0xtx{i}",
+                chain=Chain.ETH,
+                height=STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT + 1000,
+                datetime=now,
+                publisher="0xabadbabe",
+                protocol=ChainSyncProtocol.OFF_CHAIN_SYNC,
+                protocol_version=1,
+                content="Qmsomething",
+            )
+        ]
+        cost = create_message_cost(wallet_address, item_hash, "15.0")
+        with session_factory() as session:
+            session.add(message)
+            session.commit()
+            session.add_all([file, file_pin, message_status, cost])
+            session.commit()
+
+    def _count_removing() -> int:
+        with session_factory() as session:
+            statuses = [
+                get_message_status(session=session, item_hash=h) for h in item_hashes
+            ]
+        return sum(
+            s is not None and s.status == MessageStatus.REMOVING for s in statuses
+        )
+
+    with session_factory() as session:
+        cron_job = session.query(CronJobDb).filter_by(id="balance_check_base").one()
+
+    # Each run flips at most the cap; successive runs resume until drained.
+    await balance_job.run(now, cron_job)
+    assert _count_removing() == 2
+
+    await balance_job.run(now, cron_job)
+    assert _count_removing() == 4
+
+    await balance_job.run(now, cron_job)
+    assert _count_removing() == 5
