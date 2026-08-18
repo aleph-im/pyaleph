@@ -542,7 +542,10 @@ async def test_balance_job_caps_recovery_per_run(
 
     for i, item_hash in enumerate(item_hashes):
         message, file, file_pin, message_status = create_store_message(
-            item_hash, wallet_address, f"{(i + 32):04x}" * 16, now,
+            item_hash,
+            wallet_address,
+            f"{(i + 32):04x}" * 16,
+            now,
             status=MessageStatus.REMOVING,
         )
         message.confirmations = [

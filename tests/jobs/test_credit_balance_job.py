@@ -500,3 +500,56 @@ async def test_credit_job_caps_messages_per_run(
 
     await credit_balance_job.run(now, cron_job)
     assert _count_removing() == 5
+
+
+@pytest.mark.asyncio
+async def test_credit_job_caps_recovery_per_run(
+    session_factory, credit_balance_job, fixture_base_cron, now, monkeypatch
+):
+    """The cap also bounds the credit recover path: a run recovers at most
+    MAX_MESSAGES_PER_RUN REMOVING instances, draining the rest over later runs."""
+    monkeypatch.setattr("aleph.jobs.cron.credit_balance_job.MAX_MESSAGES_PER_RUN", 2)
+    monkeypatch.setattr("aleph.jobs.cron.credit_balance_job.COMMIT_CHUNK", 1)
+
+    address = "0xcreditrecovers"
+    item_hashes = [f"{(i + 32):02x}" * 32 for i in range(5)]
+    for item_hash in item_hashes:
+        _create_credit_instance(
+            session_factory,
+            now,
+            address=address,
+            item_hash=item_hash,
+            cost_credit_per_second=1,
+        )
+    # Comfortably affordable so every REMOVING instance recovers.
+    _create_credit_balance(session_factory, now, address=address, amount=100 * DAY)
+
+    # Put every instance into REMOVING with a removal snapshot, mirroring a
+    # prior removal pass.
+    with session_factory() as session:
+        for item_hash in item_hashes:
+            session.get(MessageStatusDb, item_hash).status = MessageStatus.REMOVING
+            session.get(MessageDb, item_hash).status_value = MessageStatus.REMOVING
+            session.add(RemovedMessageDb(item_hash=item_hash, size=1000))
+        session.commit()
+
+    def _count_processed() -> int:
+        with session_factory() as session:
+            statuses = [
+                get_message_status(session=session, item_hash=h) for h in item_hashes
+            ]
+        return sum(
+            s is not None and s.status == MessageStatus.PROCESSED for s in statuses
+        )
+
+    with session_factory() as session:
+        cron_job = session.query(CronJobDb).filter_by(id=fixture_base_cron).one()
+
+    await credit_balance_job.run(now, cron_job)
+    assert _count_processed() == 2
+
+    await credit_balance_job.run(now, cron_job)
+    assert _count_processed() == 4
+
+    await credit_balance_job.run(now, cron_job)
+    assert _count_processed() == 5
