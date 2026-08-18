@@ -48,21 +48,26 @@ class BalanceCronJob(BaseCronJob):
         self.session_factory = session_factory
         self.max_unauthenticated_upload_file_size = max_unauthenticated_upload_file_size
 
-    async def run(self, now: dt.datetime, job: CronJobDb):
+    async def run(self, now: dt.datetime, job: CronJobDb) -> bool:
         with self.session_factory() as session:
             accounts = get_updated_balance_accounts(session, job.last_run)
 
             LOGGER.info(f"Checking '{len(accounts)}' updated account balances...")
 
             # Budget the mutations performed this run so one tick cannot process
-            # an unbounded batch; the remainder is idempotently handled next run.
+            # an unbounded batch. `deferred` tracks whether any work was left
+            # undone; when True we return False so the caller does not advance
+            # last_run and the next tick re-queries the same accounts to drain
+            # the remainder (the account query is delta-based on last_run).
             budget = MAX_MESSAGES_PER_RUN
+            deferred = False
 
             for address in accounts:
                 if budget <= 0:
+                    deferred = True
                     LOGGER.info(
-                        "Per-run message cap (%d) reached; remaining accounts "
-                        "will be handled on the next run.",
+                        "Per-run message cap (%d) reached; deferring remaining "
+                        "accounts to the next run.",
                         MAX_MESSAGES_PER_RUN,
                     )
                     break
@@ -110,19 +115,29 @@ class BalanceCronJob(BaseCronJob):
                     if index % COMMIT_CHUNK == 0:
                         await asyncio.sleep(0)
 
-                if budget > 0 and to_delete:
+                if to_delete:
+                    if len(to_delete) > budget:
+                        deferred = True
                     LOGGER.info(
                         f"'{len(to_delete)}' messages to delete for account '{address}'..."
                     )
                     budget -= await self.delete_messages(session, to_delete[:budget])
 
-                if budget > 0 and to_recover:
-                    LOGGER.info(
-                        f"'{len(to_recover)}' messages to recover for account '{address}'..."
-                    )
-                    budget -= await self.recover_messages(session, to_recover[:budget])
+                if to_recover:
+                    # budget may be 0 here if deletes consumed it this account.
+                    if budget <= 0 or len(to_recover) > budget:
+                        deferred = True
+                    if budget > 0:
+                        LOGGER.info(
+                            f"'{len(to_recover)}' messages to recover for account '{address}'..."
+                        )
+                        budget -= await self.recover_messages(
+                            session, to_recover[:budget]
+                        )
 
                 session.commit()
+
+            return not deferred
 
     async def delete_messages(
         self, session: DbSession, messages: List[ItemHash]

@@ -512,14 +512,15 @@ async def test_balance_job_caps_messages_per_run(
     with session_factory() as session:
         cron_job = session.query(CronJobDb).filter_by(id="balance_check_base").one()
 
-    # Each run flips at most the cap; successive runs resume until drained.
-    await balance_job.run(now, cron_job)
+    # Each run flips at most the cap and returns False (work deferred) until the
+    # final run drains the rest and returns True (complete).
+    assert await balance_job.run(now, cron_job) is False
     assert _count_removing() == 2
 
-    await balance_job.run(now, cron_job)
+    assert await balance_job.run(now, cron_job) is False
     assert _count_removing() == 4
 
-    await balance_job.run(now, cron_job)
+    assert await balance_job.run(now, cron_job) is True
     assert _count_removing() == 5
 
 
@@ -580,11 +581,11 @@ async def test_balance_job_caps_recovery_per_run(
     with session_factory() as session:
         cron_job = session.query(CronJobDb).filter_by(id="balance_check_base").one()
 
-    await balance_job.run(now, cron_job)
+    assert await balance_job.run(now, cron_job) is False
     assert _count_processed() == 2
 
-    await balance_job.run(now, cron_job)
+    assert await balance_job.run(now, cron_job) is False
     assert _count_processed() == 4
 
-    await balance_job.run(now, cron_job)
+    assert await balance_job.run(now, cron_job) is True
     assert _count_processed() == 5

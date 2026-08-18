@@ -5,6 +5,7 @@ import pytest
 import pytest_asyncio
 from aleph_message.models import Chain, ItemHash, ItemType, MessageType, PaymentType
 
+from aleph.db.accessors.cron_jobs import update_cron_job
 from aleph.db.accessors.messages import get_message_status, get_removed_message
 from aleph.db.models import AlephCreditBalanceDb, AlephCreditHistoryDb
 from aleph.db.models.account_costs import AccountCostsDb
@@ -491,14 +492,15 @@ async def test_credit_job_caps_messages_per_run(
     with session_factory() as session:
         cron_job = session.query(CronJobDb).filter_by(id=fixture_base_cron).one()
 
-    # Each run flips at most the cap; successive runs resume until drained.
-    await credit_balance_job.run(now, cron_job)
+    # Each run flips at most the cap and returns False (work deferred) until the
+    # final run drains the rest and returns True (complete).
+    assert await credit_balance_job.run(now, cron_job) is False
     assert _count_removing() == 2
 
-    await credit_balance_job.run(now, cron_job)
+    assert await credit_balance_job.run(now, cron_job) is False
     assert _count_removing() == 4
 
-    await credit_balance_job.run(now, cron_job)
+    assert await credit_balance_job.run(now, cron_job) is True
     assert _count_removing() == 5
 
 
@@ -545,11 +547,124 @@ async def test_credit_job_caps_recovery_per_run(
     with session_factory() as session:
         cron_job = session.query(CronJobDb).filter_by(id=fixture_base_cron).one()
 
-    await credit_balance_job.run(now, cron_job)
+    assert await credit_balance_job.run(now, cron_job) is False
     assert _count_processed() == 2
 
-    await credit_balance_job.run(now, cron_job)
+    assert await credit_balance_job.run(now, cron_job) is False
     assert _count_processed() == 4
 
-    await credit_balance_job.run(now, cron_job)
+    assert await credit_balance_job.run(now, cron_job) is True
     assert _count_processed() == 5
+
+
+@pytest.mark.asyncio
+async def test_credit_job_deferred_account_survives_last_run_advance(
+    session_factory, credit_balance_job, fixture_base_cron, now, monkeypatch
+):
+    """A deferred account must still drain on a later tick under the real
+    last_run contract.
+
+    The framework advances last_run only when run() reports completion. A capped
+    run returns False, so last_run is left untouched and the delta-based account
+    query (last_update >= last_run) still surfaces the account next tick. If
+    last_run were advanced unconditionally, an account whose credit history
+    predates the tick would drop out of the window and be stranded.
+    """
+    monkeypatch.setattr("aleph.jobs.cron.credit_balance_job.MAX_MESSAGES_PER_RUN", 2)
+    monkeypatch.setattr("aleph.jobs.cron.credit_balance_job.COMMIT_CHUNK", 1)
+
+    address = "0xdeferredaccount"
+    item_hashes = [f"{(i + 64):02x}" * 32 for i in range(3)]
+    for item_hash in item_hashes:
+        _create_credit_instance(
+            session_factory,
+            now,
+            address=address,
+            item_hash=item_hash,
+            cost_credit_per_second=1,
+        )
+    _create_credit_balance(session_factory, now, address=address, amount=10)
+
+    # Make the account's credit-history update strictly older than the tick, so
+    # an unconditional last_run advance would strand it.
+    with session_factory() as session:
+        for ch in session.query(AlephCreditHistoryDb).filter_by(address=address).all():
+            ch.last_update = now - dt.timedelta(hours=1)
+        session.commit()
+
+    def _count_removing() -> int:
+        with session_factory() as session:
+            statuses = [
+                get_message_status(session=session, item_hash=h) for h in item_hashes
+            ]
+        return sum(
+            s is not None and s.status == MessageStatus.REMOVING for s in statuses
+        )
+
+    async def _tick(tick_now) -> bool:
+        # Mimic CronJob.__run_job: advance last_run only when run() completes.
+        with session_factory() as session:
+            job = session.query(CronJobDb).filter_by(id=fixture_base_cron).one()
+            completed = await credit_balance_job.run(tick_now, job)
+            if completed is not False:
+                update_cron_job(session, job.id, tick_now)
+                session.commit()
+        return completed
+
+    # Tick 1 caps at 2 and defers -> returns False, last_run NOT advanced.
+    assert await _tick(now) is False
+    assert _count_removing() == 2
+
+    # Tick 2 (later): last_run untouched, so the account is still in the delta
+    # window and the remainder drains.
+    assert await _tick(now + dt.timedelta(hours=2)) is True
+    assert _count_removing() == 3
+
+
+@pytest.mark.asyncio
+async def test_credit_job_defers_second_account_when_budget_exhausted(
+    session_factory, credit_balance_job, fixture_base_cron, now, monkeypatch
+):
+    """The primary many-accounts scenario: when the first account exhausts the
+    budget, later accounts are deferred to the next run. Accounts are processed
+    in address order for deterministic, fair resumption."""
+    monkeypatch.setattr("aleph.jobs.cron.credit_balance_job.MAX_MESSAGES_PER_RUN", 2)
+    monkeypatch.setattr("aleph.jobs.cron.credit_balance_job.COMMIT_CHUNK", 1)
+
+    accounts = {
+        "0xaaaaccount": [f"a{i:01x}" * 32 for i in range(2)],
+        "0xbbbaccount": [f"b{i:01x}" * 32 for i in range(2)],
+    }
+    for address, hashes in accounts.items():
+        for item_hash in hashes:
+            _create_credit_instance(
+                session_factory,
+                now,
+                address=address,
+                item_hash=item_hash,
+                cost_credit_per_second=1,
+            )
+        _create_credit_balance(session_factory, now, address=address, amount=10)
+
+    def _removing(address) -> int:
+        with session_factory() as session:
+            statuses = [
+                get_message_status(session=session, item_hash=h)
+                for h in accounts[address]
+            ]
+        return sum(
+            s is not None and s.status == MessageStatus.REMOVING for s in statuses
+        )
+
+    with session_factory() as session:
+        cron_job = session.query(CronJobDb).filter_by(id=fixture_base_cron).one()
+
+    # Run 1: the first account (address order) fills the budget of 2; the second
+    # is deferred, so run() reports incomplete.
+    assert await credit_balance_job.run(now, cron_job) is False
+    assert _removing("0xaaaaccount") == 2
+    assert _removing("0xbbbaccount") == 0
+
+    # Run 2: the first account is already REMOVING (no-op) and the second drains.
+    assert await credit_balance_job.run(now, cron_job) is True
+    assert _removing("0xbbbaccount") == 2

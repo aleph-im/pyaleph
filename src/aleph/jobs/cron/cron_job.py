@@ -2,7 +2,7 @@ import abc
 import asyncio
 import datetime as dt
 import logging
-from typing import Coroutine, Dict, List
+from typing import Coroutine, Dict, List, Optional
 
 from configmanager import Config
 
@@ -16,7 +16,11 @@ LOGGER = logging.getLogger(__name__)
 
 class BaseCronJob(abc.ABC):
     @abc.abstractmethod
-    async def run(self, now: dt.datetime, job: CronJobDb) -> None:
+    async def run(self, now: dt.datetime, job: CronJobDb) -> Optional[bool]:
+        """Run the job. Return ``False`` to signal that work was left undone
+        (e.g. a per-run cap was hit) so the caller does NOT advance ``last_run``
+        and the next tick re-queries the same accounts. ``None`` / ``True`` mean
+        the job completed and ``last_run`` may advance."""
         pass
 
 
@@ -34,9 +38,15 @@ class CronJob:
     ):
         try:
             LOGGER.info(f"Starting '{job.id}' cron job check...")
-            await cron_job.run(now, job)
+            completed = await cron_job.run(now, job)
 
-            update_cron_job(session, job.id, now)
+            # A job returning False left work undone (e.g. a per-run cap was
+            # hit). Do NOT advance last_run in that case, so the next tick
+            # re-queries the same accounts and drains the remainder — the
+            # account queries are delta-based on last_run and would otherwise
+            # never surface a deferred account again. None/True = completed.
+            if completed is not False:
+                update_cron_job(session, job.id, now)
 
             LOGGER.info(f"'{job.id}' cron job ran successfully.")
 
