@@ -5,6 +5,7 @@ import pytest
 import pytest_asyncio
 from aleph_message.models import Chain, ItemHash, ItemType, MessageType, PaymentType
 
+from aleph.db.accessors.cron_jobs import update_cron_job
 from aleph.db.accessors.messages import get_message_status
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.db.models.balances import AlephBalanceDb
@@ -589,3 +590,138 @@ async def test_balance_job_caps_recovery_per_run(
 
     assert await balance_job.run(now, cron_job) is True
     assert _count_processed() == 5
+
+
+def _store_with_confirmation(session_factory, address, item_hash, file_hash, tx, now):
+    """Insert one PROCESSED hold-paid store above the cutoff height, with an
+    unaffordable cost, for the given wallet."""
+    message, file, file_pin, message_status = create_store_message(
+        item_hash, address, file_hash, now
+    )
+    message.confirmations = [
+        ChainTxDb(
+            hash=tx,
+            chain=Chain.ETH,
+            height=STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT + 1000,
+            datetime=now,
+            publisher="0xabadbabe",
+            protocol=ChainSyncProtocol.OFF_CHAIN_SYNC,
+            protocol_version=1,
+            content="Qmsomething",
+        )
+    ]
+    cost = create_message_cost(address, item_hash, "15.0")
+    with session_factory() as session:
+        session.add(message)
+        session.commit()
+        session.add_all([file, file_pin, message_status, cost])
+        session.commit()
+
+
+@pytest.mark.asyncio
+async def test_balance_job_deferred_account_survives_last_run_advance(
+    session_factory, balance_job, fixture_base_data, now, monkeypatch
+):
+    """Twin of the credit resumption test: a deferred account must still drain on
+    a later tick because the framework advances last_run only when run() reports
+    completion."""
+    monkeypatch.setattr("aleph.jobs.cron.balance_job.MAX_MESSAGES_PER_RUN", 2)
+    monkeypatch.setattr("aleph.jobs.cron.balance_job.COMMIT_CHUNK", 1)
+
+    wallet_address = "0xbaldeferred"
+    item_hashes = [f"{(i + 64):02x}" * 32 for i in range(3)]
+
+    with session_factory() as session:
+        session.add(create_wallet(wallet_address, "10.0", now))
+        session.commit()
+
+    for i, item_hash in enumerate(item_hashes):
+        _store_with_confirmation(
+            session_factory,
+            wallet_address,
+            item_hash,
+            f"{(i + 64):04x}" * 16,
+            f"0xdtx{i}",
+            now,
+        )
+
+    # Make the wallet's balance update strictly older than the tick, so an
+    # unconditional last_run advance would strand it.
+    with session_factory() as session:
+        for w in session.query(AlephBalanceDb).filter_by(address=wallet_address).all():
+            w.last_update = now - dt.timedelta(hours=1)
+        session.commit()
+
+    def _count_removing() -> int:
+        with session_factory() as session:
+            statuses = [
+                get_message_status(session=session, item_hash=h) for h in item_hashes
+            ]
+        return sum(
+            s is not None and s.status == MessageStatus.REMOVING for s in statuses
+        )
+
+    async def _tick(tick_now) -> bool:
+        with session_factory() as session:
+            job = session.query(CronJobDb).filter_by(id="balance_check_base").one()
+            completed = await balance_job.run(tick_now, job)
+            if completed is not False:
+                update_cron_job(session, job.id, tick_now)
+                session.commit()
+        return completed
+
+    assert await _tick(now) is False
+    assert _count_removing() == 2
+
+    assert await _tick(now + dt.timedelta(hours=2)) is True
+    assert _count_removing() == 3
+
+
+@pytest.mark.asyncio
+async def test_balance_job_defers_second_account_when_budget_exhausted(
+    session_factory, balance_job, fixture_base_data, now, monkeypatch
+):
+    """Twin of the credit multi-account test: the first account (address order)
+    exhausts the budget, the second is deferred then drained."""
+    monkeypatch.setattr("aleph.jobs.cron.balance_job.MAX_MESSAGES_PER_RUN", 2)
+    monkeypatch.setattr("aleph.jobs.cron.balance_job.COMMIT_CHUNK", 1)
+
+    wallets = {
+        "0xaaawallet": [f"a{i:01x}" * 32 for i in range(2)],
+        "0xbbbwallet": [f"b{i:01x}" * 32 for i in range(2)],
+    }
+    counter = 0
+    for address, hashes in wallets.items():
+        with session_factory() as session:
+            session.add(create_wallet(address, "10.0", now))
+            session.commit()
+        for item_hash in hashes:
+            _store_with_confirmation(
+                session_factory,
+                address,
+                item_hash,
+                f"{counter:04x}" * 16,
+                f"0xmtx{counter}",
+                now,
+            )
+            counter += 1
+
+    def _removing(address) -> int:
+        with session_factory() as session:
+            statuses = [
+                get_message_status(session=session, item_hash=h)
+                for h in wallets[address]
+            ]
+        return sum(
+            s is not None and s.status == MessageStatus.REMOVING for s in statuses
+        )
+
+    with session_factory() as session:
+        cron_job = session.query(CronJobDb).filter_by(id="balance_check_base").one()
+
+    assert await balance_job.run(now, cron_job) is False
+    assert _removing("0xaaawallet") == 2
+    assert _removing("0xbbbwallet") == 0
+
+    assert await balance_job.run(now, cron_job) is True
+    assert _removing("0xbbbwallet") == 2

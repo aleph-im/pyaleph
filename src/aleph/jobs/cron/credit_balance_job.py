@@ -130,10 +130,12 @@ class CreditBalanceCronJob(BaseCronJob):
                         await asyncio.sleep(0)
 
                 if to_delete:
+                    processing = min(len(to_delete), budget)
                     if len(to_delete) > budget:
                         deferred = True
                     LOGGER.info(
-                        f"'{len(to_delete)}' credit-paid messages to delete for account '{address}'..."
+                        f"Deleting '{processing}' of '{len(to_delete)}' credit-paid "
+                        f"messages for account '{address}'..."
                     )
                     budget -= await self.delete_messages(session, to_delete[:budget])
 
@@ -142,8 +144,10 @@ class CreditBalanceCronJob(BaseCronJob):
                     if budget <= 0 or len(to_recover) > budget:
                         deferred = True
                     if budget > 0:
+                        processing = min(len(to_recover), budget)
                         LOGGER.info(
-                            f"'{len(to_recover)}' credit-paid messages to recover for account '{address}'..."
+                            f"Recovering '{processing}' of '{len(to_recover)}' "
+                            f"credit-paid messages for account '{address}'..."
                         )
                         budget -= await self.recover_messages(
                             session, to_recover[:budget]

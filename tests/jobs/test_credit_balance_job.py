@@ -644,7 +644,11 @@ async def test_credit_job_defers_second_account_when_budget_exhausted(
                 item_hash=item_hash,
                 cost_credit_per_second=1,
             )
-        _create_credit_balance(session_factory, now, address=address, amount=10)
+        # Distinct ref per account: credit_history PK is (credit_ref,
+        # credit_index), shared across addresses.
+        _create_credit_balance(
+            session_factory, now, address=address, amount=10, ref=f"grant_{address}"
+        )
 
     def _removing(address) -> int:
         with session_factory() as session:
