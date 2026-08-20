@@ -5,10 +5,17 @@ import pytest
 from aleph_message.models import Chain, ItemType, MessageType
 from messages.test_vprogram import VPROGRAM_CONTENT, VPROGRAM_ITEM_HASH
 
-from aleph.db.models import AlephCreditBalanceDb, MessageStatusDb, PendingMessageDb
+from aleph.db.accessors.files import insert_message_file_pin
+from aleph.db.models import (
+    AlephCreditBalanceDb,
+    MessageStatusDb,
+    PendingMessageDb,
+    StoredFileDb,
+)
 from aleph.schemas.message_content import ContentSource, MessageContent
 from aleph.toolkit.timestamp import timestamp_to_datetime
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.files import FileType
 from aleph.types.message_status import ErrorCode, MessageStatus
 from aleph.web.controllers.app_state_getters import APP_STATE_STORAGE_SERVICE
 
@@ -55,6 +62,38 @@ def fixture_vprogram_message(session_factory: DbSessionFactory) -> PendingMessag
         )
         session.commit()
     return pending_message
+
+
+def insert_vprogram_refs(session: DbSession) -> None:
+    """
+    Insert the file pins referenced by the V-Program message so that the
+    dependency check passes at processing time.
+    """
+
+    refs = {
+        VPROGRAM_CONTENT["runtime"]["ref"],
+        VPROGRAM_CONTENT["workload"]["ref"],
+        VPROGRAM_CONTENT["workload"]["hash_tree"],
+    }
+    for volume in VPROGRAM_CONTENT["volumes"]:
+        refs.add(volume["ref"])
+        refs.add(volume["hash_tree"])
+
+    created = dt.datetime(2023, 1, 1, tzinfo=dt.timezone.utc)
+
+    for ref in refs:
+        # The file hash just has to be a valid hash: use the reversed ref.
+        file_hash = ref[::-1]
+        session.add(StoredFileDb(hash=file_hash, size=1024 * 1024, type=FileType.FILE))
+        session.flush()
+        insert_message_file_pin(
+            session=session,
+            file_hash=file_hash,
+            owner=SENDER,
+            item_hash=ref,
+            ref=None,
+            created=created,
+        )
 
 
 @pytest.fixture
@@ -119,6 +158,10 @@ async def test_vprogram_message_price(
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
 ):
+    with session_factory() as session:
+        insert_vprogram_refs(session)
+        session.commit()
+
     pipeline = message_processor.make_pipeline()
     _ = [message async for message in pipeline]
 
@@ -139,6 +182,10 @@ async def test_vprogram_in_messages_list(
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
 ):
+    with session_factory() as session:
+        insert_vprogram_refs(session)
+        session.commit()
+
     pipeline = message_processor.make_pipeline()
     _ = [message async for message in pipeline]
 
@@ -201,7 +248,12 @@ async def test_vprogram_rejected_display(
     fixture_settings_aggregate_in_db,
 ):
     # No credit balance: processing rejects the message, and the rejected
-    # message is still visible through the single-message endpoint.
+    # message is still visible through the single-message endpoint. The refs
+    # are seeded so that the credit check is the one that rejects.
+    with session_factory() as session:
+        insert_vprogram_refs(session)
+        session.commit()
+
     pipeline = message_processor.make_pipeline()
     _ = [message async for message in pipeline]
 

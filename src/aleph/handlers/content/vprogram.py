@@ -3,6 +3,7 @@ from typing import List, Set
 
 from aleph_message.models import PaymentType, VerifiableProgramContent
 
+from aleph.db.accessors.files import find_file_pins
 from aleph.db.accessors.vms import delete_vm
 from aleph.db.models import MessageDb, VProgramDb, VProgramVerifiedVolumeDb
 from aleph.db.models.account_costs import AccountCostsDb
@@ -11,7 +12,11 @@ from aleph.services.cost import get_payment_type, get_total_and_detailed_costs
 from aleph.services.cost_validation import validate_balance_for_payment
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession
-from aleph.types.message_status import InvalidMessageFormat, InvalidPaymentMethod
+from aleph.types.message_status import (
+    InvalidMessageFormat,
+    InvalidPaymentMethod,
+    VmVolumeNotFound,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -105,6 +110,25 @@ class VProgramMessageHandler(ContentHandler):
     forget handler's dependent-volumes check. Measurement validation and
     CRN dispatch are later phases.
     """
+
+    async def check_dependencies(self, session: DbSession, message: MessageDb) -> None:
+        content = _get_vprogram_content(message)
+
+        # All V-Program references are direct store item hashes (there is no
+        # use_latest / file tag mechanism for measured content), so checking
+        # the file pins is enough.
+        refs = {
+            str(content.runtime.ref),
+            str(content.workload.ref),
+            str(content.workload.hash_tree),
+        }
+        for volume in content.volumes:
+            refs.add(str(volume.ref))
+            refs.add(str(volume.hash_tree))
+
+        missing_refs = refs - set(find_file_pins(session=session, item_hashes=refs))
+        if missing_refs:
+            raise VmVolumeNotFound(sorted(missing_refs))
 
     async def check_balance(
         self, session: DbSession, message: MessageDb
