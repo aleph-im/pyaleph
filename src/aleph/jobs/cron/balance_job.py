@@ -1,3 +1,4 @@
+import asyncio
 import datetime as dt
 import logging
 from typing import List, cast
@@ -27,6 +28,16 @@ from aleph.types.message_status import MessageStatus
 
 LOGGER = logging.getLogger(__name__)
 
+# Commit and yield the event loop every this many messages, so a large account
+# cannot hold one long transaction (and the message_counts counter-row locks its
+# trigger takes) or monopolise the shared event loop.
+COMMIT_CHUNK = 500
+
+# Cap the mutations performed per run so a burst (many accounts, or one account
+# with tens of thousands of resources) drains over several bounded ticks instead
+# of one runaway tick. The remainder is idempotently handled by the next run.
+MAX_MESSAGES_PER_RUN = 5000
+
 
 class BalanceCronJob(BaseCronJob):
     def __init__(
@@ -37,13 +48,30 @@ class BalanceCronJob(BaseCronJob):
         self.session_factory = session_factory
         self.max_unauthenticated_upload_file_size = max_unauthenticated_upload_file_size
 
-    async def run(self, now: dt.datetime, job: CronJobDb):
+    async def run(self, now: dt.datetime, job: CronJobDb) -> bool:
         with self.session_factory() as session:
             accounts = get_updated_balance_accounts(session, job.last_run)
 
             LOGGER.info(f"Checking '{len(accounts)}' updated account balances...")
 
+            # Budget the mutations performed this run so one tick cannot process
+            # an unbounded batch. `deferred` tracks whether any work was left
+            # undone; when True we return False so the caller does not advance
+            # last_run and the next tick re-queries the same accounts to drain
+            # the remainder (the account query is delta-based on last_run).
+            budget = MAX_MESSAGES_PER_RUN
+            deferred = False
+
             for address in accounts:
+                if budget <= 0:
+                    deferred = True
+                    LOGGER.info(
+                        "Per-run message cap (%d) reached; deferring remaining "
+                        "accounts to the next run.",
+                        MAX_MESSAGES_PER_RUN,
+                    )
+                    break
+
                 remaining_balance = get_total_balance(session, address)
 
                 to_delete = []
@@ -53,9 +81,14 @@ class BalanceCronJob(BaseCronJob):
                     session, address, PaymentType.hold
                 )
 
-                for item_hash, height, cost, _ in hold_costs:
-                    LOGGER.info(
-                        f"Checking {item_hash} message, with height {height} and cost {cost}"
+                for index, (item_hash, height, cost, _) in enumerate(
+                    hold_costs, start=1
+                ):
+                    LOGGER.debug(
+                        "Checking %s message, with height %s and cost %s",
+                        item_hash,
+                        height,
+                        cost,
                     )
 
                     should_remove = remaining_balance < cost and (
@@ -74,26 +107,52 @@ class BalanceCronJob(BaseCronJob):
                             and status.status != MessageStatus.REMOVED
                         ):
                             to_delete.append(item_hash)
-                    else:
-                        if status.status == MessageStatus.REMOVING:
-                            to_recover.append(item_hash)
+                    elif status.status == MessageStatus.REMOVING:
+                        to_recover.append(item_hash)
 
-                if len(to_delete) > 0:
-                    LOGGER.info(
-                        f"'{len(to_delete)}' messages to delete for account '{address}'..."
-                    )
-                    await self.delete_messages(session, to_delete)
+                    # Yield during the read-only scan so a large account cannot
+                    # monopolise the shared event loop.
+                    if index % COMMIT_CHUNK == 0:
+                        await asyncio.sleep(0)
 
-                if len(to_recover) > 0:
+                if to_delete:
+                    processing = min(len(to_delete), budget)
+                    if len(to_delete) > budget:
+                        deferred = True
                     LOGGER.info(
-                        f"'{len(to_recover)}' messages to recover for account '{address}'..."
+                        f"Deleting '{processing}' of '{len(to_delete)}' messages "
+                        f"for account '{address}'..."
                     )
-                    await self.recover_messages(session, to_recover)
+                    budget -= await self.delete_messages(session, to_delete[:budget])
+
+                if to_recover:
+                    # budget may be 0 here if deletes consumed it this account.
+                    if budget <= 0 or len(to_recover) > budget:
+                        deferred = True
+                    if budget > 0:
+                        processing = min(len(to_recover), budget)
+                        LOGGER.info(
+                            f"Recovering '{processing}' of '{len(to_recover)}' messages "
+                            f"for account '{address}'..."
+                        )
+                        budget -= await self.recover_messages(
+                            session, to_recover[:budget]
+                        )
 
                 session.commit()
 
-    async def delete_messages(self, session: DbSession, messages: List[ItemHash]):
-        for item_hash in messages:
+            return not deferred
+
+    async def delete_messages(
+        self, session: DbSession, messages: List[ItemHash]
+    ) -> int:
+        """Return the number of messages attempted, used by the caller to
+        decrement the per-run budget. Skipped no-ops (missing message,
+        small-file exception, or a status guard that prevents the flip) count
+        on purpose: the budget bounds the number of delete/recover attempts —
+        each a DB round-trip — not only the flips that succeed, because
+        bounding per-tick work is what the cap exists to do."""
+        for index, item_hash in enumerate(messages, start=1):
             message = get_message_by_item_hash(session, item_hash)
 
             if message is None:
@@ -147,8 +206,25 @@ class BalanceCronJob(BaseCronJob):
                 # REMOVING->REMOVED.
                 upsert_removed_message_size(session=session, item_hash=item_hash)
 
-    async def recover_messages(self, session: DbSession, messages: List[ItemHash]):
-        for item_hash in messages:
+            # Commit in chunks so the transaction — and the message_counts
+            # counter-row locks its trigger takes — stays small, and yield so
+            # other event-loop tasks (API, other crons) keep running.
+            if index % COMMIT_CHUNK == 0:
+                session.commit()
+                await asyncio.sleep(0)
+
+        return len(messages)
+
+    async def recover_messages(
+        self, session: DbSession, messages: List[ItemHash]
+    ) -> int:
+        """Return the number of messages attempted, used by the caller to
+        decrement the per-run budget. Skipped no-ops (missing message,
+        small-file exception, or a status guard that prevents the flip) count
+        on purpose: the budget bounds the number of delete/recover attempts —
+        each a DB round-trip — not only the flips that succeed, because
+        bounding per-tick work is what the cap exists to do."""
+        for index, item_hash in enumerate(messages, start=1):
             message = get_message_by_item_hash(session, item_hash)
             if message is None:
                 continue
@@ -184,3 +260,12 @@ class BalanceCronJob(BaseCronJob):
                     .values(status_value=MessageStatus.PROCESSED)
                 )
                 delete_removed_message(session=session, item_hash=item_hash)
+
+            # Commit in chunks so the transaction — and the message_counts
+            # counter-row locks its trigger takes — stays small, and yield so
+            # other event-loop tasks (API, other crons) keep running.
+            if index % COMMIT_CHUNK == 0:
+                session.commit()
+                await asyncio.sleep(0)
+
+        return len(messages)
