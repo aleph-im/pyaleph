@@ -25,6 +25,7 @@ import logging
 from typing import Iterable, List, Tuple
 
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 
 from aleph.db.models.cron_jobs import CronJobDb
 from aleph.jobs.cron.cron_job import BaseCronJob
@@ -40,6 +41,14 @@ from aleph.types.db_session import DbSession, DbSessionFactory
 LOGGER = logging.getLogger(__name__)
 
 PARTITIONED_TABLES = ("crn_metrics", "ccn_metrics")
+
+# Bound how long partition DDL may wait for the parent table's ACCESS EXCLUSIVE
+# lock. DETACH/CREATE PARTITION need that lock, and a scoring-metrics INSERT
+# holds ROW EXCLUSIVE; without a cap the maintenance job can queue ahead of — and
+# block — the message-processing INSERT path for a long time, stalling the whole
+# message-processing event loop. If the lock is contended the job defers this
+# table and retries next run (partition maintenance is idempotent).
+PARTITION_LOCK_TIMEOUT = "5s"
 
 
 class MetricsPartitionCronJob(BaseCronJob):
@@ -69,12 +78,29 @@ class MetricsPartitionCronJob(BaseCronJob):
         # exists, so range becomes [..., now_month + N + 1).
         lookahead_upper = add_months(now_month, self.lookahead_months + 1)
 
-        with self.session_factory() as session:
-            for table in PARTITIONED_TABLES:
-                self._ensure_partitions(session, table, now_month, lookahead_upper)
-                self._drop_past_cutoff(session, table, cutoff)
-                self._warn_if_default_has_rows(session, table)
-            session.commit()
+        # One transaction per table so a lock timeout on one does not undo the
+        # other, and each runs under a bounded lock_timeout so maintenance never
+        # blocks the message-processing INSERT path.
+        for table in PARTITIONED_TABLES:
+            try:
+                with self.session_factory() as session:
+                    session.execute(
+                        text(f"SET LOCAL lock_timeout = '{PARTITION_LOCK_TIMEOUT}'")
+                    )
+                    self._ensure_partitions(session, table, now_month, lookahead_upper)
+                    self._drop_past_cutoff(session, table, cutoff)
+                    self._warn_if_default_has_rows(session, table)
+                    session.commit()
+            except OperationalError as err:
+                # lock_timeout fired: the parent lock is contended (a scoring
+                # INSERT is in flight). Defer this table and retry next run
+                # rather than blocking the write path.
+                LOGGER.warning(
+                    "Partition maintenance for %s deferred (lock contended); "
+                    "will retry next run: %s",
+                    table,
+                    err,
+                )
 
     @staticmethod
     def _ensure_partitions(
