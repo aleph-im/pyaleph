@@ -289,16 +289,14 @@ async def test_cron_defers_table_when_parent_lock_is_contended(
 
     # Hold ACCESS EXCLUSIVE on crn_metrics in a separate connection so the cron's
     # CREATE PARTITION on it must wait — and time out.
-    holder = session_factory()
-    holder.execute(text("LOCK TABLE crn_metrics IN ACCESS EXCLUSIVE MODE"))
-    try:
+    with session_factory() as holder:
+        holder.execute(text("LOCK TABLE crn_metrics IN ACCESS EXCLUSIVE MODE"))
         with caplog.at_level(logging.WARNING):
-            # Must return (not hang or raise) despite the contended lock.
-            await job.run(now=now, job=_make_cron_row())
-    finally:
-        holder.rollback()
-        holder.close()
+            # Must return (not hang or raise) despite the contended lock, and
+            # report incomplete so the framework retries next tick.
+            result = await job.run(now=now, job=_make_cron_row())
 
+    assert result is False
     assert "Partition maintenance for crn_metrics deferred" in caplog.text
 
     with session_factory() as session:
@@ -308,3 +306,9 @@ async def test_cron_defers_table_when_parent_lock_is_contended(
     # crn_metrics was deferred (lock contended); ccn_metrics still maintained.
     assert crn_expected not in crn_after
     assert ccn_expected in ccn_after
+
+    # With the lock released, a re-run completes (returns True) and creates the
+    # previously-deferred crn_metrics partition.
+    assert await job.run(now=now, job=_make_cron_row()) is True
+    with session_factory() as session:
+        assert crn_expected in {n for n, _, _ in _list(session, "crn_metrics")}

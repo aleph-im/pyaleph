@@ -71,7 +71,7 @@ class MetricsPartitionCronJob(BaseCronJob):
         self.retention_months = retention_months
         self.lookahead_months = lookahead_months
 
-    async def run(self, now: dt.datetime, job: CronJobDb) -> None:
+    async def run(self, now: dt.datetime, job: CronJobDb) -> bool:
         now_month = month_floor(now)
         cutoff = add_months(now_month, -self.retention_months)
         # Lookahead is inclusive: ensure partition for now_month + N
@@ -81,6 +81,7 @@ class MetricsPartitionCronJob(BaseCronJob):
         # One transaction per table so a lock timeout on one does not undo the
         # other, and each runs under a bounded lock_timeout so maintenance never
         # blocks the message-processing INSERT path.
+        deferred = False
         for table in PARTITIONED_TABLES:
             try:
                 with self.session_factory() as session:
@@ -92,15 +93,20 @@ class MetricsPartitionCronJob(BaseCronJob):
                     self._warn_if_default_has_rows(session, table)
                     session.commit()
             except OperationalError as err:
-                # lock_timeout fired: the parent lock is contended (a scoring
-                # INSERT is in flight). Defer this table and retry next run
-                # rather than blocking the write path.
+                # The parent lock is contended (a scoring INSERT is in flight)
+                # and lock_timeout fired -- or another transient operational
+                # error occurred. Either way, defer this table rather than
+                # blocking the write path. Returning False keeps last_run
+                # unadvanced so the next cron tick retries, instead of waiting a
+                # full interval.
+                deferred = True
                 LOGGER.warning(
-                    "Partition maintenance for %s deferred (lock contended); "
-                    "will retry next run: %s",
+                    "Partition maintenance for %s deferred (%s); will retry next run",
                     table,
                     err,
                 )
+
+        return not deferred
 
     @staticmethod
     def _ensure_partitions(
