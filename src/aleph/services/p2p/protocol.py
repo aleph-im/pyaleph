@@ -16,16 +16,37 @@ LOGGER = logging.getLogger(__name__)
 SEEN_HASHES_MAXLEN = 200_000
 
 
+class _BoundedSeenCache:
+    """Insertion-ordered set with O(1) membership and FIFO eviction.
+
+    Dedups incoming pubsub messages on the hot ingress path. Backed by an
+    OrderedDict; a deque here made the per-message membership check an O(n)
+    linear scan.
+    """
+
+    def __init__(self, maxlen: int) -> None:
+        self._maxlen = maxlen
+        self._items: OrderedDict[tuple[Any, ...], None] = OrderedDict()
+
+    def __contains__(self, key: tuple[Any, ...]) -> bool:
+        return key in self._items
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+    def add(self, key: tuple[Any, ...]) -> None:
+        self._items[key] = None
+        if len(self._items) > self._maxlen:
+            self._items.popitem(last=False)  # evict oldest (FIFO)
+
+
 async def incoming_channel(
     p2p_client: AlephP2PServiceClient, topic: str, message_publisher: MessagePublisher
 ) -> None:
     LOGGER.debug("incoming channel started...")
 
     await p2p_client.subscribe(topic)
-    # Dedup cache: OrderedDict used as a bounded set — O(1) membership with
-    # FIFO eviction. A deque here made the per-message membership check an
-    # O(n) linear scan (up to SEEN_HASHES_MAXLEN) on the hot ingress path.
-    seen_hashes: "OrderedDict[tuple[Any, Any, Any], None]" = OrderedDict()
+    seen_hashes = _BoundedSeenCache(maxlen=SEEN_HASHES_MAXLEN)
 
     while True:
         try:
@@ -63,9 +84,7 @@ async def incoming_channel(
                         # healthy.
                         continue
 
-                    seen_hashes[key] = None
-                    if len(seen_hashes) > SEEN_HASHES_MAXLEN:
-                        seen_hashes.popitem(last=False)  # evict oldest (FIFO)
+                    seen_hashes.add(key)
 
                     await message_publisher.add_pending_message(
                         message_dict=message_dict, reception_time=utc_now()
