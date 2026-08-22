@@ -30,6 +30,14 @@ def test_make_engine_applies_config_timeouts(mock_create_engine, _mock_url):
 
 @patch("aleph.db.connection.make_db_url", return_value="postgresql://x")
 @patch("aleph.db.connection.create_engine")
+def test_make_engine_no_timeouts_omits_options(mock_create_engine, _mock_url):
+    make_engine(config=_fake_config(lock=0, statement=0, idle=0))
+    # With every timeout disabled, no libpq options are passed at all.
+    assert mock_create_engine.call_args.kwargs["connect_args"] == {}
+
+
+@patch("aleph.db.connection.make_db_url", return_value="postgresql://x")
+@patch("aleph.db.connection.create_engine")
 def test_make_engine_statement_timeout_override_disables_it(
     mock_create_engine, _mock_url
 ):

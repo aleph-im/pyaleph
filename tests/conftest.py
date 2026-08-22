@@ -96,6 +96,11 @@ def run_db_migrations(config: Config):
 def session_factory(mock_config):
     # mock_config is the proxy, but we need the actual config for engine creation
     actual_config = aleph.config.app_config
+    # Tests must not inherit the production statement/lock/idle timeouts: they
+    # can cause spurious failures during schema setup/teardown under load.
+    actual_config.postgres.lock_timeout_ms.value = 0
+    actual_config.postgres.statement_timeout_ms.value = 0
+    actual_config.postgres.idle_in_transaction_session_timeout_ms.value = 0
     engine = make_engine(
         config=actual_config, echo=False, application_name="aleph-tests"
     )
