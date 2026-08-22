@@ -14,7 +14,7 @@ from setproctitle import setproctitle
 
 from aleph.chains.chain_data_service import ChainDataService
 from aleph.db.accessors.pending_txs import delete_pending_tx, get_pending_txs
-from aleph.db.connection import make_engine, make_session_factory
+from aleph.db.connection import disposing_engine, make_engine, make_session_factory
 from aleph.db.models import PendingTxDb
 from aleph.handlers.message_handler import MessagePublisher
 from aleph.services.cache.node_cache import NodeCache
@@ -135,6 +135,8 @@ async def handle_txs_task(config: Config):
     pending_tx_queue = await make_pending_tx_queue(config=config, channel=mq_channel)
 
     async with (
+        disposing_engine(engine),
+        mq_conn,
         NodeCache(
             redis_host=config.redis.host.value,
             redis_port=config.redis.port.value,

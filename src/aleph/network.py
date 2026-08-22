@@ -7,11 +7,8 @@ from aleph_p2p_client import AlephP2PServiceClient
 
 import aleph.toolkit.json as aleph_json
 from aleph.handlers.message_handler import MessagePublisher
-from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
-from aleph.services.ipfs.common import make_ipfs_p2p_client
 from aleph.services.ipfs.pubsub import incoming_channel as incoming_ipfs_channel
-from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.message_status import InvalidMessageFormat
@@ -39,20 +36,16 @@ async def decode_pubsub_message(message_data: bytes) -> Dict[str, Any]:
 async def listener_tasks(
     config,
     session_factory: DbSessionFactory,
-    node_cache: NodeCache,
     p2p_client: AlephP2PServiceClient,
     mq_channel: aio_pika.abc.AbstractChannel,
+    ipfs_service: IpfsService,
+    storage_service: StorageService,
 ) -> List[Coroutine]:
     from aleph.services.p2p.protocol import incoming_channel as incoming_p2p_channel
 
-    # TODO: these should be passed as parameters. This module could probably be a class instead?
-    ipfs_client = make_ipfs_p2p_client(config)
-    ipfs_service = IpfsService(ipfs_client=ipfs_client)
-    storage_service = StorageService(
-        storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
-        ipfs_service=ipfs_service,
-        node_cache=node_cache,
-    )
+    # Reuse the shared IpfsService/StorageService (owned by the caller's exit
+    # stack) instead of building a second IpfsService whose aiohttp pool would
+    # be abandoned for the process lifetime.
     pending_message_exchange = await mq_channel.declare_exchange(
         name=config.rabbitmq.pending_message_exchange.value,
         type=aio_pika.ExchangeType.TOPIC,

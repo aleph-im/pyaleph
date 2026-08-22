@@ -15,7 +15,7 @@ from setproctitle import setproctitle
 import aleph.toolkit.json as aleph_json
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.pending_messages import get_next_pending_message
-from aleph.db.connection import make_engine, make_session_factory
+from aleph.db.connection import disposing_engine, make_engine, make_session_factory
 from aleph.handlers.message_handler import MessageHandler
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
@@ -161,6 +161,7 @@ async def fetch_and_process_messages_task(config: Config):
     session_factory = make_session_factory(engine)
 
     async with (
+        disposing_engine(engine),
         NodeCache(
             redis_host=config.redis.host.value,
             redis_port=config.redis.port.value,

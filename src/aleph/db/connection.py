@@ -1,4 +1,5 @@
-from typing import Optional
+from contextlib import asynccontextmanager
+from typing import AsyncIterator, Optional
 
 from configmanager import Config
 from sqlalchemy import create_engine
@@ -8,6 +9,20 @@ from sqlalchemy.orm import sessionmaker
 
 from aleph.config import get_config
 from aleph.types.db_session import DbSessionFactory
+
+
+@asynccontextmanager
+async def disposing_engine(engine: Engine) -> AsyncIterator[Engine]:
+    """Yield ``engine``, disposing its connection pool on exit.
+
+    Lets a long-running subprocess close its DB connections gracefully on
+    shutdown instead of dropping them (which leaves the Postgres backends to
+    time out and logs unexpected-EOF on the server).
+    """
+    try:
+        yield engine
+    finally:
+        engine.dispose()
 
 
 def make_db_url(

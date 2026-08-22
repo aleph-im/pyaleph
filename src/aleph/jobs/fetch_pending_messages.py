@@ -17,7 +17,7 @@ from aleph.db.accessors.pending_messages import (
     get_next_pending_messages,
     make_pending_message_fetched_statement,
 )
-from aleph.db.connection import make_engine, make_session_factory
+from aleph.db.connection import disposing_engine, make_engine, make_session_factory
 from aleph.db.models import MessageDb, PendingMessageDb
 from aleph.handlers.message_handler import MessageHandler
 from aleph.services.cache.node_cache import NodeCache
@@ -298,6 +298,8 @@ async def fetch_messages_task(config: Config):
     )
 
     async with (
+        disposing_engine(engine),
+        mq_conn,
         NodeCache(
             redis_host=config.redis.host.value,
             redis_port=config.redis.port.value,
