@@ -1,10 +1,15 @@
 import asyncio
 import os
 import signal
+from unittest.mock import AsyncMock
 
 import pytest
 
-from aleph.toolkit.lifecycle import install_signal_handlers, safe_async_cleanup
+from aleph.toolkit.lifecycle import (
+    closing_quietly,
+    install_signal_handlers,
+    safe_async_cleanup,
+)
 
 
 @pytest.mark.asyncio
@@ -42,3 +47,24 @@ async def test_safe_async_cleanup_runs_coroutine_to_completion():
 
     await safe_async_cleanup("slow", slow())
     assert completed
+
+
+@pytest.mark.asyncio
+async def test_closing_quietly_closes_on_exit():
+    closeable = AsyncMock()
+    async with closing_quietly("resource", closeable) as yielded:
+        assert yielded is closeable
+        closeable.close.assert_not_called()
+    closeable.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_closing_quietly_swallows_close_errors(caplog):
+    closeable = AsyncMock()
+    closeable.close.side_effect = RuntimeError("broker down")
+
+    # A close() failure on exit must not propagate (would mask the real cause).
+    async with closing_quietly("resource", closeable):
+        pass
+
+    assert "resource" in caplog.text
