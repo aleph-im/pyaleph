@@ -29,6 +29,7 @@ from aleph.schemas.chains.tezos_indexer_response import (
     MessageEventPayload as TezosMessageEventPayload,
 )
 from aleph.storage import StorageService
+from aleph.toolkit.lifecycle import safe_async_cleanup
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.db_session import DbSession, DbSessionFactory
@@ -239,7 +240,9 @@ class PendingTxPublisher:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         # Own the MQ connection so it is closed on shutdown instead of leaked.
-        await self.mq_conn.close()
+        # Log-and-swallow close errors (matching the other shutdown paths) so an
+        # unreachable broker cannot mask the original shutdown exception.
+        await safe_async_cleanup("pending-tx MQ connection", self.mq_conn.close())
 
     @staticmethod
     def add_pending_tx(session: DbSession, tx: ChainTxDb):
