@@ -228,6 +228,18 @@ def get_defaults():
             "pool_pre_ping": True,
             # Recycle DB connections after this many seconds of inactivity.
             "pool_recycle": 3600,
+            # Fail a statement that waits more than this long (ms) to acquire a
+            # lock. Bounds how long a blocked query can freeze the synchronous
+            # worker event loop (a lock wait took the node down for ~30 min).
+            # 0 disables.
+            "lock_timeout_ms": 30000,
+            # Abort any single statement running longer than this (ms), so a
+            # runaway query cannot wedge the loop. 0 disables. Migrations use a
+            # separate engine and are unaffected.
+            "statement_timeout_ms": 120000,
+            # Abort a transaction left open but idle longer than this (ms),
+            # reclaiming leaked "idle in transaction" sessions. 0 disables.
+            "idle_in_transaction_session_timeout_ms": 300000,
         },
         "ipfs": {
             # Whether to enable storage and communication on IPFS.
