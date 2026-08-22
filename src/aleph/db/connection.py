@@ -88,6 +88,7 @@ def make_engine(
     config: Optional[Config] = None,
     echo: bool = False,
     application_name: Optional[str] = None,
+    statement_timeout_ms: Optional[int] = None,
 ) -> Engine:
     if config is None:
         config = get_config()
@@ -95,9 +96,15 @@ def make_engine(
     # Bound lock waits / statement runtime / idle transactions so a single
     # blocked query cannot freeze the synchronous worker event loop. Migrations
     # use their own engine (deployment/migrations/env.py) and are unaffected.
+    #
+    # statement_timeout_ms can be overridden per engine (e.g. the API passes 0
+    # to disable it, because some aggregate reads legitimately run longer than
+    # the worker default); None means use the config value.
+    if statement_timeout_ms is None:
+        statement_timeout_ms = config.postgres.statement_timeout_ms.value
     options = _timeout_options(
         config.postgres.lock_timeout_ms.value,
-        config.postgres.statement_timeout_ms.value,
+        statement_timeout_ms,
         config.postgres.idle_in_transaction_session_timeout_ms.value,
     )
     connect_args = {"options": options} if options else {}
