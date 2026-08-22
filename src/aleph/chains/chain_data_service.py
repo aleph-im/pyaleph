@@ -29,6 +29,7 @@ from aleph.schemas.chains.tezos_indexer_response import (
     MessageEventPayload as TezosMessageEventPayload,
 )
 from aleph.storage import StorageService
+from aleph.toolkit.lifecycle import safe_async_cleanup
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.db_session import DbSession, DbSessionFactory
@@ -225,26 +226,23 @@ class ChainDataService:
                 raise InvalidContent(error_msg)
 
 
-async def make_pending_tx_exchange(config: Config) -> aio_pika.abc.AbstractExchange:
-    mq_conn = await aio_pika.connect_robust(
-        host=config.p2p.mq_host.value,
-        port=config.rabbitmq.port.value,
-        login=config.rabbitmq.username.value,
-        password=config.rabbitmq.password.value,
-        heartbeat=config.rabbitmq.heartbeat.value,
-    )
-    channel = await mq_conn.channel()
-    pending_tx_exchange = await channel.declare_exchange(
-        name=config.rabbitmq.pending_tx_exchange.value,
-        type=aio_pika.ExchangeType.TOPIC,
-        auto_delete=False,
-    )
-    return pending_tx_exchange
-
-
 class PendingTxPublisher:
-    def __init__(self, pending_tx_exchange: aio_pika.abc.AbstractExchange):
+    def __init__(
+        self,
+        mq_conn: aio_pika.abc.AbstractConnection,
+        pending_tx_exchange: aio_pika.abc.AbstractExchange,
+    ):
+        self.mq_conn = mq_conn
         self.pending_tx_exchange = pending_tx_exchange
+
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        # Own the MQ connection so it is closed on shutdown instead of leaked.
+        # Log-and-swallow close errors (matching the other shutdown paths) so an
+        # unreachable broker cannot mask the original shutdown exception.
+        await safe_async_cleanup("pending-tx MQ connection", self.mq_conn.close())
 
     @staticmethod
     def add_pending_tx(session: DbSession, tx: ChainTxDb):
@@ -272,7 +270,17 @@ class PendingTxPublisher:
 
     @classmethod
     async def new(cls, config: Config) -> Self:
-        pending_tx_exchange = await make_pending_tx_exchange(config=config)
-        return cls(
-            pending_tx_exchange=pending_tx_exchange,
+        mq_conn = await aio_pika.connect_robust(
+            host=config.p2p.mq_host.value,
+            port=config.rabbitmq.port.value,
+            login=config.rabbitmq.username.value,
+            password=config.rabbitmq.password.value,
+            heartbeat=config.rabbitmq.heartbeat.value,
         )
+        channel = await mq_conn.channel()
+        pending_tx_exchange = await channel.declare_exchange(
+            name=config.rabbitmq.pending_tx_exchange.value,
+            type=aio_pika.ExchangeType.TOPIC,
+            auto_delete=False,
+        )
+        return cls(mq_conn=mq_conn, pending_tx_exchange=pending_tx_exchange)

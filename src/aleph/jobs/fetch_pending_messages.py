@@ -17,14 +17,14 @@ from aleph.db.accessors.pending_messages import (
     get_next_pending_messages,
     make_pending_message_fetched_statement,
 )
-from aleph.db.connection import make_engine, make_session_factory
+from aleph.db.connection import disposing_engine, make_engine, make_session_factory
 from aleph.db.models import MessageDb, PendingMessageDb
 from aleph.handlers.message_handler import MessageHandler
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
-from aleph.toolkit.lifecycle import install_signal_handlers
+from aleph.toolkit.lifecycle import closing_quietly, install_signal_handlers
 from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
 from aleph.toolkit.timestamp import utc_now
@@ -298,6 +298,8 @@ async def fetch_messages_task(config: Config):
     )
 
     async with (
+        disposing_engine(engine),
+        closing_quietly("aleph-fetch MQ connection", mq_conn),
         NodeCache(
             redis_host=config.redis.host.value,
             redis_port=config.redis.port.value,
