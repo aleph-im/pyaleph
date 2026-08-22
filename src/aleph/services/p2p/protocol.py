@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from collections import deque
+from collections import OrderedDict
 from typing import Any
 
 from aleph_p2p_client import AlephP2PServiceClient
@@ -12,6 +12,33 @@ from aleph.types.message_status import InvalidMessageException
 
 LOGGER = logging.getLogger(__name__)
 
+# Max entries kept in the per-topic dedup cache before FIFO eviction.
+SEEN_HASHES_MAXLEN = 200_000
+
+
+class _BoundedSeenCache:
+    """Insertion-ordered set with O(1) membership and FIFO eviction.
+
+    Dedups incoming pubsub messages on the hot ingress path. Backed by an
+    OrderedDict; a deque here made the per-message membership check an O(n)
+    linear scan.
+    """
+
+    def __init__(self, maxlen: int) -> None:
+        self._maxlen = maxlen
+        self._items: OrderedDict[tuple[Any, ...], None] = OrderedDict()
+
+    def __contains__(self, key: tuple[Any, ...]) -> bool:
+        return key in self._items
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+    def add(self, key: tuple[Any, ...]) -> None:
+        self._items[key] = None
+        if len(self._items) > self._maxlen:
+            self._items.popitem(last=False)  # evict oldest (FIFO)
+
 
 async def incoming_channel(
     p2p_client: AlephP2PServiceClient, topic: str, message_publisher: MessagePublisher
@@ -19,7 +46,7 @@ async def incoming_channel(
     LOGGER.debug("incoming channel started...")
 
     await p2p_client.subscribe(topic)
-    seen_hashes: deque[tuple[Any, Any, Any]] = deque([], maxlen=200000)
+    seen_hashes = _BoundedSeenCache(maxlen=SEEN_HASHES_MAXLEN)
 
     while True:
         try:
@@ -37,23 +64,6 @@ async def incoming_channel(
                     # and such things...
                     try:
                         message_dict = await decode_pubsub_message(message.body)
-                        # Implemented an in-memory cache to avoid deal with the same messages different times.
-                        if (
-                            message_dict["sender"],
-                            message_dict["item_hash"],
-                            message_dict["signature"],
-                        ) in seen_hashes:
-                            # Messages are already ACKed on underlying implementation in p2p_client.receive_messages()
-                            # if the process don't have issues
-                            continue
-
-                        seen_hashes.append(
-                            (
-                                message_dict["sender"],
-                                message_dict["item_hash"],
-                                message_dict["signature"],
-                            )
-                        )
                     except InvalidMessageException:
                         LOGGER.warning(
                             "Received invalid message on P2P topic %s from %s",
@@ -61,6 +71,20 @@ async def incoming_channel(
                             peer_id,
                         )
                         continue
+
+                    # In-memory cache to avoid handling the same message twice.
+                    key = (
+                        message_dict["sender"],
+                        message_dict["item_hash"],
+                        message_dict["signature"],
+                    )
+                    if key in seen_hashes:
+                        # Messages are already ACKed by
+                        # p2p_client.receive_messages() when the process is
+                        # healthy.
+                        continue
+
+                    seen_hashes.add(key)
 
                     await message_publisher.add_pending_message(
                         message_dict=message_dict, reception_time=utc_now()
