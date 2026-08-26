@@ -263,6 +263,11 @@ class VProgramDb(VmBaseDb):
 
     runtime_ref: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     runtime_comment: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # The bundle named by the runtime manifest, resolved once at processing
+    # time. Persisting it means the manifest never has to be re-read (cost
+    # recalculation) and the bundle STORE is forget-protected like the other
+    # artifacts. Nullable: rows written before this column existed have None.
+    runtime_bundle_ref: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     workload_ref: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     workload_hash_tree: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     workload_roothash: Mapped[Optional[str]] = mapped_column(String, nullable=True)

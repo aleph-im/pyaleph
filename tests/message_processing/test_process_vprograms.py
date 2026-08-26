@@ -232,6 +232,9 @@ async def test_process_vprogram(
         assert vprogram.environment_internet is True
         assert vprogram.runtime_ref == VPROGRAM_CONTENT["runtime"]["ref"]
         assert vprogram.runtime_comment == VPROGRAM_CONTENT["runtime"]["comment"]
+        # The manifest's bundle ref is persisted, so recalculation never has
+        # to re-read the manifest and the bundle STORE is forget-protected.
+        assert vprogram.runtime_bundle_ref == BUNDLE_REF
         assert vprogram.workload_ref == VPROGRAM_CONTENT["workload"]["ref"]
         assert vprogram.workload_hash_tree == VPROGRAM_CONTENT["workload"]["hash_tree"]
         assert vprogram.workload_roothash == VPROGRAM_CONTENT["workload"]["roothash"]
@@ -457,13 +460,18 @@ async def test_forget_store_used_by_vprogram_is_blocked(
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
 ):
-    """Forgetting a STORE file referenced by a live V-Program (here: the
-    workload image) must be blocked; forgetting the V-Program itself must
-    delete its vms rows, after which the STORE becomes forgettable."""
+    """Forgetting a STORE file referenced by a live V-Program (the workload
+    image, or the runtime bundle the manifest names) must be blocked;
+    forgetting the V-Program itself must delete its vms rows, after which
+    the STOREs become forgettable."""
 
     file_hash = "f0" * 32
     store_message_hash = "50" * 32
     vprogram_message_hash = "51" * 32
+    # The bundle is a STORE message like any other: it is never named by the
+    # V-PROGRAM message, only by the runtime manifest it points at.
+    bundle_file_hash = "f1" * 32
+    bundle_store_hash = "55" * 32
 
     store_message = _pending_message(
         item_hash=store_message_hash,
@@ -478,6 +486,19 @@ async def test_forget_store_used_by_vprogram_is_blocked(
         time=1719502000.0,
     )
 
+    bundle_store_message = _pending_message(
+        item_hash=bundle_store_hash,
+        message_type=MessageType.store,
+        content={
+            "address": SENDER,
+            "time": 1719502001.0,
+            "item_type": "storage",
+            "item_hash": bundle_file_hash,
+            "mime_type": "application/octet-stream",
+        },
+        time=1719502001.0,
+    )
+
     vprogram_content = copy.deepcopy(VPROGRAM_CONTENT)
     vprogram_content["workload"]["ref"] = store_message_hash
     vprogram_message = _pending_message(
@@ -486,6 +507,9 @@ async def test_forget_store_used_by_vprogram_is_blocked(
         content=vprogram_content,
         time=1719502010.0,
     )
+
+    bundle_manifest: dict = copy.deepcopy(MANIFEST)
+    bundle_manifest["bundle"]["ref"] = bundle_store_hash
 
     def forget_message(item_hash: str, target: str, time: float) -> PendingMessageDb:
         return _pending_message(
@@ -497,23 +521,21 @@ async def test_forget_store_used_by_vprogram_is_blocked(
 
     storage_engine = message_processor.message_handler.storage_service.storage_engine
     await storage_engine.write(filename=file_hash, content=b"workload image")
+    await storage_engine.write(filename=bundle_file_hash, content=b"runtime bundle")
 
     with session_factory() as session:
-        store_result = one(
-            await process_pending_messages(
-                message_processor=message_processor,
-                pending_messages=[store_message],
-                session=session,
-            )
+        store_results = await process_pending_messages(
+            message_processor=message_processor,
+            pending_messages=[store_message, bundle_store_message],
+            session=session,
         )
-        assert isinstance(store_result, ProcessedMessage)
+        assert all(isinstance(result, ProcessedMessage) for result in store_results)
 
-        # The workload ref is pinned by the STORE message processed above;
-        # seed the other references (runtime, hash trees, volume) so the
-        # dependency check passes.
+        # The workload ref and the bundle are pinned by the STORE messages
+        # processed above; seed the other references (runtime, hash trees,
+        # volume) so the dependency check passes.
         insert_vprogram_refs(session, vprogram_message)
-        insert_bundle_pin(session)
-        store_manifest(message_processor, json.dumps(MANIFEST).encode())
+        store_manifest(message_processor, json.dumps(bundle_manifest).encode())
 
         vprogram_result = one(
             await process_pending_messages(
@@ -523,30 +545,34 @@ async def test_forget_store_used_by_vprogram_is_blocked(
             )
         )
         assert isinstance(vprogram_result, ProcessedMessage)
-        assert (
-            get_vprogram(session=session, item_hash=vprogram_message_hash) is not None
-        )
+        vprogram = get_vprogram(session=session, item_hash=vprogram_message_hash)
+        assert vprogram is not None
+        assert vprogram.runtime_bundle_ref == bundle_store_hash
 
-        # Forgetting the STORE while the V-Program references it is blocked.
-        blocked_forget_result = one(
-            await process_pending_messages(
-                message_processor=message_processor,
-                pending_messages=[
-                    forget_message("52" * 32, store_message_hash, 1719502020.0)
-                ],
-                session=session,
+        # Forgetting the workload STORE, or the bundle STORE the manifest
+        # names, while the V-Program references them is blocked.
+        for i, (forget_hash, target) in enumerate(
+            [("52" * 32, store_message_hash), ("56" * 32, bundle_store_hash)]
+        ):
+            blocked_forget_result = one(
+                await process_pending_messages(
+                    message_processor=message_processor,
+                    pending_messages=[
+                        forget_message(forget_hash, target, 1719502020.0 + i)
+                    ],
+                    session=session,
+                )
             )
-        )
-        assert isinstance(blocked_forget_result, RejectedMessage)
-        rejected = get_rejected_message(session=session, item_hash="52" * 32)
-        assert rejected is not None
-        assert rejected.error_code == ErrorCode.FORGET_NOT_ALLOWED
+            assert isinstance(blocked_forget_result, RejectedMessage)
+            rejected = get_rejected_message(session=session, item_hash=forget_hash)
+            assert rejected is not None
+            assert rejected.error_code == ErrorCode.FORGET_NOT_ALLOWED
 
-        store_status = get_message_status(
-            session=session, item_hash=ItemHash(store_message_hash)
-        )
-        assert store_status is not None
-        assert store_status.status == MessageStatus.PROCESSED
+            target_status = get_message_status(
+                session=session, item_hash=ItemHash(target)
+            )
+            assert target_status is not None
+            assert target_status.status == MessageStatus.PROCESSED
 
         # Forgetting the V-Program deletes its vms representation...
         vprogram_forget_result = one(
@@ -565,22 +591,25 @@ async def test_forget_store_used_by_vprogram_is_blocked(
         ).scalar_one()
         assert remaining_volumes == 0
 
-        # ... after which the STORE can be forgotten.
-        store_forget_result = one(
-            await process_pending_messages(
-                message_processor=message_processor,
-                pending_messages=[
-                    forget_message("54" * 32, store_message_hash, 1719502040.0)
-                ],
-                session=session,
+        # ... after which both STOREs can be forgotten.
+        for i, (forget_hash, target) in enumerate(
+            [("54" * 32, store_message_hash), ("57" * 32, bundle_store_hash)]
+        ):
+            store_forget_result = one(
+                await process_pending_messages(
+                    message_processor=message_processor,
+                    pending_messages=[
+                        forget_message(forget_hash, target, 1719502040.0 + i)
+                    ],
+                    session=session,
+                )
             )
-        )
-        assert isinstance(store_forget_result, ProcessedMessage)
-        # The pipeline commits in its own sessions: expire this session's
-        # identity map so the status re-read hits the database.
-        session.expire_all()
-        store_status = get_message_status(
-            session=session, item_hash=ItemHash(store_message_hash)
-        )
-        assert store_status is not None
-        assert store_status.status == MessageStatus.FORGOTTEN
+            assert isinstance(store_forget_result, ProcessedMessage)
+            # The pipeline commits in its own sessions: expire this session's
+            # identity map so the status re-read hits the database.
+            session.expire_all()
+            target_status = get_message_status(
+                session=session, item_hash=ItemHash(target)
+            )
+            assert target_status is not None
+            assert target_status.status == MessageStatus.FORGOTTEN

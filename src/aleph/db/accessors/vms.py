@@ -106,6 +106,7 @@ def get_vms_dependent_volumes(
                 # columns on the vms table (same table as VmBaseDb, so no
                 # join is needed); hash trees are store files too.
                 VProgramDb.runtime_ref == volume_hash,
+                VProgramDb.runtime_bundle_ref == volume_hash,
                 VProgramDb.workload_ref == volume_hash,
                 VProgramDb.workload_hash_tree == volume_hash,
                 VProgramVerifiedVolumeDb.ref == volume_hash,

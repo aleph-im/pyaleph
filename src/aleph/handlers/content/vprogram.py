@@ -43,7 +43,7 @@ def _get_vprogram_content(message: MessageDb) -> VerifiableProgramContent:
     return content
 
 
-def vprogram_message_to_db(message: MessageDb) -> VProgramDb:
+def vprogram_message_to_db(message: MessageDb, runtime_bundle_ref: str) -> VProgramDb:
     content = _get_vprogram_content(message)
 
     cpu_architecture = None
@@ -97,6 +97,10 @@ def vprogram_message_to_db(message: MessageDb) -> VProgramDb:
         volumes=[],
         runtime_ref=str(content.runtime.ref),
         runtime_comment=content.runtime.comment,
+        # Resolved from the manifest at processing time: persisted so cost
+        # recalculation never re-reads the manifest and the bundle STORE is
+        # forget-protected like every other artifact.
+        runtime_bundle_ref=runtime_bundle_ref,
         workload_ref=str(content.workload.ref),
         workload_hash_tree=str(content.workload.hash_tree),
         workload_roothash=content.workload.roothash,
@@ -208,9 +212,13 @@ class VProgramMessageHandler(ContentHandler):
 
     async def process(self, session: DbSession, messages: List[MessageDb]) -> None:
         for message in messages:
+            content = _get_vprogram_content(message)
+            # Cached from check_dependencies/check_balance: this does not
+            # re-read the manifest.
+            bundle_ref = await self._bundle_ref(session, str(content.runtime.ref))
             # No vm_versions row: V-Programs are immutable, there is no
             # amend chain to track.
-            session.add(vprogram_message_to_db(message))
+            session.add(vprogram_message_to_db(message, bundle_ref))
 
     async def forget_message(self, session: DbSession, message: MessageDb) -> Set[str]:
         LOGGER.debug("Deleting v-program %s...", message.item_hash)

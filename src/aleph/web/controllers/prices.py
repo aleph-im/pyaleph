@@ -37,6 +37,7 @@ from aleph.db.accessors.messages import (
     get_message_status,
     get_removed_message,
 )
+from aleph.db.accessors.vms import get_vprogram
 from aleph.db.models import MessageDb
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.schemas.api.costs import (
@@ -666,9 +667,6 @@ async def recalculate_message_costs(request: web.Request):
                     f"Message {message.item_hash} at {message_time} using pricing from {pricing_timestamp}"
                 )
 
-                # Delete existing cost entries for this message
-                delete_costs_for_message(session, message.item_hash)
-
                 # Get the message content and determine product type
                 content: ExecutableContent = message.parsed_content
                 product_type = _get_product_price_type(
@@ -693,11 +691,19 @@ async def recalculate_message_costs(request: web.Request):
                     # so cost rows still identify it correctly.
                     pricing = pricing.with_type(product_type)
 
-                extra_volumes: list = []
+                extra_volumes: List[Union[RefVolume, SizedVolume]] = []
                 if isinstance(content, VerifiableProgramContent):
-                    bundle_ref = await resolve_runtime_bundle_ref(
-                        session, storage_service, str(content.runtime.ref)
-                    )
+                    # The bundle ref was resolved from the manifest when the
+                    # message was processed and persisted on the vms row:
+                    # read it back instead of re-fetching and re-parsing the
+                    # manifest STORE. Rows written before that column existed
+                    # have None and still need the resolver.
+                    vprogram = get_vprogram(session, message.item_hash)
+                    bundle_ref = vprogram.runtime_bundle_ref if vprogram else None
+                    if bundle_ref is None:
+                        bundle_ref = await resolve_runtime_bundle_ref(
+                            session, storage_service, str(content.runtime.ref)
+                        )
                     extra_volumes.append(runtime_bundle_volume(bundle_ref))
 
                 # Calculate new costs using the historical pricing model
@@ -708,6 +714,12 @@ async def recalculate_message_costs(request: web.Request):
                     pricing,
                     extra_volumes=extra_volumes,
                 )
+
+                # Only now that the replacement rows exist: anything that
+                # failed above (an unresolvable runtime, a pricing lookup)
+                # leaves the message's previous cost rows untouched instead
+                # of wiping them.
+                delete_costs_for_message(session, message.item_hash)
 
                 if new_costs:
                     # Store the new cost calculations
