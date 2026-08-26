@@ -1,4 +1,5 @@
 import logging
+from collections import OrderedDict
 from typing import List, Set
 
 from aleph_message.models import PaymentType, VerifiableProgramContent
@@ -24,6 +25,13 @@ from aleph.types.message_status import (
 )
 
 LOGGER = logging.getLogger(__name__)
+
+# Runtime manifests are content-addressed STORE messages, so the mapping
+# runtime_ref -> bundle_ref can never go stale: cache it on the handler
+# instead of re-resolving it once per hook (check_dependencies, check_balance)
+# for the same message. Bounded so a long-running node doesn't grow this
+# dict without limit; oldest entries are evicted first.
+_BUNDLE_REF_CACHE_SIZE = 1024
 
 
 def _get_vprogram_content(message: MessageDb) -> VerifiableProgramContent:
@@ -121,6 +129,26 @@ class VProgramMessageHandler(ContentHandler):
         # the manifest STORE, and the bundle it names is the bulk of the
         # V-Program's disk footprint (dependency check + pricing).
         self.storage_service = storage_service
+        # runtime_ref -> bundle_ref. See _BUNDLE_REF_CACHE_SIZE above.
+        self._bundle_refs: "OrderedDict[str, str]" = OrderedDict()
+
+    async def _bundle_ref(self, session: DbSession, runtime_ref: str) -> str:
+        """Resolve the runtime manifest's bundle ref, caching successful
+        resolutions (never a raised exception) so check_dependencies and
+        check_balance don't each re-fetch and re-parse the same manifest."""
+        cached = self._bundle_refs.get(runtime_ref)
+        if cached is not None:
+            return cached
+
+        bundle_ref = await resolve_runtime_bundle_ref(
+            session, self.storage_service, runtime_ref
+        )
+
+        self._bundle_refs[runtime_ref] = bundle_ref
+        if len(self._bundle_refs) > _BUNDLE_REF_CACHE_SIZE:
+            self._bundle_refs.popitem(last=False)
+
+        return bundle_ref
 
     async def check_dependencies(self, session: DbSession, message: MessageDb) -> None:
         content = _get_vprogram_content(message)
@@ -146,9 +174,7 @@ class VProgramMessageHandler(ContentHandler):
         # An unreadable/invalid manifest is rejected (InvalidVProgramRuntime,
         # raised by the resolver); an unpinned bundle is a missing volume
         # like any other ref and gets the same retry semantics.
-        bundle_ref = await resolve_runtime_bundle_ref(
-            session, self.storage_service, str(content.runtime.ref)
-        )
+        bundle_ref = await self._bundle_ref(session, str(content.runtime.ref))
         if not set(find_file_pins(session=session, item_hashes=[bundle_ref])):
             raise VmVolumeNotFound([bundle_ref])
 
@@ -157,9 +183,7 @@ class VProgramMessageHandler(ContentHandler):
     ) -> List[AccountCostsDb]:
         content = _get_vprogram_content(message)
 
-        bundle_ref = await resolve_runtime_bundle_ref(
-            session, self.storage_service, str(content.runtime.ref)
-        )
+        bundle_ref = await self._bundle_ref(session, str(content.runtime.ref))
         message_cost, costs = get_total_and_detailed_costs(
             session,
             content,

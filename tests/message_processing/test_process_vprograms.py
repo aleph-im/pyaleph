@@ -35,6 +35,7 @@ from aleph.db.models import (
 )
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.schemas.api.messages import format_message
+from aleph.services.vprogram_runtime import resolve_runtime_bundle_ref
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.files import FileType
@@ -260,6 +261,43 @@ async def test_process_vprogram(
         assert message is not None
         formatted = format_message(message)
         assert formatted.type == MessageType.v_program
+
+
+@pytest.mark.asyncio
+async def test_process_vprogram_reads_manifest_once(
+    mocker,
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    fixture_vprogram_message: PendingMessageDb,
+    user_credit_balance,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """check_dependencies and check_balance both need the manifest's bundle
+    ref: the handler must cache it instead of resolving (and re-reading the
+    manifest STORE) once per hook for the same message."""
+    with session_factory() as session:
+        insert_vprogram_refs(session, fixture_vprogram_message)
+        insert_bundle_pin(session)
+        session.commit()
+    store_manifest(message_processor, json.dumps(MANIFEST).encode())
+
+    spy = mocker.patch(
+        "aleph.handlers.content.vprogram.resolve_runtime_bundle_ref",
+        wraps=resolve_runtime_bundle_ref,
+    )
+
+    pipeline = message_processor.make_pipeline()
+    _ = [message async for message in pipeline]
+
+    with session_factory() as session:
+        status = get_message_status(
+            session=session, item_hash=ItemHash(fixture_vprogram_message.item_hash)
+        )
+        assert status is not None
+        assert status.status == MessageStatus.PROCESSED
+
+    assert spy.call_count == 1
 
 
 @pytest.mark.asyncio
