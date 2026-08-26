@@ -4,6 +4,7 @@ from decimal import Decimal
 import pytest
 from aleph_message.models import VerifiableProgramContent
 from messages.test_vprogram import VPROGRAM_CONTENT, VPROGRAM_ITEM_HASH
+from pydantic import ValidationError
 
 from aleph.db.accessors.files import insert_message_file_pin
 from aleph.db.models import StoredFileDb
@@ -348,3 +349,37 @@ def test_vprogram_verified_volume_without_comment_gets_a_fallback_name(
     assert f"#0:{CostType.EXECUTION_VPROGRAM_VOLUME}" in names
     assert f"#0:{CostType.EXECUTION_VPROGRAM_VOLUME}:hash_tree" in names
     assert "#0:" not in names
+
+
+@pytest.mark.parametrize(
+    "content_overrides",
+    [
+        {"runtime_estimated_size_mib": -1},
+        {"workload": {**VPROGRAM_CONTENT["workload"], "estimated_size_mib": -1}},
+        {
+            "workload": {
+                **VPROGRAM_CONTENT["workload"],
+                "estimated_hash_tree_size_mib": -1,
+            }
+        },
+        {
+            "volumes": [
+                {**VPROGRAM_CONTENT["volumes"][0], "estimated_size_mib": -1},
+            ]
+        },
+        {
+            "volumes": [
+                {
+                    **VPROGRAM_CONTENT["volumes"][0],
+                    "estimated_hash_tree_size_mib": -1,
+                },
+            ]
+        },
+    ],
+)
+def test_vprogram_negative_estimates_are_rejected(content_overrides):
+    """A negative estimate would subtract from the billed footprint."""
+    with pytest.raises(ValidationError):
+        CostEstimationVProgramContent.model_validate(
+            {**VPROGRAM_CONTENT, **content_overrides}
+        )

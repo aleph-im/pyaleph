@@ -94,13 +94,13 @@ class CostEstimationStoreContent(StoreContent):
 
 
 class CostEstimationVerifiedWorkload(VerifiedWorkload):
-    estimated_size_mib: Optional[int] = None
-    estimated_hash_tree_size_mib: Optional[int] = None
+    estimated_size_mib: Optional[int] = Field(default=None, ge=0)
+    estimated_hash_tree_size_mib: Optional[int] = Field(default=None, ge=0)
 
 
 class CostEstimationVerifiedVolume(VerifiedVolume):
-    estimated_size_mib: Optional[int] = None
-    estimated_hash_tree_size_mib: Optional[int] = None
+    estimated_size_mib: Optional[int] = Field(default=None, ge=0)
+    estimated_hash_tree_size_mib: Optional[int] = Field(default=None, ge=0)
 
 
 class CostEstimationVProgramContent(VerifiableProgramContent):
@@ -110,7 +110,7 @@ class CostEstimationVProgramContent(VerifiableProgramContent):
         default=[], description="Verified volumes bound into the workload"
     )
     # Size of the runtime bundle when its manifest is not published yet.
-    runtime_estimated_size_mib: Optional[int] = None
+    runtime_estimated_size_mib: Optional[int] = Field(default=None, ge=0)
     # Fields required by VerifiableProgramContent but irrelevant for cost
     # estimation, mirroring CostEstimationInstanceContent.
     time: Optional[float] = None  # type: ignore[assignment]

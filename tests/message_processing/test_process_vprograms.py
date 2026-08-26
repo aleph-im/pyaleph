@@ -36,7 +36,9 @@ from aleph.db.models import (
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.schemas.api.messages import format_message
 from aleph.services.vprogram_runtime import resolve_runtime_bundle_ref
+from aleph.toolkit.constants import DEFAULT_PRICE_AGGREGATE, HOUR, ProductPriceType
 from aleph.toolkit.timestamp import timestamp_to_datetime
+from aleph.types.cost import ProductPricing
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.files import FileType
 from aleph.types.message_processing_result import ProcessedMessage, RejectedMessage
@@ -58,7 +60,9 @@ def get_vprogram_store_refs(content: VerifiableProgramContent) -> List[str]:
     return refs
 
 
-def insert_vprogram_refs(session: DbSession, message: PendingMessageDb):
+def insert_vprogram_refs(
+    session: DbSession, message: PendingMessageDb, size_bytes: int = 1024 * 1024
+):
     """
     Insert the file pins referenced by the V-Program to make it processable.
     Refs that are already pinned (e.g. by a real STORE message) are skipped.
@@ -75,7 +79,10 @@ def insert_vprogram_refs(session: DbSession, message: PendingMessageDb):
         # As in the program tests, the file hash just has to be a valid hash:
         # use the reversed ref.
         file_hash = ref[::-1]
-        session.add(StoredFileDb(hash=file_hash, size=1024 * 1024, type=FileType.FILE))
+        # The runtime manifest is a small JSON document and is capped by the
+        # resolver: only the measured artifacts follow size_bytes.
+        size = 1024 * 1024 if ref == str(content.runtime.ref) else size_bytes
+        session.add(StoredFileDb(hash=file_hash, size=size, type=FileType.FILE))
         session.flush()
         insert_message_file_pin(
             session=session,
@@ -264,6 +271,68 @@ async def test_process_vprogram(
         assert message is not None
         formatted = format_message(message)
         assert formatted.type == MessageType.v_program
+
+
+@pytest.mark.asyncio
+async def test_process_vprogram_over_allowance_bills_the_excess(
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    fixture_vprogram_message: PendingMessageDb,
+    user_credit_balance,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """End to end: a bundle bigger than the per-CU disk allowance must leave
+    a residual on the persisted rows. Mirrors the unit-level arithmetic in
+    tests/services/test_cost_service_vprogram.py::
+    test_vprogram_artifacts_over_allowance_bill_the_excess."""
+    bundle_mib = 60 * 1024
+    # Above the per-row minimum credit cost (1 credit/hour, ~5.6 MiB at this
+    # price) so the residual matches a plain linear formula.
+    other_mib = 10
+
+    with session_factory() as session:
+        insert_vprogram_refs(
+            session, fixture_vprogram_message, size_bytes=other_mib * 1024 * 1024
+        )
+        insert_bundle_pin(session, size_bytes=bundle_mib * 1024 * 1024)
+        session.commit()
+    store_manifest(message_processor, json.dumps(MANIFEST).encode())
+
+    pipeline = message_processor.make_pipeline()
+    _ = [message async for message in pipeline]
+
+    with session_factory() as session:
+        status = get_message_status(
+            session=session, item_hash=ItemHash(fixture_vprogram_message.item_hash)
+        )
+        assert status is not None
+        assert status.status == MessageStatus.PROCESSED
+        costs = list(
+            get_message_costs(
+                session=session, item_hash=fixture_vprogram_message.item_hash
+            )
+        )
+
+    artifact_rows = [c for c in costs if c.type == "EXECUTION_VPROGRAM_VOLUME"]
+    # The bundle plus the 4 side artifacts (workload, workload hash tree, the
+    # verified volume and its hash tree). The runtime manifest itself is not
+    # billed: only the bundle it names is.
+    assert len(artifact_rows) == 5
+
+    pricing = ProductPricing.from_aggregate(
+        ProductPriceType.VPROGRAM, DEFAULT_PRICE_AGGREGATE
+    )
+    price_per_mib_credit = pricing.price.storage.credit / HOUR
+    footprint_mib = Decimal(bundle_mib + 4 * other_mib)
+    allowance_mib = Decimal(2 * 20480)
+
+    execution = next(c for c in costs if c.type == "EXECUTION")
+    total = sum(Decimal(c.cost_credit) for c in costs)
+    residual = total - Decimal(execution.cost_credit)
+    expected = (footprint_mib - allowance_mib) * price_per_mib_credit
+    assert expected > 0
+    assert abs(residual - expected) < Decimal("0.000001")
 
 
 @pytest.mark.asyncio
