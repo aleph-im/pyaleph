@@ -1,19 +1,56 @@
+import datetime as dt
 from decimal import Decimal
-from typing import cast
 
 import pytest
 from aleph_message.models import VerifiableProgramContent
 from messages.test_vprogram import VPROGRAM_CONTENT, VPROGRAM_ITEM_HASH
 
-from aleph.services.cost import _get_product_price_type, get_detailed_costs
+from aleph.db.accessors.files import insert_message_file_pin
+from aleph.db.models import StoredFileDb
+from aleph.services.cost import (
+    _get_product_price_type,
+    get_detailed_costs,
+    get_total_and_detailed_costs,
+)
 from aleph.toolkit.constants import (
     DEFAULT_PRICE_AGGREGATE,
     DEFAULT_SETTINGS_AGGREGATE,
+    HOUR,
     ProductPriceType,
 )
-from aleph.types.cost import CostType, ProductPricing, resolve_price_type_key
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.cost import CostType, ProductPricing, RefVolume, resolve_price_type_key
+from aleph.types.db_session import DbSession, DbSessionFactory
+from aleph.types.files import FileType
 from aleph.types.settings import Settings
+
+MIB = 1024 * 1024
+BUNDLE_REF = "ba" * 32
+
+
+def artifact_refs() -> dict[str, str]:
+    """Artifact name -> STORE message hash, as the cost rows name them."""
+    refs = {
+        "workload": VPROGRAM_CONTENT["workload"]["ref"],
+        "workload:hash_tree": VPROGRAM_CONTENT["workload"]["hash_tree"],
+    }
+    for i, volume in enumerate(VPROGRAM_CONTENT["volumes"]):
+        refs[f"#{i}:{volume['comment']}"] = volume["ref"]
+        refs[f"#{i}:{volume['comment']}:hash_tree"] = volume["hash_tree"]
+    return refs
+
+
+def pin_file(session: DbSession, ref: str, size_bytes: int) -> None:
+    file_hash = ref[::-1]
+    session.add(StoredFileDb(hash=file_hash, size=size_bytes, type=FileType.FILE))
+    session.flush()
+    insert_message_file_pin(
+        session=session,
+        file_hash=file_hash,
+        owner=VPROGRAM_CONTENT["address"],
+        item_hash=ref,
+        ref=None,
+        created=dt.datetime(2023, 1, 1, tzinfo=dt.timezone.utc),
+    )
 
 
 @pytest.fixture
@@ -82,8 +119,110 @@ def test_vprogram_detailed_costs(
     assert Decimal(execution.cost_credit) > 0
     assert execution.owner == VPROGRAM_CONTENT["address"]
 
-    # Verity-bound volumes are STORE-paid artifacts, not execution volumes:
-    # no cost row should reference the verified volume's ref.
-    volumes = cast(list, VPROGRAM_CONTENT["volumes"])
-    verified_volume_ref = volumes[0]["ref"]
-    assert all(c.ref != verified_volume_ref for c in costs)
+
+def test_vprogram_artifacts_under_allowance_are_free(
+    session_factory: DbSessionFactory,
+    vprogram_content,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    with session_factory() as session:
+        for ref in artifact_refs().values():
+            pin_file(session, ref, 1 * MIB)
+        session.commit()
+
+        costs = get_detailed_costs(
+            session, vprogram_content, item_hash=VPROGRAM_ITEM_HASH
+        )
+
+    by_name = {c.name: c for c in costs if c.type == CostType.EXECUTION_VPROGRAM_VOLUME}
+    assert set(by_name) == set(artifact_refs())
+    for name, ref in artifact_refs().items():
+        assert by_name[name].ref == ref
+        assert Decimal(by_name[name].cost_credit) > 0
+
+    discount = next(c for c in costs if c.type == CostType.EXECUTION_VOLUME_DISCOUNT)
+    volume_total = sum(Decimal(c.cost_credit) for c in by_name.values())
+    # 4 x 1 MiB is far under the 2 CU x 20480 MiB allowance: fully discounted.
+    assert Decimal(discount.cost_credit) == -volume_total
+
+    execution = next(c for c in costs if c.type == CostType.EXECUTION)
+    total = sum(Decimal(c.cost_credit) for c in costs)
+    assert total == Decimal(execution.cost_credit)
+
+
+def test_vprogram_artifacts_over_allowance_bill_the_excess(
+    session_factory: DbSessionFactory,
+    vprogram_content,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    workload_mib = 50 * 1024
+    # The other 3 artifacts (workload:hash_tree + the one verified volume's
+    # ref and hash_tree) must sit above the per-artifact minimum-credit-cost
+    # floor (1 credit/hour, ~5.57 MiB at this price) so the residual can be
+    # compared against a plain linear formula.
+    other_mib = 10
+    with session_factory() as session:
+        for name, ref in artifact_refs().items():
+            pin_file(
+                session,
+                ref,
+                workload_mib * MIB if name == "workload" else other_mib * MIB,
+            )
+        session.commit()
+
+        costs = get_detailed_costs(
+            session, vprogram_content, item_hash=VPROGRAM_ITEM_HASH
+        )
+
+    pricing = ProductPricing.from_aggregate(
+        ProductPriceType.VPROGRAM, DEFAULT_PRICE_AGGREGATE
+    )
+    price_per_mib_credit = pricing.price.storage.credit / HOUR
+    footprint_mib = Decimal(workload_mib + 3 * other_mib)
+    allowance_mib = Decimal(2 * 20480)
+
+    execution = next(c for c in costs if c.type == CostType.EXECUTION)
+    total = sum(Decimal(c.cost_credit) for c in costs)
+    residual = total - Decimal(execution.cost_credit)
+    expected = (footprint_mib - allowance_mib) * price_per_mib_credit
+    assert abs(residual - expected) < Decimal("0.000001")
+
+
+def test_vprogram_unpinned_artifact_is_skipped(
+    session_factory: DbSessionFactory,
+    vprogram_content,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    # No file pins at all: no artifact rows, no crash (mirrors legacy
+    # missing-ref behaviour for immutable volumes).
+    with session_factory() as session:
+        costs = get_detailed_costs(
+            session, vprogram_content, item_hash=VPROGRAM_ITEM_HASH
+        )
+    assert not [c for c in costs if c.type == CostType.EXECUTION_VPROGRAM_VOLUME]
+
+
+def test_vprogram_extra_volumes_are_billed(
+    session_factory: DbSessionFactory,
+    vprogram_content,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    with session_factory() as session:
+        pin_file(session, BUNDLE_REF, 3 * 1024 * MIB)
+        session.commit()
+
+        runtime = RefVolume(
+            CostType.EXECUTION_VPROGRAM_VOLUME, BUNDLE_REF, False, "runtime"
+        )
+        _, costs = get_total_and_detailed_costs(
+            session, vprogram_content, VPROGRAM_ITEM_HASH, extra_volumes=[runtime]
+        )
+
+    row = next(c for c in costs if c.name == "runtime")
+    assert row.type == CostType.EXECUTION_VPROGRAM_VOLUME
+    assert row.ref == BUNDLE_REF
+    assert Decimal(row.cost_credit) > 0

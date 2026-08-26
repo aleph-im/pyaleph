@@ -2,7 +2,7 @@ import logging
 import math
 from decimal import Decimal
 from functools import reduce
-from typing import List, Optional, Tuple, TypeAlias, Union
+from typing import List, Optional, Sequence, Tuple, TypeAlias, Union
 
 from aleph_message.models import (
     InstanceContent,
@@ -75,6 +75,8 @@ CostComputableExecutableContent: TypeAlias = (
     | ProgramContent
     | VerifiableProgramContent
 )
+
+ExtraVolumes = Sequence[Union[RefVolume, SizedVolume]]
 
 
 # TODO: Cache aggregate for 5 min
@@ -387,6 +389,7 @@ def _get_execution_volumes_costs(
     pricing: ProductPricing,
     payment_type: PaymentType,
     item_hash: str,
+    extra_volumes: ExtraVolumes = (),
 ) -> List[AccountCostsDb]:
     volumes: List[RefVolume | SizedVolume] = []
 
@@ -465,15 +468,48 @@ def _get_execution_volumes_costs(
                     ),
                 )
 
-    for i, volume in enumerate(content.volumes):
-        if isinstance(volume, VerifiedVolume):
-            # Verity-bound volumes (V-Programs) are STORE-paid artifacts like
-            # the workload and carry no execution-volume cost in phase 1.
-            continue
+    elif isinstance(content, (VerifiableProgramContent, CostEstimationVProgramContent)):
+        # Every artifact a V-PROGRAM boots from is a user-published STORE
+        # that the CRN downloads in full: bill them all, measured from the
+        # pinned file size, against the per-CU disk allowance.
+        volumes.append(
+            RefVolume(
+                CostType.EXECUTION_VPROGRAM_VOLUME,
+                str(content.workload.ref),
+                False,
+                "workload",
+            )
+        )
+        volumes.append(
+            RefVolume(
+                CostType.EXECUTION_VPROGRAM_VOLUME,
+                str(content.workload.hash_tree),
+                False,
+                "workload:hash_tree",
+            )
+        )
 
+    for i, volume in enumerate(content.volumes):
         # NOTE: There are legacy volumes with no "mount" property set
         # or with same values for different volumes causing unique key constraint errors
         name_prefix = f"#{i}"
+
+        if isinstance(volume, VerifiedVolume):
+            name = f"{name_prefix}:{volume.comment}"
+            volumes.append(
+                RefVolume(
+                    CostType.EXECUTION_VPROGRAM_VOLUME, str(volume.ref), False, name
+                )
+            )
+            volumes.append(
+                RefVolume(
+                    CostType.EXECUTION_VPROGRAM_VOLUME,
+                    str(volume.hash_tree),
+                    False,
+                    f"{name}:hash_tree",
+                )
+            )
+            continue
 
         if isinstance(volume, (ImmutableVolume, CostEstimationImmutableVolume)):
             name = (
@@ -518,6 +554,8 @@ def _get_execution_volumes_costs(
                 ),
             )
 
+    volumes.extend(extra_volumes)
+
     price_per_mib = pricing.price.storage.holding
     price_per_mib_second = pricing.price.storage.payg / HOUR
     price_per_mib_credit = pricing.price.storage.credit / HOUR
@@ -540,10 +578,11 @@ def _get_additional_storage_price(
     pricing: ProductPricing,
     payment_type: PaymentType,
     item_hash: str,
+    extra_volumes: ExtraVolumes = (),
 ) -> List[AccountCostsDb]:
     # EXECUTION VOLUMES COSTS
     costs = _get_execution_volumes_costs(
-        session, content, pricing, payment_type, item_hash
+        session, content, pricing, payment_type, item_hash, extra_volumes
     )
 
     # EXECUTION STORAGE DISCOUNT
@@ -698,6 +737,7 @@ def _calculate_executable_costs(
     content: CostComputableExecutableContent,
     pricing: ProductPricing,
     item_hash: str,
+    extra_volumes: ExtraVolumes = (),
 ) -> List[AccountCostsDb]:
     payment_type = get_payment_type(content)
     settings = _get_settings(session)
@@ -718,7 +758,7 @@ def _calculate_executable_costs(
             ProductPriceType.INSTANCE_GPU_PREMIUM, price_aggregate
         )
         storage_costs = _get_additional_storage_price(
-            session, content, storage_pricing, payment_type, item_hash
+            session, content, storage_pricing, payment_type, item_hash, extra_volumes
         )
 
         return execution_costs + storage_costs
@@ -778,7 +818,7 @@ def _calculate_executable_costs(
 
     costs: List[AccountCostsDb] = [execution_cost]
     costs += _get_additional_storage_price(
-        session, content, pricing, payment_type, item_hash
+        session, content, pricing, payment_type, item_hash, extra_volumes
     )
 
     return costs
@@ -961,6 +1001,7 @@ def get_cost_component_size_mib(
         CostType.EXECUTION_PROGRAM_VOLUME_RUNTIME,
         CostType.EXECUTION_PROGRAM_VOLUME_DATA,
         CostType.EXECUTION_VOLUME_INMUTABLE,
+        CostType.EXECUTION_VPROGRAM_VOLUME,
     }
 
     if cost.type in ref_based_types:
@@ -992,6 +1033,7 @@ def get_detailed_costs(
     item_hash: str,
     pricing: Optional[ProductPricing] = None,
     settings: Optional[Settings] = None,
+    extra_volumes: ExtraVolumes = (),
 ) -> List[AccountCostsDb]:
     settings = settings or _get_settings(session)
     pricing = pricing or _get_product_price(session, content, settings)
@@ -999,17 +1041,20 @@ def get_detailed_costs(
     if isinstance(content, (StoreContent, CostEstimationStoreContent)):
         return _calculate_storage_costs(session, content, pricing, item_hash)
     else:
-        return _calculate_executable_costs(session, content, pricing, item_hash)
+        return _calculate_executable_costs(
+            session, content, pricing, item_hash, extra_volumes
+        )
 
 
 def get_total_and_detailed_costs(
     session: DbSession,
     content: CostComputableContent,
     item_hash: str,
+    extra_volumes: ExtraVolumes = (),
 ) -> Tuple[Decimal, List[AccountCostsDb]]:
     payment_type = get_payment_type(content)
 
-    costs = get_detailed_costs(session, content, item_hash)
+    costs = get_detailed_costs(session, content, item_hash, extra_volumes=extra_volumes)
     if payment_type == PaymentType.superfluid:
         cost = format_cost(reduce(lambda x, y: x + y.cost_stream, costs, Decimal(0)))
     elif payment_type == PaymentType.credit:
