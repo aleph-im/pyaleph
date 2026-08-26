@@ -5,7 +5,13 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from aiohttp import web
 from aiohttp.web_exceptions import HTTPException
-from aleph_message.models import ExecutableContent, ItemHash, ItemType, MessageType
+from aleph_message.models import (
+    ExecutableContent,
+    ItemHash,
+    ItemType,
+    MessageType,
+    VerifiableProgramContent,
+)
 from aleph_message.models.execution.base import Payment, PaymentType
 from dataclasses_json import DataClassJsonMixin
 from pydantic import BaseModel, Field, ValidationError
@@ -573,6 +579,7 @@ async def recalculate_message_costs(request: web.Request):
     """
 
     session_factory = get_session_factory_from_request(request)
+    storage_service = get_storage_service_from_request(request)
 
     # Check if a specific message hash was provided
     item_hash_param = request.match_info.get("item_hash")
@@ -681,9 +688,20 @@ async def recalculate_message_costs(request: web.Request):
                     # so cost rows still identify it correctly.
                     pricing = pricing.with_type(product_type)
 
+                extra_volumes: list = []
+                if isinstance(content, VerifiableProgramContent):
+                    bundle_ref = await resolve_runtime_bundle_ref(
+                        session, storage_service, str(content.runtime.ref)
+                    )
+                    extra_volumes.append(runtime_bundle_volume(bundle_ref))
+
                 # Calculate new costs using the historical pricing model
                 new_costs = get_detailed_costs(
-                    session, content, message.item_hash, pricing
+                    session,
+                    content,
+                    message.item_hash,
+                    pricing,
+                    extra_volumes=extra_volumes,
                 )
 
                 if new_costs:

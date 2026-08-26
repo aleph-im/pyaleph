@@ -1,7 +1,7 @@
 import datetime as dt
 import json
 from decimal import Decimal
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from aiohttp import web
@@ -235,6 +235,7 @@ class TestRecalculateMessageCosts:
 
             from aleph.web.controllers.app_state_getters import (
                 APP_STATE_SESSION_FACTORY,
+                APP_STATE_STORAGE_SERVICE,
             )
 
             # Create a more robust mock request
@@ -248,7 +249,10 @@ class TestRecalculateMessageCosts:
             request.headers = CIMultiDict({"X-Auth-Token": "test-token"})
 
             # Mock the app state
-            request.app = {APP_STATE_SESSION_FACTORY: session_factory}
+            request.app = {
+                APP_STATE_SESSION_FACTORY: session_factory,
+                APP_STATE_STORAGE_SERVICE: MagicMock(),
+            }
 
             return request
 
@@ -367,7 +371,7 @@ class TestRecalculateMessageCosts:
 
         pricing_calls = []
 
-        def mock_get_costs(session, content, item_hash, pricing):
+        def mock_get_costs(session, content, item_hash, pricing, extra_volumes=()):
             # Capture the pricing object used for each call
             pricing_calls.append((item_hash, pricing.type if pricing else None))
             return []
@@ -408,7 +412,9 @@ class TestRecalculateMessageCosts:
 
         request = mock_request_factory()
 
-        def mock_get_costs_with_error(session, content, item_hash, pricing):
+        def mock_get_costs_with_error(
+            session, content, item_hash, pricing, extra_volumes=()
+        ):
             if (
                 item_hash
                 == "5369766624921631e84e56598c8942b16e46535560b4372551e39a531e2ec24f"
@@ -471,7 +477,7 @@ class TestRecalculateMessageCosts:
 
         processed_order = []
 
-        def mock_get_costs(session, content, item_hash, pricing):
+        def mock_get_costs(session, content, item_hash, pricing, extra_volumes=()):
             processed_order.append(item_hash)
             return []
 
@@ -565,13 +571,19 @@ class TestRecalculateMessageCosts:
 
         captured_pricing_types = {}
 
-        def mock_get_costs(session, content, item_hash, pricing):
+        def mock_get_costs(session, content, item_hash, pricing, extra_volumes=()):
             captured_pricing_types[item_hash] = pricing.type
             return []
 
-        with patch(
-            "aleph.web.controllers.prices.get_detailed_costs",
-            side_effect=mock_get_costs,
+        with (
+            patch(
+                "aleph.web.controllers.prices.get_detailed_costs",
+                side_effect=mock_get_costs,
+            ),
+            patch(
+                "aleph.web.controllers.prices.resolve_runtime_bundle_ref",
+                new=AsyncMock(return_value="ba" * 32),
+            ),
         ):
             response = await recalculate_message_costs.__wrapped__(request)
 
@@ -580,6 +592,77 @@ class TestRecalculateMessageCosts:
         assert response_data["recalculated_count"] == 1
         assert not response_data.get("errors")
         assert captured_pricing_types[VPROGRAM_ITEM_HASH] == ProductPriceType.VPROGRAM
+
+    @pytest.mark.asyncio
+    @patch("aleph.web.controllers.prices.get_session_factory_from_request")
+    async def test_recalculate_vprogram_keeps_runtime_bundle_row(
+        self, mock_get_session, session_factory, mock_request_factory
+    ):
+        """Recalculating a V-PROGRAM message's costs must still resolve the
+        runtime manifest to its bundle: the persisted `runtime` cost row
+        must keep pointing at the bundle (not the manifest), with the
+        EXECUTION_VPROGRAM_VOLUME type, exactly as it did when the message
+        was first processed.
+        """
+        from api.test_vprogram_api import (
+            BUNDLE_REF,
+            insert_bundle_pin,
+            insert_vprogram_refs,
+        )
+        from messages.test_vprogram import VPROGRAM_CONTENT, VPROGRAM_ITEM_HASH
+
+        from aleph.db.accessors.cost import get_message_costs
+        from aleph.db.models import MessageStatusDb
+        from aleph.types.message_status import MessageStatus
+
+        base_time = dt.datetime(2024, 1, 1, 10, 0, 0, tzinfo=dt.timezone.utc)
+
+        vprogram_message = MessageDb(
+            item_hash=VPROGRAM_ITEM_HASH,
+            type=MessageType.v_program,
+            chain="ETH",
+            sender=VPROGRAM_CONTENT["address"],
+            item_type="inline",
+            content=VPROGRAM_CONTENT,
+            time=base_time,
+            size=1024,
+        )
+        vprogram_message.reception_time = vprogram_message.time
+
+        with session_factory() as session:
+            insert_vprogram_refs(session)
+            insert_bundle_pin(session)
+            session.add(vprogram_message)
+            session.add(
+                MessageStatusDb(
+                    item_hash=vprogram_message.item_hash,
+                    status=MessageStatus.PROCESSED,
+                    reception_time=vprogram_message.time,
+                )
+            )
+            session.commit()
+
+        mock_get_session.return_value = session_factory
+        request = mock_request_factory()
+
+        with patch(
+            "aleph.web.controllers.prices.resolve_runtime_bundle_ref",
+            new=AsyncMock(return_value=BUNDLE_REF),
+        ):
+            response = await recalculate_message_costs.__wrapped__(request)
+
+        assert response.status == 200
+        response_data = json.loads(response.text)
+        assert response_data["recalculated_count"] == 1
+        assert not response_data.get("errors")
+
+        with session_factory() as session:
+            costs = list(
+                get_message_costs(session=session, item_hash=VPROGRAM_ITEM_HASH)
+            )
+        runtime = next(c for c in costs if c.name == "runtime")
+        assert runtime.ref == BUNDLE_REF
+        assert runtime.type == "EXECUTION_VPROGRAM_VOLUME"
 
 
 class TestPricingTimelineIntegration:
@@ -596,6 +679,7 @@ class TestPricingTimelineIntegration:
 
             from aleph.web.controllers.app_state_getters import (
                 APP_STATE_SESSION_FACTORY,
+                APP_STATE_STORAGE_SERVICE,
             )
 
             # Create a more robust mock request
@@ -609,7 +693,10 @@ class TestPricingTimelineIntegration:
             request.headers = CIMultiDict({"X-Auth-Token": "test-token"})
 
             # Mock the app state
-            request.app = {APP_STATE_SESSION_FACTORY: session_factory}
+            request.app = {
+                APP_STATE_SESSION_FACTORY: session_factory,
+                APP_STATE_STORAGE_SERVICE: MagicMock(),
+            }
 
             return request
 
@@ -633,7 +720,7 @@ class TestPricingTimelineIntegration:
         # Track which pricing models are used for each message
         pricing_usage = {}
 
-        def mock_get_costs(session, content, item_hash, pricing):
+        def mock_get_costs(session, content, item_hash, pricing, extra_volumes=()):
             if pricing and hasattr(pricing, "price"):
                 if hasattr(pricing.price, "storage") and hasattr(
                     pricing.price.storage, "holding"
