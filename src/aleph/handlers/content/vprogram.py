@@ -10,6 +10,11 @@ from aleph.db.models.account_costs import AccountCostsDb
 from aleph.handlers.content.content_handler import ContentHandler
 from aleph.services.cost import get_payment_type, get_total_and_detailed_costs
 from aleph.services.cost_validation import validate_balance_for_payment
+from aleph.services.vprogram_runtime import (
+    resolve_runtime_bundle_ref,
+    runtime_bundle_volume,
+)
+from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import (
@@ -111,6 +116,12 @@ class VProgramMessageHandler(ContentHandler):
     CRN dispatch are later phases.
     """
 
+    def __init__(self, storage_service: StorageService):
+        # Needed to read the runtime manifest: the message only references
+        # the manifest STORE, and the bundle it names is the bulk of the
+        # V-Program's disk footprint (dependency check + pricing).
+        self.storage_service = storage_service
+
     async def check_dependencies(self, session: DbSession, message: MessageDb) -> None:
         content = _get_vprogram_content(message)
 
@@ -130,13 +141,30 @@ class VProgramMessageHandler(ContentHandler):
         if missing_refs:
             raise VmVolumeNotFound(sorted(missing_refs))
 
+        # The manifest is pinned: read it and require its bundle to be pinned
+        # too, so the bundle is never an unpriced (or unbootable) artifact.
+        # An unreadable/invalid manifest is rejected (InvalidVProgramRuntime,
+        # raised by the resolver); an unpinned bundle is a missing volume
+        # like any other ref and gets the same retry semantics.
+        bundle_ref = await resolve_runtime_bundle_ref(
+            session, self.storage_service, str(content.runtime.ref)
+        )
+        if not set(find_file_pins(session=session, item_hashes=[bundle_ref])):
+            raise VmVolumeNotFound([bundle_ref])
+
     async def check_balance(
         self, session: DbSession, message: MessageDb
     ) -> List[AccountCostsDb]:
         content = _get_vprogram_content(message)
 
+        bundle_ref = await resolve_runtime_bundle_ref(
+            session, self.storage_service, str(content.runtime.ref)
+        )
         message_cost, costs = get_total_and_detailed_costs(
-            session, content, message.item_hash
+            session,
+            content,
+            message.item_hash,
+            extra_volumes=[runtime_bundle_volume(bundle_ref)],
         )
 
         # The schema already restricts V-Programs to credit payment; keep

@@ -3,6 +3,7 @@ import json
 
 import pytest
 from aleph_message.models import Chain, ItemType, MessageType
+from in_memory_storage_engine import InMemoryStorageEngine
 from messages.test_vprogram import VPROGRAM_CONTENT, VPROGRAM_ITEM_HASH
 
 from aleph.db.accessors.files import insert_message_file_pin
@@ -12,6 +13,7 @@ from aleph.db.models import (
     PendingMessageDb,
     StoredFileDb,
 )
+from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.schemas.message_content import ContentSource, MessageContent
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession, DbSessionFactory
@@ -96,6 +98,40 @@ def insert_vprogram_refs(session: DbSession) -> None:
         )
 
 
+BUNDLE_REF = "ba" * 32
+MANIFEST_FILE_HASH = VPROGRAM_CONTENT["runtime"]["ref"][::-1]
+MANIFEST = {
+    "format": "aleph-vprogram-runtime",
+    "format_version": 1,
+    "platform": "sev_snp",
+    "bundle": {"ref": BUNDLE_REF, "size": 1, "sha256": "00" * 32},
+}
+
+
+def insert_bundle_pin(
+    session: DbSession, size_bytes: int = 3 * 1024 * 1024 * 1024
+) -> None:
+    session.add(
+        StoredFileDb(hash=BUNDLE_REF[::-1], size=size_bytes, type=FileType.FILE)
+    )
+    session.flush()
+    insert_message_file_pin(
+        session=session,
+        file_hash=BUNDLE_REF[::-1],
+        owner=SENDER,
+        item_hash=BUNDLE_REF,
+        ref=None,
+        created=dt.datetime(2023, 1, 1, tzinfo=dt.timezone.utc),
+    )
+
+
+def store_manifest(message_processor: PendingMessageProcessor, raw: bytes) -> None:
+    """Put the manifest bytes where the handler's StorageService reads them."""
+    storage_engine = message_processor.message_handler.storage_service.storage_engine
+    assert isinstance(storage_engine, InMemoryStorageEngine)
+    storage_engine.files[MANIFEST_FILE_HASH] = raw
+
+
 @pytest.fixture
 def user_credit_balance(session_factory: DbSessionFactory) -> None:
     with session_factory() as session:
@@ -160,7 +196,9 @@ async def test_vprogram_message_price(
 ):
     with session_factory() as session:
         insert_vprogram_refs(session)
+        insert_bundle_pin(session)
         session.commit()
+    store_manifest(message_processor, json.dumps(MANIFEST).encode())
 
     pipeline = message_processor.make_pipeline()
     _ = [message async for message in pipeline]
@@ -184,7 +222,9 @@ async def test_vprogram_in_messages_list(
 ):
     with session_factory() as session:
         insert_vprogram_refs(session)
+        insert_bundle_pin(session)
         session.commit()
+    store_manifest(message_processor, json.dumps(MANIFEST).encode())
 
     pipeline = message_processor.make_pipeline()
     _ = [message async for message in pipeline]
@@ -252,7 +292,9 @@ async def test_vprogram_rejected_display(
     # are seeded so that the credit check is the one that rejects.
     with session_factory() as session:
         insert_vprogram_refs(session)
+        insert_bundle_pin(session)
         session.commit()
+    store_manifest(message_processor, json.dumps(MANIFEST).encode())
 
     pipeline = message_processor.make_pipeline()
     _ = [message async for message in pipeline]

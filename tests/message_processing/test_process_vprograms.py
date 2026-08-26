@@ -1,6 +1,7 @@
 import copy
 import datetime as dt
 import json
+from decimal import Decimal
 from typing import List
 
 import pytest
@@ -11,6 +12,7 @@ from aleph_message.models import (
     MessageType,
     VerifiableProgramContent,
 )
+from in_memory_storage_engine import InMemoryStorageEngine
 from message_test_helpers import process_pending_messages
 from messages.test_vprogram import VPROGRAM_CONTENT, VPROGRAM_ITEM_HASH
 from more_itertools import one
@@ -84,6 +86,40 @@ def insert_vprogram_refs(session: DbSession, message: PendingMessageDb):
         )
 
 
+BUNDLE_REF = "ba" * 32
+MANIFEST_FILE_HASH = VPROGRAM_CONTENT["runtime"]["ref"][::-1]
+MANIFEST = {
+    "format": "aleph-vprogram-runtime",
+    "format_version": 1,
+    "platform": "sev_snp",
+    "bundle": {"ref": BUNDLE_REF, "size": 1, "sha256": "00" * 32},
+}
+
+
+def insert_bundle_pin(
+    session: DbSession, size_bytes: int = 3 * 1024 * 1024 * 1024
+) -> None:
+    session.add(
+        StoredFileDb(hash=BUNDLE_REF[::-1], size=size_bytes, type=FileType.FILE)
+    )
+    session.flush()
+    insert_message_file_pin(
+        session=session,
+        file_hash=BUNDLE_REF[::-1],
+        owner=SENDER,
+        item_hash=BUNDLE_REF,
+        ref=None,
+        created=dt.datetime(2023, 1, 1, tzinfo=dt.timezone.utc),
+    )
+
+
+def store_manifest(message_processor: PendingMessageProcessor, raw: bytes) -> None:
+    """Put the manifest bytes where the handler's StorageService reads them."""
+    storage_engine = message_processor.message_handler.storage_service.storage_engine
+    assert isinstance(storage_engine, InMemoryStorageEngine)
+    storage_engine.files[MANIFEST_FILE_HASH] = raw
+
+
 @pytest.fixture
 def fixture_vprogram_message(session_factory: DbSessionFactory) -> PendingMessageDb:
     pending_message = PendingMessageDb(
@@ -142,7 +178,9 @@ async def test_process_vprogram(
 ):
     with session_factory() as session:
         insert_vprogram_refs(session, fixture_vprogram_message)
+        insert_bundle_pin(session)
         session.commit()
+    store_manifest(message_processor, json.dumps(MANIFEST).encode())
 
     pipeline = message_processor.make_pipeline()
     _ = [message async for message in pipeline]
@@ -162,6 +200,24 @@ async def test_process_vprogram(
         )
         assert costs
         assert all(cost.owner == SENDER for cost in costs)
+
+        artifact_rows = {
+            c.name: c for c in costs if c.type == "EXECUTION_VPROGRAM_VOLUME"
+        }
+        assert set(artifact_rows) == {
+            "workload",
+            "workload:hash_tree",
+            "#0:model weights",
+            "#0:model weights:hash_tree",
+            "runtime",
+        }
+        assert artifact_rows["runtime"].ref == BUNDLE_REF
+        # 3 GiB bundle + 4 x 1 MiB artifacts is under the 2 CU x 20 GiB
+        # allowance: the discount cancels the artifact rows exactly.
+        discount = next(c for c in costs if c.type == "EXECUTION_VOLUME_DISCOUNT")
+        assert Decimal(discount.cost_credit) == -sum(
+            Decimal(c.cost_credit) for c in artifact_rows.values()
+        )
 
         # The vms representation was written, under its own polymorphic
         # identity (neither an instance nor a program).
@@ -217,7 +273,9 @@ async def test_process_vprogram_insufficient_credit(
     # No credit balance is seeded: processing must reject the message.
     with session_factory() as session:
         insert_vprogram_refs(session, fixture_vprogram_message)
+        insert_bundle_pin(session)
         session.commit()
+    store_manifest(message_processor, json.dumps(MANIFEST).encode())
 
     pipeline = message_processor.make_pipeline()
     _ = [message async for message in pipeline]
@@ -278,6 +336,55 @@ async def test_process_vprogram_missing_refs(
         assert isinstance(rejected.details, dict)
         assert set(rejected.details["errors"]) == set(get_vprogram_store_refs(content))
         assert rejected.traceback is None
+
+
+@pytest.mark.asyncio
+async def test_process_vprogram_rejects_invalid_manifest(
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    fixture_vprogram_message: PendingMessageDb,
+    user_credit_balance,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    with session_factory() as session:
+        insert_vprogram_refs(session, fixture_vprogram_message)
+        session.commit()
+    store_manifest(message_processor, b"{not a manifest")
+
+    pipeline = message_processor.make_pipeline()
+    results = [message async for batch in pipeline for message in batch]
+
+    result = one(results)
+    assert isinstance(result, RejectedMessage)
+    assert result.error_code == ErrorCode.VM_RUNTIME_INVALID
+    with session_factory() as session:
+        rejected = get_rejected_message(session=session, item_hash=VPROGRAM_ITEM_HASH)
+        assert rejected is not None
+        assert rejected.error_code == ErrorCode.VM_RUNTIME_INVALID
+
+
+@pytest.mark.asyncio
+async def test_process_vprogram_unpinned_bundle_is_a_missing_volume(
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    fixture_vprogram_message: PendingMessageDb,
+    user_credit_balance,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    with session_factory() as session:
+        insert_vprogram_refs(session, fixture_vprogram_message)
+        session.commit()
+    # Valid manifest, but its bundle is not pinned on this node.
+    store_manifest(message_processor, json.dumps(MANIFEST).encode())
+
+    pipeline = message_processor.make_pipeline()
+    results = [message async for batch in pipeline for message in batch]
+
+    result = one(results)
+    assert isinstance(result, RejectedMessage)
+    assert result.error_code == ErrorCode.VM_VOLUME_NOT_FOUND
 
 
 def _pending_message(
@@ -367,6 +474,8 @@ async def test_forget_store_used_by_vprogram_is_blocked(
         # seed the other references (runtime, hash trees, volume) so the
         # dependency check passes.
         insert_vprogram_refs(session, vprogram_message)
+        insert_bundle_pin(session)
+        store_manifest(message_processor, json.dumps(MANIFEST).encode())
 
         vprogram_result = one(
             await process_pending_messages(
