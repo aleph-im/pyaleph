@@ -229,6 +229,105 @@ async def test_vprogram_price_estimate_with_sizes_includes_artifacts(
 
 
 @pytest.mark.asyncio
+async def test_vprogram_price_estimate_with_runtime_size_skips_resolver(
+    ccn_api_client,
+    mocker,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    # When runtime_estimated_size_mib is provided, the estimate must win: the
+    # resolver is never called, and exactly one "runtime" row is billed, sized
+    # from the estimate (not doubled by also appending a resolved bundle).
+    content = {
+        **VPROGRAM_CONTENT,
+        "runtime_estimated_size_mib": 3 * 1024,
+    }
+    raw_content = json.dumps(content, separators=(",", ":"))
+    item_hash = hashlib.sha256(raw_content.encode()).hexdigest()
+    storage_service = ccn_api_client.app[APP_STATE_STORAGE_SERVICE]
+    storage_service.get_message_content.return_value = MessageContent(
+        hash=item_hash,
+        source=ContentSource.INLINE,
+        value=content,
+        raw_value=raw_content,
+    )
+
+    resolver = mocker.patch(
+        "aleph.web.controllers.prices.resolve_runtime_bundle_ref",
+        new=mocker.AsyncMock(return_value=BUNDLE_REF),
+    )
+
+    message = {
+        "chain": "ETH",
+        "sender": VPROGRAM_CONTENT["address"],
+        "type": "V-PROGRAM",
+        "channel": "TEST",
+        "time": 1719502000.0,
+        "item_type": "inline",
+        "item_hash": item_hash,
+        "item_content": raw_content,
+    }
+    response = await ccn_api_client.post(PRICE_ESTIMATE_URI, json={"message": message})
+    assert response.status == 200, await response.text()
+    result = await response.json()
+
+    resolver.assert_not_called()
+    runtime_rows = [d for d in result["detail"] if d["name"] == "runtime"]
+    assert len(runtime_rows) == 1
+    assert runtime_rows[0]["size_mib"] == 3 * 1024
+
+
+@pytest.mark.asyncio
+async def test_vprogram_price_estimate_without_runtime_size_resolves_bundle(
+    ccn_api_client,
+    session_factory: DbSessionFactory,
+    mocker,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    # Without an estimate, the resolver must run exactly once and the
+    # resolved bundle is billed as a single "runtime" row, sized from its
+    # pinned file.
+    bundle_size_mib = 2 * 1024
+    with session_factory() as session:
+        insert_bundle_pin(session, size_bytes=bundle_size_mib * 1024 * 1024)
+        session.commit()
+
+    resolver = mocker.patch(
+        "aleph.web.controllers.prices.resolve_runtime_bundle_ref",
+        new=mocker.AsyncMock(return_value=BUNDLE_REF),
+    )
+
+    raw_content = json.dumps(VPROGRAM_CONTENT, separators=(",", ":"))
+    storage_service = ccn_api_client.app[APP_STATE_STORAGE_SERVICE]
+    storage_service.get_message_content.return_value = MessageContent(
+        hash=VPROGRAM_ITEM_HASH,
+        source=ContentSource.INLINE,
+        value=VPROGRAM_CONTENT,
+        raw_value=raw_content,
+    )
+
+    message = {
+        "chain": "ETH",
+        "sender": VPROGRAM_CONTENT["address"],
+        "type": "V-PROGRAM",
+        "channel": "TEST",
+        "time": 1719502000.0,
+        "item_type": "inline",
+        "item_hash": VPROGRAM_ITEM_HASH,
+        "item_content": raw_content,
+    }
+    response = await ccn_api_client.post(PRICE_ESTIMATE_URI, json={"message": message})
+    assert response.status == 200, await response.text()
+    result = await response.json()
+
+    resolver.assert_awaited_once()
+    runtime_rows = [d for d in result["detail"] if d["name"] == "runtime"]
+    assert len(runtime_rows) == 1
+    assert runtime_rows[0]["size_mib"] == pytest.approx(bundle_size_mib)
+
+
+@pytest.mark.asyncio
 async def test_vprogram_message_price(
     ccn_api_client,
     session_factory,

@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Dict, Iterable, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from aiohttp import web
 from aiohttp.web_exceptions import HTTPException
@@ -67,7 +67,7 @@ from aleph.services.vprogram_runtime import (
 from aleph.toolkit.constants import MiB
 from aleph.toolkit.costs import format_cost_str
 from aleph.toolkit.ecdsa import require_auth_token
-from aleph.types.cost import CostType, resolve_price_type_key
+from aleph.types.cost import CostType, RefVolume, SizedVolume, resolve_price_type_key
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import InvalidVProgramRuntime, MessageStatus
 from aleph.web.controllers.app_state_getters import (
@@ -452,7 +452,7 @@ async def message_price_estimate(request: web.Request):
         )
         item_hash = message.item_hash
 
-        extra_volumes: list = []
+        extra_volumes: List[Union[RefVolume, SizedVolume]] = []
         if (
             isinstance(content, CostEstimationVProgramContent)
             and not content.runtime_estimated_size_mib
