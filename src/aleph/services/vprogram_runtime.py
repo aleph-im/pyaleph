@@ -10,21 +10,18 @@ own `bundle.size`, which is user-controlled.
 """
 
 import json
-import logging
 import re
 from typing import Literal
 
-from aleph_message.models import ItemType
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 from aleph.db.accessors.files import get_message_file_pin
-from aleph.exceptions import AlephStorageException
+from aleph.exceptions import AlephStorageException, UnknownHashError
 from aleph.storage import StorageService
 from aleph.types.cost import CostType, RefVolume
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import InvalidVProgramRuntime
-
-LOGGER = logging.getLogger(__name__)
+from aleph.utils import item_type_from_hash
 
 RUNTIME_MANIFEST_FORMAT = "aleph-vprogram-runtime"
 ITEM_HASH_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -53,10 +50,6 @@ class RuntimeManifestBundle(BaseModel):
     bundle: RuntimeBundleRef
 
 
-def _engine_for(file_hash: str) -> ItemType:
-    return ItemType.storage if ITEM_HASH_PATTERN.fullmatch(file_hash) else ItemType.ipfs
-
-
 async def resolve_runtime_bundle_ref(
     session: DbSession, storage_service: StorageService, runtime_ref: str
 ) -> str:
@@ -70,9 +63,16 @@ async def resolve_runtime_bundle_ref(
         )
 
     try:
+        engine = item_type_from_hash(pin.file_hash)
+    except UnknownHashError as e:
+        raise InvalidVProgramRuntime(
+            f"runtime manifest {runtime_ref} pins an unrecognised file hash {pin.file_hash}"
+        ) from e
+
+    try:
         content = await storage_service.get_hash_content(
             pin.file_hash,
-            engine=_engine_for(pin.file_hash),
+            engine=engine,
             tries=2,
             timeout=15,
             use_network=True,
