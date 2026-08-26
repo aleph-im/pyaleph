@@ -79,6 +79,16 @@ CostComputableExecutableContent: TypeAlias = (
 ExtraVolumes = Sequence[Union[RefVolume, SizedVolume]]
 
 
+def _vprogram_artifact(
+    ref: str, name: str, estimated_size_mib: Optional[int]
+) -> Union[RefVolume, SizedVolume]:
+    if estimated_size_mib:
+        return SizedVolume(
+            CostType.EXECUTION_VPROGRAM_VOLUME, Decimal(estimated_size_mib), ref, name
+        )
+    return RefVolume(CostType.EXECUTION_VPROGRAM_VOLUME, ref, False, name)
+
+
 # TODO: Cache aggregate for 5 min
 def _get_settings_aggregate(session: DbSession) -> Union[AggregateDb, dict]:
     aggregate = get_aggregate_by_key(
@@ -471,23 +481,33 @@ def _get_execution_volumes_costs(
     elif isinstance(content, (VerifiableProgramContent, CostEstimationVProgramContent)):
         # Every artifact a V-PROGRAM boots from is a user-published STORE
         # that the CRN downloads in full: bill them all, measured from the
-        # pinned file size, against the per-CU disk allowance.
+        # pinned file size (or, before it is uploaded, from the caller's
+        # estimate), against the per-CU disk allowance.
+        workload = content.workload
         volumes.append(
-            RefVolume(
-                CostType.EXECUTION_VPROGRAM_VOLUME,
-                str(content.workload.ref),
-                False,
+            _vprogram_artifact(
+                str(workload.ref),
                 "workload",
+                getattr(workload, "estimated_size_mib", None),
             )
         )
         volumes.append(
-            RefVolume(
-                CostType.EXECUTION_VPROGRAM_VOLUME,
-                str(content.workload.hash_tree),
-                False,
+            _vprogram_artifact(
+                str(workload.hash_tree),
                 "workload:hash_tree",
+                getattr(workload, "estimated_hash_tree_size_mib", None),
             )
         )
+        runtime_estimate = getattr(content, "runtime_estimated_size_mib", None)
+        if runtime_estimate:
+            volumes.append(
+                SizedVolume(
+                    CostType.EXECUTION_VPROGRAM_VOLUME,
+                    Decimal(runtime_estimate),
+                    str(content.runtime.ref),
+                    "runtime",
+                )
+            )
 
     for i, volume in enumerate(content.volumes):
         # NOTE: There are legacy volumes with no "mount" property set
@@ -497,16 +517,15 @@ def _get_execution_volumes_costs(
         if isinstance(volume, VerifiedVolume):
             name = f"{name_prefix}:{volume.comment}"
             volumes.append(
-                RefVolume(
-                    CostType.EXECUTION_VPROGRAM_VOLUME, str(volume.ref), False, name
+                _vprogram_artifact(
+                    str(volume.ref), name, getattr(volume, "estimated_size_mib", None)
                 )
             )
             volumes.append(
-                RefVolume(
-                    CostType.EXECUTION_VPROGRAM_VOLUME,
+                _vprogram_artifact(
                     str(volume.hash_tree),
-                    False,
                     f"{name}:hash_tree",
+                    getattr(volume, "estimated_hash_tree_size_mib", None),
                 )
             )
             continue
@@ -883,6 +902,10 @@ def _get_size_from_file_ref(session: DbSession, file_hash: str) -> Optional[floa
     return float(Decimal(file.size) / MiB)
 
 
+def _float_or_none(value: Optional[int]) -> Optional[float]:
+    return float(value) if value else None
+
+
 def _get_estimated_size_from_content(
     cost: AccountCostsDb, content: CostComputableContent
 ) -> Optional[float]:
@@ -931,6 +954,24 @@ def _get_estimated_size_from_content(
                             return float(volume.estimated_size_mib)
             except (ValueError, IndexError):
                 pass
+
+    elif cost.type == CostType.EXECUTION_VPROGRAM_VOLUME:
+        if isinstance(content, CostEstimationVProgramContent):
+            if cost.name == "workload":
+                return _float_or_none(content.workload.estimated_size_mib)
+            if cost.name == "workload:hash_tree":
+                return _float_or_none(content.workload.estimated_hash_tree_size_mib)
+            if cost.name == "runtime":
+                return _float_or_none(content.runtime_estimated_size_mib)
+            if cost.name and cost.name.startswith("#"):
+                try:
+                    index = int(cost.name.split(":")[0][1:])
+                    verified_volume = content.volumes[index]
+                except (ValueError, IndexError):
+                    return None
+                if cost.name.endswith(":hash_tree"):
+                    return _float_or_none(verified_volume.estimated_hash_tree_size_mib)
+                return _float_or_none(verified_volume.estimated_size_mib)
 
     return None
 

@@ -1,4 +1,5 @@
 import datetime as dt
+import hashlib
 import json
 
 import pytest
@@ -182,6 +183,49 @@ async def test_vprogram_price_estimate(
     result = await response.json()
     assert float(result["cost"]) > 0
     assert result["payment_type"] == "credit"
+
+
+@pytest.mark.asyncio
+async def test_vprogram_price_estimate_with_sizes_includes_artifacts(
+    ccn_api_client,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    content = {
+        **VPROGRAM_CONTENT,
+        "workload": {**VPROGRAM_CONTENT["workload"], "estimated_size_mib": 50 * 1024},
+        "runtime_estimated_size_mib": 3 * 1024,
+    }
+    raw_content = json.dumps(content, separators=(",", ":"))
+    # The content differs from VPROGRAM_CONTENT (extra estimated_* fields),
+    # so its item_hash must be recomputed: the message-level validator checks
+    # item_hash == sha256(item_content).
+    item_hash = hashlib.sha256(raw_content.encode()).hexdigest()
+    storage_service = ccn_api_client.app[APP_STATE_STORAGE_SERVICE]
+    storage_service.get_message_content.return_value = MessageContent(
+        hash=item_hash,
+        source=ContentSource.INLINE,
+        value=content,
+        raw_value=raw_content,
+    )
+
+    message = {
+        "chain": "ETH",
+        "sender": VPROGRAM_CONTENT["address"],
+        "type": "V-PROGRAM",
+        "channel": "TEST",
+        "time": 1719502000.0,
+        "item_type": "inline",
+        "item_hash": item_hash,
+        "item_content": raw_content,
+    }
+    response = await ccn_api_client.post(PRICE_ESTIMATE_URI, json={"message": message})
+    assert response.status == 200, await response.text()
+    result = await response.json()
+    names = {d["name"] for d in result["detail"]}
+    assert {"workload", "runtime"} <= names
+    workload = next(d for d in result["detail"] if d["name"] == "workload")
+    assert workload["type"] == "EXECUTION_VPROGRAM_VOLUME"
 
 
 @pytest.mark.asyncio

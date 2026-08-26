@@ -46,6 +46,7 @@ from aleph.schemas.api.costs import (
 from aleph.schemas.cost_estimation_messages import (
     CostEstimationInstanceContent,
     CostEstimationStoreContent,
+    CostEstimationVProgramContent,
     validate_cost_estimation_message_content,
     validate_cost_estimation_message_dict,
 )
@@ -59,12 +60,16 @@ from aleph.services.cost import (
     get_total_and_detailed_costs_from_db,
 )
 from aleph.services.pricing_utils import get_pricing_timeline
+from aleph.services.vprogram_runtime import (
+    resolve_runtime_bundle_ref,
+    runtime_bundle_volume,
+)
 from aleph.toolkit.constants import MiB
 from aleph.toolkit.costs import format_cost_str
 from aleph.toolkit.ecdsa import require_auth_token
 from aleph.types.cost import CostType, resolve_price_type_key
 from aleph.types.db_session import DbSession
-from aleph.types.message_status import MessageStatus
+from aleph.types.message_status import InvalidVProgramRuntime, MessageStatus
 from aleph.web.controllers.app_state_getters import (
     get_session_factory_from_request,
     get_storage_service_from_request,
@@ -447,10 +452,27 @@ async def message_price_estimate(request: web.Request):
         )
         item_hash = message.item_hash
 
+        extra_volumes: list = []
+        if (
+            isinstance(content, CostEstimationVProgramContent)
+            and not content.runtime_estimated_size_mib
+        ):
+            try:
+                bundle_ref = await resolve_runtime_bundle_ref(
+                    session, storage_service, str(content.runtime.ref)
+                )
+                extra_volumes.append(runtime_bundle_volume(bundle_ref))
+            except InvalidVProgramRuntime as e:
+                # An estimate for an unpublished/invalid manifest is still an
+                # estimate: price without the bundle and say so.
+                LOGGER.warning(
+                    "Estimating %s without its runtime bundle: %s", item_hash, e
+                )
+
         try:
             payment_type = get_payment_type(content)
             required_tokens, costs = get_total_and_detailed_costs(
-                session, content, item_hash
+                session, content, item_hash, extra_volumes=extra_volumes
             )
 
         except RuntimeError as e:

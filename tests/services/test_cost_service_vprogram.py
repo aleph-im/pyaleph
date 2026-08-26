@@ -7,6 +7,7 @@ from messages.test_vprogram import VPROGRAM_CONTENT, VPROGRAM_ITEM_HASH
 
 from aleph.db.accessors.files import insert_message_file_pin
 from aleph.db.models import StoredFileDb
+from aleph.schemas.cost_estimation_messages import CostEstimationVProgramContent
 from aleph.services.cost import (
     _get_product_price_type,
     get_detailed_costs,
@@ -226,3 +227,50 @@ def test_vprogram_extra_volumes_are_billed(
     assert row.type == CostType.EXECUTION_VPROGRAM_VOLUME
     assert row.ref == BUNDLE_REF
     assert Decimal(row.cost_credit) > 0
+
+
+def test_vprogram_estimate_uses_estimated_sizes_without_pins(
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    content_dict = {
+        **VPROGRAM_CONTENT,
+        "workload": {
+            **VPROGRAM_CONTENT["workload"],
+            "estimated_size_mib": 50 * 1024,
+            "estimated_hash_tree_size_mib": 400,
+        },
+        "volumes": [
+            {
+                **VPROGRAM_CONTENT["volumes"][0],
+                "estimated_size_mib": 1024,
+                "estimated_hash_tree_size_mib": 8,
+            }
+        ],
+        "runtime_estimated_size_mib": 3 * 1024,
+    }
+    content = CostEstimationVProgramContent.model_validate(content_dict)
+
+    with session_factory() as session:
+        # Nothing is pinned: every size must come from the estimates.
+        costs = get_detailed_costs(session, content, item_hash=VPROGRAM_ITEM_HASH)
+
+    by_name = {c.name: c for c in costs if c.type == CostType.EXECUTION_VPROGRAM_VOLUME}
+    assert set(by_name) == {
+        "workload",
+        "workload:hash_tree",
+        "#0:model weights",
+        "#0:model weights:hash_tree",
+        "runtime",
+    }
+    pricing = ProductPricing.from_aggregate(
+        ProductPriceType.VPROGRAM, DEFAULT_PRICE_AGGREGATE
+    )
+    price_per_mib_credit = pricing.price.storage.credit / HOUR
+    footprint_mib = Decimal(50 * 1024 + 400 + 1024 + 8 + 3 * 1024)
+    allowance_mib = Decimal(2 * 20480)
+    execution = next(c for c in costs if c.type == CostType.EXECUTION)
+    total = sum(Decimal(c.cost_credit) for c in costs)
+    expected = (footprint_mib - allowance_mib) * price_per_mib_credit
+    assert abs(total - Decimal(execution.cost_credit) - expected) < Decimal("0.000001")

@@ -28,6 +28,7 @@ from aleph_message.models.execution.volume import (
     ImmutableVolume,
     PersistentVolume,
 )
+from aleph_message.models.execution.vprogram import VerifiedVolume, VerifiedWorkload
 from pydantic import Field, ValidationError, model_validator
 
 from aleph.schemas.base_messages import AlephBaseMessage, ContentType, MType
@@ -92,7 +93,24 @@ class CostEstimationStoreContent(StoreContent):
     estimated_size_mib: Optional[float] = None
 
 
+class CostEstimationVerifiedWorkload(VerifiedWorkload):
+    estimated_size_mib: Optional[int] = None
+    estimated_hash_tree_size_mib: Optional[int] = None
+
+
+class CostEstimationVerifiedVolume(VerifiedVolume):
+    estimated_size_mib: Optional[int] = None
+    estimated_hash_tree_size_mib: Optional[int] = None
+
+
 class CostEstimationVProgramContent(VerifiableProgramContent):
+    workload: CostEstimationVerifiedWorkload
+    # Type should be defined as Sequence instead of List in aleph-message
+    volumes: Sequence[CostEstimationVerifiedVolume] = Field(  # type: ignore[assignment]
+        default=[], description="Verified volumes bound into the workload"
+    )
+    # Size of the runtime bundle when its manifest is not published yet.
+    runtime_estimated_size_mib: Optional[int] = None
     # Fields required by VerifiableProgramContent but irrelevant for cost
     # estimation, mirroring CostEstimationInstanceContent.
     time: Optional[float] = None  # type: ignore[assignment]
