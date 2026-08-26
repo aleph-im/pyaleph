@@ -53,6 +53,7 @@ class ErrorCode(IntEnum):
     VM_AMEND_NOT_ALLOWED = 302
     VM_UPDATE_UPDATE = 303
     VM_VOLUME_TOO_SMALL = 304
+    VM_RUNTIME_INVALID = 305
     FORGET_NO_TARGET = 500
     FORGET_TARGET_NOT_FOUND = 501
     FORGET_FORGET = 502
@@ -275,6 +276,15 @@ class VmVolumeNotFound(RetryMessageException):
     """
 
     error_code = ErrorCode.VM_VOLUME_NOT_FOUND
+
+
+class InvalidVProgramRuntime(InvalidMessageException):
+    """
+    The V-PROGRAM runtime manifest cannot be read or does not name a valid
+    bundle. A CRN could not boot the message either, so it is rejected.
+    """
+
+    error_code = ErrorCode.VM_RUNTIME_INVALID
 
 
 class VmUpdateNotAllowed(InvalidMessageException):
