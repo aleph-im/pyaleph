@@ -62,7 +62,7 @@ from aleph.services.pricing_utils import get_pricing_timeline
 from aleph.toolkit.constants import MiB
 from aleph.toolkit.costs import format_cost_str
 from aleph.toolkit.ecdsa import require_auth_token
-from aleph.types.cost import CostType
+from aleph.types.cost import CostType, resolve_price_type_key
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import MessageStatus
 from aleph.web.controllers.app_state_getters import (
@@ -642,13 +642,16 @@ async def recalculate_message_costs(request: web.Request):
                 )
 
                 # Get the pricing for this specific product type
-                if product_type not in current_pricing_model:
+                pricing_key = resolve_price_type_key(
+                    product_type, current_pricing_model.keys()
+                )
+                if pricing_key not in current_pricing_model:
                     LOGGER.warning(
                         f"Product type {product_type} not found in pricing model for message {message.item_hash}"
                     )
                     continue
 
-                pricing = current_pricing_model[product_type]
+                pricing = current_pricing_model[pricing_key]
 
                 # Calculate new costs using the historical pricing model
                 new_costs = get_detailed_costs(

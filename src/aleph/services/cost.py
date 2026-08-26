@@ -252,9 +252,7 @@ def _get_product_price_type(
         )
 
     if isinstance(content, (VerifiableProgramContent, CostEstimationVProgramContent)):
-        # V-Programs are SEV-SNP confidential VMs; price them like
-        # confidential instances until they get a dedicated tier.
-        return ProductPriceType.INSTANCE_CONFIDENTIAL
+        return ProductPriceType.VPROGRAM
 
     return _get_product_instance_type(content, settings, price_aggregate)
 
