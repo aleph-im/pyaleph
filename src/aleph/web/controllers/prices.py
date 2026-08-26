@@ -75,7 +75,11 @@ from aleph.toolkit.costs import format_cost_str
 from aleph.toolkit.ecdsa import require_auth_token
 from aleph.types.cost import CostType, RefVolume, SizedVolume, resolve_price_type_key
 from aleph.types.db_session import DbSession
-from aleph.types.message_status import InvalidVProgramRuntime, MessageStatus
+from aleph.types.message_status import (
+    InvalidVProgramRuntime,
+    MessageStatus,
+    VmVolumeNotFound,
+)
 from aleph.web.controllers.app_state_getters import (
     get_session_factory_from_request,
     get_storage_service_from_request,
@@ -468,9 +472,10 @@ async def message_price_estimate(request: web.Request):
                     session, storage_service, str(content.runtime.ref)
                 )
                 extra_volumes.append(runtime_bundle_volume(bundle_ref))
-            except InvalidVProgramRuntime as e:
-                # An estimate for an unpublished/invalid manifest is still an
-                # estimate: price without the bundle and say so.
+            except (InvalidVProgramRuntime, VmVolumeNotFound) as e:
+                # An estimate for an unpublished, unreachable or invalid
+                # manifest is still an estimate: price without the bundle and
+                # say so.
                 LOGGER.warning(
                     "Estimating %s without its runtime bundle: %s", item_hash, e
                 )
