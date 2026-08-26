@@ -274,3 +274,77 @@ def test_vprogram_estimate_uses_estimated_sizes_without_pins(
     total = sum(Decimal(c.cost_credit) for c in costs)
     expected = (footprint_mib - allowance_mib) * price_per_mib_credit
     assert abs(total - Decimal(execution.cost_credit) - expected) < Decimal("0.000001")
+
+
+def test_vprogram_runtime_estimate_wins_over_an_extra_runtime_volume(
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """Cost rows are keyed by (type, name): a caller-supplied `runtime`
+    volume must not add a second row next to the one already built from
+    `runtime_estimated_size_mib`. The estimate wins."""
+    runtime_estimate_mib = 3 * 1024
+    content_dict = {
+        **VPROGRAM_CONTENT,
+        "runtime_estimated_size_mib": runtime_estimate_mib,
+    }
+    content = CostEstimationVProgramContent.model_validate(content_dict)
+
+    with session_factory() as session:
+        # Pinned at a size nothing like the estimate, so the surviving row is
+        # unambiguous.
+        pin_file(session, BUNDLE_REF, 50 * 1024 * MIB)
+        session.commit()
+
+        costs = get_detailed_costs(
+            session,
+            content,
+            item_hash=VPROGRAM_ITEM_HASH,
+            extra_volumes=[
+                RefVolume(
+                    CostType.EXECUTION_VPROGRAM_VOLUME, BUNDLE_REF, False, "runtime"
+                )
+            ],
+        )
+
+    runtime_rows = [c for c in costs if c.name == "runtime"]
+    assert len(runtime_rows) == 1
+    row = runtime_rows[0]
+    assert row.type == CostType.EXECUTION_VPROGRAM_VOLUME
+    # Sized from the estimate, and pointing at the manifest ref rather than
+    # the bundle the dropped extra volume named.
+    assert row.ref == VPROGRAM_CONTENT["runtime"]["ref"]
+    pricing = ProductPricing.from_aggregate(
+        ProductPriceType.VPROGRAM, DEFAULT_PRICE_AGGREGATE
+    )
+    price_per_mib_credit = pricing.price.storage.credit / HOUR
+    expected = Decimal(runtime_estimate_mib) * price_per_mib_credit
+    assert abs(Decimal(row.cost_credit) - expected) < Decimal("0.000001")
+
+
+def test_vprogram_verified_volume_without_comment_gets_a_fallback_name(
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """An empty `comment` must not produce a bare `#0:` row name: fall back
+    to the cost type, as the immutable-volume branch does for `mount`."""
+    content_dict = {
+        **VPROGRAM_CONTENT,
+        "volumes": [{**VPROGRAM_CONTENT["volumes"][0], "comment": ""}],
+    }
+    content = VerifiableProgramContent.model_validate(content_dict)
+
+    with session_factory() as session:
+        volume = VPROGRAM_CONTENT["volumes"][0]
+        pin_file(session, volume["ref"], 10 * MIB)
+        pin_file(session, volume["hash_tree"], 10 * MIB)
+        session.commit()
+
+        costs = get_detailed_costs(session, content, item_hash=VPROGRAM_ITEM_HASH)
+
+    names = {c.name for c in costs if c.type == CostType.EXECUTION_VPROGRAM_VOLUME}
+    assert f"#0:{CostType.EXECUTION_VPROGRAM_VOLUME}" in names
+    assert f"#0:{CostType.EXECUTION_VPROGRAM_VOLUME}:hash_tree" in names
+    assert "#0:" not in names

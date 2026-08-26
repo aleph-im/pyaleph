@@ -30,6 +30,8 @@ from aleph.schemas.cost_estimation_messages import (
     CostEstimationInstanceContent,
     CostEstimationProgramContent,
     CostEstimationStoreContent,
+    CostEstimationVerifiedVolume,
+    CostEstimationVerifiedWorkload,
     CostEstimationVProgramContent,
 )
 from aleph.toolkit.constants import (
@@ -484,21 +486,32 @@ def _get_execution_volumes_costs(
         # pinned file size (or, before it is uploaded, from the caller's
         # estimate), against the per-CU disk allowance.
         workload = content.workload
+        estimated_workload = (
+            workload if isinstance(workload, CostEstimationVerifiedWorkload) else None
+        )
         volumes.append(
             _vprogram_artifact(
                 str(workload.ref),
                 "workload",
-                getattr(workload, "estimated_size_mib", None),
+                estimated_workload.estimated_size_mib if estimated_workload else None,
             )
         )
         volumes.append(
             _vprogram_artifact(
                 str(workload.hash_tree),
                 "workload:hash_tree",
-                getattr(workload, "estimated_hash_tree_size_mib", None),
+                (
+                    estimated_workload.estimated_hash_tree_size_mib
+                    if estimated_workload
+                    else None
+                ),
             )
         )
-        runtime_estimate = getattr(content, "runtime_estimated_size_mib", None)
+        runtime_estimate = (
+            content.runtime_estimated_size_mib
+            if isinstance(content, CostEstimationVProgramContent)
+            else None
+        )
         if runtime_estimate:
             volumes.append(
                 SizedVolume(
@@ -515,17 +528,30 @@ def _get_execution_volumes_costs(
         name_prefix = f"#{i}"
 
         if isinstance(volume, VerifiedVolume):
-            name = f"{name_prefix}:{volume.comment}"
+            # The comment is the volume's human-readable name; fall back to
+            # the cost type when it is empty, as the immutable branch does.
+            name = (
+                f"{name_prefix}:{volume.comment or CostType.EXECUTION_VPROGRAM_VOLUME}"
+            )
+            estimated_volume = (
+                volume if isinstance(volume, CostEstimationVerifiedVolume) else None
+            )
             volumes.append(
                 _vprogram_artifact(
-                    str(volume.ref), name, getattr(volume, "estimated_size_mib", None)
+                    str(volume.ref),
+                    name,
+                    estimated_volume.estimated_size_mib if estimated_volume else None,
                 )
             )
             volumes.append(
                 _vprogram_artifact(
                     str(volume.hash_tree),
                     f"{name}:hash_tree",
-                    getattr(volume, "estimated_hash_tree_size_mib", None),
+                    (
+                        estimated_volume.estimated_hash_tree_size_mib
+                        if estimated_volume
+                        else None
+                    ),
                 )
             )
             continue
@@ -573,7 +599,21 @@ def _get_execution_volumes_costs(
                 ),
             )
 
-    volumes.extend(extra_volumes)
+    # Cost rows are keyed by (type, name): an extra volume that collides with
+    # a row built above (e.g. a `runtime` row already sized from an estimate)
+    # would violate that key, so the caller-supplied one is dropped.
+    seen = {(volume.cost_type, volume.name) for volume in volumes}
+    for extra_volume in extra_volumes:
+        key = (extra_volume.cost_type, extra_volume.name)
+        if key in seen:
+            logger.debug(
+                "Skipping extra volume %s/%s: a row with that name already exists",
+                extra_volume.cost_type,
+                extra_volume.name,
+            )
+            continue
+        seen.add(key)
+        volumes.append(extra_volume)
 
     price_per_mib = pricing.price.storage.holding
     price_per_mib_second = pricing.price.storage.payg / HOUR
