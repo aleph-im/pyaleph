@@ -652,6 +652,12 @@ async def recalculate_message_costs(request: web.Request):
                     continue
 
                 pricing = current_pricing_model[pricing_key]
+                if pricing.type != product_type:
+                    # The pricing model fell back to another product's
+                    # numbers (e.g. a historical aggregate predating the
+                    # `vprogram` key); keep the message's own product type
+                    # so cost rows still identify it correctly.
+                    pricing = pricing.with_type(product_type)
 
                 # Calculate new costs using the historical pricing model
                 new_costs = get_detailed_costs(

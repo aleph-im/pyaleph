@@ -109,6 +109,21 @@ class ProductPricing:
         self.compute_unit = compute_unit
         self.tiers = tiers
 
+    def with_type(self, price_type: ProductPriceType) -> "ProductPricing":
+        """Return a copy of this pricing with `type` replaced.
+
+        Used when a pricing model lookup fell back to another product's
+        entry (see `resolve_price_type_key`): the numbers (price,
+        compute_unit, tiers) are kept as-is, only the reported type changes
+        so callers still see the product they actually asked about.
+        """
+        return ProductPricing(
+            price_type=price_type,
+            price=self.price,
+            compute_unit=self.compute_unit,
+            tiers=self.tiers,
+        )
+
     @staticmethod
     def from_aggregate(
         price_type: ProductPriceType, aggregate: Union[AggregateDb, dict]

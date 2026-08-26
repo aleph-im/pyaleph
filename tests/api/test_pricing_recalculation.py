@@ -491,6 +491,96 @@ class TestRecalculateMessageCosts:
             ]
             assert processed_order == expected_order
 
+    @pytest.mark.asyncio
+    @patch("aleph.web.controllers.prices.get_session_factory_from_request")
+    async def test_recalculate_vprogram_keeps_type_on_fallback(
+        self, mock_get_session, session_factory, mock_request_factory
+    ):
+        """A V-PROGRAM message recalculated against a historical pricing
+        model that predates the `vprogram` key must still be priced with
+        pricing.type == VPROGRAM: the numbers are borrowed from
+        instance_confidential, but the product identity must not silently
+        change to INSTANCE_CONFIDENTIAL (see resolve_price_type_key /
+        ProductPricing.with_type).
+        """
+        from aleph_message.models import MessageType
+        from messages.test_vprogram import VPROGRAM_CONTENT, VPROGRAM_ITEM_HASH
+
+        from aleph.db.models import MessageStatusDb
+        from aleph.types.message_status import MessageStatus
+
+        base_time = dt.datetime(2024, 1, 1, 10, 0, 0, tzinfo=dt.timezone.utc)
+
+        vprogram_message = MessageDb(
+            item_hash=VPROGRAM_ITEM_HASH,
+            type=MessageType.v_program,
+            chain="ETH",
+            sender=VPROGRAM_CONTENT["address"],
+            item_type="inline",
+            content=VPROGRAM_CONTENT,
+            time=base_time,
+            size=1024,
+        )
+        vprogram_message.reception_time = vprogram_message.time
+
+        # Historical pricing update that only ever set instance_confidential,
+        # i.e. from before the vprogram product type existed on chain.
+        pricing_element = AggregateElementDb(
+            item_hash="pricing_vprogram_fallback",
+            key=PRICE_AGGREGATE_KEY,
+            owner=PRICE_AGGREGATE_OWNER,
+            content={
+                ProductPriceType.INSTANCE_CONFIDENTIAL: {
+                    "price": {
+                        "storage": {
+                            "holding": "0.05",
+                            "credit": "0.17967489030626108",
+                        },
+                        "compute_unit": {"holding": "2000", "credit": "28500"},
+                    },
+                    "compute_unit": {
+                        "vcpus": 1,
+                        "disk_mib": 20480,
+                        "memory_mib": 2048,
+                    },
+                }
+            },
+            creation_datetime=base_time - dt.timedelta(minutes=30),
+        )
+
+        with session_factory() as session:
+            session.add(vprogram_message)
+            session.add(pricing_element)
+            session.add(
+                MessageStatusDb(
+                    item_hash=vprogram_message.item_hash,
+                    status=MessageStatus.PROCESSED,
+                    reception_time=vprogram_message.time,
+                )
+            )
+            session.commit()
+
+        mock_get_session.return_value = session_factory
+        request = mock_request_factory()
+
+        captured_pricing_types = {}
+
+        def mock_get_costs(session, content, item_hash, pricing):
+            captured_pricing_types[item_hash] = pricing.type
+            return []
+
+        with patch(
+            "aleph.web.controllers.prices.get_detailed_costs",
+            side_effect=mock_get_costs,
+        ):
+            response = await recalculate_message_costs.__wrapped__(request)
+
+        assert response.status == 200
+        response_data = json.loads(response.text)
+        assert response_data["recalculated_count"] == 1
+        assert not response_data.get("errors")
+        assert captured_pricing_types[VPROGRAM_ITEM_HASH] == ProductPriceType.VPROGRAM
+
 
 class TestPricingTimelineIntegration:
     """Integration tests for the complete pricing timeline feature."""
