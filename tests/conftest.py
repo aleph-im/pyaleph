@@ -17,6 +17,7 @@ import alembic.config
 import pytest
 import pytest_asyncio
 import pytz
+import sqlalchemy.exc
 from aleph_message.models import (
     Chain,
     ExecutableContent,
@@ -154,6 +155,9 @@ def snapshot_seed_tables(engine: Engine) -> tuple[List[str], List[str]]:
 def rebuild_schema(engine: Engine, config: Config) -> tuple[List[str], List[str]]:
     """Drop and re-migrate the public schema, then snapshot the seeds."""
     with engine.begin() as conn:
+        # DROP SCHEMA takes an ACCESS EXCLUSIVE lock on every object it removes;
+        # fail with a named error instead of hanging if a test left one open.
+        conn.execute(text("SET LOCAL lock_timeout = '30s'"))
         conn.execute(text("drop schema public cascade"))
         conn.execute(text("create schema public"))
     run_db_migrations(config=config)
@@ -170,7 +174,10 @@ def _non_empty_tables(conn, tables: List[str]) -> List[str]:
     if not tables:
         return []
     probes = " UNION ALL ".join(
-        f"SELECT '{table}' AS table_name WHERE EXISTS (SELECT 1 FROM public.\"{table}\")"
+        "SELECT '{literal}' AS table_name "
+        'WHERE EXISTS (SELECT 1 FROM public."{identifier}")'.format(
+            literal=table.replace("'", "''"), identifier=table
+        )
         for table in tables
     )
     return list(conn.execute(text(probes)).scalars().all())
@@ -195,13 +202,28 @@ def reset_database(migrated_db: MigratedDb) -> bool:
     the caller then has to fall back to a full rebuild. Tables a test *created*
     are dropped here, so that case does not need a rebuild.
 
-    Drift detection compares table *name sets* only. A test that alters an
-    existing table (adds or drops a column, index, constraint or trigger)
-    leaves that change in place for the tests that follow; mark such a test
-    `fresh_schema` to force a rebuild instead.
+    Drift detection compares table *name sets* only. Everything else a test
+    changes about the schema survives into the tests that follow: columns,
+    indexes, constraints, triggers, functions, views, types, extensions and
+    standalone sequences (as opposed to sequences owned by a table column,
+    whose values are rewound below). Mark such a test `fresh_schema` to force
+    a rebuild instead; that marker is the escape hatch for all of them.
+
+    Failure mode to recognise: if a test leaks a connection sitting
+    idle-in-transaction, it holds locks that this reset needs, so every
+    subsequent reset fails after 5 s with `lock_not_available`. The first such
+    error names the test that leaked; the ones after it are collateral.
     """
     with migrated_db.engine.begin() as conn:
-        conn.execute(text("SET LOCAL session_replication_role = replica"))
+        try:
+            conn.execute(text("SET LOCAL session_replication_role = replica"))
+        except sqlalchemy.exc.ProgrammingError as e:
+            raise RuntimeError(
+                "the test database role must be a superuser: the fast reset "
+                "relies on session_replication_role to suppress foreign key "
+                "triggers while it empties the tables (CI's POSTGRES_USER "
+                "'aleph' is the superuser of its postgres instance)"
+            ) from e
         # Turn a reset blocked by a transaction some earlier test left open
         # into a named error instead of an indefinite hang.
         conn.execute(text("SET LOCAL lock_timeout = '5s'"))
@@ -243,19 +265,26 @@ def reset_database(migrated_db: MigratedDb) -> bool:
             conn.execute(text(f'ALTER SEQUENCE public."{sequence}" RESTART'))
         # Re-enable whatever a test disabled, discovered from the catalog so
         # that a new user trigger is covered without touching this fixture.
+        # Only tables in `public` holding a user trigger that is actually
+        # disabled ('D'); triggers set to ALWAYS ('A') or REPLICA ('R') are left
+        # alone rather than demoted to 'O'.
         # regclass::text is already quoted as an identifier where it needs to be.
         disabled_trigger_tables = (
             conn.execute(
                 text(
-                    "SELECT DISTINCT tgrelid::regclass::text FROM pg_trigger "
-                    "WHERE NOT tgisinternal AND tgenabled <> 'O'"
+                    "SELECT DISTINCT tgrelid::regclass::text FROM pg_trigger t "
+                    "JOIN pg_class c ON c.oid = t.tgrelid "
+                    "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "WHERE n.nspname = 'public' AND NOT t.tgisinternal "
+                    "AND t.tgenabled = 'D'"
                 )
             )
             .scalars()
             .all()
         )
         for table in disabled_trigger_tables:
-            conn.execute(text(f"ALTER TABLE {table} ENABLE TRIGGER ALL"))
+            # USER, not ALL: never touch the internal foreign key triggers.
+            conn.execute(text(f"ALTER TABLE {table} ENABLE TRIGGER USER"))
     return True
 
 
@@ -273,8 +302,10 @@ def migrated_db():
 
     tables, seed_tables = rebuild_schema(engine, config)
 
-    # Running migrations pollutes aleph.config.app_config by loading config.yml.
-    # Replace the global with a completely fresh test config object.
+    # Defensive: migrations are run with `-x db_url=...`, and env.py returns the
+    # URL before it ever calls get_config(), so config.yml is no longer loaded
+    # into the global config. Reinstall a fresh test config anyway so that a
+    # future change to env.py cannot leak node settings into the test run.
     aleph.config.app_config = _create_test_config()
 
     yield MigratedDb(engine=engine, tables=tables, seed_tables=seed_tables)
@@ -300,10 +331,17 @@ def session_factory(request, mock_config, migrated_db: MigratedDb):
         migrated_db.tables, migrated_db.seed_tables = rebuild_schema(
             migrated_db.engine, config
         )
-        # Running migrations pollutes aleph.config.app_config by loading
-        # config.yml; restore the fresh test config as before.
+        # Defensive, as in `migrated_db`: env.py no longer loads config.yml
+        # when the URL comes from `-x db_url=...`, but reinstalling a fresh
+        # test config keeps that from mattering.
         aleph.config.app_config = _create_test_config()
-    return make_session_factory(migrated_db.engine)
+    yield make_session_factory(migrated_db.engine)
+    # A connection still checked out here is one the test never returned to the
+    # pool. It would sit idle-in-transaction holding locks and make the *next*
+    # test's reset fail with lock_not_available, so name the culprit here.
+    assert (
+        migrated_db.engine.pool.checkedout() == 0
+    ), "a test leaked a checked-out DB connection"
 
 
 def _create_test_config() -> Config:
@@ -330,10 +368,11 @@ class _ConfigProxy:
     """
     A proxy that always delegates to aleph.config.app_config.
 
-    Running migrations for tests updates the global config values by loading config.yml.
-    The session factory fixture does replace the global object with a fresh config for tests afterward,
-    but if mock_config() returns a Config object directly it will be the one that has been modified.
-    To avoid this, we use a proxy pattern to always return the current global config in mock_config().
+    The DB fixtures reinstall a fresh `aleph.config.app_config` after migrating,
+    now only defensively: migrations run with `-x db_url=...` and env.py returns
+    before `get_config()`, so config.yml is not loaded into the global config any
+    more. Returning a proxy instead of a Config object from mock_config() means
+    a test always sees whatever the current global config is, whoever replaced it.
     """
 
     def __getattr__(self, name):
