@@ -50,7 +50,7 @@ def reprocess_failed_instance_messages():
             """
         UPDATE message_status
           SET status = 'pending'
-          FROM aleph.public.rejected_messages rm
+          FROM rejected_messages rm
           WHERE message_status.item_hash = rm.item_hash
             AND rm.message ->> 'type' = 'INSTANCE'
         """
