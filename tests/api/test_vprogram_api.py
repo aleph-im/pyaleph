@@ -187,6 +187,59 @@ async def test_vprogram_price_estimate(
     result = await response.json()
     assert float(result["cost"]) > 0
     assert result["payment_type"] == "credit"
+    # Nothing is pinned, so the runtime manifest cannot be resolved to its
+    # bundle: the estimate is missing the bundle and must say so instead of
+    # quietly under-pricing.
+    assert result["warnings"]
+    assert any(
+        VPROGRAM_CONTENT["runtime"]["ref"] in warning for warning in result["warnings"]
+    )
+    # The warning carries the reason, not just the exception class name.
+    assert "InvalidVProgramRuntime" not in " ".join(result["warnings"])
+
+
+@pytest.mark.asyncio
+async def test_vprogram_price_estimate_warns_when_the_bundle_is_not_pinned(
+    ccn_api_client,
+    mocker,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    # The manifest resolves, but the bundle file itself is not pinned here:
+    # _get_volumes_costs drops the row, so the total is missing the
+    # V-PROGRAM's largest artifact. That must be reported.
+    mocker.patch(
+        "aleph.web.controllers.prices.resolve_runtime_bundle_ref",
+        new=mocker.AsyncMock(return_value=BUNDLE_REF),
+    )
+
+    raw_content = json.dumps(VPROGRAM_CONTENT, separators=(",", ":"))
+    storage_service = ccn_api_client.app[APP_STATE_STORAGE_SERVICE]
+    storage_service.get_message_content.return_value = MessageContent(
+        hash=VPROGRAM_ITEM_HASH,
+        source=ContentSource.INLINE,
+        value=VPROGRAM_CONTENT,
+        raw_value=raw_content,
+    )
+
+    message = {
+        "chain": "ETH",
+        "sender": VPROGRAM_CONTENT["address"],
+        "type": "V-PROGRAM",
+        "channel": "TEST",
+        "time": 1719502000.0,
+        "item_type": "inline",
+        "item_hash": VPROGRAM_ITEM_HASH,
+        "item_content": raw_content,
+    }
+    response = await ccn_api_client.post(PRICE_ESTIMATE_URI, json={"message": message})
+    assert response.status == 200, await response.text()
+    result = await response.json()
+
+    assert not [d for d in result["detail"] if d["name"] == "runtime"]
+    assert result["warnings"] == [
+        f"runtime bundle not priced: bundle file {BUNDLE_REF} is not pinned on this node"
+    ]
 
 
 @pytest.mark.asyncio
@@ -276,9 +329,102 @@ async def test_vprogram_price_estimate_with_runtime_size_skips_resolver(
     result = await response.json()
 
     resolver.assert_not_called()
+    assert result["warnings"] == []
     runtime_rows = [d for d in result["detail"] if d["name"] == "runtime"]
     assert len(runtime_rows) == 1
     assert runtime_rows[0]["size_mib"] == 3 * 1024
+
+
+def insert_manifest_pin(session: DbSession, size_bytes: int) -> None:
+    """Pin the runtime manifest STORE the message points at."""
+    session.add(
+        StoredFileDb(hash=MANIFEST_FILE_HASH, size=size_bytes, type=FileType.FILE)
+    )
+    session.flush()
+    insert_message_file_pin(
+        session=session,
+        file_hash=MANIFEST_FILE_HASH,
+        owner=SENDER,
+        item_hash=VPROGRAM_CONTENT["runtime"]["ref"],
+        ref=None,
+        created=dt.datetime(2023, 1, 1, tzinfo=dt.timezone.utc),
+    )
+
+
+async def _post_vprogram_estimate(ccn_api_client, content: dict):
+    raw_content = json.dumps(content, separators=(",", ":"))
+    item_hash = hashlib.sha256(raw_content.encode()).hexdigest()
+    storage_service = ccn_api_client.app[APP_STATE_STORAGE_SERVICE]
+    storage_service.get_message_content.return_value = MessageContent(
+        hash=item_hash,
+        source=ContentSource.INLINE,
+        value=content,
+        raw_value=raw_content,
+    )
+    message = {
+        "chain": "ETH",
+        "sender": VPROGRAM_CONTENT["address"],
+        "type": "V-PROGRAM",
+        "channel": "TEST",
+        "time": 1719502000.0,
+        "item_type": "inline",
+        "item_hash": item_hash,
+        "item_content": raw_content,
+    }
+    return await ccn_api_client.post(PRICE_ESTIMATE_URI, json={"message": message})
+
+
+@pytest.mark.asyncio
+async def test_vprogram_price_estimate_detail_reports_the_estimate_not_the_pin(
+    ccn_api_client,
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    # The manifest STORE is pinned (a few hundred bytes of JSON), but the
+    # cost was computed from runtime_estimated_size_mib. The detail row must
+    # report the size the row was priced from, not the pinned manifest's.
+    with session_factory() as session:
+        insert_manifest_pin(session, size_bytes=512)
+        session.commit()
+
+    response = await _post_vprogram_estimate(
+        ccn_api_client,
+        {**VPROGRAM_CONTENT, "runtime_estimated_size_mib": 3072},
+    )
+    assert response.status == 200, await response.text()
+    result = await response.json()
+
+    runtime_rows = [d for d in result["detail"] if d["name"] == "runtime"]
+    assert len(runtime_rows) == 1
+    assert runtime_rows[0]["size_mib"] == 3072
+
+
+@pytest.mark.asyncio
+async def test_vprogram_price_estimate_zero_runtime_size_is_an_estimate(
+    ccn_api_client,
+    mocker,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    # 0 MiB is an estimate, not a missing one: the resolver must stay
+    # untouched and the runtime row must be billed (and reported) at 0.
+    resolver = mocker.patch(
+        "aleph.web.controllers.prices.resolve_runtime_bundle_ref",
+        new=mocker.AsyncMock(return_value=BUNDLE_REF),
+    )
+
+    response = await _post_vprogram_estimate(
+        ccn_api_client,
+        {**VPROGRAM_CONTENT, "runtime_estimated_size_mib": 0},
+    )
+    assert response.status == 200, await response.text()
+    result = await response.json()
+
+    resolver.assert_not_called()
+    runtime_rows = [d for d in result["detail"] if d["name"] == "runtime"]
+    assert len(runtime_rows) == 1
+    assert runtime_rows[0]["size_mib"] == 0
 
 
 @pytest.mark.asyncio
@@ -326,6 +472,7 @@ async def test_vprogram_price_estimate_without_runtime_size_resolves_bundle(
     result = await response.json()
 
     resolver.assert_awaited_once()
+    assert result["warnings"] == []
     runtime_rows = [d for d in result["detail"] if d["name"] == "runtime"]
     assert len(runtime_rows) == 1
     assert runtime_rows[0]["size_mib"] == pytest.approx(bundle_size_mib)

@@ -119,7 +119,10 @@ def _volume_from_cost_name(
 def _vprogram_artifact(
     ref: str, name: str, estimated_size_mib: Optional[int]
 ) -> Union[RefVolume, SizedVolume]:
-    if estimated_size_mib:
+    # `is not None`, not truthiness: a caller who estimates an artifact at 0
+    # MiB has given an estimate, and must not silently fall back to whatever
+    # is pinned under the same ref.
+    if estimated_size_mib is not None:
         return SizedVolume(
             CostType.EXECUTION_VPROGRAM_VOLUME, Decimal(estimated_size_mib), ref, name
         )
@@ -547,7 +550,7 @@ def _get_execution_volumes_costs(
             if isinstance(content, CostEstimationVProgramContent)
             else None
         )
-        if runtime_estimate:
+        if runtime_estimate is not None:
             volumes.append(
                 SizedVolume(
                     CostType.EXECUTION_VPROGRAM_VOLUME,
@@ -975,8 +978,13 @@ def _get_size_from_file_ref(session: DbSession, file_hash: str) -> Optional[floa
     return float(Decimal(file.size) / MiB)
 
 
-def _float_or_none(value: Optional[int]) -> Optional[float]:
-    return float(value) if value else None
+def _optional_float(value: Optional[int]) -> Optional[float]:
+    """float(value), or None when there is no value at all.
+
+    Zero is a value: an artifact estimated at 0 MiB is billed at 0, so the
+    detail row must report 0 rather than "no estimate".
+    """
+    return float(value) if value is not None else None
 
 
 def _get_estimated_size_from_content(
@@ -1023,16 +1031,16 @@ def _get_estimated_size_from_content(
     elif cost.type == CostType.EXECUTION_VPROGRAM_VOLUME:
         if isinstance(content, CostEstimationVProgramContent):
             if cost.name == "workload":
-                return _float_or_none(content.workload.estimated_size_mib)
+                return _optional_float(content.workload.estimated_size_mib)
             if cost.name == "workload:hash_tree":
-                return _float_or_none(content.workload.estimated_hash_tree_size_mib)
+                return _optional_float(content.workload.estimated_hash_tree_size_mib)
             if cost.name == "runtime":
-                return _float_or_none(content.runtime_estimated_size_mib)
+                return _optional_float(content.runtime_estimated_size_mib)
             verified_volume = _volume_from_cost_name(content.volumes, cost.name)
             if verified_volume is not None:
                 if cost.name and cost.name.endswith(":hash_tree"):
-                    return _float_or_none(verified_volume.estimated_hash_tree_size_mib)
-                return _float_or_none(verified_volume.estimated_size_mib)
+                    return _optional_float(verified_volume.estimated_hash_tree_size_mib)
+                return _optional_float(verified_volume.estimated_size_mib)
 
     return None
 
@@ -1054,7 +1062,8 @@ def get_cost_component_size_mib(
     - EXECUTION_VOLUME_PERSISTENT
     - EXECUTION_VOLUME_INMUTABLE
 
-    Priority: Real file size first, then estimated size from content as fallback.
+    Priority: the estimate the cost was computed from (estimation content
+    only), then the real file size behind the ref.
 
     Args:
         session: Database session
@@ -1099,7 +1108,17 @@ def get_cost_component_size_mib(
     }
 
     if cost.type in ref_based_types:
-        # Try to get real size from file (only if session is available).
+        # A caller-supplied estimate wins over the pin, because the cost was
+        # computed from it: estimation content is billed through SizedVolume,
+        # never from the pinned file, so reporting the pinned size here would
+        # show a size the row was not priced from. Only estimation content
+        # ever yields a value; every other content type falls through.
+        if content is not None:
+            estimated_size = _get_estimated_size_from_content(cost, content)
+            if estimated_size is not None:
+                return estimated_size
+
+        # Otherwise, the real file size.
         # cost.ref (and cost.item_hash for STORAGE) is the item_hash of the linked
         # STORE message, not the file content hash.  Resolve through file_pins first.
         if session:
@@ -1112,10 +1131,6 @@ def get_cost_component_size_mib(
                     size = _get_size_from_file_ref(session, pin.file_hash)
                     if size is not None:
                         return size
-
-        # Fall back to estimated size from content
-        if content:
-            return _get_estimated_size_from_content(cost, content)
 
     # For all other types (EXECUTION, EXECUTION_VOLUME_DISCOUNT), return None
     return None

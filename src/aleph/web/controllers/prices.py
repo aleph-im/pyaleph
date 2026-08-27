@@ -78,6 +78,7 @@ from aleph.types.cost import CostType, RefVolume, SizedVolume, resolve_price_typ
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import (
     InvalidVProgramRuntime,
+    MessageProcessingException,
     MessageStatus,
     VmVolumeNotFound,
 )
@@ -166,6 +167,20 @@ async def get_executable_message(session: DbSession, item_hash: ItemHash) -> Mes
     return message
 
 
+def _message_processing_error_detail(exception: MessageProcessingException) -> str:
+    """The human-readable reason behind a MessageProcessingException.
+
+    Its __str__ renders the class name alone; the message the raiser wrote
+    lives in the exception args, which details() exposes.
+    """
+    details = exception.details()
+    errors = details.get("errors") if details else None
+    if errors:
+        return "; ".join(str(error) for error in errors)
+
+    return type(exception).__name__
+
+
 def _make_cost_detail(
     cost: AccountCostsDb, size_mib: Optional[float]
 ) -> EstimatedCostDetailResponse:
@@ -184,6 +199,7 @@ def _build_costs_response(
     required_tokens: Decimal,
     charged_address: str,
     costs_with_sizes: Iterable[Tuple[AccountCostsDb, Optional[float]]],
+    warnings: Optional[Sequence[str]] = None,
 ) -> web.Response:
     model = {
         "required_tokens": float(required_tokens),
@@ -193,6 +209,7 @@ def _build_costs_response(
             _make_cost_detail(cost, size_mib) for cost, size_mib in costs_with_sizes
         ],
         "charged_address": charged_address,
+        "warnings": list(warnings or []),
     }
 
     response = EstimatedCostsResponse.model_validate(model)
@@ -463,10 +480,13 @@ async def message_price_estimate(request: web.Request):
         )
         item_hash = message.item_hash
 
+        warnings: List[str] = []
         extra_volumes: List[Union[RefVolume, SizedVolume]] = []
+        bundle_ref: Optional[str] = None
+        is_vprogram_estimate = isinstance(content, CostEstimationVProgramContent)
         if (
             isinstance(content, CostEstimationVProgramContent)
-            and not content.runtime_estimated_size_mib
+            and content.runtime_estimated_size_mib is None
         ):
             try:
                 bundle_ref = await resolve_runtime_bundle_ref(
@@ -477,9 +497,11 @@ async def message_price_estimate(request: web.Request):
                 # An estimate for an unpublished, unreachable or invalid
                 # manifest is still an estimate: price without the bundle and
                 # say so.
+                detail = _message_processing_error_detail(e)
                 LOGGER.warning(
-                    "Estimating %s without its runtime bundle: %s", item_hash, e
+                    "Estimating %s without its runtime bundle: %s", item_hash, detail
                 )
+                warnings.append(f"runtime bundle not priced: {detail}")
 
         try:
             payment_type = get_payment_type(content)
@@ -490,6 +512,19 @@ async def message_price_estimate(request: web.Request):
         except RuntimeError as e:
             raise web.HTTPNotFound(reason=str(e))
 
+        # The bundle resolved, but _get_volumes_costs silently skips a
+        # RefVolume whose file is not pinned here: the total is missing what
+        # is usually a V-PROGRAM's largest artifact.
+        if (
+            is_vprogram_estimate
+            and not warnings
+            and bundle_ref is not None
+            and not any(cost.name == "runtime" for cost in costs)
+        ):
+            warnings.append(
+                f"runtime bundle not priced: bundle file {bundle_ref} is not pinned on this node"
+            )
+
         # Enrich detail with size information
         costs_with_sizes = [
             (cost, get_cost_component_size_mib(session, cost, content))
@@ -497,7 +532,7 @@ async def message_price_estimate(request: web.Request):
         ]
 
     return _build_costs_response(
-        payment_type, required_tokens, content.address, costs_with_sizes
+        payment_type, required_tokens, content.address, costs_with_sizes, warnings
     )
 
 

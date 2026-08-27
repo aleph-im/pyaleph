@@ -148,3 +148,7 @@ class EstimatedCostsResponse(BaseModel):
     cost: str
     detail: List[EstimatedCostDetailResponse]
     charged_address: str
+    warnings: List[str] = Field(
+        default_factory=list,
+        description="Non-fatal problems encountered while pricing: components that could not be priced and are therefore missing from the total.",
+    )
