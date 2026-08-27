@@ -1,8 +1,9 @@
 import logging
 import math
+import re
 from decimal import Decimal
 from functools import reduce
-from typing import List, Optional, Sequence, Tuple, TypeAlias, Union
+from typing import Any, List, Optional, Sequence, Tuple, TypeAlias, Union
 
 from aleph_message.models import (
     InstanceContent,
@@ -79,6 +80,40 @@ CostComputableExecutableContent: TypeAlias = (
 )
 
 ExtraVolumes = Sequence[Union[RefVolume, SizedVolume]]
+
+# Cost rows built from `content.volumes` are named "#<index>:<label>", the
+# index being the volume's position in the message. `[0-9]` rather than `\d`:
+# `\d` also matches non-ASCII digits that `int()` then refuses.
+_COST_NAME_VOLUME_INDEX_RE = re.compile(r"^#([0-9]+):")
+
+
+def _volume_index_from_cost_name(name: Optional[str]) -> Optional[int]:
+    """Return the volume index encoded in a "#<index>:..." cost row name.
+
+    Returns None for anything else: a bare cost-type name ("workload"), a
+    missing colon, a negative or non-numeric index.
+    """
+    if not name:
+        return None
+
+    match = _COST_NAME_VOLUME_INDEX_RE.match(name)
+    return int(match.group(1)) if match else None
+
+
+def _volume_from_cost_name(
+    volumes: Sequence[Any], name: Optional[str]
+) -> Optional[Any]:
+    """Return the content volume a "#<index>:..." cost row refers to.
+
+    The single place the parsed index is bounds-checked against the volumes
+    the content actually declares: a cost row may outlive the volume it was
+    named after (e.g. an amended message with fewer volumes).
+    """
+    index = _volume_index_from_cost_name(name)
+    if index is None or index >= len(volumes):
+        return None
+
+    return volumes[index]
 
 
 def _vprogram_artifact(
@@ -530,9 +565,9 @@ def _get_execution_volumes_costs(
         if isinstance(volume, VerifiedVolume):
             # The comment is the volume's human-readable name; fall back to
             # the cost type when it is empty, as the immutable branch does.
-            name = (
-                f"{name_prefix}:{volume.comment or CostType.EXECUTION_VPROGRAM_VOLUME}"
-            )
+            # `.value`: interpolating the enum itself renders it as
+            # "CostType.EXECUTION_VPROGRAM_VOLUME".
+            name = f"{name_prefix}:{volume.comment or CostType.EXECUTION_VPROGRAM_VOLUME.value}"
             estimated_volume = (
                 volume if isinstance(volume, CostEstimationVerifiedVolume) else None
             )
@@ -557,9 +592,7 @@ def _get_execution_volumes_costs(
             continue
 
         if isinstance(volume, (ImmutableVolume, CostEstimationImmutableVolume)):
-            name = (
-                f"{name_prefix}:{volume.mount or CostType.EXECUTION_VOLUME_INMUTABLE}"
-            )
+            name = f"{name_prefix}:{volume.mount or CostType.EXECUTION_VOLUME_INMUTABLE.value}"
 
             if (
                 isinstance(volume, CostEstimationImmutableVolume)
@@ -980,20 +1013,12 @@ def _get_estimated_size_from_content(
                 CostEstimationProgramContent,
             ),
         ):
-            # Extract volume index from name (format: "#0:/mount/path")
-            try:
-                if cost.name and ":" in cost.name:
-                    index_str = cost.name.split(":")[0].replace("#", "")
-                    volume_index = int(index_str)
-                    if volume_index < len(content.volumes):
-                        volume = content.volumes[volume_index]
-                        if (
-                            isinstance(volume, CostEstimationImmutableVolume)
-                            and volume.estimated_size_mib
-                        ):
-                            return float(volume.estimated_size_mib)
-            except (ValueError, IndexError):
-                pass
+            volume = _volume_from_cost_name(content.volumes, cost.name)
+            if (
+                isinstance(volume, CostEstimationImmutableVolume)
+                and volume.estimated_size_mib
+            ):
+                return float(volume.estimated_size_mib)
 
     elif cost.type == CostType.EXECUTION_VPROGRAM_VOLUME:
         if isinstance(content, CostEstimationVProgramContent):
@@ -1003,13 +1028,9 @@ def _get_estimated_size_from_content(
                 return _float_or_none(content.workload.estimated_hash_tree_size_mib)
             if cost.name == "runtime":
                 return _float_or_none(content.runtime_estimated_size_mib)
-            if cost.name and cost.name.startswith("#"):
-                try:
-                    index = int(cost.name.split(":")[0][1:])
-                    verified_volume = content.volumes[index]
-                except (ValueError, IndexError):
-                    return None
-                if cost.name.endswith(":hash_tree"):
+            verified_volume = _volume_from_cost_name(content.volumes, cost.name)
+            if verified_volume is not None:
+                if cost.name and cost.name.endswith(":hash_tree"):
                     return _float_or_none(verified_volume.estimated_hash_tree_size_mib)
                 return _float_or_none(verified_volume.estimated_size_mib)
 
@@ -1062,17 +1083,9 @@ def get_cost_component_size_mib(
                 CostEstimationProgramContent,
             ),
         ):
-            # Extract volume index from name (format: "#0:/mount/path")
-            try:
-                if cost.name and ":" in cost.name:
-                    index_str = cost.name.split(":")[0].replace("#", "")
-                    volume_index = int(index_str)
-                    if volume_index < len(content.volumes):
-                        volume = content.volumes[volume_index]
-                        if hasattr(volume, "size_mib"):
-                            return float(volume.size_mib)
-            except (ValueError, IndexError):
-                pass
+            volume = _volume_from_cost_name(content.volumes, cost.name)
+            if volume is not None and hasattr(volume, "size_mib"):
+                return float(volume.size_mib)
         return None
 
     # For ref-based types: try real file size first, then estimated size

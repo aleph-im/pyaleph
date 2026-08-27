@@ -346,8 +346,8 @@ def test_vprogram_verified_volume_without_comment_gets_a_fallback_name(
         costs = get_detailed_costs(session, content, item_hash=VPROGRAM_ITEM_HASH)
 
     names = {c.name for c in costs if c.type == CostType.EXECUTION_VPROGRAM_VOLUME}
-    assert f"#0:{CostType.EXECUTION_VPROGRAM_VOLUME}" in names
-    assert f"#0:{CostType.EXECUTION_VPROGRAM_VOLUME}:hash_tree" in names
+    assert "#0:EXECUTION_VPROGRAM_VOLUME" in names
+    assert "#0:EXECUTION_VPROGRAM_VOLUME:hash_tree" in names
     assert "#0:" not in names
 
 
