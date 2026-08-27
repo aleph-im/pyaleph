@@ -23,7 +23,7 @@ depends_on = None
 def upgrade() -> None:
     op.execute(
         text(
-            "INSERT INTO error_codes(code, description) VALUES (305, 'V-PROGRAM runtime manifest is invalid or does not name a pinned bundle')"
+            "INSERT INTO error_codes(code, description) VALUES (305, 'V-PROGRAM runtime manifest is invalid or does not name a pinned bundle') ON CONFLICT (code) DO NOTHING"
         )
     )
 
