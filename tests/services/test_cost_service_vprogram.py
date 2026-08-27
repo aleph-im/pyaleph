@@ -383,3 +383,19 @@ def test_vprogram_negative_estimates_are_rejected(content_overrides):
         CostEstimationVProgramContent.model_validate(
             {**VPROGRAM_CONTENT, **content_overrides}
         )
+
+
+def test_vprogram_estimate_rejects_more_than_max_verified_volumes():
+    from aleph_message.models.execution.vprogram import MAX_VERIFIED_VOLUMES
+    from pydantic import ValidationError
+
+    volume = VPROGRAM_CONTENT["volumes"][0]
+    content_dict = {
+        **VPROGRAM_CONTENT,
+        "volumes": [volume] * (MAX_VERIFIED_VOLUMES + 1),
+    }
+    with pytest.raises(ValidationError):
+        CostEstimationVProgramContent.model_validate(content_dict)
+    CostEstimationVProgramContent.model_validate(
+        {**VPROGRAM_CONTENT, "volumes": [volume] * MAX_VERIFIED_VOLUMES}
+    )
