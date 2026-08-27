@@ -110,7 +110,11 @@ async def resolve_runtime_bundle_ref(
 
     try:
         manifest = RuntimeManifestBundle.model_validate(json.loads(content.value))
-    except (ValueError, ValidationError) as e:
+    except (ValueError, ValidationError, RecursionError) as e:
+        # RecursionError: json.loads has no depth cap of its own, so deeply
+        # nested (but otherwise well-formed and under the size cap) input
+        # can blow the interpreter's recursion limit instead of raising a
+        # normal parse error.
         raise InvalidVProgramRuntime(
             f"runtime manifest {runtime_ref} is not a valid {RUNTIME_MANIFEST_FORMAT} manifest: {e}"
         ) from e

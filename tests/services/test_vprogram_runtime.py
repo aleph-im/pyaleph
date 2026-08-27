@@ -128,6 +128,24 @@ async def test_resolve_bundle_ref_rejects_invalid_manifest(
 
 
 @pytest.mark.asyncio
+async def test_resolve_bundle_ref_rejects_deeply_nested_manifest(
+    session_factory: DbSessionFactory, mocker
+):
+    """`json.loads` has no depth cap: deeply nested (but well under the size
+    cap) input blows the interpreter's recursion limit and raises
+    `RecursionError` instead of a normal JSON parse error. That must still
+    map to `InvalidVProgramRuntime`, not escape uncaught."""
+    raw = b"[" * 100_000 + b"]" * 100_000
+    storage_service = make_storage_service(mocker, {MANIFEST_FILE_HASH: raw})
+    with session_factory() as session:
+        pin_manifest(session, size=len(raw))
+        session.commit()
+        with pytest.raises(InvalidVProgramRuntime) as exc_info:
+            await resolve_runtime_bundle_ref(session, storage_service, MANIFEST_REF)
+    assert exc_info.value.error_code == ErrorCode.VM_RUNTIME_INVALID
+
+
+@pytest.mark.asyncio
 async def test_resolve_bundle_ref_retries_unreadable_pinned_manifest(
     session_factory: DbSessionFactory, mocker
 ):
