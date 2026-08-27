@@ -84,7 +84,9 @@ class BaseMessageHandler:
                 grace_period=config.storage.grace_period.value,
                 max_unauthenticated_upload_file_size=config.storage.max_unauthenticated_upload_file_size.value,
             ),
-            MessageType.v_program: VProgramMessageHandler(),
+            MessageType.v_program: VProgramMessageHandler(
+                storage_service=storage_service
+            ),
         }
 
         self.content_handlers[MessageType.forget] = ForgetMessageHandler(

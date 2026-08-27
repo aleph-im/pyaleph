@@ -1,8 +1,9 @@
 import logging
 import math
+import re
 from decimal import Decimal
 from functools import reduce
-from typing import List, Optional, Tuple, TypeAlias, Union
+from typing import Any, List, Optional, Sequence, Tuple, TypeAlias, Union
 
 from aleph_message.models import (
     InstanceContent,
@@ -30,6 +31,8 @@ from aleph.schemas.cost_estimation_messages import (
     CostEstimationInstanceContent,
     CostEstimationProgramContent,
     CostEstimationStoreContent,
+    CostEstimationVerifiedVolume,
+    CostEstimationVerifiedWorkload,
     CostEstimationVProgramContent,
 )
 from aleph.toolkit.constants import (
@@ -75,6 +78,55 @@ CostComputableExecutableContent: TypeAlias = (
     | ProgramContent
     | VerifiableProgramContent
 )
+
+ExtraVolumes = Sequence[Union[RefVolume, SizedVolume]]
+
+# Cost rows built from `content.volumes` are named "#<index>:<label>", the
+# index being the volume's position in the message. `[0-9]` rather than `\d`:
+# `\d` also matches non-ASCII digits that `int()` then refuses.
+_COST_NAME_VOLUME_INDEX_RE = re.compile(r"^#([0-9]+):")
+
+
+def _volume_index_from_cost_name(name: Optional[str]) -> Optional[int]:
+    """Return the volume index encoded in a "#<index>:..." cost row name.
+
+    Returns None for anything else: a bare cost-type name ("workload"), a
+    missing colon, a negative or non-numeric index.
+    """
+    if not name:
+        return None
+
+    match = _COST_NAME_VOLUME_INDEX_RE.match(name)
+    return int(match.group(1)) if match else None
+
+
+def _volume_from_cost_name(
+    volumes: Sequence[Any], name: Optional[str]
+) -> Optional[Any]:
+    """Return the content volume a "#<index>:..." cost row refers to.
+
+    The single place the parsed index is bounds-checked against the volumes
+    the content actually declares: a cost row may outlive the volume it was
+    named after (e.g. an amended message with fewer volumes).
+    """
+    index = _volume_index_from_cost_name(name)
+    if index is None or index >= len(volumes):
+        return None
+
+    return volumes[index]
+
+
+def _vprogram_artifact(
+    ref: str, name: str, estimated_size_mib: Optional[int]
+) -> Union[RefVolume, SizedVolume]:
+    # `is not None`, not truthiness: a caller who estimates an artifact at 0
+    # MiB has given an estimate, and must not silently fall back to whatever
+    # is pinned under the same ref.
+    if estimated_size_mib is not None:
+        return SizedVolume(
+            CostType.EXECUTION_VPROGRAM_VOLUME, Decimal(estimated_size_mib), ref, name
+        )
+    return RefVolume(CostType.EXECUTION_VPROGRAM_VOLUME, ref, False, name)
 
 
 # TODO: Cache aggregate for 5 min
@@ -252,9 +304,7 @@ def _get_product_price_type(
         )
 
     if isinstance(content, (VerifiableProgramContent, CostEstimationVProgramContent)):
-        # V-Programs are SEV-SNP confidential VMs; price them like
-        # confidential instances until they get a dedicated tier.
-        return ProductPriceType.INSTANCE_CONFIDENTIAL
+        return ProductPriceType.VPROGRAM
 
     return _get_product_instance_type(content, settings, price_aggregate)
 
@@ -389,6 +439,7 @@ def _get_execution_volumes_costs(
     pricing: ProductPricing,
     payment_type: PaymentType,
     item_hash: str,
+    extra_volumes: ExtraVolumes = (),
 ) -> List[AccountCostsDb]:
     volumes: List[RefVolume | SizedVolume] = []
 
@@ -467,20 +518,84 @@ def _get_execution_volumes_costs(
                     ),
                 )
 
-    for i, volume in enumerate(content.volumes):
-        if isinstance(volume, VerifiedVolume):
-            # Verity-bound volumes (V-Programs) are STORE-paid artifacts like
-            # the workload and carry no execution-volume cost in phase 1.
-            continue
+    elif isinstance(content, (VerifiableProgramContent, CostEstimationVProgramContent)):
+        # Every artifact a V-PROGRAM boots from is a user-published STORE
+        # that the CRN downloads in full: bill them all, measured from the
+        # pinned file size (or, before it is uploaded, from the caller's
+        # estimate), against the per-CU disk allowance.
+        workload = content.workload
+        estimated_workload = (
+            workload if isinstance(workload, CostEstimationVerifiedWorkload) else None
+        )
+        volumes.append(
+            _vprogram_artifact(
+                str(workload.ref),
+                "workload",
+                estimated_workload.estimated_size_mib if estimated_workload else None,
+            )
+        )
+        volumes.append(
+            _vprogram_artifact(
+                str(workload.hash_tree),
+                "workload:hash_tree",
+                (
+                    estimated_workload.estimated_hash_tree_size_mib
+                    if estimated_workload
+                    else None
+                ),
+            )
+        )
+        runtime_estimate = (
+            content.runtime_estimated_size_mib
+            if isinstance(content, CostEstimationVProgramContent)
+            else None
+        )
+        if runtime_estimate is not None:
+            volumes.append(
+                SizedVolume(
+                    CostType.EXECUTION_VPROGRAM_VOLUME,
+                    Decimal(runtime_estimate),
+                    str(content.runtime.ref),
+                    "runtime",
+                )
+            )
 
+    for i, volume in enumerate(content.volumes):
         # NOTE: There are legacy volumes with no "mount" property set
         # or with same values for different volumes causing unique key constraint errors
         name_prefix = f"#{i}"
 
-        if isinstance(volume, (ImmutableVolume, CostEstimationImmutableVolume)):
-            name = (
-                f"{name_prefix}:{volume.mount or CostType.EXECUTION_VOLUME_INMUTABLE}"
+        if isinstance(volume, VerifiedVolume):
+            # The comment is the volume's human-readable name; fall back to
+            # the cost type when it is empty, as the immutable branch does.
+            # `.value`: interpolating the enum itself renders it as
+            # "CostType.EXECUTION_VPROGRAM_VOLUME".
+            name = f"{name_prefix}:{volume.comment or CostType.EXECUTION_VPROGRAM_VOLUME.value}"
+            estimated_volume = (
+                volume if isinstance(volume, CostEstimationVerifiedVolume) else None
             )
+            volumes.append(
+                _vprogram_artifact(
+                    str(volume.ref),
+                    name,
+                    estimated_volume.estimated_size_mib if estimated_volume else None,
+                )
+            )
+            volumes.append(
+                _vprogram_artifact(
+                    str(volume.hash_tree),
+                    f"{name}:hash_tree",
+                    (
+                        estimated_volume.estimated_hash_tree_size_mib
+                        if estimated_volume
+                        else None
+                    ),
+                )
+            )
+            continue
+
+        if isinstance(volume, (ImmutableVolume, CostEstimationImmutableVolume)):
+            name = f"{name_prefix}:{volume.mount or CostType.EXECUTION_VOLUME_INMUTABLE.value}"
 
             if (
                 isinstance(volume, CostEstimationImmutableVolume)
@@ -520,6 +635,22 @@ def _get_execution_volumes_costs(
                 ),
             )
 
+    # Cost rows are keyed by (type, name): an extra volume that collides with
+    # a row built above (e.g. a `runtime` row already sized from an estimate)
+    # would violate that key, so the caller-supplied one is dropped.
+    seen = {(volume.cost_type, volume.name) for volume in volumes}
+    for extra_volume in extra_volumes:
+        key = (extra_volume.cost_type, extra_volume.name)
+        if key in seen:
+            logger.debug(
+                "Skipping extra volume %s/%s: a row with that name already exists",
+                extra_volume.cost_type,
+                extra_volume.name,
+            )
+            continue
+        seen.add(key)
+        volumes.append(extra_volume)
+
     price_per_mib = pricing.price.storage.holding
     price_per_mib_second = pricing.price.storage.payg / HOUR
     price_per_mib_credit = pricing.price.storage.credit / HOUR
@@ -542,10 +673,11 @@ def _get_additional_storage_price(
     pricing: ProductPricing,
     payment_type: PaymentType,
     item_hash: str,
+    extra_volumes: ExtraVolumes = (),
 ) -> List[AccountCostsDb]:
     # EXECUTION VOLUMES COSTS
     costs = _get_execution_volumes_costs(
-        session, content, pricing, payment_type, item_hash
+        session, content, pricing, payment_type, item_hash, extra_volumes
     )
 
     # EXECUTION STORAGE DISCOUNT
@@ -700,6 +832,7 @@ def _calculate_executable_costs(
     content: CostComputableExecutableContent,
     pricing: ProductPricing,
     item_hash: str,
+    extra_volumes: ExtraVolumes = (),
 ) -> List[AccountCostsDb]:
     payment_type = get_payment_type(content)
     settings = _get_settings(session)
@@ -720,7 +853,7 @@ def _calculate_executable_costs(
             ProductPriceType.INSTANCE_GPU_PREMIUM, price_aggregate
         )
         storage_costs = _get_additional_storage_price(
-            session, content, storage_pricing, payment_type, item_hash
+            session, content, storage_pricing, payment_type, item_hash, extra_volumes
         )
 
         return execution_costs + storage_costs
@@ -780,7 +913,7 @@ def _calculate_executable_costs(
 
     costs: List[AccountCostsDb] = [execution_cost]
     costs += _get_additional_storage_price(
-        session, content, pricing, payment_type, item_hash
+        session, content, pricing, payment_type, item_hash, extra_volumes
     )
 
     return costs
@@ -845,6 +978,15 @@ def _get_size_from_file_ref(session: DbSession, file_hash: str) -> Optional[floa
     return float(Decimal(file.size) / MiB)
 
 
+def _optional_float(value: Optional[int]) -> Optional[float]:
+    """float(value), or None when there is no value at all.
+
+    Zero is a value: an artifact estimated at 0 MiB is billed at 0, so the
+    detail row must report 0 rather than "no estimate".
+    """
+    return float(value) if value is not None else None
+
+
 def _get_estimated_size_from_content(
     cost: AccountCostsDb, content: CostComputableContent
 ) -> Optional[float]:
@@ -879,20 +1021,33 @@ def _get_estimated_size_from_content(
                 CostEstimationProgramContent,
             ),
         ):
-            # Extract volume index from name (format: "#0:/mount/path")
-            try:
-                if cost.name and ":" in cost.name:
-                    index_str = cost.name.split(":")[0].replace("#", "")
-                    volume_index = int(index_str)
-                    if volume_index < len(content.volumes):
-                        volume = content.volumes[volume_index]
-                        if (
-                            isinstance(volume, CostEstimationImmutableVolume)
-                            and volume.estimated_size_mib
-                        ):
-                            return float(volume.estimated_size_mib)
-            except (ValueError, IndexError):
-                pass
+            volume = _volume_from_cost_name(content.volumes, cost.name)
+            if (
+                isinstance(volume, CostEstimationImmutableVolume)
+                and volume.estimated_size_mib
+            ):
+                return float(volume.estimated_size_mib)
+
+    elif cost.type == CostType.EXECUTION_VPROGRAM_VOLUME:
+        if isinstance(content, CostEstimationVProgramContent):
+            if cost.name == "workload":
+                return _optional_float(content.workload.estimated_size_mib)
+            if cost.name == "workload:hash_tree":
+                return _optional_float(content.workload.estimated_hash_tree_size_mib)
+            if cost.name == "runtime":
+                return _optional_float(content.runtime_estimated_size_mib)
+            verified_volume = _volume_from_cost_name(content.volumes, cost.name)
+            if verified_volume is not None:
+                # Rebuild the exact hash-tree row name from the volume's own
+                # comment rather than testing a suffix: the comment is free
+                # text and may itself end with ":hash_tree".
+                index = _volume_index_from_cost_name(cost.name)
+                comment = (
+                    verified_volume.comment or CostType.EXECUTION_VPROGRAM_VOLUME.value
+                )
+                if cost.name == f"#{index}:{comment}:hash_tree":
+                    return _optional_float(verified_volume.estimated_hash_tree_size_mib)
+                return _optional_float(verified_volume.estimated_size_mib)
 
     return None
 
@@ -914,7 +1069,8 @@ def get_cost_component_size_mib(
     - EXECUTION_VOLUME_PERSISTENT
     - EXECUTION_VOLUME_INMUTABLE
 
-    Priority: Real file size first, then estimated size from content as fallback.
+    Priority: the estimate the cost was computed from (estimation content
+    only), then the real file size behind the ref.
 
     Args:
         session: Database session
@@ -943,17 +1099,9 @@ def get_cost_component_size_mib(
                 CostEstimationProgramContent,
             ),
         ):
-            # Extract volume index from name (format: "#0:/mount/path")
-            try:
-                if cost.name and ":" in cost.name:
-                    index_str = cost.name.split(":")[0].replace("#", "")
-                    volume_index = int(index_str)
-                    if volume_index < len(content.volumes):
-                        volume = content.volumes[volume_index]
-                        if hasattr(volume, "size_mib"):
-                            return float(volume.size_mib)
-            except (ValueError, IndexError):
-                pass
+            volume = _volume_from_cost_name(content.volumes, cost.name)
+            if volume is not None and hasattr(volume, "size_mib"):
+                return float(volume.size_mib)
         return None
 
     # For ref-based types: try real file size first, then estimated size
@@ -963,10 +1111,21 @@ def get_cost_component_size_mib(
         CostType.EXECUTION_PROGRAM_VOLUME_RUNTIME,
         CostType.EXECUTION_PROGRAM_VOLUME_DATA,
         CostType.EXECUTION_VOLUME_INMUTABLE,
+        CostType.EXECUTION_VPROGRAM_VOLUME,
     }
 
     if cost.type in ref_based_types:
-        # Try to get real size from file (only if session is available).
+        # A caller-supplied estimate wins over the pin, because the cost was
+        # computed from it: estimation content is billed through SizedVolume,
+        # never from the pinned file, so reporting the pinned size here would
+        # show a size the row was not priced from. Only estimation content
+        # ever yields a value; every other content type falls through.
+        if content is not None:
+            estimated_size = _get_estimated_size_from_content(cost, content)
+            if estimated_size is not None:
+                return estimated_size
+
+        # Otherwise, the real file size.
         # cost.ref (and cost.item_hash for STORAGE) is the item_hash of the linked
         # STORE message, not the file content hash.  Resolve through file_pins first.
         if session:
@@ -980,10 +1139,6 @@ def get_cost_component_size_mib(
                     if size is not None:
                         return size
 
-        # Fall back to estimated size from content
-        if content:
-            return _get_estimated_size_from_content(cost, content)
-
     # For all other types (EXECUTION, EXECUTION_VOLUME_DISCOUNT), return None
     return None
 
@@ -994,6 +1149,7 @@ def get_detailed_costs(
     item_hash: str,
     pricing: Optional[ProductPricing] = None,
     settings: Optional[Settings] = None,
+    extra_volumes: ExtraVolumes = (),
 ) -> List[AccountCostsDb]:
     settings = settings or _get_settings(session)
     pricing = pricing or _get_product_price(session, content, settings)
@@ -1001,17 +1157,20 @@ def get_detailed_costs(
     if isinstance(content, (StoreContent, CostEstimationStoreContent)):
         return _calculate_storage_costs(session, content, pricing, item_hash)
     else:
-        return _calculate_executable_costs(session, content, pricing, item_hash)
+        return _calculate_executable_costs(
+            session, content, pricing, item_hash, extra_volumes
+        )
 
 
 def get_total_and_detailed_costs(
     session: DbSession,
     content: CostComputableContent,
     item_hash: str,
+    extra_volumes: ExtraVolumes = (),
 ) -> Tuple[Decimal, List[AccountCostsDb]]:
     payment_type = get_payment_type(content)
 
-    costs = get_detailed_costs(session, content, item_hash)
+    costs = get_detailed_costs(session, content, item_hash, extra_volumes=extra_volumes)
     if payment_type == PaymentType.superfluid:
         cost = format_cost(reduce(lambda x, y: x + y.cost_stream, costs, Decimal(0)))
     elif payment_type == PaymentType.credit:

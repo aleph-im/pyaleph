@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 
 from aleph_message.models.execution import Encoding, MachineType
 from aleph_message.models.execution.volume import VolumePersistence
-from sqlalchemy import TIMESTAMP, Boolean, ForeignKey, Integer, String
+from sqlalchemy import TIMESTAMP, Boolean, ForeignKey, Index, Integer, String, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, declared_attr, mapped_column, relationship
 from sqlalchemy_utils import ChoiceType
@@ -32,6 +32,7 @@ class VolumeWithRefMixin:
 
 class RootfsVolumeDb(Base):
     __tablename__ = "instance_rootfs"
+    __table_args__ = (Index("ix_instance_rootfs_parent_ref", "parent_ref"),)
 
     instance_hash: Mapped[str] = mapped_column(
         ForeignKey("vms.item_hash", ondelete="CASCADE"), primary_key=True
@@ -50,6 +51,7 @@ class RootfsVolumeDb(Base):
 
 class CodeVolumeDb(Base, ProgramVolumeMixin, VolumeWithRefMixin):
     __tablename__ = "program_code_volumes"
+    __table_args__ = (Index("ix_program_code_volumes_ref", "ref"),)
 
     entrypoint: Mapped[str] = mapped_column(String, nullable=False)
     program: Mapped["ProgramDb"] = relationship(
@@ -59,6 +61,7 @@ class CodeVolumeDb(Base, ProgramVolumeMixin, VolumeWithRefMixin):
 
 class DataVolumeDb(Base, ProgramVolumeMixin, VolumeWithRefMixin):
     __tablename__ = "program_data_volumes"
+    __table_args__ = (Index("ix_program_data_volumes_ref", "ref"),)
 
     mount: Mapped[str] = mapped_column(String, nullable=False)
     program: Mapped["ProgramDb"] = relationship(
@@ -76,6 +79,7 @@ class ExportVolumeDb(Base, ProgramVolumeMixin):
 
 class RuntimeDb(Base, VolumeWithRefMixin):
     __tablename__ = "program_runtimes"
+    __table_args__ = (Index("ix_program_runtimes_ref", "ref"),)
 
     program_hash: Mapped[str] = mapped_column(
         ForeignKey("vms.item_hash", ondelete="CASCADE"), primary_key=True
@@ -105,6 +109,12 @@ class MachineVolumeBaseDb(Base):
 
 class ImmutableVolumeDb(MachineVolumeBaseDb, VolumeWithRefMixin):
     __mapper_args__ = {"polymorphic_identity": "immutable"}
+
+
+# `ref` is added to the shared `vm_machine_volumes` table by the
+# ImmutableVolumeDb single-table-inheritance mapping above, so the index has
+# to be declared here instead of in a `__table_args__` on that class.
+Index("ix_vm_machine_volumes_ref", MachineVolumeBaseDb.__table__.c.ref)
 
 
 class EphemeralVolumeDb(MachineVolumeBaseDb):
@@ -232,6 +242,10 @@ class VProgramVerifiedVolumeDb(Base):
     """
 
     __tablename__ = "vprogram_verified_volumes"
+    __table_args__ = (
+        Index("ix_vprogram_verified_volumes_ref", "ref"),
+        Index("ix_vprogram_verified_volumes_hash_tree", "hash_tree"),
+    )
 
     vm_hash: Mapped[str] = mapped_column(
         ForeignKey("vms.item_hash", ondelete="CASCADE"), primary_key=True
@@ -263,6 +277,11 @@ class VProgramDb(VmBaseDb):
 
     runtime_ref: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     runtime_comment: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # The bundle named by the runtime manifest, resolved once at processing
+    # time. Persisting it means the manifest never has to be re-read (cost
+    # recalculation) and the bundle STORE is forget-protected like the other
+    # artifacts. Nullable: rows written before this column existed have None.
+    runtime_bundle_ref: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     workload_ref: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     workload_hash_tree: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     workload_roothash: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -273,6 +292,35 @@ class VProgramDb(VmBaseDb):
         uselist=True,
         order_by=VProgramVerifiedVolumeDb.position,
     )
+
+
+# `runtime_ref`, `runtime_bundle_ref`, `workload_ref` and `workload_hash_tree`
+# are added to the shared `vms` table by the VProgramDb single-table-inheritance
+# mapping above, so the indexes have to be declared here instead of in a
+# `__table_args__` on that class. They are partial: only V-PROGRAM rows ever
+# populate these columns, matching the `type` discriminator VProgramDb's
+# polymorphic queries filter on automatically.
+_VPROGRAM_ONLY = text(f"type = '{VmType.VPROGRAM.value}'")
+Index(
+    "ix_vms_runtime_ref",
+    VmBaseDb.__table__.c.runtime_ref,
+    postgresql_where=_VPROGRAM_ONLY,
+)
+Index(
+    "ix_vms_runtime_bundle_ref",
+    VmBaseDb.__table__.c.runtime_bundle_ref,
+    postgresql_where=_VPROGRAM_ONLY,
+)
+Index(
+    "ix_vms_workload_ref",
+    VmBaseDb.__table__.c.workload_ref,
+    postgresql_where=_VPROGRAM_ONLY,
+)
+Index(
+    "ix_vms_workload_hash_tree",
+    VmBaseDb.__table__.c.workload_hash_tree,
+    postgresql_where=_VPROGRAM_ONLY,
+)
 
 
 class VmVersionDb(Base):

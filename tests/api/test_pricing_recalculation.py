@@ -1,7 +1,7 @@
 import datetime as dt
 import json
 from decimal import Decimal
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from aiohttp import web
@@ -235,6 +235,7 @@ class TestRecalculateMessageCosts:
 
             from aleph.web.controllers.app_state_getters import (
                 APP_STATE_SESSION_FACTORY,
+                APP_STATE_STORAGE_SERVICE,
             )
 
             # Create a more robust mock request
@@ -248,7 +249,10 @@ class TestRecalculateMessageCosts:
             request.headers = CIMultiDict({"X-Auth-Token": "test-token"})
 
             # Mock the app state
-            request.app = {APP_STATE_SESSION_FACTORY: session_factory}
+            request.app = {
+                APP_STATE_SESSION_FACTORY: session_factory,
+                APP_STATE_STORAGE_SERVICE: MagicMock(),
+            }
 
             return request
 
@@ -367,7 +371,7 @@ class TestRecalculateMessageCosts:
 
         pricing_calls = []
 
-        def mock_get_costs(session, content, item_hash, pricing):
+        def mock_get_costs(session, content, item_hash, pricing, extra_volumes=()):
             # Capture the pricing object used for each call
             pricing_calls.append((item_hash, pricing.type if pricing else None))
             return []
@@ -408,7 +412,9 @@ class TestRecalculateMessageCosts:
 
         request = mock_request_factory()
 
-        def mock_get_costs_with_error(session, content, item_hash, pricing):
+        def mock_get_costs_with_error(
+            session, content, item_hash, pricing, extra_volumes=()
+        ):
             if (
                 item_hash
                 == "5369766624921631e84e56598c8942b16e46535560b4372551e39a531e2ec24f"
@@ -471,7 +477,7 @@ class TestRecalculateMessageCosts:
 
         processed_order = []
 
-        def mock_get_costs(session, content, item_hash, pricing):
+        def mock_get_costs(session, content, item_hash, pricing, extra_volumes=()):
             processed_order.append(item_hash)
             return []
 
@@ -491,6 +497,333 @@ class TestRecalculateMessageCosts:
             ]
             assert processed_order == expected_order
 
+    @pytest.mark.asyncio
+    @patch("aleph.web.controllers.prices.get_session_factory_from_request")
+    async def test_recalculate_vprogram_keeps_type_on_fallback(
+        self, mock_get_session, session_factory, mock_request_factory
+    ):
+        """A V-PROGRAM message recalculated against a historical pricing
+        model that predates the `vprogram` key must still be priced with
+        pricing.type == VPROGRAM: the numbers are borrowed from
+        instance_confidential, but the product identity must not silently
+        change to INSTANCE_CONFIDENTIAL (see resolve_price_type_key /
+        ProductPricing.with_type).
+        """
+        from aleph_message.models import MessageType
+        from messages.test_vprogram import VPROGRAM_CONTENT, VPROGRAM_ITEM_HASH
+
+        from aleph.db.models import MessageStatusDb
+        from aleph.types.message_status import MessageStatus
+
+        base_time = dt.datetime(2024, 1, 1, 10, 0, 0, tzinfo=dt.timezone.utc)
+
+        vprogram_message = MessageDb(
+            item_hash=VPROGRAM_ITEM_HASH,
+            type=MessageType.v_program,
+            chain="ETH",
+            sender=VPROGRAM_CONTENT["address"],
+            item_type="inline",
+            content=VPROGRAM_CONTENT,
+            time=base_time,
+            size=1024,
+        )
+        vprogram_message.reception_time = vprogram_message.time
+
+        # Historical pricing update that only ever set instance_confidential,
+        # i.e. from before the vprogram product type existed on chain.
+        pricing_element = AggregateElementDb(
+            item_hash="pricing_vprogram_fallback",
+            key=PRICE_AGGREGATE_KEY,
+            owner=PRICE_AGGREGATE_OWNER,
+            content={
+                ProductPriceType.INSTANCE_CONFIDENTIAL: {
+                    "price": {
+                        "storage": {
+                            "holding": "0.05",
+                            "credit": "0.17967489030626108",
+                        },
+                        "compute_unit": {"holding": "2000", "credit": "28500"},
+                    },
+                    "compute_unit": {
+                        "vcpus": 1,
+                        "disk_mib": 20480,
+                        "memory_mib": 2048,
+                    },
+                }
+            },
+            creation_datetime=base_time - dt.timedelta(minutes=30),
+        )
+
+        with session_factory() as session:
+            session.add(vprogram_message)
+            session.add(pricing_element)
+            session.add(
+                MessageStatusDb(
+                    item_hash=vprogram_message.item_hash,
+                    status=MessageStatus.PROCESSED,
+                    reception_time=vprogram_message.time,
+                )
+            )
+            session.commit()
+
+        mock_get_session.return_value = session_factory
+        request = mock_request_factory()
+
+        captured_pricing_types = {}
+
+        def mock_get_costs(session, content, item_hash, pricing, extra_volumes=()):
+            captured_pricing_types[item_hash] = pricing.type
+            return []
+
+        with (
+            patch(
+                "aleph.web.controllers.prices.get_detailed_costs",
+                side_effect=mock_get_costs,
+            ),
+            patch(
+                "aleph.web.controllers.prices.resolve_runtime_bundle_ref",
+                new=AsyncMock(return_value="ba" * 32),
+            ),
+        ):
+            response = await recalculate_message_costs.__wrapped__(request)
+
+        assert response.status == 200
+        response_data = json.loads(response.text)
+        assert response_data["recalculated_count"] == 1
+        assert not response_data.get("errors")
+        assert captured_pricing_types[VPROGRAM_ITEM_HASH] == ProductPriceType.VPROGRAM
+
+    @pytest.mark.asyncio
+    @patch("aleph.web.controllers.prices.get_session_factory_from_request")
+    async def test_recalculate_vprogram_without_a_vms_row_skips_the_resolver(
+        self, mock_get_session, session_factory, mock_request_factory
+    ):
+        """A V-PROGRAM whose vms row is gone (forgotten or removed) has
+        nothing left to bill the bundle to: recalculation must not re-read
+        the manifest, and must still succeed without the `runtime` row.
+        """
+        from api.test_vprogram_api import insert_bundle_pin, insert_vprogram_refs
+        from messages.test_vprogram import VPROGRAM_CONTENT, VPROGRAM_ITEM_HASH
+
+        from aleph.db.accessors.cost import get_message_costs
+        from aleph.db.models import MessageStatusDb
+        from aleph.types.message_status import MessageStatus
+
+        base_time = dt.datetime(2024, 1, 1, 10, 0, 0, tzinfo=dt.timezone.utc)
+
+        vprogram_message = MessageDb(
+            item_hash=VPROGRAM_ITEM_HASH,
+            type=MessageType.v_program,
+            chain="ETH",
+            sender=VPROGRAM_CONTENT["address"],
+            item_type="inline",
+            content=VPROGRAM_CONTENT,
+            time=base_time,
+            size=1024,
+        )
+        vprogram_message.reception_time = vprogram_message.time
+
+        with session_factory() as session:
+            insert_vprogram_refs(session)
+            insert_bundle_pin(session)
+            session.add(vprogram_message)
+            session.add(
+                MessageStatusDb(
+                    item_hash=vprogram_message.item_hash,
+                    status=MessageStatus.PROCESSED,
+                    reception_time=vprogram_message.time,
+                )
+            )
+            session.commit()
+
+        mock_get_session.return_value = session_factory
+        request = mock_request_factory()
+
+        with patch(
+            "aleph.web.controllers.prices.resolve_runtime_bundle_ref",
+            new=AsyncMock(side_effect=AssertionError("resolver must not be called")),
+        ) as resolver:
+            response = await recalculate_message_costs.__wrapped__(request)
+
+        assert resolver.await_count == 0
+        assert response.status == 200
+        response_data = json.loads(response.text)
+        assert response_data["recalculated_count"] == 1
+        assert not response_data.get("errors")
+
+        with session_factory() as session:
+            costs = list(
+                get_message_costs(session=session, item_hash=VPROGRAM_ITEM_HASH)
+            )
+        assert costs
+        assert "runtime" not in {c.name for c in costs}
+
+    @staticmethod
+    def _seed_vprogram(session_factory, runtime_bundle_ref):
+        """A processed V-PROGRAM message, its vms row (with or without the
+        persisted bundle ref) and one pre-existing cost row."""
+        from api.test_vprogram_api import insert_bundle_pin, insert_vprogram_refs
+        from messages.test_vprogram import VPROGRAM_CONTENT, VPROGRAM_ITEM_HASH
+
+        from aleph.db.models import MessageStatusDb
+        from aleph.handlers.content.vprogram import vprogram_message_to_db
+        from aleph.types.message_status import MessageStatus
+
+        base_time = dt.datetime(2024, 1, 1, 10, 0, 0, tzinfo=dt.timezone.utc)
+
+        vprogram_message = MessageDb(
+            item_hash=VPROGRAM_ITEM_HASH,
+            type=MessageType.v_program,
+            chain="ETH",
+            sender=VPROGRAM_CONTENT["address"],
+            item_type="inline",
+            content=VPROGRAM_CONTENT,
+            time=base_time,
+            size=1024,
+        )
+        vprogram_message.reception_time = vprogram_message.time
+
+        with session_factory() as session:
+            insert_vprogram_refs(session)
+            insert_bundle_pin(session)
+            session.add(vprogram_message)
+            session.add(
+                MessageStatusDb(
+                    item_hash=VPROGRAM_ITEM_HASH,
+                    status=MessageStatus.PROCESSED,
+                    reception_time=vprogram_message.time,
+                )
+            )
+            session.flush()
+
+            vm = vprogram_message_to_db(vprogram_message, "ba" * 32)
+            # Legacy rows (processed before the column existed) carry None.
+            vm.runtime_bundle_ref = runtime_bundle_ref
+            session.add(vm)
+
+            session.add(
+                AccountCostsDb(
+                    owner=VPROGRAM_CONTENT["address"],
+                    item_hash=VPROGRAM_ITEM_HASH,
+                    type="EXECUTION",
+                    name="old_cost",
+                    payment_type="credit",
+                    cost_hold=Decimal("999.99"),
+                    cost_stream=Decimal("0.01"),
+                )
+            )
+            session.commit()
+
+        return VPROGRAM_ITEM_HASH
+
+    @pytest.mark.asyncio
+    @patch("aleph.web.controllers.prices.get_session_factory_from_request")
+    async def test_recalculate_legacy_vprogram_keeps_costs_when_resolver_fails(
+        self, mock_get_session, session_factory, mock_request_factory
+    ):
+        """A row written before `runtime_bundle_ref` existed still falls back
+        to the resolver. When the resolver fails, the recalculation must
+        report the error and leave the message's previous cost rows in place:
+        never delete rows before their replacements exist."""
+        from aleph.db.accessors.cost import get_message_costs
+        from aleph.types.message_status import InvalidVProgramRuntime
+
+        item_hash = self._seed_vprogram(session_factory, runtime_bundle_ref=None)
+
+        mock_get_session.return_value = session_factory
+        request = mock_request_factory()
+
+        with patch(
+            "aleph.web.controllers.prices.resolve_runtime_bundle_ref",
+            new=AsyncMock(side_effect=InvalidVProgramRuntime("manifest is gone")),
+        ) as resolver:
+            response = await recalculate_message_costs.__wrapped__(request)
+
+        assert resolver.await_count == 1
+        assert response.status == 200
+        response_data = json.loads(response.text)
+        assert response_data["recalculated_count"] == 0
+        assert len(response_data["errors"]) == 1
+        assert response_data["errors"][0]["item_hash"] == item_hash
+
+        with session_factory() as session:
+            costs = list(get_message_costs(session=session, item_hash=item_hash))
+        assert [c.name for c in costs] == ["old_cost"]
+        assert Decimal(costs[0].cost_hold) == Decimal("999.99")
+
+    @pytest.mark.asyncio
+    @patch("aleph.web.controllers.prices.get_session_factory_from_request")
+    async def test_recalculate_legacy_vprogram_backfills_the_bundle_ref(
+        self, mock_get_session, session_factory, mock_request_factory
+    ):
+        """A row written before `runtime_bundle_ref` existed falls back to the
+        resolver; the ref it returns must be written back to the vms row so
+        later recalculations and the FORGET dependency check use it."""
+        from api.test_vprogram_api import BUNDLE_REF
+
+        from aleph.db.accessors.cost import get_message_costs
+        from aleph.db.accessors.vms import get_vprogram
+
+        item_hash = self._seed_vprogram(session_factory, runtime_bundle_ref=None)
+
+        mock_get_session.return_value = session_factory
+        request = mock_request_factory()
+
+        with patch(
+            "aleph.web.controllers.prices.resolve_runtime_bundle_ref",
+            new=AsyncMock(return_value=BUNDLE_REF),
+        ) as resolver:
+            response = await recalculate_message_costs.__wrapped__(request)
+
+        assert resolver.await_count == 1
+        assert response.status == 200
+        response_data = json.loads(response.text)
+        assert response_data["recalculated_count"] == 1
+        assert not response_data.get("errors")
+
+        with session_factory() as session:
+            vprogram = get_vprogram(session, item_hash)
+            assert vprogram is not None
+            assert vprogram.runtime_bundle_ref == BUNDLE_REF
+            costs = list(get_message_costs(session=session, item_hash=item_hash))
+        runtime = next(c for c in costs if c.name == "runtime")
+        assert runtime.ref == BUNDLE_REF
+        assert runtime.type == "EXECUTION_VPROGRAM_VOLUME"
+
+    @pytest.mark.asyncio
+    @patch("aleph.web.controllers.prices.get_session_factory_from_request")
+    async def test_recalculate_vprogram_reads_the_persisted_bundle_ref(
+        self, mock_get_session, session_factory, mock_request_factory
+    ):
+        """With the bundle ref persisted on the vms row, recalculation must
+        not read the runtime manifest again."""
+        from api.test_vprogram_api import BUNDLE_REF
+
+        from aleph.db.accessors.cost import get_message_costs
+
+        item_hash = self._seed_vprogram(session_factory, runtime_bundle_ref=BUNDLE_REF)
+
+        mock_get_session.return_value = session_factory
+        request = mock_request_factory()
+
+        with patch(
+            "aleph.web.controllers.prices.resolve_runtime_bundle_ref",
+            new=AsyncMock(side_effect=AssertionError("resolver must not be called")),
+        ) as resolver:
+            response = await recalculate_message_costs.__wrapped__(request)
+
+        assert resolver.await_count == 0
+        assert response.status == 200
+        response_data = json.loads(response.text)
+        assert response_data["recalculated_count"] == 1
+        assert not response_data.get("errors")
+
+        with session_factory() as session:
+            costs = list(get_message_costs(session=session, item_hash=item_hash))
+        assert "old_cost" not in {c.name for c in costs}
+        runtime = next(c for c in costs if c.name == "runtime")
+        assert runtime.ref == BUNDLE_REF
+
 
 class TestPricingTimelineIntegration:
     """Integration tests for the complete pricing timeline feature."""
@@ -506,6 +839,7 @@ class TestPricingTimelineIntegration:
 
             from aleph.web.controllers.app_state_getters import (
                 APP_STATE_SESSION_FACTORY,
+                APP_STATE_STORAGE_SERVICE,
             )
 
             # Create a more robust mock request
@@ -519,7 +853,10 @@ class TestPricingTimelineIntegration:
             request.headers = CIMultiDict({"X-Auth-Token": "test-token"})
 
             # Mock the app state
-            request.app = {APP_STATE_SESSION_FACTORY: session_factory}
+            request.app = {
+                APP_STATE_SESSION_FACTORY: session_factory,
+                APP_STATE_STORAGE_SERVICE: MagicMock(),
+            }
 
             return request
 
@@ -543,7 +880,7 @@ class TestPricingTimelineIntegration:
         # Track which pricing models are used for each message
         pricing_usage = {}
 
-        def mock_get_costs(session, content, item_hash, pricing):
+        def mock_get_costs(session, content, item_hash, pricing, extra_volumes=()):
             if pricing and hasattr(pricing, "price"):
                 if hasattr(pricing.price, "storage") and hasattr(
                     pricing.price.storage, "holding"
