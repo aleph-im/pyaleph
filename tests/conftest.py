@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import contextlib
 import datetime as dt
@@ -6,6 +7,7 @@ import logging
 import os
 import shutil
 import sys
+from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from typing import List, Protocol
@@ -26,6 +28,7 @@ from aleph_message.models import (
 from aleph_message.models.execution.volume import ImmutableVolume
 from configmanager import Config
 from sqlalchemy import text
+from sqlalchemy.engine import Engine
 
 import aleph.config
 from aleph.db.accessors.files import insert_message_file_pin, upsert_file_tag
@@ -86,36 +89,110 @@ def run_db_migrations(config: Config):
     db_url = make_db_url(driver="psycopg2", config=config)
     alembic_cfg = alembic.config.Config("alembic.ini")
     alembic_cfg.attributes["configure_logger"] = False
+    # env.py reads the target URL from `-x db_url=...`; alembic's `tag`
+    # argument is ignored there, so pass the URL the way env.py expects.
+    alembic_cfg.cmd_opts = argparse.Namespace(x=[f"db_url={db_url}"])
     logging.getLogger("alembic").setLevel(logging.CRITICAL)
 
     with change_dir(project_dir):
-        alembic.command.upgrade(alembic_cfg, "head", tag=db_url)
+        alembic.command.upgrade(alembic_cfg, "head")
 
 
-@pytest.fixture
-def session_factory(mock_config):
-    # mock_config is the proxy, but we need the actual config for engine creation
-    actual_config = aleph.config.app_config
-    # Tests must not inherit the production statement/lock/idle timeouts: they
-    # can cause spurious failures during schema setup/teardown under load.
-    actual_config.postgres.lock_timeout_ms.value = 0
-    actual_config.postgres.statement_timeout_ms.value = 0
-    actual_config.postgres.idle_in_transaction_session_timeout_ms.value = 0
-    engine = make_engine(
-        config=actual_config, echo=False, application_name="aleph-tests"
+@dataclass
+class MigratedDb:
+    """A freshly migrated schema plus a snapshot of its seeded rows.
+
+    `tables` lists every table in `public`; `seed_tables` the subset that
+    migrations populate (copied to `seed.<table>` so per-test resets can
+    restore them without re-running migrations).
+    """
+
+    engine: Engine
+    tables: List[str]
+    seed_tables: List[str]
+
+
+SEED_SCHEMA = "seed"
+
+
+def _public_tables(conn) -> List[str]:
+    rows = conn.execute(
+        text(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_type = 'BASE TABLE' "
+            "ORDER BY table_name"
+        )
     )
+    return [row[0] for row in rows]
 
+
+def snapshot_seed_tables(engine: Engine) -> tuple[List[str], List[str]]:
+    """Copy every non-empty public table into the `seed` schema.
+
+    Returns (all public tables, seeded tables). Discovery is by row count so
+    a new migration that seeds another table is picked up automatically.
+    """
+    with engine.begin() as conn:
+        conn.execute(text(f"DROP SCHEMA IF EXISTS {SEED_SCHEMA} CASCADE"))
+        conn.execute(text(f"CREATE SCHEMA {SEED_SCHEMA}"))
+        tables = _public_tables(conn)
+        seed_tables = []
+        for table in tables:
+            count = conn.execute(
+                text(f'SELECT count(*) FROM public."{table}"')
+            ).scalar()
+            if count:
+                conn.execute(
+                    text(
+                        f'CREATE TABLE {SEED_SCHEMA}."{table}" AS TABLE public."{table}"'
+                    )
+                )
+                seed_tables.append(table)
+    return tables, seed_tables
+
+
+def rebuild_schema(engine: Engine, config: Config) -> tuple[List[str], List[str]]:
+    """Drop and re-migrate the public schema, then snapshot the seeds."""
     with engine.begin() as conn:
         conn.execute(text("drop schema public cascade"))
         conn.execute(text("create schema public"))
+    run_db_migrations(config=config)
+    return snapshot_seed_tables(engine)
 
-    run_db_migrations(config=actual_config)
+
+@pytest.fixture(scope="session")
+def migrated_db():
+    # Session-scoped, so it cannot depend on the function-scoped mock_config:
+    # build the same test config it would install.
+    config = _create_test_config()
+    # Tests must not inherit the production statement/lock/idle timeouts: they
+    # can cause spurious failures during schema setup/teardown under load.
+    config.postgres.lock_timeout_ms.value = 0
+    config.postgres.statement_timeout_ms.value = 0
+    config.postgres.idle_in_transaction_session_timeout_ms.value = 0
+    engine = make_engine(config=config, echo=False, application_name="aleph-tests")
+
+    tables, seed_tables = rebuild_schema(engine, config)
 
     # Running migrations pollutes aleph.config.app_config by loading config.yml.
     # Replace the global with a completely fresh test config object.
     aleph.config.app_config = _create_test_config()
 
-    return make_session_factory(engine)
+    yield MigratedDb(engine=engine, tables=tables, seed_tables=seed_tables)
+    engine.dispose()
+
+
+@pytest.fixture
+def session_factory(mock_config, migrated_db: MigratedDb):
+    # Temporary: Task 3 replaces the body with the TRUNCATE + reseed reset.
+    config = aleph.config.app_config
+    config.postgres.lock_timeout_ms.value = 0
+    config.postgres.statement_timeout_ms.value = 0
+    config.postgres.idle_in_transaction_session_timeout_ms.value = 0
+    tables, seed_tables = rebuild_schema(migrated_db.engine, config)
+    migrated_db.tables, migrated_db.seed_tables = tables, seed_tables
+    aleph.config.app_config = _create_test_config()
+    return make_session_factory(migrated_db.engine)
 
 
 def _create_test_config() -> Config:
