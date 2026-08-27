@@ -87,7 +87,11 @@ def insert_vprogram_refs(session: DbSession) -> None:
     for ref in refs:
         # The file hash just has to be a valid hash: use the reversed ref.
         file_hash = ref[::-1]
-        session.add(StoredFileDb(hash=file_hash, size=1024 * 1024, type=FileType.FILE))
+        # The runtime manifest is a small JSON document capped by the
+        # resolver: pin it well under the cap (not at the exact boundary),
+        # unlike the other (measured) artifacts.
+        size = 4096 if ref == VPROGRAM_CONTENT["runtime"]["ref"] else 1024 * 1024
+        session.add(StoredFileDb(hash=file_hash, size=size, type=FileType.FILE))
         session.flush()
         insert_message_file_pin(
             session=session,

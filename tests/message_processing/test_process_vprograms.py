@@ -80,8 +80,10 @@ def insert_vprogram_refs(
         # use the reversed ref.
         file_hash = ref[::-1]
         # The runtime manifest is a small JSON document and is capped by the
-        # resolver: only the measured artifacts follow size_bytes.
-        size = 1024 * 1024 if ref == str(content.runtime.ref) else size_bytes
+        # resolver: only the measured artifacts follow size_bytes. Pinned
+        # well under the cap (not at the exact boundary) since it is really
+        # a small JSON document, not a measured artifact.
+        size = 4096 if ref == str(content.runtime.ref) else size_bytes
         session.add(StoredFileDb(hash=file_hash, size=size, type=FileType.FILE))
         session.flush()
         insert_message_file_pin(
