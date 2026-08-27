@@ -1038,7 +1038,14 @@ def _get_estimated_size_from_content(
                 return _optional_float(content.runtime_estimated_size_mib)
             verified_volume = _volume_from_cost_name(content.volumes, cost.name)
             if verified_volume is not None:
-                if cost.name and cost.name.endswith(":hash_tree"):
+                # Rebuild the exact hash-tree row name from the volume's own
+                # comment rather than testing a suffix: the comment is free
+                # text and may itself end with ":hash_tree".
+                index = _volume_index_from_cost_name(cost.name)
+                comment = (
+                    verified_volume.comment or CostType.EXECUTION_VPROGRAM_VOLUME.value
+                )
+                if cost.name == f"#{index}:{comment}:hash_tree":
                     return _optional_float(verified_volume.estimated_hash_tree_size_mib)
                 return _optional_float(verified_volume.estimated_size_mib)
 

@@ -399,3 +399,42 @@ def test_vprogram_estimate_rejects_more_than_max_verified_volumes():
     CostEstimationVProgramContent.model_validate(
         {**VPROGRAM_CONTENT, "volumes": [volume] * MAX_VERIFIED_VOLUMES}
     )
+
+
+def test_vprogram_estimated_size_lookup_is_exact_for_hash_tree_like_comments():
+    from aleph.db.models.account_costs import AccountCostsDb
+    from aleph.services.cost import _get_estimated_size_from_content
+
+    content = CostEstimationVProgramContent.model_validate(
+        {
+            **VPROGRAM_CONTENT,
+            "volumes": [
+                {
+                    **VPROGRAM_CONTENT["volumes"][0],
+                    "comment": "data:hash_tree",
+                    "estimated_size_mib": 1024,
+                    "estimated_hash_tree_size_mib": 8,
+                }
+            ],
+        }
+    )
+
+    def row(name: str) -> AccountCostsDb:
+        return AccountCostsDb(
+            owner=VPROGRAM_CONTENT["address"],
+            item_hash=VPROGRAM_ITEM_HASH,
+            type=CostType.EXECUTION_VPROGRAM_VOLUME,
+            name=name,
+            ref="da" * 32,
+            payment_type="credit",
+            cost_hold=Decimal(0),
+            cost_stream=Decimal(0),
+            cost_credit=Decimal(0),
+        )
+
+    # The image row's name ends with ":hash_tree" only because of the comment.
+    assert _get_estimated_size_from_content(row("#0:data:hash_tree"), content) == 1024.0
+    assert (
+        _get_estimated_size_from_content(row("#0:data:hash_tree:hash_tree"), content)
+        == 8.0
+    )
