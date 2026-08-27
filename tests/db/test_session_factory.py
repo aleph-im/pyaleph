@@ -12,6 +12,15 @@ from aleph.types.files import FileType
 
 SEED_COUNTS = {"alembic_version": 1, "cron_jobs": 3, "error_codes": 25}
 
+# Filled in by the step tests below so that a later step can tell whether the
+# schema was rebuilt between the two: re-running the migrations recreates every
+# table with a fresh OID, while the fast reset leaves the tables in place.
+OBSERVED_OIDS: dict[str, int] = {}
+
+
+def _messages_oid(session) -> int:
+    return session.execute(text("SELECT 'public.messages'::regclass::oid")).scalar()
+
 
 def test_migrated_db_snapshots_seed_tables(migrated_db):
     assert set(migrated_db.seed_tables) == set(SEED_COUNTS)
@@ -104,6 +113,48 @@ def test_reset_step_4_sees_trigger_enabled(session_factory: DbSessionFactory):
         assert state == "O"
 
 
+def test_reset_step_5_creates_a_table(session_factory: DbSessionFactory):
+    with session_factory() as session:
+        session.execute(text("CREATE TABLE leftover_t (i int)"))
+        OBSERVED_OIDS["before_created_table"] = _messages_oid(session)
+        session.commit()
+
+
+def test_reset_step_6_drops_the_created_table_without_rebuilding(
+    session_factory: DbSessionFactory,
+):
+    with session_factory() as session:
+        assert (
+            session.execute(text("SELECT to_regclass('public.leftover_t')")).scalar()
+            is None
+        )
+        # A table the test created is dropped in place: no rebuild needed.
+        assert _messages_oid(session) == OBSERVED_OIDS["before_created_table"]
+
+
+def test_reset_step_7_drops_an_expected_table(session_factory: DbSessionFactory):
+    with session_factory() as session:
+        session.execute(text("DROP TABLE public.ccn_metrics_default"))
+        OBSERVED_OIDS["before_dropped_table"] = _messages_oid(session)
+        session.commit()
+
+
+def test_reset_step_8_rebuilds_after_an_expected_table_was_dropped(
+    session_factory: DbSessionFactory,
+):
+    with session_factory() as session:
+        # Only re-running the migrations can bring a dropped table back.
+        assert (
+            session.execute(
+                text("SELECT to_regclass('public.ccn_metrics_default')")
+            ).scalar()
+            is not None
+        )
+        assert _messages_oid(session) != OBSERVED_OIDS["before_dropped_table"]
+        # Baseline for the marked test below, which must rebuild again.
+        OBSERVED_OIDS["before_fresh_schema"] = _messages_oid(session)
+
+
 @pytest.mark.fresh_schema
 def test_fresh_schema_marker_rebuilds(session_factory: DbSessionFactory, migrated_db):
     # A marked test gets a rebuilt schema and a refreshed seed snapshot.
@@ -112,4 +163,6 @@ def test_fresh_schema_marker_rebuilds(session_factory: DbSessionFactory, migrate
             assert (
                 session.execute(text(f"SELECT count(*) FROM {table}")).scalar() == count
             )
+        # The rebuild really re-ran the migrations rather than deleting rows.
+        assert _messages_oid(session) != OBSERVED_OIDS["before_fresh_schema"]
     assert set(migrated_db.seed_tables) == set(SEED_COUNTS)

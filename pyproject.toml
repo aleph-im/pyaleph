@@ -225,7 +225,7 @@ norecursedirs = [ "*.egg", "dist", "build", ".tox", ".venv", "*/site-packages/*"
 testpaths = [ "tests/unit" ]
 markers = [
   "ledger_hardware: marks tests as requiring ledger hardware",
-  "fresh_schema: rebuild the database schema from migrations for this test instead of the fast TRUNCATE reset",
+  "fresh_schema: rebuild the database schema from migrations for this test instead of the fast DELETE-based reset",
 ]
 
 [tool.coverage.run]

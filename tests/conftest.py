@@ -160,9 +160,6 @@ def rebuild_schema(engine: Engine, config: Config) -> tuple[List[str], List[str]
     return snapshot_seed_tables(engine)
 
 
-USER_TRIGGER_TABLES = ("messages", "message_confirmations")
-
-
 def _non_empty_tables(conn, tables: List[str]) -> List[str]:
     """Return the subset of `tables` that currently holds at least one row.
 
@@ -197,9 +194,17 @@ def reset_database(migrated_db: MigratedDb) -> bool:
     repair, i.e. a test dropped a table (the metrics partition cron job does):
     the caller then has to fall back to a full rebuild. Tables a test *created*
     are dropped here, so that case does not need a rebuild.
+
+    Drift detection compares table *name sets* only. A test that alters an
+    existing table (adds or drops a column, index, constraint or trigger)
+    leaves that change in place for the tests that follow; mark such a test
+    `fresh_schema` to force a rebuild instead.
     """
     with migrated_db.engine.begin() as conn:
         conn.execute(text("SET LOCAL session_replication_role = replica"))
+        # Turn a reset blocked by a transaction some earlier test left open
+        # into a named error instead of an indefinite hang.
+        conn.execute(text("SET LOCAL lock_timeout = '5s'"))
         # The set of tables is re-read every time rather than taken from the
         # session-scoped snapshot: DDL in a test (partition create/drop) would
         # otherwise leave the snapshot stale and the probes below would fail.
@@ -236,8 +241,21 @@ def reset_database(migrated_db: MigratedDb) -> bool:
         )
         for sequence in dirty_sequences:
             conn.execute(text(f'ALTER SEQUENCE public."{sequence}" RESTART'))
-        for table in USER_TRIGGER_TABLES:
-            conn.execute(text(f'ALTER TABLE public."{table}" ENABLE TRIGGER ALL'))
+        # Re-enable whatever a test disabled, discovered from the catalog so
+        # that a new user trigger is covered without touching this fixture.
+        # regclass::text is already quoted as an identifier where it needs to be.
+        disabled_trigger_tables = (
+            conn.execute(
+                text(
+                    "SELECT DISTINCT tgrelid::regclass::text FROM pg_trigger "
+                    "WHERE NOT tgisinternal AND tgenabled <> 'O'"
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for table in disabled_trigger_tables:
+            conn.execute(text(f"ALTER TABLE {table} ENABLE TRIGGER ALL"))
     return True
 
 
