@@ -595,20 +595,14 @@ class TestRecalculateMessageCosts:
 
     @pytest.mark.asyncio
     @patch("aleph.web.controllers.prices.get_session_factory_from_request")
-    async def test_recalculate_vprogram_keeps_runtime_bundle_row(
+    async def test_recalculate_vprogram_without_a_vms_row_skips_the_resolver(
         self, mock_get_session, session_factory, mock_request_factory
     ):
-        """Recalculating a V-PROGRAM message's costs must still resolve the
-        runtime manifest to its bundle: the persisted `runtime` cost row
-        must keep pointing at the bundle (not the manifest), with the
-        EXECUTION_VPROGRAM_VOLUME type, exactly as it did when the message
-        was first processed.
+        """A V-PROGRAM whose vms row is gone (forgotten or removed) has
+        nothing left to bill the bundle to: recalculation must not re-read
+        the manifest, and must still succeed without the `runtime` row.
         """
-        from api.test_vprogram_api import (
-            BUNDLE_REF,
-            insert_bundle_pin,
-            insert_vprogram_refs,
-        )
+        from api.test_vprogram_api import insert_bundle_pin, insert_vprogram_refs
         from messages.test_vprogram import VPROGRAM_CONTENT, VPROGRAM_ITEM_HASH
 
         from aleph.db.accessors.cost import get_message_costs
@@ -647,10 +641,11 @@ class TestRecalculateMessageCosts:
 
         with patch(
             "aleph.web.controllers.prices.resolve_runtime_bundle_ref",
-            new=AsyncMock(return_value=BUNDLE_REF),
-        ):
+            new=AsyncMock(side_effect=AssertionError("resolver must not be called")),
+        ) as resolver:
             response = await recalculate_message_costs.__wrapped__(request)
 
+        assert resolver.await_count == 0
         assert response.status == 200
         response_data = json.loads(response.text)
         assert response_data["recalculated_count"] == 1
@@ -660,9 +655,8 @@ class TestRecalculateMessageCosts:
             costs = list(
                 get_message_costs(session=session, item_hash=VPROGRAM_ITEM_HASH)
             )
-        runtime = next(c for c in costs if c.name == "runtime")
-        assert runtime.ref == BUNDLE_REF
-        assert runtime.type == "EXECUTION_VPROGRAM_VOLUME"
+        assert costs
+        assert "runtime" not in {c.name for c in costs}
 
     @staticmethod
     def _seed_vprogram(session_factory, runtime_bundle_ref):
@@ -756,6 +750,45 @@ class TestRecalculateMessageCosts:
             costs = list(get_message_costs(session=session, item_hash=item_hash))
         assert [c.name for c in costs] == ["old_cost"]
         assert Decimal(costs[0].cost_hold) == Decimal("999.99")
+
+    @pytest.mark.asyncio
+    @patch("aleph.web.controllers.prices.get_session_factory_from_request")
+    async def test_recalculate_legacy_vprogram_backfills_the_bundle_ref(
+        self, mock_get_session, session_factory, mock_request_factory
+    ):
+        """A row written before `runtime_bundle_ref` existed falls back to the
+        resolver; the ref it returns must be written back to the vms row so
+        later recalculations and the FORGET dependency check use it."""
+        from api.test_vprogram_api import BUNDLE_REF
+
+        from aleph.db.accessors.cost import get_message_costs
+        from aleph.db.accessors.vms import get_vprogram
+
+        item_hash = self._seed_vprogram(session_factory, runtime_bundle_ref=None)
+
+        mock_get_session.return_value = session_factory
+        request = mock_request_factory()
+
+        with patch(
+            "aleph.web.controllers.prices.resolve_runtime_bundle_ref",
+            new=AsyncMock(return_value=BUNDLE_REF),
+        ) as resolver:
+            response = await recalculate_message_costs.__wrapped__(request)
+
+        assert resolver.await_count == 1
+        assert response.status == 200
+        response_data = json.loads(response.text)
+        assert response_data["recalculated_count"] == 1
+        assert not response_data.get("errors")
+
+        with session_factory() as session:
+            vprogram = get_vprogram(session, item_hash)
+            assert vprogram is not None
+            assert vprogram.runtime_bundle_ref == BUNDLE_REF
+            costs = list(get_message_costs(session=session, item_hash=item_hash))
+        runtime = next(c for c in costs if c.name == "runtime")
+        assert runtime.ref == BUNDLE_REF
+        assert runtime.type == "EXECUTION_VPROGRAM_VOLUME"
 
     @pytest.mark.asyncio
     @patch("aleph.web.controllers.prices.get_session_factory_from_request")

@@ -731,15 +731,30 @@ async def recalculate_message_costs(request: web.Request):
                     # The bundle ref was resolved from the manifest when the
                     # message was processed and persisted on the vms row:
                     # read it back instead of re-fetching and re-parsing the
-                    # manifest STORE. Rows written before that column existed
-                    # have None and still need the resolver.
+                    # manifest STORE.
                     vprogram = get_vprogram(session, message.item_hash)
-                    bundle_ref = vprogram.runtime_bundle_ref if vprogram else None
-                    if bundle_ref is None:
-                        bundle_ref = await resolve_runtime_bundle_ref(
-                            session, storage_service, str(content.runtime.ref)
+                    if vprogram is None:
+                        # No vms row: the V-PROGRAM was forgotten or removed
+                        # and there is nothing left to bill the bundle to.
+                        # Re-reading the manifest would only fail (or price a
+                        # dead resource), so leave the bundle out.
+                        LOGGER.debug(
+                            "No vms row for V-PROGRAM %s: recalculating without "
+                            "its runtime bundle",
+                            message.item_hash,
                         )
-                    extra_volumes.append(runtime_bundle_volume(bundle_ref))
+                    else:
+                        bundle_ref = vprogram.runtime_bundle_ref
+                        if bundle_ref is None:
+                            # Rows written before the column existed still
+                            # need the resolver; backfill them so the next
+                            # recalculation and the FORGET dependency check
+                            # can use the persisted ref.
+                            bundle_ref = await resolve_runtime_bundle_ref(
+                                session, storage_service, str(content.runtime.ref)
+                            )
+                            vprogram.runtime_bundle_ref = bundle_ref
+                        extra_volumes.append(runtime_bundle_volume(bundle_ref))
 
                 # Calculate new costs using the historical pricing model
                 new_costs = get_detailed_costs(
