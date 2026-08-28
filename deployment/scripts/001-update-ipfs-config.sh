@@ -5,58 +5,95 @@ set -eu
 
 CONFIG_FILE="/data/ipfs/config"
 
+# Apply one config key, recording instead of aborting when kubo rejects it, so
+# a key removed by a future kubo release cannot stop the remaining settings from
+# being applied (that is how a single stale key broke startup before). Failures
+# are tallied and the script exits non-zero at the end, so a node never quietly
+# runs on defaults.
+config_failures=0
+set_config() {
+    if ! ipfs config "$@"; then
+        echo "ERROR: failed to apply ipfs config $*" >&2
+        config_failures=$((config_failures + 1))
+    fi
+}
+
 if [ -f "$CONFIG_FILE" ]; then
     cp "$CONFIG_FILE" "$CONFIG_FILE.backup"
 fi
 
 echo "Updating IPFS config file..."
 
-# The deprecated Provider/Reprovider config is removed in kubo v0.43 (the daemon
-# refuses to start with it present). Repo version 18 -- and the migration to it --
-# was introduced in kubo v0.38.0, so only migrate on a binary that supports it
-# (bump the 38/18 targets on future kubo upgrades). The daemon must be stopped
-# while `ipfs repo migrate` runs (it locks the repo).
-if [ -f /data/ipfs/version ]; then
-    ver=$(cat /data/ipfs/version)
-    kubo_minor=$(ipfs version --number | cut -d. -f2)
+# Only announce recursively pinned CIDs. The reprovide strategy key changed in
+# kubo v0.38.0: Reprovider/Provider were deprecated and superseded by the
+# unified Provide key. v0.43 refuses to start when the deprecated keys carry
+# values (an older version of this script set Reprovider.Strategy), but tolerates
+# them empty, so blank them there. On older kubo those keys are still ACTIVE and
+# must not be erased. Repo-format migration is handled by the daemon's --migrate.
+#
+# Assume the current (>= v0.38) layout unless the version string clearly says
+# otherwise: an unparseable version, or any kubo 1.x+, must not fall through to
+# the legacy branch and re-add keys that stop a modern daemon from starting.
+kubo_version=$(ipfs version --number 2>/dev/null || true)
+kubo_major=$(printf '%s' "$kubo_version" | cut -d. -f1)
+kubo_minor=$(printf '%s' "$kubo_version" | cut -d. -f2)
+case "$kubo_major" in
+    ''|*[!0-9]*) kubo_major=0 ;;
+esac
+case "$kubo_minor" in
+    ''|*[!0-9]*) kubo_minor=38 ;;
+esac
 
-    if [ "$kubo_minor" -ge 38 ]; then
-        if [ "$ver" -lt 18 ]; then
-            # migrate repo to the latest version
-            ipfs repo migrate --to=18
-        elif [ "$ver" -eq 18 ]; then
-            # A node that ran the old script has legacy Provider/Reprovider keys.
-            # Re-run the migration to strip them.
-            if ipfs config Provider >/dev/null 2>&1 || ipfs config Reprovider >/dev/null 2>&1; then
-                echo "legacy Provider/Reprovider present"
-                ipfs repo migrate --to=17 --allow-downgrade
-                ipfs repo migrate --to=18
-                echo "removed Provider/Reprovider"
-            fi
-        fi
-    fi
+if [ "$kubo_major" -gt 0 ] || [ "$kubo_minor" -ge 38 ]; then
+    # Carry the deprecated values over to their Provide equivalents before
+    # blanking, so a node that tuned them does not silently lose the setting.
+    # Mapping matches kubo's own fs-repo-17-to-18 migration:
+    # Provider.Enabled -> Provide.Enabled, Provider.WorkerCount ->
+    # Provide.DHT.MaxWorkers, Reprovider.Interval -> Provide.DHT.Interval.
+    # (Provider.Strategy is intentionally not carried: the migration skips it as
+    # unused. Reprovider.Strategy is superseded by the Provide.Strategy set
+    # below.)
+    provider_enabled=$(ipfs config Provider.Enabled 2>/dev/null || true)
+    provider_workers=$(ipfs config Provider.WorkerCount 2>/dev/null || true)
+    reprovider_interval=$(ipfs config Reprovider.Interval 2>/dev/null || true)
+
+    set_config --json Reprovider '{}'
+    set_config --json Provider '{}'
+
+    case "$provider_enabled" in
+        true|false) set_config --json Provide.Enabled "$provider_enabled" ;;
+    esac
+    case "$provider_workers" in
+        ''|*[!0-9]*) ;;
+        *) set_config --json Provide.DHT.MaxWorkers "$provider_workers" ;;
+    esac
+    # Interval is a duration string (e.g. "22h"), so only skip empty/null.
+    case "$reprovider_interval" in
+        ''|null) ;;
+        *) set_config Provide.DHT.Interval "$reprovider_interval" ;;
+    esac
+
+    set_config Provide.Strategy 'pinned'
+else
+    set_config Reprovider.Strategy 'pinned'
 fi
 
 # Enable the V1+V2 service
-ipfs config AutoNAT.ServiceMode 'enabled'
+set_config AutoNAT.ServiceMode 'enabled'
 
 # CCNs propagate messages over pubsub, so the daemon must have it enabled
-ipfs config Pubsub.Enabled --json 'true'
-
-# Only announce recursively pinned CIDs
-ipfs config Provide.Strategy 'pinned'
+set_config Pubsub.Enabled --json 'true'
 
 # ONLY use the Amino DHT (no HTTP routers).
-ipfs config Routing.Type "dhtserver"
+set_config Routing.Type "dhtserver"
 
 # Improve latency and read/write for large dataset
-ipfs config Routing.AcceleratedDHTClient --json 'true'
+set_config Routing.AcceleratedDHTClient --json 'true'
 
 # Aleph + Public Bootstrap peers
-ipfs config Bootstrap --json '[
+set_config Bootstrap --json '[
     "/ip4/51.159.57.71/tcp/4001/p2p/12D3KooWSdcuGvLfXgc6BPgDEqWYQirGpBWUmyXRwK5RmyM1T7Di",
     "/ip4/46.255.204.209/tcp/4001/p2p/12D3KooWHWNCn8t9NKQPBPZU61Fq6BoVw9XV37YsWTuMLwZXrEtj",
-    "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
     "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
     "/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa",
     "/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb",
@@ -67,19 +104,19 @@ ipfs config Bootstrap --json '[
 ]'
 
 # soft upper limit to trigger GC
-ipfs config Datastore.StorageMax '10GB'
+set_config Datastore.StorageMax '10GB'
 
 # time duration specifying how frequently to run a garbage collection
-ipfs config Datastore.GCPeriod '12h'
+set_config Datastore.GCPeriod '12h'
 
 # Enable hole punching for NAT traversal when port forwarding is not possible
-ipfs config Swarm.EnableHolePunching --json 'true'
+set_config Swarm.EnableHolePunching --json 'true'
 
 # Disable providing /p2p-circuit v2 relay service to other peers on the network.
-ipfs config Swarm.RelayService.Enabled --json 'false'
+set_config Swarm.RelayService.Enabled --json 'false'
 
-# Disable advertising networks (**Add your server provider network if you receive a netscan alert**) 
-ipfs config Swarm.AddrFilters --json '[
+# Disable advertising networks (**Add your server provider network if you receive a netscan alert**)
+set_config Swarm.AddrFilters --json '[
     "/ip4/10.0.0.0/ipcidr/8",
     "/ip4/100.64.0.0/ipcidr/10",
     "/ip4/169.254.0.0/ipcidr/16",
@@ -98,5 +135,10 @@ ipfs config Swarm.AddrFilters --json '[
     "/ip6/fe80::/ipcidr/10",
     "/ip4/86.84.0.0/ipcidr/16"
 ]'
+
+if [ "$config_failures" -ne 0 ]; then
+    echo "IPFS config update FAILED for $config_failures key(s)" >&2
+    exit 1
+fi
 
 echo "IPFS config updated!"
