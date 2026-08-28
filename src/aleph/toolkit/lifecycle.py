@@ -1,9 +1,14 @@
 import asyncio
 import logging
 import signal
-from typing import Awaitable, Callable
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator, Awaitable, Callable, Protocol
 
 LOGGER = logging.getLogger(__name__)
+
+
+class _AsyncCloseable(Protocol):
+    async def close(self) -> Any: ...
 
 
 def install_signal_handlers(
@@ -30,3 +35,18 @@ async def safe_async_cleanup(name: str, awaitable: Awaitable[object]) -> None:
         await awaitable
     except Exception:
         LOGGER.exception("Error during cleanup of %s", name)
+
+
+@asynccontextmanager
+async def closing_quietly(
+    name: str, closeable: _AsyncCloseable
+) -> AsyncIterator[_AsyncCloseable]:
+    """Yield ``closeable``, awaiting ``.close()`` on exit via safe_async_cleanup.
+
+    For shutdown paths that want a resource closed without a close() failure
+    (e.g. an unreachable broker) masking the original exception.
+    """
+    try:
+        yield closeable
+    finally:
+        await safe_async_cleanup(name, closeable.close())

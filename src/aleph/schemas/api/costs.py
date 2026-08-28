@@ -75,7 +75,7 @@ class CostComponentDetail(BaseModel):
     cost_credit: str = Field(description="Credit cost for this component")
     size_mib: Optional[float] = Field(
         default=None,
-        description="Storage size in MiB (populated for volume/storage-related components: STORAGE, EXECUTION_INSTANCE_VOLUME_ROOTFS, EXECUTION_PROGRAM_VOLUME_CODE, EXECUTION_PROGRAM_VOLUME_RUNTIME, EXECUTION_PROGRAM_VOLUME_DATA, EXECUTION_VOLUME_PERSISTENT, EXECUTION_VOLUME_INMUTABLE)",
+        description="Storage size in MiB (populated for volume/storage-related components: STORAGE, EXECUTION_INSTANCE_VOLUME_ROOTFS, EXECUTION_PROGRAM_VOLUME_CODE, EXECUTION_PROGRAM_VOLUME_RUNTIME, EXECUTION_PROGRAM_VOLUME_DATA, EXECUTION_VOLUME_PERSISTENT, EXECUTION_VOLUME_INMUTABLE, EXECUTION_VPROGRAM_VOLUME)",
     )
 
     @field_validator("cost_hold", "cost_stream", "cost_credit", mode="before")
@@ -132,7 +132,7 @@ class EstimatedCostDetailResponse(BaseModel):
     cost_credit: str
     size_mib: Optional[float] = Field(
         default=None,
-        description="Storage size in MiB (populated for volume/storage-related components: STORAGE, EXECUTION_INSTANCE_VOLUME_ROOTFS, EXECUTION_PROGRAM_VOLUME_CODE, EXECUTION_PROGRAM_VOLUME_RUNTIME, EXECUTION_PROGRAM_VOLUME_DATA, EXECUTION_VOLUME_PERSISTENT, EXECUTION_VOLUME_INMUTABLE)",
+        description="Storage size in MiB (populated for volume/storage-related components: STORAGE, EXECUTION_INSTANCE_VOLUME_ROOTFS, EXECUTION_PROGRAM_VOLUME_CODE, EXECUTION_PROGRAM_VOLUME_RUNTIME, EXECUTION_PROGRAM_VOLUME_DATA, EXECUTION_VOLUME_PERSISTENT, EXECUTION_VOLUME_INMUTABLE, EXECUTION_VPROGRAM_VOLUME)",
     )
 
     @field_validator("cost_hold", "cost_stream", "cost_credit", mode="before")
@@ -148,3 +148,7 @@ class EstimatedCostsResponse(BaseModel):
     cost: str
     detail: List[EstimatedCostDetailResponse]
     charged_address: str
+    warnings: List[str] = Field(
+        default_factory=list,
+        description="Non-fatal problems encountered while pricing: components that could not be priced and are therefore missing from the total.",
+    )

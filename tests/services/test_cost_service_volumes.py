@@ -360,10 +360,12 @@ def test_get_size_mib_for_execution_volume_inmutable_with_estimation(
     assert size_mib == 512.0
 
 
-def test_get_size_mib_prioritizes_real_file_over_estimation(
+def test_get_size_mib_prioritizes_estimation_over_real_file(
     session_factory: DbSessionFactory, fixture_hold_program_message_complete
 ):
-    """Test that real file size is prioritized over estimated_size_mib."""
+    """For estimation content, size_mib reports the estimate the row was
+    billed from even when the referenced file is pinned with another size;
+    without an estimate the real file size is used."""
     content = fixture_hold_program_message_complete
 
     with session_factory() as session:
@@ -401,12 +403,18 @@ def test_get_size_mib_prioritizes_real_file_over_estimation(
             cost_credit=Decimal("0.1"),
         )
 
-        # Get size using the helper function (should use REAL file size, not estimated)
+        # Billing used the estimate (SizedVolume), so the detail must too.
         size_mib = get_cost_component_size_mib(session, cost, content)
+        assert size_mib == 2048.0
 
-        # Assert size matches REAL file size, not estimated
+        # Same row, no estimate on the content: the pinned file size wins.
+        content_without_estimate = content.model_copy(
+            update={
+                "code": content.code.model_copy(update={"estimated_size_mib": None})
+            }
+        )
+        size_mib = get_cost_component_size_mib(session, cost, content_without_estimate)
         assert size_mib == 3000.0
-        assert size_mib != 2048.0  # Not the estimated size
 
 
 def test_get_size_mib_for_execution_returns_none():

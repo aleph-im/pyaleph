@@ -25,6 +25,7 @@ from aleph.services.cost import (
     _get_product_price,
     _get_settings,
     _get_settings_aggregate,
+    _volume_index_from_cost_name,
     get_cost_component_size_mib,
     get_total_and_detailed_costs,
 )
@@ -1117,3 +1118,21 @@ def test_store_min_cost_floor_does_not_apply_to_hold(
 
     assert small_cost > 0
     assert small_cost < floor_cost
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("#0:x", 0),
+        ("#12:x:hash_tree", 12),
+        ("#-1:x", None),
+        ("#a:x", None),
+        ("#0", None),
+        ("workload", None),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_volume_index_from_cost_name(name, expected):
+    """The single parser for the "#<index>:" prefix cost rows carry."""
+    assert _volume_index_from_cost_name(name) == expected

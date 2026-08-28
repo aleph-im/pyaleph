@@ -29,7 +29,7 @@ VPROGRAM_CONTENT: Dict[str, Any] = {
         "measurements": [
             {
                 "platform": "sev_snp",
-                "digest": "ab" * 48,
+                "registers": {"launch": "ab" * 48},
                 "vcpu_type": "EPYC-v4",
             }
         ],
@@ -44,7 +44,7 @@ VPROGRAM_CONTENT: Dict[str, Any] = {
     ],
 }
 
-VPROGRAM_ITEM_HASH = "4c319b6bdf98f1e90f2bf8c69da175679fa21ca27d4547bbfa32f77dd3b49fe6"
+VPROGRAM_ITEM_HASH = "1f9df10846e37cfb1fee1bcf139309a449b7fdd005e633c3a38c663edc77a8c3"
 
 VPROGRAM_MESSAGE_DICT = {
     "chain": "ETH",

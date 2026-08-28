@@ -9,7 +9,18 @@ from aleph.types.db_session import DbSession
 from aleph.web.controllers.app_state_getters import get_session_factory_from_request
 
 
-@cached(ttl=60 * 120, cache=SimpleMemoryCache, timeout=120)
+@cached(
+    ttl=60 * 120,
+    cache=SimpleMemoryCache,
+    timeout=120,
+    # aiocache calls key_builder(f, *args, **kwargs); we ignore all of them and
+    # return a constant key. The channel list does not depend on which request
+    # Session is passed. Without this, aiocache's default key includes the
+    # per-request Session's repr (its memory address), so every request is a
+    # cache miss that stores a new entry — the cache never hits and grows with
+    # traffic until TTL eviction.
+    key_builder=lambda *args, **kwargs: "used_channels",
+)
 async def get_channels(session: DbSession) -> List[Channel]:
     # Filter out None
     return [

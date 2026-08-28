@@ -1,11 +1,17 @@
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Dict, Iterable, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from aiohttp import web
 from aiohttp.web_exceptions import HTTPException
-from aleph_message.models import ExecutableContent, ItemHash, ItemType, MessageType
+from aleph_message.models import (
+    ExecutableContent,
+    ItemHash,
+    ItemType,
+    MessageType,
+    VerifiableProgramContent,
+)
 from aleph_message.models.execution.base import Payment, PaymentType
 from dataclasses_json import DataClassJsonMixin
 from pydantic import BaseModel, Field, ValidationError
@@ -31,6 +37,7 @@ from aleph.db.accessors.messages import (
     get_message_status,
     get_removed_message,
 )
+from aleph.db.accessors.vms import get_vprogram
 from aleph.db.models import MessageDb
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.schemas.api.costs import (
@@ -46,6 +53,7 @@ from aleph.schemas.api.costs import (
 from aleph.schemas.cost_estimation_messages import (
     CostEstimationInstanceContent,
     CostEstimationStoreContent,
+    CostEstimationVProgramContent,
     validate_cost_estimation_message_content,
     validate_cost_estimation_message_dict,
 )
@@ -59,12 +67,21 @@ from aleph.services.cost import (
     get_total_and_detailed_costs_from_db,
 )
 from aleph.services.pricing_utils import get_pricing_timeline
+from aleph.services.vprogram_runtime import (
+    resolve_runtime_bundle_ref,
+    runtime_bundle_volume,
+)
 from aleph.toolkit.constants import MiB
 from aleph.toolkit.costs import format_cost_str
 from aleph.toolkit.ecdsa import require_auth_token
-from aleph.types.cost import CostType
+from aleph.types.cost import CostType, RefVolume, SizedVolume, resolve_price_type_key
 from aleph.types.db_session import DbSession
-from aleph.types.message_status import MessageStatus
+from aleph.types.message_status import (
+    InvalidVProgramRuntime,
+    MessageProcessingException,
+    MessageStatus,
+    VmVolumeNotFound,
+)
 from aleph.web.controllers.app_state_getters import (
     get_session_factory_from_request,
     get_storage_service_from_request,
@@ -150,6 +167,20 @@ async def get_executable_message(session: DbSession, item_hash: ItemHash) -> Mes
     return message
 
 
+def _message_processing_error_detail(exception: MessageProcessingException) -> str:
+    """The human-readable reason behind a MessageProcessingException.
+
+    Its __str__ renders the class name alone; the message the raiser wrote
+    lives in the exception args, which details() exposes.
+    """
+    details = exception.details()
+    errors = details.get("errors") if details else None
+    if errors:
+        return "; ".join(str(error) for error in errors)
+
+    return type(exception).__name__
+
+
 def _make_cost_detail(
     cost: AccountCostsDb, size_mib: Optional[float]
 ) -> EstimatedCostDetailResponse:
@@ -168,6 +199,7 @@ def _build_costs_response(
     required_tokens: Decimal,
     charged_address: str,
     costs_with_sizes: Iterable[Tuple[AccountCostsDb, Optional[float]]],
+    warnings: Optional[Sequence[str]] = None,
 ) -> web.Response:
     model = {
         "required_tokens": float(required_tokens),
@@ -177,6 +209,7 @@ def _build_costs_response(
             _make_cost_detail(cost, size_mib) for cost, size_mib in costs_with_sizes
         ],
         "charged_address": charged_address,
+        "warnings": list(warnings or []),
     }
 
     response = EstimatedCostsResponse.model_validate(model)
@@ -275,7 +308,9 @@ def _price_forgotten_store_message(
         owner=forgotten_message.owner,
         payment_type_value=payment_type_value,
         size=forgotten_message.size,
-        time=forgotten_message.time.timestamp(),
+        # Prefer the trusted observed time captured at forget time; fall back to
+        # the sender-supplied time only for legacy rows that predate the column.
+        time=(forgotten_message.observed_time or forgotten_message.time).timestamp(),
         gone=gone,
     )
 
@@ -313,7 +348,9 @@ def _price_removed_store_message(
         owner=removed_message.owner,
         payment_type_value=payment_type_value,
         size=removed_message.size,
-        time=removed_message.time.timestamp(),
+        # Prefer the trusted observed time captured at removal; fall back to the
+        # sender-supplied time only for legacy rows that predate the column.
+        time=(removed_message.observed_time or removed_message.time).timestamp(),
         gone=gone,
     )
 
@@ -443,14 +480,50 @@ async def message_price_estimate(request: web.Request):
         )
         item_hash = message.item_hash
 
+        warnings: List[str] = []
+        extra_volumes: List[Union[RefVolume, SizedVolume]] = []
+        bundle_ref: Optional[str] = None
+        is_vprogram_estimate = isinstance(content, CostEstimationVProgramContent)
+        if (
+            isinstance(content, CostEstimationVProgramContent)
+            and content.runtime_estimated_size_mib is None
+        ):
+            try:
+                bundle_ref = await resolve_runtime_bundle_ref(
+                    session, storage_service, str(content.runtime.ref)
+                )
+                extra_volumes.append(runtime_bundle_volume(bundle_ref))
+            except (InvalidVProgramRuntime, VmVolumeNotFound) as e:
+                # An estimate for an unpublished, unreachable or invalid
+                # manifest is still an estimate: price without the bundle and
+                # say so.
+                detail = _message_processing_error_detail(e)
+                LOGGER.warning(
+                    "Estimating %s without its runtime bundle: %s", item_hash, detail
+                )
+                warnings.append(f"runtime bundle not priced: {detail}")
+
         try:
             payment_type = get_payment_type(content)
             required_tokens, costs = get_total_and_detailed_costs(
-                session, content, item_hash
+                session, content, item_hash, extra_volumes=extra_volumes
             )
 
         except RuntimeError as e:
             raise web.HTTPNotFound(reason=str(e))
+
+        # The bundle resolved, but _get_volumes_costs silently skips a
+        # RefVolume whose file is not pinned here: the total is missing what
+        # is usually a V-PROGRAM's largest artifact.
+        if (
+            is_vprogram_estimate
+            and not warnings
+            and bundle_ref is not None
+            and not any(cost.name == "runtime" for cost in costs)
+        ):
+            warnings.append(
+                f"runtime bundle not priced: bundle file {bundle_ref} is not pinned on this node"
+            )
 
         # Enrich detail with size information
         costs_with_sizes = [
@@ -459,7 +532,7 @@ async def message_price_estimate(request: web.Request):
         ]
 
     return _build_costs_response(
-        payment_type, required_tokens, content.address, costs_with_sizes
+        payment_type, required_tokens, content.address, costs_with_sizes, warnings
     )
 
 
@@ -547,6 +620,7 @@ async def recalculate_message_costs(request: web.Request):
     """
 
     session_factory = get_session_factory_from_request(request)
+    storage_service = get_storage_service_from_request(request)
 
     # Check if a specific message hash was provided
     item_hash_param = request.match_info.get("item_hash")
@@ -583,7 +657,7 @@ async def recalculate_message_costs(request: web.Request):
                         ]
                     )
                 )
-                .order_by(MessageDb.time.asc())
+                .order_by(MessageDb.observed_time_expr().asc())
             )
             result = session.execute(select_stmt)
             messages_to_recalculate = result.scalars().all()
@@ -610,10 +684,14 @@ async def recalculate_message_costs(request: web.Request):
 
         for message in messages_to_recalculate:
             try:
-                # Find the applicable pricing model for this message's timestamp
+                # Find the applicable pricing model for this message's timestamp.
+                # Anchor on the observed (confirmation or reception) time, never
+                # the sender-supplied time, so a backdated message cannot be
+                # priced against an older, cheaper pricing model.
+                message_time = message.observed_time
                 while (
                     current_pricing_index < len(pricing_timeline) - 1
-                    and pricing_timeline[current_pricing_index + 1][0] <= message.time
+                    and pricing_timeline[current_pricing_index + 1][0] <= message_time
                 ):
                     current_pricing_index += 1
 
@@ -621,11 +699,8 @@ async def recalculate_message_costs(request: web.Request):
                 pricing_timestamp = pricing_timeline[current_pricing_index][0]
 
                 LOGGER.debug(
-                    f"Message {message.item_hash} at {message.time} using pricing from {pricing_timestamp}"
+                    f"Message {message.item_hash} at {message_time} using pricing from {pricing_timestamp}"
                 )
-
-                # Delete existing cost entries for this message
-                delete_costs_for_message(session, message.item_hash)
 
                 # Get the message content and determine product type
                 content: ExecutableContent = message.parsed_content
@@ -634,18 +709,67 @@ async def recalculate_message_costs(request: web.Request):
                 )
 
                 # Get the pricing for this specific product type
-                if product_type not in current_pricing_model:
+                pricing_key = resolve_price_type_key(
+                    product_type, current_pricing_model.keys()
+                )
+                if pricing_key not in current_pricing_model:
                     LOGGER.warning(
                         f"Product type {product_type} not found in pricing model for message {message.item_hash}"
                     )
                     continue
 
-                pricing = current_pricing_model[product_type]
+                pricing = current_pricing_model[pricing_key]
+                if pricing.type != product_type:
+                    # The pricing model fell back to another product's
+                    # numbers (e.g. a historical aggregate predating the
+                    # `vprogram` key); keep the message's own product type
+                    # so cost rows still identify it correctly.
+                    pricing = pricing.with_type(product_type)
+
+                extra_volumes: List[Union[RefVolume, SizedVolume]] = []
+                if isinstance(content, VerifiableProgramContent):
+                    # The bundle ref was resolved from the manifest when the
+                    # message was processed and persisted on the vms row:
+                    # read it back instead of re-fetching and re-parsing the
+                    # manifest STORE.
+                    vprogram = get_vprogram(session, message.item_hash)
+                    if vprogram is None:
+                        # No vms row: the V-PROGRAM was forgotten or removed
+                        # and there is nothing left to bill the bundle to.
+                        # Re-reading the manifest would only fail (or price a
+                        # dead resource), so leave the bundle out.
+                        LOGGER.debug(
+                            "No vms row for V-PROGRAM %s: recalculating without "
+                            "its runtime bundle",
+                            message.item_hash,
+                        )
+                    else:
+                        bundle_ref = vprogram.runtime_bundle_ref
+                        if bundle_ref is None:
+                            # Rows written before the column existed still
+                            # need the resolver; backfill them so the next
+                            # recalculation and the FORGET dependency check
+                            # can use the persisted ref.
+                            bundle_ref = await resolve_runtime_bundle_ref(
+                                session, storage_service, str(content.runtime.ref)
+                            )
+                            vprogram.runtime_bundle_ref = bundle_ref
+                        extra_volumes.append(runtime_bundle_volume(bundle_ref))
 
                 # Calculate new costs using the historical pricing model
                 new_costs = get_detailed_costs(
-                    session, content, message.item_hash, pricing
+                    session,
+                    content,
+                    message.item_hash,
+                    pricing,
+                    extra_volumes=extra_volumes,
                 )
+
+                # Only now that the replacement rows exist: anything that
+                # failed above (an unresolvable runtime, a pricing lookup)
+                # leaves the message's previous cost rows untouched instead
+                # of wiping them.
+                delete_costs_for_message(session, message.item_hash)
 
                 if new_costs:
                     # Store the new cost calculations

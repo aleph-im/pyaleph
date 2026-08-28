@@ -22,6 +22,7 @@ WORKLOAD_REF = "3c" * 32
 WORKLOAD_HASH_TREE = "4d" * 32
 VOLUME_REF = "5e" * 32
 VOLUME_HASH_TREE = "6f" * 32
+RUNTIME_BUNDLE_REF = "9a" * 32
 
 
 @pytest.fixture
@@ -48,6 +49,7 @@ def vprogram() -> VProgramDb:
         created=pytz.utc.localize(dt.datetime(2026, 7, 10)),
         runtime_ref=RUNTIME_REF,
         runtime_comment="snp runtime bundle",
+        runtime_bundle_ref=RUNTIME_BUNDLE_REF,
         workload_ref=WORKLOAD_REF,
         workload_hash_tree=WORKLOAD_HASH_TREE,
         workload_roothash="ab" * 32,
@@ -83,14 +85,22 @@ def test_vprogram_accessors(session_factory: DbSessionFactory, vprogram: VProgra
 
 @pytest.mark.parametrize(
     "volume_hash",
-    [RUNTIME_REF, WORKLOAD_REF, WORKLOAD_HASH_TREE, VOLUME_REF, VOLUME_HASH_TREE],
+    [
+        RUNTIME_REF,
+        RUNTIME_BUNDLE_REF,
+        WORKLOAD_REF,
+        WORKLOAD_HASH_TREE,
+        VOLUME_REF,
+        VOLUME_HASH_TREE,
+    ],
 )
 def test_get_vms_dependent_volumes_sees_vprogram_refs(
     session_factory: DbSessionFactory, vprogram: VProgramDb, volume_hash: str
 ):
-    """Every store file referenced by a V-Program (runtime manifest, workload
-    image and hash tree, verified volumes and their hash trees) must block
-    forgets while the V-Program is alive."""
+    """Every store file referenced by a V-Program (runtime manifest, runtime
+    bundle, workload image and hash tree, verified volumes and their hash
+    trees) must block forgets while the V-Program is alive. Each case also
+    exercises the negative side: an unknown hash must return None."""
     with session_factory() as session:
         session.add(vprogram)
         session.commit()

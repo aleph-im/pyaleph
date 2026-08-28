@@ -26,11 +26,14 @@ def are_store_and_program_free(message: MessageDb) -> bool:
     height: Optional[int] = (
         message.confirmations[0].height if len(message.confirmations) > 0 else None
     )
-    date: dt.datetime = message.time
 
     if height is not None:
         return height < STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT
     else:
+        # Never trust the sender-supplied ``time``: use the observed
+        # (confirmation or reception) time so a backdated message cannot claim
+        # the free legacy tier.
+        date: dt.datetime = message.observed_time
         return date < timestamp_to_datetime(STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP)
 
 
@@ -43,11 +46,11 @@ def is_credit_only_required(message: MessageDb) -> bool:
 
     Messages before the cutoff can still use holding tier payment.
 
-    Note: We only use timestamp-based cutoff here (not block height) because
-    the cutoff will be set to a future date. Message timestamps are validated
-    during message processing to prevent faking.
+    Note: We use the observed (confirmation or reception) time, never the
+    sender-supplied ``time``, so a backdated message cannot dodge the
+    credit-only requirement.
     """
-    return message.time >= timestamp_to_datetime(CREDIT_ONLY_CUTOFF_TIMESTAMP)
+    return message.observed_time >= timestamp_to_datetime(CREDIT_ONLY_CUTOFF_TIMESTAMP)
 
 
 def is_hold_and_stream_deprecated(message: MessageDb) -> bool:
@@ -56,5 +59,10 @@ def is_hold_and_stream_deprecated(message: MessageDb) -> bool:
 
     After the cutoff, new INSTANCE messages and persistent PROGRAM messages
     must use credit payment (hold and stream are no longer accepted).
+
+    Uses the observed (confirmation or reception) time, never the
+    sender-supplied ``time``, so the cutoff cannot be dodged by backdating.
     """
-    return message.time >= timestamp_to_datetime(HOLD_AND_STREAM_CUTOFF_TIMESTAMP)
+    return message.observed_time >= timestamp_to_datetime(
+        HOLD_AND_STREAM_CUTOFF_TIMESTAMP
+    )

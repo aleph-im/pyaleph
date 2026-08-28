@@ -2,7 +2,7 @@ import asyncio
 import datetime as dt
 import logging
 import random
-from typing import Dict, Optional, Union
+from typing import Dict, Union
 
 import aio_pika
 from configmanager import Config
@@ -30,22 +30,11 @@ MAX_RETRY_INTERVAL: int = 300
 
 
 async def _make_pending_queue(
-    config: Config,
     exchange_name: str,
     queue_name: str,
     routing_key: str,
-    channel: Optional[aio_pika.abc.AbstractChannel] = None,
+    channel: aio_pika.abc.AbstractChannel,
 ) -> aio_pika.abc.AbstractQueue:
-    if not channel:
-        mq_conn = await aio_pika.connect_robust(
-            host=config.p2p.mq_host.value,
-            port=config.rabbitmq.port.value,
-            login=config.rabbitmq.username.value,
-            password=config.rabbitmq.password.value,
-            heartbeat=config.rabbitmq.heartbeat.value,
-        )
-        channel = await mq_conn.channel()
-
     exchange = await channel.declare_exchange(
         name=exchange_name,
         type=aio_pika.ExchangeType.TOPIC,
@@ -60,7 +49,6 @@ async def make_pending_tx_queue(
     config: Config, channel: aio_pika.abc.AbstractChannel
 ) -> aio_pika.abc.AbstractQueue:
     return await _make_pending_queue(
-        config=config,
         exchange_name=config.rabbitmq.pending_tx_exchange.value,
         queue_name="pending-tx-queue",
         routing_key="#",
@@ -71,10 +59,9 @@ async def make_pending_tx_queue(
 async def make_pending_message_queue(
     config: Config,
     routing_key: str,
-    channel: Optional[aio_pika.abc.AbstractChannel] = None,
+    channel: aio_pika.abc.AbstractChannel,
 ) -> aio_pika.abc.AbstractQueue:
     return await _make_pending_queue(
-        config=config,
         exchange_name=config.rabbitmq.pending_message_exchange.value,
         queue_name="pending_message_queue",
         routing_key=routing_key,

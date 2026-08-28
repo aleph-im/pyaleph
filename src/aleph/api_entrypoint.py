@@ -43,6 +43,11 @@ async def configure_aiohttp_app(
             config,
             echo=config.logging.level.value == logging.DEBUG,
             application_name="aleph-api",
+            # Some aggregate reads (dirty-refresh does a full jsonb_merge over
+            # all elements) can legitimately run longer than the worker default,
+            # so don't cap statement runtime on the API. lock_timeout and
+            # idle_in_transaction still apply.
+            statement_timeout_ms=0,
         )
         session_factory = make_session_factory(engine)
 

@@ -1,6 +1,6 @@
 from decimal import Decimal
 from enum import Enum
-from typing import List, Optional, Union
+from typing import Iterable, List, Optional, Union
 
 from aleph.db.models import AggregateDb
 from aleph.toolkit.constants import ProductPriceType
@@ -65,6 +65,32 @@ class ProductTier:
         self.vram = vram
 
 
+# Product types that borrow another product's numbers when the price
+# aggregate does not define them yet. Only the lookup key changes; the
+# resulting ProductPricing keeps the requested type.
+PRICE_TYPE_FALLBACKS = {
+    ProductPriceType.VPROGRAM: ProductPriceType.INSTANCE_CONFIDENTIAL,
+}
+
+
+def resolve_price_type_key(
+    price_type: ProductPriceType, available: Iterable[Union[ProductPriceType, str]]
+) -> ProductPriceType:
+    """Return the aggregate key to read for `price_type`.
+
+    Aggregate keys can be enum members or plain strings depending on the
+    source (DEFAULT_PRICE_AGGREGATE vs. a DB aggregate), so compare on the
+    string value.
+    """
+    keys = {str(getattr(k, "value", k)) for k in available}
+    if price_type.value in keys:
+        return price_type
+    fallback = PRICE_TYPE_FALLBACKS.get(price_type)
+    if fallback is not None and fallback.value in keys:
+        return fallback
+    return price_type
+
+
 class ProductPricing:
     type: ProductPriceType
     price: ProductPrice
@@ -83,15 +109,28 @@ class ProductPricing:
         self.compute_unit = compute_unit
         self.tiers = tiers
 
+    def with_type(self, price_type: ProductPriceType) -> "ProductPricing":
+        """Return a copy of this pricing with `type` replaced.
+
+        Used when a pricing model lookup fell back to another product's
+        entry (see `resolve_price_type_key`): the numbers (price,
+        compute_unit, tiers) are kept as-is, only the reported type changes
+        so callers still see the product they actually asked about.
+        """
+        return ProductPricing(
+            price_type=price_type,
+            price=self.price,
+            compute_unit=self.compute_unit,
+            tiers=self.tiers,
+        )
+
     @staticmethod
     def from_aggregate(
         price_type: ProductPriceType, aggregate: Union[AggregateDb, dict]
     ):
-        content = (
-            aggregate.content[price_type.value]
-            if isinstance(aggregate, AggregateDb)
-            else aggregate[price_type.value]
-        )
+        source = aggregate.content if isinstance(aggregate, AggregateDb) else aggregate
+        key = resolve_price_type_key(price_type, source.keys())
+        content = source[key.value]
 
         price = content["price"]
         compute_unit = content.get("compute_unit", None)
@@ -151,6 +190,7 @@ class CostType(str, Enum):
     EXECUTION_PROGRAM_VOLUME_CODE = "EXECUTION_PROGRAM_VOLUME_CODE"
     EXECUTION_PROGRAM_VOLUME_RUNTIME = "EXECUTION_PROGRAM_VOLUME_RUNTIME"
     EXECUTION_PROGRAM_VOLUME_DATA = "EXECUTION_PROGRAM_VOLUME_DATA"
+    EXECUTION_VPROGRAM_VOLUME = "EXECUTION_VPROGRAM_VOLUME"
     STORAGE = "STORAGE"
 
 

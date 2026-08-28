@@ -15,13 +15,13 @@ from setproctitle import setproctitle
 import aleph.toolkit.json as aleph_json
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.pending_messages import get_next_pending_message
-from aleph.db.connection import make_engine, make_session_factory
+from aleph.db.connection import disposing_engine, make_engine, make_session_factory
 from aleph.handlers.message_handler import MessageHandler
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
-from aleph.toolkit.lifecycle import install_signal_handlers
+from aleph.toolkit.lifecycle import install_signal_handlers, safe_async_cleanup
 from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
 from aleph.toolkit.timestamp import utc_now
@@ -105,6 +105,15 @@ class PendingMessageProcessor(MessageJob):
     async def close(self):
         await self.mq_conn.close()
 
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        # The base MqWatcher.__aexit__ only cancels the watcher task; this
+        # processor owns the MQ connection created in new(), so close it here
+        # (log-and-swallow so it can't mask the original shutdown exception).
+        try:
+            await super().__aexit__(exc_type, exc_val, exc_tb)
+        finally:
+            await safe_async_cleanup("process MQ connection", self.close())
+
     async def process_messages(
         self,
     ) -> AsyncIterator[Sequence[MessageProcessingResult]]:
@@ -161,6 +170,7 @@ async def fetch_and_process_messages_task(config: Config):
     session_factory = make_session_factory(engine)
 
     async with (
+        disposing_engine(engine),
         NodeCache(
             redis_host=config.redis.host.value,
             redis_port=config.redis.port.value,

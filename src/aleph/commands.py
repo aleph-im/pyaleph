@@ -184,6 +184,7 @@ async def main(args: List[str]) -> None:
             storage_service=storage_service,
         )
         pending_tx_publisher = await PendingTxPublisher.new(config=config)
+        await stack.enter_async_context(pending_tx_publisher)
         chain_connector = await ChainConnector.new(
             config=config,
             session_factory=session_factory,
@@ -232,9 +233,10 @@ async def main(args: List[str]) -> None:
         tasks += await listener_tasks(
             config=config,
             session_factory=session_factory,
-            node_cache=node_cache,
             p2p_client=p2p_client,
             mq_channel=mq_channel,
+            ipfs_service=ipfs_service,
+            storage_service=storage_service,
         )
         tasks.append(chain_connector.chain_event_loop(config))
         LOGGER.debug("Initialized listeners")

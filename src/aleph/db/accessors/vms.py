@@ -1,7 +1,7 @@
 import datetime as dt
 from typing import Iterable, Optional
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, select, union_all
 from sqlalchemy.dialects.postgresql import insert
 
 from aleph.db.models.vms import (
@@ -71,53 +71,57 @@ def get_vm_version(session: DbSession, vm_hash: str) -> Optional[VmVersionDb]:
 def get_vms_dependent_volumes(
     session: DbSession, volume_hash: str
 ) -> Optional[VmBaseDb]:
-    statement = (
-        select(VmBaseDb)
-        .join(
-            ImmutableVolumeDb,
-            ImmutableVolumeDb.vm_hash == VmBaseDb.item_hash,
-            isouter=True,
-        )
-        .join(
-            CodeVolumeDb, CodeVolumeDb.program_hash == VmBaseDb.item_hash, isouter=True
-        )
-        .join(
-            DataVolumeDb, DataVolumeDb.program_hash == VmBaseDb.item_hash, isouter=True
-        )
-        .join(RuntimeDb, RuntimeDb.program_hash == VmBaseDb.item_hash, isouter=True)
-        .join(
-            RootfsVolumeDb,
-            RootfsVolumeDb.instance_hash == VmBaseDb.item_hash,
-            isouter=True,
-        )
-        .join(
-            VProgramVerifiedVolumeDb,
-            VProgramVerifiedVolumeDb.vm_hash == VmBaseDb.item_hash,
-            isouter=True,
-        )
-        .where(
-            or_(
-                ImmutableVolumeDb.ref == volume_hash,
-                CodeVolumeDb.ref == volume_hash,
-                DataVolumeDb.ref == volume_hash,
-                RuntimeDb.ref == volume_hash,
-                RootfsVolumeDb.parent_ref == volume_hash,
-                # V-Program refs: the runtime manifest and workload live in
-                # columns on the vms table (same table as VmBaseDb, so no
-                # join is needed); hash trees are store files too.
-                VProgramDb.runtime_ref == volume_hash,
-                VProgramDb.workload_ref == volume_hash,
-                VProgramDb.workload_hash_tree == volume_hash,
-                VProgramVerifiedVolumeDb.ref == volume_hash,
-                VProgramVerifiedVolumeDb.hash_tree == volume_hash,
-            )
-        )
-        # Several rows can match (e.g. two VMs sharing a runtime, or two
-        # volumes of one VM referencing the same file); any one of them is
-        # enough to block the forget.
-        .limit(1)
-    )
-    return session.execute(statement).scalars().first()
+    # Each leg is a point lookup on an indexed column, one per table that
+    # can reference a store file. A UNION ALL of point lookups lets the
+    # planner use an index scan per leg instead of the LEFT JOIN + OR this
+    # used to be, which forced a scan of every VM to check every volume
+    # table. Several rows can match (e.g. two VMs sharing a runtime, or two
+    # volumes of one VM referencing the same file); any one of them is
+    # enough to block the forget, hence the LIMIT 1 over the union.
+    legs = union_all(
+        select(ImmutableVolumeDb.vm_hash.label("vm_hash")).where(
+            ImmutableVolumeDb.ref == volume_hash
+        ),
+        select(CodeVolumeDb.program_hash.label("vm_hash")).where(
+            CodeVolumeDb.ref == volume_hash
+        ),
+        select(DataVolumeDb.program_hash.label("vm_hash")).where(
+            DataVolumeDb.ref == volume_hash
+        ),
+        select(RuntimeDb.program_hash.label("vm_hash")).where(
+            RuntimeDb.ref == volume_hash
+        ),
+        select(RootfsVolumeDb.instance_hash.label("vm_hash")).where(
+            RootfsVolumeDb.parent_ref == volume_hash
+        ),
+        # V-Program refs: the runtime manifest, runtime bundle and workload
+        # live in columns on the vms table itself (single-table
+        # inheritance), so these legs query VProgramDb directly. SQLAlchemy
+        # adds the `type = 'v-program'` polymorphic filter automatically,
+        # matching the partial indexes on these columns.
+        select(VProgramDb.item_hash.label("vm_hash")).where(
+            VProgramDb.runtime_ref == volume_hash
+        ),
+        select(VProgramDb.item_hash.label("vm_hash")).where(
+            VProgramDb.runtime_bundle_ref == volume_hash
+        ),
+        select(VProgramDb.item_hash.label("vm_hash")).where(
+            VProgramDb.workload_ref == volume_hash
+        ),
+        select(VProgramDb.item_hash.label("vm_hash")).where(
+            VProgramDb.workload_hash_tree == volume_hash
+        ),
+        select(VProgramVerifiedVolumeDb.vm_hash.label("vm_hash")).where(
+            VProgramVerifiedVolumeDb.ref == volume_hash
+        ),
+        select(VProgramVerifiedVolumeDb.vm_hash.label("vm_hash")).where(
+            VProgramVerifiedVolumeDb.hash_tree == volume_hash
+        ),
+    ).limit(1)
+    vm_hash = session.execute(legs).scalar()
+    if vm_hash is None:
+        return None
+    return session.get(VmBaseDb, vm_hash)
 
 
 def upsert_vm_version(

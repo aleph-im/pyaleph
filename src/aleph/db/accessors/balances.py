@@ -236,10 +236,13 @@ def update_balances(
 
 
 def get_updated_balance_accounts(session: DbSession, last_update: dt.datetime):
+    # Ordered so that a per-run cap in the balance cron defers accounts
+    # deterministically (fair resumption) rather than by scan order.
     select_stmt = (
         select(AlephBalanceDb.address)
         .where(AlephBalanceDb.last_update >= last_update)
         .distinct()
+        .order_by(AlephBalanceDb.address)
     )
     return (session.execute(select_stmt)).scalars().all()
 
@@ -564,10 +567,13 @@ def get_updated_credit_balance_accounts(session: DbSession, last_update: dt.date
     """
     Get addresses that have had their credit history updated since the given timestamp.
     """
+    # Ordered so that a per-run cap in the credit cron defers accounts
+    # deterministically (fair resumption) rather than by scan order.
     select_stmt = (
         select(AlephCreditHistoryDb.address)
         .where(AlephCreditHistoryDb.last_update >= last_update)
         .distinct()
+        .order_by(AlephCreditHistoryDb.address)
     )
     return session.execute(select_stmt).scalars().all()
 

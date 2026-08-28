@@ -7,6 +7,7 @@ that force the job to either create or drop partitions.
 """
 
 import datetime as dt
+import logging
 
 import pytest
 from aleph_message.models import Chain, ItemType, MessageType
@@ -257,3 +258,57 @@ async def test_partition_routing_places_rows_in_correct_child(
 
     assert child_count == 1
     assert default_count == 0
+
+
+@pytest.mark.asyncio
+async def test_cron_defers_table_when_parent_lock_is_contended(
+    session_factory: DbSessionFactory, monkeypatch, caplog
+):
+    """Partition DDL must not block on the parent's ACCESS EXCLUSIVE lock: when a
+    concurrent transaction holds it (as a scoring-metrics INSERT effectively does
+    against the write path), the cron's bounded lock_timeout fires, the job defers
+    that table and moves on, and the other (uncontended) table still succeeds."""
+    import aleph.jobs.cron.metrics_partition_job as mpj
+
+    monkeypatch.setattr(mpj, "PARTITION_LOCK_TIMEOUT", "200ms")
+
+    now = dt.datetime.now(tz=dt.timezone.utc)
+    expected_month = add_months(month_floor(now), 2)
+    crn_expected = partition_name("crn_metrics", expected_month)
+    ccn_expected = partition_name("ccn_metrics", expected_month)
+
+    with session_factory() as session:
+        assert crn_expected not in {n for n, _, _ in _list(session, "crn_metrics")}
+        assert ccn_expected not in {n for n, _, _ in _list(session, "ccn_metrics")}
+
+    job = MetricsPartitionCronJob(
+        session_factory=session_factory,
+        retention_months=12,
+        lookahead_months=2,
+    )
+
+    # Hold ACCESS EXCLUSIVE on crn_metrics in a separate connection so the cron's
+    # CREATE PARTITION on it must wait — and time out.
+    with session_factory() as holder:
+        holder.execute(text("LOCK TABLE crn_metrics IN ACCESS EXCLUSIVE MODE"))
+        with caplog.at_level(logging.WARNING):
+            # Must return (not hang or raise) despite the contended lock, and
+            # report incomplete so the framework retries next tick.
+            result = await job.run(now=now, job=_make_cron_row())
+
+    assert result is False
+    assert "Partition maintenance for crn_metrics deferred" in caplog.text
+
+    with session_factory() as session:
+        crn_after = {n for n, _, _ in _list(session, "crn_metrics")}
+        ccn_after = {n for n, _, _ in _list(session, "ccn_metrics")}
+
+    # crn_metrics was deferred (lock contended); ccn_metrics still maintained.
+    assert crn_expected not in crn_after
+    assert ccn_expected in ccn_after
+
+    # With the lock released, a re-run completes (returns True) and creates the
+    # previously-deferred crn_metrics partition.
+    assert await job.run(now=now, job=_make_cron_row()) is True
+    with session_factory() as session:
+        assert crn_expected in {n for n, _, _ in _list(session, "crn_metrics")}

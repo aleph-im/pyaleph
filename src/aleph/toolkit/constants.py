@@ -19,6 +19,7 @@ class ProductPriceType(str, Enum):
     INSTANCE_GPU_PREMIUM = "instance_gpu_premium"
     INSTANCE_CONFIDENTIAL = "instance_confidential"
     INSTANCE_GPU_STANDARD = "instance_gpu_standard"
+    VPROGRAM = "vprogram"
 
 
 PRICE_AGGREGATE_OWNER = "0xFba561a84A537fCaa567bb7A2257e7142701ae2A"
@@ -131,6 +132,33 @@ DEFAULT_PRICE_AGGREGATE: Dict[Union[ProductPriceType, str], dict] = {
         },
     },
     ProductPriceType.INSTANCE_CONFIDENTIAL: {
+        "price": {
+            "storage": {
+                "payg": "0.000000977",
+                "holding": "0.05",
+                "credit": "0.17967489030626108",
+            },
+            "compute_unit": {"payg": "0.11", "holding": "2000", "credit": "28500"},
+        },
+        "tiers": [
+            {"id": "tier-1", "compute_units": 1},
+            {"id": "tier-2", "compute_units": 2},
+            {"id": "tier-3", "compute_units": 4},
+            {"id": "tier-4", "compute_units": 6},
+            {"id": "tier-5", "compute_units": 8},
+            {"id": "tier-6", "compute_units": 12},
+        ],
+        "compute_unit": {
+            "vcpus": 1,
+            "disk_mib": 20480,
+            "memory_mib": 2048,
+        },
+    },
+    # V-PROGRAMs (SEV-SNP verifiable programs) start with the confidential
+    # instance numbers. Their artifacts (workload image, hash trees, verified
+    # volumes, runtime bundle) are billed as execution volumes against the
+    # per-CU disk allowance.
+    ProductPriceType.VPROGRAM: {
         "price": {
             "storage": {
                 "payg": "0.000000977",
