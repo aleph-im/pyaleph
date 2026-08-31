@@ -1,9 +1,15 @@
 import json
 from typing import Any, Dict
 
+import pytest
 from aleph_message.models import MessageType, VerifiableProgramContent
+from pydantic import ValidationError
 
-from aleph.db.models.messages import CONTENT_TYPE_MAP, extract_tags
+from aleph.db.models.messages import (
+    CONTENT_TYPE_MAP,
+    extract_tags,
+    validate_message_content,
+)
 from aleph.schemas.api.messages import VProgramMessage, format_message_dict
 from aleph.schemas.pending_messages import PendingVProgramMessage, parse_message
 
@@ -98,3 +104,45 @@ def test_format_message_dict_vprogram():
     assert isinstance(formatted, VProgramMessage)
     assert formatted.type == MessageType.v_program
     assert formatted.content.runtime.ref == "cafe" * 16
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        (("resources", "vcpus"), "2"),
+        (("resources", "vcpus"), 2.0),
+        (("resources", "memory"), "2048"),
+        (("verification", "policy"), 196608.0),
+        (("verification", "policy"), "196608"),
+        (("environment", "internet"), "true"),
+        (("environment", "internet"), 1),
+        (("allow_amend",), 0),
+        (("time",), "1719502000.0"),
+    ],
+)
+def test_ingestion_rejects_coerced_vprogram_scalars(path, value):
+    """A scalar serde would reject must not reach processed status.
+
+    The node stores and serves the raw item_content, so a value pydantic
+    would merely coerce ("1" -> 1, 196608.0 -> 196608, "true" -> True)
+    becomes a processed message that strict decoders (the aleph-rs SDK)
+    cannot parse; one such message used to poison the scheduler's whole
+    page-strict history fetch (aleph-rs#386). aleph-message enforces serde
+    parity for V-PROGRAM scalars; this pins the behavior at the ingestion
+    entry point.
+    """
+    content: Dict[str, Any] = json.loads(json.dumps(VPROGRAM_CONTENT))
+    target: Any = content
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    with pytest.raises(ValidationError):
+        validate_message_content(MessageType.v_program, content)
+
+
+def test_ingestion_accepts_integer_vprogram_time():
+    # serde parses an integer JSON number into f64: an integral time is valid
+    content: Dict[str, Any] = json.loads(json.dumps(VPROGRAM_CONTENT))
+    content["time"] = 1719502000
+    parsed = validate_message_content(MessageType.v_program, content)
+    assert parsed.time == 1719502000.0
