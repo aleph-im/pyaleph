@@ -177,7 +177,8 @@ async def fetch_eth_height() -> Optional[int]:
         w3 = AsyncWeb3(provider)
         return await w3.eth.block_number
     except aiohttp.ClientResponseError:
-        return -1
+        LOGGER.warning("ETH height could not be obtained")
+        return None
     finally:
         await provider.disconnect()
 
