@@ -2,17 +2,7 @@ import asyncio
 import importlib.resources
 import json
 import logging
-from typing import (
-    Any,
-    AsyncIterator,
-    Dict,
-    List,
-    Literal,
-    Self,
-    Tuple,
-    TypedDict,
-    Union,
-)
+from typing import Any, AsyncIterator, Dict, List, Self, Tuple, TypedDict, Union
 
 from aleph_message.models import Chain
 from configmanager import Config
@@ -53,7 +43,7 @@ class GetLogsException(Exception): ...
 
 class TooManyLogsInRange(GetLogsException):
     start_block: BlockNumber
-    end_block: BlockNumber | Literal["latest"]
+    end_block: BlockNumber
 
 
 class FeeEstimate(TypedDict, total=False):
@@ -172,7 +162,7 @@ class EthereumConnector(ChainWriter):
     async def _get_logs_in_block_range(
         self,
         start_block: BlockNumber,
-        end_block: BlockNumber | Literal["latest"] = "latest",
+        end_block: BlockNumber,
     ) -> List[LogReceipt]:
         """
         Retrieves logs from the Aleph message sync contract and handles RPC-specific exceptions.
@@ -197,9 +187,6 @@ class EthereumConnector(ChainWriter):
             # Unexpected issue, pass the exception to the caller
             raise
 
-    async def _get_all_logs(self, start_block: BlockNumber) -> List[LogReceipt]:
-        return await self._get_logs_in_block_range(start_block, "latest")
-
     async def _get_all_logs_in_batches(
         self, start_block: BlockNumber, max_block_range: int
     ) -> AsyncIterator[LogReceipt]:
@@ -207,6 +194,10 @@ class EthereumConnector(ChainWriter):
 
         while True:
             last_eth_block = await self.web3_client.eth.block_number
+            # Already synced to the chain tip, nothing to fetch. Some RPC
+            # providers reject requests where fromBlock > toBlock.
+            if start_block > last_eth_block:
+                return
             # Note: the range in get_logs is [start, end].
             end_block = min(last_eth_block, BlockNumber(start_block + block_range - 1))
 
@@ -231,17 +222,9 @@ class EthereumConnector(ChainWriter):
                 break
 
     async def _get_logs(self, start_block: BlockNumber) -> AsyncIterator[LogReceipt]:
-        # First, try to fetch all available blocks
-        try:
-            for log in await self._get_all_logs(start_block=start_block):
-                yield log
-            return
-        except TooManyLogsInRange:
-            LOGGER.info(
-                f"Too many logs in range {start_block}..latest, fetching in batches"
-            )
-
-        # If that fails, try fetching in batches until we get all logs.
+        # Always fetch in batches of at most `max_block_range` blocks. Fetching
+        # everything in one request is not an option as RPC providers signal
+        # oversized requests in provider-specific ways we cannot all detect.
         async for log in self._get_all_logs_in_batches(
             start_block=start_block, max_block_range=self.max_block_range
         ):
