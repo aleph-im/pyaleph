@@ -223,7 +223,10 @@ filterwarnings = [
 ]
 norecursedirs = [ "*.egg", "dist", "build", ".tox", ".venv", "*/site-packages/*", ".claude", ".worktrees" ]
 testpaths = [ "tests/unit" ]
-markers = { ledger_hardware = "marks tests as requiring ledger hardware" }
+markers = [
+  "ledger_hardware: marks tests as requiring ledger hardware",
+  "fresh_schema: rebuild the database schema from migrations for this test instead of the fast DELETE-based reset",
+]
 
 [tool.coverage.run]
 branch = true

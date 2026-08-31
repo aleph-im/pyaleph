@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import contextlib
 import datetime as dt
@@ -6,6 +7,7 @@ import logging
 import os
 import shutil
 import sys
+from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from typing import List, Protocol
@@ -15,6 +17,7 @@ import alembic.config
 import pytest
 import pytest_asyncio
 import pytz
+import sqlalchemy.exc
 from aleph_message.models import (
     Chain,
     ExecutableContent,
@@ -26,6 +29,7 @@ from aleph_message.models import (
 from aleph_message.models.execution.volume import ImmutableVolume
 from configmanager import Config
 from sqlalchemy import text
+from sqlalchemy.engine import Engine
 
 import aleph.config
 from aleph.db.accessors.files import insert_message_file_pin, upsert_file_tag
@@ -86,36 +90,258 @@ def run_db_migrations(config: Config):
     db_url = make_db_url(driver="psycopg2", config=config)
     alembic_cfg = alembic.config.Config("alembic.ini")
     alembic_cfg.attributes["configure_logger"] = False
+    # env.py reads the target URL from `-x db_url=...`; alembic's `tag`
+    # argument is ignored there, so pass the URL the way env.py expects.
+    alembic_cfg.cmd_opts = argparse.Namespace(x=[f"db_url={db_url}"])
     logging.getLogger("alembic").setLevel(logging.CRITICAL)
 
     with change_dir(project_dir):
-        alembic.command.upgrade(alembic_cfg, "head", tag=db_url)
+        alembic.command.upgrade(alembic_cfg, "head")
+
+
+@dataclass
+class MigratedDb:
+    """A freshly migrated schema plus a snapshot of its seeded rows.
+
+    `tables` lists every table in `public`; `seed_tables` the subset that
+    migrations populate (copied to `seed.<table>` so per-test resets can
+    restore them without re-running migrations).
+    """
+
+    engine: Engine
+    tables: List[str]
+    seed_tables: List[str]
+
+
+SEED_SCHEMA = "seed"
+
+
+def _public_tables(conn) -> List[str]:
+    rows = conn.execute(
+        text(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_type = 'BASE TABLE' "
+            "ORDER BY table_name"
+        )
+    )
+    return [row[0] for row in rows]
+
+
+def snapshot_seed_tables(engine: Engine) -> tuple[List[str], List[str]]:
+    """Copy every non-empty public table into the `seed` schema.
+
+    Returns (all public tables, seeded tables). Discovery is by row count so
+    a new migration that seeds another table is picked up automatically.
+    """
+    with engine.begin() as conn:
+        conn.execute(text(f"DROP SCHEMA IF EXISTS {SEED_SCHEMA} CASCADE"))
+        conn.execute(text(f"CREATE SCHEMA {SEED_SCHEMA}"))
+        tables = _public_tables(conn)
+        seed_tables = []
+        for table in tables:
+            count = conn.execute(
+                text(f'SELECT count(*) FROM public."{table}"')
+            ).scalar()
+            if count:
+                conn.execute(
+                    text(
+                        f'CREATE TABLE {SEED_SCHEMA}."{table}" AS TABLE public."{table}"'
+                    )
+                )
+                seed_tables.append(table)
+    return tables, seed_tables
+
+
+def rebuild_schema(engine: Engine, config: Config) -> tuple[List[str], List[str]]:
+    """Drop and re-migrate the public schema, then snapshot the seeds."""
+    with engine.begin() as conn:
+        # DROP SCHEMA takes an ACCESS EXCLUSIVE lock on every object it removes;
+        # fail with a named error instead of hanging if a test left one open.
+        conn.execute(text("SET LOCAL lock_timeout = '30s'"))
+        conn.execute(text("drop schema public cascade"))
+        conn.execute(text("create schema public"))
+    run_db_migrations(config=config)
+    return snapshot_seed_tables(engine)
+
+
+def _non_empty_tables(conn, tables: List[str]) -> List[str]:
+    """Return the subset of `tables` that currently holds at least one row.
+
+    A single statement with one EXISTS probe per table: a few milliseconds for
+    this schema's ~70 tables, which keeps the reset proportional to what the
+    test actually wrote instead of to the size of the schema.
+    """
+    if not tables:
+        return []
+    probes = " UNION ALL ".join(
+        "SELECT '{literal}' AS table_name "
+        'WHERE EXISTS (SELECT 1 FROM public."{identifier}")'.format(
+            literal=table.replace("'", "''"), identifier=table
+        )
+        for table in tables
+    )
+    return list(conn.execute(text(probes)).scalars().all())
+
+
+def reset_database(migrated_db: MigratedDb) -> bool:
+    """Return the schema to its freshly migrated state without migrating.
+
+    Empties every public table except alembic_version, restores the seeded rows
+    from the `seed` schema, rewinds any sequence a test advanced, and re-enables
+    user triggers a previous test may have left disabled.
+
+    DELETE rather than TRUNCATE: TRUNCATE gives each table a new relfilenode and
+    the commit fsyncs all of them, which costs ~4.5 s for this schema's 68 tables
+    (~112 ms even for a single table). Deleting only the handful of tables a test
+    touched takes ~10 ms. `session_replication_role = replica` suppresses foreign
+    key triggers so the tables can be emptied in any order, which is what CASCADE
+    bought us before.
+
+    Returns False if the schema itself drifted beyond what deleting rows can
+    repair, i.e. a test dropped a table (the metrics partition cron job does):
+    the caller then has to fall back to a full rebuild. Tables a test *created*
+    are dropped here, so that case does not need a rebuild.
+
+    Drift detection compares table *name sets* only. Everything else a test
+    changes about the schema survives into the tests that follow: columns,
+    indexes, constraints, triggers, functions, views, types, extensions and
+    standalone sequences (as opposed to sequences owned by a table column,
+    whose values are rewound below). Mark such a test `fresh_schema` to force
+    a rebuild instead; that marker is the escape hatch for all of them.
+
+    Failure mode to recognise: if a test leaks a connection sitting
+    idle-in-transaction, it holds locks that this reset needs, so every
+    subsequent reset fails after 5 s with `lock_not_available`. The first such
+    error names the test that leaked; the ones after it are collateral.
+    """
+    with migrated_db.engine.begin() as conn:
+        try:
+            conn.execute(text("SET LOCAL session_replication_role = replica"))
+        except sqlalchemy.exc.ProgrammingError as e:
+            raise RuntimeError(
+                "the test database role must be a superuser: the fast reset "
+                "relies on session_replication_role to suppress foreign key "
+                "triggers while it empties the tables (CI's POSTGRES_USER "
+                "'aleph' is the superuser of its postgres instance)"
+            ) from e
+        # Turn a reset blocked by a transaction some earlier test left open
+        # into a named error instead of an indefinite hang.
+        conn.execute(text("SET LOCAL lock_timeout = '5s'"))
+        # The set of tables is re-read every time rather than taken from the
+        # session-scoped snapshot: DDL in a test (partition create/drop) would
+        # otherwise leave the snapshot stale and the probes below would fail.
+        current = set(_public_tables(conn))
+        expected = set(migrated_db.tables)
+        for table in sorted(current - expected):
+            conn.execute(text(f'DROP TABLE IF EXISTS public."{table}" CASCADE'))
+        if expected - current:
+            return False
+        targets = sorted(expected - {"alembic_version"})
+        for table in _non_empty_tables(conn, targets):
+            conn.execute(text(f'DELETE FROM public."{table}"'))
+        for table in migrated_db.seed_tables:
+            if table == "alembic_version":
+                continue
+            conn.execute(
+                text(
+                    f'INSERT INTO public."{table}" SELECT * FROM {SEED_SCHEMA}."{table}"'
+                )
+            )
+        # A test can advance a sequence without leaving a row behind, so rewind
+        # every sequence that has been used. No migration seeds a serial column
+        # (the seeded tables carry explicit keys), so "unused" is the freshly
+        # migrated state for all of them.
+        dirty_sequences = (
+            conn.execute(
+                text(
+                    "SELECT sequencename FROM pg_sequences "
+                    "WHERE schemaname = 'public' AND last_value IS NOT NULL"
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for sequence in dirty_sequences:
+            conn.execute(text(f'ALTER SEQUENCE public."{sequence}" RESTART'))
+        # Re-enable whatever a test disabled, discovered from the catalog so
+        # that a new user trigger is covered without touching this fixture.
+        # Only tables in `public` holding a user trigger that is actually
+        # disabled ('D'); triggers set to ALWAYS ('A') or REPLICA ('R') are left
+        # alone rather than demoted to 'O'.
+        # regclass::text is already quoted as an identifier where it needs to be.
+        disabled_trigger_tables = (
+            conn.execute(
+                text(
+                    "SELECT DISTINCT tgrelid::regclass::text FROM pg_trigger t "
+                    "JOIN pg_class c ON c.oid = t.tgrelid "
+                    "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "WHERE n.nspname = 'public' AND NOT t.tgisinternal "
+                    "AND t.tgenabled = 'D'"
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for table in disabled_trigger_tables:
+            # USER, not ALL: never touch the internal foreign key triggers.
+            conn.execute(text(f"ALTER TABLE {table} ENABLE TRIGGER USER"))
+    return True
+
+
+@pytest.fixture(scope="session")
+def migrated_db():
+    # Session-scoped, so it cannot depend on the function-scoped mock_config:
+    # build the same test config it would install.
+    config = _create_test_config()
+    # Tests must not inherit the production statement/lock/idle timeouts: they
+    # can cause spurious failures during schema setup/teardown under load.
+    config.postgres.lock_timeout_ms.value = 0
+    config.postgres.statement_timeout_ms.value = 0
+    config.postgres.idle_in_transaction_session_timeout_ms.value = 0
+    engine = make_engine(config=config, echo=False, application_name="aleph-tests")
+
+    tables, seed_tables = rebuild_schema(engine, config)
+
+    # Defensive: migrations are run with `-x db_url=...`, and env.py returns the
+    # URL before it ever calls get_config(), so config.yml is no longer loaded
+    # into the global config. Reinstall a fresh test config anyway so that a
+    # future change to env.py cannot leak node settings into the test run.
+    aleph.config.app_config = _create_test_config()
+
+    yield MigratedDb(engine=engine, tables=tables, seed_tables=seed_tables)
+    engine.dispose()
 
 
 @pytest.fixture
-def session_factory(mock_config):
-    # mock_config is the proxy, but we need the actual config for engine creation
-    actual_config = aleph.config.app_config
-    # Tests must not inherit the production statement/lock/idle timeouts: they
-    # can cause spurious failures during schema setup/teardown under load.
-    actual_config.postgres.lock_timeout_ms.value = 0
-    actual_config.postgres.statement_timeout_ms.value = 0
-    actual_config.postgres.idle_in_transaction_session_timeout_ms.value = 0
-    engine = make_engine(
-        config=actual_config, echo=False, application_name="aleph-tests"
-    )
+def session_factory(request, mock_config, migrated_db: MigratedDb):
+    """A session factory on a database in its freshly migrated state.
 
-    with engine.begin() as conn:
-        conn.execute(text("drop schema public cascade"))
-        conn.execute(text("create schema public"))
-
-    run_db_migrations(config=actual_config)
-
-    # Running migrations pollutes aleph.config.app_config by loading config.yml.
-    # Replace the global with a completely fresh test config object.
-    aleph.config.app_config = _create_test_config()
-
-    return make_session_factory(engine)
+    Fast path: delete the rows a test wrote and restore the seeds (tens of
+    milliseconds). Tests marked `fresh_schema` get the slow path: drop the
+    schema and re-run migrations. A test that drops a table forces the slow
+    path for the test after it, since only migrations can bring the table back.
+    """
+    if request.node.get_closest_marker("fresh_schema") or not reset_database(
+        migrated_db
+    ):
+        config = aleph.config.app_config
+        config.postgres.lock_timeout_ms.value = 0
+        config.postgres.statement_timeout_ms.value = 0
+        config.postgres.idle_in_transaction_session_timeout_ms.value = 0
+        migrated_db.tables, migrated_db.seed_tables = rebuild_schema(
+            migrated_db.engine, config
+        )
+        # Defensive, as in `migrated_db`: env.py no longer loads config.yml
+        # when the URL comes from `-x db_url=...`, but reinstalling a fresh
+        # test config keeps that from mattering.
+        aleph.config.app_config = _create_test_config()
+    yield make_session_factory(migrated_db.engine)
+    # A connection still checked out here is one the test never returned to the
+    # pool. It would sit idle-in-transaction holding locks and make the *next*
+    # test's reset fail with lock_not_available, so name the culprit here.
+    assert (
+        migrated_db.engine.pool.checkedout() == 0
+    ), "a test leaked a checked-out DB connection"
 
 
 def _create_test_config() -> Config:
@@ -142,10 +368,11 @@ class _ConfigProxy:
     """
     A proxy that always delegates to aleph.config.app_config.
 
-    Running migrations for tests updates the global config values by loading config.yml.
-    The session factory fixture does replace the global object with a fresh config for tests afterward,
-    but if mock_config() returns a Config object directly it will be the one that has been modified.
-    To avoid this, we use a proxy pattern to always return the current global config in mock_config().
+    The DB fixtures reinstall a fresh `aleph.config.app_config` after migrating,
+    now only defensively: migrations run with `-x db_url=...` and env.py returns
+    before `get_config()`, so config.yml is not loaded into the global config any
+    more. Returning a proxy instead of a Config object from mock_config() means
+    a test always sees whatever the current global config is, whoever replaced it.
     """
 
     def __getattr__(self, name):
