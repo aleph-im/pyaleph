@@ -1,8 +1,13 @@
 from dataclasses import dataclass
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import aiohttp
+import pytest
 
 from aleph.web.controllers.metrics import (
     BuildInfo,
     Metrics,
+    fetch_eth_height,
     format_dataclass_for_prometheus,
     format_dict_for_prometheus,
 )
@@ -39,6 +44,38 @@ def test_format_dataclass_for_prometheus() -> None:
         format_dataclass_for_prometheus(Tagged(Simple(1, 2.2, "3"), "e"))
         == 'd{a=1,b=2.2,c="3"} 1\ne "e"'
     )
+
+
+@pytest.mark.asyncio
+async def test_fetch_eth_height_returns_none_on_client_response_error(mock_config):
+    """A provider error (e.g. a 429 rate limit) must not be reported as a height.
+
+    Returning -1 used to make eth_height_remaining_total = 0, falsely
+    signaling a fully synced node. The metric must be omitted instead.
+    """
+    mock_config.ethereum.enabled.value = True
+
+    error = aiohttp.ClientResponseError(
+        request_info=MagicMock(), history=(), status=429
+    )
+
+    async def raise_client_response_error():
+        raise error
+
+    w3 = MagicMock()
+    w3.eth.block_number = raise_client_response_error()
+
+    with (
+        patch(
+            "aleph.web.controllers.metrics.AsyncHTTPProvider",
+            return_value=AsyncMock(),
+        ),
+        patch("aleph.web.controllers.metrics.AsyncWeb3", return_value=w3),
+    ):
+        # Call the undecorated function to bypass the aiocache TTL cache
+        height = await fetch_eth_height.__wrapped__()
+
+    assert height is None
 
 
 def test_metrics():
