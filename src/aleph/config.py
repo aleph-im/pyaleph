@@ -191,7 +191,7 @@ def get_defaults():
             # Ethereum block height to start from when fetching sync events.
             "start_height": 11_400_000,
             # Largest range of blocks used when synchronizing messages in batches.
-            "max_block_range": 100_000,
+            "max_block_range": 10_000,
             # Delay in seconds between publication attempts.
             "commit_delay": 35,
             # Maximum gas price accepted when publishing to Ethereum.
