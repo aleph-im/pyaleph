@@ -37,6 +37,11 @@ LOGGER = logging.getLogger("chains.ethereum")
 LOGGER.setLevel(logging.INFO)
 CHAIN_NAME = "ETH"
 
+# JSON-RPC error codes indicating that a getLogs request exceeds the
+# provider's block range limit. Infura used to return -32005 but now
+# returns -32602, and may return -32600 on some endpoints/networks.
+BLOCK_RANGE_LIMIT_ERROR_CODES = frozenset({-32005, -32602, -32600})
+
 
 class GetLogsException(Exception): ...
 
@@ -181,7 +186,7 @@ class EthereumConnector(ChainWriter):
         except Web3RPCError as e:
             # Handle limit exceptions
             if rpc_response := e.rpc_response:
-                if rpc_response["error"]["code"] == -32005:
+                if rpc_response["error"]["code"] in BLOCK_RANGE_LIMIT_ERROR_CODES:
                     raise TooManyLogsInRange(start_block, end_block) from e
 
             # Unexpected issue, pass the exception to the caller
