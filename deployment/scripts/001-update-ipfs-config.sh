@@ -1,17 +1,47 @@
 #!/bin/sh
+set -eu
 
 # Kubo doc => https://github.com/ipfs/kubo/blob/master/docs/config.md
 
 CONFIG_FILE="/data/ipfs/config"
 
-if [ -f $CONFIG_FILE ]; then
+if [ -f "$CONFIG_FILE" ]; then
     cp "$CONFIG_FILE" "$CONFIG_FILE.backup"
 fi
 
 echo "Updating IPFS config file..."
 
+# The deprecated Provider/Reprovider config is removed in kubo v0.43 (the daemon
+# refuses to start with it present). Repo version 18 -- and the migration to it --
+# was introduced in kubo v0.38.0, so only migrate on a binary that supports it
+# (bump the 38/18 targets on future kubo upgrades). The daemon must be stopped
+# while `ipfs repo migrate` runs (it locks the repo).
+if [ -f /data/ipfs/version ]; then
+    ver=$(cat /data/ipfs/version)
+    kubo_minor=$(ipfs version --number | cut -d. -f2)
+
+    if [ "$kubo_minor" -ge 38 ]; then
+        if [ "$ver" -lt 18 ]; then
+            # migrate repo to the latest version
+            ipfs repo migrate --to=18
+        elif [ "$ver" -eq 18 ]; then
+            # A node that ran the old script has legacy Provider/Reprovider keys.
+            # Re-run the migration to strip them.
+            if ipfs config Provider >/dev/null 2>&1 || ipfs config Reprovider >/dev/null 2>&1; then
+                echo "legacy Provider/Reprovider present"
+                ipfs repo migrate --to=17 --allow-downgrade
+                ipfs repo migrate --to=18
+                echo "removed Provider/Reprovider"
+            fi
+        fi
+    fi
+fi
+
 # Enable the V1+V2 service
 ipfs config AutoNAT.ServiceMode 'enabled'
+
+# CCNs propagate messages over pubsub, so the daemon must have it enabled
+ipfs config Pubsub.Enabled --json 'true'
 
 # Only announce recursively pinned CIDs
 ipfs config Provide.Strategy 'pinned'

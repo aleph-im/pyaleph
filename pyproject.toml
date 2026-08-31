@@ -44,7 +44,7 @@ dependencies = [
   "eth-account==0.13.7",
   "eth-typing==6.0.0",
   "gunicorn==26.2.0",
-  "hexbytes==1.3.1",
+  "hexbytes==2.0.0",
   "msgpack==1.2.1",                                                                                                        # required by aiocache
   "multiaddr==0.2.0",                                                                                                      # for libp2p-stubs
   "orjson>=3.7.7",                                                                                                         # Minimum version for Python 3.11
@@ -59,7 +59,7 @@ dependencies = [
   "pytz==2026.2",
   "pyyaml==6.0.3",
   "redis[hiredis]==7.4.0",
-  "sentry-sdk==2.68.0",
+  "sentry-sdk==2.68.1",
   "setproctitle==1.3.7",
   "setuptools>=70.3",
   "sqlalchemy[mypy]==2.0.52",
@@ -223,7 +223,10 @@ filterwarnings = [
 ]
 norecursedirs = [ "*.egg", "dist", "build", ".tox", ".venv", "*/site-packages/*", ".claude", ".worktrees" ]
 testpaths = [ "tests/unit" ]
-markers = { ledger_hardware = "marks tests as requiring ledger hardware" }
+markers = [
+  "ledger_hardware: marks tests as requiring ledger hardware",
+  "fresh_schema: rebuild the database schema from migrations for this test instead of the fast DELETE-based reset",
+]
 
 [tool.coverage.run]
 branch = true

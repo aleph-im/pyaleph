@@ -716,6 +716,9 @@ async def test_migration_backfill_forgotten_at(
         assert forgotten_message.forgotten_at == fixture_message.time
 
 
+# Marked: the ALTER TABLE statements below are schema drift the row-level reset
+# cannot detect or undo, so this test needs a schema rebuilt from migrations.
+@pytest.mark.fresh_schema
 @pytest.mark.asyncio
 async def test_migration_0061_column_additions_are_rerunnable(
     session_factory: DbSessionFactory,

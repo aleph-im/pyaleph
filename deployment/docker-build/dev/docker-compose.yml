@@ -128,7 +128,7 @@ services:
       - IPFS_TELEMETRY=off
     networks:
       - pyaleph
-    command: ["daemon", "--enable-pubsub-experiment", "--enable-gc", "--migrate"]
+    command: ["daemon", "--enable-gc", "--migrate"]
 
 
 networks:

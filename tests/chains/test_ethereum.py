@@ -465,6 +465,144 @@ async def test_fetch_ethereum_sync_events_sync_failure(
 
 
 @pytest.mark.asyncio
+async def test_sync_fetches_logs_in_bounded_block_ranges(
+    mocker,
+    mock_config: Config,
+    session_factory: DbSessionFactory,
+    web3_client: AsyncWeb3,
+    deployed_contract,
+):
+    mock_config.ethereum.max_gas_price.value = 100_000_000_000
+    mock_config.ethereum.message_delay.value = 0.1
+    mock_config.ethereum.client_timeout.value = 1
+
+    account = Account.from_key(HexBytes(mock_config.ethereum.private_key.value))
+    mock_config.ethereum.authorized_emitters.value = [account.address]
+
+    pending_tx_publisher = mocker.AsyncMock()
+    chain_data_service = mocker.AsyncMock()
+    mock_payload = mocker.MagicMock()
+    mock_payload.json.return_value = json.dumps(
+        {"protocol": "on_chain_sync", "version": 1, "content": {"test": "data"}}
+    )
+    chain_data_service.prepare_sync_event_payload = mocker.AsyncMock(
+        return_value=mock_payload
+    )
+
+    connector = await EthereumConnector.new(
+        config=mock_config,
+        session_factory=session_factory,
+        pending_tx_publisher=pending_tx_publisher,
+        chain_data_service=chain_data_service,
+    )
+    connector.max_block_range = 2
+
+    start_height = await web3_client.eth.block_number
+
+    # Emit sync events in 3 different blocks so the sync spans several ranges
+    for i in range(3):
+        response = await connector.broadcast_messages(
+            account=account,
+            messages=[
+                MessageDb(
+                    item_hash=f"hash{i}",
+                    type="STORE",
+                    chain=Chain.ETH,
+                    sender="sender",
+                    signature=f"sig{i}",
+                    item_type="inline",
+                    item_content=f"content{i}",
+                    content={"address": "sender", "time": 1600000000 + i},
+                    time=timestamp_to_datetime(1600000000 + i),
+                    size=0,
+                )
+            ],
+            nonce=await web3_client.eth.get_transaction_count(account.address),
+        )
+        await web3_client.eth.wait_for_transaction_receipt(response)
+
+    with session_factory() as session:
+        upsert_chain_sync_status(
+            session=session,
+            chain=Chain.ETH,
+            sync_type=ChainEventType.SYNC,
+            height=start_height,
+            update_datetime=utc_now(),
+        )
+        session.commit()
+
+    # Spy on the actual RPC filters passed to eth_getLogs
+    real_get_logs = connector.web3_client.eth.get_logs
+    get_logs_filters = []
+
+    async def spy_get_logs(filter_params):
+        get_logs_filters.append(filter_params)
+        return await real_get_logs(filter_params)
+
+    mocker.patch.object(connector.web3_client.eth, "get_logs", side_effect=spy_get_logs)
+
+    await connector.fetch_ethereum_sync_events()
+
+    # All 3 events must be picked up despite the bounded ranges
+    assert pending_tx_publisher.add_and_publish_pending_tx.call_count == 3
+
+    # Every request must span a bounded, explicit block range: never
+    # "latest", and never more than max_block_range blocks at once.
+    assert get_logs_filters
+    for filter_params in get_logs_filters:
+        assert filter_params["toBlock"] != "latest"
+        block_span = filter_params["toBlock"] - filter_params["fromBlock"] + 1
+        assert block_span <= connector.max_block_range
+
+
+@pytest.mark.asyncio
+async def test_sync_when_already_at_chain_tip_requests_no_logs(
+    mocker,
+    mock_config: Config,
+    session_factory: DbSessionFactory,
+    web3_client: AsyncWeb3,
+    deployed_contract,
+):
+    mock_config.ethereum.max_gas_price.value = 100_000_000_000
+    mock_config.ethereum.message_delay.value = 0.1
+    mock_config.ethereum.client_timeout.value = 1
+
+    pending_tx_publisher = mocker.AsyncMock()
+    chain_data_service = mocker.AsyncMock()
+
+    connector = await EthereumConnector.new(
+        config=mock_config,
+        session_factory=session_factory,
+        pending_tx_publisher=pending_tx_publisher,
+        chain_data_service=chain_data_service,
+    )
+
+    # Mark the node as synced up to the current chain tip
+    current_height = await web3_client.eth.block_number
+    with session_factory() as session:
+        upsert_chain_sync_status(
+            session=session,
+            chain=Chain.ETH,
+            sync_type=ChainEventType.SYNC,
+            height=current_height,
+            update_datetime=utc_now(),
+        )
+        session.commit()
+
+    get_logs_spy = mocker.patch.object(
+        connector.web3_client.eth, "get_logs", side_effect=AssertionError
+    )
+
+    # There is nothing to fetch: the connector must return without issuing
+    # an inverted (fromBlock > toBlock) eth_getLogs request, which some RPC
+    # providers reject.
+    await connector.fetch_ethereum_sync_events()
+
+    get_logs_spy.assert_not_called()
+    pending_tx_publisher.add_and_publish_pending_tx.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_fetch_ethereum_sync_events_batching(
     mocker,
     mock_config: Config,
