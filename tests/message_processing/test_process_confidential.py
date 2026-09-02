@@ -10,6 +10,7 @@ from aleph_message.models import (
     Chain,
     ExecutableContent,
     InstanceContent,
+    ItemHash,
     ItemType,
     MessageType,
 )
@@ -18,9 +19,11 @@ from aleph_message.models.execution.volume import ImmutableVolume
 from more_itertools import one
 
 from aleph.db.accessors.files import insert_message_file_pin, upsert_file_tag
+from aleph.db.accessors.messages import get_message_status
 from aleph.db.accessors.vms import get_instance, get_vm_version
 from aleph.db.models import (
     AlephBalanceDb,
+    AlephCreditBalanceDb,
     EphemeralVolumeDb,
     ImmutableVolumeDb,
     MessageStatusDb,
@@ -324,3 +327,128 @@ async def test_process_confidential_vm(
         )
         # Check that node_hash is store in db (wasn't the case before)
         assert instance.node_hash == content_dict["requirements"]["node"]["node_hash"]
+
+
+@pytest.fixture
+def fixture_tdx_instance_message(
+    session_factory: DbSessionFactory,
+) -> PendingMessageDb:
+    """A measured (mode "tdx") confidential instance: credit-paid, runtime
+    bundle plus declared TDX registers, no firmware."""
+    content = {
+        "address": "0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
+        "allow_amend": False,
+        "environment": {
+            "internet": True,
+            "aleph_api": False,
+            "hypervisor": "qemu",
+            "trusted_execution": {
+                "mode": "tdx",
+                "runtime": "cafe" * 16,
+                "measurements": [
+                    {
+                        "platform": "tdx",
+                        "registers": {
+                            "mrtd": "11" * 48,
+                            "rtmr1": "22" * 48,
+                            "rtmr2": "33" * 48,
+                            "mrconfigid": "44" * 48,
+                        },
+                        "vcpu_type": "GraniteRapids",
+                    }
+                ],
+            },
+        },
+        "payment": {"type": "credit"},
+        "resources": {"vcpus": 2, "memory": 2048, "seconds": 30},
+        "rootfs": {
+            "parent": {
+                "ref": "549ec451d9b099cad112d4aaa2c00ac40fb6729a92ff252ff22eef0b5c3cb613",
+                "use_latest": False,
+            },
+            "persistence": "host",
+            "size_mib": 4096,
+        },
+        "time": 1719502000.0,
+    }
+
+    pending_message = PendingMessageDb(
+        item_hash="834a1287a2b7b5be060312ff5b05ad1bcf838950492e3428f2ac6437a1acad27",
+        type=MessageType.instance,
+        chain=Chain.ETH,
+        sender="0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
+        signature="0x472da8230552b8c3e65c05b31a0ff3a24666d66c575f8e11019f62579bf48c2b7fe2f0bbe907a2a5bf8050989cdaf8a59ff8a1cbcafcdef0656c54279b4aa0c71b",
+        item_type=ItemType.inline,
+        item_content=json.dumps(content),
+        time=timestamp_to_datetime(1719502000.0),
+        channel=Channel("Fun-dApps"),
+        reception_time=timestamp_to_datetime(1719502001),
+        fetched=True,
+        check_message=False,
+        retries=1,
+        next_attempt=dt.datetime(2023, 1, 1),
+    )
+    with session_factory() as session:
+        session.add(pending_message)
+        session.add(
+            MessageStatusDb(
+                item_hash=pending_message.item_hash,
+                status=MessageStatus.PENDING,
+                reception_time=pending_message.reception_time,
+            )
+        )
+        session.commit()
+
+    return pending_message
+
+
+@pytest.fixture
+def tdx_user_credit_balance(session_factory: DbSessionFactory) -> None:
+    with session_factory() as session:
+        session.add(
+            AlephCreditBalanceDb(
+                address="0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
+                credit_ref="test-credit-ref",
+                credit_index=0,
+                amount_remaining=1_000_000_000,
+                expiration_date=None,
+                message_timestamp=dt.datetime(2024, 1, 1, tzinfo=dt.timezone.utc),
+            )
+        )
+        session.commit()
+
+
+@pytest.mark.asyncio
+async def test_process_tdx_instance(
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    fixture_tdx_instance_message: PendingMessageDb,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+    tdx_user_credit_balance,
+):
+    with session_factory() as session:
+        insert_volume_refs(session, fixture_tdx_instance_message)
+        session.commit()
+
+    pipeline = message_processor.make_pipeline()
+    _ = [message async for message in pipeline]
+
+    with session_factory() as session:
+        status = get_message_status(
+            session=session,
+            item_hash=ItemHash(fixture_tdx_instance_message.item_hash),
+        )
+        assert status is not None
+        assert status.status == MessageStatus.PROCESSED
+
+        instance = get_instance(
+            session=session, item_hash=fixture_tdx_instance_message.item_hash
+        )
+        assert instance is not None
+        assert instance.owner == fixture_tdx_instance_message.sender
+
+        # The measured modes carry no firmware; the TDX policy stays at the
+        # schema default (there is no host-chosen launch policy on TDX).
+        assert instance.environment_trusted_execution_firmware is None
+        assert instance.environment_trusted_execution_policy == 1
