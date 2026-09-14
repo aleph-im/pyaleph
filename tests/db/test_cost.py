@@ -11,6 +11,7 @@ from aleph_message.models import (
     InstanceContent,
     ItemType,
     MessageType,
+    PaymentType,
     ProgramContent,
 )
 from aleph_message.models.execution.program import (
@@ -20,11 +21,25 @@ from aleph_message.models.execution.program import (
 )
 from aleph_message.models.execution.volume import ImmutableVolume, ParentVolume
 
-from aleph.db.accessors.cost import get_total_cost_for_address, make_costs_upsert_query
+from aleph.db.accessors.cost import (
+    get_post_cutoff_total_cost_for_address,
+    get_total_cost_for_address,
+    make_costs_upsert_query,
+)
 from aleph.db.accessors.files import insert_message_file_pin, upsert_file_tag
-from aleph.db.models import AlephBalanceDb, MessageDb, MessageStatusDb, StoredFileDb
+from aleph.db.models import (
+    AlephBalanceDb,
+    ChainTxDb,
+    MessageDb,
+    MessageStatusDb,
+    StoredFileDb,
+)
+from aleph.db.models.account_costs import AccountCostsDb
 from aleph.services.cost import get_total_and_detailed_costs
+from aleph.toolkit.constants import STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT
 from aleph.toolkit.timestamp import timestamp_to_datetime
+from aleph.types.chain_sync import ChainSyncProtocol
+from aleph.types.cost import CostType
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.files import FileTag, FileType
 from aleph.types.message_status import MessageStatus
@@ -232,3 +247,96 @@ async def test_get_total_cost_for_address(
         )
 
         assert total_cost == Decimal("1001.8")
+
+
+@pytest.mark.asyncio
+async def test_get_post_cutoff_total_cost_for_address(
+    session_factory: DbSessionFactory,
+):
+    """Only costs confirmed at or after the cost cutoff height are counted.
+
+    Pre-cutoff (grandfathered) and unconfirmed resources are not reaper
+    candidates, so they must not count towards the balance required for new
+    messages.
+    """
+    address = "0xA7369e4Ea0C9FbAd662B21b1a0A5B4AcDe0e9e81"
+
+    now = pytz.utc.localize(dt.datetime(2023, 1, 1))
+    pre_cutoff_tx = ChainTxDb(
+        hash="0x58a9f0de39796e9a51fbdeed1acd7cc9ecc5ad4f27a1c8defdba6b281e52ec05",
+        chain=Chain.ETH,
+        height=STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT - 1,
+        datetime=now,
+        publisher="0xabadbabe",
+        protocol=ChainSyncProtocol.ON_CHAIN_SYNC,
+        protocol_version=1,
+        content="test-data",
+    )
+    post_cutoff_tx = ChainTxDb(
+        hash="0x58a9f0de39796e9a51fbdeed1acd7cc9ecc5ad4f27a1c8defdba6b281e52ec06",
+        chain=Chain.ETH,
+        height=STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT + 1,
+        datetime=now,
+        publisher="0xabadbabe",
+        protocol=ChainSyncProtocol.ON_CHAIN_SYNC,
+        protocol_version=1,
+        content="test-data",
+    )
+
+    def make_message(item_hash: str, confirmations: list) -> MessageDb:
+        return MessageDb(
+            item_hash=item_hash,
+            sender=address,
+            chain=Chain.ETH,
+            type=MessageType.store,
+            time=now,
+            item_type=ItemType.inline,
+            signature=f"sig_{item_hash[:8]}",
+            size=42,
+            content={"address": address, "item_type": "storage"},
+            confirmations=confirmations,
+        )
+
+    pre_cutoff_message = make_message(
+        "bc48b0cf5ad1d10a56d4ce1cf64dd1eb20f2f7c9e6c1d6b8b0d50f3fe0a3e8be5",
+        [pre_cutoff_tx],
+    )
+    post_cutoff_message = make_message(
+        "bc48b0cf5ad1d10a56d4ce1cf64dd1eb20f2f7c9e6c1d6b8b0d50f3fe0a3e8be6",
+        [post_cutoff_tx],
+    )
+    unconfirmed_message = make_message(
+        "bc48b0cf5ad1d10a56d4ce1cf64dd1eb20f2f7c9e6c1d6b8b0d50f3fe0a3e8be7",
+        [],
+    )
+
+    def make_cost(item_hash: str, cost: str) -> AccountCostsDb:
+        return AccountCostsDb(
+            owner=address,
+            item_hash=item_hash,
+            type=CostType.STORAGE,
+            name="store",
+            payment_type=PaymentType.hold,
+            cost_hold=Decimal(cost),
+            cost_stream=Decimal("0.0"),
+        )
+
+    with session_factory() as session:
+        session.add_all([pre_cutoff_message, post_cutoff_message, unconfirmed_message])
+        session.flush()
+        session.add_all(
+            [
+                make_cost(pre_cutoff_message.item_hash, "10.0"),
+                make_cost(post_cutoff_message.item_hash, "5.0"),
+                make_cost(unconfirmed_message.item_hash, "3.0"),
+            ]
+        )
+        session.commit()
+
+        total_cost = get_total_cost_for_address(session=session, address=address)
+        assert total_cost == Decimal("18.0")
+
+        post_cutoff_cost = get_post_cutoff_total_cost_for_address(
+            session=session, address=address
+        )
+        assert post_cutoff_cost == Decimal("5.0")

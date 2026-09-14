@@ -3,7 +3,10 @@ from decimal import Decimal
 from aleph_message.models import PaymentType
 
 from aleph.db.accessors.balances import get_credit_balance, get_total_balance
-from aleph.db.accessors.cost import get_total_cost_for_address
+from aleph.db.accessors.cost import (
+    get_post_cutoff_total_cost_for_address,
+    get_total_cost_for_address,
+)
 from aleph.toolkit.constants import DAY
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import (
@@ -58,9 +61,18 @@ def validate_balance_for_payment(
     else:
         # Handle regular balance checks for hold/superfluid payments
         current_balance = get_total_balance(address=address, session=session)
-        current_cost = get_total_cost_for_address(
-            session=session, address=address, payment_type=payment_type
-        )
+        if payment_type == PaymentType.hold:
+            # Count only post-cutoff confirmed costs, consistent with the
+            # balance cron job: pre-cutoff (grandfathered) and unconfirmed
+            # resources are not reaper candidates and must not be billed
+            # against the balance required for new messages.
+            current_cost = get_post_cutoff_total_cost_for_address(
+                session=session, address=address, payment_type=payment_type
+            )
+        else:
+            current_cost = get_total_cost_for_address(
+                session=session, address=address, payment_type=payment_type
+            )
 
         required_balance = current_cost + message_cost
 
