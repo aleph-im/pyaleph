@@ -688,10 +688,11 @@ _SENDER_COST_ITEM_HASH = "abbacacaabbacacaabbacacaabbacacaabbacacaabbacacaabbaca
 
 
 def _make_message_with_accumulated_costs(mocker) -> MessageDb:
-    """A post-cutoff message whose sender has accumulated costs and no balance.
+    """A post-cutoff IPFS message whose sender has accumulated costs and no balance.
 
     This models a node syncing from scratch: the message is observed now,
-    long after its sender's balance was depleted.
+    long after its sender's balance was depleted. The file is larger than
+    the small-file allowance so the full balance check applies.
     """
     message = mocker.MagicMock(spec=MessageDb)
     message.time = timestamp_to_datetime(STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1)
@@ -699,10 +700,8 @@ def _make_message_with_accumulated_costs(mocker) -> MessageDb:
     content = StoreContent(
         address=STORE_SENDER,
         time=STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1,
-        item_type=ItemType.storage,
-        item_hash=ItemHash(
-            "c25b0525bc308797d3e35763faf5c560f2974dab802cb4a734ae4e9d1040319e"
-        ),
+        item_type=ItemType.ipfs,
+        item_hash=ItemHash("QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ"),
     )
     message.parsed_content = content
     return message
@@ -752,6 +751,9 @@ async def test_pre_check_balance_confirmed_height_grandfathering(
     time (e.g. while syncing from scratch).
     """
     ipfs_service = mocker.AsyncMock()
+    ipfs_service.get_ipfs_size = AsyncMock(
+        return_value=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 2
+    )
     storage_service = StorageService(
         storage_engine=mocker.AsyncMock(),
         ipfs_service=ipfs_service,
@@ -788,6 +790,9 @@ async def test_pre_check_balance_confirmed_height_after_cutoff(
 ):
     """A chain-confirmed post-cutoff message is still balance-checked."""
     ipfs_service = mocker.AsyncMock()
+    ipfs_service.get_ipfs_size = AsyncMock(
+        return_value=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 2
+    )
     storage_service = StorageService(
         storage_engine=mocker.AsyncMock(),
         ipfs_service=ipfs_service,
@@ -888,7 +893,55 @@ async def test_process_store_without_tx_hash_rejected_from_depleted_account(
 
     Only messages proven on-chain to predate the cost cutoff are grandfathered;
     backdated messages without confirmations keep being charged against the
-    current balance.
+    current balance. The file is larger than the small-file allowance so the
+    full balance check applies.
+    """
+    large_file_content = b"X" * (DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 2)
+    storage_service = StorageService(
+        storage_engine=MockStorageEngine(
+            files={
+                "c25b0525bc308797d3e35763faf5c560f2974dab802cb4a734ae4e9d1040319e": large_file_content
+            }
+        ),
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
+    )
+    message_handler = MessageHandler(
+        signature_verifier=mocker.AsyncMock(),
+        storage_service=storage_service,
+        config=mock_config,
+    )
+
+    fixture_store_message.reception_time = timestamp_to_datetime(
+        STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
+    )
+
+    with session_factory() as session:
+        _add_sender_costs(session, "20.0")
+        session.commit()
+
+    with session_factory() as session:
+        with pytest.raises(InsufficientBalanceException):
+            await message_handler.process(
+                session=session, pending_message=fixture_store_message
+            )
+
+
+@pytest.mark.asyncio
+async def test_process_store_small_file_from_depleted_account(
+    mocker,
+    mock_config: Config,
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+    fixture_store_message: PendingMessageDb,
+):
+    """A small native-storage file is no longer rejected by the pre-check.
+
+    The pre-check used to validate with a zero message cost, which billed the
+    sender's entire accumulated cost and rejected the message before its
+    content was even fetched. The full check in check_balance() applies the
+    small-file allowance instead, consistently with the IPFS path.
     """
     storage_service = StorageService(
         storage_engine=MockStorageEngine(
@@ -914,10 +967,11 @@ async def test_process_store_without_tx_hash_rejected_from_depleted_account(
         session.commit()
 
     with session_factory() as session:
-        with pytest.raises(InsufficientBalanceException):
-            await message_handler.process(
-                session=session, pending_message=fixture_store_message
-            )
+        processed_message = await message_handler.process(
+            session=session, pending_message=fixture_store_message
+        )
+        session.commit()
+        assert isinstance(processed_message, ProcessedMessage)
 
 
 @pytest.mark.asyncio

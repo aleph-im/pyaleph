@@ -321,44 +321,52 @@ class StoreMessageHandler(ContentHandler):
 
         engine = content.item_type
         # Initially only do that balance pre-check for ipfs files.
-        if engine == ItemType.ipfs and ipfs_enabled:
-            # If we already have the file locally (e.g. from a prior add_file
-            # or add_car upload on this node), use the stored size instead of
-            # asking kubo. Avoids a redundant dag.get round-trip and the
-            # rejection risk when the daemon is busy right after upload.
-            stored_file = get_file(session, content.item_hash)
-            if stored_file is not None:
-                ipfs_byte_size: int | None = stored_file.size
-            else:
-                ipfs_byte_size = await self.storage_service.ipfs_service.get_ipfs_size(
-                    content.item_hash,
-                    timeout=config.ipfs.stat_timeout.value,
-                    tries=3,
-                )
-            if ipfs_byte_size:
-                storage_mib = Decimal(ipfs_byte_size / MiB)
+        if engine != ItemType.ipfs or not ipfs_enabled:
+            # The cost of other storage engines (e.g. native storage) is only
+            # known once the content has been fetched. Validating here with a
+            # zero message cost would bill the sender's entire accumulated
+            # cost without accounting for this message; the full balance
+            # check is deferred to check_balance(), which runs after
+            # fetch_related_content() and knows the real file size.
+            return None
 
-                # Allow users to pin small files (only for hold payment type, before cutoff)
-                if payment_type == PaymentType.hold and storage_mib <= (
-                    self.max_unauthenticated_upload_file_size / MiB
-                ):
-                    return None
-
-                computable_content_data = {
-                    **content.model_dump(),
-                    "estimated_size_mib": int(storage_mib),
-                }
-                computable_content = CostEstimationStoreContent.model_validate(
-                    computable_content_data
-                )
-
-                message_cost, _ = get_total_and_detailed_costs(
-                    session, computable_content, message.item_hash
-                )
-            else:
-                message_cost = Decimal(0)
+        # If we already have the file locally (e.g. from a prior add_file
+        # or add_car upload on this node), use the stored size instead of
+        # asking kubo. Avoids a redundant dag.get round-trip and the
+        # rejection risk when the daemon is busy right after upload.
+        stored_file = get_file(session, content.item_hash)
+        if stored_file is not None:
+            ipfs_byte_size: int | None = stored_file.size
         else:
-            message_cost = Decimal(0)
+            ipfs_byte_size = await self.storage_service.ipfs_service.get_ipfs_size(
+                content.item_hash,
+                timeout=config.ipfs.stat_timeout.value,
+                tries=3,
+            )
+
+        if not ipfs_byte_size:
+            # Size unknown (file not on this node): defer to check_balance().
+            return None
+
+        storage_mib = Decimal(ipfs_byte_size / MiB)
+
+        # Allow users to pin small files (only for hold payment type, before cutoff)
+        if payment_type == PaymentType.hold and storage_mib <= (
+            self.max_unauthenticated_upload_file_size / MiB
+        ):
+            return None
+
+        computable_content_data = {
+            **content.model_dump(),
+            "estimated_size_mib": int(storage_mib),
+        }
+        computable_content = CostEstimationStoreContent.model_validate(
+            computable_content_data
+        )
+
+        message_cost, _ = get_total_and_detailed_costs(
+            session, computable_content, message.item_hash
+        )
 
         validate_balance_for_payment(
             session=session,
