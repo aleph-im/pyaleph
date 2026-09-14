@@ -43,6 +43,13 @@ def upsert_chain_tx(session: DbSession, tx: ChainTxDb) -> None:
     session.execute(upsert_stmt)
 
 
+def get_tx_height(session: DbSession, tx_hash: str) -> Optional[int]:
+    height = session.execute(
+        select(ChainTxDb.height).where(ChainTxDb.hash == tx_hash)
+    ).scalar()
+    return height
+
+
 def upsert_chain_sync_status(
     session: DbSession,
     chain: Chain,

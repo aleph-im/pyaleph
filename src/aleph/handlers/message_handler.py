@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from sqlalchemy.dialects.postgresql import insert
 
 from aleph.chains.signature_verifier import SignatureVerifier
+from aleph.db.accessors.chains import get_tx_height
 from aleph.db.accessors.cost import make_costs_upsert_query
 from aleph.db.accessors.files import insert_content_file_pin, upsert_file
 from aleph.db.accessors.messages import (
@@ -51,6 +52,23 @@ from aleph.types.message_status import (
 )
 
 LOGGER = logging.getLogger(__name__)
+
+
+def get_tx_height_from_pending_message(
+    session: DbSession, pending_message: PendingMessageDb
+) -> Optional[int]:
+    """Resolve the on-chain height that published this pending message, if any.
+
+    Messages replayed from chain data (sync from scratch, node catching up on
+    history) arrive with a ``tx_hash`` whose block height proves the message
+    was published long before it is processed. Cost cut-off checks rely on
+    this evidence: a fresh node must not re-charge (and reject as
+    insufficiently funded) a message that was confirmed on-chain years ago.
+    """
+    if pending_message.tx_hash is None:
+        return None
+
+    return get_tx_height(session, pending_message.tx_hash)
 
 
 class BaseMessageHandler:
@@ -426,7 +444,11 @@ class MessageHandler(BaseMessageHandler):
         )
 
         await content_handler.pre_check_balance(
-            session=session, message=validated_message
+            session=session,
+            message=validated_message,
+            confirmed_height=get_tx_height_from_pending_message(
+                session, pending_message
+            ),
         )
 
         # Fetch related content like the IPFS associated file
@@ -488,7 +510,13 @@ class MessageHandler(BaseMessageHandler):
 
         await content_handler.check_dependencies(session=session, message=message)
         await content_handler.check_permissions(session=session, message=message)
-        costs = await content_handler.check_balance(session=session, message=message)
+        costs = await content_handler.check_balance(
+            session=session,
+            message=message,
+            confirmed_height=get_tx_height_from_pending_message(
+                session, pending_message
+            ),
+        )
 
         await self.insert_message(
             session=session, pending_message=pending_message, message=message

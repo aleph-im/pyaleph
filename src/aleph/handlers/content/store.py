@@ -11,7 +11,7 @@ import logging
 import random
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import List, Set
+from typing import List, Optional, Set
 
 import aioipfs
 from aleph_message.models import ItemHash, ItemType, PaymentType, StoreContent
@@ -296,11 +296,16 @@ class StoreMessageHandler(ContentHandler):
             size=len(file_content),
         )
 
-    async def pre_check_balance(self, session: DbSession, message: MessageDb):
+    async def pre_check_balance(
+        self,
+        session: DbSession,
+        message: MessageDb,
+        confirmed_height: Optional[int] = None,
+    ):
         content = _get_store_content(message)
         assert isinstance(content, StoreContent)
 
-        if are_store_and_program_free(message):
+        if are_store_and_program_free(message, confirmed_height):
             return None
 
         payment_type = get_payment_type(content)
@@ -365,7 +370,10 @@ class StoreMessageHandler(ContentHandler):
         return None
 
     async def check_balance(
-        self, session: DbSession, message: MessageDb
+        self,
+        session: DbSession,
+        message: MessageDb,
+        confirmed_height: Optional[int] = None,
     ) -> List[AccountCostsDb]:
         content = _get_store_content(message)
 
@@ -373,7 +381,7 @@ class StoreMessageHandler(ContentHandler):
             session, content, message.item_hash
         )
 
-        if are_store_and_program_free(message):
+        if are_store_and_program_free(message, confirmed_height):
             return costs
 
         payment_type = get_payment_type(content)
