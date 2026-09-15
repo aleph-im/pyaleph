@@ -146,3 +146,60 @@ def test_ingestion_accepts_integer_vprogram_time():
     content["time"] = 1719502000
     parsed = validate_message_content(MessageType.v_program, content)
     assert parsed.time == 1719502000.0
+
+
+CONFIDENTIAL_GPU: Dict[str, Any] = {
+    "vendor": "nvidia",
+    "arch": "blackwell",
+    "count": 1,
+    "mode": "cc",
+}
+
+
+def test_ingestion_accepts_confidential_gpu_block():
+    """A V-PROGRAM asking for confidential GPUs (aleph-message 1.5) is
+    accepted, and its request is not a passthrough GPU: the cost service and
+    every other consumer of `gpu_requirements` keep seeing none."""
+    content: Dict[str, Any] = json.loads(json.dumps(VPROGRAM_CONTENT))
+    content["gpu"] = dict(CONFIDENTIAL_GPU)
+    parsed = validate_message_content(MessageType.v_program, content)
+    assert isinstance(parsed, VerifiableProgramContent)
+    assert parsed.gpu is not None
+    assert parsed.gpu.arch == "blackwell"
+    assert parsed.gpu.count == 1
+    assert parsed.requires_gpu
+    assert list(parsed.gpu_requirements) == []
+
+
+@pytest.mark.parametrize(
+    "gpu",
+    [
+        {**CONFIDENTIAL_GPU, "count": "1"},  # strict scalar, as elsewhere
+        {**CONFIDENTIAL_GPU, "arch": "ampere"},  # no confidential mode
+        {**CONFIDENTIAL_GPU, "models": ["RTX PRO 6000"]},  # not a PCI id
+        {**CONFIDENTIAL_GPU, "device_id": "10de:2b85"},  # unknown key
+    ],
+)
+def test_ingestion_rejects_malformed_confidential_gpu_block(gpu):
+    content: Dict[str, Any] = json.loads(json.dumps(VPROGRAM_CONTENT))
+    content["gpu"] = gpu
+    with pytest.raises(ValidationError):
+        validate_message_content(MessageType.v_program, content)
+
+
+def test_ingestion_rejects_passthrough_gpu_on_vprogram():
+    """An unattested passthrough card (requirements.gpu, the instance form)
+    has no place in an attested VM: only the `gpu` block is accepted."""
+    content: Dict[str, Any] = json.loads(json.dumps(VPROGRAM_CONTENT))
+    content["requirements"] = {
+        "gpu": [
+            {
+                "vendor": "nvidia",
+                "device_name": "RTX PRO 6000 Blackwell Server Edition",
+                "device_class": "0300",
+                "device_id": "10de:2b85",
+            }
+        ]
+    }
+    with pytest.raises(ValidationError):
+        validate_message_content(MessageType.v_program, content)
