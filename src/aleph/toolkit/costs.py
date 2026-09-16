@@ -22,10 +22,12 @@ def format_cost_str(v: Decimal | str, p: int = PRICE_PRECISION) -> str:
     return "{:.{p}f}".format(n, p=p)
 
 
-def are_store_and_program_free(message: MessageDb) -> bool:
-    height: Optional[int] = (
-        message.confirmations[0].height if len(message.confirmations) > 0 else None
-    )
+def are_store_and_program_free(
+    message: MessageDb, confirmed_height: Optional[int] = None
+) -> bool:
+    height: Optional[int] = confirmed_height
+    if height is None and len(message.confirmations) > 0:
+        height = message.confirmations[0].height
 
     if height is not None:
         return height < STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT

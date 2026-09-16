@@ -1,6 +1,6 @@
 import logging
 from collections import OrderedDict
-from typing import List, Set
+from typing import List, Optional, Set
 
 from aleph_message.models import PaymentType, VerifiableProgramContent
 
@@ -183,7 +183,10 @@ class VProgramMessageHandler(ContentHandler):
             raise VmVolumeNotFound([bundle_ref])
 
     async def check_balance(
-        self, session: DbSession, message: MessageDb
+        self,
+        session: DbSession,
+        message: MessageDb,
+        confirmed_height: Optional[int] = None,
     ) -> List[AccountCostsDb]:
         content = _get_vprogram_content(message)
 

@@ -1,5 +1,5 @@
 import logging
-from typing import List, Protocol, Set, Union, overload
+from typing import List, Optional, Protocol, Set, Union, overload
 
 from aleph_message.models import (
     ExecutableContent,
@@ -339,7 +339,10 @@ class VmMessageHandler(ContentHandler):
     """
 
     async def check_balance(
-        self, session: DbSession, message: MessageDb
+        self,
+        session: DbSession,
+        message: MessageDb,
+        confirmed_height: Optional[int] = None,
     ) -> List[AccountCostsDb]:
         content = _get_vm_content(message)
 
@@ -350,7 +353,7 @@ class VmMessageHandler(ContentHandler):
         if (
             isinstance(content, ProgramContent)
             and not content.on.persistent
-            and are_store_and_program_free(message)
+            and are_store_and_program_free(message, confirmed_height)
         ):
             return costs
 

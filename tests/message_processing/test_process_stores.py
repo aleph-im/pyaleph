@@ -11,6 +11,7 @@ from aleph_message.models import (
     ItemType,
     MessageType,
     Payment,
+    PaymentType,
     StoreContent,
 )
 from configmanager import Config
@@ -24,6 +25,8 @@ from aleph.db.models import (
     MessageStatusDb,
     PendingMessageDb,
 )
+from aleph.db.models.account_costs import AccountCostsDb
+from aleph.db.models.chains import ChainTxDb
 from aleph.handlers.content.store import StoreMessageHandler
 from aleph.handlers.message_handler import MessageHandler
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
@@ -34,10 +37,13 @@ from aleph.storage import StorageService
 from aleph.toolkit.constants import (
     CREDIT_ONLY_CUTOFF_TIMESTAMP,
     DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+    STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT,
     STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP,
 )
 from aleph.toolkit.timestamp import timestamp_to_datetime
+from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.channel import Channel
+from aleph.types.cost import CostType
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.message_processing_result import ProcessedMessage
 from aleph.types.message_status import (
@@ -675,6 +681,297 @@ async def test_pre_check_balance_ipfs_disabled(mocker, session_factory):
 
             # Verify that get_ipfs_size was not called
             assert not ipfs_service.get_ipfs_size.called
+
+
+STORE_SENDER = "0x696879aE4F6d8DaDD5b8F1cbb1e663B89b08f106"
+_SENDER_COST_ITEM_HASH = "abbacacaabbacacaabbacacaabbacacaabbacacaabbacacaabbacacaabba"
+
+
+def _make_message_with_accumulated_costs(mocker) -> MessageDb:
+    """A post-cutoff IPFS message whose sender has accumulated costs and no balance.
+
+    This models a node syncing from scratch: the message is observed now,
+    long after its sender's balance was depleted. The file is larger than
+    the small-file allowance so the full balance check applies.
+    """
+    message = mocker.MagicMock(spec=MessageDb)
+    message.time = timestamp_to_datetime(STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1)
+    message.observed_time = message.time
+    content = StoreContent(
+        address=STORE_SENDER,
+        time=STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1,
+        item_type=ItemType.ipfs,
+        item_hash=ItemHash("QmWVxvresoeadRbCeG4BmvsoSsqHV7VwUNuGK6nUCKKFGQ"),
+    )
+    message.parsed_content = content
+    return message
+
+
+def _add_sender_costs(session, cost: str = "20.0") -> None:
+    """Simulate accumulated storage costs for the message sender.
+
+    The cost row must reference an existing message (foreign key).
+    """
+    session.add(
+        MessageDb(
+            item_hash=_SENDER_COST_ITEM_HASH,
+            sender=STORE_SENDER,
+            chain=Chain.ETH,
+            type=MessageType.store,
+            time=timestamp_to_datetime(STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP - 3600),
+            item_type=ItemType.inline,
+            signature=f"sig_{_SENDER_COST_ITEM_HASH[:8]}",
+            size=42,
+            content={"address": STORE_SENDER, "item_type": "storage"},
+        )
+    )
+    session.flush()
+    session.add(
+        AccountCostsDb(
+            owner=STORE_SENDER,
+            item_hash=_SENDER_COST_ITEM_HASH,
+            type=CostType.STORAGE,
+            name="store",
+            payment_type=PaymentType.hold,
+            cost_hold=Decimal(cost),
+            cost_stream=Decimal("0.0"),
+        )
+    )
+
+
+@pytest.mark.asyncio
+async def test_pre_check_balance_confirmed_height_grandfathering(
+    mocker, session_factory, mock_config
+):
+    """A chain-confirmed pre-cutoff message is free even from a depleted account.
+
+    A message confirmed on-chain below the cost cutoff height was published
+    when the sender could afford it. Its height is proof that it must not be
+    re-charged against today's balance when a node processes it for the first
+    time (e.g. while syncing from scratch).
+    """
+    ipfs_service = mocker.AsyncMock()
+    ipfs_service.get_ipfs_size = AsyncMock(
+        return_value=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 2
+    )
+    storage_service = StorageService(
+        storage_engine=mocker.AsyncMock(),
+        ipfs_service=ipfs_service,
+        node_cache=mocker.AsyncMock(),
+    )
+
+    store_handler = StoreMessageHandler(
+        storage_service=storage_service,
+        grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+    )
+
+    message = _make_message_with_accumulated_costs(mocker)
+
+    with session_factory() as session:
+        _add_sender_costs(session, "20.0")
+        session.commit()
+
+        # The sender has accumulated costs and no balance: without chain
+        # evidence the message is rejected...
+        with pytest.raises(InsufficientBalanceException):
+            await store_handler.pre_check_balance(session, message)
+
+        # ... but a confirmation below the cutoff height proves the message
+        # predates paid storage.
+        await store_handler.pre_check_balance(
+            session, message, confirmed_height=STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT - 1
+        )
+
+
+@pytest.mark.asyncio
+async def test_pre_check_balance_confirmed_height_after_cutoff(
+    mocker, session_factory, mock_config
+):
+    """A chain-confirmed post-cutoff message is still balance-checked."""
+    ipfs_service = mocker.AsyncMock()
+    ipfs_service.get_ipfs_size = AsyncMock(
+        return_value=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 2
+    )
+    storage_service = StorageService(
+        storage_engine=mocker.AsyncMock(),
+        ipfs_service=ipfs_service,
+        node_cache=mocker.AsyncMock(),
+    )
+
+    store_handler = StoreMessageHandler(
+        storage_service=storage_service,
+        grace_period=24,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+    )
+
+    message = _make_message_with_accumulated_costs(mocker)
+
+    with session_factory() as session:
+        _add_sender_costs(session, "20.0")
+        session.commit()
+
+        with pytest.raises(InsufficientBalanceException):
+            await store_handler.pre_check_balance(
+                session,
+                message,
+                confirmed_height=STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT + 1,
+            )
+
+
+@pytest.mark.asyncio
+async def test_process_store_confirmed_before_cutoff_from_depleted_account(
+    mocker,
+    mock_config: Config,
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+    fixture_store_message: PendingMessageDb,
+):
+    """End-to-end: a pre-cutoff on-chain STORE from a depleted account is processed.
+
+    This reproduces the fresh-node sync issue: an old STORE message, replayed
+    through chain data, whose sender has since depleted their balance. The
+    on-chain confirmation height must grandfather the message.
+    """
+    tx_hash = "0xf49cb176c1ce4f6eb7b9721303994b05074f8fadc37b5f41ac6f78bdf4b14b6c"
+    chain_tx = ChainTxDb(
+        hash=tx_hash,
+        chain=Chain.ETH,
+        height=STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT - 100_000,
+        datetime=dt.datetime.fromtimestamp(1642421659, dt.timezone.utc),
+        publisher="0xabadbabe",
+        protocol=ChainSyncProtocol.ON_CHAIN_SYNC,
+        protocol_version=1,
+        content="test-data",
+    )
+    fixture_store_message.tx_hash = tx_hash
+    # Fresh node: the message is received (and observed) long after the cutoff,
+    # years after its on-chain publication.
+    fixture_store_message.reception_time = timestamp_to_datetime(
+        STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
+    )
+
+    storage_service = StorageService(
+        storage_engine=MockStorageEngine(
+            files={
+                "c25b0525bc308797d3e35763faf5c560f2974dab802cb4a734ae4e9d1040319e": b"Hello Aleph.im"
+            }
+        ),
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
+    )
+    message_handler = MessageHandler(
+        signature_verifier=mocker.AsyncMock(),
+        storage_service=storage_service,
+        config=mock_config,
+    )
+
+    with session_factory() as session:
+        session.add(chain_tx)
+        _add_sender_costs(session, "20.0")
+        session.commit()
+
+    with session_factory() as session:
+        processed_message = await message_handler.process(
+            session=session, pending_message=fixture_store_message
+        )
+        session.commit()
+        assert isinstance(processed_message, ProcessedMessage)
+
+
+@pytest.mark.asyncio
+async def test_process_store_without_tx_hash_rejected_from_depleted_account(
+    mocker,
+    mock_config: Config,
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+    fixture_store_message: PendingMessageDb,
+):
+    """Control: without chain evidence the same message is still rejected.
+
+    Only messages proven on-chain to predate the cost cutoff are grandfathered;
+    backdated messages without confirmations keep being charged against the
+    current balance. The file is larger than the small-file allowance so the
+    full balance check applies.
+    """
+    large_file_content = b"X" * (DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE * 2)
+    storage_service = StorageService(
+        storage_engine=MockStorageEngine(
+            files={
+                "c25b0525bc308797d3e35763faf5c560f2974dab802cb4a734ae4e9d1040319e": large_file_content
+            }
+        ),
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
+    )
+    message_handler = MessageHandler(
+        signature_verifier=mocker.AsyncMock(),
+        storage_service=storage_service,
+        config=mock_config,
+    )
+
+    fixture_store_message.reception_time = timestamp_to_datetime(
+        STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
+    )
+
+    with session_factory() as session:
+        _add_sender_costs(session, "20.0")
+        session.commit()
+
+    with session_factory() as session:
+        with pytest.raises(InsufficientBalanceException):
+            await message_handler.process(
+                session=session, pending_message=fixture_store_message
+            )
+
+
+@pytest.mark.asyncio
+async def test_process_store_small_file_from_depleted_account(
+    mocker,
+    mock_config: Config,
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+    fixture_store_message: PendingMessageDb,
+):
+    """A small native-storage file is no longer rejected by the pre-check.
+
+    The pre-check used to validate with a zero message cost, which billed the
+    sender's entire accumulated cost and rejected the message before its
+    content was even fetched. The full check in check_balance() applies the
+    small-file allowance instead, consistently with the IPFS path.
+    """
+    storage_service = StorageService(
+        storage_engine=MockStorageEngine(
+            files={
+                "c25b0525bc308797d3e35763faf5c560f2974dab802cb4a734ae4e9d1040319e": b"Hello Aleph.im"
+            }
+        ),
+        ipfs_service=mocker.AsyncMock(),
+        node_cache=mocker.AsyncMock(),
+    )
+    message_handler = MessageHandler(
+        signature_verifier=mocker.AsyncMock(),
+        storage_service=storage_service,
+        config=mock_config,
+    )
+
+    fixture_store_message.reception_time = timestamp_to_datetime(
+        STORE_AND_PROGRAM_COST_CUTOFF_TIMESTAMP + 1
+    )
+
+    with session_factory() as session:
+        _add_sender_costs(session, "20.0")
+        session.commit()
+
+    with session_factory() as session:
+        processed_message = await message_handler.process(
+            session=session, pending_message=fixture_store_message
+        )
+        session.commit()
+        assert isinstance(processed_message, ProcessedMessage)
 
 
 @pytest.mark.asyncio
