@@ -2,7 +2,7 @@ import datetime as dt
 import itertools
 import json
 from decimal import Decimal
-from typing import List, Protocol, cast
+from typing import Any, Dict, List, Protocol, cast
 
 import pytest
 import pytz
@@ -329,35 +329,25 @@ async def test_process_confidential_vm(
         assert instance.node_hash == content_dict["requirements"]["node"]["node_hash"]
 
 
-@pytest.fixture
-def fixture_tdx_instance_message(
+MEASURED_INSTANCE_OWNER = "0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba"
+
+
+def insert_measured_instance_message(
     session_factory: DbSessionFactory,
+    *,
+    item_hash: str,
+    trusted_execution: Dict[str, Any],
 ) -> PendingMessageDb:
-    """A measured (mode "tdx") confidential instance: credit-paid, runtime
-    bundle plus declared TDX registers, no firmware."""
+    """A measured (mode "sev_snp" or "tdx") confidential instance: credit-paid,
+    runtime bundle plus declared registers, no firmware."""
     content = {
-        "address": "0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
+        "address": MEASURED_INSTANCE_OWNER,
         "allow_amend": False,
         "environment": {
             "internet": True,
             "aleph_api": False,
             "hypervisor": "qemu",
-            "trusted_execution": {
-                "mode": "tdx",
-                "runtime": "cafe" * 16,
-                "measurements": [
-                    {
-                        "platform": "tdx",
-                        "registers": {
-                            "mrtd": "11" * 48,
-                            "rtmr1": "22" * 48,
-                            "rtmr2": "33" * 48,
-                            "mrconfigid": "44" * 48,
-                        },
-                        "vcpu_type": "GraniteRapids",
-                    }
-                ],
-            },
+            "trusted_execution": trusted_execution,
         },
         "payment": {"type": "credit"},
         "resources": {"vcpus": 2, "memory": 2048, "seconds": 30},
@@ -373,10 +363,10 @@ def fixture_tdx_instance_message(
     }
 
     pending_message = PendingMessageDb(
-        item_hash="834a1287a2b7b5be060312ff5b05ad1bcf838950492e3428f2ac6437a1acad27",
+        item_hash=item_hash,
         type=MessageType.instance,
         chain=Chain.ETH,
-        sender="0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
+        sender=MEASURED_INSTANCE_OWNER,
         signature="0x472da8230552b8c3e65c05b31a0ff3a24666d66c575f8e11019f62579bf48c2b7fe2f0bbe907a2a5bf8050989cdaf8a59ff8a1cbcafcdef0656c54279b4aa0c71b",
         item_type=ItemType.inline,
         item_content=json.dumps(content),
@@ -403,11 +393,61 @@ def fixture_tdx_instance_message(
 
 
 @pytest.fixture
-def tdx_user_credit_balance(session_factory: DbSessionFactory) -> None:
+def fixture_tdx_instance_message(
+    session_factory: DbSessionFactory,
+) -> PendingMessageDb:
+    return insert_measured_instance_message(
+        session_factory,
+        item_hash="834a1287a2b7b5be060312ff5b05ad1bcf838950492e3428f2ac6437a1acad27",
+        trusted_execution={
+            "mode": "tdx",
+            "runtime": "cafe" * 16,
+            "measurements": [
+                {
+                    "platform": "tdx",
+                    "registers": {
+                        "mrtd": "11" * 48,
+                        "rtmr1": "22" * 48,
+                        "rtmr2": "33" * 48,
+                        "mrconfigid": "44" * 48,
+                    },
+                    "vcpu_type": "GraniteRapids",
+                }
+            ],
+        },
+    )
+
+
+@pytest.fixture
+def fixture_snp_gpu_instance_message(
+    session_factory: DbSessionFactory,
+) -> PendingMessageDb:
+    """A SEV-SNP instance asking for a confidential GPU (aleph-message 1.6)."""
+    return insert_measured_instance_message(
+        session_factory,
+        item_hash="9c1e4d5f2b7a8e6d0c3f1a2b4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70",
+        trusted_execution={
+            "mode": "sev_snp",
+            "policy": 0x30000,
+            "runtime": "cafe" * 16,
+            "measurements": [
+                {
+                    "platform": "sev_snp",
+                    "registers": {"launch": "ab" * 48},
+                    "vcpu_type": "EPYC-v4",
+                }
+            ],
+            "gpu": {"vendor": "nvidia", "arch": "hopper", "count": 1, "mode": "cc"},
+        },
+    )
+
+
+@pytest.fixture
+def measured_instance_credit_balance(session_factory: DbSessionFactory) -> None:
     with session_factory() as session:
         session.add(
             AlephCreditBalanceDb(
-                address="0x9319Ad3B7A8E0eE24f2E639c40D8eD124C5520Ba",
+                address=MEASURED_INSTANCE_OWNER,
                 credit_ref="test-credit-ref",
                 credit_index=0,
                 amount_remaining=1_000_000_000,
@@ -425,7 +465,7 @@ async def test_process_tdx_instance(
     fixture_tdx_instance_message: PendingMessageDb,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
-    tdx_user_credit_balance,
+    measured_instance_credit_balance,
 ):
     with session_factory() as session:
         insert_volume_refs(session, fixture_tdx_instance_message)
@@ -452,3 +492,40 @@ async def test_process_tdx_instance(
         # schema default (there is no host-chosen launch policy on TDX).
         assert instance.environment_trusted_execution_firmware is None
         assert instance.environment_trusted_execution_policy == 1
+
+
+@pytest.mark.asyncio
+async def test_process_snp_instance_with_confidential_gpu(
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    fixture_snp_gpu_instance_message: PendingMessageDb,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+    measured_instance_credit_balance,
+):
+    """The confidential GPU rides trusted_execution, not requirements.gpu, so
+    the instance is stored without a node pin and priced as a confidential
+    instance."""
+    with session_factory() as session:
+        insert_volume_refs(session, fixture_snp_gpu_instance_message)
+        session.commit()
+
+    pipeline = message_processor.make_pipeline()
+    _ = [message async for message in pipeline]
+
+    with session_factory() as session:
+        status = get_message_status(
+            session=session,
+            item_hash=ItemHash(fixture_snp_gpu_instance_message.item_hash),
+        )
+        assert status is not None
+        assert status.status == MessageStatus.PROCESSED
+
+        instance = get_instance(
+            session=session, item_hash=fixture_snp_gpu_instance_message.item_hash
+        )
+        assert instance is not None
+        assert instance.owner == fixture_snp_gpu_instance_message.sender
+        assert instance.environment_trusted_execution_policy == 0x30000
+        assert instance.environment_trusted_execution_firmware is None
+        assert instance.node_hash is None
