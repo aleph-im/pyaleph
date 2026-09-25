@@ -129,7 +129,7 @@ def test_vprogram_gpu_detailed_costs_apply_the_architecture_floor(
     execution = next(c for c in costs if c.type == CostType.EXECUTION)
     assert execution.name == ProductPriceType.VPROGRAM_GPU
     # blackwell tier: 32 CUs, above the 2 the workload's resources need.
-    assert Decimal(execution.cost_credit) == format_cost(Decimal(32 * 86250) / HOUR)
+    assert Decimal(execution.cost_credit) == format_cost(32 * (Decimal("86250") / HOUR))
 
 
 def test_vprogram_pricing_defaults_match_confidential():

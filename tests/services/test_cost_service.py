@@ -404,7 +404,7 @@ def test_compute_cost_snp_instance_confidential_gpu_floor(
     gpu_execution = [d for d in gpu_details if d.type == CostType.EXECUTION]
     assert [d.name for d in gpu_execution] == ["instance_confidential_gpu"]
     assert Decimal(gpu_execution[0].cost_credit) == format_cost(
-        Decimal(24 * 86250) / HOUR
+        24 * (Decimal("86250") / HOUR)
     )
     assert gpu_cost > plain_cost
 
@@ -421,7 +421,7 @@ def test_compute_cost_snp_instance_gpu_count_multiplies_the_floor(
             session=session, content=content, item_hash="snp_gpu_2"
         )
     execution = next(d for d in details if d.type == CostType.EXECUTION)
-    assert Decimal(execution.cost_credit) == format_cost(Decimal(48 * 86250) / HOUR)
+    assert Decimal(execution.cost_credit) == format_cost(48 * (Decimal("86250") / HOUR))
 
 
 def test_confidential_gpu_floor_is_zero_until_the_aggregate_prices_it(
