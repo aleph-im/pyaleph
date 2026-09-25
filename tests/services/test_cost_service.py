@@ -1,6 +1,7 @@
 import datetime as dt
 from decimal import Decimal
 from math import ceil
+from typing import Any, Dict, Optional
 from unittest.mock import Mock
 
 import pytest
@@ -20,6 +21,7 @@ from aleph.schemas.cost_estimation_messages import (
     CostEstimationStoreContent,
 )
 from aleph.services.cost import (
+    _confidential_gpu_compute_units,
     _get_additional_storage_price,
     _get_price_aggregate,
     _get_product_price,
@@ -30,12 +32,15 @@ from aleph.services.cost import (
     get_total_and_detailed_costs,
 )
 from aleph.toolkit.constants import (
+    DEFAULT_PRICE_AGGREGATE,
     HOUR,
     MIN_CREDIT_COST_PER_HOUR,
     MIN_STORE_COST_MIB,
     MiB,
+    ProductPriceType,
 )
-from aleph.types.cost import CostType
+from aleph.toolkit.costs import format_cost
+from aleph.types.cost import CostType, ProductPricing
 from aleph.types.db_session import DbSessionFactory
 
 
@@ -341,54 +346,117 @@ def test_compute_cost_conf(
         assert cost == 2000
 
 
-def test_compute_cost_snp_instance_ignores_confidential_gpu(
+def _snp_instance(
+    base: ExecutableContent, gpu: Optional[Dict[str, Any]] = None
+) -> InstanceContent:
+    message_dict = base.model_dump()
+    message_dict["payment"] = {"type": "credit"}
+    trusted_execution: Dict[str, Any] = {
+        "mode": "sev_snp",
+        "policy": 0x30000,
+        "runtime": "cafe" * 16,
+        "measurements": [
+            {
+                "platform": "sev_snp",
+                "registers": {"launch": "ab" * 48},
+                "vcpu_type": "EPYC-v4",
+            }
+        ],
+    }
+    if gpu is not None:
+        trusted_execution["gpu"] = gpu
+    message_dict["environment"].update(
+        {"hypervisor": "qemu", "trusted_execution": trusted_execution}
+    )
+    return InstanceContent.model_validate(message_dict)
+
+
+HOPPER_GPU: Dict[str, Any] = {
+    "vendor": "nvidia",
+    "arch": "hopper",
+    "count": 1,
+    "mode": "cc",
+}
+
+
+def test_compute_cost_snp_instance_confidential_gpu_floor(
     session_factory: DbSessionFactory,
     fixture_product_prices_aggregate_in_db,
     fixture_settings_aggregate_in_db,
     fixture_hold_instance_message,
 ):
-    """A confidential GPU (aleph-message 1.6, `trusted_execution.gpu`) is not
-    a passthrough GPU: the instance prices as INSTANCE_CONFIDENTIAL with or
-    without it, and the GPU tiers never enter."""
-    message_dict = fixture_hold_instance_message.model_dump()
-    message_dict["payment"] = {"type": "credit"}
-    message_dict["environment"].update(
-        {
-            "hypervisor": "qemu",
-            "trusted_execution": {
-                "mode": "sev_snp",
-                "policy": 0x30000,
-                "runtime": "cafe" * 16,
-                "measurements": [
-                    {
-                        "platform": "sev_snp",
-                        "registers": {"launch": "ab" * 48},
-                        "vcpu_type": "EPYC-v4",
-                    }
-                ],
-            },
-        }
-    )
-    plain = InstanceContent.model_validate(message_dict)
-    message_dict["environment"]["trusted_execution"]["gpu"] = {
-        "vendor": "nvidia",
-        "arch": "hopper",
-        "count": 1,
-        "mode": "cc",
-    }
-    with_gpu = InstanceContent.model_validate(message_dict)
+    """A confidential GPU (trusted_execution.gpu) is billed as
+    instance_confidential_gpu: the architecture tier floors the compute units
+    (24 for hopper, far above the 1 CU the 1 vCPU / 2 GiB VM would need)."""
+    plain = _snp_instance(fixture_hold_instance_message)
+    with_gpu = _snp_instance(fixture_hold_instance_message, HOPPER_GPU)
 
     with session_factory() as session:
-        plain_cost, _ = get_total_and_detailed_costs(
+        plain_cost, plain_details = get_total_and_detailed_costs(
             session=session, content=plain, item_hash="snp_plain"
         )
         gpu_cost, gpu_details = get_total_and_detailed_costs(
             session=session, content=with_gpu, item_hash="snp_gpu"
         )
 
-    assert gpu_cost == plain_cost
-    execution_costs = [d for d in gpu_details if d.type == CostType.EXECUTION]
-    assert [d.name for d in execution_costs] == ["instance_confidential"]
+    plain_execution = [d for d in plain_details if d.type == CostType.EXECUTION]
+    assert [d.name for d in plain_execution] == ["instance_confidential"]
+    gpu_execution = [d for d in gpu_details if d.type == CostType.EXECUTION]
+    assert [d.name for d in gpu_execution] == ["instance_confidential_gpu"]
+    assert Decimal(gpu_execution[0].cost_credit) == format_cost(
+        Decimal(24 * 86250) / HOUR
+    )
+    assert gpu_cost > plain_cost
+
+
+def test_compute_cost_snp_instance_gpu_count_multiplies_the_floor(
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+    fixture_hold_instance_message,
+):
+    content = _snp_instance(fixture_hold_instance_message, {**HOPPER_GPU, "count": 2})
+    with session_factory() as session:
+        _, details = get_total_and_detailed_costs(
+            session=session, content=content, item_hash="snp_gpu_2"
+        )
+    execution = next(d for d in details if d.type == CostType.EXECUTION)
+    assert Decimal(execution.cost_credit) == format_cost(Decimal(48 * 86250) / HOUR)
+
+
+def test_confidential_gpu_floor_is_zero_until_the_aggregate_prices_it(
+    fixture_hold_instance_message,
+):
+    """Without an instance_confidential_gpu entry the product borrows the
+    confidential numbers, which carry no architecture tier: the VM is
+    billed, the card is not."""
+    aggregate = {
+        k: v
+        for k, v in DEFAULT_PRICE_AGGREGATE.items()
+        if k != ProductPriceType.INSTANCE_CONFIDENTIAL_GPU
+    }
+    pricing = ProductPricing.from_aggregate(
+        ProductPriceType.INSTANCE_CONFIDENTIAL_GPU, aggregate
+    )
+    assert pricing.type == ProductPriceType.INSTANCE_CONFIDENTIAL_GPU
+    assert pricing.price.compute_unit.credit == Decimal("28500")
+    content = _snp_instance(fixture_hold_instance_message, HOPPER_GPU)
+    assert _confidential_gpu_compute_units(content, pricing) == 0
+
+
+def test_confidential_gpu_without_a_tier_for_its_architecture_is_refused(
+    fixture_hold_instance_message,
+):
+    aggregate = dict(DEFAULT_PRICE_AGGREGATE)
+    entry = dict(aggregate[ProductPriceType.INSTANCE_CONFIDENTIAL_GPU])
+    entry["tiers"] = [t for t in entry["tiers"] if t["arch"] != "hopper"]
+    aggregate[ProductPriceType.INSTANCE_CONFIDENTIAL_GPU] = entry
+    pricing = ProductPricing.from_aggregate(
+        ProductPriceType.INSTANCE_CONFIDENTIAL_GPU, aggregate
+    )
+    content = _snp_instance(fixture_hold_instance_message, HOPPER_GPU)
+    with pytest.raises(ValueError, match="hopper has no tier"):
+        _confidential_gpu_compute_units(content, pricing)
 
 
 def test_get_additional_storage_price(

@@ -13,6 +13,7 @@ from aleph_message.models import (
     VerifiableProgramContent,
 )
 from aleph_message.models.execution.environment import (
+    ConfidentialGpuRequirement,
     HostRequirements,
     InstanceEnvironment,
 )
@@ -169,6 +170,42 @@ def _is_confidential_vm(
     ) and getattr(content.environment, "trusted_execution", False)
 
 
+def _confidential_gpu(
+    content: CostComputableContent,
+) -> Optional[ConfidentialGpuRequirement]:
+    """The confidential-GPU block: `gpu` on a V-PROGRAM, `trusted_execution.gpu`
+    on an instance. Neither is a passthrough GPU (requirements.gpu)."""
+    if isinstance(content, (VerifiableProgramContent, CostEstimationVProgramContent)):
+        return content.gpu
+    if isinstance(content, (InstanceContent, CostEstimationInstanceContent)):
+        trusted_execution = content.environment.trusted_execution
+        return trusted_execution.gpu if trusted_execution is not None else None
+    return None
+
+
+def _confidential_gpu_compute_units(
+    content: CostComputableContent, pricing: ProductPricing
+) -> int:
+    """The floor on billed compute units a confidential GPU sets: the tier of
+    its architecture times the card count. Zero without a GPU, or when the
+    pricing carries no architecture tiers (the product borrowed another
+    entry: the aggregate does not price the card yet).
+    """
+    gpu = _confidential_gpu(content)
+    if gpu is None:
+        return 0
+    arch_tiers = [tier for tier in pricing.tiers or [] if tier.arch is not None]
+    if not arch_tiers:
+        return 0
+    for tier in arch_tiers:
+        if tier.arch == gpu.arch:
+            return tier.compute_units * gpu.count
+    raise ValueError(
+        f"GPU architecture {gpu.arch} has no tier under '{pricing.type.value}' "
+        "in the pricing aggregate"
+    )
+
+
 def _is_gpu_vm(content: InstanceContent | CostEstimationInstanceContent) -> bool:
     return isinstance(
         getattr(content, "requirements", None), HostRequirements
@@ -181,6 +218,8 @@ def _get_product_instance_type(
     price_aggregate: Union[AggregateDb, dict],
 ) -> ProductPriceType:
     if _is_confidential_vm(content):
+        if _confidential_gpu(content) is not None:
+            return ProductPriceType.INSTANCE_CONFIDENTIAL_GPU
         return ProductPriceType.INSTANCE_CONFIDENTIAL
 
     gpu_requirements = content.requirements.gpu if content.requirements else []
@@ -304,6 +343,8 @@ def _get_product_price_type(
         )
 
     if isinstance(content, (VerifiableProgramContent, CostEstimationVProgramContent)):
+        if content.gpu is not None:
+            return ProductPriceType.VPROGRAM_GPU
         return ProductPriceType.VPROGRAM
 
     return _get_product_instance_type(content, settings, price_aggregate)
@@ -874,7 +915,10 @@ def _calculate_executable_costs(
         )
 
     # EXECUTION COST (existing logic for non-GPU)
-    compute_units_required = _get_nb_compute_units(content, pricing.compute_unit)
+    compute_units_required = max(
+        _get_nb_compute_units(content, pricing.compute_unit),
+        _confidential_gpu_compute_units(content, pricing),
+    )
     compute_unit_multiplier = _get_compute_unit_multiplier(content)
 
     compute_unit_cost = pricing.price.compute_unit.holding

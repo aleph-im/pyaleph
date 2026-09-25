@@ -3,7 +3,11 @@ from decimal import Decimal
 
 import pytest
 from aleph_message.models import VerifiableProgramContent
-from messages.test_vprogram import VPROGRAM_CONTENT, VPROGRAM_ITEM_HASH
+from messages.test_vprogram import (
+    CONFIDENTIAL_GPU,
+    VPROGRAM_CONTENT,
+    VPROGRAM_ITEM_HASH,
+)
 from pydantic import ValidationError
 
 from aleph.db.accessors.files import insert_message_file_pin
@@ -20,6 +24,7 @@ from aleph.toolkit.constants import (
     HOUR,
     ProductPriceType,
 )
+from aleph.toolkit.costs import format_cost
 from aleph.types.cost import CostType, ProductPricing, RefVolume, resolve_price_type_key
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.files import FileType
@@ -66,6 +71,65 @@ def test_vprogram_price_type(vprogram_content):
         vprogram_content, settings, DEFAULT_PRICE_AGGREGATE
     )
     assert price_type == ProductPriceType.VPROGRAM
+
+
+@pytest.fixture
+def vprogram_gpu_content() -> VerifiableProgramContent:
+    return VerifiableProgramContent.model_validate(
+        {**VPROGRAM_CONTENT, "gpu": dict(CONFIDENTIAL_GPU)}
+    )
+
+
+def test_vprogram_gpu_price_type(vprogram_gpu_content):
+    settings = Settings.from_aggregate(DEFAULT_SETTINGS_AGGREGATE)
+    price_type = _get_product_price_type(
+        vprogram_gpu_content, settings, DEFAULT_PRICE_AGGREGATE
+    )
+    assert price_type == ProductPriceType.VPROGRAM_GPU
+
+
+def test_vprogram_gpu_pricing_falls_back_along_the_chain():
+    """vprogram_gpu borrows the confidential GPU tiers first, then the plain
+    V-PROGRAM numbers (no architecture tier, so no GPU floor) when those are
+    missing too."""
+    assert ProductPriceType.VPROGRAM_GPU not in DEFAULT_PRICE_AGGREGATE
+    assert (
+        resolve_price_type_key(
+            ProductPriceType.VPROGRAM_GPU, DEFAULT_PRICE_AGGREGATE.keys()
+        )
+        == ProductPriceType.INSTANCE_CONFIDENTIAL_GPU
+    )
+    without_gpu_keys = {
+        k: v
+        for k, v in DEFAULT_PRICE_AGGREGATE.items()
+        if k != ProductPriceType.INSTANCE_CONFIDENTIAL_GPU
+    }
+    assert (
+        resolve_price_type_key(ProductPriceType.VPROGRAM_GPU, without_gpu_keys.keys())
+        == ProductPriceType.VPROGRAM
+    )
+    pricing = ProductPricing.from_aggregate(
+        ProductPriceType.VPROGRAM_GPU, without_gpu_keys
+    )
+    assert pricing.type == ProductPriceType.VPROGRAM_GPU
+    assert all(tier.arch is None for tier in pricing.tiers or [])
+
+
+def test_vprogram_gpu_detailed_costs_apply_the_architecture_floor(
+    session_factory: DbSessionFactory,
+    vprogram_gpu_content,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    with session_factory() as session:
+        costs = get_detailed_costs(
+            session, vprogram_gpu_content, item_hash=VPROGRAM_ITEM_HASH
+        )
+
+    execution = next(c for c in costs if c.type == CostType.EXECUTION)
+    assert execution.name == ProductPriceType.VPROGRAM_GPU
+    # blackwell tier: 32 CUs, above the 2 the workload's resources need.
+    assert Decimal(execution.cost_credit) == format_cost(Decimal(32 * 86250) / HOUR)
 
 
 def test_vprogram_pricing_defaults_match_confidential():
