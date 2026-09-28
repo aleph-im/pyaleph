@@ -341,6 +341,56 @@ def test_compute_cost_conf(
         assert cost == 2000
 
 
+def test_compute_cost_snp_instance_ignores_confidential_gpu(
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+    fixture_hold_instance_message,
+):
+    """A confidential GPU (aleph-message 1.6, `trusted_execution.gpu`) is not
+    a passthrough GPU: the instance prices as INSTANCE_CONFIDENTIAL with or
+    without it, and the GPU tiers never enter."""
+    message_dict = fixture_hold_instance_message.model_dump()
+    message_dict["payment"] = {"type": "credit"}
+    message_dict["environment"].update(
+        {
+            "hypervisor": "qemu",
+            "trusted_execution": {
+                "mode": "sev_snp",
+                "policy": 0x30000,
+                "runtime": "cafe" * 16,
+                "measurements": [
+                    {
+                        "platform": "sev_snp",
+                        "registers": {"launch": "ab" * 48},
+                        "vcpu_type": "EPYC-v4",
+                    }
+                ],
+            },
+        }
+    )
+    plain = InstanceContent.model_validate(message_dict)
+    message_dict["environment"]["trusted_execution"]["gpu"] = {
+        "vendor": "nvidia",
+        "arch": "hopper",
+        "count": 1,
+        "mode": "cc",
+    }
+    with_gpu = InstanceContent.model_validate(message_dict)
+
+    with session_factory() as session:
+        plain_cost, _ = get_total_and_detailed_costs(
+            session=session, content=plain, item_hash="snp_plain"
+        )
+        gpu_cost, gpu_details = get_total_and_detailed_costs(
+            session=session, content=with_gpu, item_hash="snp_gpu"
+        )
+
+    assert gpu_cost == plain_cost
+    execution_costs = [d for d in gpu_details if d.type == CostType.EXECUTION]
+    assert [d.name for d in execution_costs] == ["instance_confidential"]
+
+
 def test_get_additional_storage_price(
     session_factory: DbSessionFactory,
     fixture_product_prices_aggregate_in_db,
