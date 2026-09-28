@@ -2,7 +2,7 @@ from decimal import Decimal
 from typing import Iterable, List, Optional, Tuple
 
 from aleph_message.models import PaymentType
-from sqlalchemy import and_, asc, delete, func, select
+from sqlalchemy import and_, asc, delete, exists, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.sql import Insert
 
@@ -10,6 +10,7 @@ from aleph.db.models import ChainTxDb, message_confirmations
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.db.models.files import FilePinDb, FilePinType, StoredFileDb
 from aleph.db.models.messages import MessageStatusDb
+from aleph.toolkit.constants import STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT
 from aleph.toolkit.costs import format_cost, format_cost_str
 from aleph.types.cost import CostType
 from aleph.types.db_session import DbSession
@@ -38,6 +39,42 @@ def get_total_cost_for_address(
         return format_cost(Decimal(summary["total_cost_credit"]))
     else:
         return format_cost(Decimal(summary["total_cost_hold"]))
+
+
+def get_post_cutoff_total_cost_for_address(
+    session: DbSession,
+    address: str,
+    payment_type: Optional[PaymentType] = PaymentType.hold,
+) -> Decimal:
+    """Total cost for an address, restricted to post-cutoff confirmed resources.
+
+    Mirrors the balance cron job, which only removes messages whose
+    confirmation height is at or after STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT:
+    costs of grandfathered (pre-cutoff or unconfirmed) resources do not count
+    towards the balance required for new messages. Without this, ingestion
+    and the reaper would disagree on what an address owes.
+    """
+    if payment_type == PaymentType.superfluid:
+        cost_prop = AccountCostsDb.cost_stream
+    elif payment_type == PaymentType.credit:
+        cost_prop = AccountCostsDb.cost_credit
+    else:
+        cost_prop = AccountCostsDb.cost_hold
+
+    post_cutoff_confirmation = exists(
+        select(1)
+        .where(message_confirmations.c.item_hash == AccountCostsDb.item_hash)
+        .where(message_confirmations.c.tx_hash == ChainTxDb.hash)
+        .where(ChainTxDb.height >= STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT)
+    )
+
+    select_stmt = select(func.sum(cost_prop)).where(
+        (AccountCostsDb.owner == address)
+        & (AccountCostsDb.payment_type == payment_type)
+        & post_cutoff_confirmation
+    )
+    total_cost = session.execute(select_stmt).scalar()
+    return format_cost(Decimal(total_cost or 0))
 
 
 def get_total_costs_for_address_grouped_by_message(
