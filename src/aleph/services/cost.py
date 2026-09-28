@@ -914,7 +914,9 @@ def _calculate_executable_costs(
             )
         )
 
-    # EXECUTION COST (existing logic for non-GPU)
+    # EXECUTION COST (existing logic for non-GPU). The confidential-GPU floor
+    # raises the billed units only; the storage allowance below keeps the
+    # resource-based count, as on the passthrough GPU path.
     compute_units_required = max(
         _get_nb_compute_units(content, pricing.compute_unit),
         _confidential_gpu_compute_units(content, pricing),

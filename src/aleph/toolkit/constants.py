@@ -140,9 +140,10 @@ DEFAULT_PRICE_AGGREGATE: Dict[Union[ProductPriceType, str], dict] = {
         "price": {
             "storage": {
                 "payg": "0.000000977",
+                "holding": "0.05",
                 "credit": "0.17967489030626108",
             },
-            "compute_unit": {"payg": "0.56", "credit": "86250"},
+            "compute_unit": {"payg": "0.56", "holding": "560", "credit": "86250"},
         },
         "tiers": [
             {"id": "tier-1", "arch": "hopper", "compute_units": 24},

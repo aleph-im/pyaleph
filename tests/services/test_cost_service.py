@@ -424,6 +424,30 @@ def test_compute_cost_snp_instance_gpu_count_multiplies_the_floor(
     assert Decimal(execution.cost_credit) == format_cost(48 * (Decimal("86250") / HOUR))
 
 
+def test_compute_cost_snp_instance_resources_above_the_floor_bill_the_resources(
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+    fixture_hold_instance_message,
+):
+    """The tier is a lower bound: a VM whose own resources exceed it pays
+    for those resources (48 vCPUs on one hopper card bill 48 CUs, not 24)."""
+    base = _snp_instance(fixture_hold_instance_message, HOPPER_GPU)
+    content = base.model_copy(
+        update={
+            "resources": base.resources.model_copy(
+                update={"vcpus": 48, "memory": 48 * 2048}
+            )
+        }
+    )
+    with session_factory() as session:
+        _, details = get_total_and_detailed_costs(
+            session=session, content=content, item_hash="snp_gpu_big"
+        )
+    execution = next(d for d in details if d.type == CostType.EXECUTION)
+    assert Decimal(execution.cost_credit) == format_cost(48 * (Decimal("86250") / HOUR))
+
+
 def test_confidential_gpu_floor_is_zero_until_the_aggregate_prices_it(
     fixture_hold_instance_message,
 ):
