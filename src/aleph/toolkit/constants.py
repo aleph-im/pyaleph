@@ -19,7 +19,9 @@ class ProductPriceType(str, Enum):
     INSTANCE_GPU_PREMIUM = "instance_gpu_premium"
     INSTANCE_CONFIDENTIAL = "instance_confidential"
     INSTANCE_GPU_STANDARD = "instance_gpu_standard"
+    INSTANCE_CONFIDENTIAL_GPU = "instance_confidential_gpu"
     VPROGRAM = "vprogram"
+    VPROGRAM_GPU = "vprogram_gpu"
 
 
 PRICE_AGGREGATE_OWNER = "0xFba561a84A537fCaa567bb7A2257e7142701ae2A"
@@ -129,6 +131,28 @@ DEFAULT_PRICE_AGGREGATE: Dict[Union[ProductPriceType, str], dict] = {
             "vcpus": 1,
             "disk_mib": 61440,
             "memory_mib": 6144,
+        },
+    },
+    # A confidential instance with NVIDIA CC cards: the confidential compute
+    # unit (2 GiB) at the premium GPU rate, with a per-architecture floor on
+    # the billed units multiplied by the card count.
+    ProductPriceType.INSTANCE_CONFIDENTIAL_GPU: {
+        "price": {
+            "storage": {
+                "payg": "0.000000977",
+                "holding": "0.05",
+                "credit": "0.17967489030626108",
+            },
+            "compute_unit": {"payg": "0.56", "holding": "560", "credit": "86250"},
+        },
+        "tiers": [
+            {"id": "tier-1", "arch": "hopper", "compute_units": 24},
+            {"id": "tier-2", "arch": "blackwell", "compute_units": 32},
+        ],
+        "compute_unit": {
+            "vcpus": 1,
+            "disk_mib": 20480,
+            "memory_mib": 2048,
         },
     },
     ProductPriceType.INSTANCE_CONFIDENTIAL: {

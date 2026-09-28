@@ -51,6 +51,9 @@ class ProductTier:
     compute_units: int
     model: Optional[str] = None
     vram: Optional[int] = None
+    # Confidential GPU tiers key on the architecture family the message
+    # names (hopper, blackwell), never on a concrete card model.
+    arch: Optional[str] = None
 
     def __init__(
         self,
@@ -58,18 +61,30 @@ class ProductTier:
         compute_units: int,
         model: Optional[str] = None,
         vram: Optional[int] = None,
+        arch: Optional[str] = None,
     ):
         self.id = id
         self.compute_units = compute_units
         self.model = model
         self.vram = vram
+        self.arch = arch
 
 
 # Product types that borrow another product's numbers when the price
-# aggregate does not define them yet. Only the lookup key changes; the
-# resulting ProductPricing keeps the requested type.
+# aggregate does not define them yet, first available key wins. Only the
+# lookup key changes; the resulting ProductPricing keeps the requested type.
+# A GPU product falling back to an entry without architecture tiers bills
+# the VM without the GPU floor until the aggregate defines it.
 PRICE_TYPE_FALLBACKS = {
-    ProductPriceType.VPROGRAM: ProductPriceType.INSTANCE_CONFIDENTIAL,
+    ProductPriceType.VPROGRAM: [ProductPriceType.INSTANCE_CONFIDENTIAL],
+    ProductPriceType.INSTANCE_CONFIDENTIAL_GPU: [
+        ProductPriceType.INSTANCE_CONFIDENTIAL
+    ],
+    ProductPriceType.VPROGRAM_GPU: [
+        ProductPriceType.INSTANCE_CONFIDENTIAL_GPU,
+        ProductPriceType.VPROGRAM,
+        ProductPriceType.INSTANCE_CONFIDENTIAL,
+    ],
 }
 
 
@@ -85,9 +100,9 @@ def resolve_price_type_key(
     keys = {str(getattr(k, "value", k)) for k in available}
     if price_type.value in keys:
         return price_type
-    fallback = PRICE_TYPE_FALLBACKS.get(price_type)
-    if fallback is not None and fallback.value in keys:
-        return fallback
+    for fallback in PRICE_TYPE_FALLBACKS.get(price_type, []):
+        if fallback.value in keys:
+            return fallback
     return price_type
 
 
@@ -144,6 +159,7 @@ class ProductPricing:
                     compute_units=tier["compute_units"],
                     model=tier.get("model", None),
                     vram=tier.get("vram", None),
+                    arch=tier.get("arch", None),
                 )
                 for tier in tiers
             ]
