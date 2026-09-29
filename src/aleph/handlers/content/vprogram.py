@@ -12,7 +12,8 @@ from aleph.handlers.content.content_handler import ContentHandler
 from aleph.services.cost import get_payment_type, get_total_and_detailed_costs
 from aleph.services.cost_validation import validate_balance_for_payment
 from aleph.services.vprogram_runtime import (
-    resolve_runtime_bundle_ref,
+    ResolvedRuntime,
+    resolve_runtime,
     runtime_bundle_volume,
 )
 from aleph.storage import StorageService
@@ -21,6 +22,7 @@ from aleph.types.db_session import DbSession
 from aleph.types.message_status import (
     InvalidMessageFormat,
     InvalidPaymentMethod,
+    InvalidVProgramRuntime,
     VmVolumeNotFound,
 )
 
@@ -133,26 +135,27 @@ class VProgramMessageHandler(ContentHandler):
         # the manifest STORE, and the bundle it names is the bulk of the
         # V-Program's disk footprint (dependency check + pricing).
         self.storage_service = storage_service
-        # runtime_ref -> bundle_ref. See _BUNDLE_REF_CACHE_SIZE above.
-        self._bundle_refs: "OrderedDict[str, str]" = OrderedDict()
+        # runtime_ref -> resolved runtime. See _BUNDLE_REF_CACHE_SIZE above.
+        self._runtimes: "OrderedDict[str, ResolvedRuntime]" = OrderedDict()
 
-    async def _bundle_ref(self, session: DbSession, runtime_ref: str) -> str:
-        """Resolve the runtime manifest's bundle ref, caching successful
-        resolutions (never a raised exception) so check_dependencies and
-        check_balance don't each re-fetch and re-parse the same manifest."""
-        cached = self._bundle_refs.get(runtime_ref)
+    async def _runtime(self, session: DbSession, runtime_ref: str) -> ResolvedRuntime:
+        """Resolve the runtime manifest, caching successful resolutions
+        (never a raised exception) so check_dependencies and check_balance
+        don't each re-fetch and re-parse the same manifest."""
+        cached = self._runtimes.get(runtime_ref)
         if cached is not None:
             return cached
 
-        bundle_ref = await resolve_runtime_bundle_ref(
-            session, self.storage_service, runtime_ref
-        )
+        runtime = await resolve_runtime(session, self.storage_service, runtime_ref)
 
-        self._bundle_refs[runtime_ref] = bundle_ref
-        if len(self._bundle_refs) > _BUNDLE_REF_CACHE_SIZE:
-            self._bundle_refs.popitem(last=False)
+        self._runtimes[runtime_ref] = runtime
+        if len(self._runtimes) > _BUNDLE_REF_CACHE_SIZE:
+            self._runtimes.popitem(last=False)
 
-        return bundle_ref
+        return runtime
+
+    async def _bundle_ref(self, session: DbSession, runtime_ref: str) -> str:
+        return (await self._runtime(session, runtime_ref)).bundle_ref
 
     async def check_dependencies(self, session: DbSession, message: MessageDb) -> None:
         content = _get_vprogram_content(message)
@@ -178,9 +181,17 @@ class VProgramMessageHandler(ContentHandler):
         # An unreadable/invalid manifest is rejected (InvalidVProgramRuntime,
         # raised by the resolver); an unpinned bundle is a missing volume
         # like any other ref and gets the same retry semantics.
-        bundle_ref = await self._bundle_ref(session, str(content.runtime.ref))
-        if not set(find_file_pins(session=session, item_hashes=[bundle_ref])):
-            raise VmVolumeNotFound([bundle_ref])
+        runtime = await self._runtime(session, str(content.runtime.ref))
+        # The registers the message pins are the platform's: a sev_snp
+        # launch digest says nothing about a tdx runtime and no CRN would
+        # boot the pair, so the mismatch is permanent.
+        if runtime.platform != content.verification.backend:
+            raise InvalidVProgramRuntime(
+                f"message declares TEE backend {content.verification.backend!r} but "
+                f"runtime manifest {content.runtime.ref} is a {runtime.platform} runtime"
+            )
+        if not set(find_file_pins(session=session, item_hashes=[runtime.bundle_ref])):
+            raise VmVolumeNotFound([runtime.bundle_ref])
 
     async def check_balance(
         self,

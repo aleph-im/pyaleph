@@ -10,6 +10,7 @@ own `bundle.size`, which is user-controlled.
 """
 
 import json
+from dataclasses import dataclass
 from typing import Literal, TypeAlias, get_args
 
 from aleph_message.models import ItemHash
@@ -47,21 +48,36 @@ class RuntimeBundleRef(BaseModel):
     ref: ItemHash
 
 
+# The TEE platforms a runtime can be built for; the same vocabulary as a
+# V-PROGRAM's verification.backend, which must name the runtime's platform.
+RuntimePlatform: TypeAlias = Literal["sev_snp", "tdx"]
+
+
 class RuntimeManifestBundle(BaseModel):
-    """The two manifest fields the CCN needs. Everything else is ignored:
+    """The three manifest fields the CCN needs. Everything else is ignored:
     the CRN validates the full schema."""
 
     model_config = ConfigDict(extra="ignore")
 
     format: RuntimeManifestFormat
+    platform: RuntimePlatform
     bundle: RuntimeBundleRef
 
 
-async def resolve_runtime_bundle_ref(
+@dataclass(frozen=True)
+class ResolvedRuntime:
+    """What the CCN keeps of a runtime manifest: the bundle it names and
+    the TEE platform it was built for."""
+
+    bundle_ref: str
+    platform: str
+
+
+async def resolve_runtime(
     session: DbSession, storage_service: StorageService, runtime_ref: str
-) -> str:
+) -> ResolvedRuntime:
     """Return the STORE message hash of the bundle named by the manifest at
-    `runtime_ref`.
+    `runtime_ref`, and the manifest's platform.
 
     Raises InvalidVProgramRuntime when the manifest is not pinned, is too
     large, or does not describe a valid bundle: a CRN could not boot it
@@ -119,7 +135,16 @@ async def resolve_runtime_bundle_ref(
             f"runtime manifest {runtime_ref} is not a valid {RUNTIME_MANIFEST_FORMAT} manifest: {e}"
         ) from e
 
-    return str(manifest.bundle.ref)
+    return ResolvedRuntime(
+        bundle_ref=str(manifest.bundle.ref), platform=manifest.platform
+    )
+
+
+async def resolve_runtime_bundle_ref(
+    session: DbSession, storage_service: StorageService, runtime_ref: str
+) -> str:
+    """The bundle ref alone, for the pricing paths that need nothing else."""
+    return (await resolve_runtime(session, storage_service, runtime_ref)).bundle_ref
 
 
 def runtime_bundle_volume(bundle_ref: str) -> RefVolume:

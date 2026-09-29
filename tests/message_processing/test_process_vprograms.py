@@ -35,7 +35,7 @@ from aleph.db.models import (
 )
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.schemas.api.messages import format_message
-from aleph.services.vprogram_runtime import resolve_runtime_bundle_ref
+from aleph.services.vprogram_runtime import resolve_runtime
 from aleph.toolkit.constants import DEFAULT_PRICE_AGGREGATE, HOUR, ProductPriceType
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.cost import ProductPricing
@@ -357,8 +357,8 @@ async def test_process_vprogram_reads_manifest_once(
     store_manifest(message_processor, json.dumps(MANIFEST).encode())
 
     spy = mocker.patch(
-        "aleph.handlers.content.vprogram.resolve_runtime_bundle_ref",
-        wraps=resolve_runtime_bundle_ref,
+        "aleph.handlers.content.vprogram.resolve_runtime",
+        wraps=resolve_runtime,
     )
 
     pipeline = message_processor.make_pipeline()
@@ -469,6 +469,118 @@ async def test_process_vprogram_rejects_invalid_manifest(
 
     result = one(results)
     assert isinstance(result, RejectedMessage)
+    assert result.error_code == ErrorCode.VM_RUNTIME_INVALID
+    with session_factory() as session:
+        rejected = get_rejected_message(session=session, item_hash=VPROGRAM_ITEM_HASH)
+        assert rejected is not None
+        assert rejected.error_code == ErrorCode.VM_RUNTIME_INVALID
+
+
+# Registers a TD quoted on a Xeon 6731E from aleph-vm's tdxImage runtime;
+# MRCONFIGID is SHA-384 of the empty descriptor. Any well-formed values do
+# for the CCN, which validates shape, not measurements.
+TDX_VERIFICATION = {
+    "backend": "tdx",
+    "measurements": [
+        {
+            "platform": "tdx",
+            "registers": {
+                "mrtd": "d4f5ee3d5fe9a5a3cbb1df8c40946714f55d5918b9b0e9ecd82a1d8adeea668495901baee134e3152dd5e0e2d1781262",
+                "rtmr1": "8d91abe1ea40a7dba9dbd110eea6fff8e3c79d983a7cae359a046ec8ae339cfbfbed4298c66ec2bdbbf08abb9c63e5c8",
+                "rtmr2": "c785503b238756732626c8162997f514084d10d699b602bba0691dcbb94a97901acc63c8aea322af4946141573d0766e",
+                "mrconfigid": "38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b",
+            },
+        }
+    ],
+}
+
+
+def _with_tdx_verification(message: PendingMessageDb) -> None:
+    """Swap the fixture message's verification block for a tdx one, in place."""
+    assert message.item_content
+    content = json.loads(message.item_content)
+    content["verification"] = TDX_VERIFICATION
+    message.item_content = json.dumps(content)
+
+
+@pytest.fixture
+def fixture_tdx_vprogram_message(
+    session_factory: DbSessionFactory, fixture_vprogram_message: PendingMessageDb
+) -> PendingMessageDb:
+    with session_factory() as session:
+        message = session.merge(fixture_vprogram_message)
+        _with_tdx_verification(message)
+        session.commit()
+        _with_tdx_verification(fixture_vprogram_message)
+    return fixture_vprogram_message
+
+
+@pytest.mark.asyncio
+async def test_process_tdx_vprogram(
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    fixture_tdx_vprogram_message: PendingMessageDb,
+    user_credit_balance,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """A tdx V-PROGRAM on a tdx runtime is processed like an SNP one; the
+    verification block stays opaque to the CCN beyond its schema."""
+    with session_factory() as session:
+        insert_vprogram_refs(session, fixture_tdx_vprogram_message)
+        insert_bundle_pin(session)
+        session.commit()
+    store_manifest(
+        message_processor, json.dumps({**MANIFEST, "platform": "tdx"}).encode()
+    )
+
+    pipeline = message_processor.make_pipeline()
+    results = [message async for batch in pipeline for message in batch]
+
+    result = one(results)
+    assert isinstance(result, ProcessedMessage), result
+    with session_factory() as session:
+        vprogram = get_vprogram(session=session, item_hash=VPROGRAM_ITEM_HASH)
+        assert vprogram is not None
+        assert vprogram.runtime_bundle_ref == BUNDLE_REF
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "backend_and_platform", [("sev_snp", "tdx"), ("tdx", "sev_snp")]
+)
+async def test_process_vprogram_rejects_backend_runtime_mismatch(
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    fixture_vprogram_message: PendingMessageDb,
+    user_credit_balance,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+    backend_and_platform,
+):
+    """The registers a message pins are its backend's; a runtime built for
+    the other platform can never boot them, so the pair is rejected for
+    good rather than retried."""
+    backend, platform = backend_and_platform
+    if backend == "tdx":
+        with session_factory() as session:
+            message = session.merge(fixture_vprogram_message)
+            _with_tdx_verification(message)
+            session.commit()
+            _with_tdx_verification(fixture_vprogram_message)
+    with session_factory() as session:
+        insert_vprogram_refs(session, fixture_vprogram_message)
+        insert_bundle_pin(session)
+        session.commit()
+    store_manifest(
+        message_processor, json.dumps({**MANIFEST, "platform": platform}).encode()
+    )
+
+    pipeline = message_processor.make_pipeline()
+    results = [message async for batch in pipeline for message in batch]
+
+    result = one(results)
+    assert isinstance(result, RejectedMessage), result
     assert result.error_code == ErrorCode.VM_RUNTIME_INVALID
     with session_factory() as session:
         rejected = get_rejected_message(session=session, item_hash=VPROGRAM_ITEM_HASH)
