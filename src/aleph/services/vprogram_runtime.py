@@ -140,6 +140,13 @@ async def resolve_runtime(
     )
 
 
+async def resolve_runtime_bundle_ref(
+    session: DbSession, storage_service: StorageService, runtime_ref: str
+) -> str:
+    """The bundle ref alone, for the pricing paths that need nothing else."""
+    return (await resolve_runtime(session, storage_service, runtime_ref)).bundle_ref
+
+
 def runtime_bundle_volume(bundle_ref: str) -> RefVolume:
     """The cost-model volume for a resolved bundle: sized from its pinned
     file like every other artifact."""
