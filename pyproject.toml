@@ -66,7 +66,7 @@ dependencies = [
   "sqlalchemy-utils==0.42.1",
   "substrate-interface==1.8.1",
   "types-aiofiles==25.1.0.20260518",
-  "typing-extensions==4.15.0",
+  "typing-extensions==4.16.0",
   "ujson==5.13.0",                                                                                                         # required by aiocache
   "urllib3==2.7.0",
   "uvloop>=0.21,<0.22",                                                                                                    # Pinned to 0.21 as long as we use aiohttp v3.13.3, new version should fix compatibility
