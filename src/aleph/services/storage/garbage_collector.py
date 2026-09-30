@@ -14,6 +14,7 @@ from aleph.db.accessors.files import (
     get_unpinned_files,
 )
 from aleph.db.accessors.messages import (
+    get_hashes_within_removal_grace_period,
     get_matching_hashes,
     get_one_message_by_item_hash,
     make_message_status_upsert_query,
@@ -59,7 +60,7 @@ class GarbageCollector:
     async def _check_and_update_removing_messages(self):
         """
         Check all messages with status REMOVING and update to REMOVED if their resources
-        have been fully deleted.
+        have been fully deleted and their removal grace period has elapsed.
         """
         LOGGER.info("Checking messages with REMOVING status")
 
@@ -76,7 +77,30 @@ class GarbageCollector:
 
             LOGGER.info("Found %d messages with REMOVING status", len(removing_hashes))
 
+            # REMOVING is reversible: the balance/credit-balance crons flip a
+            # message back to PROCESSED once the account can fund it again, and
+            # finalizing here deletes the messages row for good. Skip the
+            # removals whose grace deadline has not passed, so every message
+            # type gets the window that STORE messages already got from their
+            # file pin. Resolved in one query for the whole batch rather than
+            # one per message.
+            within_grace_period = get_hashes_within_removal_grace_period(
+                session=session,
+                now=utc_now(),
+                item_hashes=removing_hashes,
+            )
+            if within_grace_period:
+                LOGGER.info(
+                    "Skipping %d of %d message(s) still within the removal "
+                    "grace period",
+                    len(within_grace_period),
+                    len(removing_hashes),
+                )
+
             for item_hash in removing_hashes:
+                if item_hash in within_grace_period:
+                    continue
+
                 try:
                     # One savepoint per message: the status flip, the
                     # metadata snapshot and the messages-row deletion must
@@ -101,6 +125,10 @@ class GarbageCollector:
 
                         # If all resources have been deleted, update status to REMOVED
                         if resources_deleted:
+                            # Stamped per message, not per batch: removed_at is
+                            # what the removed-messages API windows and sorts
+                            # on, and this loop can run for a long time on a
+                            # large backlog.
                             now = utc_now()
                             result = session.execute(
                                 make_message_status_upsert_query(
