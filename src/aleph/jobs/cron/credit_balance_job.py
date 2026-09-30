@@ -224,10 +224,16 @@ class CreditBalanceCronJob(BaseCronJob):
                     .where(MessageDb.item_hash == item_hash)
                     .values(status_value=MessageStatus.REMOVING)
                 )
-                # Snapshot the file size while the files row still exists;
-                # the garbage collector stamps removed_at at
-                # REMOVING->REMOVED.
-                upsert_removed_message_size(session=session, item_hash=item_hash)
+                # Snapshot the file size while the files row still exists, and
+                # persist the grace deadline so the garbage collector keeps
+                # this removal reversible for every message type (not only the
+                # STORE messages whose file pin carries it). The collector
+                # stamps removed_at at REMOVING->REMOVED.
+                upsert_removed_message_size(
+                    session=session,
+                    item_hash=item_hash,
+                    remove_after=delete_by,
+                )
 
             # Commit in chunks so the transaction — and the message_counts
             # counter-row locks its trigger takes — stays small, and yield so

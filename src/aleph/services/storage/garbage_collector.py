@@ -14,6 +14,7 @@ from aleph.db.accessors.files import (
     get_unpinned_files,
 )
 from aleph.db.accessors.messages import (
+    get_hashes_within_removal_grace_period,
     get_matching_hashes,
     get_one_message_by_item_hash,
     make_message_status_upsert_query,
@@ -59,7 +60,7 @@ class GarbageCollector:
     async def _check_and_update_removing_messages(self):
         """
         Check all messages with status REMOVING and update to REMOVED if their resources
-        have been fully deleted.
+        have been fully deleted and their removal grace period has elapsed.
         """
         LOGGER.info("Checking messages with REMOVING status")
 
@@ -76,7 +77,26 @@ class GarbageCollector:
 
             LOGGER.info("Found %d messages with REMOVING status", len(removing_hashes))
 
+            # REMOVING is reversible: the balance/credit-balance crons flip a
+            # message back to PROCESSED once the account can fund it again, and
+            # finalizing here deletes the messages row for good. Skip the
+            # removals whose grace deadline has not passed, so every message
+            # type gets the window that STORE messages already got from their
+            # file pin. Fetched once per collection rather than per message.
+            now = utc_now()
+            within_grace_period = get_hashes_within_removal_grace_period(
+                session=session, now=now
+            )
+            if within_grace_period:
+                LOGGER.info(
+                    "Skipping %d message(s) still within the removal grace period",
+                    len(within_grace_period),
+                )
+
             for item_hash in removing_hashes:
+                if item_hash in within_grace_period:
+                    continue
+
                 try:
                     # One savepoint per message: the status flip, the
                     # metadata snapshot and the messages-row deletion must
@@ -101,7 +121,6 @@ class GarbageCollector:
 
                         # If all resources have been deleted, update status to REMOVED
                         if resources_deleted:
-                            now = utc_now()
                             result = session.execute(
                                 make_message_status_upsert_query(
                                     item_hash=item_hash,

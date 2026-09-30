@@ -1,9 +1,28 @@
 import datetime as dt
 import traceback
-from typing import Any, Iterable, Mapping, Optional, Sequence, Tuple, Union, overload
+from typing import (
+    Any,
+    Iterable,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+    overload,
+)
 
 from aleph_message.models import Chain, ItemHash, MessageType, PaymentType
-from sqlalchemy import delete, func, nullsfirst, nullslast, select, text, update
+from sqlalchemy import (
+    TIMESTAMP,
+    delete,
+    func,
+    nullsfirst,
+    nullslast,
+    select,
+    text,
+    update,
+)
 from sqlalchemy.dialects.postgresql import array, insert
 from sqlalchemy.orm import load_only, selectinload
 from sqlalchemy.sql import Insert, Select
@@ -635,12 +654,23 @@ def get_removed_message(
     ).scalar()
 
 
-def upsert_removed_message_size(session: DbSession, item_hash: str) -> None:
+def upsert_removed_message_size(
+    session: DbSession,
+    item_hash: str,
+    remove_after: Optional[dt.datetime] = None,
+) -> None:
     """
-    Snapshot the file size of a message entering REMOVING. The garbage
-    collector deletes the files row before the status flips to REMOVED, so
-    the size must be captured while the message is still alive. The size is
-    NULL for non-STORE messages.
+    Snapshot the state a removal needs at PROCESSED->REMOVING: the file size,
+    and the deadline before which the removal must stay reversible.
+
+    The garbage collector deletes the files row before the status flips to
+    REMOVED, so the size must be captured while the message is still alive.
+    The size is NULL for non-STORE messages.
+
+    ``remove_after`` is the earliest time the collector may finalize the
+    removal. On conflict the existing deadline wins, so a cron pass that
+    re-examines a message already in REMOVING cannot keep pushing the deadline
+    out and strand it there forever; a NULL one is filled in.
     """
     size_subquery = (
         select(StoredFileDb.size)
@@ -648,16 +678,41 @@ def upsert_removed_message_size(session: DbSession, item_hash: str) -> None:
         .scalar_subquery()
     )
     insert_stmt = insert(RemovedMessageDb).from_select(
-        ["item_hash", "size"],
-        select(MessageDb.item_hash, size_subquery).where(
-            MessageDb.item_hash == item_hash
-        ),
+        ["item_hash", "size", "remove_after"],
+        select(
+            MessageDb.item_hash,
+            size_subquery,
+            literal(remove_after, TIMESTAMP(timezone=True)),
+        ).where(MessageDb.item_hash == item_hash),
     )
     upsert_stmt = insert_stmt.on_conflict_do_update(
         constraint="removed_messages_pkey",
-        set_={"size": insert_stmt.excluded.size},
+        set_={
+            "size": insert_stmt.excluded.size,
+            "remove_after": func.coalesce(
+                RemovedMessageDb.remove_after, insert_stmt.excluded.remove_after
+            ),
+        },
     )
     session.execute(upsert_stmt)
+
+
+def get_hashes_within_removal_grace_period(
+    session: DbSession, now: dt.datetime
+) -> Set[str]:
+    """
+    Item hashes whose removal is still inside its reversible grace period.
+
+    Returned as a set for the garbage collector to test membership against the
+    REMOVING batch it already materializes, so the gate costs one query per
+    collection rather than one per message.
+    """
+    select_stmt = select(RemovedMessageDb.item_hash).where(
+        RemovedMessageDb.removed_at.is_(None),
+        RemovedMessageDb.remove_after.isnot(None),
+        RemovedMessageDb.remove_after > now,
+    )
+    return set(session.execute(select_stmt).scalars())
 
 
 def delete_removed_message(session: DbSession, item_hash: str) -> None:

@@ -107,6 +107,37 @@ async def test_credit_balance_job_delete_snapshots_removed_message(
         assert removed_message is not None
         assert removed_message.size == FILE_SIZE
         assert removed_message.removed_at is None
+        # The grace deadline is persisted so the garbage collector keeps the
+        # removal reversible: REMOVING must not be finalized immediately.
+        assert removed_message.remove_after is not None
+        assert removed_message.remove_after > utc_now()
+
+
+@pytest.mark.asyncio
+async def test_credit_balance_job_delete_keeps_first_grace_deadline(
+    session_factory: DbSessionFactory, credit_balance_job: CreditBalanceCronJob
+):
+    """A later cron pass must not push the deadline out: a message repeatedly
+    examined while REMOVING would otherwise never become removable."""
+    with session_factory() as session:
+        _add_store_message(session, MessageStatus.PROCESSED)
+        session.commit()
+
+        await credit_balance_job.delete_messages(session, [ItemHash(MESSAGE_HASH)])
+        session.commit()
+
+        removed_message = get_removed_message(session=session, item_hash=MESSAGE_HASH)
+        assert removed_message is not None
+        first_deadline = removed_message.remove_after
+
+        # Re-examining the same message keeps the original deadline.
+        await credit_balance_job.delete_messages(session, [ItemHash(MESSAGE_HASH)])
+        session.commit()
+        session.expire_all()
+
+        removed_message = get_removed_message(session=session, item_hash=MESSAGE_HASH)
+        assert removed_message is not None
+        assert removed_message.remove_after == first_deadline
 
 
 @pytest.mark.asyncio

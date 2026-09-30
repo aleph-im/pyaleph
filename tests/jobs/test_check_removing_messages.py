@@ -1,3 +1,5 @@
+import datetime as dt
+
 import pytest
 import pytest_asyncio
 from aleph_message.models import Chain, ItemHash, ItemType, MessageType
@@ -326,19 +328,16 @@ async def test_check_removing_messages_rolls_back_flip_on_stamp_failure(
         assert removed_message.removed_at is None
 
 
-@pytest.mark.asyncio
-async def test_check_and_update_removing_vprogram_message(
-    session_factory: DbSessionFactory, gc: GarbageCollector
-):
-    """V-PROGRAMs ride the generic (non-STORE) removal path: no file-pin
-    gate, REMOVING -> REMOVED in one GC pass, billing metadata (owner,
-    credit payment type) copied onto the removal record and the messages
-    row deleted."""
+def _add_removing_vprogram(
+    session_factory: DbSessionFactory,
+    item_hash: ItemHash,
+    remove_after=None,
+) -> None:
+    """A credit-paid V-PROGRAM in REMOVING, optionally with a grace deadline."""
     now = utc_now()
-    vprogram_hash = ItemHash("beef" * 16)
 
-    vprogram_message = MessageDb(
-        item_hash=vprogram_hash,
+    message = MessageDb(
+        item_hash=item_hash,
         sender="0xsender1",
         chain=Chain.ETH,
         type=MessageType.v_program,
@@ -355,15 +354,35 @@ async def test_check_and_update_removing_vprogram_message(
         },
         status_value=MessageStatus.REMOVING,
     )
-    vprogram_status = MessageStatusDb(
-        item_hash=vprogram_hash,
+    status = MessageStatusDb(
+        item_hash=item_hash,
         status=MessageStatus.REMOVING,
         reception_time=now,
     )
 
     with session_factory() as session:
-        session.add_all([vprogram_message, vprogram_status])
+        session.add_all([message, status])
+        if remove_after is not None:
+            session.add(
+                RemovedMessageDb(item_hash=item_hash, remove_after=remove_after)
+            )
         session.commit()
+
+
+@pytest.mark.asyncio
+async def test_check_and_update_removing_vprogram_message(
+    session_factory: DbSessionFactory, gc: GarbageCollector
+):
+    """V-PROGRAMs ride the generic (non-STORE) removal path: no file-pin
+    gate, so once the grace deadline has passed they go REMOVING -> REMOVED
+    in one GC pass, with the billing metadata (owner, credit payment type)
+    copied onto the removal record and the messages row deleted."""
+    vprogram_hash = ItemHash("beef" * 16)
+    _add_removing_vprogram(
+        session_factory,
+        vprogram_hash,
+        remove_after=utc_now() - dt.timedelta(minutes=1),
+    )
 
     await gc._check_and_update_removing_messages()
 
@@ -381,4 +400,89 @@ async def test_check_and_update_removing_vprogram_message(
         assert removed_message.removed_at is not None
 
         # The messages row is deleted at removal, mirroring forgotten messages
+        assert session.get(MessageDb, vprogram_hash) is None
+
+
+@pytest.mark.asyncio
+async def test_removing_message_within_grace_period_is_not_finalized(
+    session_factory: DbSessionFactory, gc: GarbageCollector
+):
+    """A non-STORE message pins no file, so nothing but the grace deadline
+    stands between REMOVING and permanent removal. While the deadline is in
+    the future the GC must leave it alone, so the cron can still flip it back
+    to PROCESSED when the account is topped up."""
+    vprogram_hash = ItemHash("cafe" * 16)
+    _add_removing_vprogram(
+        session_factory,
+        vprogram_hash,
+        remove_after=utc_now() + dt.timedelta(hours=25),
+    )
+
+    await gc._check_and_update_removing_messages()
+
+    with session_factory() as session:
+        status = get_message_status(session=session, item_hash=vprogram_hash)
+        assert status is not None
+        assert status.status == MessageStatus.REMOVING
+
+        # Not finalized: no removed_at stamped, and the message survives so a
+        # recovery can still restore it.
+        removed_message = get_removed_message(session=session, item_hash=vprogram_hash)
+        assert removed_message is not None
+        assert removed_message.removed_at is None
+        assert session.get(MessageDb, vprogram_hash) is not None
+
+
+@pytest.mark.asyncio
+async def test_removing_message_finalized_once_grace_period_elapses(
+    session_factory: DbSessionFactory, gc: GarbageCollector
+):
+    """The grace period delays removal, it does not cancel it: the same
+    message is finalized on a pass that runs after the deadline."""
+    vprogram_hash = ItemHash("f00d" * 16)
+    _add_removing_vprogram(
+        session_factory,
+        vprogram_hash,
+        remove_after=utc_now() + dt.timedelta(seconds=1),
+    )
+
+    await gc._check_and_update_removing_messages()
+
+    with session_factory() as session:
+        status = get_message_status(session=session, item_hash=vprogram_hash)
+        assert status is not None
+        assert status.status == MessageStatus.REMOVING
+
+    # Move the deadline into the past, as wall-clock time would.
+    with session_factory() as session:
+        removed_message = get_removed_message(session=session, item_hash=vprogram_hash)
+        assert removed_message is not None
+        removed_message.remove_after = utc_now() - dt.timedelta(seconds=1)
+        session.commit()
+
+    await gc._check_and_update_removing_messages()
+
+    with session_factory() as session:
+        status = get_message_status(session=session, item_hash=vprogram_hash)
+        assert status is not None
+        assert status.status == MessageStatus.REMOVED
+        assert session.get(MessageDb, vprogram_hash) is None
+
+
+@pytest.mark.asyncio
+async def test_removing_message_without_deadline_is_finalized(
+    session_factory: DbSessionFactory, gc: GarbageCollector
+):
+    """Legacy REMOVING messages predate the removal record and have no
+    deadline. A NULL deadline must stay eligible, otherwise they would be
+    stranded in REMOVING forever."""
+    vprogram_hash = ItemHash("dead" * 16)
+    _add_removing_vprogram(session_factory, vprogram_hash, remove_after=None)
+
+    await gc._check_and_update_removing_messages()
+
+    with session_factory() as session:
+        status = get_message_status(session=session, item_hash=vprogram_hash)
+        assert status is not None
+        assert status.status == MessageStatus.REMOVED
         assert session.get(MessageDb, vprogram_hash) is None

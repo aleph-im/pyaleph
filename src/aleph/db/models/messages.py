@@ -451,6 +451,15 @@ class RemovedMessageDb(Base):
     # alive (NULL for non-STORE messages or when the size could not be
     # resolved).
     size: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    # Earliest time the garbage collector may finalize REMOVING->REMOVED,
+    # stamped by the cron at PROCESSED->REMOVING. REMOVING is reversible (the
+    # cron flips it back once the balance recovers), so this is what gives
+    # every message type the window STORE messages already got from their file
+    # pin grace period. NULL means eligible immediately: legacy REMOVING
+    # messages predating this record have no row here and must not be stranded.
+    remove_after: Mapped[Optional[dt.datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
     # Stamped by the garbage collector at REMOVING->REMOVED. Node-local and
     # NOT deterministic across nodes: each node's GC finalizes removals on
     # its own schedule, and — unlike forgotten_at — there is no
