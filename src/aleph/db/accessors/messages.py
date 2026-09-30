@@ -2,6 +2,7 @@ import datetime as dt
 import traceback
 from typing import (
     Any,
+    Collection,
     Iterable,
     Mapping,
     Optional,
@@ -654,7 +655,7 @@ def get_removed_message(
     ).scalar()
 
 
-def upsert_removed_message_size(
+def upsert_removal_snapshot(
     session: DbSession,
     item_hash: str,
     remove_after: Optional[dt.datetime] = None,
@@ -668,9 +669,8 @@ def upsert_removed_message_size(
     The size is NULL for non-STORE messages.
 
     ``remove_after`` is the earliest time the collector may finalize the
-    removal. On conflict the existing deadline wins, so a cron pass that
-    re-examines a message already in REMOVING cannot keep pushing the deadline
-    out and strand it there forever; a NULL one is filled in.
+    removal. A flip always writes a full window: a stale record left behind by
+    an earlier removal must not shorten the new one.
     """
     size_subquery = (
         select(StoredFileDb.size)
@@ -689,25 +689,27 @@ def upsert_removed_message_size(
         constraint="removed_messages_pkey",
         set_={
             "size": insert_stmt.excluded.size,
-            "remove_after": func.coalesce(
-                RemovedMessageDb.remove_after, insert_stmt.excluded.remove_after
-            ),
+            "remove_after": insert_stmt.excluded.remove_after,
         },
     )
     session.execute(upsert_stmt)
 
 
 def get_hashes_within_removal_grace_period(
-    session: DbSession, now: dt.datetime
+    session: DbSession, now: dt.datetime, item_hashes: Collection[str]
 ) -> Set[str]:
     """
-    Item hashes whose removal is still inside its reversible grace period.
+    Which of ``item_hashes`` are still inside their reversible grace period.
 
-    Returned as a set for the garbage collector to test membership against the
-    REMOVING batch it already materializes, so the gate costs one query per
-    collection rather than one per message.
+    Restricted to the hashes the caller is about to examine: ``removed_messages``
+    is append-only, so a table-wide query would scan rows whose removals are
+    long finalized and are not candidates for this pass.
     """
+    if not item_hashes:
+        return set()
+
     select_stmt = select(RemovedMessageDb.item_hash).where(
+        RemovedMessageDb.item_hash.in_(item_hashes),
         RemovedMessageDb.removed_at.is_(None),
         RemovedMessageDb.remove_after.isnot(None),
         RemovedMessageDb.remove_after > now,

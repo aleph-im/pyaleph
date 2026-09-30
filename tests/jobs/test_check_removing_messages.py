@@ -1,4 +1,5 @@
 import datetime as dt
+from typing import Optional
 
 import pytest
 import pytest_asyncio
@@ -331,9 +332,15 @@ async def test_check_removing_messages_rolls_back_flip_on_stamp_failure(
 def _add_removing_vprogram(
     session_factory: DbSessionFactory,
     item_hash: ItemHash,
-    remove_after=None,
+    with_record: bool = True,
+    remove_after: Optional[dt.datetime] = None,
 ) -> None:
-    """A credit-paid V-PROGRAM in REMOVING, optionally with a grace deadline."""
+    """A credit-paid V-PROGRAM in REMOVING.
+
+    ``with_record`` controls whether a removal record exists at all (legacy
+    REMOVING messages predate it); ``remove_after`` is the grace deadline on
+    that record, which may legitimately be NULL.
+    """
     now = utc_now()
 
     message = MessageDb(
@@ -362,7 +369,7 @@ def _add_removing_vprogram(
 
     with session_factory() as session:
         session.add_all([message, status])
-        if remove_after is not None:
+        if with_record:
             session.add(
                 RemovedMessageDb(item_hash=item_hash, remove_after=remove_after)
             )
@@ -443,7 +450,7 @@ async def test_removing_message_finalized_once_grace_period_elapses(
     _add_removing_vprogram(
         session_factory,
         vprogram_hash,
-        remove_after=utc_now() + dt.timedelta(seconds=1),
+        remove_after=utc_now() + dt.timedelta(hours=25),
     )
 
     await gc._check_and_update_removing_messages()
@@ -470,14 +477,27 @@ async def test_removing_message_finalized_once_grace_period_elapses(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "with_record",
+    [
+        pytest.param(True, id="record-with-null-deadline"),
+        pytest.param(False, id="no-record-at-all"),
+    ],
+)
 async def test_removing_message_without_deadline_is_finalized(
-    session_factory: DbSessionFactory, gc: GarbageCollector
+    session_factory: DbSessionFactory, gc: GarbageCollector, with_record: bool
 ):
-    """Legacy REMOVING messages predate the removal record and have no
-    deadline. A NULL deadline must stay eligible, otherwise they would be
-    stranded in REMOVING forever."""
+    """Legacy REMOVING messages carry no deadline, either because their
+    removal record predates the column or because they have no record at all.
+    Both must stay eligible, otherwise they would be stranded in REMOVING
+    forever."""
     vprogram_hash = ItemHash("dead" * 16)
-    _add_removing_vprogram(session_factory, vprogram_hash, remove_after=None)
+    _add_removing_vprogram(
+        session_factory,
+        vprogram_hash,
+        with_record=with_record,
+        remove_after=None,
+    )
 
     await gc._check_and_update_removing_messages()
 

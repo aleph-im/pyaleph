@@ -1,3 +1,4 @@
+import datetime as dt
 from enum import Enum
 from typing import Dict, Union
 
@@ -8,6 +9,15 @@ GiB = 1024 * 1024 * 1024
 MINUTE = 60
 HOUR = 60 * MINUTE
 DAY = 24 * HOUR
+
+# How long a balance-driven removal stays reversible. The balance crons flip a
+# message PROCESSED->REMOVING when the account can no longer fund it and back to
+# PROCESSED once it can again; the garbage collector only makes the removal
+# permanent once this has elapsed. One day, plus an hour of slack so a
+# collection landing on the boundary does not race the deadline. Both the file
+# pin grace period and the removal record's deadline are derived from this, so
+# they cannot drift apart.
+REMOVAL_GRACE_PERIOD = dt.timedelta(hours=24 + 1)
 
 
 class ProductPriceType(str, Enum):

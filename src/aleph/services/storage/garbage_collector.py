@@ -82,15 +82,19 @@ class GarbageCollector:
             # finalizing here deletes the messages row for good. Skip the
             # removals whose grace deadline has not passed, so every message
             # type gets the window that STORE messages already got from their
-            # file pin. Fetched once per collection rather than per message.
-            now = utc_now()
+            # file pin. Resolved in one query for the whole batch rather than
+            # one per message.
             within_grace_period = get_hashes_within_removal_grace_period(
-                session=session, now=now
+                session=session,
+                now=utc_now(),
+                item_hashes=removing_hashes,
             )
             if within_grace_period:
                 LOGGER.info(
-                    "Skipping %d message(s) still within the removal grace period",
+                    "Skipping %d of %d message(s) still within the removal "
+                    "grace period",
                     len(within_grace_period),
+                    len(removing_hashes),
                 )
 
             for item_hash in removing_hashes:
@@ -121,6 +125,11 @@ class GarbageCollector:
 
                         # If all resources have been deleted, update status to REMOVED
                         if resources_deleted:
+                            # Stamped per message, not per batch: removed_at is
+                            # what the removed-messages API windows and sorts
+                            # on, and this loop can run for a long time on a
+                            # large backlog.
+                            now = utc_now()
                             result = session.execute(
                                 make_message_status_upsert_query(
                                     item_hash=item_hash,

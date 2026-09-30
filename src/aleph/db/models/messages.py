@@ -26,6 +26,7 @@ from sqlalchemy import (
     Table,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -476,6 +477,14 @@ class RemovedMessageDb(Base):
         # removed_at.
         Index("ix_removed_messages_owner_removed_at", "owner", "removed_at"),
         Index("ix_removed_messages_removed_at", "removed_at"),
+        # The garbage collector looks up the grace deadline on every pass. This
+        # table is append-only, so the index is partial: only rows whose
+        # removal is still in flight are ever read by that query.
+        Index(
+            "ix_removed_messages_remove_after",
+            "remove_after",
+            postgresql_where=text("removed_at IS NULL AND remove_after IS NOT NULL"),
+        ),
     )
 
 

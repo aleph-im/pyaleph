@@ -24,12 +24,22 @@ The crons already compute that deadline for every type; it was simply not
 persisted for the ones that pin no file. This migration adds the column so the
 collector can honour it uniformly.
 
-Rows still in REMOVING (removed_at IS NULL) are backfilled with a fresh
-deadline rather than left NULL, so removals already in flight when this
-migration runs get the grace window too instead of being finalized on the next
-collection. A NULL deadline stays eligible for immediate finalization: legacy
-REMOVING messages predating the snapshot record have no row here at all, and
-must not be stranded in REMOVING forever.
+Removals in flight when this migration runs are backfilled with a fresh
+deadline rather than left NULL, so they get the grace window too instead of
+being finalized on the next collection. "In flight" is read from
+message_status, not from `removed_at IS NULL`: that column is also NULL for
+legacy rows removed before this table recorded removal times (migration 0063
+inserts them with removed_at = NULL), and stamping those already-REMOVED rows
+with a future deadline would both rewrite the whole table and reopen a window
+on removals that are long finalized.
+
+A NULL deadline stays eligible for immediate finalization: legacy REMOVING
+messages predating the snapshot record have no row here at all, and must not be
+stranded in REMOVING forever.
+
+The collector looks the deadline up by hash on every pass, so the partial index
+covers the in-flight rows it actually reads rather than the whole append-only
+table.
 """
 
 import sqlalchemy as sa
@@ -41,8 +51,9 @@ down_revision = "d2f4a7c9e1b3"
 branch_labels = None
 depends_on = None
 
-# Matches the grace period the crons apply to STORE file pins (24h + 1h of
-# slack so a collection landing exactly on the boundary does not race it).
+# Matches aleph.toolkit.constants.REMOVAL_GRACE_PERIOD at the time of writing.
+# Kept as a literal: a migration must keep applying the same change even after
+# the application constant is retuned.
 GRACE_PERIOD_HOURS = 24 + 1
 
 
@@ -52,17 +63,31 @@ def upgrade() -> None:
         sa.Column("remove_after", sa.TIMESTAMP(timezone=True), nullable=True),
     )
 
-    # Give in-flight removals a full grace window from this migration onwards.
+    # Give removals that are genuinely still REMOVING a full grace window.
     op.execute(
         sa.text(
             """
-        UPDATE removed_messages
+        UPDATE removed_messages rm
         SET remove_after = now() + make_interval(hours => :grace_hours)
-        WHERE removed_at IS NULL
+        FROM message_status ms
+        WHERE ms.item_hash = rm.item_hash
+          AND ms.status = 'removing'
+          AND rm.removed_at IS NULL
         """
         ).bindparams(grace_hours=GRACE_PERIOD_HOURS)
     )
 
+    op.execute(
+        sa.text(
+            """
+        CREATE INDEX IF NOT EXISTS ix_removed_messages_remove_after
+        ON removed_messages (remove_after)
+        WHERE removed_at IS NULL AND remove_after IS NOT NULL
+        """
+        )
+    )
+
 
 def downgrade() -> None:
+    op.execute(sa.text("DROP INDEX IF EXISTS ix_removed_messages_remove_after"))
     op.drop_column("removed_messages", "remove_after")

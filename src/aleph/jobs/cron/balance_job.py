@@ -15,13 +15,17 @@ from aleph.db.accessors.messages import (
     get_message_by_item_hash,
     get_message_status,
     make_message_status_upsert_query,
-    upsert_removed_message_size,
+    upsert_removal_snapshot,
 )
 from aleph.db.models.cron_jobs import CronJobDb
 from aleph.db.models.messages import MessageDb, MessageStatusDb
 from aleph.jobs.cron.cron_job import BaseCronJob
 from aleph.services.cost import calculate_storage_size
-from aleph.toolkit.constants import STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT, MiB
+from aleph.toolkit.constants import (
+    REMOVAL_GRACE_PERIOD,
+    STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT,
+    MiB,
+)
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_status import MessageStatus
@@ -169,7 +173,7 @@ class BalanceCronJob(BaseCronJob):
                     continue
 
             now = utc_now()
-            delete_by = now + dt.timedelta(hours=24 + 1)
+            delete_by = now + REMOVAL_GRACE_PERIOD
 
             if message.type == MessageType.store:
                 update_file_pin_grace_period(
@@ -201,12 +205,7 @@ class BalanceCronJob(BaseCronJob):
                     .where(MessageDb.item_hash == item_hash)
                     .values(status_value=MessageStatus.REMOVING)
                 )
-                # Snapshot the file size while the files row still exists, and
-                # persist the grace deadline so the garbage collector keeps
-                # this removal reversible for every message type (not only the
-                # STORE messages whose file pin carries it). The collector
-                # stamps removed_at at REMOVING->REMOVED.
-                upsert_removed_message_size(
+                upsert_removal_snapshot(
                     session=session,
                     item_hash=item_hash,
                     remove_after=delete_by,
