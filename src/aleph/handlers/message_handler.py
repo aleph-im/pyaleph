@@ -37,6 +37,7 @@ from aleph.handlers.content.vm import VmMessageHandler
 from aleph.handlers.content.vprogram import VProgramMessageHandler
 from aleph.schemas.pending_messages import parse_message
 from aleph.storage import StorageService
+from aleph.toolkit.blocklist import is_blocked_sender
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.files import FileType
@@ -80,6 +81,7 @@ class BaseMessageHandler:
         config: Config,
     ):
         self.storage_service = storage_service
+        self.config = config
 
         vm_handler = VmMessageHandler()
 
@@ -207,6 +209,16 @@ class MessagePublisher(BaseMessageHandler):
             try:
                 # we don't check signatures yet.
                 message = parse_message(message_dict)
+
+                if is_blocked_sender(
+                    message.sender, self.config.aleph.blocked_senders.value
+                ):
+                    LOGGER.warning(
+                        "Dropping message %s from blocked sender %s",
+                        message.item_hash,
+                        message.sender,
+                    )
+                    return None
             except InvalidMessageException as e:
                 LOGGER.warning(e)
                 reject_new_pending_message(

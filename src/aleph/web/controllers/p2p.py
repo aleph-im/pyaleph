@@ -58,7 +58,7 @@ def _validate_request_data(config: Config, request_data: Dict) -> None:
             reason="'data': must be deserializable as JSON."
         )
 
-    validate_message_dict(message_dict)
+    validate_message_dict(message_dict, config)
 
 
 async def _pub_on_p2p_topics(
@@ -195,7 +195,9 @@ async def pub_message(request: web.Request):
         # Body must be valid JSON
         raise web.HTTPUnprocessableEntity()
 
-    pending_message = validate_message_dict(request_data.message_dict)
+    pending_message = validate_message_dict(
+        request_data.message_dict, get_config_from_request(request)
+    )
     broadcast_status = await broadcast_and_process_message(
         pending_message=pending_message,
         message_dict=request_data.message_dict,

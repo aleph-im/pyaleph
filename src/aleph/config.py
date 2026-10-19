@@ -23,6 +23,10 @@ def get_defaults():
             "queue_topic": "ALEPH-TEST",
             # URL of another Core Channel Node to compare the synchronization status.
             "reference_node_url": None,
+            # Sender addresses whose messages this node rejects. Compared
+            # case-insensitively: API submissions get a 403 and incoming
+            # messages are dropped before they are stored.
+            "blocked_senders": [],
             # URL of the aleph.im cross-chain indexer.
             "indexer_url": "https://multichain.api.aleph.cloud",
             "auth": {

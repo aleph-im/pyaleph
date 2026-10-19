@@ -39,6 +39,8 @@ ipfs:
 
 aleph:
   queue_topic: ALEPH-TEST
+  # Sender addresses whose messages this node rejects (case-insensitive).
+  blocked_senders: []
 
 
 p2p:
