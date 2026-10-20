@@ -20,10 +20,15 @@ from aleph.services.credits.fold import (
     TransferInput,
     execution_amount,
 )
-from aleph.services.credits.inputs import AttestationPending, collect_inputs
+from aleph.services.credits.inputs import (
+    AttestationPending,
+    collect_inputs,
+    normalize_address,
+)
 from aleph.services.credits.rates import rate_for
 from aleph.toolkit.constants import MiB
 from aleph.types.db_session import DbSessionFactory
+from aleph.types.message_status import MessageStatus
 
 PS = dt.datetime(2025, 6, 1, 12, tzinfo=dt.timezone.utc)
 PE = PS + dt.timedelta(hours=1)
@@ -423,13 +428,29 @@ def test_storage_window_clips_to_forget(
     assert storage.amount == expected
 
 
+_UNSET = object()
+_MISSING = object()
+
+
 def transfer_message(
     item_hash: str,
     confirmed: dt.datetime,
     sender: str,
     credits: List[Dict[str, Any]],
     channel: str = "ALEPH_CREDIT",
+    status: MessageStatus = MessageStatus.PROCESSED,
+    post_content: Any = _UNSET,
 ) -> MessageDb:
+    content: Dict[str, Any] = {
+        "address": sender,
+        "time": 1701099523.849,
+        "type": "aleph_credit_transfer",
+        "content": {"transfer": {"credits": credits}},
+    }
+    if post_content is _MISSING:
+        del content["content"]
+    elif post_content is not _UNSET:
+        content["content"] = post_content
     return MessageDb(
         item_hash=item_hash,
         chain=Chain.ETH,
@@ -437,16 +458,12 @@ def transfer_message(
         signature="0xsig",
         item_type=ItemType.inline,
         type=MessageType.post,
-        content={
-            "address": sender,
-            "time": 1701099523.849,
-            "type": "aleph_credit_transfer",
-            "content": {"transfer": {"credits": credits}},
-        },
+        content=content,
         size=100,
         time=confirmed,
         channel=channel,
         first_confirmed_at=confirmed,
+        status_value=status,
     )
 
 
@@ -520,3 +537,167 @@ def test_topup_inputs_keyed_by_chain_tx_and_log(
             source_ref="0x" + "11" * 32,
         )
     ]
+
+
+@pytest.mark.parametrize(
+    "post_content",
+    [
+        {},
+        None,
+        _MISSING,
+        "not a transfer",
+        {"transfer": {"credits": "x"}},
+        {
+            "transfer": {
+                "credits": [{"address": "0xB", "amount": 1, "expiration": 10**30}]
+            }
+        },
+    ],
+    ids=["empty", "null", "missing", "wrong-type", "wrong-credits", "huge-expiration"],
+)
+def test_malformed_transfer_is_excluded_not_raised(
+    session_factory: DbSessionFactory, mock_config: Config, pricing, post_content
+):
+    rows = [
+        transfer_message("a" * 64, at(10), OWNER, [], post_content=post_content),
+        transfer_message("b" * 64, at(20), OWNER, [{"address": OWNER, "amount": 2}]),
+        *attestation([]),
+    ]
+    inputs = collect(session_factory, mock_config, rows)
+    assert inputs.transfers == [
+        TransferInput("b" * 64, OWNER_KEY, [(OWNER_KEY, 2, None)])
+    ]
+    assert inputs.exclusions == [
+        ExclusionInput(
+            kind="transfer_out",
+            business_key=f"{'a' * 64}:0",
+            address=OWNER_KEY,
+            resource="a" * 64,
+            node_id=None,
+            reason="malformed",
+        )
+    ]
+
+
+def test_transfer_not_processed_is_not_an_input(
+    session_factory: DbSessionFactory, mock_config: Config, pricing
+):
+    rows = [
+        transfer_message(
+            "a" * 64,
+            at(10),
+            OWNER,
+            [{"address": OWNER, "amount": 2}],
+            status=MessageStatus.REMOVED,
+        ),
+        *attestation([]),
+    ]
+    inputs = collect(session_factory, mock_config, rows)
+    assert inputs.transfers == []
+    assert inputs.exclusions == []
+
+
+def test_attestation_without_post_row_is_treated_as_missing(
+    session_factory: DbSessionFactory, mock_config: Config, pricing, caplog
+):
+    orphan = CreditAttestationDb(
+        item_hash=ATTESTATION, period=PS, sender=ATTESTOR, status="active"
+    )
+    with pytest.raises(AttestationPending):
+        collect(session_factory, mock_config, [orphan], grace=False)
+
+    orphan = CreditAttestationDb(
+        item_hash=ATTESTATION, period=PS, sender=ATTESTOR, status="active"
+    )
+    inputs = collect(session_factory, mock_config, [resource(VM), orphan])
+    assert inputs.executions == []
+    assert inputs.exclusions == [
+        ExclusionInput(
+            kind="execution",
+            business_key=f"{P}:attestation_missing",
+            address=None,
+            resource=None,
+            node_id=None,
+            reason="attestation_missing",
+        )
+    ]
+    assert ATTESTATION in caplog.text
+
+
+def test_overlapping_nodes_cap_trims_the_later_node(
+    session_factory: DbSessionFactory, mock_config: Config, pricing
+):
+    rows = [
+        resource(VM),
+        *attestation([interval(VM, NODE_A, 0, 40), interval(VM, NODE_B, 20, 60)]),
+    ]
+    inputs = collect(session_factory, mock_config, rows)
+    assert {e.node: e.seconds for e in inputs.executions} == {
+        NODE_A: 2400,
+        NODE_B: 1200,
+    }
+    assert inputs.exclusions == []
+
+
+def test_unpriceable_store_next_to_billable_store_of_same_owner(
+    session_factory: DbSessionFactory, mock_config: Config, pricing
+):
+    good_hash, bad_hash = "8" * 64, "9" * 64
+    expected = expected_amount(
+        session_factory,
+        resource(good_hash, type_=MessageType.store, spec=store_spec(30 * MiB)),
+        3600,
+    )
+    rows = [
+        resource(good_hash, type_=MessageType.store, spec=store_spec(30 * MiB)),
+        resource(bad_hash, type_=MessageType.store, spec=store_spec(None)),
+        *attestation([]),
+    ]
+    inputs = collect(session_factory, mock_config, rows)
+    [storage] = inputs.storage
+    assert (storage.address, storage.count, storage.size_mib) == (OWNER_KEY, 1, 30)
+    assert storage.amount == expected
+    assert inputs.exclusions == [
+        ExclusionInput(
+            kind="storage",
+            business_key=f"{P}:{bad_hash}",
+            address=OWNER_KEY,
+            resource=bad_hash,
+            node_id=None,
+            reason="unpriceable",
+        )
+    ]
+
+
+def test_topups_lowercase_checksum_sender_and_keep_chain_order(
+    session_factory: DbSessionFactory, mock_config: Config, pricing
+):
+    sender = "0xAbCdEf0000000000000000000000000000000001"
+    tx = "0x" + "22" * 32
+    rows = [
+        CreditTopupDb(
+            chain_id=1,
+            tx_hash=tx,
+            log_index=log_index,
+            block_number=100,
+            block_time=at(5),
+            from_address=sender,
+            token="usdc",
+            raw_amount=Decimal(1),
+            quote_num=Decimal(1),
+            quote_den=Decimal(1),
+            credits=credits,
+            status="credited",
+        )
+        for log_index, credits in ((10, 1), (2, 2))
+    ]
+    inputs = collect(session_factory, mock_config, [*rows, *attestation([])])
+    assert [(t.address, t.business_key) for t in inputs.topups] == [
+        (sender.lower(), f"1:{tx}:2"),
+        (sender.lower(), f"1:{tx}:10"),
+    ]
+
+
+def test_normalize_address_handles_uppercase_prefix():
+    assert normalize_address("0XABcd") == "0xabcd"
+    assert normalize_address("So1AnaBase58") == "So1AnaBase58"

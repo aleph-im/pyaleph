@@ -12,9 +12,16 @@ Addresses: EVM addresses (0x-prefixed) are case-insensitive and are lowercased
 so that lots credited by a top-up (indexed lowercase) are the ones drained by
 the same account's executions. Other address formats are case-sensitive and
 kept as given.
+
+Transfers and attestations are read from live rows (`messages`, `posts`).
+This relies on an ingest invariant (Task 10): a FORGET of an
+`aleph_credit_transfer` post, or of an attestation post from a whitelisted
+attestor, is refused, so the rows a period was folded from never disappear
+and every CCN refolds a period from the same inputs.
 """
 
 import datetime as dt
+import logging
 import math
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -22,6 +29,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from aleph_message.models import MessageType, PaymentType
 from configmanager import Config
+from pydantic import ValidationError
 from sqlalchemy import select
 
 from aleph.db.accessors.credit_ledger import (
@@ -52,6 +60,8 @@ from aleph.toolkit.constants import MiB
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import MessageStatus
 
+LOGGER = logging.getLogger(__name__)
+
 TRANSFER_POST_TYPE = "aleph_credit_transfer"
 MAX_SECONDS_PER_VM = 3600
 ONE_SECOND = dt.timedelta(seconds=1)
@@ -68,6 +78,7 @@ OVER_CAP = "over_cap"
 NO_ATTESTATION = "no_attestation"
 ATTESTATION_MISSING = "attestation_missing"
 UNPRICEABLE = "unpriceable"
+MALFORMED = "malformed"
 
 
 class AttestationPending(Exception):
@@ -83,7 +94,7 @@ class AttestationPending(Exception):
 
 def normalize_address(address: str) -> str:
     """Ledger form of an address: EVM (0x) addresses lowercased, others as is."""
-    return address.lower() if address.startswith("0x") else address
+    return address.lower() if address[:2].lower() == "0x" else address
 
 
 def _seconds(start: dt.datetime, end: dt.datetime) -> int:
@@ -117,7 +128,9 @@ def topup_inputs(
                 source_ref=row.tx_hash,
             )
         )
-    return sorted(inputs, key=lambda t: t.business_key)
+    # Kept in the accessor's (block_time, tx_hash, log_index) order; the fold
+    # orders top-ups itself.
+    return inputs
 
 
 # --- transfers ----------------------------------------------------------------
@@ -128,10 +141,14 @@ def transfer_inputs(
     period_start: dt.datetime,
     end: dt.datetime,
     channels: List[str],
-) -> List[TransferInput]:
+) -> Tuple[List[TransferInput], List[ExclusionInput]]:
     """
     Credit transfers confirmed in [period_start, end), in confirmation then
     item hash order (the order the fold applies them in).
+
+    A processed transfer whose content does not parse (the post handler only
+    validates a truthy `content`) becomes a `malformed` transfer_out
+    exclusion: this layer never raises on user content.
     """
     stmt = select(MessageDb).where(
         MessageDb.type == MessageType.post,
@@ -145,32 +162,66 @@ def transfer_inputs(
     messages = session.execute(stmt).scalars().all()
 
     inputs: List[TransferInput] = []
+    exclusions: List[ExclusionInput] = []
     for message in sorted(messages, key=lambda m: (m.first_confirmed_at, m.item_hash)):
-        # Processed transfers passed this same validation at ingest: a failure
-        # here is a bug, not a user error, so it is raised.
-        content = CreditTransferContent.model_validate(message.content["content"])
-        entries: List[Tuple[str, int, Optional[dt.datetime]]] = [
-            (
-                normalize_address(entry.address),
-                entry.amount,
+        raw_sender = (
+            message.content.get("address")
+            if isinstance(message.content, dict)
+            else None
+        )
+        sender = (
+            normalize_address(raw_sender)
+            if isinstance(raw_sender, str) and raw_sender
+            else None
+        )
+        try:
+            if sender is None:
+                raise ValueError("transfer has no sender address")
+            content = CreditTransferContent.model_validate(message.content["content"])
+            entries: List[Tuple[str, int, Optional[dt.datetime]]] = [
                 (
-                    None
-                    if entry.expiration is None
-                    else dt.datetime.fromtimestamp(
-                        entry.expiration / 1000, tz=dt.timezone.utc
-                    )
-                ),
+                    normalize_address(entry.address),
+                    entry.amount,
+                    (
+                        None
+                        if entry.expiration is None
+                        else dt.datetime.fromtimestamp(
+                            entry.expiration / 1000, tz=dt.timezone.utc
+                        )
+                    ),
+                )
+                for entry in content.transfer.credits
+            ]
+        except (
+            ValidationError,
+            KeyError,
+            TypeError,
+            ValueError,
+            OverflowError,
+            OSError,
+        ) as error:
+            LOGGER.warning(
+                "credit transfer %s is malformed, excluded: %s",
+                message.item_hash,
+                error,
             )
-            for entry in content.transfer.credits
-        ]
+            exclusions.append(
+                ExclusionInput(
+                    kind="transfer_out",
+                    business_key=f"{message.item_hash}:0",
+                    address=sender,
+                    resource=message.item_hash,
+                    node_id=None,
+                    reason=MALFORMED,
+                )
+            )
+            continue
         inputs.append(
             TransferInput(
-                message_hash=message.item_hash,
-                sender=normalize_address(message.content["address"]),
-                entries=entries,
+                message_hash=message.item_hash, sender=sender, entries=entries
             )
         )
-    return inputs
+    return inputs, exclusions
 
 
 # --- executions ---------------------------------------------------------------
@@ -339,10 +390,17 @@ class _ExecutionCollector:
 
 def _attestation_content(
     session: DbSession, item_hash: str
-) -> ExecutionIntervalsContent:
+) -> Optional[ExecutionIntervalsContent]:
+    """Content of the attestation post, or None when its post row is gone."""
     content = session.execute(
         select(PostDb.content).where(PostDb.item_hash == item_hash)
-    ).scalar_one()
+    ).scalar_one_or_none()
+    if content is None:
+        LOGGER.warning(
+            "active attestation %s has no post row: treated as no attestation",
+            item_hash,
+        )
+        return None
     return ExecutionIntervalsContent.model_validate(content)
 
 
@@ -361,7 +419,12 @@ def execution_inputs(
 ) -> Tuple[List[ExecutionInput], List[ExclusionInput]]:
     period_unix = int(period_start.timestamp())
     attestation = active_attestation(session, period_start)
-    if attestation is None:
+    content = (
+        None
+        if attestation is None
+        else _attestation_content(session, attestation.item_hash)
+    )
+    if content is None:
         if not attestation_grace_elapsed:
             raise AttestationPending(period_start)
         return [], [
@@ -375,7 +438,6 @@ def execution_inputs(
             )
         ]
 
-    content = _attestation_content(session, attestation.item_hash)
     intervals = sorted(content.intervals, key=lambda i: (i.vm, i.node, i.start, i.end))
     by_vm: Dict[str, List[IntervalEntry]] = {}
     for interval in intervals:
@@ -446,8 +508,9 @@ def storage_inputs(
         session, MessageType.store, PaymentType.credit, period_start, end
     )
     for resource in sorted(resources, key=lambda r: r.item_hash):
-        # iter_live_billing_resources only returns confirmed resources.
-        assert resource.first_confirmed_at is not None
+        if resource.first_confirmed_at is None:
+            # iter_live_billing_resources only returns confirmed resources.
+            raise RuntimeError(f"live STORE {resource.item_hash} is unconfirmed")
         lo = max(resource.first_confirmed_at, period_start)
         hi = end if resource.end_of_life is None else min(resource.end_of_life, end)
         if hi <= lo:
@@ -508,11 +571,14 @@ def collect_inputs(
     )
     storage, storage_exclusions = storage_inputs(session, period_start, end, pricing)
     channels: List[Any] = list(settings.aleph.credit_balances.channels.value or [])
+    transfers, transfer_exclusions = transfer_inputs(
+        session, period_start, end, channels
+    )
 
     return PeriodInputs(
         topups=topup_inputs(session, period_start, end),
-        transfers=transfer_inputs(session, period_start, end, channels),
+        transfers=transfers,
         executions=executions,
         storage=storage,
-        exclusions=execution_exclusions + storage_exclusions,
+        exclusions=transfer_exclusions + execution_exclusions + storage_exclusions,
     )
