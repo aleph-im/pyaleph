@@ -305,6 +305,24 @@ class GetAccountCreditHistoryResponse(BaseModel):
     pagination_per_page: int
 
 
+class CreditHistoryV2ResponseItem(CreditHistoryResponseItem):
+    """
+    An entry served under `aleph.credits.serve_v2`. Ledger rows map as
+    payment_method = kind, origin = resource, origin_ref = source_ref, tx_hash =
+    source_ref (top-ups), credit_ref = source_ref (business key when none),
+    credit_index = 0, message_timestamp = period; legacy rows leave the new
+    fields null.
+    """
+
+    node_id: Optional[str] = None
+    seconds: Optional[int] = None
+    excluded_reason: Optional[str] = None
+
+
+class GetAccountCreditHistoryV2Response(GetAccountCreditHistoryResponse):
+    credit_history: List[CreditHistoryV2ResponseItem]  # type: ignore[assignment]
+
+
 class GetAccountCreditHistorySummaryResponse(BaseModel):
     address: str
     entry_count: int

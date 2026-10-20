@@ -18,7 +18,7 @@ from typing import (
 )
 
 from aleph_message.models import Chain, MessageType
-from sqlalchemy import case, func, select, text
+from sqlalchemy import case, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.sql import ColumnElement, Select
 
@@ -28,6 +28,7 @@ from aleph.db.models import (
     AlephCreditHistoryDb,
     MessageDb,
 )
+from aleph.db.models.credit_ledger import BillingResourceDb
 from aleph.toolkit.constants import (
     CREDIT_PRECISION_CUTOFF_TIMESTAMP,
     CREDIT_PRECISION_MULTIPLIER,
@@ -871,6 +872,7 @@ _NULLABLE_SORT_COLUMNS = {
 
 def _apply_credit_history_filters(
     query: Select,
+    cols: Any = AlephCreditHistoryDb,
     tx_hash: Optional[str] = None,
     token: Optional[str] = None,
     chain: Optional[str] = None,
@@ -886,43 +888,46 @@ def _apply_credit_history_filters(
     resource_types: Optional[List[MessageType]] = None,
     resource: Optional[str] = None,
 ) -> Select:
-    """Apply common filters to a credit history query."""
+    """
+    Apply common filters to a credit history query. `cols` is the column
+    namespace: the legacy table, or the `.c` of `credit_history_source`
+    (then `resource_types` also matches the resource in `billing_resources`,
+    and `STORE` matches the ledger's per-address `storage` rows).
+    """
     if tx_hash is not None:
-        query = query.where(AlephCreditHistoryDb.tx_hash == tx_hash)
+        query = query.where(cols.tx_hash == tx_hash)
     if token is not None:
-        query = query.where(AlephCreditHistoryDb.token == token)
+        query = query.where(cols.token == token)
     if chain is not None:
-        query = query.where(AlephCreditHistoryDb.chain == chain)
+        query = query.where(cols.chain == chain)
     if provider is not None:
-        query = query.where(AlephCreditHistoryDb.provider == provider)
+        query = query.where(cols.provider == provider)
     if origin is not None:
-        query = query.where(AlephCreditHistoryDb.origin == origin)
+        query = query.where(cols.origin == origin)
     if origin_ref is not None:
-        query = query.where(AlephCreditHistoryDb.origin_ref == origin_ref)
+        query = query.where(cols.origin_ref == origin_ref)
     if payment_method is not None:
-        query = query.where(AlephCreditHistoryDb.payment_method == payment_method)
+        query = query.where(cols.payment_method == payment_method)
     if has_expiration is True:
-        query = query.where(AlephCreditHistoryDb.expiration_date.isnot(None))
+        query = query.where(cols.expiration_date.isnot(None))
     elif has_expiration is False:
-        query = query.where(AlephCreditHistoryDb.expiration_date.is_(None))
+        query = query.where(cols.expiration_date.is_(None))
     if exclude_payment_method:
-        query = query.where(
-            AlephCreditHistoryDb.payment_method.notin_(exclude_payment_method)
-        )
+        query = query.where(cols.payment_method.notin_(exclude_payment_method))
     if start_date is not None:
-        query = query.where(AlephCreditHistoryDb.message_timestamp >= start_date)
+        query = query.where(cols.message_timestamp >= start_date)
     if end_date is not None:
-        query = query.where(AlephCreditHistoryDb.message_timestamp <= end_date)
+        query = query.where(cols.message_timestamp <= end_date)
     if direction == CreditFlow.INCOMING:
-        query = query.where(AlephCreditHistoryDb.amount > 0)
+        query = query.where(cols.amount > 0)
     elif direction == CreditFlow.OUTGOING:
-        query = query.where(AlephCreditHistoryDb.amount < 0)
+        query = query.where(cols.amount < 0)
     if resource_types:
         effective_origin = func.coalesce(
-            func.nullif(AlephCreditHistoryDb.origin, ""),
-            AlephCreditHistoryDb.origin_ref,
+            func.nullif(cols.origin, ""),
+            cols.origin_ref,
         )
-        query = query.where(
+        type_match: ColumnElement[bool] = (
             select(MessageDb.item_hash)
             .where(
                 (MessageDb.item_hash == effective_origin)
@@ -930,11 +935,24 @@ def _apply_credit_history_filters(
             )
             .exists()
         )
+        if cols is not AlephCreditHistoryDb:
+            type_match = or_(
+                type_match,
+                select(BillingResourceDb.item_hash)
+                .where(
+                    (BillingResourceDb.item_hash == effective_origin)
+                    & (BillingResourceDb.type.in_(resource_types))
+                )
+                .exists(),
+            )
+            if MessageType.store in resource_types:
+                type_match = or_(type_match, cols.payment_method == "storage")
+        query = query.where(type_match)
     if resource is not None:
         query = query.where(
             func.coalesce(
-                func.nullif(AlephCreditHistoryDb.origin, ""),
-                AlephCreditHistoryDb.origin_ref,
+                func.nullif(cols.origin, ""),
+                cols.origin_ref,
             )
             == resource
         )
@@ -966,16 +984,32 @@ def get_address_credit_history(
     after_credit_ref: Optional[str] = None,
     after_credit_index: Optional[int] = None,
     cursor_mode: bool = False,
-) -> Sequence[AlephCreditHistoryDb]:
+    source: Optional[Any] = None,
+) -> Sequence[Any]:
     """
     Get paginated credit history entries for a specific address.
 
     Supports dynamic sorting and cursor-based or page-based pagination.
+
+    `source` (a `credit_history_source` subquery, which already selects the
+    address) replaces the legacy table: rows are then returned instead of ORM
+    objects, and the keyset tiebreakers are its `tb_ref`/`tb_index` columns.
     """
-    query = select(AlephCreditHistoryDb).where(AlephCreditHistoryDb.address == address)
+    cols: Any
+    if source is None:
+        cols = AlephCreditHistoryDb
+        query = select(AlephCreditHistoryDb).where(
+            AlephCreditHistoryDb.address == address
+        )
+        tb_ref, tb_index = cols.credit_ref, cols.credit_index
+        primary_col = CREDIT_HISTORY_SORT_COLUMN_MAP[sort_by]
+    else:
+        cols = source.c
+        query = select(source)
+        tb_ref, tb_index = cols.tb_ref, cols.tb_index
+        primary_col = cols[sort_by.value]
 
     # Dynamic ordering
-    primary_col = CREDIT_HISTORY_SORT_COLUMN_MAP[sort_by]
     is_desc = sort_order == SortOrder.DESCENDING
 
     if sort_by in _NULLABLE_SORT_COLUMNS:
@@ -990,19 +1024,20 @@ def get_address_credit_history(
     if is_desc:
         query = query.order_by(
             order_primary,
-            AlephCreditHistoryDb.credit_ref.desc(),
-            AlephCreditHistoryDb.credit_index.desc(),
+            tb_ref.desc(),
+            tb_index.desc(),
         )
     else:
         query = query.order_by(
             order_primary,
-            AlephCreditHistoryDb.credit_ref.asc(),
-            AlephCreditHistoryDb.credit_index.asc(),
+            tb_ref.asc(),
+            tb_index.asc(),
         )
 
     # Apply filters
     query = _apply_credit_history_filters(
         query,
+        cols=cols,
         tx_hash=tx_hash,
         token=token,
         chain=chain,
@@ -1027,10 +1062,10 @@ def get_address_credit_history(
                 query = query.where(
                     (primary_col.is_(None))
                     & (
-                        (AlephCreditHistoryDb.credit_ref < after_credit_ref)
+                        (tb_ref < after_credit_ref)
                         | (
-                            (AlephCreditHistoryDb.credit_ref == after_credit_ref)
-                            & (AlephCreditHistoryDb.credit_index < after_credit_index)
+                            (tb_ref == after_credit_ref)
+                            & (tb_index < after_credit_index)
                         )
                     )
                 )
@@ -1038,10 +1073,10 @@ def get_address_credit_history(
                 query = query.where(
                     (primary_col.is_(None))
                     & (
-                        (AlephCreditHistoryDb.credit_ref > after_credit_ref)
+                        (tb_ref > after_credit_ref)
                         | (
-                            (AlephCreditHistoryDb.credit_ref == after_credit_ref)
-                            & (AlephCreditHistoryDb.credit_index > after_credit_index)
+                            (tb_ref == after_credit_ref)
+                            & (tb_index > after_credit_index)
                         )
                     )
                 )
@@ -1051,10 +1086,10 @@ def get_address_credit_history(
                 | (
                     (primary_col == after_sort_value)
                     & (
-                        (AlephCreditHistoryDb.credit_ref < after_credit_ref)
+                        (tb_ref < after_credit_ref)
                         | (
-                            (AlephCreditHistoryDb.credit_ref == after_credit_ref)
-                            & (AlephCreditHistoryDb.credit_index < after_credit_index)
+                            (tb_ref == after_credit_ref)
+                            & (tb_index < after_credit_index)
                         )
                     )
                 )
@@ -1067,10 +1102,10 @@ def get_address_credit_history(
                 | (
                     (primary_col == after_sort_value)
                     & (
-                        (AlephCreditHistoryDb.credit_ref > after_credit_ref)
+                        (tb_ref > after_credit_ref)
                         | (
-                            (AlephCreditHistoryDb.credit_ref == after_credit_ref)
-                            & (AlephCreditHistoryDb.credit_index > after_credit_index)
+                            (tb_ref == after_credit_ref)
+                            & (tb_index > after_credit_index)
                         )
                     )
                 )
@@ -1084,6 +1119,8 @@ def get_address_credit_history(
     elif pagination > 0:
         query = query.offset((page - 1) * pagination).limit(pagination)
 
+    if source is not None:
+        return session.execute(query).all()
     return session.execute(query).scalars().all()
 
 
@@ -1104,16 +1141,25 @@ def count_address_credit_history(
     direction: Optional[CreditFlow] = None,
     resource_types: Optional[List[MessageType]] = None,
     resource: Optional[str] = None,
+    source: Optional[Any] = None,
 ) -> int:
     """
     Count total credit history entries for a specific address with optional filters.
+    `source`: as in `get_address_credit_history`.
     """
-    query = select(func.count(AlephCreditHistoryDb.credit_ref)).where(
-        AlephCreditHistoryDb.address == address
-    )
+    cols: Any
+    if source is None:
+        cols = AlephCreditHistoryDb
+        query = select(func.count(AlephCreditHistoryDb.credit_ref)).where(
+            AlephCreditHistoryDb.address == address
+        )
+    else:
+        cols = source.c
+        query = select(func.count()).select_from(source)
 
     query = _apply_credit_history_filters(
         query,
+        cols=cols,
         tx_hash=tx_hash,
         token=token,
         chain=chain,
@@ -1157,26 +1203,30 @@ def get_address_credit_history_summary(
     direction: Optional[CreditFlow] = None,
     resource_types: Optional[List[MessageType]] = None,
     resource: Optional[str] = None,
+    source: Optional[Any] = None,
 ) -> CreditHistorySummary:
     """
     Aggregates over all credit history entries matching the filters, in a
     single query. Pagination-independent. total_outgoing keeps its negative
-    sign so that total_amount == total_incoming + total_outgoing.
+    sign so that total_amount == total_incoming + total_outgoing. `source`:
+    as in `get_address_credit_history`.
     """
-    incoming_amount = case(
-        (AlephCreditHistoryDb.amount > 0, AlephCreditHistoryDb.amount), else_=0
-    )
-    outgoing_amount = case(
-        (AlephCreditHistoryDb.amount < 0, AlephCreditHistoryDb.amount), else_=0
-    )
+    cols: Any = AlephCreditHistoryDb if source is None else source.c
+    incoming_amount = case((cols.amount > 0, cols.amount), else_=0)
+    outgoing_amount = case((cols.amount < 0, cols.amount), else_=0)
     query = select(
         func.count().label("entry_count"),
-        func.coalesce(func.sum(AlephCreditHistoryDb.amount), 0).label("total_amount"),
+        func.coalesce(func.sum(cols.amount), 0).label("total_amount"),
         func.coalesce(func.sum(incoming_amount), 0).label("total_incoming"),
         func.coalesce(func.sum(outgoing_amount), 0).label("total_outgoing"),
-    ).where(AlephCreditHistoryDb.address == address)
+    )
+    if source is None:
+        query = query.where(AlephCreditHistoryDb.address == address)
+    else:
+        query = query.select_from(source)
     query = _apply_credit_history_filters(
         query,
+        cols=cols,
         tx_hash=tx_hash,
         token=token,
         chain=chain,
@@ -1205,6 +1255,7 @@ def get_total_consumed_credits(
     session: DbSession,
     address: Optional[str] = None,
     item_hash: Optional[str] = None,
+    before: Optional[dt.datetime] = None,
 ) -> int:
     """
     Calculate total credits consumed, optionally filtered by address or item_hash.
@@ -1215,6 +1266,7 @@ def get_total_consumed_credits(
         session: Database session
         address: Optional filter by address
         item_hash: Optional filter by resource (origin)
+        before: Optional bound, entries with message_timestamp < before only
 
     Returns:
         Total credits consumed
@@ -1231,6 +1283,9 @@ def get_total_consumed_credits(
             AlephCreditHistoryDb.origin_ref,
         )
         query = query.where(effective_origin == item_hash)
+
+    if before is not None:
+        query = query.where(AlephCreditHistoryDb.message_timestamp < before)
 
     result = session.execute(query).scalar()
     return result or 0

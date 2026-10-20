@@ -244,6 +244,179 @@ components:
         consumed_credits:
           type: integer
 
+    CreditPeriodResponse:
+      type: object
+      properties:
+        period:
+          type: integer
+          description: Period start, unix seconds
+        status:
+          type: string
+          enum: [closed, dirty, open]
+        period_hash:
+          type: string
+          nullable: true
+          description: Hash of the period's ledger rows; null while open
+        checkpoint_hash:
+          type: string
+          nullable: true
+          description: Global checkpoint hash written at this period, if any
+        attestation:
+          type: object
+          nullable: true
+          properties:
+            item_hash:
+              type: string
+            sender:
+              type: string
+              nullable: true
+        totals:
+          type: object
+          description: Per kind, the number of rows and the sum of their amounts
+          additionalProperties:
+            type: object
+            properties:
+              rows:
+                type: integer
+              amount:
+                type: integer
+
+    CreditRevenueResponse:
+      type: object
+      properties:
+        periods:
+          type: array
+          items:
+            type: object
+            properties:
+              period:
+                type: integer
+              credit_price_aleph:
+                type: string
+                nullable: true
+                description: ALEPH per credit (decimal string), null if unquoted
+              nodes:
+                type: object
+                additionalProperties:
+                  type: object
+                  properties:
+                    execution:
+                      type: integer
+                    hold_equivalent:
+                      type: integer
+              storage:
+                type: integer
+              execution_total:
+                type: integer
+
+    CreditExclusionsResponse:
+      type: object
+      properties:
+        exclusions:
+          type: array
+          items:
+            type: object
+            properties:
+              period:
+                type: integer
+              address:
+                type: string
+                nullable: true
+              kind:
+                type: string
+              business_key:
+                type: string
+              amount:
+                type: integer
+              resource:
+                type: string
+                nullable: true
+              node_id:
+                type: string
+                nullable: true
+              seconds:
+                type: integer
+                nullable: true
+              rate:
+                type: string
+                nullable: true
+              source_ref:
+                type: string
+                nullable: true
+              excluded_reason:
+                type: string
+        pagination_page:
+          type: integer
+        pagination_per_page:
+          type: integer
+        pagination_total:
+          type: integer
+        pagination_item:
+          type: string
+
+    CreditQuoteResponse:
+      type: object
+      properties:
+        credits:
+          type: integer
+        quote_num:
+          type: string
+          description: Credits per raw unit, numerator
+        quote_den:
+          type: string
+          description: Credits per raw unit, denominator
+        block_number:
+          type: integer
+
+    CreditTopupsResponse:
+      type: object
+      properties:
+        address:
+          type: string
+        topups:
+          type: array
+          items:
+            type: object
+            properties:
+              chain_id:
+                type: integer
+              tx_hash:
+                type: string
+              log_index:
+                type: integer
+              block_number:
+                type: integer
+              block_time:
+                type: integer
+              from_address:
+                type: string
+              token:
+                type: string
+              raw_amount:
+                type: string
+              quote_num:
+                type: string
+                nullable: true
+              quote_den:
+                type: string
+                nullable: true
+              credits:
+                type: integer
+                nullable: true
+              status:
+                type: string
+              ledger_period:
+                type: integer
+                nullable: true
+        pagination_page:
+          type: integer
+        pagination_per_page:
+          type: integer
+        pagination_total:
+          type: integer
+        pagination_item:
+          type: string
+
     GetAccountPostTypesResponse:
       type: object
       properties:

@@ -10,6 +10,7 @@ from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.connection import make_engine, make_session_factory
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.credits.balance import check_serve_v2_at_startup
+from aleph.services.credits.topups import build_quote_indexer
 from aleph.services.ipfs import IpfsService
 from aleph.services.p2p import init_p2p_client
 from aleph.services.p2p.http import close_sessions
@@ -20,6 +21,7 @@ from aleph.toolkit.monitoring import setup_sentry
 from aleph.web import create_aiohttp_app
 from aleph.web.controllers.app_state_getters import (
     APP_STATE_CONFIG,
+    APP_STATE_CREDIT_QUOTER,
     APP_STATE_MESSAGE_BROADCASTER,
     APP_STATE_MQ_CHANNEL,
     APP_STATE_MQ_CONN,
@@ -96,6 +98,7 @@ async def configure_aiohttp_app(
         app[APP_STATE_SIGNATURE_VERIFIER] = signature_verifier
         app[APP_STATE_STATUS_BROADCASTER] = status_broadcaster
         app[APP_STATE_MESSAGE_BROADCASTER] = message_broadcaster
+        app[APP_STATE_CREDIT_QUOTER] = build_quote_indexer(config)
 
         async def _on_cleanup(_app: web.Application):
             await message_broadcaster.shutdown()

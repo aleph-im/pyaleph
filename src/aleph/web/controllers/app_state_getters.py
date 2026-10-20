@@ -5,7 +5,7 @@ address these objects.
 """
 
 import logging
-from typing import Optional, TypeVar, cast
+from typing import Any, Optional, TypeVar, cast
 
 import aio_pika.abc
 from aiohttp import web
@@ -28,6 +28,8 @@ APP_STATE_STORAGE_SERVICE = "storage_service"
 APP_STATE_SIGNATURE_VERIFIER = "signature_verifier"
 APP_STATE_MESSAGE_BROADCASTER = "message_broadcaster"
 APP_STATE_STATUS_BROADCASTER = "status_broadcaster"
+# TopupIndexer used by /api/v0/credits/quote; None when it cannot be built.
+APP_STATE_CREDIT_QUOTER = "credit_quoter"
 
 T = TypeVar("T")
 
@@ -95,3 +97,8 @@ def get_storage_service_from_request(request: web.Request) -> StorageService:
 
 def get_signature_verifier_from_request(request: web.Request) -> SignatureVerifier:
     return cast(SignatureVerifier, request.app[APP_STATE_SIGNATURE_VERIFIER])
+
+
+def get_credit_quoter_from_request(request: web.Request) -> Optional[Any]:
+    """The TopupIndexer `/credits/quote` uses, None if the node has none."""
+    return request.app.get(APP_STATE_CREDIT_QUOTER)
