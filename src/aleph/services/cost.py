@@ -3,7 +3,7 @@ import math
 import re
 from decimal import Decimal
 from functools import reduce
-from typing import Any, List, Optional, Sequence, Tuple, TypeAlias, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, TypeAlias, Union
 
 from aleph_message.models import (
     InstanceContent,
@@ -56,6 +56,7 @@ from aleph.types.cost import (
     ProductPricing,
     RefVolume,
     SizedVolume,
+    resolve_price_type_key,
 )
 from aleph.types.db_session import DbSession
 from aleph.types.files import FileTag
@@ -212,6 +213,20 @@ def _is_gpu_vm(content: InstanceContent | CostEstimationInstanceContent) -> bool
     ) and getattr(content.requirements, "gpu", False)
 
 
+def _pricing_from_source(
+    price_type: ProductPriceType, source: Union[AggregateDb, dict]
+) -> ProductPricing:
+    """ProductPricing for `price_type` from a raw aggregate or from a built
+    pricing model (`Dict[ProductPriceType, ProductPricing]`, as the pricing
+    timeline yields)."""
+    if isinstance(source, dict) and any(
+        isinstance(v, ProductPricing) for v in source.values()
+    ):
+        pricing = source[resolve_price_type_key(price_type, source.keys())]
+        return pricing if pricing.type == price_type else pricing.with_type(price_type)
+    return ProductPricing.from_aggregate(price_type, source)
+
+
 def _get_product_instance_type(
     content: InstanceContent | CostEstimationInstanceContent,
     settings: Settings,
@@ -227,10 +242,10 @@ def _get_product_instance_type(
         return ProductPriceType.INSTANCE
 
     # Determine the actual GPU tier(s) for this instance
-    premium_pricing = ProductPricing.from_aggregate(
+    premium_pricing = _pricing_from_source(
         ProductPriceType.INSTANCE_GPU_PREMIUM, price_aggregate
     )
-    standard_pricing = ProductPricing.from_aggregate(
+    standard_pricing = _pricing_from_source(
         ProductPriceType.INSTANCE_GPU_STANDARD, price_aggregate
     )
     tier_breakdown = _get_gpu_tier_breakdown(
@@ -426,6 +441,7 @@ def _get_volumes_costs(
     owner: str,
     item_hash: str,
     price_per_mib_credit: Decimal,
+    volume_sizes_bytes: Optional[Dict[str, int]] = None,
 ) -> List[AccountCostsDb]:
     costs: List[AccountCostsDb] = []
 
@@ -433,16 +449,23 @@ def _get_volumes_costs(
         if isinstance(volume, SizedVolume):
             storage_mib = Decimal(volume.size_mib)
         elif isinstance(volume, RefVolume):
-            file = _get_file_from_ref(
-                session=session, ref=volume.ref, use_latest=volume.use_latest
-            )
+            size_bytes: Optional[int]
+            if volume_sizes_bytes is not None:
+                # Sizes snapshotted at ingest: the database is not consulted.
+                # A ref absent from the snapshot was unresolved at the time.
+                size_bytes = volume_sizes_bytes.get(volume.ref)
+            else:
+                file = _get_file_from_ref(
+                    session=session, ref=volume.ref, use_latest=volume.use_latest
+                )
+                size_bytes = None if file is None else file.size
 
-            if file is None:
+            if size_bytes is None:
                 # NOTE: There are legacy volumes with missing references
                 # skip cost calculation for them instead of raising an error
                 continue
 
-            storage_mib = Decimal(file.size / MiB)
+            storage_mib = Decimal(size_bytes / MiB)
 
         cost_hold = format_cost(storage_mib * price_per_mib)
         cost_stream = format_cost(
@@ -481,6 +504,7 @@ def _get_execution_volumes_costs(
     payment_type: PaymentType,
     item_hash: str,
     extra_volumes: ExtraVolumes = (),
+    volume_sizes_bytes: Optional[Dict[str, int]] = None,
 ) -> List[AccountCostsDb]:
     volumes: List[RefVolume | SizedVolume] = []
 
@@ -705,6 +729,7 @@ def _get_execution_volumes_costs(
         content.address,
         item_hash,
         price_per_mib_credit,
+        volume_sizes_bytes,
     )
 
 
@@ -715,10 +740,17 @@ def _get_additional_storage_price(
     payment_type: PaymentType,
     item_hash: str,
     extra_volumes: ExtraVolumes = (),
+    volume_sizes_bytes: Optional[Dict[str, int]] = None,
 ) -> List[AccountCostsDb]:
     # EXECUTION VOLUMES COSTS
     costs = _get_execution_volumes_costs(
-        session, content, pricing, payment_type, item_hash, extra_volumes
+        session,
+        content,
+        pricing,
+        payment_type,
+        item_hash,
+        extra_volumes,
+        volume_sizes_bytes,
     )
 
     # EXECUTION STORAGE DISCOUNT
@@ -795,10 +827,10 @@ def _calculate_multi_tier_gpu_execution_cost(
         For example, mixed-tier instance creates two entries: one for premium, one for standard.
     """
     # Get premium and standard pricing
-    premium_pricing = ProductPricing.from_aggregate(
+    premium_pricing = _pricing_from_source(
         ProductPriceType.INSTANCE_GPU_PREMIUM, price_aggregate
     )
-    standard_pricing = ProductPricing.from_aggregate(
+    standard_pricing = _pricing_from_source(
         ProductPriceType.INSTANCE_GPU_STANDARD, price_aggregate
     )
 
@@ -836,9 +868,16 @@ def _calculate_multi_tier_gpu_execution_cost(
             pricing = standard_pricing
 
         # Get pricing rates for this tier
-        compute_unit_cost = pricing.price.compute_unit.holding
-        compute_unit_cost_second = pricing.price.compute_unit.payg / HOUR
-        compute_unit_cost_credit = pricing.price.compute_unit.credit / HOUR
+        tier_price = pricing.price.compute_unit
+        if tier_price is None:
+            raise ValueError(
+                "compute_unit price not defined for type '{}' in pricing aggregate".format(
+                    pricing.type.value
+                )
+            )
+        compute_unit_cost = tier_price.holding
+        compute_unit_cost_second = tier_price.payg / HOUR
+        compute_unit_cost_credit = tier_price.credit / HOUR
 
         # Calculate costs: compute_units × multiplier × rate
         cost_hold = format_cost(
@@ -874,10 +913,16 @@ def _calculate_executable_costs(
     pricing: ProductPricing,
     item_hash: str,
     extra_volumes: ExtraVolumes = (),
+    settings: Optional[Settings] = None,
+    pricing_model: Optional[Dict[ProductPriceType, ProductPricing]] = None,
+    volume_sizes_bytes: Optional[Dict[str, int]] = None,
 ) -> List[AccountCostsDb]:
     payment_type = get_payment_type(content)
-    settings = _get_settings(session)
-    price_aggregate = _get_price_aggregate(session)
+    settings = settings or _get_settings(session)
+    price_aggregate: Union[AggregateDb, dict, Dict[ProductPriceType, ProductPricing]]
+    price_aggregate = (
+        pricing_model if pricing_model is not None else _get_price_aggregate(session)
+    )
 
     # GPU INSTANCES: Use multi-tier GPU cost calculation
     if isinstance(
@@ -890,11 +935,17 @@ def _calculate_executable_costs(
 
         # Calculate storage costs (same as non-GPU instances)
         # For storage, we need to pick one pricing tier - use premium as baseline
-        storage_pricing = ProductPricing.from_aggregate(
+        storage_pricing = _pricing_from_source(
             ProductPriceType.INSTANCE_GPU_PREMIUM, price_aggregate
         )
         storage_costs = _get_additional_storage_price(
-            session, content, storage_pricing, payment_type, item_hash, extra_volumes
+            session,
+            content,
+            storage_pricing,
+            payment_type,
+            item_hash,
+            extra_volumes,
+            volume_sizes_bytes,
         )
 
         return execution_costs + storage_costs
@@ -959,7 +1010,13 @@ def _calculate_executable_costs(
 
     costs: List[AccountCostsDb] = [execution_cost]
     costs += _get_additional_storage_price(
-        session, content, pricing, payment_type, item_hash, extra_volumes
+        session,
+        content,
+        pricing,
+        payment_type,
+        item_hash,
+        extra_volumes,
+        volume_sizes_bytes,
     )
 
     return costs
@@ -970,10 +1027,14 @@ def _calculate_storage_costs(
     content: CostEstimationStoreContent | StoreContent,
     pricing: ProductPricing,
     item_hash: str,
+    file_size_bytes: Optional[int] = None,
 ) -> List[AccountCostsDb]:
     payment_type = get_payment_type(content)
 
-    storage_mib = calculate_storage_size(session, content)
+    if file_size_bytes is not None:
+        storage_mib: Optional[Decimal] = Decimal(file_size_bytes / MiB)
+    else:
+        storage_mib = calculate_storage_size(session, content)
 
     if not storage_mib:
         return []
@@ -1196,15 +1257,36 @@ def get_detailed_costs(
     pricing: Optional[ProductPricing] = None,
     settings: Optional[Settings] = None,
     extra_volumes: ExtraVolumes = (),
+    *,
+    pricing_model: Optional[Dict[ProductPriceType, ProductPricing]] = None,
+    volume_sizes_bytes: Optional[Dict[str, int]] = None,
+    file_size_bytes: Optional[int] = None,
 ) -> List[AccountCostsDb]:
+    """
+    Costs of a message.
+
+    The keyword-only overrides price it independently of the database:
+    `pricing_model` replaces the current price aggregate (GPU tiers and GPU
+    storage pricing), `volume_sizes_bytes` (ref -> files.size) replaces the
+    reference-volume lookups and `file_size_bytes` the STORE file lookup.
+    """
     settings = settings or _get_settings(session)
     pricing = pricing or _get_product_price(session, content, settings)
 
     if isinstance(content, (StoreContent, CostEstimationStoreContent)):
-        return _calculate_storage_costs(session, content, pricing, item_hash)
+        return _calculate_storage_costs(
+            session, content, pricing, item_hash, file_size_bytes
+        )
     else:
         return _calculate_executable_costs(
-            session, content, pricing, item_hash, extra_volumes
+            session,
+            content,
+            pricing,
+            item_hash,
+            extra_volumes,
+            settings,
+            pricing_model,
+            volume_sizes_bytes,
         )
 
 
