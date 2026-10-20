@@ -1,11 +1,16 @@
 import datetime as dt
+from decimal import Decimal
 from typing import Any, Dict, Iterable, Optional
 
 from aleph_message.models import MessageType, PaymentType
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
-from aleph.db.models.credit_ledger import BillingResourceDb, CreditFoldStateDb
+from aleph.db.models.credit_ledger import (
+    BillingRateDb,
+    BillingResourceDb,
+    CreditFoldStateDb,
+)
 from aleph.db.models.messages import ForgottenMessageDb, MessageDb
 from aleph.types.db_session import DbSession
 
@@ -171,3 +176,24 @@ def iter_live_billing_resources(
     if payment_type is not None:
         stmt = stmt.where(BillingResourceDb.payment_type == payment_type)
     return session.execute(stmt.order_by(BillingResourceDb.item_hash)).scalars().all()
+
+
+def get_billing_rate(
+    session: DbSession, item_hash: str, pricing_version: str
+) -> Optional[Decimal]:
+    return session.execute(
+        select(BillingRateDb.rate_credit).where(
+            BillingRateDb.item_hash == item_hash,
+            BillingRateDb.pricing_version == pricing_version,
+        )
+    ).scalar_one_or_none()
+
+
+def upsert_billing_rate(
+    session: DbSession, item_hash: str, pricing_version: str, rate: Decimal
+) -> None:
+    session.execute(
+        insert(BillingRateDb)
+        .values(item_hash=item_hash, pricing_version=pricing_version, rate_credit=rate)
+        .on_conflict_do_nothing(index_elements=["item_hash", "pricing_version"])
+    )
