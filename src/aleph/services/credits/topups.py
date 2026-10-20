@@ -119,6 +119,13 @@ class TopupConfig:
         )
 
 
+def scaled_price(tick: int) -> int:
+    """floor(1.0001**tick * PRICE_SCALE), entirely under TICK_CONTEXT."""
+    p = TICK_CONTEXT.power(Decimal("1.0001"), tick)
+    scaled = TICK_CONTEXT.multiply(p, Decimal(PRICE_SCALE))
+    return int(scaled.to_integral_value(rounding=ROUND_FLOOR, context=TICK_CONTEXT))
+
+
 def _hex(value: Any) -> str:
     if isinstance(value, str):
         h = value
@@ -199,11 +206,7 @@ class TopupIndexer:
         # Python floors toward -inf, like the Uniswap oracle libraries.
         tick = (int(cumulatives[1]) - int(cumulatives[0])) // TWAP_SECONDS
         # token1 raw per token0 raw, scaled; floored.
-        price_scaled = int(
-            (
-                TICK_CONTEXT.power(Decimal("1.0001"), tick) * PRICE_SCALE
-            ).to_integral_value(rounding=ROUND_FLOOR)
-        )
+        price_scaled = scaled_price(tick)
         if price_scaled <= 0:
             raise ValueError(f"tick {tick} out of the supported price range")
         # Both tokens have 18 decimals, so raw ratios equal token ratios.

@@ -275,11 +275,11 @@ def expected_aleph_credits(raw, tick, answer, aleph_is_token0=True):
     # Hand formula: price = 1.0001**tick floored to 1e-36, then Chainlink, bonus.
     from decimal import ROUND_FLOOR, Context, Decimal
 
+    ctx = Context(prec=80, rounding=ROUND_FLOOR)
     scaled = int(
-        (
-            Context(prec=80, rounding=ROUND_FLOOR).power(Decimal("1.0001"), tick)
-            * 10**36
-        ).to_integral_value(rounding=ROUND_FLOOR)
+        ctx.multiply(
+            ctx.power(Decimal("1.0001"), tick), Decimal(10**36)
+        ).to_integral_value(rounding=ROUND_FLOOR, context=ctx)
     )
     num, den = (scaled, 10**36) if aleph_is_token0 else (10**36, scaled)
     return raw * num * answer * 6 // (den * 10**20 * 5)
@@ -325,3 +325,16 @@ async def test_extreme_tick_is_unquoted_not_fatal(mocker, session_factory):
     await run_index(session_factory, web3)
     (row,) = all_rows(session_factory)
     assert row.status == "unquoted"
+
+
+def test_scaled_price_independent_of_global_decimal_context():
+    import decimal
+
+    from aleph.services.credits.topups import scaled_price
+
+    expected = scaled_price(2000)
+    with decimal.localcontext() as ctx:
+        ctx.prec = 10
+        ctx.rounding = decimal.ROUND_HALF_EVEN
+        assert scaled_price(2000) == expected
+    assert expected > 10**36
