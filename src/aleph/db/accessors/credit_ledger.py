@@ -664,6 +664,7 @@ def _ledger_columns() -> tuple:
         CreditLedgerDb.amount,
         CreditLedgerDb.node_id,
         CreditLedgerDb.seconds,
+        CreditLedgerDb.rate,
         CreditLedgerDb.expiration,
         CreditLedgerDb.excluded_reason,
     )

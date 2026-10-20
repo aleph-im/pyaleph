@@ -511,8 +511,11 @@ def apply_period(
 def _rows_hash(rows: Sequence[Any]) -> str:
     """
     sha256 of the canonical JSON list of (address, kind, business_key, amount,
-    node_id, seconds, excluded_reason), rows ordered by (kind order,
-    business_key).
+    node_id, seconds, rate, expiration, excluded_reason), rows ordered by (kind
+    order, business_key). The rate is `str()` of the stored decimal(40, 18)
+    (fixed scale, so the same on every node) and the expiration its UTC ISO
+    form: two nodes that agree on amounts but not on the rate or the lot
+    expiration must not agree on the hash.
     """
     ordered = sorted(rows, key=lambda r: (KIND_ORDER[r.kind], r.business_key))
     return _canonical_hash(
@@ -524,6 +527,8 @@ def _rows_hash(rows: Sequence[Any]) -> str:
                 int(r.amount),
                 r.node_id,
                 r.seconds,
+                None if r.rate is None else str(r.rate),
+                _iso(r.expiration),
                 r.excluded_reason,
             ]
             for r in ordered
