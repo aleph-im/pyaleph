@@ -97,9 +97,9 @@ async def test_processing_an_instance_writes_billing_resource(
             row.cost_spec["content"]["resources"]["vcpus"]
             == content["resources"]["vcpus"]
         )
-        assert row.cost_spec["file_size_mib"] is None
+        assert row.cost_spec["file_size_bytes"] is None
         parent_ref = content["rootfs"]["parent"]["ref"]
-        assert row.cost_spec["volume_sizes_mib"][parent_ref] == 1
+        assert row.cost_spec["volume_sizes_bytes"][parent_ref] == 1024 * 1024
 
 
 @pytest.mark.asyncio
@@ -309,13 +309,13 @@ def test_store_cost_spec_carries_file_size(session_factory: DbSessionFactory):
 
         spec = build_cost_spec(session, message)
         assert spec["type"] == "STORE"
-        assert spec["file_size_mib"] == 30
-        assert spec["volume_sizes_mib"] == {}
+        assert spec["file_size_bytes"] == 30 * 1024 * 1024
+        assert spec["volume_sizes_bytes"] == {}
 
         upsert_billing_resource(session, message, spec)
         row = get_billing_resource(session, item_hash)
         assert row is not None
-        assert row.cost_spec["file_size_mib"] == 30
+        assert row.cost_spec["file_size_bytes"] == 30 * 1024 * 1024
         assert row.type == MessageType.store
 
 
