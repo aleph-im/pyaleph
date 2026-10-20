@@ -206,6 +206,7 @@ git-only = [
   "docs",
   "justfile",
   "mypy.ini",
+  "scripts",
   "tests",
 ]
 default-ignore = true
