@@ -1,5 +1,6 @@
 import datetime as dt
 import logging
+import threading
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
@@ -460,27 +461,41 @@ def test_mark_dirty_locks_the_fold_state(session_factory: DbSessionFactory):
         session.commit()
 
 
-def test_mark_dirty_past_the_next_period_returns_without_the_lock(
+def test_mark_dirty_waits_for_an_in_flight_fold_whatever_the_period(
     session_factory: DbSessionFactory,
 ):
+    """
+    No lock-free fast path: a fold may close PS + 1h, then PS + 2h, while a
+    message transaction that wrote an input for PS + 2h is still open, so even
+    a period well past the closed mark waits for the fold transaction.
+    """
     with session_factory() as session:
         get_fold_state(session).last_closed_period = PS
         session.commit()
     with session_factory() as holder:
-        # A fold transaction holds the lock: an unmarkable period must not wait.
         get_fold_state(holder, for_update=True)
-        with session_factory() as session:
-            session.execute(text("SET LOCAL lock_timeout = '200ms'"))
-            assert mark_dirty(session, PS + 2 * HOUR) is False
-            assert mark_dirty(session, PS + 5 * HOUR) is False
-            # The period the fold may be closing right now does wait.
-            with pytest.raises(OperationalError):
-                mark_dirty(session, PS + HOUR)
+        for period in (PS, PS + HOUR, PS + 2 * HOUR, PS + 5 * HOUR):
+            with session_factory() as session:
+                session.execute(text("SET LOCAL lock_timeout = '200ms'"))
+                with pytest.raises(OperationalError):
+                    mark_dirty(session, period)
         holder.rollback()
     with session_factory() as session:
         assert mark_dirty(session, PS + 2 * HOUR) is False
         with session_factory() as other:
-            other.execute(select(CreditFoldStateDb).with_for_update(nowait=True)).all()
+            # Other message transactions are not blocked...
+            other.execute(
+                select(CreditFoldStateDb).with_for_update(
+                    read=True, key_share=True, nowait=True
+                )
+            ).all()
+            # ...but a fold transaction waits for this one to end.
+            with pytest.raises(OperationalError):
+                other.execute(
+                    select(CreditFoldStateDb).with_for_update(nowait=True)
+                ).all()
+        session.commit()
+    with session_factory() as session:
         assert get_fold_state(session).dirty_from_period is None
 
 
@@ -491,9 +506,11 @@ def test_mark_dirty_before_any_close_waits_for_the_first_close(
         assert get_fold_state(session).last_closed_period is None
         assert mark_dirty(session, PS) is False
         with session_factory() as other:
-            # Shared: other message transactions are not blocked...
+            # Other message transactions are not blocked...
             other.execute(
-                select(CreditFoldStateDb).with_for_update(read=True, nowait=True)
+                select(CreditFoldStateDb).with_for_update(
+                    read=True, key_share=True, nowait=True
+                )
             ).all()
             # ...but a fold transaction waits for this one to commit.
             with pytest.raises(OperationalError):
@@ -501,6 +518,80 @@ def test_mark_dirty_before_any_close_waits_for_the_first_close(
                     select(CreditFoldStateDb).with_for_update(nowait=True)
                 ).all()
         session.commit()
+
+
+def test_concurrent_marks_of_the_same_period_do_not_deadlock(
+    session_factory: DbSessionFactory,
+):
+    with session_factory() as session:
+        get_fold_state(session).last_closed_period = PS + HOUR
+        session.commit()
+    results: List[Any] = []
+
+    with session_factory() as first, session_factory() as second:
+        # Both hold the shared lock before either marks.
+        assert mark_dirty(first, PS + 5 * HOUR) is False
+        assert mark_dirty(second, PS + 5 * HOUR) is False
+        assert mark_dirty(first, PS + HOUR) is True
+
+        def mark_second():
+            try:
+                results.append(mark_dirty(second, PS))
+                second.commit()
+            except Exception as error:  # pragma: no cover - reported below
+                results.append(error)
+
+        thread = threading.Thread(target=mark_second)
+        thread.start()
+        # The second mark waits for the first transaction's row update...
+        thread.join(0.5)
+        assert thread.is_alive()
+        first.commit()
+        # ...and goes through as soon as it commits.
+        thread.join(10)
+        assert not thread.is_alive()
+    assert results == [True]
+    with session_factory() as session:
+        assert get_fold_state(session).dirty_from_period == PS
+
+
+def test_fold_waits_for_a_message_transaction_and_sees_its_mark(
+    session_factory: DbSessionFactory,
+):
+    with session_factory() as session:
+        get_fold_state(session).last_closed_period = PS + HOUR
+        session.commit()
+    with session_factory() as writer:
+        assert mark_dirty(writer, PS + HOUR) is True
+        with session_factory() as fold:
+            fold.execute(text("SET LOCAL lock_timeout = '200ms'"))
+            with pytest.raises(OperationalError):
+                get_fold_state(fold, for_update=True)
+        writer.commit()
+    with session_factory() as fold:
+        fold.execute(text("SET LOCAL lock_timeout = '200ms'"))
+        state = get_fold_state(fold, for_update=True)
+        assert state.dirty_from_period == PS + HOUR
+        fold.commit()
+
+
+def test_mark_dirty_keeps_a_loaded_fold_state_in_sync(
+    session_factory: DbSessionFactory,
+):
+    with session_factory() as session:
+        get_fold_state(session).last_closed_period = PS + HOUR
+        session.commit()
+    with session_factory() as session:
+        state = get_fold_state(session, for_update=True)
+        state.chain_cursor_block = 42
+        assert mark_dirty(session, PS + HOUR)
+        assert mark_dirty(session, PS)
+        assert mark_dirty(session, PS + HOUR)
+        assert state.dirty_from_period == PS
+        session.commit()
+    with session_factory() as session:
+        state = get_fold_state(session)
+        assert (state.dirty_from_period, state.chain_cursor_block) == (PS, 42)
 
 
 @pytest.mark.asyncio

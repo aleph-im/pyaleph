@@ -5,6 +5,7 @@ from typing import Any, Dict, Iterable, List, Optional
 from aleph_message.models import MessageType, PaymentType
 from sqlalchemy import Row, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm.attributes import set_committed_value
 
 from aleph.db.models.credit_ledger import (
     BillingRateDb,
@@ -17,7 +18,7 @@ from aleph.db.models.credit_ledger import (
     CreditTopupDb,
 )
 from aleph.db.models.messages import ForgottenMessageDb, MessageDb
-from aleph.services.credits.periods import PERIOD, floor_hour
+from aleph.services.credits.periods import floor_hour
 from aleph.types.db_session import DbSession
 
 # Credit transfers are fold inputs keyed on their confirmation time.
@@ -27,21 +28,14 @@ CREDIT_TRANSFER_POST_TYPE = "aleph_credit_transfer"
 def get_fold_state(session: DbSession, for_update: bool = False) -> CreditFoldStateDb:
     """
     The singleton fold state row. `for_update` locks it until the transaction
-    ends (and reloads it): fold transactions and dirty marks take this lock, so
-    an input committed concurrently with a period close is either seen by the
+    ends (and reloads it): fold transactions take this lock before reading
+    their inputs, and wait for the KEY SHARE lock that `mark_dirty` holds in
+    every transaction writing an input, so such an input is either seen by the
     fold or sees the new `last_closed_period` and marks the period dirty.
     """
     stmt = select(CreditFoldStateDb).where(CreditFoldStateDb.id == 1)
     if for_update:
         stmt = stmt.with_for_update().execution_options(populate_existing=True)
-    return session.execute(stmt).scalar_one()
-
-
-def _last_closed_period(session: DbSession, share_lock: bool = False):
-    # A column query: always read from the database, never the identity map.
-    stmt = select(CreditFoldStateDb.last_closed_period).where(CreditFoldStateDb.id == 1)
-    if share_lock:
-        stmt = stmt.with_for_update(read=True)
     return session.execute(stmt).scalar_one()
 
 
@@ -52,29 +46,50 @@ def mark_dirty(session: DbSession, period_start: dt.datetime) -> bool:
     Returns True if the period was closed and has been marked, False if there is
     nothing to re-fold yet.
 
-    Called on every confirmed paid message, so the exclusive fold-state lock is
-    only taken when a mark is possible. A fold transaction closes exactly one
-    period (`last_closed_period + 1h`) and a refold only moves the mark back,
-    so a period more than one hour past the committed mark cannot be the one
-    being folded right now: no lock is needed to return False. With no period
-    closed yet, the first close may be in flight; a shared lock waits for it
-    without serialising the message transactions among themselves.
+    Every call takes a FOR KEY SHARE lock on the fold state row, held until the
+    calling transaction ends. A fold transaction locks the row FOR UPDATE before
+    it reads any input, so it waits for every in-flight transaction that wrote
+    an input and called this function: once the fold runs, those inputs are
+    committed and visible to it. Conversely, a transaction calling this after
+    the fold committed reads the new `last_closed_period` and marks the period.
+    A period that is not closed yet (`last_closed_period` is None, which a
+    refold can bring back, or before `period_start`) is left alone, but the
+    lock is still held: that period may be the one the fold closes next.
+
+    KEY SHARE locks do not conflict with each other, nor with the FOR NO KEY
+    UPDATE lock taken by the conditional UPDATE below, so message transactions
+    never wait for one another to read the state; two of them marking at the
+    same time serialise on the UPDATE only.
     """
-    last_closed = _last_closed_period(session)
-    if last_closed is not None and period_start > last_closed + PERIOD:
+    last_closed = session.execute(
+        select(CreditFoldStateDb.last_closed_period)
+        .where(CreditFoldStateDb.id == 1)
+        .with_for_update(read=True, key_share=True)
+    ).scalar_one()
+    if last_closed is None or period_start > last_closed:
         return False
-    if last_closed is None:
-        last_closed = _last_closed_period(session, share_lock=True)
-        if last_closed is None or period_start > last_closed:
-            return False
-    state = get_fold_state(session, for_update=True)
-    if state.last_closed_period is None or period_start > state.last_closed_period:
+    marked = session.execute(
+        update(CreditFoldStateDb)
+        .where(
+            CreditFoldStateDb.id == 1,
+            CreditFoldStateDb.last_closed_period >= period_start,
+        )
+        .values(
+            dirty_from_period=func.least(
+                func.coalesce(CreditFoldStateDb.dirty_from_period, period_start),
+                period_start,
+            )
+        )
+        .returning(CreditFoldStateDb.dirty_from_period)
+        .execution_options(synchronize_session=False)
+    ).first()
+    if marked is None:
         return False
-    state.dirty_from_period = (
-        period_start
-        if state.dirty_from_period is None
-        else min(state.dirty_from_period, period_start)
-    )
+    # Keep a loaded fold state object (e.g. held by the caller) in sync with
+    # the row, without discarding its other pending changes.
+    state = session.identity_map.get(session.identity_key(CreditFoldStateDb, 1))
+    if state is not None:
+        set_committed_value(state, "dirty_from_period", marked[0])
     return True
 
 

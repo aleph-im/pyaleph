@@ -271,10 +271,11 @@ async def close_ready_periods(
     closed one, in order, one transaction per period. Returns the number of
     periods closed (refolded periods included).
 
-    Every transaction starts by locking the fold state row, before it reads any
-    input: a concurrent dirty mark (which takes the same lock) then either
-    committed its input before the fold read it, or waits and sees the new
-    `last_closed_period`. A dirty mark found under the lock is refolded first.
+    Every transaction starts by locking the fold state row FOR UPDATE, before
+    it reads any input: it waits for every open transaction holding the KEY
+    SHARE lock `mark_dirty` takes, so their inputs are committed before the
+    fold reads, and a later `mark_dirty` sees the new `last_closed_period`. A
+    dirty mark found under the lock is refolded first.
     """
     first = cfg.first_period
     if first is None:
