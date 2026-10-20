@@ -1,6 +1,6 @@
 import datetime as dt
 from decimal import Decimal
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from aleph_message.models import MessageType, PaymentType
 from sqlalchemy import func, or_, select, update
@@ -10,6 +10,7 @@ from aleph.db.models.credit_ledger import (
     BillingRateDb,
     BillingResourceDb,
     CreditFoldStateDb,
+    CreditTopupDb,
 )
 from aleph.db.models.messages import ForgottenMessageDb, MessageDb
 from aleph.types.db_session import DbSession
@@ -196,4 +197,62 @@ def upsert_billing_rate(
         insert(BillingRateDb)
         .values(item_hash=item_hash, pricing_version=pricing_version, rate_credit=rate)
         .on_conflict_do_nothing(index_elements=["item_hash", "pricing_version"])
+    )
+
+
+def upsert_topup(session: DbSession, row: CreditTopupDb) -> bool:
+    """Insert a top-up; an existing (chain_id, tx_hash, log_index) is left alone."""
+    result = session.execute(
+        insert(CreditTopupDb)
+        .values(
+            chain_id=row.chain_id,
+            tx_hash=row.tx_hash,
+            log_index=row.log_index,
+            block_number=row.block_number,
+            block_time=row.block_time,
+            from_address=row.from_address,
+            token=row.token,
+            raw_amount=row.raw_amount,
+            quote_num=row.quote_num,
+            quote_den=row.quote_den,
+            credits=row.credits,
+            status=row.status,
+            ledger_period=row.ledger_period,
+        )
+        .on_conflict_do_nothing(index_elements=["chain_id", "tx_hash", "log_index"])
+    )
+    return bool(result.rowcount)  # type: ignore[attr-defined]
+
+
+def topups_for_period(
+    session: DbSession, period_start: dt.datetime, period_end: dt.datetime
+) -> List[CreditTopupDb]:
+    return list(
+        session.execute(
+            select(CreditTopupDb)
+            .where(
+                CreditTopupDb.status == "credited",
+                CreditTopupDb.block_time >= period_start,
+                CreditTopupDb.block_time < period_end,
+            )
+            .order_by(
+                CreditTopupDb.block_time,
+                CreditTopupDb.tx_hash,
+                CreditTopupDb.log_index,
+            )
+        ).scalars()
+    )
+
+
+def unquoted_topups(session: DbSession) -> List[CreditTopupDb]:
+    return list(
+        session.execute(
+            select(CreditTopupDb)
+            .where(CreditTopupDb.status == "unquoted")
+            .order_by(
+                CreditTopupDb.block_number,
+                CreditTopupDb.tx_hash,
+                CreditTopupDb.log_index,
+            )
+        ).scalars()
     )
