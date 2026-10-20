@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Any, Dict, Iterable, List, Optional
 
 from aleph_message.models import MessageType, PaymentType
-from sqlalchemy import Row, delete, func, or_, select, update
+from sqlalchemy import Row, delete, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from aleph.db.models.credit_ledger import (
@@ -24,10 +24,17 @@ from aleph.types.db_session import DbSession
 CREDIT_TRANSFER_POST_TYPE = "aleph_credit_transfer"
 
 
-def get_fold_state(session: DbSession) -> CreditFoldStateDb:
-    return session.execute(
-        select(CreditFoldStateDb).where(CreditFoldStateDb.id == 1)
-    ).scalar_one()
+def get_fold_state(session: DbSession, for_update: bool = False) -> CreditFoldStateDb:
+    """
+    The singleton fold state row. `for_update` locks it until the transaction
+    ends (and reloads it): fold transactions and dirty marks take this lock, so
+    an input committed concurrently with a period close is either seen by the
+    fold or sees the new `last_closed_period` and marks the period dirty.
+    """
+    stmt = select(CreditFoldStateDb).where(CreditFoldStateDb.id == 1)
+    if for_update:
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
+    return session.execute(stmt).scalar_one()
 
 
 def mark_dirty(session: DbSession, period_start: dt.datetime) -> bool:
@@ -37,7 +44,7 @@ def mark_dirty(session: DbSession, period_start: dt.datetime) -> bool:
     Returns True if the period was closed and has been marked, False if there is
     nothing to re-fold yet.
     """
-    state = get_fold_state(session)
+    state = get_fold_state(session, for_update=True)
     if state.last_closed_period is None or period_start > state.last_closed_period:
         return False
     state.dirty_from_period = (
@@ -86,15 +93,14 @@ def upsert_billing_resource(
     )
     stmt = stmt.on_conflict_do_update(
         index_elements=[BillingResourceDb.item_hash],
-        set_={
-            "first_confirmed_at": func.coalesce(
-                BillingResourceDb.first_confirmed_at,
-                stmt.excluded.first_confirmed_at,
-            )
-        },
-    )
-    session.execute(stmt)
-    if confirmed_at is not None:
+        set_={"first_confirmed_at": stmt.excluded.first_confirmed_at},
+        where=(
+            BillingResourceDb.first_confirmed_at.is_(None)
+            & stmt.excluded.first_confirmed_at.is_not(None)
+        ),
+    ).returning(BillingResourceDb.item_hash)
+    written = session.execute(stmt).first()
+    if written is not None and confirmed_at is not None:
         # Processed after its confirmation: the hour it starts billing in may
         # already be closed.
         mark_dirty(session, floor_hour(confirmed_at))

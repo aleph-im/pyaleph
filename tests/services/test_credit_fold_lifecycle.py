@@ -1,4 +1,5 @@
 import datetime as dt
+import logging
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
@@ -20,9 +21,11 @@ from services.test_credit_inputs import (  # noqa: F401 (pricing is a fixture)
     store_spec,
 )
 from sqlalchemy import select, update
+from sqlalchemy.exc import OperationalError
 
 from aleph.db.accessors.credit_ledger import (
     get_fold_state,
+    mark_dirty,
     record_attestation,
     set_billing_end_of_life,
 )
@@ -31,6 +34,7 @@ from aleph.db.models.credit_ledger import (
     BillingResourceDb,
     CreditAttestationDb,
     CreditCheckpointDb,
+    CreditFoldStateDb,
     CreditLedgerDb,
     CreditLotDb,
     CreditPeriodQuoteDb,
@@ -344,14 +348,10 @@ async def test_late_genesis_marks_dirty_and_survives_the_refold(
         )
         session.add_all(attestation([]))
         session.commit()
-    with session_factory() as session:
-        # Genesis loaded first, as repair_node does at startup.
-        await load_genesis(session, FakeStorage(GENESIS_ENTRIES[:1]), "0" * 64, PS)
-        session.commit()
+    # The fold waits for the configured genesis.
     assert await close_ready_periods(session_factory, PE, mock_config, cfg) == 0
-    # The fold waits for the configured genesis: "0"*64 is not GENESIS_HASH.
-
     with session_factory() as session:
+        # Loaded as repair_node does at startup.
         await load_genesis(session, FakeStorage(GENESIS_ENTRIES), GENESIS_HASH, PS)
         session.commit()
     assert await close_ready_periods(session_factory, PE, mock_config, cfg) == 1
@@ -367,10 +367,85 @@ async def test_late_genesis_marks_dirty_and_survives_the_refold(
 
     with session_factory() as session:
         kinds = [r.kind for r in ledger(session, PS)]
-        assert kinds[:3] == ["genesis", "genesis", "genesis"]
-        assert kinds[3:] == ["storage"]
+        assert kinds == ["genesis", "genesis", "storage"]
         [storage] = [r for r in ledger(session) if r.kind == "storage"]
         assert storage.seconds == 1800
+
+
+@pytest.mark.asyncio
+async def test_a_different_genesis_hash_is_refused(
+    session_factory: DbSessionFactory, caplog
+):
+    with session_factory() as session:
+        await load_genesis(session, FakeStorage(GENESIS_ENTRIES), GENESIS_HASH, PS)
+        session.commit()
+    with session_factory() as session:
+        before = [(r.kind, r.business_key, r.amount) for r in ledger(session)]
+
+    other = "d" * 64
+    caplog.set_level(logging.ERROR, logger="aleph.services.credits.lifecycle")
+    with session_factory() as session:
+        assert await load_genesis(session, FakeStorage(GENESIS_ENTRIES), other, PS) == 0
+        session.commit()
+
+    with session_factory() as session:
+        assert [(r.kind, r.business_key, r.amount) for r in ledger(session)] == before
+        assert len(lots(session)) == 2
+        assert get_fold_state(session).genesis_loaded_hash == GENESIS_HASH
+    [record] = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert GENESIS_HASH in record.getMessage() and other in record.getMessage()
+
+
+@pytest.mark.asyncio
+async def test_fold_transaction_locks_the_fold_state_before_reading_inputs(
+    session_factory: DbSessionFactory,
+    mock_config: Config,
+    pricing,  # noqa: F811
+    monkeypatch,
+):
+    """
+    While a period is being folded, a concurrent dirty mark must wait: probe
+    from another session with NOWAIT while collect_inputs runs.
+    """
+    from aleph.services.credits import lifecycle
+
+    cfg = fold_config()
+    set_cursor(session_factory, PE)
+    with session_factory() as session:
+        session.add_all(attestation([]))
+        session.commit()
+
+    probes: List[bool] = []
+    real_collect = lifecycle.collect_inputs  # type: ignore[attr-defined]
+
+    def collect(session, period, settings, **kwargs):
+        with session_factory() as other:
+            try:
+                other.execute(
+                    select(CreditFoldStateDb).with_for_update(nowait=True)
+                ).all()
+                probes.append(False)
+            except OperationalError:
+                probes.append(True)
+        return real_collect(session, period, settings, **kwargs)
+
+    monkeypatch.setattr(lifecycle, "collect_inputs", collect)
+    assert await close_ready_periods(session_factory, PE, mock_config, cfg) == 1
+    assert probes == [True]
+
+
+def test_mark_dirty_locks_the_fold_state(session_factory: DbSessionFactory):
+    with session_factory() as session:
+        get_fold_state(session).last_closed_period = PS
+        session.commit()
+    with session_factory() as session:
+        assert mark_dirty(session, PS)
+        with session_factory() as other:
+            with pytest.raises(OperationalError):
+                other.execute(
+                    select(CreditFoldStateDb).with_for_update(nowait=True)
+                ).all()
+        session.commit()
 
 
 @pytest.mark.asyncio

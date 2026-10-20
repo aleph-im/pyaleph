@@ -253,22 +253,10 @@ async def store_period_quote(
 # --- closing periods ----------------------------------------------------------
 
 
-def _refold_dirty(session_factory: DbSessionFactory, cfg: FoldConfig) -> None:
-    with session_factory() as session:
-        state = get_fold_state(session)
-        dirty = state.dirty_from_period
-        if dirty is None:
-            return
-        first = cfg.first_period
-        # Nothing before the configured start is ever folded by this loop.
-        target = dirty if first is None else max(dirty, first)
-        LOGGER.info(
-            "Refolding credit ledger from %s (dirty from %s)",
-            target.isoformat(),
-            dirty.isoformat(),
-        )
-        refold_keeping_genesis(session, target)
-        session.commit()
+def _refold_target(dirty: dt.datetime, cfg: FoldConfig) -> dt.datetime:
+    # Nothing before the configured start is ever folded by the close loop.
+    first = cfg.first_period
+    return dirty if first is None else max(dirty, first)
 
 
 async def close_ready_periods(
@@ -281,19 +269,33 @@ async def close_ready_periods(
     """
     Refold the dirty periods, then close every closable period after the last
     closed one, in order, one transaction per period. Returns the number of
-    periods folded (refolded periods included).
+    periods closed (refolded periods included).
+
+    Every transaction starts by locking the fold state row, before it reads any
+    input: a concurrent dirty mark (which takes the same lock) then either
+    committed its input before the fold read it, or waits and sees the new
+    `last_closed_period`. A dirty mark found under the lock is refolded first.
     """
     first = cfg.first_period
     if first is None:
         LOGGER.info("Credit fold has no configured start period: nothing to fold")
         return 0
 
-    _refold_dirty(session_factory, cfg)
-
     closed = 0
     while True:
         with session_factory() as session:
-            state = get_fold_state(session)
+            state = get_fold_state(session, for_update=True)
+            if state.dirty_from_period is not None:
+                dirty = state.dirty_from_period
+                target = _refold_target(dirty, cfg)
+                LOGGER.info(
+                    "Refolding credit ledger from %s (dirty from %s)",
+                    target.isoformat(),
+                    dirty.isoformat(),
+                )
+                refold_keeping_genesis(session, target)
+                session.commit()
+                continue
             period = (
                 first
                 if state.last_closed_period is None
@@ -305,7 +307,9 @@ async def close_ready_periods(
                 and _genesis_pending(session, cfg)
             ):
                 LOGGER.warning(
-                    "Credit fold waits for genesis %s to be loaded", cfg.genesis_hash
+                    "Credit fold waits for genesis %s to be loaded (loaded: %s)",
+                    cfg.genesis_hash,
+                    state.genesis_loaded_hash,
                 )
                 break
             closable, blocker = period_is_closable(session, period, now, cfg)
@@ -326,8 +330,6 @@ async def close_ready_periods(
             except AttestationPending:
                 LOGGER.info("Credit period %s waits for its attestation", period)
                 break
-            if indexer is not None:
-                await store_period_quote(session, period, indexer)
             result = apply_period(session, period, inputs)
             if _is_checkpoint_period(period, cfg):
                 write_checkpoint(session, period)
@@ -340,6 +342,12 @@ async def close_ready_periods(
             result.period_hash,
         )
         closed += 1
+        if indexer is not None:
+            # Informational, and awaits RPC calls: its own short transaction,
+            # after the period commit, so no lock is held across the network.
+            with session_factory() as session:
+                if await store_period_quote(session, period, indexer) is not None:
+                    session.commit()
     return closed
 
 
@@ -384,7 +392,20 @@ async def load_genesis(
     (unix seconds or null), ref}) as genesis rows of `genesis_period`, keyed
     `{genesis_hash}:{index}`. Idempotent. Returns the number of rows written.
     Marks the genesis period dirty when it is already closed.
+
+    Refuses (logs an ERROR, writes nothing, returns 0) when a different genesis
+    is already loaded: its rows would be credited on top of the old ones.
+    Replacing a genesis means clearing the ledger explicitly.
     """
+    loaded = get_fold_state(session, for_update=True).genesis_loaded_hash
+    if loaded is not None and loaded != genesis_hash:
+        LOGGER.error(
+            "Credit genesis %s is configured but genesis %s is already loaded: "
+            "refusing to load it (clear the ledger to replace a genesis)",
+            genesis_hash,
+            loaded,
+        )
+        return 0
     try:
         engine = ItemHash(genesis_hash).item_type
     except ValueError:
@@ -430,7 +451,8 @@ def verify_latest_checkpoint(
         cfg = FoldConfig.from_config(settings)
 
     with session_factory() as session:
-        state = get_fold_state(session)
+        # Locked for the whole (rolled back) re-fold, like any fold transaction.
+        state = get_fold_state(session, for_update=True)
         last_closed = state.last_closed_period
         if last_closed is None:
             return True
