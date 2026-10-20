@@ -99,7 +99,106 @@ def test_export_genesis_excludes_denylist_and_late_posts(
     assert [(e["reason"], e["address"], e["amount"]) for e in excluded] == [
         ("denylist", POOL.lower(), 10**9),
         ("late_post", ALICE_LOWER, 777),
+        # A debit after the period is listed too, never dropped silently.
+        ("late_post", BOB, -500),
     ]
+
+
+def test_export_genesis_floors_expirations_to_seconds(
+    session_factory: DbSessionFactory,
+):
+    t0 = PERIOD - DAY
+    with session_factory() as session:
+        session.add_all(
+            [
+                message(EARLY, t0),
+                # Expires within the second after the period: exported with
+                # an expiration of exactly the period, it would be expired at
+                # load, so it is not exported.
+                row(
+                    ALICE,
+                    10,
+                    EARLY,
+                    0,
+                    t0,
+                    expiration=PERIOD + dt.timedelta(milliseconds=500),
+                ),
+                row(
+                    ALICE, 20, EARLY, 1, t0, expiration=PERIOD + dt.timedelta(seconds=1)
+                ),
+            ]
+        )
+        session.commit()
+        kept, excluded = export_genesis(session, PERIOD, [])
+
+    assert kept == [
+        {
+            "address": ALICE_LOWER,
+            "amount": 20,
+            "expiration": int(PERIOD.timestamp()) + 1,
+            "ref": EARLY,
+        }
+    ]
+    assert excluded == []
+
+
+def _load_script():
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).parent.parent / "scripts" / "credits_export_genesis.py"
+    spec = importlib.util.spec_from_file_location("credits_export_genesis", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_export_script_adds_cli_denylist_to_the_config_one(mocker, tmp_path, capsys):
+    import aleph.config
+
+    script = _load_script()
+    mocker.patch.object(script, "make_engine")
+    mocker.patch.object(script, "make_session_factory")
+    export = mocker.patch.object(script, "export_genesis", return_value=([], []))
+    period = int(PERIOD.timestamp())
+
+    out = tmp_path / "genesis.json"
+    assert (
+        script.main(["--period", str(period), "--denylist", BOB, "--out", str(out)])
+        == 0
+    )
+
+    configured = list(aleph.config.app_config.aleph.credits.chain.denylist.value)
+    assert configured  # the default config ships a denylist
+    assert export.call_args.args[2] == configured + [BOB]
+    printed = capsys.readouterr().out
+    digest = genesis_hash(out.read_bytes())
+    assert f"  credits.genesis.hash: {digest}" in printed
+    assert f"  credits.genesis.period: {period}" in printed
+    assert f"  credits.attestation.start_period: {period}" in printed
+
+
+def test_export_script_exits_1_on_a_database_error(mocker, tmp_path, capsys):
+    from sqlalchemy.exc import OperationalError
+
+    script = _load_script()
+    mocker.patch.object(script, "make_engine")
+    mocker.patch.object(script, "make_session_factory")
+    mocker.patch.object(
+        script,
+        "export_genesis",
+        side_effect=OperationalError("SELECT 1", {}, Exception("connection refused")),
+    )
+
+    out = tmp_path / "genesis.json"
+    code = script.main(["--period", str(int(PERIOD.timestamp())), "--out", str(out)])
+
+    assert code == 1
+    err = capsys.readouterr().err
+    assert err.startswith("Database error: ")
+    assert len(err.strip().splitlines()) == 1
+    assert not out.exists()
 
 
 @pytest.mark.asyncio

@@ -12,6 +12,7 @@ period, so they equal what the legacy balance reports at that instant.
 import datetime as dt
 import hashlib
 import json
+import math
 from typing import Any, Dict, Iterable, List, Tuple
 
 from sqlalchemy import select
@@ -26,7 +27,8 @@ REASON_LATE_POST = "late_post"
 
 
 def _seconds(value: dt.datetime) -> int:
-    return int(value.timestamp())
+    """Unix seconds, floored."""
+    return math.floor(value.timestamp())
 
 
 def export_genesis(
@@ -41,10 +43,11 @@ def export_genesis(
     by `(ref, index)`), sorted by `(address, ref, index)`.
 
     `excluded` lists what the snapshot drops, with a `reason`: remaining lots
-    of denylisted addresses, and grants observed at or after `period` (posts
-    after the legacy service stopped).
+    of denylisted addresses, and history rows (grants and debits) observed at
+    or after `period` (posts after the legacy service stopped).
     """
     denied = {normalize_address(a.strip()) for a in denylist if a.strip()}
+    period_seconds = _seconds(period)
     addresses = session.execute(
         select(AlephCreditHistoryDb.address).distinct()
     ).scalars()
@@ -58,7 +61,9 @@ def export_genesis(
         records = credit_history_records(session, raw_address)
         before = [(r, ts) for r, ts in records if ts < period]
         for record, ts in records:
-            if ts >= period and record.amount > 0:
+            # Grants and debits alike: a late expense or transfer is listed
+            # too, not dropped silently.
+            if ts >= period and record.amount != 0:
                 excluded.append(
                     {
                         "address": address,
@@ -77,9 +82,12 @@ def export_genesis(
             expiration = lot["expiration_date"]
             if lot["amount_remaining"] <= 0:
                 continue
-            if expiration is not None and expiration <= period:
-                continue
+            # Compared at the precision the file carries (whole seconds): a lot
+            # expiring within the second after H0 would otherwise be exported
+            # with an expiration of exactly H0, already expired at load.
             exp_seconds = None if expiration is None else _seconds(expiration)
+            if exp_seconds is not None and exp_seconds <= period_seconds:
+                continue
             ref = (lot["credit_ref"], lot["credit_index"])
             if address in denied:
                 excluded.append(
