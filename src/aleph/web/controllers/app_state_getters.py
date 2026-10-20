@@ -30,6 +30,8 @@ APP_STATE_MESSAGE_BROADCASTER = "message_broadcaster"
 APP_STATE_STATUS_BROADCASTER = "status_broadcaster"
 # TopupIndexer used by /api/v0/credits/quote; None when it cannot be built.
 APP_STATE_CREDIT_QUOTER = "credit_quoter"
+# CreditApiCache of the credit endpoints (quotes, period hashes).
+APP_STATE_CREDIT_API_CACHE = "credit_api_cache"
 
 T = TypeVar("T")
 
@@ -102,3 +104,8 @@ def get_signature_verifier_from_request(request: web.Request) -> SignatureVerifi
 def get_credit_quoter_from_request(request: web.Request) -> Optional[Any]:
     """The TopupIndexer `/credits/quote` uses, None if the node has none."""
     return request.app.get(APP_STATE_CREDIT_QUOTER)
+
+
+def get_credit_api_cache_from_request(request: web.Request) -> Optional[Any]:
+    """The CreditApiCache of the credit endpoints, None if the app has none."""
+    return request.app.get(APP_STATE_CREDIT_API_CACHE)

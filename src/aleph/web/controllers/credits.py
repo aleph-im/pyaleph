@@ -4,14 +4,18 @@ tables whatever `aleph.credits.serve_v2` says, so they also serve the shadow
 run. No authentication: everything they return is derived from public inputs.
 """
 
+import asyncio
 import datetime as dt
 import logging
-from collections import defaultdict
+import time
+from collections import OrderedDict, defaultdict
+from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Dict, Optional
+from typing import Dict, Hashable, Optional, Tuple
 
 from aiohttp import web
 from pydantic import ValidationError
+from sqlalchemy import func, select
 
 from aleph.db.accessors.credit_ledger import (
     attestation_sender,
@@ -26,6 +30,7 @@ from aleph.db.accessors.credit_ledger import (
     revenue_sums,
     selected_attestation,
 )
+from aleph.db.models.credit_ledger import CreditLedgerDb
 from aleph.schemas.api.credits import (
     MAX_REVENUE_PERIODS,
     CreditAttestationRef,
@@ -53,11 +58,62 @@ from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.web.controllers.app_state_getters import (
     get_config_from_request,
+    get_credit_api_cache_from_request,
     get_credit_quoter_from_request,
     get_session_factory_from_request,
 )
 
 LOGGER = logging.getLogger(__name__)
+
+# How long a `/credits/quote` ratio is reused for a token.
+QUOTE_TTL_SECONDS = 60.0
+# Bound of the period hash cache (entries).
+PERIOD_HASH_CACHE_SIZE = 1024
+
+
+def _monotonic() -> float:
+    return time.monotonic()
+
+
+@dataclass
+class CreditApiCache:
+    """
+    Per-app caches of the unauthenticated credit endpoints:
+
+    * `quotes`: token -> (fetched at, block_number, num, den) of the last
+      `/credits/quote` RPC answer, reused for `QUOTE_TTL_SECONDS`. The ratio
+      does not depend on the amount. One lock per token coalesces concurrent
+      misses into one RPC round.
+    * `period_hashes`: `/credits/periods/{period}` hashes (LRU, bounded).
+    """
+
+    quotes: Dict[str, Tuple[float, int, int, int]] = field(default_factory=dict)
+    quote_locks: Dict[str, asyncio.Lock] = field(default_factory=dict)
+    period_hashes: "OrderedDict[Hashable, str]" = field(default_factory=OrderedDict)
+
+    def quote_lock(self, token: str) -> asyncio.Lock:
+        lock = self.quote_locks.get(token)
+        if lock is None:
+            lock = self.quote_locks[token] = asyncio.Lock()
+        return lock
+
+    def get_period_hash(self, key: Hashable) -> Optional[str]:
+        value = self.period_hashes.get(key)
+        if value is not None:
+            self.period_hashes.move_to_end(key)
+        return value
+
+    def put_period_hash(self, key: Hashable, value: str) -> None:
+        self.period_hashes[key] = value
+        self.period_hashes.move_to_end(key)
+        while len(self.period_hashes) > PERIOD_HASH_CACHE_SIZE:
+            self.period_hashes.popitem(last=False)
+
+
+def _api_cache(request: web.Request) -> CreditApiCache:
+    cache = get_credit_api_cache_from_request(request)
+    # An app built without one (never in production) just caches nothing.
+    return cache if cache is not None else CreditApiCache()
 
 
 def _unix(value: dt.datetime) -> int:
@@ -167,7 +223,9 @@ async def get_credit_period(request: web.Request) -> web.Response:
         attestation = None
         current_hash = None
         if status != "open":
-            current_hash = period_hash(session, period)
+            current_hash = _cached_period_hash(
+                _api_cache(request), session, period, last_closed, dirty_from
+            )
             item_hash = selected_attestation(session, period)
             if item_hash is not None:
                 attestation = CreditAttestationRef(
@@ -187,6 +245,33 @@ async def get_credit_period(request: web.Request) -> web.Response:
             },
         )
     return _json(response)
+
+
+def _cached_period_hash(
+    cache: CreditApiCache,
+    session: DbSession,
+    period: dt.datetime,
+    last_closed: Optional[dt.datetime],
+    dirty_from: Optional[dt.datetime],
+) -> str:
+    """
+    `period_hash`, cached. Besides (period, last_closed_period,
+    dirty_from_period), the key holds the count and the highest id of the
+    period's ledger rows: rows are never updated, and a refold or a genesis
+    load deletes and re-inserts them under new ids, so a refold that ends on
+    the same fold state cannot serve the hash of the rows it replaced.
+    """
+    count, max_id = session.execute(
+        select(func.count(), func.max(CreditLedgerDb.id)).where(
+            CreditLedgerDb.period == period
+        )
+    ).one()
+    key = (period, last_closed, dirty_from, count, max_id)
+    cached = cache.get_period_hash(key)
+    if cached is None:
+        cached = period_hash(session, period)
+        cache.put_period_hash(key, cached)
+    return cached
 
 
 # --- /credits/revenue ---------------------------------------------------------
@@ -211,7 +296,9 @@ async def get_credit_revenue(request: web.Request) -> web.Response:
     ran. `storage` is the network total of the `storage` rows,
     `execution_total` the sum of every node's `execution`. Exclusion rows
     never count. `credit_price_aleph` is the ALEPH per credit quote stored
-    when the period was closed (decimal string), null if unquoted.
+    when the period was closed (decimal string). The range also stops at the
+    first closed period without a stored quote (its quote failed, the fold
+    job re-quotes it), so the price is never null inside the range.
 
     ---
     summary: Get credit revenue per period
@@ -273,8 +360,15 @@ async def get_credit_revenue(request: web.Request) -> web.Response:
         end = min(end, state.last_closed_period + PERIOD)
         if state.dirty_from_period is not None:
             end = min(end, state.dirty_from_period)
-        sums = revenue_sums(session, start, end) if start < end else []
         quotes = period_quotes(session, start, end) if start < end else {}
+        # A closed period without a quote (its quote failed; the fold job
+        # re-quotes it) ends the range: the caller sees an incomplete tail and
+        # retries, never a null price inside the range.
+        period = start
+        while period < end and period in quotes:
+            period += PERIOD
+        end = period
+        sums = revenue_sums(session, start, end) if start < end else []
 
     nodes: Dict[dt.datetime, Dict[str, Dict[str, int]]] = defaultdict(dict)
     storage: Dict[dt.datetime, int] = defaultdict(int)
@@ -297,11 +391,11 @@ async def get_credit_revenue(request: web.Request) -> web.Response:
     period = start
     while period < end:
         by_node = nodes.get(period, {})
-        quote: Optional[Decimal] = quotes.get(period)
+        quote: Decimal = quotes[period]
         periods.append(
             CreditRevenuePeriod(
                 period=_unix(period),
-                credit_price_aleph=None if quote is None else format(quote, "f"),
+                credit_price_aleph=format(quote, "f"),
                 nodes={
                     node_id: CreditRevenueNode(**values)
                     for node_id, values in sorted(by_node.items())
@@ -466,13 +560,8 @@ async def get_credit_quote(request: web.Request) -> web.Response:
     if quoter is None:
         raise web.HTTPServiceUnavailable(text="credit quotes are not available")
     try:
-        block = await quoter.web3.eth.get_block("finalized")
-        block_number = int(block["number"])
-        num, den = await quoter.quote(
-            _token_address(quoter, params.token),
-            params.amount,
-            block_number,
-            apply_bonus=True,
+        block_number, num, den = await _cached_quote(
+            _api_cache(request), quoter, params.token
         )
     except QuoteNotConfigured as error:
         raise web.HTTPServiceUnavailable(text=str(error))
@@ -488,6 +577,32 @@ async def get_credit_quote(request: web.Request) -> web.Response:
             block_number=block_number,
         )
     )
+
+
+async def _cached_quote(
+    cache: CreditApiCache, quoter, token: str
+) -> Tuple[int, int, int]:
+    """
+    (block_number, num, den) of `token` at the latest finalized block, reused
+    for `QUOTE_TTL_SECONDS`: the endpoint is unauthenticated and each miss
+    costs two RPC calls. Concurrent misses on a token wait on its lock and
+    reuse the first answer. Failures are not cached.
+    """
+    cached = cache.quotes.get(token)
+    if cached is not None and _monotonic() - cached[0] < QUOTE_TTL_SECONDS:
+        return cached[1], cached[2], cached[3]
+    async with cache.quote_lock(token):
+        cached = cache.quotes.get(token)
+        if cached is not None and _monotonic() - cached[0] < QUOTE_TTL_SECONDS:
+            return cached[1], cached[2], cached[3]
+        block = await quoter.web3.eth.get_block("finalized")
+        block_number = int(block["number"])
+        # The ratio does not depend on the amount: quote one raw unit.
+        num, den = await quoter.quote(
+            _token_address(quoter, token), 1, block_number, apply_bonus=True
+        )
+        cache.quotes[token] = (_monotonic(), block_number, num, den)
+        return block_number, num, den
 
 
 # --- /credits/topups ----------------------------------------------------------

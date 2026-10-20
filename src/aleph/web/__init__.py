@@ -10,6 +10,8 @@ from aiohttp import web
 from aiohttp_swagger3 import SwaggerDocs, SwaggerInfo, SwaggerUiSettings
 
 from aleph.version import get_version
+from aleph.web.controllers.app_state_getters import APP_STATE_CREDIT_API_CACHE
+from aleph.web.controllers.credits import CreditApiCache
 from aleph.web.controllers.routes import register_routes
 
 # Default app-wide aiohttp client_max_size, capping every request body read via
@@ -44,6 +46,7 @@ def create_aiohttp_app(
     max_file_size: int = DEFAULT_CLIENT_MAX_SIZE,
 ) -> web.Application:
     app = web.Application(client_max_size=max_file_size)
+    app[APP_STATE_CREDIT_API_CACHE] = CreditApiCache()
 
     swagger = None
     if with_swagger:

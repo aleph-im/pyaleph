@@ -99,6 +99,14 @@ def fold_starts_at_h0(mock_config: Config) -> None:
     mock_config.aleph.credits.attestation.start_period.value = _unix(H0)
 
 
+def _quote(session: DbSession, period: dt.datetime, price: str = "0.00002") -> None:
+    session.add(
+        CreditPeriodQuoteDb(
+            period=period, aleph_per_credit=Decimal(price), block_number=22_000_000
+        )
+    )
+
+
 def _set_fold_state(
     session: DbSession,
     last_closed: Optional[dt.datetime],
@@ -200,6 +208,37 @@ async def test_period_endpoint_rejects_unaligned_periods(ccn_api_client):
     assert response.status == 422
 
 
+@pytest.mark.asyncio
+async def test_period_hash_cache_follows_a_refold_to_the_same_fold_state(
+    ccn_api_client, session_factory: DbSessionFactory, mocker
+):
+    from sqlalchemy import delete
+
+    from aleph.services.credits import fold
+
+    with session_factory() as session:
+        _execution(session, H0, VM_1, NODE_A, 10)
+        _set_fold_state(session, H0)
+        session.commit()
+    spy = mocker.spy(fold, "_rows_hash")
+    uri = f"/api/v0/credits/periods/{_unix(H0)}"
+
+    first = (await (await ccn_api_client.get(uri)).json())["period_hash"]
+    again = (await (await ccn_api_client.get(uri)).json())["period_hash"]
+    assert first == again
+    assert spy.call_count == 1  # served from the cache the second time
+
+    # A refold rewrites the period's rows and ends on the same fold state.
+    with session_factory() as session:
+        session.execute(delete(CreditLedgerDb).where(CreditLedgerDb.period == H0))
+        _execution(session, H0, VM_1, NODE_A, 20)
+        session.commit()
+        expected = period_hash(session, H0)
+
+    refolded = (await (await ccn_api_client.get(uri)).json())["period_hash"]
+    assert refolded == expected != first
+
+
 # --- /credits/revenue ---------------------------------------------------------
 
 
@@ -221,6 +260,7 @@ async def test_revenue_groups_by_node_and_includes_price(
         _row(session, H0, "storage", f"{_unix(H0)}:{OWNER.lower()}", -12)
         _row(session, H0, "storage", f"{_unix(H0)}:{OTHER}", -8, address=OTHER)
         _execution(session, H0 + HOUR, VM_1, NODE_A, 100)
+        _quote(session, H0 + HOUR)
         # Period 2 is beyond the last closed one: never returned.
         _execution(session, H0 + 2 * HOUR, VM_1, NODE_A, 100)
         session.add(
@@ -250,7 +290,7 @@ async def test_revenue_groups_by_node_and_includes_price(
             },
             {
                 "period": _unix(H0 + HOUR),
-                "credit_price_aleph": None,
+                "credit_price_aleph": "0.000020000000000000",
                 "nodes": {NODE_A: {"execution": 100, "hold_equivalent": 0}},
                 "storage": 0,
                 "execution_total": 100,
@@ -260,10 +300,42 @@ async def test_revenue_groups_by_node_and_includes_price(
 
 
 @pytest.mark.asyncio
+async def test_revenue_stops_at_the_first_unquoted_period(
+    ccn_api_client, session_factory: DbSessionFactory
+):
+    """A closed period without a quote ends the range: never a null price."""
+    with session_factory() as session:
+        for hour in range(3):
+            _execution(session, H0 + hour * HOUR, VM_1, NODE_A, 10)
+        _quote(session, H0)
+        _quote(session, H0 + 2 * HOUR)
+        _set_fold_state(session, H0 + 2 * HOUR)
+        session.commit()
+
+    response = await ccn_api_client.get(_revenue_uri(H0, H0 + 3 * HOUR))
+    assert response.status == 200, await response.text()
+    periods = (await response.json())["periods"]
+    assert [p["period"] for p in periods] == [_unix(H0)]
+
+    # The fold job re-quotes it: the whole range is served.
+    with session_factory() as session:
+        _quote(session, H0 + HOUR)
+        session.commit()
+    response = await ccn_api_client.get(_revenue_uri(H0, H0 + 3 * HOUR))
+    periods = (await response.json())["periods"]
+    assert [p["period"] for p in periods] == [
+        _unix(H0 + hour * HOUR) for hour in range(3)
+    ]
+    assert all(p["credit_price_aleph"] == "0.000020000000000000" for p in periods)
+
+
+@pytest.mark.asyncio
 async def test_revenue_lists_empty_closed_periods(
     ccn_api_client, session_factory: DbSessionFactory
 ):
     with session_factory() as session:
+        _quote(session, H0)
+        _quote(session, H0 + HOUR)
         _set_fold_state(session, H0 + HOUR)
         session.commit()
 
@@ -274,7 +346,7 @@ async def test_revenue_lists_empty_closed_periods(
     assert [p["period"] for p in periods] == [_unix(H0), _unix(H0 + HOUR)]
     assert periods[0] == {
         "period": _unix(H0),
-        "credit_price_aleph": None,
+        "credit_price_aleph": "0.000020000000000000",
         "nodes": {},
         "storage": 0,
         "execution_total": 0,
@@ -315,6 +387,7 @@ async def test_revenue_stops_at_the_dirty_mark(
     with session_factory() as session:
         for hour in range(3):
             _execution(session, H0 + hour * HOUR, VM_1, NODE_A, 10)
+            _quote(session, H0 + hour * HOUR)
         _set_fold_state(session, H0 + 2 * HOUR, dirty_from=H0 + HOUR)
         expected_hash = period_hash(session, H0 + HOUR)
         session.commit()
@@ -510,7 +583,7 @@ async def test_quote_usdc_is_par(fake_quoter, ccn_api_client):
         "quote_den": "1",
         "block_number": 21_000_000,
     }
-    assert fake_quoter.calls == [(fake_quoter.cfg.usdc, 2_500_000, 21_000_000, True)]
+    assert fake_quoter.calls == [(fake_quoter.cfg.usdc, 1, 21_000_000, True)]
 
 
 @pytest.mark.asyncio
@@ -530,6 +603,55 @@ async def test_quote_aleph_applies_the_quote(fake_quoter, ccn_api_client):
         "/api/v0/credits/quote", params={"token": "eth", "amount": "-1"}
     )
     assert response.status == 422
+
+
+@pytest.mark.asyncio
+async def test_quote_is_cached_per_token(fake_quoter, ccn_api_client, mocker):
+    clock = mocker.patch("aleph.web.controllers.credits._monotonic", return_value=0.0)
+
+    for amount in ("100", "200"):
+        response = await ccn_api_client.get(
+            "/api/v0/credits/quote", params={"token": "aleph", "amount": amount}
+        )
+        assert response.status == 200, await response.text()
+        assert (await response.json())["credits"] == int(amount) * 3 // 2
+    # Two requests within the window: one quote.
+    assert len(fake_quoter.calls) == 1
+
+    # Another token is quoted on its own.
+    response = await ccn_api_client.get(
+        "/api/v0/credits/quote", params={"token": "eth", "amount": "1000"}
+    )
+    assert response.status == 200, await response.text()
+    assert len(fake_quoter.calls) == 2
+
+    # The window expires: quoted again.
+    clock.return_value = 61.0
+    response = await ccn_api_client.get(
+        "/api/v0/credits/quote", params={"token": "aleph", "amount": "1"}
+    )
+    assert response.status == 200, await response.text()
+    assert [call[0] for call in fake_quoter.calls] == [
+        fake_quoter.cfg.aleph,
+        "eth",
+        fake_quoter.cfg.aleph,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_concurrent_quote_misses_coalesce(fake_quoter, ccn_api_client):
+    import asyncio
+
+    responses = await asyncio.gather(
+        *(
+            ccn_api_client.get(
+                "/api/v0/credits/quote", params={"token": "usdc", "amount": "5"}
+            )
+            for _ in range(5)
+        )
+    )
+    assert all(r.status == 200 for r in responses)
+    assert len(fake_quoter.calls) == 1
 
 
 # --- /credits/topups ----------------------------------------------------------
