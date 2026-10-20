@@ -534,6 +534,97 @@ def test_end_of_life_in_closed_period_marks_dirty(session_factory: DbSessionFact
         assert _dirty(session) is None
 
 
+def _chain_tx(tx_hash: str, at: dt.datetime) -> ChainTxDb:
+    return ChainTxDb(
+        hash=tx_hash,
+        chain=Chain.ETH,
+        height=1,
+        datetime=at,
+        publisher="0xabadbabe",
+        protocol=ChainSyncProtocol.ON_CHAIN_SYNC,
+        protocol_version=1,
+        content="x",
+    )
+
+
+def test_earlier_forget_confirmation_lowers_final_end_of_life(
+    session_factory: DbSessionFactory,
+):
+    # Two packing nodes publish the same FORGET: CCNs that see the 12:05 and
+    # 12:02 confirmations in either order must converge on 12:02.
+    target = "ef" * 32
+    forget = MessageDb(
+        item_hash="fe" * 32,
+        chain=Chain.ETH,
+        sender=SENDER,
+        signature="sig",
+        type=MessageType.forget,
+        item_type=ItemType.inline,
+        time=dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc),
+        size=10,
+        content={"address": SENDER, "time": 1.0, "hashes": [target]},
+        status_value=MessageStatus.PROCESSED,
+        reception_time=CLOSED,
+    )
+    late = CLOSED + dt.timedelta(hours=1, minutes=5)
+    early = CLOSED + dt.timedelta(minutes=2)
+    with session_factory() as session:
+        _add_resource(session, target, MessageType.instance, PaymentType.credit, CLOSED)
+        session.add(forget)
+        session.add(_chain_tx("0x" + "a1" * 32, late))
+        session.add(_chain_tx("0x" + "a2" * 32, early))
+        session.flush()
+        _close_up_to(session, CLOSED + dt.timedelta(hours=2))
+
+        session.execute(
+            make_confirmation_upsert_query(
+                item_hash=forget.item_hash, tx_hash="0x" + "a1" * 32
+            )
+        )
+        apply_confirmation_to_billing(session, forget)
+        row = _row(session, target)
+        assert (row.end_of_life, row.end_of_life_provisional) == (late, False)
+        assert _dirty(session) == CLOSED + dt.timedelta(hours=1)
+
+        get_fold_state(session).dirty_from_period = None
+        session.execute(
+            make_confirmation_upsert_query(
+                item_hash=forget.item_hash, tx_hash="0x" + "a2" * 32
+            )
+        )
+        apply_confirmation_to_billing(session, forget)
+        session.refresh(row)
+        assert (row.end_of_life, row.end_reason) == (early, "forgotten")
+        assert row.end_of_life_provisional is False
+        assert _dirty(session) == CLOSED
+
+        # Never raised again, and a later confirmation marks nothing.
+        get_fold_state(session).dirty_from_period = None
+        set_billing_end_of_life(session, target, late, "forgotten")
+        session.refresh(row)
+        assert row.end_of_life == early
+        assert _dirty(session) is None
+
+
+def test_removed_end_of_life_is_never_lowered(session_factory: DbSessionFactory):
+    with session_factory() as session:
+        _add_resource(session, "aa04", MessageType.store, PaymentType.credit, CLOSED)
+        _close_up_to(session, CLOSED + dt.timedelta(hours=2))
+        set_billing_end_of_life(
+            session, "aa04", CLOSED + dt.timedelta(hours=1), "removed"
+        )
+        get_fold_state(session).dirty_from_period = None
+        set_billing_end_of_life(
+            session, "aa04", CLOSED + dt.timedelta(minutes=1), "forgotten"
+        )
+        row = _row(session, "aa04")
+        assert (row.end_of_life, row.end_reason) == (
+            CLOSED + dt.timedelta(hours=1),
+            "removed",
+        )
+        assert _dirty(session) is None
+
+
 def test_removal_in_closed_period_marks_dirty(session_factory: DbSessionFactory):
     item_hash = "cd" * 32
     with session_factory() as session:

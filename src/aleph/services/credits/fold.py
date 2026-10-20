@@ -35,9 +35,11 @@ from aleph.db.accessors.credit_ledger import (
     insert_ledger_row,
     insert_lot,
     latest_checkpoint,
+    latest_checkpoints,
     ledger_addresses_between,
     ledger_row_exists,
     ledger_rows,
+    ledger_rows_since_checkpoints,
     lock_valid_lots,
     lots_with_remaining,
     set_lot_remaining,
@@ -537,30 +539,30 @@ def period_hash(session: DbSession, period_start: dt.datetime) -> str:
     )
 
 
-def _address_ledger_hash(
-    session: DbSession, address: str, period_start: dt.datetime
-) -> str:
+def _address_ledger_hashes(
+    session: DbSession, addresses: List[str], period_start: dt.datetime
+) -> Dict[str, str]:
     """
-    sha256(previous checkpoint hash of the address, or "", + "|" + "|".join of
-    "{period_unix}:{hash of the address's rows in that period}" for every
-    period with rows since that checkpoint, up to period_start included).
+    Per address: sha256(previous checkpoint hash of the address, or "", + "|"
+    + "|".join of "{period_unix}:{hash of the address's rows in that period}"
+    for every period with rows since that checkpoint, up to period_start
+    included). Two queries for all the addresses, whatever their number.
     """
-    previous = latest_checkpoint(session, address, before=period_start)
-    rows = ledger_rows(
-        session,
-        after=previous.period if previous is not None else None,
-        until=period_start,
-        address=address,
-    )
-    by_period: Dict[dt.datetime, List[Any]] = {}
-    for row in rows:
-        by_period.setdefault(row.period, []).append(row)
-    segments = [
-        f"{_period_unix(period)}:{_rows_hash(by_period[period])}"
-        for period in sorted(by_period)
-    ]
-    prefix = previous.ledger_hash if previous is not None else ""
-    return _sha256(prefix + "|" + "|".join(segments))
+    previous = latest_checkpoints(session, addresses, before=period_start)
+    by_address: Dict[str, Dict[dt.datetime, List[Any]]] = {}
+    for row in ledger_rows_since_checkpoints(session, addresses, until=period_start):
+        by_address.setdefault(row.address, {}).setdefault(row.period, []).append(row)
+    hashes: Dict[str, str] = {}
+    for address in addresses:
+        by_period = by_address.get(address, {})
+        segments = [
+            f"{_period_unix(period)}:{_rows_hash(by_period[period])}"
+            for period in sorted(by_period)
+        ]
+        checkpoint = previous.get(address)
+        prefix = checkpoint.ledger_hash if checkpoint is not None else ""
+        hashes[address] = _sha256(prefix + "|" + "|".join(segments))
+    return hashes
 
 
 def write_checkpoint(session: DbSession, period_start: dt.datetime) -> str:
@@ -585,13 +587,15 @@ def write_checkpoint(session: DbSession, period_start: dt.datetime) -> str:
         )
     )
 
+    ordered = sorted(addresses)
+    ledger_hashes = _address_ledger_hashes(session, ordered, period_start)
     address_hashes: List[str] = []
-    for address in sorted(addresses):
+    for address in ordered:
         lots = sorted(
             lots_by_address.get(address, []),
             key=lambda lot: (lot.period, KIND_ORDER[lot.kind], lot.business_key),
         )
-        ledger_hash = _address_ledger_hash(session, address, period_start)
+        ledger_hash = ledger_hashes[address]
         upsert_checkpoint(
             session,
             period=period_start,

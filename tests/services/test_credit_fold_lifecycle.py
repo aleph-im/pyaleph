@@ -15,12 +15,13 @@ from services.test_credit_inputs import (  # noqa: F401 (pricing is a fixture)
     PS,
     VM,
     attestation,
+    attestation_message,
     interval,
     pricing,
     resource,
     store_spec,
 )
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.exc import OperationalError
 
 from aleph.db.accessors.credit_ledger import (
@@ -119,6 +120,17 @@ def test_period_not_closable_until_chain_cursor_passes_its_end(
         session.add_all(attestation([]))
         session.flush()
         assert period_is_closable(session, PS, PE, cfg) == (True, None)
+
+
+def test_unconfirmed_attestation_does_not_make_a_period_closable(
+    session_factory: DbSessionFactory,
+):
+    cfg = fold_config()
+    set_cursor(session_factory, PE)
+    with session_factory() as session:
+        session.add_all(attestation([], confirmed=None))
+        session.flush()
+        assert period_is_closable(session, PS, PE, cfg) == (False, "attestation")
 
 
 @pytest.mark.asyncio
@@ -238,9 +250,9 @@ async def test_late_attestation_for_missing_period_refolds(
 
     assert await close_ready_periods(session_factory, PE + GRACE, mock_config, cfg) == 1
 
-    post, _ = attestation([interval(VM, NODE_A, 0, 60)])
+    message, post, _ = attestation([interval(VM, NODE_A, 0, 60)])
     with session_factory() as session:
-        session.add(post)
+        session.add_all([message, post])
         session.flush()
         status = record_attestation(session, post.item_hash, PS, ATTESTOR, None)
         assert status == "active"
@@ -448,6 +460,49 @@ def test_mark_dirty_locks_the_fold_state(session_factory: DbSessionFactory):
         session.commit()
 
 
+def test_mark_dirty_past_the_next_period_returns_without_the_lock(
+    session_factory: DbSessionFactory,
+):
+    with session_factory() as session:
+        get_fold_state(session).last_closed_period = PS
+        session.commit()
+    with session_factory() as holder:
+        # A fold transaction holds the lock: an unmarkable period must not wait.
+        get_fold_state(holder, for_update=True)
+        with session_factory() as session:
+            session.execute(text("SET LOCAL lock_timeout = '200ms'"))
+            assert mark_dirty(session, PS + 2 * HOUR) is False
+            assert mark_dirty(session, PS + 5 * HOUR) is False
+            # The period the fold may be closing right now does wait.
+            with pytest.raises(OperationalError):
+                mark_dirty(session, PS + HOUR)
+        holder.rollback()
+    with session_factory() as session:
+        assert mark_dirty(session, PS + 2 * HOUR) is False
+        with session_factory() as other:
+            other.execute(select(CreditFoldStateDb).with_for_update(nowait=True)).all()
+        assert get_fold_state(session).dirty_from_period is None
+
+
+def test_mark_dirty_before_any_close_waits_for_the_first_close(
+    session_factory: DbSessionFactory,
+):
+    with session_factory() as session:
+        assert get_fold_state(session).last_closed_period is None
+        assert mark_dirty(session, PS) is False
+        with session_factory() as other:
+            # Shared: other message transactions are not blocked...
+            other.execute(
+                select(CreditFoldStateDb).with_for_update(read=True, nowait=True)
+            ).all()
+            # ...but a fold transaction waits for this one to commit.
+            with pytest.raises(OperationalError):
+                other.execute(
+                    select(CreditFoldStateDb).with_for_update(nowait=True)
+                ).all()
+        session.commit()
+
+
 @pytest.mark.asyncio
 async def test_genesis_loaded_after_close_marks_dirty(
     session_factory: DbSessionFactory, mock_config: Config, pricing  # noqa: F811
@@ -579,6 +634,7 @@ def test_record_attestation_marks_a_closed_missing_period_dirty(
 ):
     with session_factory() as session:
         get_fold_state(session).last_closed_period = PS
+        session.add(attestation_message("a" * 64))
         session.add(
             PostDb(
                 item_hash="a" * 64,

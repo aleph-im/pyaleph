@@ -547,6 +547,67 @@ def test_checkpoint_ledger_hash_chain(session_factory):
         assert [lot["amount_remaining"] for lot in checkpoints[(P(2), A)].lots] == [50]
 
 
+def _reference_address_hash(session, address, period_start):
+    """The per-address definition, one address at a time (spec 6.4)."""
+    from aleph.db.accessors.credit_ledger import latest_checkpoint, ledger_rows
+
+    previous = latest_checkpoint(session, address, before=period_start)
+    by_period = {}
+    for row in ledger_rows(
+        session,
+        after=previous.period if previous is not None else None,
+        until=period_start,
+        address=address,
+    ):
+        by_period.setdefault(row.period, []).append(row)
+    segments = [
+        f"{int(period.timestamp())}:{fold_module._rows_hash(by_period[period])}"
+        for period in sorted(by_period)
+    ]
+    prefix = previous.ledger_hash if previous is not None else ""
+    return _sha(prefix + "|" + "|".join(segments))
+
+
+def test_batched_address_hashes_match_the_per_address_definition(session_factory):
+    with session_factory() as session:
+        apply_period(
+            session,
+            P(0),
+            PeriodInputs(
+                topups=[topup(A, 100, "1:0xa:0"), topup(B, 10, "1:0xb:0")],
+                executions=[execution(B, "vmb", 10)],
+            ),
+        )
+        write_checkpoint(session, P(0))
+        # B has no lot left and no rows: absent from the P(1) checkpoint.
+        apply_period(session, P(1), PeriodInputs(executions=[execution(A, "vm1", 5)]))
+        write_checkpoint(session, P(1))
+        apply_period(
+            session,
+            P(2),
+            PeriodInputs(
+                topups=[topup(B, 7, "1:0xb:1"), topup(C, 3, "1:0xc:0")],
+                executions=[execution(A, "vm1", 5)],
+            ),
+        )
+        apply_period(session, P(3), PeriodInputs(executions=[execution(C, "vmc", 1)]))
+        expected = {
+            address: _reference_address_hash(session, address, P(3))
+            for address in (A, B, C)
+        }
+        write_checkpoint(session, P(3))
+        written = {
+            row.address: row.ledger_hash
+            for row in session.execute(
+                select(CreditCheckpointDb).where(CreditCheckpointDb.period == P(3))
+            ).scalars()
+        }
+        assert {a: written[a] for a in (A, B, C)} == expected
+        # B chains on its P(0) checkpoint, C starts from "".
+        assert set(written) == {A, B, C, ""}
+        session.rollback()
+
+
 def test_period_start_must_be_an_hour(session_factory):
     with session_factory() as session:
         with pytest.raises(AssertionError):

@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Any, Dict, Iterable, List, Optional
 
 from aleph_message.models import MessageType, PaymentType
-from sqlalchemy import Row, delete, or_, select, update
+from sqlalchemy import Row, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from aleph.db.models.credit_ledger import (
@@ -17,7 +17,7 @@ from aleph.db.models.credit_ledger import (
     CreditTopupDb,
 )
 from aleph.db.models.messages import ForgottenMessageDb, MessageDb
-from aleph.services.credits.periods import floor_hour
+from aleph.services.credits.periods import PERIOD, floor_hour
 from aleph.types.db_session import DbSession
 
 # Credit transfers are fold inputs keyed on their confirmation time.
@@ -37,13 +37,36 @@ def get_fold_state(session: DbSession, for_update: bool = False) -> CreditFoldSt
     return session.execute(stmt).scalar_one()
 
 
+def _last_closed_period(session: DbSession, share_lock: bool = False):
+    # A column query: always read from the database, never the identity map.
+    stmt = select(CreditFoldStateDb.last_closed_period).where(CreditFoldStateDb.id == 1)
+    if share_lock:
+        stmt = stmt.with_for_update(read=True)
+    return session.execute(stmt).scalar_one()
+
+
 def mark_dirty(session: DbSession, period_start: dt.datetime) -> bool:
     """
     Flag an already-closed period for re-folding.
 
     Returns True if the period was closed and has been marked, False if there is
     nothing to re-fold yet.
+
+    Called on every confirmed paid message, so the exclusive fold-state lock is
+    only taken when a mark is possible. A fold transaction closes exactly one
+    period (`last_closed_period + 1h`) and a refold only moves the mark back,
+    so a period more than one hour past the committed mark cannot be the one
+    being folded right now: no lock is needed to return False. With no period
+    closed yet, the first close may be in flight; a shared lock waits for it
+    without serialising the message transactions among themselves.
     """
+    last_closed = _last_closed_period(session)
+    if last_closed is not None and period_start > last_closed + PERIOD:
+        return False
+    if last_closed is None:
+        last_closed = _last_closed_period(session, share_lock=True)
+        if last_closed is None or period_start > last_closed:
+            return False
     state = get_fold_state(session, for_update=True)
     if state.last_closed_period is None or period_start > state.last_closed_period:
         return False
@@ -139,21 +162,43 @@ def set_billing_end_of_life(
     provisional: bool = False,
 ) -> None:
     """
-    Close a billing resource. Sets end_of_life when it is null, overwrites a
-    provisional value, and never touches a non-provisional one.
+    Close a billing resource. Sets end_of_life when it is null and overwrites a
+    provisional value. A non-provisional value is final, except that a
+    non-provisional `forgotten` end of life only ever moves down to a lower
+    `forgotten` time: the FORGET may be confirmed several times (one packing
+    node each) and every CCN must converge on the earliest confirmation,
+    whatever the order it saw them in. It is never raised, and a `removed`
+    end of life is never touched.
 
     A change re-folds from the hour of the earlier of the old and new values,
     if that hour is already closed.
     """
     current = session.execute(
-        select(BillingResourceDb.end_of_life, BillingResourceDb.end_of_life_provisional)
+        select(
+            BillingResourceDb.end_of_life,
+            BillingResourceDb.end_of_life_provisional,
+            BillingResourceDb.end_reason,
+        )
         .where(BillingResourceDb.item_hash == item_hash)
         .with_for_update()
     ).one_or_none()
     if current is None:
         return
-    previous, previous_provisional = current
+    previous, previous_provisional, previous_reason = current
     if previous is not None and not previous_provisional:
+        lowers_forget = (
+            reason == "forgotten"
+            and not provisional
+            and previous_reason == "forgotten"
+            and at < previous
+        )
+        if lowers_forget:
+            session.execute(
+                update(BillingResourceDb)
+                .where(BillingResourceDb.item_hash == item_hash)
+                .values(end_of_life=at)
+            )
+            mark_dirty(session, floor_hour(at))
         return
     session.execute(
         update(BillingResourceDb)
@@ -185,6 +230,7 @@ def apply_confirmation_to_billing(session: DbSession, message: MessageDb) -> Non
         return
     refresh_billing_confirmation(session, message.item_hash, confirmed_at)
     mark_transfer_dirty(session, message, confirmed_at)
+    mark_attestation_dirty(session, message)
     if message.type == MessageType.forget:
         # Direct targets, plus the ones forgotten by cascade (e.g. VM updates),
         # which only the forgotten_messages record ties back to this FORGET.
@@ -224,6 +270,21 @@ def mark_transfer_dirty(
         confirmed_at = get_first_confirmed_at(session, message.item_hash)
     if confirmed_at is not None:
         mark_dirty(session, floor_hour(confirmed_at))
+
+
+def mark_attestation_dirty(session: DbSession, message: MessageDb) -> None:
+    """
+    A confirmation of an attestation post can change which attestation the
+    fold selects for its period (a first confirmation, or a lower one that
+    reorders the confirmed posts): re-fold the period if it is closed. Marked
+    on every confirmation of such a post, which is rare; a spurious mark only
+    costs a refold.
+    """
+    if message.type != MessageType.post:
+        return
+    period = attestation_period(session, message.item_hash)
+    if period is not None:
+        mark_dirty(session, period)
 
 
 def iter_live_billing_resources(
@@ -330,10 +391,63 @@ def unquoted_topups(session: DbSession) -> List[CreditTopupDb]:
 def active_attestation(
     session: DbSession, period_start: dt.datetime
 ) -> Optional[CreditAttestationDb]:
+    """
+    The row whose (informational) status is `active`: the reception-order
+    view of the period. The fold does not use it, see `selected_attestation`.
+    """
     return session.execute(
         select(CreditAttestationDb).where(
             CreditAttestationDb.period == period_start,
             CreditAttestationDb.status == "active",
+        )
+    ).scalar_one_or_none()
+
+
+def selected_attestation(
+    session: DbSession, period_start: dt.datetime
+) -> Optional[str]:
+    """
+    Item hash of the attestation the fold uses for the period (spec 7.3), or
+    None when no attestation of the period is confirmed yet.
+
+    Deterministic from the database, whatever the order the posts were
+    received in: among the period's attestation posts (indexed only from
+    whitelisted senders) that have a chain confirmation, drop every post that
+    another post of that confirmed set supersedes, then take the lowest
+    (first_confirmed_at, item_hash). An unconfirmed post counts as not
+    received yet.
+    """
+    rows = session.execute(
+        select(
+            CreditAttestationDb.item_hash,
+            CreditAttestationDb.supersedes,
+            MessageDb.first_confirmed_at,
+        )
+        .join(MessageDb, MessageDb.item_hash == CreditAttestationDb.item_hash)
+        .where(
+            CreditAttestationDb.period == period_start,
+            MessageDb.first_confirmed_at.is_not(None),
+        )
+    ).all()
+    confirmed = {row.item_hash for row in rows}
+    superseded = {
+        row.supersedes
+        for row in rows
+        if row.supersedes in confirmed and row.supersedes != row.item_hash
+    }
+    candidates = sorted(
+        (row.first_confirmed_at, row.item_hash)
+        for row in rows
+        if row.item_hash not in superseded
+    )
+    return candidates[0][1] if candidates else None
+
+
+def attestation_period(session: DbSession, item_hash: str) -> Optional[dt.datetime]:
+    """Period of an indexed attestation post, None for any other message."""
+    return session.execute(
+        select(CreditAttestationDb.period).where(
+            CreditAttestationDb.item_hash == item_hash
         )
     ).scalar_one_or_none()
 
@@ -346,11 +460,17 @@ def record_attestation(
     supersedes: Optional[str],
 ) -> str:
     """
-    Register an execution-intervals post for its period and return its status.
+    Index an execution-intervals post under its period and return its status.
 
-    The first post for a period is active. A later post naming the active one in
-    `supersedes` replaces it (and flags the period for re-folding if already
-    closed); any other later post is a duplicate. Idempotent per item hash.
+    Every post is kept: the fold picks one at fold time from the confirmed
+    posts (`selected_attestation`). The status only records the reception
+    order view (the first post is active, a post superseding the active one
+    replaces it, any other is a duplicate) and is informational.
+
+    A post processed after its confirmation can change the selection of an
+    already-closed period: the period is marked dirty. An unconfirmed post is
+    marked by its confirmation (`apply_confirmation_to_billing`).
+    Idempotent per item hash.
     """
     existing_row = session.get(CreditAttestationDb, item_hash)
     if existing_row is not None:
@@ -360,14 +480,11 @@ def record_attestation(
     current = active_attestation(session, period_start)
     if current is None:
         status = "active"
-        # The period may have been closed as attestation_missing.
-        mark_dirty(session, period_start)
     elif supersedes is not None and supersedes == current.item_hash:
         current.status = "superseded"
         # Free the partial unique index slot before inserting the new active row.
         session.flush()
         status = "active"
-        mark_dirty(session, period_start)
 
     session.add(
         CreditAttestationDb(
@@ -379,6 +496,8 @@ def record_attestation(
         )
     )
     session.flush()
+    if get_first_confirmed_at(session, item_hash) is not None:
+        mark_dirty(session, period_start)
     return status
 
 
@@ -505,18 +624,7 @@ def ledger_rows(
     Ledger rows with `after < period <= until` and `period < before` (each bound
     optional), in (period, id) order.
     """
-    stmt = select(
-        CreditLedgerDb.id,
-        CreditLedgerDb.period,
-        CreditLedgerDb.address,
-        CreditLedgerDb.kind,
-        CreditLedgerDb.business_key,
-        CreditLedgerDb.amount,
-        CreditLedgerDb.node_id,
-        CreditLedgerDb.seconds,
-        CreditLedgerDb.expiration,
-        CreditLedgerDb.excluded_reason,
-    )
+    stmt = select(*_ledger_columns())
     if after is not None:
         stmt = stmt.where(CreditLedgerDb.period > after)
     if until is not None:
@@ -544,6 +652,84 @@ def ledger_addresses_between(
         for address in session.execute(stmt.distinct()).scalars()
         if address is not None
     ]
+
+
+def _ledger_columns() -> tuple:
+    return (
+        CreditLedgerDb.id,
+        CreditLedgerDb.period,
+        CreditLedgerDb.address,
+        CreditLedgerDb.kind,
+        CreditLedgerDb.business_key,
+        CreditLedgerDb.amount,
+        CreditLedgerDb.node_id,
+        CreditLedgerDb.seconds,
+        CreditLedgerDb.expiration,
+        CreditLedgerDb.excluded_reason,
+    )
+
+
+def latest_checkpoints(
+    session: DbSession, addresses: List[str], before: dt.datetime
+) -> Dict[str, Row]:
+    """
+    Per address of `addresses`: (address, period, ledger_hash) of its most
+    recent checkpoint with period < `before`. Addresses without one are absent.
+    """
+    if not addresses:
+        return {}
+    rows = session.execute(
+        select(
+            CreditCheckpointDb.address,
+            CreditCheckpointDb.period,
+            CreditCheckpointDb.ledger_hash,
+        )
+        .where(
+            CreditCheckpointDb.address.in_(addresses),
+            CreditCheckpointDb.period < before,
+        )
+        .distinct(CreditCheckpointDb.address)
+        .order_by(CreditCheckpointDb.address, CreditCheckpointDb.period.desc())
+    ).all()
+    return {row.address: row for row in rows}
+
+
+def ledger_rows_since_checkpoints(
+    session: DbSession, addresses: List[str], until: dt.datetime
+) -> List[Row]:
+    """
+    For every address of `addresses`, its ledger rows with period <= `until`
+    and after its latest checkpoint before `until` (all of them when it has
+    none), in one query, ordered by (address, period, id).
+    """
+    if not addresses:
+        return []
+    previous = (
+        select(
+            CreditCheckpointDb.address.label("address"),
+            func.max(CreditCheckpointDb.period).label("period"),
+        )
+        .where(
+            CreditCheckpointDb.address.in_(addresses),
+            CreditCheckpointDb.period < until,
+        )
+        .group_by(CreditCheckpointDb.address)
+        .subquery()
+    )
+    stmt = (
+        select(*_ledger_columns())
+        .outerjoin(previous, previous.c.address == CreditLedgerDb.address)
+        .where(
+            CreditLedgerDb.address.in_(addresses),
+            CreditLedgerDb.period <= until,
+            or_(
+                previous.c.period.is_(None),
+                CreditLedgerDb.period > previous.c.period,
+            ),
+        )
+        .order_by(CreditLedgerDb.address, CreditLedgerDb.period, CreditLedgerDb.id)
+    )
+    return list(session.execute(stmt).all())
 
 
 def has_ledger_rows_before(session: DbSession, period_start: dt.datetime) -> bool:

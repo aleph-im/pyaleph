@@ -1,3 +1,4 @@
+import datetime as dt
 import itertools
 import logging
 from typing import List, Sequence, Set, cast
@@ -17,13 +18,28 @@ from aleph.db.accessors.aggregates import (
     refresh_aggregate,
     update_aggregate,
 )
+from aleph.db.accessors.credit_ledger import mark_dirty
 from aleph.db.models import AggregateDb, AggregateElementDb, MessageDb
 from aleph.handlers.content.content_handler import ContentHandler
+from aleph.services.credits.periods import floor_hour
+from aleph.toolkit.constants import PRICE_AGGREGATE_KEY, PRICE_AGGREGATE_OWNER
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import InvalidMessageFormat
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _mark_pricing_change(
+    session: DbSession, owner: str, key: str, creation_datetime: dt.datetime
+) -> None:
+    """
+    The credit fold prices every period with the pricing aggregate in force at
+    its start (`pricing_model_at`). A late or backdated pricing element changes
+    that for the periods from its creation hour on: re-fold them if closed.
+    """
+    if owner == PRICE_AGGREGATE_OWNER and key == PRICE_AGGREGATE_KEY:
+        mark_dirty(session, floor_hour(creation_datetime))
 
 
 def _get_aggregate_content(message: MessageDb) -> AggregateContent:
@@ -60,6 +76,12 @@ class AggregateMessageHandler(ContentHandler):
             owner=aggregate_element.owner,
             content=aggregate_element.content,
             creation_datetime=aggregate_element.creation_datetime,
+        )
+        _mark_pricing_change(
+            session,
+            aggregate_element.owner,
+            aggregate_element.key,
+            aggregate_element.creation_datetime,
         )
 
         return aggregate_element
@@ -235,6 +257,9 @@ class AggregateMessageHandler(ContentHandler):
         LOGGER.debug("Deleting aggregate element %s...", message.item_hash)
         delete_aggregate(session=session, owner=owner, key=str(key))
         delete_aggregate_element(session=session, item_hash=message.item_hash)
+        _mark_pricing_change(
+            session, owner, str(key), timestamp_to_datetime(content.time)
+        )
 
         LOGGER.debug("Refreshing aggregate %s/%s...", owner, key)
         refresh_aggregate(session=session, owner=owner, key=str(key))

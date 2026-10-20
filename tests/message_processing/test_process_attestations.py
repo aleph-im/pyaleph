@@ -4,21 +4,27 @@ import json
 from typing import List, Optional
 
 import pytest
+from aleph_message.models import Chain, ItemType, MessageType
 from configmanager import Config
 from message_test_helpers import process_pending_messages
 from sqlalchemy import select
 
 from aleph.db.accessors.credit_ledger import (
     active_attestation,
+    apply_confirmation_to_billing,
     get_fold_state,
     record_attestation,
+    selected_attestation,
 )
-from aleph.db.models import PendingMessageDb, PostDb
+from aleph.db.accessors.messages import make_confirmation_upsert_query
+from aleph.db.models import ChainTxDb, MessageDb, PendingMessageDb, PostDb
 from aleph.db.models.credit_ledger import CreditAttestationDb
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.toolkit.timestamp import timestamp_to_datetime
+from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.message_processing_result import ProcessedMessage, RejectedMessage
+from aleph.types.message_status import MessageStatus
 
 SENDER = "0xAttestor0000000000000000000000000000000001"
 PERIOD_START = 1_700_000_400 - (1_700_000_400 % 3600)  # aligned
@@ -141,7 +147,7 @@ async def test_second_attestation_for_same_period_is_duplicate(
 
 
 @pytest.mark.asyncio
-async def test_superseding_attestation_replaces_and_marks_dirty(
+async def test_superseding_attestation_is_indexed_and_waits_for_confirmation(
     mock_config: Config,
     message_processor: PendingMessageProcessor,
     session_factory: DbSessionFactory,
@@ -166,7 +172,9 @@ async def test_superseding_attestation_replaces_and_marks_dirty(
         assert rows[second.item_hash].supersedes == first.item_hash
         active = active_attestation(session, PERIOD)
         assert active is not None and active.item_hash == second.item_hash
-        assert get_fold_state(session).dirty_from_period == PERIOD
+        # Status is informational: the unconfirmed post changes nothing the
+        # fold reads yet, its confirmation marks the period (tested below).
+        assert get_fold_state(session).dirty_from_period is None
 
 
 @pytest.mark.asyncio
@@ -270,3 +278,130 @@ def test_supersede_on_open_period_does_not_mark_dirty(
         _record(session, "B", supersedes="A")
         session.commit()
         assert get_fold_state(session).dirty_from_period is None
+
+
+# --- selection at fold time (spec 7.3) ------------------------------------------
+
+
+def _message(item_hash: str, confirmed_minutes: Optional[int]) -> MessageDb:
+    return MessageDb(
+        item_hash=item_hash,
+        chain=Chain.ETH,
+        sender=SENDER,
+        signature="0xsig",
+        item_type=ItemType.inline,
+        type=MessageType.post,
+        content={"address": SENDER, "type": "aleph-execution-intervals"},
+        size=100,
+        time=PERIOD + dt.timedelta(minutes=61),
+        channel="ALEPH-METERING",
+        first_confirmed_at=(
+            None
+            if confirmed_minutes is None
+            else PERIOD + dt.timedelta(minutes=confirmed_minutes)
+        ),
+        status_value=MessageStatus.PROCESSED,
+    )
+
+
+def _receive(session, posts, order):
+    """Process the attestation posts in `order`, as a CCN receiving them."""
+    for name in order:
+        confirmed, supersedes = posts[name]
+        session.add(_message(name, confirmed))
+        session.flush()
+        _record(session, name, supersedes=supersedes)
+
+
+@pytest.mark.parametrize(
+    "order",
+    [("A", "B", "C"), ("A", "C", "B"), ("C", "B", "A"), ("B", "C", "A")],
+)
+def test_supersede_chain_selection_ignores_reception_order(
+    session_factory: DbSessionFactory, order
+):
+    # C supersedes B, which supersedes A; A is the earliest confirmed.
+    posts = {"A": (62, None), "B": (70, "A"), "C": (80, "B")}
+    with session_factory() as session:
+        _receive(session, posts, order)
+        assert selected_attestation(session, PERIOD) == "C"
+        session.rollback()
+
+
+@pytest.mark.parametrize("order", [("X", "Y"), ("Y", "X")])
+def test_independent_posts_select_the_earliest_confirmed(
+    session_factory: DbSessionFactory, order
+):
+    # Y sorts after X by hash but is confirmed first.
+    posts = {"X": (75, None), "Y": (65, None)}
+    with session_factory() as session:
+        _receive(session, posts, order)
+        assert selected_attestation(session, PERIOD) == "Y"
+        session.rollback()
+
+
+def test_equal_confirmations_break_ties_on_item_hash(
+    session_factory: DbSessionFactory,
+):
+    with session_factory() as session:
+        _receive(session, {"Y": (65, None), "X": (65, None)}, ("Y", "X"))
+        assert selected_attestation(session, PERIOD) == "X"
+        session.rollback()
+
+
+def test_unconfirmed_posts_are_not_received_yet(session_factory: DbSessionFactory):
+    with session_factory() as session:
+        # The unconfirmed superseder neither counts nor drops its target.
+        _receive(session, {"A": (70, None), "B": (None, "A")}, ("A", "B"))
+        assert selected_attestation(session, PERIOD) == "A"
+        session.rollback()
+    with session_factory() as session:
+        _receive(session, {"A": (None, None)}, ("A",))
+        assert selected_attestation(session, PERIOD) is None
+        session.rollback()
+
+
+def test_late_confirmation_of_a_better_attestation_marks_the_period_dirty(
+    session_factory: DbSessionFactory,
+):
+    tx_hash = "0x" + "c1" * 32
+    with session_factory() as session:
+        get_fold_state(session).last_closed_period = PERIOD
+        _receive(session, {"A": (75, None)}, ("A",))
+        state = get_fold_state(session)
+        state.dirty_from_period = None
+        # Received before its confirmation: no mark, not selected.
+        _receive(session, {"B": (None, None)}, ("B",))
+        assert get_fold_state(session).dirty_from_period is None
+        assert selected_attestation(session, PERIOD) == "A"
+
+        session.add(
+            ChainTxDb(
+                hash=tx_hash,
+                chain=Chain.ETH,
+                height=1,
+                datetime=PERIOD + dt.timedelta(minutes=62),
+                publisher="0xabadbabe",
+                protocol=ChainSyncProtocol.ON_CHAIN_SYNC,
+                protocol_version=1,
+                content="x",
+            )
+        )
+        session.flush()
+        session.execute(make_confirmation_upsert_query(item_hash="B", tx_hash=tx_hash))
+        message_b = session.get(MessageDb, "B")
+        assert message_b is not None
+        apply_confirmation_to_billing(session, message_b)
+        assert selected_attestation(session, PERIOD) == "B"
+        assert get_fold_state(session).dirty_from_period == PERIOD
+        session.rollback()
+
+
+def test_attestation_received_already_confirmed_marks_a_closed_period(
+    session_factory: DbSessionFactory,
+):
+    with session_factory() as session:
+        get_fold_state(session).last_closed_period = PERIOD
+        _receive(session, {"A": (75, None)}, ("A",))
+        assert get_fold_state(session).dirty_from_period == PERIOD
+        session.rollback()

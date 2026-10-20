@@ -106,7 +106,34 @@ def resource(
     )
 
 
-def attestation(intervals: List[Dict[str, Any]]) -> List[Any]:
+def attestation_message(
+    item_hash: str, confirmed: Optional[dt.datetime] = PS + dt.timedelta(minutes=70)
+) -> MessageDb:
+    """The message row of an attestation post: its confirmation orders it."""
+    return MessageDb(
+        item_hash=item_hash,
+        chain=Chain.ETH,
+        sender=ATTESTOR,
+        signature="0xsig",
+        item_type=ItemType.inline,
+        type=MessageType.post,
+        content={"address": ATTESTOR, "type": "aleph-execution-intervals"},
+        size=100,
+        time=PS + dt.timedelta(minutes=65),
+        channel="ALEPH-METERING",
+        first_confirmed_at=confirmed,
+        status_value=MessageStatus.PROCESSED,
+    )
+
+
+def attestation(
+    intervals: List[Dict[str, Any]],
+    *,
+    item_hash: str = ATTESTATION,
+    confirmed: Optional[dt.datetime] = PS + dt.timedelta(minutes=70),
+    supersedes: Optional[str] = None,
+) -> List[Any]:
+    """Message, post and index rows of a (by default confirmed) attestation."""
     content = {
         "version": 1,
         "period": {"start": P, "end": P + 3600},
@@ -114,9 +141,12 @@ def attestation(intervals: List[Dict[str, Any]]) -> List[Any]:
         "intervals": intervals,
         "totals": {},
     }
+    if supersedes is not None:
+        content["supersedes"] = supersedes
     return [
+        attestation_message(item_hash, confirmed),
         PostDb(
-            item_hash=ATTESTATION,
+            item_hash=item_hash,
             owner=ATTESTOR,
             type="aleph-execution-intervals",
             channel="ALEPH-METERING",
@@ -124,7 +154,11 @@ def attestation(intervals: List[Dict[str, Any]]) -> List[Any]:
             creation_datetime=PS + dt.timedelta(minutes=65),
         ),
         CreditAttestationDb(
-            item_hash=ATTESTATION, period=PS, sender=ATTESTOR, status="active"
+            item_hash=item_hash,
+            period=PS,
+            sender=ATTESTOR,
+            supersedes=supersedes,
+            status="active",
         ),
     ]
 
@@ -614,16 +648,18 @@ def test_transfer_not_processed_is_not_an_input(
 def test_attestation_without_post_row_is_treated_as_missing(
     session_factory: DbSessionFactory, mock_config: Config, pricing, caplog
 ):
-    orphan = CreditAttestationDb(
-        item_hash=ATTESTATION, period=PS, sender=ATTESTOR, status="active"
-    )
-    with pytest.raises(AttestationPending):
-        collect(session_factory, mock_config, [orphan], grace=False)
+    def orphan() -> List[Any]:
+        return [
+            attestation_message(ATTESTATION),
+            CreditAttestationDb(
+                item_hash=ATTESTATION, period=PS, sender=ATTESTOR, status="active"
+            ),
+        ]
 
-    orphan = CreditAttestationDb(
-        item_hash=ATTESTATION, period=PS, sender=ATTESTOR, status="active"
-    )
-    inputs = collect(session_factory, mock_config, [resource(VM), orphan])
+    with pytest.raises(AttestationPending):
+        collect(session_factory, mock_config, orphan(), grace=False)
+
+    inputs = collect(session_factory, mock_config, [resource(VM), *orphan()])
     assert inputs.executions == []
     assert inputs.exclusions == [
         ExclusionInput(

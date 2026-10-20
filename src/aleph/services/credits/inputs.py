@@ -33,9 +33,9 @@ from pydantic import ValidationError
 from sqlalchemy import select
 
 from aleph.db.accessors.credit_ledger import (
-    active_attestation,
     get_billing_resource,
     iter_live_billing_resources,
+    selected_attestation,
     topups_for_period,
 )
 from aleph.db.models.credit_ledger import BillingResourceDb
@@ -83,7 +83,7 @@ MALFORMED = "malformed"
 
 class AttestationPending(Exception):
     """
-    No active attestation for the period and its grace has not elapsed: the
+    No confirmed attestation for the period and its grace has not elapsed: the
     period cannot be folded yet. The caller waits and retries.
     """
 
@@ -397,7 +397,7 @@ def _attestation_content(
     ).scalar_one_or_none()
     if content is None:
         LOGGER.warning(
-            "active attestation %s has no post row: treated as no attestation",
+            "selected attestation %s has no post row: treated as no attestation",
             item_hash,
         )
         return None
@@ -418,11 +418,12 @@ def execution_inputs(
     attestation_grace_elapsed: bool,
 ) -> Tuple[List[ExecutionInput], List[ExclusionInput]]:
     period_unix = int(period_start.timestamp())
-    attestation = active_attestation(session, period_start)
+    # Picked from the confirmed posts, independently of reception order.
+    attestation_hash = selected_attestation(session, period_start)
     content = (
         None
-        if attestation is None
-        else _attestation_content(session, attestation.item_hash)
+        if attestation_hash is None
+        else _attestation_content(session, attestation_hash)
     )
     if content is None:
         if not attestation_grace_elapsed:
@@ -555,7 +556,7 @@ def collect_inputs(
 ) -> PeriodInputs:
     """
     Inputs of the period starting at `period_start`. Raises AttestationPending
-    when the period has no active attestation yet and its grace has not
+    when the period has no confirmed attestation yet and its grace has not
     elapsed. `settings` is the node config (credit transfer channels).
     """
     assert period_start == floor_hour(period_start), "period_start must be an hour"

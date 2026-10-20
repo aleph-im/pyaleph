@@ -25,11 +25,11 @@ from configmanager import Config
 from sqlalchemy.dialects.postgresql import insert
 
 from aleph.db.accessors.credit_ledger import (
-    active_attestation,
     genesis_rows_from,
     get_fold_state,
     latest_checkpoint,
     mark_dirty,
+    selected_attestation,
 )
 from aleph.db.models.credit_ledger import CreditPeriodQuoteDb
 from aleph.services.credits.fold import (
@@ -105,14 +105,14 @@ def period_is_closable(
 ) -> Tuple[bool, Optional[str]]:
     """
     (closable, blocker): the chain cursor has reached the end of the period,
-    and the period has an active attestation or its grace has elapsed on this
+    and the period has a confirmed attestation or its grace has elapsed on this
     node's clock. The blocker is "chain" or "attestation".
     """
     state = get_fold_state(session)
     end = period_end(period_start)
     if state.chain_cursor_time is None or state.chain_cursor_time < end:
         return False, "chain"
-    if active_attestation(session, period_start) is None and not _grace_elapsed(
+    if selected_attestation(session, period_start) is None and not _grace_elapsed(
         period_start, now, cfg
     ):
         return False, "attestation"
