@@ -82,7 +82,7 @@ class CreditLedgerDb(Base):
     resource: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     node_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # type: ignore[assignment]
+    entry_count: Mapped[Optional[int]] = mapped_column("count", Integer, nullable=True)
     size_mib: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     rate: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(40, 18), nullable=True)
     expiration: Mapped[Optional[dt.datetime]] = mapped_column(
