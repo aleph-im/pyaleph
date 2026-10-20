@@ -3,14 +3,17 @@ from decimal import Decimal
 from typing import Any, Dict, Iterable, List, Optional
 
 from aleph_message.models import MessageType, PaymentType
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import Row, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from aleph.db.models.credit_ledger import (
     BillingRateDb,
     BillingResourceDb,
     CreditAttestationDb,
+    CreditCheckpointDb,
     CreditFoldStateDb,
+    CreditLedgerDb,
+    CreditLotDb,
     CreditTopupDb,
 )
 from aleph.db.models.messages import ForgottenMessageDb, MessageDb
@@ -310,3 +313,263 @@ def record_attestation(
     )
     session.flush()
     return status
+
+
+# --- Ledger, lots and checkpoints (fold core) ---------------------------------
+
+
+def ledger_row_exists(session: DbSession, kind: str, business_key: str) -> bool:
+    return (
+        session.execute(
+            select(CreditLedgerDb.id).where(
+                CreditLedgerDb.kind == kind,
+                CreditLedgerDb.business_key == business_key,
+            )
+        ).scalar_one_or_none()
+        is not None
+    )
+
+
+def insert_ledger_row(session: DbSession, values: Dict[str, Any]) -> Optional[int]:
+    """
+    Insert a ledger row; returns its id, or None when (kind, business_key)
+    already exists (the row counts as already applied).
+    """
+    return session.execute(
+        insert(CreditLedgerDb)
+        .values(**values)
+        .on_conflict_do_nothing(index_elements=["kind", "business_key"])
+        .returning(CreditLedgerDb.id)
+    ).scalar_one_or_none()
+
+
+def insert_lot(
+    session: DbSession,
+    ledger_id: int,
+    address: str,
+    period: dt.datetime,
+    kind: str,
+    business_key: str,
+    amount_remaining: int,
+    expiration: Optional[dt.datetime],
+) -> None:
+    session.execute(
+        insert(CreditLotDb).values(
+            ledger_id=ledger_id,
+            address=address,
+            period=period,
+            kind=kind,
+            business_key=business_key,
+            amount_remaining=amount_remaining,
+            expiration=expiration,
+        )
+    )
+
+
+def lock_valid_lots(
+    session: DbSession, address: str, period_start: dt.datetime
+) -> List[Row]:
+    """
+    Lots of `address` that can be drained in the period starting at
+    `period_start`: remaining credit, granted in or before that period and not
+    expired at its start. Locked FOR UPDATE. Returned in ledger_id order (lock
+    order only); the caller sorts them into drain order.
+    """
+    return list(
+        session.execute(
+            select(
+                CreditLotDb.ledger_id,
+                CreditLotDb.period,
+                CreditLotDb.kind,
+                CreditLotDb.business_key,
+                CreditLotDb.amount_remaining,
+                CreditLotDb.expiration,
+            )
+            .where(
+                CreditLotDb.address == address,
+                CreditLotDb.amount_remaining > 0,
+                CreditLotDb.period <= period_start,
+                or_(
+                    CreditLotDb.expiration.is_(None),
+                    CreditLotDb.expiration > period_start,
+                ),
+            )
+            .order_by(CreditLotDb.ledger_id)
+            .with_for_update()
+        ).all()
+    )
+
+
+def set_lot_remaining(session: DbSession, ledger_id: int, amount: int) -> None:
+    session.execute(
+        update(CreditLotDb)
+        .where(CreditLotDb.ledger_id == ledger_id)
+        .values(amount_remaining=amount)
+    )
+
+
+def lots_with_remaining(session: DbSession) -> List[Row]:
+    """Every lot with credit left (expired or not), in ledger_id order."""
+    return list(
+        session.execute(
+            select(
+                CreditLotDb.ledger_id,
+                CreditLotDb.address,
+                CreditLotDb.period,
+                CreditLotDb.kind,
+                CreditLotDb.business_key,
+                CreditLotDb.amount_remaining,
+                CreditLotDb.expiration,
+            )
+            .where(CreditLotDb.amount_remaining > 0)
+            .order_by(CreditLotDb.ledger_id)
+        ).all()
+    )
+
+
+def ledger_rows(
+    session: DbSession,
+    after: Optional[dt.datetime] = None,
+    until: Optional[dt.datetime] = None,
+    before: Optional[dt.datetime] = None,
+    address: Optional[str] = None,
+) -> List[Row]:
+    """
+    Ledger rows with `after < period <= until` and `period < before` (each bound
+    optional), in (period, id) order.
+    """
+    stmt = select(
+        CreditLedgerDb.id,
+        CreditLedgerDb.period,
+        CreditLedgerDb.address,
+        CreditLedgerDb.kind,
+        CreditLedgerDb.business_key,
+        CreditLedgerDb.amount,
+        CreditLedgerDb.node_id,
+        CreditLedgerDb.seconds,
+        CreditLedgerDb.expiration,
+        CreditLedgerDb.excluded_reason,
+    )
+    if after is not None:
+        stmt = stmt.where(CreditLedgerDb.period > after)
+    if until is not None:
+        stmt = stmt.where(CreditLedgerDb.period <= until)
+    if before is not None:
+        stmt = stmt.where(CreditLedgerDb.period < before)
+    if address is not None:
+        stmt = stmt.where(CreditLedgerDb.address == address)
+    return list(
+        session.execute(stmt.order_by(CreditLedgerDb.period, CreditLedgerDb.id)).all()
+    )
+
+
+def ledger_addresses_between(
+    session: DbSession, after: Optional[dt.datetime], until: dt.datetime
+) -> List[str]:
+    """Non-null addresses with ledger rows in `after < period <= until`."""
+    stmt = select(CreditLedgerDb.address).where(
+        CreditLedgerDb.address.is_not(None), CreditLedgerDb.period <= until
+    )
+    if after is not None:
+        stmt = stmt.where(CreditLedgerDb.period > after)
+    return [
+        address
+        for address in session.execute(stmt.distinct()).scalars()
+        if address is not None
+    ]
+
+
+def has_ledger_rows_before(session: DbSession, period_start: dt.datetime) -> bool:
+    return (
+        session.execute(
+            select(CreditLedgerDb.id)
+            .where(CreditLedgerDb.period < period_start)
+            .limit(1)
+        ).scalar_one_or_none()
+        is not None
+    )
+
+
+def get_ledger_rows_by_ids(session: DbSession, ids: Iterable[int]) -> Dict[int, Row]:
+    id_list = list(ids)
+    if not id_list:
+        return {}
+    return {
+        row.id: row
+        for row in session.execute(
+            select(
+                CreditLedgerDb.id,
+                CreditLedgerDb.address,
+                CreditLedgerDb.period,
+                CreditLedgerDb.kind,
+                CreditLedgerDb.business_key,
+            ).where(CreditLedgerDb.id.in_(id_list))
+        ).all()
+    }
+
+
+def delete_all_lots(session: DbSession) -> None:
+    session.execute(delete(CreditLotDb).execution_options(synchronize_session=False))
+
+
+def delete_ledger_rows_from(session: DbSession, period_start: dt.datetime) -> None:
+    """Delete ledger rows with period >= period_start. Lots must be gone first."""
+    session.execute(
+        delete(CreditLedgerDb)
+        .where(CreditLedgerDb.period >= period_start)
+        .execution_options(synchronize_session=False)
+    )
+
+
+def delete_checkpoints_from(session: DbSession, period_start: dt.datetime) -> None:
+    session.execute(
+        delete(CreditCheckpointDb)
+        .where(CreditCheckpointDb.period >= period_start)
+        .execution_options(synchronize_session=False)
+    )
+
+
+def latest_checkpoint(
+    session: DbSession, address: str, before: dt.datetime
+) -> Optional[CreditCheckpointDb]:
+    """The most recent checkpoint row of `address` with period < `before`."""
+    return session.execute(
+        select(CreditCheckpointDb)
+        .where(
+            CreditCheckpointDb.address == address,
+            CreditCheckpointDb.period < before,
+        )
+        .order_by(CreditCheckpointDb.period.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+
+def checkpoint_rows(
+    session: DbSession, period: dt.datetime
+) -> List[CreditCheckpointDb]:
+    """Every checkpoint row (addresses and the global '' row) for `period`."""
+    return list(
+        session.execute(
+            select(CreditCheckpointDb)
+            .where(CreditCheckpointDb.period == period)
+            .order_by(CreditCheckpointDb.address)
+        ).scalars()
+    )
+
+
+def upsert_checkpoint(
+    session: DbSession,
+    period: dt.datetime,
+    address: str,
+    lots: List[Dict[str, Any]],
+    ledger_hash: str,
+) -> None:
+    stmt = insert(CreditCheckpointDb).values(
+        period=period, address=address, lots=lots, ledger_hash=ledger_hash
+    )
+    session.execute(
+        stmt.on_conflict_do_update(
+            index_elements=["period", "address"],
+            set_={"lots": stmt.excluded.lots, "ledger_hash": stmt.excluded.ledger_hash},
+        )
+    )
