@@ -4,13 +4,15 @@ import datetime as dt
 from decimal import Decimal
 
 import pytest
-from aleph_message.models import PaymentType
+from aleph_message.models import Chain, ItemType, MessageType, PaymentType
 from configmanager import Config
 from credit_v2_helpers import OWNER, seed_lot, set_last_closed_period
 
-from aleph.db.models import AlephCreditBalanceDb
+from aleph.db.models import AlephCreditBalanceDb, MessageDb
+from aleph.db.models.account_costs import AccountCostsDb
 from aleph.services.cost_validation import validate_balance_for_payment
 from aleph.toolkit.constants import DAY
+from aleph.types.cost import CostType
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.message_status import InsufficientCreditException
 
@@ -74,3 +76,55 @@ def test_ingest_check_reads_legacy_balance_when_flag_off(
 
         with pytest.raises(InsufficientCreditException):
             validate_balance_for_payment(session, OWNER, RATE, PaymentType.credit)
+
+
+def _costed_vm(session, owner: str, item_hash: str, cost: Decimal) -> None:
+    session.add(
+        MessageDb(
+            item_hash=item_hash,
+            sender=owner,
+            chain=Chain.ETH,
+            type=MessageType.instance,
+            time=LAST_CLOSED,
+            item_type=ItemType.inline,
+            signature="sig",
+            size=10,
+            content={"address": owner, "time": 1.0},
+        )
+    )
+    session.flush()
+    session.add(
+        AccountCostsDb(
+            owner=owner,
+            item_hash=item_hash,
+            type=CostType.EXECUTION,
+            name="instance",
+            payment_type=PaymentType.credit,
+            cost_hold=Decimal(0),
+            cost_stream=Decimal(0),
+            cost_credit=cost,
+        )
+    )
+    session.flush()
+
+
+def test_reservation_counts_resources_under_any_case_under_v2(
+    session_factory: DbSessionFactory, serve_v2: Config
+):
+    with session_factory() as session:
+        set_last_closed_period(session, LAST_CLOSED)
+        # A running VM costed under the checksummed form.
+        _costed_vm(session, OWNER, "ab" * 32, RATE)
+        # One day of the new VM alone: not enough for both.
+        seed_lot(session, OWNER.lower(), int(RATE * DAY), period=LAST_CLOSED)
+        session.commit()
+
+        with pytest.raises(InsufficientCreditException):
+            validate_balance_for_payment(
+                session, OWNER.lower(), RATE, PaymentType.credit
+            )
+
+        seed_lot(
+            session, OWNER.lower(), int(RATE * DAY), period=LAST_CLOSED, key="1:0xtx:1"
+        )
+        validate_balance_for_payment(session, OWNER.lower(), RATE, PaymentType.credit)

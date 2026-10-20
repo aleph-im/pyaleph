@@ -12,6 +12,7 @@ from aleph.db.models.credit_ledger import (
     CreditLedgerDb,
     CreditLotDb,
 )
+from aleph.services.credits.addresses import normalize_address
 from aleph.toolkit.constants import MiB
 from aleph.types.db_session import DbSession
 
@@ -105,7 +106,8 @@ def seed_instance(
     resource = BillingResourceDb(
         item_hash=item_hash,
         type=MessageType.instance,
-        owner=owner,
+        # Stored in ledger form, as upsert_billing_resource writes it.
+        owner=normalize_address(owner),
         payment_type=payment_type,
         first_confirmed_at=first_confirmed_at,
         end_of_life=end_of_life,

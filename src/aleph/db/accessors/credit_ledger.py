@@ -18,6 +18,7 @@ from aleph.db.models.credit_ledger import (
     CreditTopupDb,
 )
 from aleph.db.models.messages import ForgottenMessageDb, MessageDb
+from aleph.services.credits.addresses import normalize_address
 from aleph.services.credits.periods import floor_hour
 from aleph.types.db_session import DbSession
 
@@ -126,7 +127,8 @@ def upsert_billing_resource(
     stmt = insert(BillingResourceDb).values(
         item_hash=message.item_hash,
         type=MessageType(message.type),
-        owner=message.owner or content["address"],
+        # Stored in ledger form so every lookup is an indexed equality.
+        owner=normalize_address(message.owner or content["address"]),
         payment_type=payment_type,
         first_confirmed_at=confirmed_at,
         cost_spec=cost_spec,

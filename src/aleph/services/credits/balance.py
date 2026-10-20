@@ -15,8 +15,8 @@ logs an ERROR and keeps serving the legacy tables (`serve_v2_active`).
 
 Addresses: every lookup goes through `normalize_address` (EVM addresses
 lowercased), so a checksummed and a lowercased address read the same balance.
-`billing_resources.owner` keeps the address as the message carried it, hence
-the case-insensitive owner match for EVM addresses.
+`billing_resources.owner` is stored in that form too, so owner lookups are
+indexed equalities.
 """
 
 import datetime as dt
@@ -34,9 +34,10 @@ from aleph.db.models.credit_ledger import (
     CreditLedgerDb,
     CreditLotDb,
 )
+from aleph.services.credits.addresses import normalize_address
 from aleph.services.credits.cost_spec import CostSpecError
 from aleph.services.credits.fold import execution_amount
-from aleph.services.credits.inputs import _is_on_demand_program, normalize_address
+from aleph.services.credits.inputs import _is_on_demand_program
 from aleph.services.credits.periods import KIND_ORDER, floor_hour, period_end
 from aleph.services.credits.rates import rate_for
 from aleph.services.pricing_utils import pricing_model_at
@@ -68,7 +69,8 @@ def _serve_v2_configured() -> bool:
     return bool(get_config().aleph.credits.serve_v2.value)
 
 
-def _last_closed_period(session: DbSession) -> Optional[dt.datetime]:
+def last_closed_period(session: DbSession) -> Optional[dt.datetime]:
+    """The fold's last closed period; None if none, or no fold state row."""
     return session.execute(
         select(CreditFoldStateDb.last_closed_period).where(CreditFoldStateDb.id == 1)
     ).scalar_one_or_none()
@@ -81,7 +83,7 @@ def check_serve_v2_at_startup(session: DbSession) -> bool:
     """
     if not _serve_v2_configured():
         return False
-    if _last_closed_period(session) is None:
+    if last_closed_period(session) is None:
         LOGGER.error(_NOT_READY_MESSAGE)
         return False
     LOGGER.info("Serving credit balances from the v2 ledger")
@@ -100,7 +102,7 @@ def serve_v2_active(session: DbSession) -> bool:
 
     if not _serve_v2_configured():
         return False
-    if _last_closed_period(session) is None:
+    if last_closed_period(session) is None:
         if not _not_ready_logged:
             LOGGER.error(_NOT_READY_MESSAGE)
             _not_ready_logged = True
@@ -112,14 +114,11 @@ def serve_v2_active(session: DbSession) -> bool:
 
 
 def _owner_matches(address: str):
-    key = normalize_address(address)
-    if key[:2] == "0x":
-        return func.lower(BillingResourceDb.owner) == key
-    return BillingResourceDb.owner == key
+    return BillingResourceDb.owner == normalize_address(address)
 
 
 def _accrual_since(session: DbSession) -> Optional[dt.datetime]:
-    last_closed = _last_closed_period(session)
+    last_closed = last_closed_period(session)
     return None if last_closed is None else period_end(last_closed)
 
 
@@ -306,3 +305,35 @@ def addresses_with_ledger_activity_since(
         .order_by(CreditLedgerDb.address)
     )
     return [address for address in session.execute(stmt).scalars() if address]
+
+
+def owners_of_live_credit_resources(session: DbSession) -> List[str]:
+    """
+    Owners (ledger form) of credit-paid resources that are still alive, so the
+    removal cron checks accounts with running resources even when the fold
+    writes no ledger rows (stalled fold).
+    """
+    stmt = (
+        select(BillingResourceDb.owner)
+        .where(
+            BillingResourceDb.payment_type == PaymentType.credit,
+            BillingResourceDb.type.in_(ACCRUING_TYPES),
+            BillingResourceDb.end_of_life.is_(None),
+        )
+        .distinct()
+        .order_by(BillingResourceDb.owner)
+    )
+    return list(session.execute(stmt).scalars())
+
+
+def fold_lag_exceeded(
+    session: DbSession, now: dt.datetime, max_lag: dt.timedelta
+) -> Optional[dt.datetime]:
+    """
+    The last closed period if the fold is more than `max_lag` behind `now`
+    (end of that period), None otherwise or when nothing was ever closed.
+    """
+    last_closed = last_closed_period(session)
+    if last_closed is not None and period_end(last_closed) < now - max_lag:
+        return last_closed
+    return None

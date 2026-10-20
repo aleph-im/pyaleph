@@ -4,11 +4,20 @@ import datetime as dt
 import logging
 
 import pytest
-from aleph_message.models import PaymentType
+from aleph_message.models import Chain, ItemType, MessageType, PaymentType
 from configmanager import Config
-from credit_v2_helpers import OWNER, seed_instance, seed_lot, set_last_closed_period
+from credit_v2_helpers import (
+    OWNER,
+    instance_spec,
+    seed_instance,
+    seed_lot,
+    set_last_closed_period,
+)
+from sqlalchemy import delete
 
-from aleph.db.models import AlephCreditBalanceDb
+from aleph.db.accessors.credit_ledger import upsert_billing_resource
+from aleph.db.models import AlephCreditBalanceDb, MessageDb
+from aleph.db.models.credit_ledger import BillingResourceDb, CreditFoldStateDb
 from aleph.services.credits import balance as balance_service
 from aleph.services.credits.fold import execution_amount
 from aleph.services.credits.rates import rate_for
@@ -207,3 +216,76 @@ async def test_serve_v2_falls_back_to_legacy_before_the_first_closed_period(
     response = await ccn_api_client.get(_uri(OWNER))
     assert response.status == 200, await response.text()
     assert (await response.json())["credit_balance"] == 42
+
+
+@pytest.mark.asyncio
+async def test_serve_v2_falls_back_to_legacy_without_a_fold_state_row(
+    ccn_api_client, session_factory: DbSessionFactory, serve_v2, frozen_now
+):
+    _seed_funded_instance(session_factory, 1_000_000)
+    with session_factory() as session:
+        session.execute(delete(CreditFoldStateDb))
+        session.add(
+            AlephCreditBalanceDb(
+                address=OWNER,
+                credit_ref="legacy",
+                credit_index=0,
+                amount_remaining=42,
+                expiration_date=None,
+                message_timestamp=LAST_CLOSED,
+                last_update=LAST_CLOSED,
+            )
+        )
+        session.commit()
+        assert not balance_service.serve_v2_active(session)
+
+    response = await ccn_api_client.get(_uri(OWNER))
+    assert response.status == 200, await response.text()
+    assert (await response.json())["credit_balance"] == 42
+
+
+def test_serve_v2_refusal_is_logged_once_per_process(
+    session_factory: DbSessionFactory, serve_v2, caplog
+):
+    with caplog.at_level(logging.ERROR, logger=balance_service.LOGGER.name):
+        with session_factory() as session:
+            for _ in range(3):
+                assert not balance_service.serve_v2_active(session)
+    errors = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(errors) == 1
+
+
+def test_billing_owner_is_stored_in_ledger_form_and_found_by_both_forms(
+    session_factory: DbSessionFactory, serve_v2
+):
+    message = MessageDb(
+        item_hash=VM,
+        chain=Chain.ETH,
+        sender=OWNER,
+        signature="sig",
+        type=MessageType.instance,
+        item_type=ItemType.inline,
+        time=LAST_CLOSED,
+        size=10,
+        content=instance_spec()["content"],
+        owner=OWNER,
+        payment_type="credit",
+    )
+    with session_factory() as session:
+        set_last_closed_period(session, LAST_CLOSED)
+        seed_lot(session, OWNER.lower(), 1_000_000, period=LAST_CLOSED)
+        # Not stored as a message: the billing row is unconfirmed and accrues
+        # from the end of the last closed period.
+        upsert_billing_resource(session, message, instance_spec())
+        row = session.get(BillingResourceDb, VM)
+        assert row is not None and row.owner == OWNER.lower()
+
+        accrual = balance_service.provisional_accrual(session, OWNER, SINCE, NOW)
+        assert accrual > 0
+        assert (
+            balance_service.provisional_accrual(session, OWNER.lower(), SINCE, NOW)
+            == accrual
+        )
+        assert balance_service.get_credit_balance_v2(
+            session, OWNER, NOW
+        ) == balance_service.get_credit_balance_v2(session, OWNER.lower(), NOW)

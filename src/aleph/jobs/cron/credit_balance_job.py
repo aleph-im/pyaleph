@@ -7,6 +7,7 @@ from aleph_message.models import ItemHash, MessageType, PaymentType
 from sqlalchemy import update
 from sqlalchemy.engine import CursorResult
 
+from aleph.config import get_config
 from aleph.db.accessors.balances import get_updated_credit_balance_accounts
 from aleph.db.accessors.cost import get_total_costs_for_address_grouped_by_message
 from aleph.db.accessors.files import update_file_pin_grace_period
@@ -23,7 +24,9 @@ from aleph.jobs.cron.cron_job import BaseCronJob
 from aleph.services.cost import calculate_storage_size
 from aleph.services.credits.balance import (
     addresses_with_ledger_activity_since,
+    fold_lag_exceeded,
     get_credit_balance_any,
+    owners_of_live_credit_resources,
     serve_v2_active,
 )
 from aleph.toolkit.constants import CREDIT_ONLY_CUTOFF_TIMESTAMP, DAY, MiB
@@ -50,6 +53,9 @@ MAX_MESSAGES_PER_RUN = 5000
 # run. Over-inclusion is harmless: the check is idempotent.
 V2_ACTIVITY_LOOKBACK = dt.timedelta(hours=6)
 
+# Beyond the attestation grace, the fold should close a period within this.
+FOLD_LAG_MARGIN = dt.timedelta(hours=2)
+
 
 class CreditBalanceCronJob(BaseCronJob):
     def __init__(
@@ -64,8 +70,17 @@ class CreditBalanceCronJob(BaseCronJob):
         with self.session_factory() as session:
             serve_v2 = serve_v2_active(session)
             if serve_v2:
-                accounts = addresses_with_ledger_activity_since(
-                    session, job.last_run - V2_ACTIVITY_LOOKBACK
+                self.check_fold_lag(session, now)
+                # Accounts with recent ledger rows (top-ups, transfers, billed
+                # hours) and accounts with live credit-paid resources, which
+                # keep accruing even when the fold writes nothing.
+                accounts = sorted(
+                    set(
+                        addresses_with_ledger_activity_since(
+                            session, job.last_run - V2_ACTIVITY_LOOKBACK
+                        )
+                    )
+                    | set(owners_of_live_credit_resources(session))
                 )
             else:
                 accounts = get_updated_credit_balance_accounts(session, job.last_run)
@@ -173,6 +188,22 @@ class CreditBalanceCronJob(BaseCronJob):
                 session.commit()
 
             return not deferred
+
+    @staticmethod
+    def check_fold_lag(session: DbSession, now: dt.datetime) -> None:
+        """Log an ERROR (once per run) when the credit fold is stalled."""
+        grace = dt.timedelta(
+            seconds=int(get_config().aleph.credits.attestation.grace_seconds.value)
+        )
+        last_closed = fold_lag_exceeded(session, now, grace + FOLD_LAG_MARGIN)
+        if last_closed is not None:
+            LOGGER.error(
+                "Credit fold is stalled: last closed period %s is more than %s "
+                "behind; balances include a growing provisional accrual and "
+                "removals rely on it",
+                last_closed.isoformat(),
+                grace + FOLD_LAG_MARGIN,
+            )
 
     async def delete_messages(
         self, session: DbSession, messages: List[ItemHash]

@@ -92,7 +92,8 @@ async def test_processing_an_instance_writes_billing_resource(
     with session_factory() as session:
         row = get_billing_resource(session, credit_instance_message.item_hash)
         assert row is not None
-        assert row.owner == content["address"]
+        # Stored in ledger form (EVM lowercased).
+        assert row.owner == content["address"].lower()
         assert row.payment_type == PaymentType.credit
         assert row.type == MessageType.instance
         assert row.end_of_life is None

@@ -32,6 +32,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 import aleph.config
+import aleph.services.credits.balance
 from aleph.db.accessors.files import insert_message_file_pin, upsert_file_tag
 from aleph.db.connection import make_db_url, make_engine, make_session_factory
 from aleph.db.models import (
@@ -384,6 +385,14 @@ class _ConfigProxy:
 
 # Singleton proxy instance
 _config_proxy = _ConfigProxy()
+
+
+@pytest.fixture(autouse=True)
+def reset_serve_v2_error_log():
+    """The serve_v2 refusal ERROR is logged once per process: once per test."""
+    aleph.services.credits.balance._not_ready_logged = False
+    yield
+    aleph.services.credits.balance._not_ready_logged = False
 
 
 @pytest.fixture

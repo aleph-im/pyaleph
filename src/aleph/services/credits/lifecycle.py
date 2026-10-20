@@ -32,6 +32,7 @@ from aleph.db.accessors.credit_ledger import (
     selected_attestation,
 )
 from aleph.db.models.credit_ledger import CreditPeriodQuoteDb
+from aleph.services.credits.addresses import normalize_address
 from aleph.services.credits.fold import (
     GLOBAL_ADDRESS,
     GenesisInput,
@@ -41,11 +42,7 @@ from aleph.services.credits.fold import (
     refold_from,
     write_checkpoint,
 )
-from aleph.services.credits.inputs import (
-    AttestationPending,
-    collect_inputs,
-    normalize_address,
-)
+from aleph.services.credits.inputs import AttestationPending, collect_inputs
 from aleph.services.credits.periods import PERIOD, floor_hour, period_end
 from aleph.types.db_session import DbSession, DbSessionFactory
 

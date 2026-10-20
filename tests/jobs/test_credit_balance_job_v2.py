@@ -1,12 +1,13 @@
 """The credit removal cron reads the v2 ledger under `serve_v2`."""
 
 import datetime as dt
+import logging
 from decimal import Decimal
 
 import pytest
 from aleph_message.models import Chain, ItemHash, ItemType, MessageType, PaymentType
 from configmanager import Config
-from credit_v2_helpers import seed_lot, set_last_closed_period
+from credit_v2_helpers import seed_instance, seed_lot, set_last_closed_period
 
 from aleph.db.accessors.messages import get_message_status
 from aleph.db.models import AlephCreditHistoryDb
@@ -163,3 +164,43 @@ async def test_credit_balance_cron_picks_addresses_with_ledger_rows(
     assert _status(session_factory, "a2" * 32) == MessageStatus.PROCESSED
     assert _status(session_factory, "a3" * 32) == MessageStatus.PROCESSED
     assert _status(session_factory, "a4" * 32) == MessageStatus.PROCESSED
+
+
+@pytest.mark.asyncio
+async def test_stalled_fold_is_logged_and_running_resources_are_still_checked(
+    session_factory: DbSessionFactory, serve_v2: Config, caplog
+):
+    now = utc_now()
+    with session_factory() as session:
+        # Far beyond grace (3 h) + 2 h.
+        set_last_closed_period(session, floor_hour(now) - dt.timedelta(hours=12))
+        session.add(
+            CronJobDb(id="credit_v2", interval=1, last_run=now - dt.timedelta(hours=1))
+        )
+        # A running credit VM with no ledger row at all and no lots.
+        _credit_instance(session, now, POOR, "b1" * 32)
+        seed_instance(
+            session,
+            "b1" * 32,
+            owner=POOR.lower(),
+            first_confirmed_at=now - dt.timedelta(days=1),
+        )
+        session.commit()
+
+    job = CreditBalanceCronJob(
+        session_factory=session_factory,
+        max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+    )
+    with session_factory() as session:
+        loaded = session.get(CronJobDb, "credit_v2")
+    assert loaded is not None
+    with caplog.at_level(logging.ERROR, logger="aleph.jobs.cron.credit_balance_job"):
+        assert await job.run(now, loaded)
+
+    stalled = [
+        r
+        for r in caplog.records
+        if r.levelno == logging.ERROR and "stalled" in r.getMessage()
+    ]
+    assert len(stalled) == 1
+    assert _status(session_factory, "b1" * 32) == MessageStatus.REMOVING

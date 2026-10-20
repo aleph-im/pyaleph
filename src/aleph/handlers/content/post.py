@@ -49,8 +49,8 @@ from aleph.schemas.credit_transfer import (
     CreditTransferContent,
 )
 from aleph.schemas.execution_intervals import ExecutionIntervalsContent
+from aleph.services.credits.addresses import normalize_address
 from aleph.services.credits.balance import serve_v2_active
-from aleph.services.credits.inputs import normalize_address
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import (

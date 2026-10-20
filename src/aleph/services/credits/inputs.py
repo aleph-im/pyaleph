@@ -43,6 +43,7 @@ from aleph.db.models.messages import MessageDb
 from aleph.db.models.posts import PostDb
 from aleph.schemas.credit_transfer import CreditTransferContent
 from aleph.schemas.execution_intervals import ExecutionIntervalsContent, IntervalEntry
+from aleph.services.credits.addresses import normalize_address
 from aleph.services.credits.cost_spec import CostSpecError
 from aleph.services.credits.fold import (
     ExclusionInput,
@@ -90,11 +91,6 @@ class AttestationPending(Exception):
     def __init__(self, period_start: dt.datetime):
         super().__init__(f"no attestation yet for period {period_start.isoformat()}")
         self.period_start = period_start
-
-
-def normalize_address(address: str) -> str:
-    """Ledger form of an address: EVM (0x) addresses lowercased, others as is."""
-    return address.lower() if address[:2].lower() == "0x" else address
 
 
 def _seconds(start: dt.datetime, end: dt.datetime) -> int:
