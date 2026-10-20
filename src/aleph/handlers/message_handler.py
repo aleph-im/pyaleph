@@ -285,6 +285,18 @@ class MessagePublisher(BaseMessageHandler):
                             item_hash=pending_message.item_hash, tx_hash=tx_hash
                         )
                     )
+                    # The usual way a message gets confirmed: received over
+                    # the API or P2P, processed, then confirmed when chain
+                    # sync replays its tx. The billing hook must run here as
+                    # in confirm_existing_message, in the same transaction.
+                    # Loaded after the upsert, whose trigger maintains
+                    # messages.first_confirmed_at.
+                    existing_message = get_message_by_item_hash(
+                        session, ItemHash(pending_message.item_hash)
+                    )
+                    if existing_message is not None:
+                        session.refresh(existing_message)
+                        apply_confirmation_to_billing(session, existing_message)
                     session.commit()
                     LOGGER.debug(
                         "Message %s has status %s, added confirmation for tx %s",
