@@ -3,6 +3,7 @@ import datetime as dt
 from decimal import Decimal
 from typing import Any, Dict
 
+import pytest
 from aleph_message.models import InstanceContent
 
 from aleph.db.accessors.files import insert_message_file_pin
@@ -12,7 +13,7 @@ from aleph.services.cost import (
     get_detailed_costs,
     get_total_and_detailed_costs,
 )
-from aleph.services.credits.cost_spec import rate_from_spec
+from aleph.services.credits.cost_spec import CostSpecError, rate_from_spec
 from aleph.services.pricing_utils import build_pricing_model_from_aggregate
 from aleph.toolkit.constants import DEFAULT_PRICE_AGGREGATE, MiB, ProductPriceType
 from aleph.toolkit.costs import format_cost
@@ -95,7 +96,7 @@ def test_rate_from_spec_matches_live_computation_for_instance(
         spec = {
             "type": "INSTANCE",
             "content": instance_content(),
-            "volume_sizes_bytes": {DATA_REF: DATA_SIZE_BYTES},
+            "volume_sizes_bytes": {ROOTFS_REF: MiB, DATA_REF: DATA_SIZE_BYTES},
             "file_size_bytes": None,
         }
         rate = rate_from_spec(
@@ -114,7 +115,7 @@ def test_rate_from_spec_uses_given_pricing_model_not_db(
     spec = {
         "type": "INSTANCE",
         "content": instance_content(volumes=[]),
-        "volume_sizes_bytes": {},
+        "volume_sizes_bytes": {ROOTFS_REF: MiB},
         "file_size_bytes": None,
     }
     with session_factory() as session:
@@ -131,7 +132,12 @@ def test_rate_from_spec_uses_given_pricing_model_not_db(
     assert live_total == base
     assert doubled > base
     # Only the compute-unit price changed; storage is covered by the allowance.
-    assert abs(doubled - base * 2) <= Decimal("1e-17")
+    # Exact: the unit price doubles, the rounding is applied once.
+    pricing = default_model()[ProductPriceType.INSTANCE]
+    assert pricing.compute_unit is not None and pricing.price.compute_unit is not None
+    units = max(2, -(-4096 // pricing.compute_unit.memory_mib))
+    doubled_unit_per_second = pricing.price.compute_unit.credit * 2 / 3600
+    assert doubled == format_cost(units * doubled_unit_per_second)
 
 
 def test_rate_from_spec_for_store_uses_spec_file_size(
@@ -185,7 +191,7 @@ def test_rate_from_spec_for_gpu_instance_uses_given_model(
     spec = {
         "type": "INSTANCE",
         "content": content,
-        "volume_sizes_bytes": {},
+        "volume_sizes_bytes": {ROOTFS_REF: MiB},
         "file_size_bytes": None,
     }
     parsed = InstanceContent.model_validate(content)
@@ -209,3 +215,113 @@ def test_rate_from_spec_for_gpu_instance_uses_given_model(
     assert execution > 0
     # Doubling the standard-tier unit price adds exactly the execution cost.
     assert doubled == format_cost(base + execution)
+
+
+def _instance_spec(**spec_overrides: Any) -> Dict[str, Any]:
+    spec: Dict[str, Any] = {
+        "type": "INSTANCE",
+        "content": instance_content(),
+        "volume_sizes_bytes": {ROOTFS_REF: MiB, DATA_REF: DATA_SIZE_BYTES},
+        "file_size_bytes": None,
+    }
+    spec.update(spec_overrides)
+    return spec
+
+
+def test_rate_from_spec_follows_spec_sizes_not_db(
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    big = 100 * 1024 * MiB  # beyond the storage allowance
+    with session_factory() as session:
+        settings = _get_settings(session)
+        # DB says DATA_REF is tiny; the spec says it is huge.
+        pin_file(session, DATA_REF, MiB)
+        from_spec = rate_from_spec(
+            session,
+            _instance_spec(volume_sizes_bytes={ROOTFS_REF: MiB, DATA_REF: big}),
+            "h",
+            default_model(),
+            settings,
+        )
+        from_db_size = rate_from_spec(
+            session,
+            _instance_spec(volume_sizes_bytes={ROOTFS_REF: MiB, DATA_REF: MiB}),
+            "h",
+            default_model(),
+            settings,
+        )
+        # No files row at all for the ref: still priced from the spec.
+        session.rollback()
+        no_row = rate_from_spec(
+            session,
+            _instance_spec(volume_sizes_bytes={ROOTFS_REF: MiB, DATA_REF: big}),
+            "h",
+            default_model(),
+            settings,
+        )
+    assert from_spec > from_db_size
+    assert no_row == from_spec
+
+
+def test_rate_from_spec_raises_for_store_without_file_size(
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    spec: Dict[str, Any] = {
+        "type": "STORE",
+        "content": {
+            "address": OWNER,
+            "time": 1701099523.849,
+            "item_type": "ipfs",
+            "item_hash": "Qm" + "a" * 44,
+            "payment": {"chain": "ETH", "type": "credit"},
+        },
+        "volume_sizes_bytes": {},
+        "file_size_bytes": None,
+    }
+    with session_factory() as session:
+        with pytest.raises(CostSpecError, match="no file size"):
+            rate_from_spec(session, spec, "s", default_model(), _get_settings(session))
+        spec["file_size_bytes"] = 0  # zero is a real size
+        assert rate_from_spec(
+            session, spec, "s", default_model(), _get_settings(session)
+        ) == Decimal(0)
+
+
+def test_rate_from_spec_raises_for_missing_snapshot_key(
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    spec = _instance_spec()
+    del spec["volume_sizes_bytes"]
+    with session_factory() as session:
+        settings = _get_settings(session)
+        with pytest.raises(CostSpecError, match="volume_sizes_bytes"):
+            rate_from_spec(session, spec, "h", default_model(), settings)
+        spec["volume_sizes_bytes"] = None
+        with pytest.raises(CostSpecError, match="volume_sizes_bytes"):
+            rate_from_spec(session, spec, "h", default_model(), settings)
+
+
+def test_rate_from_spec_raises_for_ref_absent_from_snapshot(
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    with session_factory() as session:
+        settings = _get_settings(session)
+        for missing in (DATA_REF, ROOTFS_REF):
+            sizes = {ROOTFS_REF: MiB, DATA_REF: MiB}
+            del sizes[missing]
+            with pytest.raises(CostSpecError, match=missing):
+                rate_from_spec(
+                    session,
+                    _instance_spec(volume_sizes_bytes=sizes),
+                    "h",
+                    default_model(),
+                    settings,
+                )

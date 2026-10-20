@@ -32,6 +32,10 @@ BILLABLE_MESSAGE_TYPES = (
 )
 
 
+class CostSpecError(ValueError):
+    """A cost spec that cannot be priced (corrupt, or missing sizes)."""
+
+
 def _referenced_volumes(content: Any) -> List[Tuple[str, bool]]:
     """(ref, use_latest) of every reference volume the cost code resolves."""
     refs: List[Tuple[str, bool]] = []
@@ -103,14 +107,27 @@ def rate_from_spec(
     Credit cost per second of the message described by `spec`, under
     `pricing_model`, from the snapshotted content and file sizes only (the
     price aggregate and the file tables are not read).
+
+    Always returns the credit rate, whatever the message's payment type.
+    Raises CostSpecError when the spec cannot be priced.
     """
     content = _CONTENT_CLASSES[MessageType(spec["type"])].model_validate(
         spec["content"]
     )
     file_size_bytes = spec.get("file_size_bytes")
     if isinstance(content, StoreContent) and file_size_bytes is None:
-        # The file was not known at snapshot time: nothing to bill.
-        return Decimal(0)
+        raise CostSpecError(
+            f"{item_hash}: STORE spec has no file size (file unresolved at snapshot)"
+        )
+
+    volume_sizes_bytes = spec.get("volume_sizes_bytes")
+    if not isinstance(volume_sizes_bytes, dict):
+        raise CostSpecError(f"{item_hash}: spec has no volume_sizes_bytes snapshot")
+    for ref, _use_latest in _referenced_volumes(content):
+        if ref not in volume_sizes_bytes:
+            raise CostSpecError(
+                f"{item_hash}: referenced volume {ref} has no size in the spec"
+            )
 
     product_type = _get_product_price_type(content, settings, pricing_model)
     pricing_key = resolve_price_type_key(product_type, pricing_model.keys())
@@ -125,7 +142,7 @@ def rate_from_spec(
         pricing=pricing,
         settings=settings,
         pricing_model=pricing_model,
-        volume_sizes_bytes=spec.get("volume_sizes_bytes") or {},
+        volume_sizes_bytes=volume_sizes_bytes,
         file_size_bytes=file_size_bytes,
     )
     return format_cost(sum((c.cost_credit for c in costs), Decimal(0)))
