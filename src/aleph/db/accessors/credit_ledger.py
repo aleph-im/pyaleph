@@ -17,7 +17,11 @@ from aleph.db.models.credit_ledger import (
     CreditTopupDb,
 )
 from aleph.db.models.messages import ForgottenMessageDb, MessageDb
+from aleph.services.credits.periods import floor_hour
 from aleph.types.db_session import DbSession
+
+# Credit transfers are fold inputs keyed on their confirmation time.
+CREDIT_TRANSFER_POST_TYPE = "aleph_credit_transfer"
 
 
 def get_fold_state(session: DbSession) -> CreditFoldStateDb:
@@ -71,12 +75,13 @@ def upsert_billing_resource(
     """
     content = message.content
     payment_type = PaymentType(message.payment_type or PaymentType.hold.value)
+    confirmed_at = get_first_confirmed_at(session, message.item_hash)
     stmt = insert(BillingResourceDb).values(
         item_hash=message.item_hash,
         type=MessageType(message.type),
         owner=message.owner or content["address"],
         payment_type=payment_type,
-        first_confirmed_at=get_first_confirmed_at(session, message.item_hash),
+        first_confirmed_at=confirmed_at,
         cost_spec=cost_spec,
     )
     stmt = stmt.on_conflict_do_update(
@@ -89,21 +94,33 @@ def upsert_billing_resource(
         },
     )
     session.execute(stmt)
+    if confirmed_at is not None:
+        # Processed after its confirmation: the hour it starts billing in may
+        # already be closed.
+        mark_dirty(session, floor_hour(confirmed_at))
 
 
 def refresh_billing_confirmation(
     session: DbSession, item_hash: str, confirmed_at: dt.datetime
 ) -> None:
-    """first_confirmed_at = LEAST(existing, confirmed_at), or confirmed_at if null."""
-    session.execute(
+    """
+    first_confirmed_at = LEAST(existing, confirmed_at), or confirmed_at if null.
+    A change re-folds the hour of the new value if it is already closed.
+    """
+    changed = session.execute(
         update(BillingResourceDb)
-        .where(BillingResourceDb.item_hash == item_hash)
-        .values(
-            first_confirmed_at=func.least(
-                BillingResourceDb.first_confirmed_at, confirmed_at
-            )
+        .where(
+            BillingResourceDb.item_hash == item_hash,
+            or_(
+                BillingResourceDb.first_confirmed_at.is_(None),
+                BillingResourceDb.first_confirmed_at > confirmed_at,
+            ),
         )
-    )
+        .values(first_confirmed_at=confirmed_at)
+        .returning(BillingResourceDb.item_hash)
+    ).first()
+    if changed is not None:
+        mark_dirty(session, floor_hour(confirmed_at))
 
 
 def set_billing_end_of_life(
@@ -116,7 +133,20 @@ def set_billing_end_of_life(
     """
     Close a billing resource. Sets end_of_life when it is null, overwrites a
     provisional value, and never touches a non-provisional one.
+
+    A change re-folds from the hour of the earlier of the old and new values,
+    if that hour is already closed.
     """
+    current = session.execute(
+        select(BillingResourceDb.end_of_life, BillingResourceDb.end_of_life_provisional)
+        .where(BillingResourceDb.item_hash == item_hash)
+        .with_for_update()
+    ).one_or_none()
+    if current is None:
+        return
+    previous, previous_provisional = current
+    if previous is not None and not previous_provisional:
+        return
     session.execute(
         update(BillingResourceDb)
         .where(
@@ -132,6 +162,8 @@ def set_billing_end_of_life(
             end_of_life_provisional=provisional,
         )
     )
+    if previous != at:
+        mark_dirty(session, floor_hour(at if previous is None else min(previous, at)))
 
 
 def apply_confirmation_to_billing(session: DbSession, message: MessageDb) -> None:
@@ -144,6 +176,7 @@ def apply_confirmation_to_billing(session: DbSession, message: MessageDb) -> Non
     if confirmed_at is None:
         return
     refresh_billing_confirmation(session, message.item_hash, confirmed_at)
+    mark_transfer_dirty(session, message, confirmed_at)
     if message.type == MessageType.forget:
         # Direct targets, plus the ones forgotten by cascade (e.g. VM updates),
         # which only the forgotten_messages record ties back to this FORGET.
@@ -159,6 +192,30 @@ def apply_confirmation_to_billing(session: DbSession, message: MessageDb) -> Non
             set_billing_end_of_life(
                 session, target_hash, confirmed_at, "forgotten", provisional=False
             )
+
+
+def mark_transfer_dirty(
+    session: DbSession,
+    message: MessageDb,
+    confirmed_at: Optional[dt.datetime] = None,
+) -> None:
+    """
+    A credit transfer is folded in the hour of its first confirmation: when that
+    hour is already closed (late confirmation, or a message processed after its
+    confirmation), re-fold it. Only a lower confirmation time changes the
+    input, but a spurious mark costs one refold and a missed one loses the
+    transfer, so any confirmation of a transfer marks. `confirmed_at` is read
+    from the database when not given.
+    """
+    if (
+        message.type != MessageType.post
+        or message.content_type != CREDIT_TRANSFER_POST_TYPE
+    ):
+        return
+    if confirmed_at is None:
+        confirmed_at = get_first_confirmed_at(session, message.item_hash)
+    if confirmed_at is not None:
+        mark_dirty(session, floor_hour(confirmed_at))
 
 
 def iter_live_billing_resources(
@@ -295,6 +352,8 @@ def record_attestation(
     current = active_attestation(session, period_start)
     if current is None:
         status = "active"
+        # The period may have been closed as attestation_missing.
+        mark_dirty(session, period_start)
     elif supersedes is not None and supersedes == current.item_hash:
         current.status = "superseded"
         # Free the partial unique index slot before inserting the new active row.
@@ -518,6 +577,22 @@ def delete_ledger_rows_from(session: DbSession, period_start: dt.datetime) -> No
         delete(CreditLedgerDb)
         .where(CreditLedgerDb.period >= period_start)
         .execution_options(synchronize_session=False)
+    )
+
+
+def genesis_rows_from(
+    session: DbSession, period_start: dt.datetime
+) -> List[CreditLedgerDb]:
+    """Genesis ledger rows with period >= period_start, in (period, id) order."""
+    return list(
+        session.execute(
+            select(CreditLedgerDb)
+            .where(
+                CreditLedgerDb.kind == "genesis",
+                CreditLedgerDb.period >= period_start,
+            )
+            .order_by(CreditLedgerDb.period, CreditLedgerDb.id)
+        ).scalars()
     )
 
 

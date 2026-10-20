@@ -11,12 +11,13 @@ also be used as template for Python modules.
 """
 
 import asyncio
+import datetime as dt
 import logging
 import os
 import sys
 from contextlib import AsyncExitStack
 from multiprocessing import get_start_method, set_start_method
-from typing import Coroutine, List
+from typing import Coroutine, Dict, List, Optional
 
 import alembic.command
 import alembic.config
@@ -26,18 +27,23 @@ from configmanager import Config
 import aleph.config
 from aleph.chains.chain_data_service import ChainDataService, PendingTxPublisher
 from aleph.chains.connector import ChainConnector
+from aleph.chains.ethereum import make_web3_client
 from aleph.cli.args import parse_args
+from aleph.db.accessors.credit_ledger import mark_dirty
 from aleph.db.connection import make_db_url, make_engine, make_session_factory
 from aleph.exceptions import InvalidConfigException, KeyNotFoundException
 from aleph.jobs import JobsRunner, start_jobs
 from aleph.jobs.cron.balance_job import BalanceCronJob
 from aleph.jobs.cron.credit_balance_job import CreditBalanceCronJob
-from aleph.jobs.cron.cron_job import CronJob, cron_job_task
+from aleph.jobs.cron.credit_fold_job import CreditFoldCronJob
+from aleph.jobs.cron.cron_job import BaseCronJob, CronJob, cron_job_task
 from aleph.jobs.cron.metrics_partition_job import MetricsPartitionCronJob
 from aleph.network import listener_tasks
 from aleph.repair import repair_node
 from aleph.services import p2p
 from aleph.services.cache.node_cache import NodeCache
+from aleph.services.credits.lifecycle import FoldConfig
+from aleph.services.credits.topups import TopupConfig, TopupIndexer
 from aleph.services.ipfs import IpfsService
 from aleph.services.keys import generate_keypair, save_keys
 from aleph.services.p2p.http import close_sessions
@@ -50,6 +56,7 @@ from aleph.storage import StorageService
 from aleph.toolkit.lifecycle import install_signal_handlers, safe_async_cleanup
 from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
+from aleph.types.db_session import DbSessionFactory
 
 __author__ = "Moshe Malawach"
 __copyright__ = "Moshe Malawach"
@@ -75,6 +82,62 @@ async def init_node_cache(config: Config) -> NodeCache:
         message_count_cache_ttl=config.perf.message_count_cache_ttl.value,
     )
     return node_cache
+
+
+def make_credit_fold_job(
+    config: Config,
+    session_factory: DbSessionFactory,
+    storage_service: Optional[StorageService],
+) -> Optional[CreditFoldCronJob]:
+    """
+    The credit_fold cron job, or None when neither the attestation start period
+    nor the genesis period is configured (the fold is disabled).
+    """
+    fold_cfg = FoldConfig.from_config(config)
+    if fold_cfg.first_period is None:
+        LOGGER.info(
+            "Credit fold disabled: neither aleph.credits.attestation.start_period "
+            "nor aleph.credits.genesis.period is set"
+        )
+        return None
+
+    indexer: Optional[TopupIndexer] = None
+    if config.aleph.credits.chain.start_block.value is None:
+        LOGGER.warning(
+            "aleph.credits.chain.start_block is not set: the credit fold runs "
+            "without indexing top-ups"
+        )
+    else:
+        rpc_url = (
+            config.aleph.credits.chain.rpc_url.value or config.ethereum.api_url.value
+        )
+        web3 = make_web3_client(
+            rpc_url,
+            int(config.ethereum.chain_id.value),
+            int(config.ethereum.client_timeout.value),
+        )
+        indexer = TopupIndexer(web3, TopupConfig.from_config(config))
+
+    return CreditFoldCronJob(
+        session_factory=session_factory,
+        settings_getter=lambda: config,
+        indexer=indexer,
+        cfg=fold_cfg,
+        storage_service=storage_service,
+    )
+
+
+def mark_credits_refold(session_factory: DbSessionFactory, timestamp: int) -> None:
+    period = dt.datetime.fromtimestamp(timestamp, tz=dt.timezone.utc)
+    with session_factory() as session:
+        if mark_dirty(session, period):
+            LOGGER.info("Credit ledger will be re-folded from %s", period.isoformat())
+        else:
+            LOGGER.warning(
+                "Credit period %s is not closed yet: nothing to re-fold",
+                period.isoformat(),
+            )
+        session.commit()
 
 
 async def main(args: List[str]) -> None:
@@ -161,24 +224,25 @@ async def main(args: List[str]) -> None:
         garbage_collector = GarbageCollector(
             session_factory=session_factory, storage_service=storage_service
         )
-        cron_job = CronJob(
-            session_factory=session_factory,
-            jobs={
-                "balance": BalanceCronJob(
-                    session_factory=session_factory,
-                    max_unauthenticated_upload_file_size=config.storage.max_unauthenticated_upload_file_size.value,
-                ),
-                "credit_balance": CreditBalanceCronJob(
-                    session_factory=session_factory,
-                    max_unauthenticated_upload_file_size=config.storage.max_unauthenticated_upload_file_size.value,
-                ),
-                "metrics_partition": MetricsPartitionCronJob(
-                    session_factory=session_factory,
-                    retention_months=config.aleph.scoring.retention_months.value,
-                    lookahead_months=config.aleph.scoring.partition_lookahead_months.value,
-                ),
-            },
-        )
+        cron_jobs: Dict[str, BaseCronJob] = {
+            "balance": BalanceCronJob(
+                session_factory=session_factory,
+                max_unauthenticated_upload_file_size=config.storage.max_unauthenticated_upload_file_size.value,
+            ),
+            "credit_balance": CreditBalanceCronJob(
+                session_factory=session_factory,
+                max_unauthenticated_upload_file_size=config.storage.max_unauthenticated_upload_file_size.value,
+            ),
+            "metrics_partition": MetricsPartitionCronJob(
+                session_factory=session_factory,
+                retention_months=config.aleph.scoring.retention_months.value,
+                lookahead_months=config.aleph.scoring.partition_lookahead_months.value,
+            ),
+        }
+        credit_fold_job = make_credit_fold_job(config, session_factory, storage_service)
+        if credit_fold_job is not None:
+            cron_jobs["credit_fold"] = credit_fold_job
+        cron_job = CronJob(session_factory=session_factory, jobs=cron_jobs)
         chain_data_service = ChainDataService(
             session_factory=session_factory,
             storage_service=storage_service,
@@ -195,10 +259,15 @@ async def main(args: List[str]) -> None:
 
         if args.repair:
             await repair_node(
-                storage_service=storage_service, session_factory=session_factory
+                storage_service=storage_service,
+                session_factory=session_factory,
+                config=config,
             )
         else:
             LOGGER.info("Repair operations disabled by CLI arguments")
+
+        if args.credits_refold_from is not None:
+            mark_credits_refold(session_factory, args.credits_refold_from)
 
         tasks: List[Coroutine] = []
 

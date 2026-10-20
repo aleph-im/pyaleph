@@ -15,6 +15,7 @@ from aleph.db.accessors.chains import get_tx_height
 from aleph.db.accessors.cost import make_costs_upsert_query
 from aleph.db.accessors.credit_ledger import (
     apply_confirmation_to_billing,
+    mark_transfer_dirty,
     upsert_billing_resource,
 )
 from aleph.db.accessors.files import insert_content_file_pin, upsert_file
@@ -539,6 +540,8 @@ class MessageHandler(BaseMessageHandler):
                 )
 
         await content_handler.process(session=session, messages=[message])
+        # Billable messages are covered by upsert_billing_resource above.
+        mark_transfer_dirty(session, message)
 
         return ProcessedMessage(
             message=message,

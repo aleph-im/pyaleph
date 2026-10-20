@@ -1,7 +1,8 @@
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from aleph_message.models import ItemHash, MessageType
+from configmanager import Config
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -22,6 +23,11 @@ from aleph.db.models import (
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.db.models.credit_ledger import BillingResourceDb
 from aleph.services.credits.cost_spec import BILLABLE_MESSAGE_TYPES, build_cost_spec
+from aleph.services.credits.lifecycle import (
+    FoldConfig,
+    load_genesis,
+    verify_latest_checkpoint,
+)
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession, DbSessionFactory
@@ -352,16 +358,53 @@ def backfill_billing_resources(session_factory: DbSessionFactory) -> int:
     return created
 
 
+async def load_configured_genesis(
+    storage_service: StorageService, session_factory: DbSessionFactory, config: Config
+) -> None:
+    """Load `credits.genesis.hash` unless it is the genesis already loaded."""
+    cfg = FoldConfig.from_config(config)
+    if not cfg.genesis_hash or cfg.genesis_period is None:
+        return
+    with session_factory() as session:
+        if get_fold_state(session).genesis_loaded_hash == cfg.genesis_hash:
+            return
+        LOGGER.info("Loading credit genesis %s", cfg.genesis_hash)
+        try:
+            await load_genesis(
+                session, storage_service, cfg.genesis_hash, cfg.genesis_period
+            )
+            session.commit()
+        except Exception:
+            # The credit_fold job retries, and does not fold past the genesis
+            # period until the load succeeds.
+            LOGGER.exception("Loading credit genesis %s failed", cfg.genesis_hash)
+            session.rollback()
+
+
 async def repair_node(
-    storage_service: StorageService, session_factory: DbSessionFactory
+    storage_service: StorageService,
+    session_factory: DbSessionFactory,
+    config: Optional[Config] = None,
 ):
+    if config is None:
+        from aleph.config import get_config
+
+        config = get_config()
+
     LOGGER.info("Fixing file sizes")
     with session_factory() as session:
         await _fix_file_sizes(session, storage_service, store_files=True)
         session.commit()
 
-    LOGGER.info("Repairing credit balances")
-    _repair_credit_balances(session_factory)
+    if config.aleph.credits.serve_v2.value:
+        LOGGER.info("Verifying the latest credit checkpoint")
+        try:
+            verify_latest_checkpoint(session_factory, config)
+        except Exception:
+            LOGGER.exception("Credit checkpoint verification failed")
+    else:
+        LOGGER.info("Repairing credit balances")
+        _repair_credit_balances(session_factory)
 
     LOGGER.info("Rejecting PROGRAM messages with invalid metadata")
     _reject_invalid_program_metadata(session_factory)
@@ -371,3 +414,5 @@ async def repair_node(
     if not backfill_done:
         LOGGER.info("Backfilling billing resources")
         backfill_billing_resources(session_factory)
+
+    await load_configured_genesis(storage_service, session_factory, config)

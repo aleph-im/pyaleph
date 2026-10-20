@@ -7,13 +7,15 @@ from message_test_helpers import process_pending_messages
 from sqlalchemy import select
 
 from aleph.db.accessors.credit_ledger import (
+    apply_confirmation_to_billing,
     get_billing_resource,
+    get_fold_state,
     iter_live_billing_resources,
     refresh_billing_confirmation,
     set_billing_end_of_life,
     upsert_billing_resource,
 )
-from aleph.db.accessors.messages import remove_message
+from aleph.db.accessors.messages import make_confirmation_upsert_query, remove_message
 from aleph.db.models import (
     AlephCreditBalanceDb,
     ChainTxDb,
@@ -471,3 +473,114 @@ async def test_late_forget_confirmation_replaces_provisional_end_of_life(
             session.refresh(row)
             assert row.end_of_life == confirmed_at
             assert row.end_of_life_provisional is False
+
+
+# --- dirty marking of closed periods ------------------------------------------
+
+CLOSED = dt.datetime(2026, 3, 1, 12, tzinfo=dt.timezone.utc)
+
+
+def _close_up_to(session, period: dt.datetime) -> None:
+    get_fold_state(session).last_closed_period = period
+    session.flush()
+
+
+def _dirty(session):
+    state = get_fold_state(session)
+    session.refresh(state)
+    return state.dirty_from_period
+
+
+def test_lowered_confirmation_marks_closed_period_dirty(
+    session_factory: DbSessionFactory,
+):
+    with session_factory() as session:
+        _add_resource(
+            session,
+            "aa02",
+            MessageType.instance,
+            PaymentType.credit,
+            CLOSED + dt.timedelta(hours=3),
+        )
+        _close_up_to(session, CLOSED)
+
+        # Later than the existing value: nothing changes, nothing dirty.
+        refresh_billing_confirmation(session, "aa02", CLOSED + dt.timedelta(hours=5))
+        assert _dirty(session) is None
+
+        # Lowered into a closed hour: that hour is dirty.
+        refresh_billing_confirmation(session, "aa02", CLOSED + dt.timedelta(minutes=7))
+        assert _dirty(session) == CLOSED
+
+
+def test_end_of_life_in_closed_period_marks_dirty(session_factory: DbSessionFactory):
+    with session_factory() as session:
+        _add_resource(session, "aa03", MessageType.store, PaymentType.credit, CLOSED)
+        _close_up_to(session, CLOSED + dt.timedelta(hours=1))
+
+        # Provisional end in an open hour: not dirty.
+        set_billing_end_of_life(
+            session, "aa03", CLOSED + dt.timedelta(hours=2), "forgotten", True
+        )
+        assert _dirty(session) is None
+        # Finalised earlier, in a closed hour: dirty from that hour.
+        set_billing_end_of_life(
+            session, "aa03", CLOSED + dt.timedelta(minutes=20), "forgotten"
+        )
+        assert _dirty(session) == CLOSED
+        # A final end of life never moves again, so no new mark.
+        get_fold_state(session).dirty_from_period = None
+        set_billing_end_of_life(session, "aa03", CLOSED - dt.timedelta(hours=5), "x")
+        assert _dirty(session) is None
+
+
+def test_removal_in_closed_period_marks_dirty(session_factory: DbSessionFactory):
+    item_hash = "cd" * 32
+    with session_factory() as session:
+        session.add(_instance_message(item_hash))
+        session.flush()
+        upsert_billing_resource(
+            session, _get_message(session, item_hash), {"type": "INSTANCE"}
+        )
+        _close_up_to(session, CLOSED)
+        remove_message(session, item_hash, CLOSED + dt.timedelta(minutes=30))
+        assert _dirty(session) == CLOSED
+
+
+def test_late_transfer_confirmation_marks_dirty(session_factory: DbSessionFactory):
+    tx_hash = "0x" + "ce" * 32
+    transfer = MessageDb(
+        item_hash="ab" * 32,
+        chain=Chain.ETH,
+        sender=SENDER,
+        signature="sig",
+        type=MessageType.post,
+        item_type=ItemType.inline,
+        time=dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc),
+        size=10,
+        content={"address": SENDER, "type": "aleph_credit_transfer", "time": 1.0},
+        status_value=MessageStatus.PROCESSED,
+        reception_time=CLOSED,
+    )
+    with session_factory() as session:
+        session.add(transfer)
+        session.add(
+            ChainTxDb(
+                hash=tx_hash,
+                chain=Chain.ETH,
+                height=1,
+                datetime=CLOSED + dt.timedelta(minutes=40),
+                publisher="0xabadbabe",
+                protocol=ChainSyncProtocol.ON_CHAIN_SYNC,
+                protocol_version=1,
+                content="x",
+            )
+        )
+        _close_up_to(session, CLOSED)
+        session.execute(
+            make_confirmation_upsert_query(
+                item_hash=transfer.item_hash, tx_hash=tx_hash
+            )
+        )
+        apply_confirmation_to_billing(session, transfer)
+        assert _dirty(session) == CLOSED
