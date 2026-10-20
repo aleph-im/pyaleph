@@ -81,6 +81,8 @@ def upsert_billing_resource(
     except first_confirmed_at when it was still null.
     """
     content = message.content
+    # A message without a payment section is a hold message (the legacy
+    # default): it is billed as hold_equivalent, never drained from credits.
     payment_type = PaymentType(message.payment_type or PaymentType.hold.value)
     confirmed_at = get_first_confirmed_at(session, message.item_hash)
     stmt = insert(BillingResourceDb).values(

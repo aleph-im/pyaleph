@@ -1,9 +1,10 @@
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, StrictInt, field_validator, model_validator
+from pydantic import BaseModel, Field, StrictInt, field_validator, model_validator
 
 PERIOD_SECONDS = 3600
 MAX_PERIOD_START = 4_102_444_800  # 2100-01-01 UTC, keeps fromtimestamp() safe
+MAX_INTERVALS = 50_000
 
 
 class Period(BaseModel):
@@ -30,7 +31,9 @@ class ExecutionIntervalsContent(BaseModel):
     period: Period
     source: str
     events_cursor: Optional[Dict[str, Any]] = None
-    intervals: List[IntervalEntry]
+    # Bounded so that one post cannot make every node's fold load an unbounded
+    # list; far above the number of VMs the network runs in an hour.
+    intervals: List[IntervalEntry] = Field(max_length=MAX_INTERVALS)
     totals: Dict[str, Any]
     supersedes: Optional[str] = None
 

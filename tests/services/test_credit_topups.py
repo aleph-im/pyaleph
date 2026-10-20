@@ -375,3 +375,74 @@ async def test_index_commits_per_chunk_without_holding_the_fold_lock(
     assert sorted(set(seen)) == [(1, None, 0), (51, 50, 1)]
     with session_factory() as session:
         assert get_fold_state(session).chain_cursor_block == 100
+
+
+UNIVERSAL_ROUTER = "0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af"
+
+
+def test_default_denylist_covers_pool_manager_router_and_contract():
+    from aleph.config import get_defaults
+
+    denylist = {
+        a.lower() for a in get_defaults()["aleph"]["credits"]["chain"]["denylist"]
+    }
+    assert denylist == {
+        POOL_MANAGER.lower(),
+        UNIVERSAL_ROUTER.lower(),
+        CONTRACT.lower(),
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sender", [UNIVERSAL_ROUTER, CONTRACT, POOL_MANAGER.lower()])
+async def test_default_denylisted_senders_are_excluded(mocker, session_factory, sender):
+    from aleph.config import get_defaults
+
+    denylist = get_defaults()["aleph"]["credits"]["chain"]["denylist"]
+    web3 = make_web3(mocker, [make_log(USDC, sender, 5_000_000)])
+    await run_index(session_factory, web3, make_cfg(denylist=denylist))
+    (row,) = all_rows(session_factory)
+    assert row.status == "excluded_denylist"
+    assert row.credits is None
+
+
+@pytest.mark.asyncio
+async def test_missing_pool_leaves_aleph_unquoted_and_warns_once(
+    mocker, session_factory, caplog
+):
+    import logging
+
+    from aleph.services.credits.topups import QuoteNotConfigured
+
+    web3 = make_web3(
+        mocker,
+        [make_log(ALEPH, USER, 10**18), make_log(USDC, USER, 10**6, log_index=1)],
+    )
+    cfg = make_cfg(aleph_weth_pool=None)
+    with caplog.at_level(logging.DEBUG, logger="aleph.services.credits.topups"):
+        indexer, _ = await run_index(session_factory, web3, cfg)
+        aleph_row, usdc_row = all_rows(session_factory)
+        assert aleph_row.status == "unquoted"
+        assert usdc_row.status == "credited"
+        with pytest.raises(QuoteNotConfigured):
+            await indexer.quote(ALEPH, 10**18, 95)
+
+        with session_factory() as session:
+            assert await indexer.requote_unquoted(session) == 0
+            assert await indexer.requote_unquoted(session) == 0
+            session.rollback()
+
+    warnings = [
+        r
+        for r in caplog.records
+        if r.levelno >= logging.WARNING and aleph_row.tx_hash in r.getMessage()
+    ]
+    assert len(warnings) == 1
+    assert "aleph_weth_pool" in warnings[0].getMessage()
+    assert warnings[0].exc_info is None  # no traceback for a config condition
+    retries = [
+        r
+        for r in caplog.records
+        if r.levelno == logging.DEBUG and "still unquoted" in r.getMessage()
+    ]
+    assert len(retries) == 2

@@ -327,6 +327,20 @@ def test_unpriceable_vm_and_store_are_excluded(
     ]
 
 
+def test_vm_whose_content_no_longer_validates_is_unpriceable(
+    session_factory: DbSessionFactory, mock_config: Config, pricing
+):
+    # Neither a pydantic error nor a cost-code ValueError may stop the fold.
+    invalid = instance_spec(content={"rootfs": "not an object"})
+    rows = [
+        resource(VM, spec=invalid),
+        *attestation([interval(VM, NODE_A, 0, 60)]),
+    ]
+    inputs = collect(session_factory, mock_config, rows)
+    assert inputs.executions == []
+    assert inputs.exclusions == [vm_exclusion(VM, NODE_A, "unpriceable")]
+
+
 def test_live_vm_without_interval_gets_no_attestation_row(
     session_factory: DbSessionFactory, mock_config: Config, pricing
 ):

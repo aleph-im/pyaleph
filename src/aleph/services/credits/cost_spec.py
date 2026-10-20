@@ -9,6 +9,7 @@ from aleph_message.models import (
     VerifiableProgramContent,
 )
 from aleph_message.models.execution.volume import ImmutableVolume
+from sqlalchemy.exc import SQLAlchemyError
 
 from aleph.db.accessors.files import get_file
 from aleph.db.models import MessageDb
@@ -109,8 +110,29 @@ def rate_from_spec(
     price aggregate and the file tables are not read).
 
     Always returns the credit rate, whatever the message's payment type.
-    Raises CostSpecError when the spec cannot be priced.
+    Raises CostSpecError when the spec cannot be priced, whatever the cause:
+    content that the installed aleph-message no longer validates, or a pricing
+    model the cost code rejects (missing product, unknown GPU tier) must become
+    an `unpriceable` exclusion, never an exception that stops the fold on every
+    node at the same period.
     """
+    try:
+        return _rate_from_spec(session, spec, item_hash, pricing_model, settings)
+    except (CostSpecError, SQLAlchemyError):
+        # A database error is transient and node-local: it must abort the fold
+        # transaction, not price the resource as unpriceable on this node only.
+        raise
+    except Exception as error:
+        raise CostSpecError(f"{item_hash}: {error}") from error
+
+
+def _rate_from_spec(
+    session: DbSession,
+    spec: Dict[str, Any],
+    item_hash: str,
+    pricing_model: Dict[ProductPriceType, ProductPricing],
+    settings: Settings,
+) -> Decimal:
     content = _CONTENT_CLASSES[MessageType(spec["type"])].model_validate(
         spec["content"]
     )

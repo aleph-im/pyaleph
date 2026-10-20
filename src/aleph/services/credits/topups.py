@@ -15,7 +15,7 @@ import datetime as dt
 import logging
 from dataclasses import dataclass, field
 from decimal import ROUND_FLOOR, Context, Decimal
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from web3 import AsyncWeb3, Web3
 
@@ -91,6 +91,13 @@ TICK_CONTEXT = Context(prec=80, rounding=ROUND_FLOOR)
 MAX_QUOTE = 10**77  # NUMERIC(78, 0)
 
 
+class QuoteNotConfigured(ValueError):
+    """
+    The quote needs configuration the node does not have (no ALEPH/WETH pool):
+    a permanent condition until the operator sets it, not an RPC failure.
+    """
+
+
 @dataclass
 class TopupConfig:
     chain_id: int
@@ -154,6 +161,9 @@ class TopupIndexer:
         self.cfg = cfg
         self._denylist = {a.lower() for a in cfg.denylist}
         self._token0_cache: Dict[str, str] = {}
+        # Unquoted rows already warned about a missing quote configuration:
+        # the condition is permanent, so later retries only log at DEBUG.
+        self._warned_unconfigured: Set[Tuple[int, str, int]] = set()
 
     # -- classification -------------------------------------------------
 
@@ -200,7 +210,10 @@ class TopupIndexer:
     async def _aleph_weth_price(self, block_number: int) -> Tuple[int, int]:
         """WETH raw units per ALEPH raw unit, as (num, den) with a PRICE_SCALE side."""
         if not self.cfg.aleph_weth_pool:
-            raise ValueError("aleph_weth_pool is not configured")
+            raise QuoteNotConfigured(
+                "aleph.credits.chain.aleph_weth_pool is not configured: "
+                "ALEPH top-ups stay unquoted until it is set"
+            )
         pool = self.web3.eth.contract(
             address=Web3.to_checksum_address(self.cfg.aleph_weth_pool), abi=POOL_ABI
         )
@@ -311,12 +324,25 @@ class TopupIndexer:
             return row
         try:
             num, den = await self.quote(row.token, raw_amount, block_number)
+        except QuoteNotConfigured as error:
+            self._log_unconfigured(row, error)
+            row.status = "unquoted"
+            return row
         except Exception:
             LOGGER.exception("Could not quote top-up %s", row.tx_hash)
             row.status = "unquoted"
             return row
         self._apply_quote(row, raw_amount, num, den)
         return row
+
+    def _log_unconfigured(self, row: CreditTopupDb, error: Exception) -> None:
+        """WARNING the first time a row is seen unquotable for config, then DEBUG."""
+        key = (row.chain_id, row.tx_hash, row.log_index)
+        if key in self._warned_unconfigured:
+            LOGGER.debug("Top-up %s is still unquoted: %s", row.tx_hash, error)
+            return
+        self._warned_unconfigured.add(key)
+        LOGGER.warning("Top-up %s stored unquoted: %s", row.tx_hash, error)
 
     @staticmethod
     def _apply_quote(row: CreditTopupDb, raw_amount: int, num: int, den: int) -> None:
@@ -382,6 +408,9 @@ class TopupIndexer:
             raw_amount = int(row.raw_amount)
             try:
                 num, den = await self.quote(row.token, raw_amount, row.block_number)
+            except QuoteNotConfigured as error:
+                self._log_unconfigured(row, error)
+                continue
             except Exception:
                 LOGGER.warning("Top-up %s is still unquotable", row.tx_hash)
                 continue

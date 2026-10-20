@@ -170,6 +170,20 @@ async def test_superseding_attestation_replaces_and_marks_dirty(
 
 
 @pytest.mark.asyncio
+async def test_attestor_address_matches_case_insensitively(
+    mock_config: Config,
+    message_processor: PendingMessageProcessor,
+    session_factory: DbSessionFactory,
+):
+    msg = _attestation_message(sender=SENDER.lower())
+    results = await _run(message_processor, session_factory, [msg])
+    assert all(isinstance(r, ProcessedMessage) for r in results)
+
+    with session_factory() as session:
+        assert session.get(CreditAttestationDb, msg.item_hash) is not None
+
+
+@pytest.mark.asyncio
 async def test_attestation_from_unlisted_address_is_ignored(
     mock_config: Config,
     message_processor: PendingMessageProcessor,

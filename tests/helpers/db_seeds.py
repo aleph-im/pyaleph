@@ -5,4 +5,7 @@ migration adding a seeded row is updated in one place instead of several.
 """
 
 EXPECTED_ERROR_CODE_ROWS = 25
-EXPECTED_CRON_JOB_ROWS = 3
+# balance, credit_balance, metrics_partition and credit_fold (migration 0069).
+EXPECTED_CRON_JOB_ROWS = 4
+# The credit_fold_state singleton (migration 0069).
+EXPECTED_CREDIT_FOLD_STATE_ROWS = 1

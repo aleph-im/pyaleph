@@ -187,6 +187,8 @@ def upgrade() -> None:
     )
 
     op.execute(text("INSERT INTO credit_fold_state(id) VALUES (1)"))
+    # 300 s is a floor only: the cron runner ticks every aleph.jobs.cron.period
+    # (30 min by default), so the fold actually runs every 30 min.
     op.execute(
         text(
             """

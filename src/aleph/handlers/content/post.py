@@ -62,6 +62,16 @@ from .content_handler import ContentHandler
 LOGGER = logging.getLogger(__name__)
 
 
+def _address_key(address: str) -> str:
+    """EVM (0x) addresses compare case-insensitively, others exactly."""
+    return address.lower() if address[:2].lower() == "0x" else address
+
+
+def _is_listed(address: str, addresses: List[str]) -> bool:
+    key = _address_key(address)
+    return any(_address_key(listed) == key for listed in addresses)
+
+
 def get_post_content(message: MessageDb) -> PostContent:
     content = message.parsed_content
     if not isinstance(content, PostContent):
@@ -369,7 +379,7 @@ class PostMessageHandler(ContentHandler):
 
         if (
             content.type == self.attestation_post_type
-            and content.address in self.attestation_addresses
+            and _is_listed(content.address, self.attestation_addresses)
             and (
                 not self.attestation_channels
                 or message.channel in self.attestation_channels

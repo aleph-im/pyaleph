@@ -5,6 +5,7 @@ from typing import Any, Dict
 
 import pytest
 from aleph_message.models import InstanceContent
+from pydantic import ValidationError
 
 from aleph.db.accessors.files import insert_message_file_pin
 from aleph.db.models import StoredFileDb
@@ -334,3 +335,53 @@ def test_rate_from_spec_raises_for_ref_absent_from_snapshot(
             settings,
         )
         assert without_rootfs == with_rootfs
+
+
+def test_rate_from_spec_wraps_content_that_no_longer_validates(
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    # A spec snapshotted under an older aleph-message whose content the
+    # installed version rejects: unpriceable, not a crash of the fold.
+    spec = _instance_spec(content=instance_content(resources={"vcpus": "many"}))
+    with session_factory() as session:
+        settings = _get_settings(session)
+        with pytest.raises(CostSpecError, match="^h: ") as error:
+            rate_from_spec(session, spec, "h", default_model(), settings)
+    assert isinstance(error.value.__cause__, ValidationError)
+
+
+def test_rate_from_spec_wraps_a_pricing_model_without_the_product(
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    model = default_model()
+    for key in [k for k in model if k != ProductPriceType.STORAGE]:
+        del model[key]
+    with session_factory() as session:
+        settings = _get_settings(session)
+        with pytest.raises(CostSpecError, match="^h: ") as error:
+            rate_from_spec(session, _instance_spec(), "h", model, settings)
+    assert error.value.__cause__ is not None
+    assert not isinstance(error.value.__cause__, CostSpecError)
+
+
+def test_rate_from_spec_wraps_a_product_without_compute_unit_price(
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    aggregate = copy.deepcopy(DEFAULT_PRICE_AGGREGATE)
+    key = (
+        ProductPriceType.INSTANCE
+        if ProductPriceType.INSTANCE in aggregate
+        else ProductPriceType.INSTANCE.value
+    )
+    del aggregate[key]["price"]["compute_unit"]
+    model = build_pricing_model_from_aggregate(aggregate)
+    with session_factory() as session:
+        settings = _get_settings(session)
+        with pytest.raises(CostSpecError, match="^h: "):
+            rate_from_spec(session, _instance_spec(), "h", model, settings)
