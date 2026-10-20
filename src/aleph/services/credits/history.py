@@ -79,7 +79,11 @@ def store_consumed_credits(
             if version not in rates:
                 try:
                     rates[version] = rate_for(
-                        session, resource, period, pricing=(version, model)
+                        session,
+                        resource,
+                        period,
+                        pricing=(version, model),
+                        write=False,
                     )
                 except CostSpecError:
                     rates[version] = None

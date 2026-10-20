@@ -50,7 +50,10 @@ MAX_MESSAGES_PER_RUN = 5000
 # recent periods. A period's rows are written when the fold closes it, up to
 # the attestation grace (3 h by default) plus the top-up finality and the cron
 # cadence after its end, so the scan reaches back this far before the last
-# run. Over-inclusion is harmless: the check is idempotent.
+# run. Over-inclusion is harmless: the check is idempotent. Limit: a period
+# closed more than 6 h after the last run (a fold stalled longer than that)
+# writes rows this scan no longer reaches; only accounts with live credit
+# resources (always checked) are then re-examined.
 V2_ACTIVITY_LOOKBACK = dt.timedelta(hours=6)
 
 # Beyond the attestation grace, the fold should close a period within this.
@@ -96,6 +99,7 @@ class CreditBalanceCronJob(BaseCronJob):
             # the remainder (the account query is delta-based on last_run).
             budget = MAX_MESSAGES_PER_RUN
             deferred = False
+            checked = 0
 
             for address in accounts:
                 if budget <= 0:
@@ -108,6 +112,7 @@ class CreditBalanceCronJob(BaseCronJob):
                     break
 
                 remaining_credits = get_credit_balance_any(session, address)
+                checked += 1
 
                 to_delete = []
                 to_recover = []
@@ -187,6 +192,12 @@ class CreditBalanceCronJob(BaseCronJob):
 
                 session.commit()
 
+            LOGGER.info(
+                "Checked %d of %d credit balance accounts (%s)",
+                checked,
+                len(accounts),
+                "v2 ledger" if serve_v2 else "legacy",
+            )
             return not deferred
 
     @staticmethod

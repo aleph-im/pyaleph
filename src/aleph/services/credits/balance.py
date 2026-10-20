@@ -181,6 +181,7 @@ def provisional_accrual(
     for resource in _accruing_resources(session, address, since, now):
         if _is_on_demand_program(resource):
             continue
+        # Unconfirmed resources accrue from `since` on purpose (conservative).
         start = max(since, resource.first_confirmed_at or since)
         end = min(now, resource.end_of_life or now)
         seconds = _seconds(start, end)
@@ -189,7 +190,7 @@ def provisional_accrual(
         if pricing is None:
             pricing = pricing_model_at(session, since)
         try:
-            rate = rate_for(session, resource, since, pricing=pricing)
+            rate = rate_for(session, resource, since, pricing=pricing, write=False)
         except CostSpecError:
             continue
         total += execution_amount(rate, seconds)

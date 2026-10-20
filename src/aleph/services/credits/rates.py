@@ -20,6 +20,7 @@ def rate_for(
     at: dt.datetime,
     *,
     pricing: Optional[PricingVersion] = None,
+    write: bool = True,
 ) -> Decimal:
     """
     Credit rate per second of `resource` under the pricing in force at `at`,
@@ -28,6 +29,11 @@ def rate_for(
 
     `pricing` is the (version, model) of `pricing_model_at(session, at)` when
     the caller already has it: the pricing timeline is then not walked again.
+
+    `write=False` computes a missing rate without caching it: read paths (API,
+    admission, removal cron) must not insert into `billing_rates`, where a
+    conflicting uncommitted insert from an in-flight fold would block them
+    until the fold commits.
     """
     version, model = pricing if pricing is not None else pricing_model_at(session, at)
     cached = get_billing_rate(session, resource.item_hash, version)
@@ -36,5 +42,6 @@ def rate_for(
     rate = cost_spec.rate_from_spec(
         session, resource.cost_spec, resource.item_hash, model, _get_settings(session)
     )
-    upsert_billing_rate(session, resource.item_hash, version, rate)
+    if write:
+        upsert_billing_rate(session, resource.item_hash, version, rate)
     return rate

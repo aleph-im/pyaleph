@@ -145,3 +145,27 @@ def test_rate_for_recomputes_when_version_changes(
 
     assert after > before
     assert len(rows) == 2
+
+
+def test_rate_for_without_write_does_not_cache(
+    session_factory: DbSessionFactory,
+    fixture_product_prices_aggregate_in_db,
+    fixture_settings_aggregate_in_db,
+):
+    """Read paths compute a missing rate without inserting into billing_rates."""
+    with session_factory() as session:
+        resource = make_resource()
+        session.add(resource)
+        session.flush()
+
+        uncached = rate_for(session, resource, BETWEEN, write=False)
+        version, _ = pricing_model_at(session, BETWEEN)
+        assert get_billing_rate(session, resource.item_hash, version) is None
+
+        cached = rate_for(session, resource, BETWEEN)
+        assert get_billing_rate(session, resource.item_hash, version) == cached
+        # A cached rate is still served on the read path.
+        again = rate_for(session, resource, BETWEEN, write=False)
+
+    assert uncached == cached == again
+    assert uncached > 0
