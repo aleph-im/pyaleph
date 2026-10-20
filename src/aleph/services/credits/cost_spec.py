@@ -123,7 +123,11 @@ def rate_from_spec(
     volume_sizes_bytes = spec.get("volume_sizes_bytes")
     if not isinstance(volume_sizes_bytes, dict):
         raise CostSpecError(f"{item_hash}: spec has no volume_sizes_bytes snapshot")
-    for ref, _use_latest in _referenced_volumes(content):
+    refs = [ref for ref, _use_latest in _referenced_volumes(content)]
+    if isinstance(content, InstanceContent):
+        # The rootfs is priced from size_mib: its parent file is never read.
+        refs = refs[1:]
+    for ref in refs:
         if ref not in volume_sizes_bytes:
             raise CostSpecError(
                 f"{item_hash}: referenced volume {ref} has no size in the spec"

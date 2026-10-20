@@ -314,14 +314,23 @@ def test_rate_from_spec_raises_for_ref_absent_from_snapshot(
 ):
     with session_factory() as session:
         settings = _get_settings(session)
-        for missing in (DATA_REF, ROOTFS_REF):
-            sizes = {ROOTFS_REF: MiB, DATA_REF: MiB}
-            del sizes[missing]
-            with pytest.raises(CostSpecError, match=missing):
-                rate_from_spec(
-                    session,
-                    _instance_spec(volume_sizes_bytes=sizes),
-                    "h",
-                    default_model(),
-                    settings,
-                )
+        with pytest.raises(CostSpecError, match=DATA_REF):
+            rate_from_spec(
+                session,
+                _instance_spec(volume_sizes_bytes={ROOTFS_REF: MiB}),
+                "h",
+                default_model(),
+                settings,
+            )
+        # The rootfs parent is not read by the cost code: not required.
+        with_rootfs = rate_from_spec(
+            session, _instance_spec(), "h", default_model(), settings
+        )
+        without_rootfs = rate_from_spec(
+            session,
+            _instance_spec(volume_sizes_bytes={DATA_REF: DATA_SIZE_BYTES}),
+            "h",
+            default_model(),
+            settings,
+        )
+        assert without_rootfs == with_rootfs
