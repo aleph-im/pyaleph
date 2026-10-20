@@ -248,8 +248,9 @@ async def store_period_quote(
     return aleph_per_credit
 
 
-# Closed periods without a quote are re-quoted over this many hours back from
-# the last closed one, per fold run.
+# At most this many closed periods without a quote are re-quoted per fold run,
+# oldest first, over the whole closed range: an older hole is never left behind
+# (it would truncate /credits/revenue for good).
 REQUOTE_WINDOW_PERIODS = 168
 
 
@@ -260,14 +261,13 @@ def unquoted_closed_periods(
     limit: int = REQUOTE_WINDOW_PERIODS,
 ) -> List[dt.datetime]:
     """
-    Closed periods in the last `limit` hours up to `last_closed` (never before
-    `first_period`) without a `credit_period_quotes` row, oldest first.
+    The oldest `limit` closed periods in `[first_period, last_closed]` without
+    a `credit_period_quotes` row, oldest first.
     """
-    lo = max(first_period, last_closed - (limit - 1) * PERIOD)
-    if lo > last_closed:
+    if first_period > last_closed:
         return []
     series = select(
-        func.generate_series(lo, last_closed, PERIOD).column_valued("period")
+        func.generate_series(first_period, last_closed, PERIOD).column_valued("period")
     ).subquery()
     stmt = (
         select(series.c.period)
@@ -277,6 +277,7 @@ def unquoted_closed_periods(
             .exists()
         )
         .order_by(series.c.period)
+        .limit(limit)
     )
     return list(session.execute(stmt).scalars())
 
@@ -286,7 +287,7 @@ async def requote_closed_periods(
 ) -> int:
     """
     Quote the closed periods whose quote failed when they were closed (RPC
-    outage), within `REQUOTE_WINDOW_PERIODS` of the last closed one. Each
+    outage), the oldest `REQUOTE_WINDOW_PERIODS` of them per run. Each
     period is quoted in its own short transaction; a failure is logged and
     skipped. Returns the number of periods quoted.
     """

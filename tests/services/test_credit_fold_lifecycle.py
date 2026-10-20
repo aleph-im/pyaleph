@@ -741,7 +741,7 @@ def test_record_attestation_marks_a_closed_missing_period_dirty(
         assert session.get(CreditAttestationDb, "a" * 64) is not None
 
 
-def test_unquoted_closed_periods_are_bounded_to_the_window(
+def test_unquoted_closed_periods_are_oldest_first_with_a_per_run_cap(
     session_factory: DbSessionFactory,
 ):
     from aleph.services.credits.lifecycle import (
@@ -758,13 +758,20 @@ def test_unquoted_closed_periods_are_bounded_to_the_window(
         )
         session.flush()
         missing = unquoted_closed_periods(session, first, PS)
-        # Never before the fold's first period.
+        # Never before the fold's first period, never after the last closed one.
         assert unquoted_closed_periods(session, PS - 2 * HOUR, PS) == [
             PS - 2 * HOUR,
             PS,
         ]
+        assert unquoted_closed_periods(session, PS + HOUR, PS) == []
+        # A hole older than the cap is still reached first: oldest first.
+        assert unquoted_closed_periods(session, first, PS, limit=3) == [
+            first,
+            first + HOUR,
+            first + 2 * HOUR,
+        ]
 
-    assert len(missing) == REQUOTE_WINDOW_PERIODS - 1
-    assert missing[0] == PS - (REQUOTE_WINDOW_PERIODS - 1) * HOUR
-    assert missing[-1] == PS
+    assert len(missing) == REQUOTE_WINDOW_PERIODS
+    assert missing[0] == first
+    assert missing[-1] == first + (REQUOTE_WINDOW_PERIODS - 1) * HOUR
     assert PS - HOUR not in missing

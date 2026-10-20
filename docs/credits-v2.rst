@@ -84,8 +84,8 @@ Things to know about the export:
   repaired only in the cache is exported from its unrepaired history; an
   account drained to zero by a compromised expense post is exported with no
   row unless its history is repaired first.
-* H0 must be at or before the legacy stop: a post the legacy service makes
-  after H0 is a ``late_post``, never part of the genesis.
+* H0 must be at or after the legacy stop (step 3): a post the legacy service
+  makes at or after H0 is a ``late_post``, never part of the genesis.
 
 What ``serve_v2`` changes
 =========================
@@ -144,7 +144,8 @@ Follows spec section 11.
 7. **Nodestatus** switches to ``/credits/revenue`` at the first distribution
    after H0, with explicit heights. The revenue range stops at the first
    period without a stored ALEPH quote; the fold job re-quotes such periods
-   (last 168 per run), so a retry later completes it.
+   (the oldest 168 per run, over the whole closed range), so a retry later
+   completes it.
 
 Refold
 ======
