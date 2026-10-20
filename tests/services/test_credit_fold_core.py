@@ -1,8 +1,11 @@
 import datetime as dt
+import hashlib
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import delete, select
 
+import aleph.services.credits.fold as fold_module
 from aleph.db.accessors.credit_ledger import get_fold_state
 from aleph.db.models.credit_ledger import (
     CreditCheckpointDb,
@@ -394,3 +397,161 @@ def test_refold_without_checkpoint_replays_rows(session_factory):
         assert get_fold_state(session).last_closed_period == P(1)
         assert balance(session, A) == 90
         assert balance(session, B) == 22
+
+
+def test_lots_untouched_when_existence_check_misses(session_factory, monkeypatch):
+    """
+    A concurrent folder that inserted the rows first: the existence check
+    misses, the insert conflicts, and no lot may change for those rows.
+    """
+    with session_factory() as session:
+        first = apply_period(session, P(0), _mixed_inputs())
+        session.commit()
+        rows_before = [(r.id, r.kind, r.business_key, r.amount) for r in rows(session)]
+        lots_before = lots(session)
+
+        monkeypatch.setattr(fold_module, "ledger_row_exists", lambda *a, **kw: False)
+        second = apply_period(session, P(0), _mixed_inputs())
+        session.commit()
+
+        assert second.rows_written == 0
+        assert second.period_hash == first.period_hash
+        assert [
+            (r.id, r.kind, r.business_key, r.amount) for r in rows(session)
+        ] == rows_before
+        assert lots(session) == lots_before
+
+
+def test_lot_change_without_written_row_raises():
+    with pytest.raises(RuntimeError):
+        fold_module._require_applied(None)
+
+
+def _fold_chained_transfers(session, checkpoint_p0=False):
+    """
+    P(0): funding. P(1): three transfers whose message hashes sort in the
+    opposite order to their application: "zzz" funds B, "mmm" spends it, "aaa"
+    funds B again afterwards. A replay in (kind, key) order would let "mmm"
+    drain the "aaa:1" lot, which did not exist yet when "mmm" was folded.
+    """
+    apply_period(
+        session,
+        P(0),
+        PeriodInputs(
+            genesis=[
+                GenesisInput(
+                    address=A,
+                    credits=100,
+                    business_key="snap:0",
+                    expiration=P(0) + dt.timedelta(days=3),
+                )
+            ],
+            topups=[
+                topup(B, 10, "1:0xtb:0"),
+                topup(D, 100, "1:0xtd:0"),
+            ],
+        ),
+    )
+    if checkpoint_p0:
+        # Checkpoint older than P(2) - 1h: refold restores it then replays P(1).
+        write_checkpoint(session, P(0))
+    apply_period(
+        session,
+        P(1),
+        PeriodInputs(
+            transfers=[
+                TransferInput(message_hash="zzz", sender=A, entries=[(B, 20, None)]),
+                TransferInput(message_hash="mmm", sender=B, entries=[(C, 25, None)]),
+                TransferInput(message_hash="aaa", sender=D, entries=[(B, 40, None)]),
+            ]
+        ),
+    )
+
+
+D = "0xdddd"
+
+
+@pytest.mark.parametrize("with_checkpoint", [False, True])
+def test_refold_keeps_chained_same_hour_transfers(session_factory, with_checkpoint):
+    with session_factory() as session:
+        _fold_chained_transfers(session, checkpoint_p0=with_checkpoint)
+        lots_after_p1 = lots(session)
+        hashes = [period_hash(session, P(0)), period_hash(session, P(1))]
+        # B spent its top-up (10) and 15 of "zzz:1"; "aaa:1" is untouched.
+        b_lots = {
+            r.business_key: amount
+            for r in rows(session, P(1))
+            for lid, addr, amount, _ in lots_after_p1
+            if lid == r.id and addr == B
+        }
+        assert b_lots == {"zzz:1": 5, "aaa:1": 40}
+
+        apply_period(session, P(2), PeriodInputs(executions=[execution(B, "vm1", 3)]))
+        session.commit()
+
+        refold_from(session, P(2))
+        session.commit()
+
+        assert lots(session) == lots_after_p1
+        assert [period_hash(session, P(0)), period_hash(session, P(1))] == hashes
+        assert rows(session, P(2)) == []
+
+
+def test_refold_restores_old_checkpoint_and_replays_rows_after_it(session_factory):
+    with session_factory() as session:
+        apply_period(session, P(0), PeriodInputs(topups=[topup(A, 100, "1:0xt1:0")]))
+        write_checkpoint(session, P(0))
+        apply_period(session, P(1), PeriodInputs(executions=[execution(A, "vm1", 30)]))
+        apply_period(session, P(2), PeriodInputs(topups=[topup(A, 7, "1:0xt2:0")]))
+        lots_after_p2 = lots(session)
+        apply_period(session, P(3), PeriodInputs(executions=[execution(A, "vm1", 50)]))
+        session.commit()
+
+        refold_from(session, P(3))
+        session.commit()
+
+        assert lots(session) == lots_after_p2
+        assert balance(session, A) == 77
+        assert get_fold_state(session).last_closed_period is None or (
+            get_fold_state(session).last_closed_period <= P(2)
+        )
+
+
+def _sha(text):
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def test_checkpoint_ledger_hash_chain(session_factory):
+    u = [int(P(n).timestamp()) for n in range(3)]
+    with session_factory() as session:
+        apply_period(session, P(0), PeriodInputs(topups=[topup(A, 100, "1:0xt1:0")]))
+        global0 = write_checkpoint(session, P(0))
+        apply_period(session, P(1), PeriodInputs(executions=[execution(A, "vm1", 30)]))
+        apply_period(session, P(2), PeriodInputs(executions=[execution(A, "vm1", 20)]))
+        global2 = write_checkpoint(session, P(2))
+        session.commit()
+
+        # Only A has rows, so A's per-period hash is the period hash.
+        h = [period_hash(session, P(n)) for n in range(3)]
+        a0 = _sha("|" + f"{u[0]}:{h[0]}")
+        a2 = _sha(a0 + "|" + f"{u[1]}:{h[1]}|{u[2]}:{h[2]}")
+
+        checkpoints = {
+            (row.period, row.address): row
+            for row in session.execute(select(CreditCheckpointDb)).scalars()
+        }
+        assert checkpoints[(P(0), A)].ledger_hash == a0
+        assert checkpoints[(P(2), A)].ledger_hash == a2
+        assert checkpoints[(P(0), "")].ledger_hash == global0 == _sha(a0)
+        assert checkpoints[(P(2), "")].ledger_hash == global2 == _sha(a2)
+        assert [lot["amount_remaining"] for lot in checkpoints[(P(2), A)].lots] == [50]
+
+
+def test_period_start_must_be_an_hour(session_factory):
+    with session_factory() as session:
+        with pytest.raises(AssertionError):
+            apply_period(session, P(0) + dt.timedelta(minutes=1), PeriodInputs())
+        with pytest.raises(AssertionError):
+            period_hash(session, P(0) + dt.timedelta(seconds=1))
+        with pytest.raises(AssertionError):
+            refold_from(session, P(0) + dt.timedelta(minutes=30))

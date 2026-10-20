@@ -43,7 +43,7 @@ from aleph.db.accessors.credit_ledger import (
     set_lot_remaining,
     upsert_checkpoint,
 )
-from aleph.services.credits.periods import KIND_ORDER, PERIOD
+from aleph.services.credits.periods import KIND_ORDER, PERIOD, floor_hour
 from aleph.types.db_session import DbSession
 
 # Kinds that create a lot / drain lots. hold_equivalent does neither.
@@ -214,7 +214,18 @@ def _take(lots: List[_Lot], amount: int) -> List[Tuple[int, Optional[dt.datetime
     return taken
 
 
-def _store(session: DbSession, lots: Sequence[_Lot]) -> None:
+def _require_applied(ledger_id: Optional[int]) -> None:
+    """
+    Lots may only change for a ledger row this transaction just inserted (or,
+    in replay, an existing row). A None id means the row already existed:
+    touching lots then would apply its effect twice.
+    """
+    if ledger_id is None:
+        raise RuntimeError("lot change for a ledger row that was not written")
+
+
+def _store(session: DbSession, lots: Sequence[_Lot], ledger_id: Optional[int]) -> None:
+    _require_applied(ledger_id)
     for lot in lots:
         if lot.touched:
             set_lot_remaining(session, lot.ledger_id, lot.amount_remaining)
@@ -222,13 +233,19 @@ def _store(session: DbSession, lots: Sequence[_Lot]) -> None:
 
 
 def _drain(
-    session: DbSession, address: str, amount: int, period_start: dt.datetime
+    session: DbSession,
+    address: str,
+    amount: int,
+    period_start: dt.datetime,
+    ledger_id: Optional[int],
 ) -> None:
+    """Drain `amount` for the ledger row `ledger_id`, which must have been written."""
+    _require_applied(ledger_id)
     if amount <= 0:
         return
     lots = _load_lots(session, address, period_start)
     _take(lots, amount)
-    _store(session, lots)
+    _store(session, lots, ledger_id)
 
 
 def _expiration_buckets(
@@ -330,21 +347,26 @@ def _apply_transfer(writer: _Writer, transfer: TransferInput) -> None:
         )
         return
 
+    # Drain in memory first: the recipient buckets depend on the drained lots.
     credits: List[Tuple[str, int, Optional[dt.datetime]]] = []
     for recipient, amount, requested in transfer.entries:
         for bucket_amount, expiration in _expiration_buckets(
             _take(lots, amount), requested
         ):
             credits.append((recipient, bucket_amount, expiration))
-    _store(session, lots)
 
-    writer.write(
+    # Row first, lots only if it was written: a concurrent folder that got
+    # there first makes this insert a no-op, and the in-memory drain is dropped.
+    out_id = writer.write(
         address=transfer.sender,
         kind="transfer_out",
         business_key=out_key,
         amount=-total,
         source_ref=transfer.message_hash,
     )
+    if out_id is None:
+        return
+    _store(session, lots, out_id)
     for index, (recipient, amount, expiration) in enumerate(credits, start=1):
         writer.credit(
             "transfer_in",
@@ -383,16 +405,17 @@ def _apply_execution(writer: _Writer, execution: ExecutionInput) -> None:
     if kind == "hold_equivalent":
         writer.write(amount=amount, **common)
         return
-    _drain(writer.session, execution.owner, amount, writer.period_start)
-    writer.write(amount=-amount, **common)
+    ledger_id = writer.write(amount=-amount, **common)
+    if ledger_id is None:
+        return
+    _drain(writer.session, execution.owner, amount, writer.period_start, ledger_id)
 
 
 def _apply_storage(writer: _Writer, storage: StorageInput) -> None:
     key = f"{_period_unix(writer.period_start)}:{storage.address}"
     if writer.exists("storage", key):
         return
-    _drain(writer.session, storage.address, storage.amount, writer.period_start)
-    writer.write(
+    ledger_id = writer.write(
         address=storage.address,
         kind="storage",
         business_key=key,
@@ -400,6 +423,11 @@ def _apply_storage(writer: _Writer, storage: StorageInput) -> None:
         seconds=storage.seconds,
         entry_count=storage.count,
         size_mib=storage.size_mib,
+    )
+    if ledger_id is None:
+        return
+    _drain(
+        writer.session, storage.address, storage.amount, writer.period_start, ledger_id
     )
 
 
@@ -410,7 +438,12 @@ def apply_period(
     Write the ledger rows of one period and update the lots, in kind order.
     Re-applying the same inputs is a no-op: a row whose (kind, business_key)
     already exists is treated as applied and its lot effect is skipped.
+
+    Each ledger row is inserted before its lots change, and lots change only
+    when the insert returned an id. A folder racing another one on the same
+    period therefore never drains lots for a row it did not write.
     """
+    assert period_start == floor_hour(period_start), "period_start must be an hour"
     writer = _Writer(session, period_start)
     period_unix = _period_unix(period_start)
 
@@ -498,6 +531,7 @@ def _rows_hash(rows: Sequence[Any]) -> str:
 
 def period_hash(session: DbSession, period_start: dt.datetime) -> str:
     """Hash of every ledger row of the period (an empty period hashes `[]`)."""
+    assert period_start == floor_hour(period_start), "period_start must be an hour"
     return _rows_hash(
         ledger_rows(session, after=period_start - PERIOD, until=period_start)
     )
@@ -641,7 +675,7 @@ def _replay_rows(session: DbSession, rows: Sequence[Any]) -> None:
                     expiration=row.expiration,
                 )
         elif row.kind in DEBIT_KINDS:
-            _drain(session, row.address, -int(row.amount), row.period)
+            _drain(session, row.address, -int(row.amount), row.period, row.id)
 
 
 def refold_from(session: DbSession, period_start: dt.datetime) -> None:
@@ -649,7 +683,19 @@ def refold_from(session: DbSession, period_start: dt.datetime) -> None:
     Drop every ledger row and checkpoint from `period_start` on and rebuild the
     lots as they stood at the end of the previous period, so that the fold can
     re-apply periods from `period_start` forward.
+
+    Lots come from the latest global checkpoint before `period_start` plus a
+    replay of the rows between it and `period_start`, or from a replay of every
+    earlier row when there is no checkpoint.
+
+    Fold state, as intended: `last_closed_period` becomes
+    `min(existing last_closed_period, period_start - 1h)`, so a refold never
+    moves the closed mark forward over periods that were not folded; when there
+    is no checkpoint and no ledger row before `period_start` it becomes None
+    (the fold restarts from its configured start, empty hours re-fold to
+    nothing). `dirty_from_period` is cleared.
     """
+    assert period_start == floor_hour(period_start), "period_start must be an hour"
     delete_all_lots(session)
     delete_ledger_rows_from(session, period_start)
     delete_checkpoints_from(session, period_start)
