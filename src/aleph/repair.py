@@ -5,6 +5,7 @@ from aleph_message.models import ItemHash, MessageType
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from aleph.db.accessors.credit_ledger import get_fold_state, upsert_billing_resource
 from aleph.db.accessors.files import upsert_file
 from aleph.db.accessors.messages import (
     make_message_status_upsert_query,
@@ -18,6 +19,9 @@ from aleph.db.models import (
     MessageStatusDb,
     StoredFileDb,
 )
+from aleph.db.models.account_costs import AccountCostsDb
+from aleph.db.models.credit_ledger import BillingResourceDb
+from aleph.services.credits.cost_spec import BILLABLE_MESSAGE_TYPES, build_cost_spec
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession, DbSessionFactory
@@ -294,6 +298,60 @@ def _reject_invalid_program_metadata(session_factory: DbSessionFactory) -> None:
     )
 
 
+BACKFILL_BATCH_SIZE = 500
+
+
+def backfill_billing_resources(session_factory: DbSessionFactory) -> int:
+    """
+    Create a billing_resources row for every live paid message that predates
+    the table, then mark the backfill as done. Returns the number of rows
+    created. Idempotent.
+    """
+    created = 0
+    with session_factory() as session:
+        item_hashes = list(
+            session.execute(
+                select(MessageDb.item_hash)
+                .join(
+                    MessageStatusDb,
+                    MessageStatusDb.item_hash == MessageDb.item_hash,
+                )
+                .where(
+                    MessageStatusDb.status.in_(
+                        [MessageStatus.PROCESSED, MessageStatus.REMOVING]
+                    ),
+                    MessageDb.type.in_(BILLABLE_MESSAGE_TYPES),
+                    select(AccountCostsDb.id)
+                    .where(AccountCostsDb.item_hash == MessageDb.item_hash)
+                    .exists(),
+                    ~select(BillingResourceDb.item_hash)
+                    .where(BillingResourceDb.item_hash == MessageDb.item_hash)
+                    .exists(),
+                )
+                .order_by(MessageDb.item_hash)
+            ).scalars()
+        )
+
+    for start in range(0, len(item_hashes), BACKFILL_BATCH_SIZE):
+        batch = item_hashes[start : start + BACKFILL_BATCH_SIZE]
+        with session_factory() as session:
+            messages = session.execute(
+                select(MessageDb).where(MessageDb.item_hash.in_(batch))
+            ).scalars()
+            for message in messages:
+                upsert_billing_resource(
+                    session, message, build_cost_spec(session, message)
+                )
+                created += 1
+            session.commit()
+
+    with session_factory() as session:
+        get_fold_state(session).backfill_done = True
+        session.commit()
+
+    return created
+
+
 async def repair_node(
     storage_service: StorageService, session_factory: DbSessionFactory
 ):
@@ -307,3 +365,9 @@ async def repair_node(
 
     LOGGER.info("Rejecting PROGRAM messages with invalid metadata")
     _reject_invalid_program_metadata(session_factory)
+
+    with session_factory() as session:
+        backfill_done = get_fold_state(session).backfill_done
+    if not backfill_done:
+        LOGGER.info("Backfilling billing resources")
+        backfill_billing_resources(session_factory)

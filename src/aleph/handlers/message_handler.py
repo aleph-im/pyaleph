@@ -13,6 +13,10 @@ from sqlalchemy.dialects.postgresql import insert
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.chains import get_tx_height
 from aleph.db.accessors.cost import make_costs_upsert_query
+from aleph.db.accessors.credit_ledger import (
+    apply_confirmation_to_billing,
+    upsert_billing_resource,
+)
 from aleph.db.accessors.files import insert_content_file_pin, upsert_file
 from aleph.db.accessors.messages import (
     get_forgotten_message,
@@ -36,6 +40,7 @@ from aleph.handlers.content.store import StoreMessageHandler
 from aleph.handlers.content.vm import VmMessageHandler
 from aleph.handlers.content.vprogram import VProgramMessageHandler
 from aleph.schemas.pending_messages import parse_message
+from aleph.services.credits.cost_spec import BILLABLE_MESSAGE_TYPES, build_cost_spec
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession, DbSessionFactory
@@ -369,6 +374,7 @@ class MessageHandler(BaseMessageHandler):
                     item_hash=pending_message.item_hash, tx_hash=tx_hash
                 )
             )
+            apply_confirmation_to_billing(session, existing_message)
 
     @staticmethod
     async def confirm_existing_forgotten_message(
@@ -524,6 +530,10 @@ class MessageHandler(BaseMessageHandler):
 
         if costs:
             await self.insert_costs(session=session, costs=costs, message=message)
+            if message.type in BILLABLE_MESSAGE_TYPES:
+                upsert_billing_resource(
+                    session, message, build_cost_spec(session, message)
+                )
 
         await content_handler.process(session=session, messages=[message])
 

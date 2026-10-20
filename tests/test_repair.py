@@ -1,9 +1,11 @@
 import datetime as dt
+from decimal import Decimal
 
 import pytest
-from aleph_message.models import Chain, ItemHash, ItemType, MessageType
+from aleph_message.models import Chain, ItemHash, ItemType, MessageType, PaymentType
 from sqlalchemy import func, select
 
+from aleph.db.accessors.credit_ledger import get_billing_resource, get_fold_state
 from aleph.db.accessors.messages import get_message_status, get_rejected_message
 from aleph.db.accessors.vms import get_vms_dependent_volumes, get_vprogram
 from aleph.db.models import (
@@ -12,12 +14,15 @@ from aleph.db.models import (
     VProgramDb,
     VProgramVerifiedVolumeDb,
 )
+from aleph.db.models.account_costs import AccountCostsDb
 from aleph.repair import (
     _reject_invalid_program_metadata,
+    backfill_billing_resources,
     mark_processed_message_as_rejected,
 )
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.channel import Channel
+from aleph.types.cost import CostType
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.message_status import ErrorCode, MessageStatus
 
@@ -269,3 +274,68 @@ def test_mark_processed_vprogram_as_rejected_deletes_vms_rows(
         assert (
             get_vms_dependent_volumes(session=session, volume_hash=workload_ref) is None
         )
+
+
+def test_backfill_billing_resources_covers_existing_paid_messages(
+    session_factory: DbSessionFactory,
+):
+    item_hash = "ee" * 32
+    owner = "0x0000000000000000000000000000000000000001"
+    content = {
+        "address": owner,
+        "time": 1700000000.0,
+        "payment": {"type": "credit"},
+        "allow_amend": False,
+        "environment": {"internet": False, "aleph_api": False},
+        "resources": {"vcpus": 1, "memory": 128, "seconds": 30},
+        "rootfs": {
+            "parent": {"ref": "ab" * 32, "use_latest": True},
+            "persistence": "host",
+            "size_mib": 1024,
+        },
+    }
+    message = MessageDb(
+        item_hash=item_hash,
+        chain=Chain.ETH,
+        sender=owner,
+        signature="0xsig",
+        item_type=ItemType.inline,
+        type=MessageType.instance,
+        content=content,
+        size=100,
+        time=timestamp_to_datetime(1700000000.0),
+        channel=Channel("TEST"),
+        owner=owner,
+        payment_type="credit",
+    )
+    with session_factory() as session:
+        _seed(session, message)
+        session.flush()
+        session.add(
+            AccountCostsDb(
+                owner=owner,
+                item_hash=item_hash,
+                type=CostType.EXECUTION,
+                name="EXECUTION",
+                payment_type=PaymentType.credit,
+                cost_hold=Decimal(0),
+                cost_stream=Decimal(0),
+                cost_credit=Decimal(1),
+            )
+        )
+        session.commit()
+
+        assert get_billing_resource(session, item_hash) is None
+        assert get_fold_state(session).backfill_done is False
+
+    assert backfill_billing_resources(session_factory) == 1
+    assert backfill_billing_resources(session_factory) == 0
+
+    with session_factory() as session:
+        row = get_billing_resource(session, item_hash)
+        assert row is not None
+        assert row.owner == owner
+        assert row.payment_type == PaymentType.credit
+        assert row.cost_spec["type"] == "INSTANCE"
+        assert row.cost_spec["content"]["resources"]["vcpus"] == 1
+        assert get_fold_state(session).backfill_done is True
