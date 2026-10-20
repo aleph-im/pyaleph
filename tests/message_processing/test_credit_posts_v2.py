@@ -348,12 +348,71 @@ async def test_forget_of_an_unlisted_attestation_post_is_allowed(
 
 
 @pytest.mark.asyncio
-async def test_transfer_is_checked_on_legacy_balance_before_the_first_closed_period(
+async def test_transfer_follows_the_flag_before_the_first_closed_period(
     mock_config: Config,
     message_processor: PendingMessageProcessor,
     session_factory: DbSessionFactory,
 ):
-    """serve_v2 on a node whose fold never closed a period: legacy behaviour."""
+    """
+    serve_v2 on a node whose fold never closed a period: reads stay legacy,
+    but the ingest verdict on a transfer follows the flag, so every node
+    processes it whatever the state of its fold.
+    """
     mock_config.aleph.credits.serve_v2.value = True
-    result = one(await _run(message_processor, session_factory, [_transfer()]))
+    transfer = _transfer(amount=10**12)
+
+    result = one(await _run(message_processor, session_factory, [transfer]))
+
+    assert isinstance(result, ProcessedMessage)
+    assert _legacy_rows(session_factory) == 0
+
+
+@pytest.mark.asyncio
+async def test_distribution_is_inert_under_the_flag_before_the_first_closed_period(
+    mock_config: Config,
+    message_processor: PendingMessageProcessor,
+    session_factory: DbSessionFactory,
+):
+    mock_config.aleph.credits.serve_v2.value = True
+    distribution = _post(
+        "aleph_credit_distribution",
+        {
+            "distribution": {
+                "credits": [
+                    {
+                        "address": USER,
+                        "amount": 1000,
+                        "price": "1.0",
+                        "tx_hash": "0xtx",
+                        "provider": "test",
+                    }
+                ],
+                "token": "ALEPH",
+                "chain": "ETH",
+            }
+        },
+        sender=CREDIT_SENDER,
+    )
+
+    result = one(await _run(message_processor, session_factory, [distribution]))
+
+    assert isinstance(result, ProcessedMessage)
+    assert _legacy_rows(session_factory) == 0
+
+
+@pytest.mark.asyncio
+async def test_malformed_distribution_is_rejected_under_the_flag(
+    serve_v2: Config,
+    message_processor: PendingMessageProcessor,
+    session_factory: DbSessionFactory,
+):
+    distribution = _post(
+        "aleph_credit_distribution",
+        {"distribution": {"credits": "nope"}},
+        sender=CREDIT_SENDER,
+    )
+
+    result = one(await _run(message_processor, session_factory, [distribution]))
+
     assert isinstance(result, RejectedMessage)
+    assert _legacy_rows(session_factory) == 0

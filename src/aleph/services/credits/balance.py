@@ -7,11 +7,19 @@ the hours the fold has not closed yet: every live credit-paid resource of the
 address is charged `rate × seconds` since the end of the last closed period.
 The provisional part is computed on every read and never written.
 
-`aleph.credits.serve_v2` switches every reader (balance API, ingest admission
-check, removal cron, credit post handler) to this module. It only takes effect
-once the fold has closed a period: before that the v2 lots do not hold the
-genesis balances yet, so serving them would zero every account. Such a node
-logs an ERROR and keeps serving the legacy tables (`serve_v2_active`).
+`aleph.credits.serve_v2` has two effects, gated differently:
+
+* ingest decisions on ledger inputs (credit transfers always PROCESSED when
+  well-formed, distribution and expense posts inert) follow the configured
+  flag immediately (`serve_v2_configured`). They must not depend on node-local
+  state, or a transfer could be rejected on one node and processed on another
+  during their respective cutover windows, a divergence REJECTED makes
+  permanent;
+* reads (balance API, ingest admission check, removal cron, history) switch
+  to this module only once the fold has closed a period (`serve_v2_active`):
+  before that the v2 lots do not hold the genesis balances yet, so serving
+  them would zero every account. Such a node logs an ERROR and keeps serving
+  the legacy tables.
 
 Addresses: every lookup goes through `normalize_address` (EVM addresses
 lowercased), so a checksummed and a lowercased address read the same balance.
@@ -65,7 +73,11 @@ _not_ready_logged = False
 # --- serving switch -----------------------------------------------------------
 
 
-def _serve_v2_configured() -> bool:
+def serve_v2_configured() -> bool:
+    """
+    The `serve_v2` flag alone. Gates ingest decisions on ledger inputs, which
+    must be identical on every node whatever the state of its fold.
+    """
     return bool(get_config().aleph.credits.serve_v2.value)
 
 
@@ -81,7 +93,7 @@ def check_serve_v2_at_startup(session: DbSession) -> bool:
     Startup check: whether this node serves the v2 ledger. Logs an ERROR when
     `serve_v2` is set on a node whose fold has never closed a period.
     """
-    if not _serve_v2_configured():
+    if not serve_v2_configured():
         return False
     if last_closed_period(session) is None:
         LOGGER.error(_NOT_READY_MESSAGE)
@@ -100,7 +112,7 @@ def serve_v2_active(session: DbSession) -> bool:
     """
     global _not_ready_logged
 
-    if not _serve_v2_configured():
+    if not serve_v2_configured():
         return False
     if last_closed_period(session) is None:
         if not _not_ready_logged:

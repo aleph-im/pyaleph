@@ -50,7 +50,7 @@ from aleph.schemas.credit_transfer import (
 )
 from aleph.schemas.execution_intervals import ExecutionIntervalsContent
 from aleph.services.credits.addresses import normalize_address
-from aleph.services.credits.balance import serve_v2_active
+from aleph.services.credits.balance import serve_v2_configured
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import (
@@ -361,11 +361,27 @@ class PostMessageHandler(ContentHandler):
             not self.credit_balances_channels
             or message.channel in self.credit_balances_channels
         )
-        if is_credit_post and serve_v2_active(session):
+        if is_credit_post and serve_v2_configured():
             # The v2 ledger is the authority: distribution and expense posts
-            # have no effect (spec 10) and transfers are folded later.
+            # have no effect (spec 10) and transfers are folded later. Gated
+            # on the flag alone, not on readiness (`serve_v2_active`): the
+            # verdict on a ledger input must not depend on whether this node
+            # has closed its first period yet, or a transfer rejected here
+            # and processed elsewhere would diverge forever.
             if content.type == CREDIT_TRANSFER_POST_TYPE:
                 validate_credit_transfer(content.content, content.address)
+            elif content.content and content.address in self.credit_balances_addresses:
+                # Schema-checked as on the legacy path, never written.
+                if content.type == "aleph_credit_distribution":
+                    _parse_credit_content(
+                        CreditDistributionContent,
+                        content.content,
+                        kind="distribution",
+                    )
+                elif content.type == "aleph_credit_expense":
+                    _parse_credit_content(
+                        CreditExpenseContent, content.content, kind="expense"
+                    )
         elif is_credit_post and content.content:
             LOGGER.info("Updating credit balances...")
             if (
