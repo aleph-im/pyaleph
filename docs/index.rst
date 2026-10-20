@@ -21,6 +21,7 @@ Contents
    node-synchronisation
    protocol/index
    metrics
+   credits-v2
 
    License <license>
    Authors <authors>
