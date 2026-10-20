@@ -29,18 +29,13 @@ PROCESS_SELECTOR = (
     .hex()
     .removeprefix("0x")[:8]
 )
-# The contract's exact withdraw signature is not pinned by the spec: cover the
-# plausible ones. Unknown variants fall through to being credited.
-WITHDRAW_SIGNATURES = (
-    "withdraw()",
-    "withdraw(address)",
-    "withdraw(uint256)",
-    "withdraw(address,uint256)",
-    "withdraw(address,address,uint256)",
-    "withdraw(address,uint256,address)",
+# The two admin functions of AlephPaymentProcessor.sol.
+ADMIN_SIGNATURES = (
+    "process(address,uint128,uint128,uint48)",
+    "withdraw(address,address,uint128)",
 )
-EXCLUDED_SELECTORS = {PROCESS_SELECTOR} | {
-    Web3.keccak(text=sig).hex().removeprefix("0x")[:8] for sig in WITHDRAW_SIGNATURES
+EXCLUDED_SELECTORS = {
+    Web3.keccak(text=sig).hex().removeprefix("0x")[:8] for sig in ADMIN_SIGNATURES
 }
 
 CHAINLINK_ABI = [
@@ -97,6 +92,23 @@ class TopupConfig:
     denylist: List[str] = field(default_factory=list)
     chunk_blocks: int = 2000
     aleph_bonus: Decimal = Decimal("0.2")
+
+    @classmethod
+    def from_config(cls, config: Any) -> "TopupConfig":
+        chain = config.aleph.credits.chain
+        start_block = chain.start_block.value
+        return cls(
+            chain_id=int(config.ethereum.chain_id.value),
+            start_block=int(start_block) if start_block is not None else 0,
+            contract=chain.contract.value,
+            usdc=chain.usdc.value,
+            aleph=chain.aleph.value,
+            chainlink_eth_usd=chain.chainlink_eth_usd.value,
+            aleph_weth_pool=chain.aleph_weth_pool.value,
+            denylist=list(chain.denylist.value),
+            chunk_blocks=int(chain.chunk_blocks.value),
+            aleph_bonus=Decimal(str(config.aleph.credits.topup_bonus.aleph.value)),
+        )
 
 
 def _hex(value: Any) -> str:

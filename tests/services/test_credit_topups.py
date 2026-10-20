@@ -2,10 +2,12 @@ import datetime as dt
 from decimal import Decimal
 
 import pytest
+from web3 import Web3
 
 from aleph.db.accessors.credit_ledger import get_fold_state, unquoted_topups
 from aleph.db.models.credit_ledger import CreditTopupDb
 from aleph.services.credits.topups import (
+    EXCLUDED_SELECTORS,
     PROCESS_SELECTOR,
     TRANSFER_TOPIC,
     TopupConfig,
@@ -228,3 +230,32 @@ async def test_requote_fixes_unquoted_and_marks_period_dirty(mocker, session_fac
     assert row.ledger_period == period
     with session_factory() as session:
         assert get_fold_state(session).dirty_from_period == period
+
+
+@pytest.mark.asyncio
+async def test_withdraw_selector_excluded_and_unrelated_not(mocker, session_factory):
+    withdraw = Web3.keccak(text="withdraw(address,address,uint128)").hex()
+    withdraw = withdraw.removeprefix("0x")[:8]
+    assert withdraw in EXCLUDED_SELECTORS
+    tx = {"to": CONTRACT, "input": "0x" + withdraw + "00" * 96}
+    web3 = make_web3(mocker, [make_log(USDC, USER, 5_000_000)], tx=tx)
+    await run_index(session_factory, web3)
+    assert all_rows(session_factory)[0].status == "excluded_process_tx"
+
+
+@pytest.mark.asyncio
+async def test_unrelated_selector_is_credited(mocker, session_factory):
+    tx = {"to": CONTRACT, "input": "0xdeadbeef" + "00" * 64}
+    web3 = make_web3(mocker, [make_log(USDC, USER, 5_000_000)], tx=tx)
+    await run_index(session_factory, web3)
+    assert all_rows(session_factory)[0].status == "credited"
+
+
+def test_topup_config_from_config(mock_config):
+    import aleph.config
+
+    cfg = TopupConfig.from_config(aleph.config.app_config)
+    assert cfg.contract == CONTRACT
+    assert cfg.aleph_bonus == Decimal("0.2")
+    assert cfg.chunk_blocks == 2000
+    assert cfg.chain_id == aleph.config.app_config.ethereum.chain_id.value
