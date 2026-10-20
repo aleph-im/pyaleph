@@ -7,13 +7,13 @@ from message_test_helpers import process_pending_messages
 from sqlalchemy import select
 
 from aleph.db.accessors.credit_ledger import (
-    apply_confirmation_to_billing,
     get_billing_resource,
     iter_live_billing_resources,
+    refresh_billing_confirmation,
     set_billing_end_of_life,
     upsert_billing_resource,
 )
-from aleph.db.accessors.messages import make_confirmation_upsert_query, remove_message
+from aleph.db.accessors.messages import remove_message
 from aleph.db.models import (
     AlephCreditBalanceDb,
     ChainTxDb,
@@ -24,6 +24,8 @@ from aleph.db.models import (
 )
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.db.models.credit_ledger import BillingResourceDb
+from aleph.db.models.messages import ForgottenMessageDb
+from aleph.handlers.message_handler import MessageHandler
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
 from aleph.services.credits.cost_spec import build_cost_spec
 from aleph.types.chain_sync import ChainSyncProtocol
@@ -204,18 +206,80 @@ def test_set_billing_end_of_life_provisional_rules(
         assert row.end_of_life == t2
 
 
+def _add_resource(
+    session,
+    item_hash: str,
+    type_: MessageType,
+    payment_type: PaymentType,
+    first_confirmed_at,
+    end_of_life=None,
+) -> None:
+    session.add(
+        BillingResourceDb(
+            item_hash=item_hash,
+            type=type_,
+            owner=SENDER,
+            payment_type=payment_type,
+            first_confirmed_at=first_confirmed_at,
+            end_of_life=end_of_life,
+            cost_spec={},
+        )
+    )
+
+
 def test_iter_live_billing_resources_window(session_factory: DbSessionFactory):
-    item_hash = "bb" * 32
     start = dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc)
     end = dt.datetime(2026, 3, 2, tzinfo=dt.timezone.utc)
+    day = dt.timedelta(days=1)
+    credit, hold = PaymentType.credit, PaymentType.hold
+    inst, store = MessageType.instance, MessageType.store
+
+    def live(session, type_=None, payment_type=None):
+        return {
+            r.item_hash
+            for r in iter_live_billing_resources(
+                session, type_, payment_type, start, end
+            )
+        }
+
     with session_factory() as session:
-        session.add(_instance_message(item_hash))
-        session.flush()
-        upsert_billing_resource(
-            session, _get_message(session, item_hash), {"type": "INSTANCE"}
+        _add_resource(session, "01", inst, credit, None)  # unconfirmed
+        _add_resource(session, "02", inst, credit, end)  # starts at period_end
+        _add_resource(session, "03", inst, credit, end - dt.timedelta(seconds=1))
+        _add_resource(session, "04", inst, credit, start - day)  # open-ended
+        _add_resource(session, "05", inst, credit, start - day, end_of_life=start)
+        _add_resource(
+            session, "06", inst, credit, start - day, start + dt.timedelta(seconds=1)
         )
-        # first_confirmed_at is null: excluded
-        assert not list(iter_live_billing_resources(session, None, None, start, end))
+        _add_resource(session, "07", store, hold, start - day)
+        session.flush()
+
+        assert live(session) == {"03", "04", "06", "07"}
+        assert live(session, type_=store) == {"07"}
+        assert live(session, type_=inst) == {"03", "04", "06"}
+        assert live(session, payment_type=hold) == {"07"}
+        assert live(session, inst, hold) == set()
+
+
+def test_refresh_billing_confirmation_keeps_earliest(
+    session_factory: DbSessionFactory,
+):
+    early = dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc)
+    late = dt.datetime(2026, 3, 5, tzinfo=dt.timezone.utc)
+    with session_factory() as session:
+        _add_resource(session, "aa01", MessageType.instance, PaymentType.credit, None)
+        session.flush()
+
+        refresh_billing_confirmation(session, "aa01", late)
+        assert _row(session, "aa01").first_confirmed_at == late
+
+        refresh_billing_confirmation(session, "aa01", early)
+        session.refresh(_row(session, "aa01"))
+        assert _row(session, "aa01").first_confirmed_at == early
+
+        refresh_billing_confirmation(session, "aa01", late)
+        session.refresh(_row(session, "aa01"))
+        assert _row(session, "aa01").first_confirmed_at == early
 
 
 def _get_message(session, item_hash: str) -> MessageDb:
@@ -319,10 +383,17 @@ def test_store_cost_spec_carries_file_size(session_factory: DbSessionFactory):
         assert row.type == MessageType.store
 
 
-def test_late_forget_confirmation_replaces_provisional_end_of_life(
+@pytest.mark.asyncio
+async def test_late_forget_confirmation_replaces_provisional_end_of_life(
     session_factory: DbSessionFactory,
 ):
+    """
+    A confirmed duplicate of an already processed FORGET goes through
+    MessageHandler.confirm_existing_message and finalises the end of life of
+    both its direct target and a target forgotten by cascade.
+    """
     target_hash = "ff" * 32
+    cascaded_hash = "fe" * 32
     forget_hash = "f0" * 32
     received = dt.datetime(2026, 3, 1, 12, 5, tzinfo=dt.timezone.utc)
     confirmed_at = dt.datetime(2026, 3, 1, 12, 0, tzinfo=dt.timezone.utc)
@@ -355,19 +426,48 @@ def test_late_forget_confirmation_replaces_provisional_end_of_life(
                 content="x",
             )
         )
+        session.add(
+            ForgottenMessageDb(
+                item_hash=cascaded_hash,
+                type=MessageType.instance,
+                chain=Chain.ETH,
+                sender=SENDER,
+                signature="sig",
+                item_type=ItemType.inline,
+                time=dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc),
+                channel=None,
+                forgotten_by=[forget_hash],
+            )
+        )
+        _add_resource(
+            session, cascaded_hash, MessageType.instance, PaymentType.credit, None
+        )
         session.flush()
         upsert_billing_resource(
             session, _get_message(session, target_hash), {"type": "INSTANCE"}
         )
-        set_billing_end_of_life(session, target_hash, received, "forgotten", True)
+        for h in (target_hash, cascaded_hash):
+            set_billing_end_of_life(session, h, received, "forgotten", True)
 
-        session.execute(
-            make_confirmation_upsert_query(item_hash=forget_hash, tx_hash=tx_hash)
+        pending = PendingMessageDb(
+            item_hash=forget_hash,
+            type=MessageType.forget,
+            chain=Chain.ETH,
+            sender=SENDER,
+            signature="sig",
+            item_type=ItemType.inline,
+            time=dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc),
+            reception_time=received,
+            fetched=True,
+            check_message=False,
+            retries=0,
+            next_attempt=dt.datetime(2023, 1, 1),
+            tx_hash=tx_hash,
         )
-        session.refresh(forget)
-        apply_confirmation_to_billing(session, forget)
+        await MessageHandler.confirm_existing_message(session, forget, pending)
 
-        row = _row(session, target_hash)
-        session.refresh(row)
-        assert row.end_of_life == confirmed_at
-        assert row.end_of_life_provisional is False
+        for h in (target_hash, cascaded_hash):
+            row = _row(session, h)
+            session.refresh(row)
+            assert row.end_of_life == confirmed_at
+            assert row.end_of_life_provisional is False

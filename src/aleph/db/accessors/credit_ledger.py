@@ -6,7 +6,7 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from aleph.db.models.credit_ledger import BillingResourceDb, CreditFoldStateDb
-from aleph.db.models.messages import MessageDb
+from aleph.db.models.messages import ForgottenMessageDb, MessageDb
 from aleph.types.db_session import DbSession
 
 
@@ -135,7 +135,17 @@ def apply_confirmation_to_billing(session: DbSession, message: MessageDb) -> Non
         return
     refresh_billing_confirmation(session, message.item_hash, confirmed_at)
     if message.type == MessageType.forget:
-        for target_hash in message.content.get("hashes", []):
+        # Direct targets, plus the ones forgotten by cascade (e.g. VM updates),
+        # which only the forgotten_messages record ties back to this FORGET.
+        target_hashes = set(message.content.get("hashes", []))
+        target_hashes.update(
+            session.execute(
+                select(ForgottenMessageDb.item_hash).where(
+                    ForgottenMessageDb.forgotten_by.contains([message.item_hash])
+                )
+            ).scalars()
+        )
+        for target_hash in sorted(target_hashes):
             set_billing_end_of_life(
                 session, target_hash, confirmed_at, "forgotten", provisional=False
             )
