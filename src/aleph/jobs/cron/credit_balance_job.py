@@ -7,10 +7,7 @@ from aleph_message.models import ItemHash, MessageType, PaymentType
 from sqlalchemy import update
 from sqlalchemy.engine import CursorResult
 
-from aleph.db.accessors.balances import (
-    get_credit_balance,
-    get_updated_credit_balance_accounts,
-)
+from aleph.db.accessors.balances import get_updated_credit_balance_accounts
 from aleph.db.accessors.cost import get_total_costs_for_address_grouped_by_message
 from aleph.db.accessors.files import update_file_pin_grace_period
 from aleph.db.accessors.messages import (
@@ -24,6 +21,11 @@ from aleph.db.models.cron_jobs import CronJobDb
 from aleph.db.models.messages import MessageDb, MessageStatusDb
 from aleph.jobs.cron.cron_job import BaseCronJob
 from aleph.services.cost import calculate_storage_size
+from aleph.services.credits.balance import (
+    addresses_with_ledger_activity_since,
+    get_credit_balance_any,
+    serve_v2_active,
+)
 from aleph.toolkit.constants import CREDIT_ONLY_CUTOFF_TIMESTAMP, DAY, MiB
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession, DbSessionFactory
@@ -41,6 +43,13 @@ COMMIT_CHUNK = 500
 # of one runaway tick. The remainder is idempotently handled by the next run.
 MAX_MESSAGES_PER_RUN = 5000
 
+# Serving the v2 ledger, the accounts to check are those with ledger rows in
+# recent periods. A period's rows are written when the fold closes it, up to
+# the attestation grace (3 h by default) plus the top-up finality and the cron
+# cadence after its end, so the scan reaches back this far before the last
+# run. Over-inclusion is harmless: the check is idempotent.
+V2_ACTIVITY_LOOKBACK = dt.timedelta(hours=6)
+
 
 class CreditBalanceCronJob(BaseCronJob):
     def __init__(
@@ -53,7 +62,13 @@ class CreditBalanceCronJob(BaseCronJob):
 
     async def run(self, now: dt.datetime, job: CronJobDb) -> bool:
         with self.session_factory() as session:
-            accounts = get_updated_credit_balance_accounts(session, job.last_run)
+            serve_v2 = serve_v2_active(session)
+            if serve_v2:
+                accounts = addresses_with_ledger_activity_since(
+                    session, job.last_run - V2_ACTIVITY_LOOKBACK
+                )
+            else:
+                accounts = get_updated_credit_balance_accounts(session, job.last_run)
 
             LOGGER.info(
                 f"Checking '{len(accounts)}' updated credit balance accounts..."
@@ -77,13 +92,15 @@ class CreditBalanceCronJob(BaseCronJob):
                     )
                     break
 
-                remaining_credits = get_credit_balance(session, address)
+                remaining_credits = get_credit_balance_any(session, address)
 
                 to_delete = []
                 to_recover = []
 
+                # Ledger addresses are lowercased (EVM): match the costs of
+                # the account whatever case its messages used.
                 credit_costs = get_total_costs_for_address_grouped_by_message(
-                    session, address, PaymentType.credit
+                    session, address, PaymentType.credit, case_insensitive=serve_v2
                 )
 
                 for index, (item_hash, _height, cost, _) in enumerate(

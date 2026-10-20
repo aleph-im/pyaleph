@@ -26,6 +26,14 @@ class GetAccountQueryParams(BaseModel):
         default=False,
         description="Include credit balance breakdown by expiration date (after FIFO consumption).",
     )
+    closed_only: bool = Field(
+        default=False,
+        description=(
+            "With aleph.credits.serve_v2: the credit balance as of the last closed "
+            "ledger period, without the provisional accrual of the open hours "
+            "(for reconciliation). Ignored when serving the legacy balance."
+        ),
+    )
 
 
 FloatDecimal = Annotated[

@@ -42,6 +42,7 @@ from aleph.network import listener_tasks
 from aleph.repair import repair_node
 from aleph.services import p2p
 from aleph.services.cache.node_cache import NodeCache
+from aleph.services.credits.balance import check_serve_v2_at_startup
 from aleph.services.credits.lifecycle import FoldConfig
 from aleph.services.credits.topups import TopupConfig, TopupIndexer
 from aleph.services.ipfs import IpfsService
@@ -268,6 +269,10 @@ async def main(args: List[str]) -> None:
 
         if args.credits_refold_from is not None:
             mark_credits_refold(session_factory, args.credits_refold_from)
+
+        # serve_v2 before the fold closed a period: ERROR, legacy serving.
+        with session_factory() as session:
+            check_serve_v2_at_startup(session)
 
         tasks: List[Coroutine] = []
 

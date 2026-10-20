@@ -144,6 +144,9 @@ class ForgetMessageHandler(ContentHandler):
                     target_hash,
                 )
                 raise CannotForgetForgetMessage(target_hash)
+            await self.content_handlers[target_message.type].check_forget(
+                session=session, message=target_message
+            )
             target_owner = target_message.parsed_content.address
             # Authorize the sender against the target as if they were
             # creating it: same owner aggregate, same type/channel/chain

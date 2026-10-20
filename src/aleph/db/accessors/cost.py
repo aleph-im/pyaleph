@@ -81,7 +81,12 @@ def get_total_costs_for_address_grouped_by_message(
     session: DbSession,
     address: str,
     payment_type: Optional[PaymentType] = PaymentType.hold,
+    case_insensitive: bool = False,
 ):
+    """
+    `case_insensitive` matches the owner of an EVM (0x) address in any case,
+    as the v2 credit ledger stores those addresses lowercased.
+    """
     if payment_type == PaymentType.hold:
         total_prop = AccountCostsDb.cost_hold
     elif payment_type == PaymentType.superfluid:
@@ -93,6 +98,11 @@ def get_total_costs_for_address_grouped_by_message(
 
     id_field = func.min(AccountCostsDb.id)
 
+    if case_insensitive and address[:2].lower() == "0x":
+        owner_filter = func.lower(AccountCostsDb.owner) == address.lower()
+    else:
+        owner_filter = AccountCostsDb.owner == address
+
     select_stmt = (
         select(
             AccountCostsDb.item_hash, ChainTxDb.height, func.sum(total_prop), id_field
@@ -103,10 +113,7 @@ def get_total_costs_for_address_grouped_by_message(
             message_confirmations.c.item_hash == AccountCostsDb.item_hash,
         )
         .join(ChainTxDb, message_confirmations.c.tx_hash == ChainTxDb.hash)
-        .where(
-            (AccountCostsDb.owner == address)
-            & (AccountCostsDb.payment_type == payment_type)
-        )
+        .where((owner_filter) & (AccountCostsDb.payment_type == payment_type))
         .group_by(AccountCostsDb.item_hash, ChainTxDb.height)
         .order_by(asc(id_field))
     )

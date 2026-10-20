@@ -49,6 +49,10 @@ from aleph.schemas.api.accounts import (
     GetCreditBalancesQueryParams,
     GetResourceConsumedCreditsResponse,
 )
+from aleph.services.credits.balance import (
+    get_credit_balance_details_v2,
+    serve_v2_active,
+)
 from aleph.toolkit.cursor import (
     decode_address_cursor,
     decode_address_stats_cursor,
@@ -319,6 +323,14 @@ async def get_account_balance(request: web.Request):
           type: boolean
           default: false
         description: Include credit balance breakdown by expiration date (after FIFO consumption)
+      - name: closed_only
+        in: query
+        schema:
+          type: boolean
+          default: false
+        description: >-
+          Serving the v2 ledger only: credit balance as of the last closed
+          period, without the provisional accrual of the open hours
     responses:
       '200':
         description: Account balance details
@@ -344,7 +356,21 @@ async def get_account_balance(request: web.Request):
         total_cost = get_total_cost_for_address(session=session, address=address)
 
         credit_balance_details = None
-        if query_params.include_credit_details:
+        if serve_v2_active(session):
+            credits, detail_items = get_credit_balance_details_v2(
+                session=session,
+                address=address,
+                closed_only=query_params.closed_only,
+            )
+            if query_params.include_credit_details:
+                credit_balance_details = [
+                    CreditBalanceDetailItem(
+                        expiration_date=d.expiration_date,
+                        amount=d.amount,
+                    )
+                    for d in detail_items
+                ]
+        elif query_params.include_credit_details:
             credits, detail_items = get_credit_balance_with_details(
                 session=session, address=address
             )

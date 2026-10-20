@@ -9,6 +9,7 @@ import aleph.config
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.connection import make_engine, make_session_factory
 from aleph.services.cache.node_cache import NodeCache
+from aleph.services.credits.balance import check_serve_v2_at_startup
 from aleph.services.ipfs import IpfsService
 from aleph.services.p2p import init_p2p_client
 from aleph.services.p2p.http import close_sessions
@@ -50,6 +51,9 @@ async def configure_aiohttp_app(
             statement_timeout_ms=0,
         )
         session_factory = make_session_factory(engine)
+        # Logs an ERROR if serve_v2 is set before the fold closed a period.
+        with session_factory() as session:
+            check_serve_v2_at_startup(session)
 
         node_cache = NodeCache(
             redis_host=config.redis.host.value,

@@ -38,6 +38,13 @@ class ContentHandler(abc.ABC):
 
         return True
 
+    async def check_forget(self, session: DbSession, message: MessageDb) -> None:
+        """
+        Raise an InvalidMessageException if `message` must not be forgotten.
+        Called for every target of a FORGET before it is processed.
+        """
+        pass
+
     @abc.abstractmethod
     async def process(self, session: DbSession, messages: List[MessageDb]) -> None:
         """
