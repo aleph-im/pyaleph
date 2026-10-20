@@ -9,6 +9,7 @@ from sqlalchemy.dialects.postgresql import insert
 from aleph.db.models.credit_ledger import (
     BillingRateDb,
     BillingResourceDb,
+    CreditAttestationDb,
     CreditFoldStateDb,
     CreditTopupDb,
 )
@@ -256,3 +257,56 @@ def unquoted_topups(session: DbSession) -> List[CreditTopupDb]:
             )
         ).scalars()
     )
+
+
+def active_attestation(
+    session: DbSession, period_start: dt.datetime
+) -> Optional[CreditAttestationDb]:
+    return session.execute(
+        select(CreditAttestationDb).where(
+            CreditAttestationDb.period == period_start,
+            CreditAttestationDb.status == "active",
+        )
+    ).scalar_one_or_none()
+
+
+def record_attestation(
+    session: DbSession,
+    item_hash: str,
+    period_start: dt.datetime,
+    sender: str,
+    supersedes: Optional[str],
+) -> str:
+    """
+    Register an execution-intervals post for its period and return its status.
+
+    The first post for a period is active. A later post naming the active one in
+    `supersedes` replaces it (and flags the period for re-folding if already
+    closed); any other later post is a duplicate. Idempotent per item hash.
+    """
+    existing_row = session.get(CreditAttestationDb, item_hash)
+    if existing_row is not None:
+        return existing_row.status
+
+    status = "duplicate"
+    current = active_attestation(session, period_start)
+    if current is None:
+        status = "active"
+    elif supersedes is not None and supersedes == current.item_hash:
+        current.status = "superseded"
+        # Free the partial unique index slot before inserting the new active row.
+        session.flush()
+        status = "active"
+        mark_dirty(session, period_start)
+
+    session.add(
+        CreditAttestationDb(
+            item_hash=item_hash,
+            period=period_start,
+            sender=sender,
+            supersedes=supersedes,
+            status=status,
+        )
+    )
+    session.flush()
+    return status

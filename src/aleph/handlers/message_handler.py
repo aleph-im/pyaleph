@@ -100,6 +100,9 @@ class BaseMessageHandler:
                 scoring_addresses=config.aleph.scoring.addresses.value,
                 scoring_channel=config.aleph.scoring.channel.value,
                 scoring_metrics_post_type=config.aleph.scoring.metrics_post_type.value,
+                attestation_addresses=config.aleph.credits.attestation.addresses.value,
+                attestation_channels=config.aleph.credits.attestation.channels.value,
+                attestation_post_type=config.aleph.credits.attestation.post_type.value,
             ),
             MessageType.program: vm_handler,
             MessageType.store: StoreMessageHandler(
