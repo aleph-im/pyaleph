@@ -2,10 +2,11 @@ import datetime as dt
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import select
 from web3 import Web3
 
 from aleph.db.accessors.credit_ledger import get_fold_state, unquoted_topups
-from aleph.db.models.credit_ledger import CreditTopupDb
+from aleph.db.models.credit_ledger import CreditFoldStateDb, CreditTopupDb
 from aleph.services.credits.topups import (
     EXCLUDED_SELECTORS,
     PROCESS_SELECTOR,
@@ -100,9 +101,7 @@ def make_web3(mocker, logs, finalized=100, tx=None, eth_usd=3000 * 10**8, ticks=
 async def run_index(session_factory, web3, cfg=None):
     indexer = TopupIndexer(web3, cfg or make_cfg())
     with session_factory() as session:
-        state = get_fold_state(session)
-        n = await indexer.index(session, state)
-        session.commit()
+        n = await indexer.index(session)
     return indexer, n
 
 
@@ -338,3 +337,41 @@ def test_scaled_price_independent_of_global_decimal_context():
         ctx.rounding = decimal.ROUND_HALF_EVEN
         assert scaled_price(2000) == expected
     assert expected > 10**36
+
+
+@pytest.mark.asyncio
+async def test_index_commits_per_chunk_without_holding_the_fold_lock(
+    mocker, session_factory
+):
+    logs = [
+        make_log(USDC, USER, 5 * 10**6, block=20, tx="0x" + "01" * 32),
+        make_log(USDC, USER, 7 * 10**6, block=80, tx="0x" + "02" * 32),
+    ]
+    web3 = make_web3(mocker, logs, finalized=100)
+    plain_get_logs = web3.eth.get_logs.side_effect
+    seen = []
+
+    async def get_logs(flt):
+        # Observed from another session while this chunk's RPC is pending.
+        with session_factory() as other:
+            other.execute(
+                select(CreditFoldStateDb).with_for_update(nowait=True)
+            ).all()  # raises if the indexer held the fold-state lock
+            seen.append(
+                (
+                    flt["fromBlock"],
+                    get_fold_state(other).chain_cursor_block,
+                    other.query(CreditTopupDb).count(),
+                )
+            )
+            other.rollback()
+        return await plain_get_logs(flt)
+
+    web3.eth.get_logs.side_effect = get_logs
+    _, n = await run_index(session_factory, web3, make_cfg(chunk_blocks=50))
+
+    assert n == 2
+    # Three filters per chunk; the second chunk sees the first one committed.
+    assert sorted(set(seen)) == [(1, None, 0), (51, 50, 1)]
+    with session_factory() as session:
+        assert get_fold_state(session).chain_cursor_block == 100

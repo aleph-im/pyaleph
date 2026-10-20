@@ -106,14 +106,17 @@ async def test_cron_job_without_indexer_still_folds(
 
 
 @pytest.mark.asyncio
-async def test_cron_job_commits_the_indexer_progress(
+async def test_cron_job_keeps_the_indexer_progress(
     session_factory: DbSessionFactory, mock_config: Config, mocker
 ):
     indexer = fake_indexer(mocker)
 
-    async def index(session, state):
+    async def index(session):
+        # The real indexer commits per chunk on the session it is given.
+        state = get_fold_state(session)
         state.chain_cursor_block = 1234
         state.chain_cursor_time = PS
+        session.commit()
         return 1
 
     indexer.index.side_effect = index

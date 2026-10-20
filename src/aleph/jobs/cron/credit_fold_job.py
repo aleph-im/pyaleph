@@ -48,10 +48,9 @@ class CreditFoldCronJob(BaseCronJob):
             )
             return
         try:
+            # index() commits per chunk: this session carries nothing else.
             with self.session_factory() as session:
-                state = get_fold_state(session)
-                new_rows = await self.indexer.index(session, state)
-                session.commit()
+                new_rows = await self.indexer.index(session)
             LOGGER.info("Indexed %d new top-up event(s)", new_rows)
         except Exception:
             LOGGER.exception("Credit top-up indexing failed")

@@ -19,8 +19,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from web3 import AsyncWeb3, Web3
 
-from aleph.db.accessors.credit_ledger import mark_dirty, unquoted_topups, upsert_topup
-from aleph.db.models.credit_ledger import CreditFoldStateDb, CreditTopupDb
+from aleph.db.accessors.credit_ledger import (
+    get_fold_state,
+    mark_dirty,
+    unquoted_topups,
+    upsert_topup,
+)
+from aleph.db.models.credit_ledger import CreditTopupDb
 from aleph.services.credits.periods import floor_hour
 from aleph.types.db_session import DbSession
 
@@ -321,31 +326,58 @@ class TopupIndexer:
         row.status = "credited" if row.credits > 0 else "zero"
         row.ledger_period = floor_hour(row.block_time) if row.credits > 0 else None
 
-    async def index(self, session: DbSession, state: CreditFoldStateDb) -> int:
+    async def index(self, session: DbSession) -> int:
+        """
+        Index the finalized blocks after the cursor, in chunks, and return the
+        number of new top-up rows.
+
+        Commits once per chunk on the session it is given: the caller must not
+        hold other uncommitted work on that session. The RPC calls of a chunk
+        run with no fold-state lock held; then a short critical section locks
+        `credit_fold_state`, writes the chunk's rows, advances the cursor and
+        commits. The dirty marks of message processing (which take the same
+        lock) therefore never wait on the chain.
+        """
         finalized = int((await self.web3.eth.get_block("finalized"))["number"])
-        cursor = (
-            state.chain_cursor_block
-            if state.chain_cursor_block is not None
-            else self.cfg.start_block - 1
-        )
+        expected = get_fold_state(session).chain_cursor_block
+        session.commit()  # End the read: nothing is held across the RPC calls.
+        cursor = expected if expected is not None else self.cfg.start_block - 1
         new_rows = 0
         while cursor < finalized:
             end = min(finalized, cursor + self.cfg.chunk_blocks)
             block_times: Dict[int, dt.datetime] = {}
-            for log in await self._fetch_logs(cursor + 1, end):
-                row = await self._build_row(log, block_times)
+            rows = [
+                await self._build_row(log, block_times)
+                for log in await self._fetch_logs(cursor + 1, end)
+            ]
+            end_time = await self._block_time(end, block_times)
+
+            state = get_fold_state(session, for_update=True)
+            if state.chain_cursor_block != expected:
+                LOGGER.warning(
+                    "Top-up cursor moved from %s to %s during indexing: stopping",
+                    expected,
+                    state.chain_cursor_block,
+                )
+                session.rollback()
+                break
+            for row in rows:
                 if upsert_topup(session, row):
                     new_rows += 1
                     if row.status == "credited" and row.ledger_period is not None:
                         mark_dirty(session, row.ledger_period)
-            state.chain_cursor_time = await self._block_time(end, block_times)
+            state.chain_cursor_time = end_time
             state.chain_cursor_block = end
-            session.flush()
-            cursor = end
+            session.commit()
+            cursor = expected = end
         return new_rows
 
     async def requote_unquoted(self, session: DbSession) -> int:
-        fixed = 0
+        """
+        Re-quote the unquoted top-ups. Every quote is fetched before the first
+        dirty mark, so the fold-state lock is only taken after the RPC calls.
+        """
+        quoted: List[Tuple[CreditTopupDb, int, int, int]] = []
         for row in unquoted_topups(session):
             raw_amount = int(row.raw_amount)
             try:
@@ -353,9 +385,10 @@ class TopupIndexer:
             except Exception:
                 LOGGER.warning("Top-up %s is still unquotable", row.tx_hash)
                 continue
+            quoted.append((row, raw_amount, num, den))
+        for row, raw_amount, num, den in quoted:
             self._apply_quote(row, raw_amount, num, den)
             if row.status == "credited":
                 mark_dirty(session, floor_hour(row.block_time))
-            fixed += 1
         session.flush()
-        return fixed
+        return len(quoted)
