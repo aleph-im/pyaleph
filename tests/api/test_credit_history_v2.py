@@ -44,13 +44,17 @@ def serve_v2(mock_config: Config) -> Config:
 
 
 def _legacy_distribution(
-    session: DbSession, ref: str, amount: int, when: dt.datetime
+    session: DbSession,
+    ref: str,
+    amount: int,
+    when: dt.datetime,
+    address: str = ADDRESS,
 ) -> None:
     update_credit_balances_distribution(
         session=session,
         credits_list=[
             {
-                "address": ADDRESS,
+                "address": address,
                 "amount": amount,
                 "price": "0.000001",
                 "tx_hash": f"0xtx_{ref}",
@@ -372,3 +376,29 @@ async def test_credit_history_legacy_path_without_serve_v2(
         "legacy_dist",
     ]
     assert "excluded_reason" not in entries[0]
+
+
+@pytest.mark.asyncio
+async def test_credit_history_matches_legacy_rows_as_stored(
+    ccn_api_client, session_factory: DbSessionFactory, serve_v2
+):
+    """Legacy rows match the address as stored; ledger rows are normalized."""
+    with session_factory() as session:
+        _legacy_distribution(
+            session, "legacy_checksummed", 500, GENESIS - 24 * HOUR, address=OWNER
+        )
+        _ledger(session, GENESIS, "genesis", "snap:0", 5000, source_ref="snap")
+        set_last_closed_period(session, GENESIS)
+        session.commit()
+
+    response = await ccn_api_client.get(
+        f"/api/v0/addresses/{OWNER.lower()}/credit_history"
+    )
+    assert response.status == 200, await response.text()
+    refs = [e["credit_ref"] for e in (await response.json())["credit_history"]]
+    assert refs == ["snap"]
+
+    response = await ccn_api_client.get(f"/api/v0/addresses/{OWNER}/credit_history")
+    assert response.status == 200, await response.text()
+    refs = [e["credit_ref"] for e in (await response.json())["credit_history"]]
+    assert refs == ["snap", "legacy_checksummed"]

@@ -46,11 +46,13 @@ from aleph.schemas.api.credits import (
 )
 from aleph.services.credits.addresses import normalize_address
 from aleph.services.credits.fold import period_hash
+from aleph.services.credits.lifecycle import FoldConfig
 from aleph.services.credits.periods import PERIOD, floor_hour
 from aleph.services.credits.topups import QuoteNotConfigured
 from aleph.toolkit.timestamp import utc_now
-from aleph.types.db_session import DbSessionFactory
+from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.web.controllers.app_state_getters import (
+    get_config_from_request,
     get_credit_quoter_from_request,
     get_session_factory_from_request,
 )
@@ -74,6 +76,20 @@ def _hour(timestamp: int, name: str) -> dt.datetime:
         raise web.HTTPUnprocessableEntity(text=f"{name} is out of range")
 
 
+def _first_period(request: web.Request) -> Optional[dt.datetime]:
+    """The first period the fold closes (None when none is configured)."""
+    return FoldConfig.from_config(get_config_from_request(request)).first_period
+
+
+def _snapshot(session: DbSession) -> None:
+    """
+    Run the session's transaction as one REPEATABLE READ snapshot. Must be
+    called before the first query: a refold committing between two reads
+    then cannot be half seen.
+    """
+    session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
+
+
 def _json(model) -> web.Response:
     return web.json_response(text=model.model_dump_json())
 
@@ -86,11 +102,16 @@ async def get_credit_period(request: web.Request) -> web.Response:
     Hash, totals and attestation of one credit period, so operators can diff
     CCNs hour by hour.
 
-    `status` is `closed` (folded), `dirty` (folded, but an input changed:
-    the next fold run refolds it from `dirty_from_period`) or `open` (not
-    folded yet). `period_hash` is the hash of the period's ledger rows as they
-    are now (null while open); `checkpoint_hash` is the global checkpoint hash
-    written at that period (null when the period is not a checkpoint period).
+    `status` is `closed` (folded and current), `dirty` (folded, but at or
+    after `dirty_from_period`: an input changed and the next fold run
+    refolds it; not closed for the API, `period_hash` is still the last
+    folded one) or `open` (not folded yet, including every period before the
+    fold's first period and every period when no first period is
+    configured). `period_hash` is the hash of the period's ledger rows as
+    they are now (null while open); `checkpoint_hash` is the global
+    checkpoint hash written at that period (null when the period is not a
+    checkpoint period). All reads share one REPEATABLE READ snapshot, so a
+    refold committing meanwhile cannot mix two ledger states.
 
     ---
     summary: Get a credit ledger period
@@ -124,12 +145,19 @@ async def get_credit_period(request: web.Request) -> web.Response:
         raise web.HTTPUnprocessableEntity(text="period must not be negative")
     period = _hour(timestamp, "period")
 
+    first = _first_period(request)
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
     with session_factory() as session:
+        _snapshot(session)
         state = get_fold_state(session)
         last_closed = state.last_closed_period
         dirty_from = state.dirty_from_period
-        if last_closed is None or period > last_closed:
+        if (
+            first is None
+            or period < first
+            or last_closed is None
+            or period > last_closed
+        ):
             status = "open"
         elif dirty_from is not None and period >= dirty_from:
             status = "dirty"
@@ -171,10 +199,12 @@ async def get_credit_revenue(request: web.Request) -> web.Response:
     `from` (inclusive) and `to` (exclusive) are hour-aligned unix seconds
     (400 otherwise), at most 744 periods apart, and `to` is at most the
     current hour start (422 otherwise). Only closed periods are returned:
-    those before the end of the fold's last closed period. A period at or
-    after `dirty_from_period` (waiting for a refold) is returned as it was
-    folded; its figures can still change when the refold runs. Every closed
-    period of the range is listed, with zeros when it has no revenue.
+    from the fold's first period (none at all when it is not configured) to
+    the end of the last closed period, and never a period at or after
+    `dirty_from_period`: a dirty period waits for its refold, so a caller
+    sees an incomplete tail rather than figures that are about to change.
+    Every closed period of the range is listed, with zeros when it has no
+    revenue. The read is one REPEATABLE READ snapshot.
 
     Per node: `execution` is the sum of the billed credit-paid `execution`
     rows, `hold_equivalent` the credit-equivalent of the hold-paid VMs it
@@ -229,12 +259,20 @@ async def get_credit_revenue(request: web.Request) -> web.Response:
             text="to must not be after the current hour start"
         )
 
+    first = _first_period(request)
+    if first is None:
+        return _json(CreditRevenueResponse(periods=[]))
+    start = max(start, first)
+
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
     with session_factory() as session:
-        last_closed = get_fold_state(session).last_closed_period
-        if last_closed is None:
+        _snapshot(session)
+        state = get_fold_state(session)
+        if state.last_closed_period is None:
             return _json(CreditRevenueResponse(periods=[]))
-        end = min(end, last_closed + PERIOD)
+        end = min(end, state.last_closed_period + PERIOD)
+        if state.dirty_from_period is not None:
+            end = min(end, state.dirty_from_period)
         sums = revenue_sums(session, start, end) if start < end else []
         quotes = period_quotes(session, start, end) if start < end else {}
 
@@ -263,7 +301,7 @@ async def get_credit_revenue(request: web.Request) -> web.Response:
         periods.append(
             CreditRevenuePeriod(
                 period=_unix(period),
-                credit_price_aleph=None if quote is None else str(quote),
+                credit_price_aleph=None if quote is None else format(quote, "f"),
                 nodes={
                     node_id: CreditRevenueNode(**values)
                     for node_id, values in sorted(by_node.items())

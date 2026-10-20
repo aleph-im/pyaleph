@@ -93,6 +93,12 @@ def _execution(
     )
 
 
+@pytest.fixture(autouse=True)
+def fold_starts_at_h0(mock_config: Config) -> None:
+    """The fold's first period is H0: nothing before it is ever folded."""
+    mock_config.aleph.credits.attestation.start_period.value = _unix(H0)
+
+
 def _set_fold_state(
     session: DbSession,
     last_closed: Optional[dt.datetime],
@@ -261,21 +267,90 @@ async def test_revenue_lists_empty_closed_periods(
         _set_fold_state(session, H0 + HOUR)
         session.commit()
 
+    # H0 - HOUR is before the fold's first period: never folded, not listed.
     response = await ccn_api_client.get(_revenue_uri(H0 - HOUR, H0 + 5 * HOUR))
     assert response.status == 200, await response.text()
     periods = (await response.json())["periods"]
-    assert [p["period"] for p in periods] == [
-        _unix(H0 - HOUR),
-        _unix(H0),
-        _unix(H0 + HOUR),
-    ]
+    assert [p["period"] for p in periods] == [_unix(H0), _unix(H0 + HOUR)]
     assert periods[0] == {
-        "period": _unix(H0 - HOUR),
+        "period": _unix(H0),
         "credit_price_aleph": None,
         "nodes": {},
         "storage": 0,
         "execution_total": 0,
     }
+
+    response = await ccn_api_client.get(f"/api/v0/credits/periods/{_unix(H0 - HOUR)}")
+    assert response.status == 200, await response.text()
+    data = await response.json()
+    assert data["status"] == "open"
+    assert data["period_hash"] is None
+
+    # An empty range is valid.
+    response = await ccn_api_client.get(_revenue_uri(H0, H0))
+    assert response.status == 200, await response.text()
+    assert await response.json() == {"periods": []}
+
+
+@pytest.mark.asyncio
+async def test_revenue_and_periods_without_a_first_period(
+    ccn_api_client, session_factory: DbSessionFactory, mock_config: Config
+):
+    mock_config.aleph.credits.attestation.start_period.value = None
+    with session_factory() as session:
+        _set_fold_state(session, H0 + HOUR)
+        session.commit()
+
+    response = await ccn_api_client.get(_revenue_uri(H0, H0 + 2 * HOUR))
+    assert response.status == 200, await response.text()
+    assert await response.json() == {"periods": []}
+    response = await ccn_api_client.get(f"/api/v0/credits/periods/{_unix(H0)}")
+    assert (await response.json())["status"] == "open"
+
+
+@pytest.mark.asyncio
+async def test_revenue_stops_at_the_dirty_mark(
+    ccn_api_client, session_factory: DbSessionFactory
+):
+    with session_factory() as session:
+        for hour in range(3):
+            _execution(session, H0 + hour * HOUR, VM_1, NODE_A, 10)
+        _set_fold_state(session, H0 + 2 * HOUR, dirty_from=H0 + HOUR)
+        expected_hash = period_hash(session, H0 + HOUR)
+        session.commit()
+
+    response = await ccn_api_client.get(_revenue_uri(H0, H0 + 3 * HOUR))
+    assert response.status == 200, await response.text()
+    periods = (await response.json())["periods"]
+    assert [p["period"] for p in periods] == [_unix(H0)]
+
+    response = await ccn_api_client.get(f"/api/v0/credits/periods/{_unix(H0 + HOUR)}")
+    data = await response.json()
+    assert data["status"] == "dirty"
+    # The last folded hash is still shown.
+    assert data["period_hash"] == expected_hash
+
+
+@pytest.mark.asyncio
+async def test_revenue_price_is_never_in_scientific_notation(
+    ccn_api_client, session_factory: DbSessionFactory
+):
+    with session_factory() as session:
+        session.add(
+            CreditPeriodQuoteDb(
+                period=H0,
+                aleph_per_credit=Decimal("0.000000012345678901"),
+                block_number=22_000_000,
+            )
+        )
+        _set_fold_state(session, H0)
+        session.commit()
+
+    response = await ccn_api_client.get(_revenue_uri(H0, H0 + HOUR))
+    assert response.status == 200, await response.text()
+    price = (await response.json())["periods"][0]["credit_price_aleph"]
+    assert price == "0.000000012345678901"
+    assert str(Decimal(price)) != price  # str() would have used an exponent
 
 
 @pytest.mark.asyncio

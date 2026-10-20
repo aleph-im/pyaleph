@@ -844,7 +844,11 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
     period and v2 ledger rows from it on, merged in one ordering (exclusion
     rows included, with `excluded_reason`; `hold_equivalent` rows are not
     listed). Ledger rows of one period are ordered by kind order then business
-    key, in the requested sort direction.
+    key, in the requested sort direction. Addresses: legacy rows match the
+    address exactly as stored (as the legacy endpoint always did, so a
+    checksummed legacy row is only found with the checksummed address);
+    ledger rows match the normalized address (EVM addresses lowercased), so
+    any case finds them.
 
     ---
     summary: Get account credit history
