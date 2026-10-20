@@ -2,6 +2,7 @@ from .aggregates import *  # noqa
 from .balances import *  # noqa
 from .base import Base  # noqa
 from .chains import *  # noqa
+from .credit_ledger import *  # noqa
 from .files import *  # noqa
 from .message_counts import *  # noqa
 from .messages import *  # noqa
