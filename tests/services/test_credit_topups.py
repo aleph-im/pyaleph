@@ -254,8 +254,74 @@ async def test_unrelated_selector_is_credited(mocker, session_factory):
 def test_topup_config_from_config(mock_config):
     import aleph.config
 
+    aleph.config.app_config.aleph.credits.chain.start_block.value = 12345
     cfg = TopupConfig.from_config(aleph.config.app_config)
+    assert cfg.start_block == 12345
     assert cfg.contract == CONTRACT
     assert cfg.aleph_bonus == Decimal("0.2")
     assert cfg.chunk_blocks == 2000
     assert cfg.chain_id == aleph.config.app_config.ethereum.chain_id.value
+
+
+def test_topup_config_requires_start_block(mock_config):
+    import aleph.config
+
+    aleph.config.app_config.aleph.credits.chain.start_block.value = None
+    with pytest.raises(ValueError, match="start_block"):
+        TopupConfig.from_config(aleph.config.app_config)
+
+
+def expected_aleph_credits(raw, tick, answer, aleph_is_token0=True):
+    # Hand formula: price = 1.0001**tick floored to 1e-36, then Chainlink, bonus.
+    from decimal import ROUND_FLOOR, Context, Decimal
+
+    scaled = int(
+        (
+            Context(prec=80, rounding=ROUND_FLOOR).power(Decimal("1.0001"), tick)
+            * 10**36
+        ).to_integral_value(rounding=ROUND_FLOOR)
+    )
+    num, den = (scaled, 10**36) if aleph_is_token0 else (10**36, scaled)
+    return raw * num * answer * 6 // (den * 10**20 * 5)
+
+
+@pytest.mark.asyncio
+async def test_aleph_nonzero_tick_stored_and_read_back(mocker, session_factory):
+    web3 = make_web3(mocker, [make_log(ALEPH, USER, 10**18)], ticks=(0, 2000 * 1800))
+    await run_index(session_factory, web3)
+    (row,) = all_rows(session_factory)
+    assert row.status == "credited"
+    assert row.credits == expected_aleph_credits(10**18, 2000, 3000 * 10**8)
+    assert 3_600_000_000 < row.credits < 4_400_000_000  # 1.0001**2000 ~ 1.2214
+    assert row.quote_num is not None and row.quote_den is not None
+    assert row.credits == int(row.raw_amount) * int(row.quote_num) // int(row.quote_den)
+
+
+@pytest.mark.asyncio
+async def test_negative_tick_floors_toward_negative_infinity(mocker, session_factory):
+    # delta = -1801 over 1800s -> floor(-1.0006) = -2 (not -1)
+    web3 = make_web3(mocker, [make_log(ALEPH, USER, 10**18)], ticks=(0, -1801))
+    await run_index(session_factory, web3)
+    (row,) = all_rows(session_factory)
+    assert row.credits == expected_aleph_credits(10**18, -2, 3000 * 10**8)
+
+
+@pytest.mark.asyncio
+async def test_pool_with_weth_as_token0_inverts_price(mocker, session_factory):
+    web3 = make_web3(mocker, [make_log(ALEPH, USER, 10**18)], ticks=(0, 2000 * 1800))
+    web3.pool.functions.token0.return_value.call.return_value = (
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+    )
+    await run_index(session_factory, web3)
+    (row,) = all_rows(session_factory)
+    assert row.credits == expected_aleph_credits(
+        10**18, 2000, 3000 * 10**8, aleph_is_token0=False
+    )
+
+
+@pytest.mark.asyncio
+async def test_extreme_tick_is_unquoted_not_fatal(mocker, session_factory):
+    web3 = make_web3(mocker, [make_log(ALEPH, USER, 10**18)], ticks=(0, 887272 * 1800))
+    await run_index(session_factory, web3)
+    (row,) = all_rows(session_factory)
+    assert row.status == "unquoted"

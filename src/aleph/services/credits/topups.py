@@ -3,13 +3,18 @@ On-chain credit top-up indexer.
 
 Deposits are read straight from Ethereum: topic-filtered `eth_getLogs` on
 finalized blocks, priced with `eth_call`s pinned to the transfer's block. All
-credit arithmetic is integer (quotes are exact numerator/denominator pairs).
+credit arithmetic is integer (quotes are numerator/denominator pairs).
+
+The ALEPH/WETH TWAP price is a fixed-point integer scaled by PRICE_SCALE
+(10**36), computed with a fixed Decimal context (prec 80, ROUND_FLOOR). The
+floor rounding is part of the deterministic contract: every node must produce
+the same quote. Quotes stay within the NUMERIC(78,0) columns.
 """
 
 import datetime as dt
 import logging
 from dataclasses import dataclass, field
-from decimal import Decimal, localcontext
+from decimal import ROUND_FLOOR, Context, Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
 from web3 import AsyncWeb3, Web3
@@ -76,8 +81,9 @@ POOL_ABI = [
 TWAP_SECONDS = 1800
 # Chainlink ETH/USD: 8 decimals. 1 credit = 1e-6 USD, 1 wei = 1e-18 ETH.
 CREDITS_PER_WEI_DEN = 10**20
-# Fixed precision keeps 1.0001**tick identical on every node.
-TICK_PRECISION = 80
+PRICE_SCALE = 10**36
+TICK_CONTEXT = Context(prec=80, rounding=ROUND_FLOOR)
+MAX_QUOTE = 10**77  # NUMERIC(78, 0)
 
 
 @dataclass
@@ -97,9 +103,11 @@ class TopupConfig:
     def from_config(cls, config: Any) -> "TopupConfig":
         chain = config.aleph.credits.chain
         start_block = chain.start_block.value
+        if start_block is None:
+            raise ValueError("aleph.credits.chain.start_block must be set")
         return cls(
             chain_id=int(config.ethereum.chain_id.value),
-            start_block=int(start_block) if start_block is not None else 0,
+            start_block=int(start_block),
             contract=chain.contract.value,
             usdc=chain.usdc.value,
             aleph=chain.aleph.value,
@@ -133,6 +141,7 @@ class TopupIndexer:
         self.web3 = web3
         self.cfg = cfg
         self._denylist = {a.lower() for a in cfg.denylist}
+        self._token0_cache: Dict[str, str] = {}
 
     # -- classification -------------------------------------------------
 
@@ -165,8 +174,19 @@ class TopupIndexer:
             raise ValueError("non-positive Chainlink answer")
         return answer
 
+    async def _token0(self, pool_address: str, block_number: int) -> str:
+        key = pool_address.lower()
+        if key not in self._token0_cache:
+            pool = self.web3.eth.contract(
+                address=Web3.to_checksum_address(pool_address), abi=POOL_ABI
+            )
+            self._token0_cache[key] = str(
+                await pool.functions.token0().call(block_identifier=block_number)
+            ).lower()
+        return self._token0_cache[key]
+
     async def _aleph_weth_price(self, block_number: int) -> Tuple[int, int]:
-        """WETH raw units per ALEPH raw unit, as an exact ratio."""
+        """WETH raw units per ALEPH raw unit, as (num, den) with a PRICE_SCALE side."""
         if not self.cfg.aleph_weth_pool:
             raise ValueError("aleph_weth_pool is not configured")
         pool = self.web3.eth.contract(
@@ -175,17 +195,21 @@ class TopupIndexer:
         cumulatives, _ = await pool.functions.observe([TWAP_SECONDS, 0]).call(
             block_identifier=block_number
         )
-        token0 = await pool.functions.token0().call(block_identifier=block_number)
+        token0 = await self._token0(self.cfg.aleph_weth_pool, block_number)
         # Python floors toward -inf, like the Uniswap oracle libraries.
         tick = (int(cumulatives[1]) - int(cumulatives[0])) // TWAP_SECONDS
-        with localcontext() as ctx:
-            ctx.prec = TICK_PRECISION
-            p = Decimal("1.0001") ** tick  # token1 raw per token0 raw
-            num, den = p.as_integer_ratio()
+        # token1 raw per token0 raw, scaled; floored.
+        price_scaled = int(
+            (
+                TICK_CONTEXT.power(Decimal("1.0001"), tick) * PRICE_SCALE
+            ).to_integral_value(rounding=ROUND_FLOOR)
+        )
+        if price_scaled <= 0:
+            raise ValueError(f"tick {tick} out of the supported price range")
         # Both tokens have 18 decimals, so raw ratios equal token ratios.
-        if str(token0).lower() == self.cfg.aleph.lower():
-            return num, den
-        return den, num
+        if token0 == self.cfg.aleph.lower():
+            return price_scaled, PRICE_SCALE
+        return PRICE_SCALE, price_scaled
 
     async def quote(
         self,
@@ -205,6 +229,8 @@ class TopupIndexer:
             p_num, p_den = await self._aleph_weth_price(block_number)
             answer = await self._eth_usd_answer(block_number)
             num, den = p_num * answer, p_den * CREDITS_PER_WEI_DEN
+            if max(num * 6, den * 6) >= MAX_QUOTE:
+                raise ValueError("ALEPH quote out of the storable range")
             if apply_bonus:
                 b_num, b_den = self.cfg.aleph_bonus.as_integer_ratio()
                 num, den = num * (b_den + b_num), den * b_den
@@ -265,6 +291,8 @@ class TopupIndexer:
         if sender in self._denylist:
             row.status = "excluded_denylist"
             return row
+        # Not guarded on purpose: a lookup failure is a transient RPC error, so
+        # the chunk aborts and is retried on the next run.
         tx = await self.web3.eth.get_transaction(log["transactionHash"])
         status = self.classify(log, dict(tx))
         if status != "included":
