@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, StrictInt, field_validator, model_validator
 
 PERIOD_SECONDS = 3600
+MAX_PERIOD_START = 4_102_444_800  # 2100-01-01 UTC, keeps fromtimestamp() safe
 
 
 class Period(BaseModel):
@@ -38,6 +39,8 @@ class ExecutionIntervalsContent(BaseModel):
         period = self.period
         if period.end - period.start != PERIOD_SECONDS:
             raise ValueError("period must span exactly one hour")
+        if not 0 <= period.start <= MAX_PERIOD_START:
+            raise ValueError("period.start is out of range")
         if period.start % PERIOD_SECONDS != 0:
             raise ValueError("period.start must be aligned on the hour")
         for interval in self.intervals:

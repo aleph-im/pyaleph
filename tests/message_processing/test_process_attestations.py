@@ -8,7 +8,11 @@ from configmanager import Config
 from message_test_helpers import process_pending_messages
 from sqlalchemy import select
 
-from aleph.db.accessors.credit_ledger import active_attestation, get_fold_state
+from aleph.db.accessors.credit_ledger import (
+    active_attestation,
+    get_fold_state,
+    record_attestation,
+)
 from aleph.db.models import PendingMessageDb, PostDb
 from aleph.db.models.credit_ledger import CreditAttestationDb
 from aleph.jobs.process_pending_messages import PendingMessageProcessor
@@ -194,3 +198,61 @@ async def test_malformed_attestation_is_rejected(
 
     with session_factory() as session:
         assert list(session.execute(select(CreditAttestationDb)).scalars()) == []
+
+
+def _record(session, item_hash, supersedes=None):
+    return record_attestation(
+        session,
+        item_hash=item_hash,
+        period_start=PERIOD,
+        sender=SENDER,
+        supersedes=supersedes,
+    )
+
+
+def _statuses(session):
+    return {
+        r.item_hash: r.status
+        for r in session.execute(select(CreditAttestationDb)).scalars()
+    }
+
+
+def test_supersede_chain(session_factory: DbSessionFactory):
+    with session_factory() as session:
+        assert _record(session, "A") == "active"
+        assert _record(session, "B", supersedes="A") == "active"
+        assert _record(session, "C", supersedes="A") == "duplicate"
+        session.commit()
+        assert _statuses(session) == {
+            "A": "superseded",
+            "B": "active",
+            "C": "duplicate",
+        }
+
+
+def test_supersedes_non_active_hash_is_duplicate(session_factory: DbSessionFactory):
+    with session_factory() as session:
+        assert _record(session, "A") == "active"
+        assert _record(session, "B", supersedes="unknown") == "duplicate"
+        session.commit()
+        assert _statuses(session) == {"A": "active", "B": "duplicate"}
+
+
+def test_record_attestation_is_idempotent(session_factory: DbSessionFactory):
+    with session_factory() as session:
+        assert _record(session, "A") == "active"
+        assert _record(session, "A") == "active"
+        assert _record(session, "B", supersedes="A") == "active"
+        assert _record(session, "B", supersedes="A") == "active"
+        session.commit()
+        assert _statuses(session) == {"A": "superseded", "B": "active"}
+
+
+def test_supersede_on_open_period_does_not_mark_dirty(
+    session_factory: DbSessionFactory,
+):
+    with session_factory() as session:
+        _record(session, "A")
+        _record(session, "B", supersedes="A")
+        session.commit()
+        assert get_fold_state(session).dirty_from_period is None
