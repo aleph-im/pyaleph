@@ -11,6 +11,7 @@ from aleph.services.credits.lifecycle import (
     FoldConfig,
     close_ready_periods,
     load_genesis,
+    requote_closed_periods,
 )
 from aleph.services.credits.topups import TopupIndexer
 from aleph.types.db_session import DbSessionFactory
@@ -20,10 +21,11 @@ LOGGER = logging.getLogger(__name__)
 
 class CreditFoldCronJob(BaseCronJob):
     """
-    Indexes the chain top-ups, re-quotes the unquoted ones, then folds every
-    closable period. Each phase runs in its own session and its failure is
-    logged without stopping the next one: a chain outage must not stop the
-    folding of periods the cursor already covers.
+    Indexes the chain top-ups, re-quotes the unquoted ones, folds every
+    closable period, then quotes the closed periods left without a quote.
+    Each phase runs in its own session and its failure is logged without
+    stopping the next one: a chain outage must not stop the folding of
+    periods the cursor already covers.
     """
 
     def __init__(
@@ -99,4 +101,15 @@ class CreditFoldCronJob(BaseCronJob):
             LOGGER.info("Credit fold closed %d period(s)", closed)
         except Exception:
             LOGGER.exception("Credit fold failed")
+        if self.indexer is not None:
+            # A period whose quote failed when it closed would otherwise be
+            # served without a price forever (`/credits/revenue` stops there).
+            try:
+                requoted = await requote_closed_periods(
+                    self.session_factory, self.indexer, self.cfg
+                )
+                if requoted:
+                    LOGGER.info("Re-quoted %d closed period(s)", requoted)
+            except Exception:
+                LOGGER.exception("Re-quoting closed credit periods failed")
         return True

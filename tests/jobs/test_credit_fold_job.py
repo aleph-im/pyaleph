@@ -152,3 +152,42 @@ def test_credit_fold_job_is_registered_only_with_a_start(
     job = make_credit_fold_job(mock_config, session_factory, None)
     assert job is not None and job.indexer is not None
     assert job.indexer.cfg.start_block == 21_000_000
+
+
+@pytest.mark.asyncio
+async def test_cron_job_requotes_a_period_whose_first_quote_failed(
+    session_factory: DbSessionFactory,
+    mock_config: Config,
+    mocker,
+    pricing,  # noqa: F811
+):
+    set_cursor(session_factory, PE, 1000)
+    with session_factory() as session:
+        session.add_all(attestation([]))
+        session.commit()
+
+    indexer = fake_indexer(mocker)
+    indexer.quote.side_effect = ConnectionError("rpc down")
+    job = CreditFoldCronJob(
+        session_factory=session_factory,
+        settings_getter=lambda: mock_config,
+        indexer=indexer,
+        cfg=fold_config(),
+    )
+
+    assert await job.run(PE + dt.timedelta(minutes=5), cron_row()) is True
+    with session_factory() as session:
+        assert get_fold_state(session).last_closed_period == PS
+        assert session.get(CreditPeriodQuoteDb, PS) is None
+
+    # The RPC is back: the next run quotes the closed period.
+    indexer.quote.side_effect = None
+    indexer.quote.return_value = (5, 10**14)
+    assert await job.run(PE + dt.timedelta(minutes=10), cron_row()) is True
+    with session_factory() as session:
+        quote = session.get(CreditPeriodQuoteDb, PS)
+        assert quote is not None and quote.block_number == 1000
+    # Nothing left to re-quote: a third run makes no quote call.
+    calls = indexer.quote.await_count
+    assert await job.run(PE + dt.timedelta(minutes=15), cron_row()) is True
+    assert indexer.quote.await_count == calls

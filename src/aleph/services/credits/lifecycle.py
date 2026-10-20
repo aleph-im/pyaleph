@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Protocol, Tuple
 
 from aleph_message.models import ItemHash, ItemType
 from configmanager import Config
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from aleph.db.accessors.credit_ledger import (
@@ -245,6 +246,68 @@ async def store_period_quote(
         )
     )
     return aleph_per_credit
+
+
+# Closed periods without a quote are re-quoted over this many hours back from
+# the last closed one, per fold run.
+REQUOTE_WINDOW_PERIODS = 168
+
+
+def unquoted_closed_periods(
+    session: DbSession,
+    first_period: dt.datetime,
+    last_closed: dt.datetime,
+    limit: int = REQUOTE_WINDOW_PERIODS,
+) -> List[dt.datetime]:
+    """
+    Closed periods in the last `limit` hours up to `last_closed` (never before
+    `first_period`) without a `credit_period_quotes` row, oldest first.
+    """
+    lo = max(first_period, last_closed - (limit - 1) * PERIOD)
+    if lo > last_closed:
+        return []
+    series = select(
+        func.generate_series(lo, last_closed, PERIOD).column_valued("period")
+    ).subquery()
+    stmt = (
+        select(series.c.period)
+        .where(
+            ~select(CreditPeriodQuoteDb.period)
+            .where(CreditPeriodQuoteDb.period == series.c.period)
+            .exists()
+        )
+        .order_by(series.c.period)
+    )
+    return list(session.execute(stmt).scalars())
+
+
+async def requote_closed_periods(
+    session_factory: DbSessionFactory, indexer: _Indexer, cfg: FoldConfig
+) -> int:
+    """
+    Quote the closed periods whose quote failed when they were closed (RPC
+    outage), within `REQUOTE_WINDOW_PERIODS` of the last closed one. Each
+    period is quoted in its own short transaction; a failure is logged and
+    skipped. Returns the number of periods quoted.
+    """
+    first = cfg.first_period
+    if first is None:
+        return 0
+    with session_factory() as session:
+        last_closed = get_fold_state(session).last_closed_period
+        if last_closed is None:
+            return 0
+        missing = unquoted_closed_periods(session, first, last_closed)
+    quoted = 0
+    for period in missing:
+        try:
+            with session_factory() as session:
+                if await store_period_quote(session, period, indexer) is not None:
+                    session.commit()
+                    quoted += 1
+        except Exception:
+            LOGGER.exception("Re-quoting credit period %s failed", period.isoformat())
+    return quoted
 
 
 # --- closing periods ----------------------------------------------------------
