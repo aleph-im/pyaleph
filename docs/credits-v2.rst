@@ -134,8 +134,9 @@ Follows spec section 11.
    * ``credits.chain.start_block`` (first block with timestamp >= H0;
      required, or no period ever closes);
    * ``credits.chain.aleph_weth_pool`` (or ALEPH top-ups stay unquoted);
-   * ``credit_balances.addresses`` emptied (the compromised credit address
-     must not be whitelisted anywhere);
+   * ``credit_balances.addresses`` emptied (no signed credit post is
+     trusted after H0; the leaked key is the service's delegate, revoked
+     in the credit address's ``security`` aggregate at step 3);
    * ``serve_v2 = true``.
 
    Every CCN loads the genesis (idempotent by hash and index; a different
