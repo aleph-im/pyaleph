@@ -13,6 +13,7 @@ from aleph.db.models.credit_ledger import (
     CreditAttestationDb,
     CreditTopupDb,
 )
+from aleph.services.credits.addresses import normalize_address
 from aleph.services.credits.fold import (
     ExclusionInput,
     PeriodInputs,
@@ -20,11 +21,7 @@ from aleph.services.credits.fold import (
     TransferInput,
     execution_amount,
 )
-from aleph.services.credits.inputs import (
-    AttestationPending,
-    collect_inputs,
-    normalize_address,
-)
+from aleph.services.credits.inputs import AttestationPending, collect_inputs
 from aleph.services.credits.rates import rate_for
 from aleph.toolkit.constants import MiB
 from aleph.types.db_session import DbSessionFactory

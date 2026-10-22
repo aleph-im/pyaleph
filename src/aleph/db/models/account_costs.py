@@ -2,7 +2,15 @@ from decimal import Decimal
 from typing import Optional
 
 from aleph_message.models import PaymentType
-from sqlalchemy import DECIMAL, BigInteger, ForeignKey, String, UniqueConstraint
+from sqlalchemy import (
+    DECIMAL,
+    BigInteger,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy_utils.types.choice import ChoiceType
 
@@ -30,4 +38,8 @@ class AccountCostsDb(Base):
     cost_stream: Mapped[Decimal] = mapped_column(DECIMAL, nullable=False)
     cost_credit: Mapped[Decimal] = mapped_column(DECIMAL, nullable=False, default=0)
 
-    __table_args__ = (UniqueConstraint("owner", "item_hash", "type", "name"),)
+    __table_args__ = (
+        UniqueConstraint("owner", "item_hash", "type", "name"),
+        # Case-insensitive owner match of the v2 credit ledger (migration 0070).
+        Index("ix_account_costs_owner_lower", func.lower(owner)),
+    )

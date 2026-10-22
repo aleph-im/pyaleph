@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Protocol, Tuple
 
 from aleph_message.models import ItemHash, ItemType
 from configmanager import Config
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from aleph.db.accessors.credit_ledger import (
@@ -32,6 +33,7 @@ from aleph.db.accessors.credit_ledger import (
     selected_attestation,
 )
 from aleph.db.models.credit_ledger import CreditPeriodQuoteDb
+from aleph.services.credits.addresses import normalize_address
 from aleph.services.credits.fold import (
     GLOBAL_ADDRESS,
     GenesisInput,
@@ -41,11 +43,7 @@ from aleph.services.credits.fold import (
     refold_from,
     write_checkpoint,
 )
-from aleph.services.credits.inputs import (
-    AttestationPending,
-    collect_inputs,
-    normalize_address,
-)
+from aleph.services.credits.inputs import AttestationPending, collect_inputs
 from aleph.services.credits.periods import PERIOD, floor_hour, period_end
 from aleph.types.db_session import DbSession, DbSessionFactory
 
@@ -248,6 +246,69 @@ async def store_period_quote(
         )
     )
     return aleph_per_credit
+
+
+# At most this many closed periods without a quote are re-quoted per fold run,
+# oldest first, over the whole closed range: an older hole is never left behind
+# (it would truncate /credits/revenue for good).
+REQUOTE_WINDOW_PERIODS = 168
+
+
+def unquoted_closed_periods(
+    session: DbSession,
+    first_period: dt.datetime,
+    last_closed: dt.datetime,
+    limit: int = REQUOTE_WINDOW_PERIODS,
+) -> List[dt.datetime]:
+    """
+    The oldest `limit` closed periods in `[first_period, last_closed]` without
+    a `credit_period_quotes` row, oldest first.
+    """
+    if first_period > last_closed:
+        return []
+    series = select(
+        func.generate_series(first_period, last_closed, PERIOD).column_valued("period")
+    ).subquery()
+    stmt = (
+        select(series.c.period)
+        .where(
+            ~select(CreditPeriodQuoteDb.period)
+            .where(CreditPeriodQuoteDb.period == series.c.period)
+            .exists()
+        )
+        .order_by(series.c.period)
+        .limit(limit)
+    )
+    return list(session.execute(stmt).scalars())
+
+
+async def requote_closed_periods(
+    session_factory: DbSessionFactory, indexer: _Indexer, cfg: FoldConfig
+) -> int:
+    """
+    Quote the closed periods whose quote failed when they were closed (RPC
+    outage), the oldest `REQUOTE_WINDOW_PERIODS` of them per run. Each
+    period is quoted in its own short transaction; a failure is logged and
+    skipped. Returns the number of periods quoted.
+    """
+    first = cfg.first_period
+    if first is None:
+        return 0
+    with session_factory() as session:
+        last_closed = get_fold_state(session).last_closed_period
+        if last_closed is None:
+            return 0
+        missing = unquoted_closed_periods(session, first, last_closed)
+    quoted = 0
+    for period in missing:
+        try:
+            with session_factory() as session:
+                if await store_period_quote(session, period, indexer) is not None:
+                    session.commit()
+                    quoted += 1
+        except Exception:
+            LOGGER.exception("Re-quoting credit period %s failed", period.isoformat())
+    return quoted
 
 
 # --- closing periods ----------------------------------------------------------

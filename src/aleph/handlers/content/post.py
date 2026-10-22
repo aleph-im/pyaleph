@@ -29,7 +29,10 @@ from aleph.db.accessors.balances import (
     update_credit_balances_transfer as update_credit_balances_transfer_db,
 )
 from aleph.db.accessors.balances import validate_credit_transfer_balance
-from aleph.db.accessors.credit_ledger import record_attestation
+from aleph.db.accessors.credit_ledger import (
+    CREDIT_TRANSFER_POST_TYPE,
+    record_attestation,
+)
 from aleph.db.accessors.metrics import insert_node_metrics
 from aleph.db.accessors.posts import (
     delete_amends,
@@ -46,11 +49,14 @@ from aleph.schemas.credit_transfer import (
     CreditTransferContent,
 )
 from aleph.schemas.execution_intervals import ExecutionIntervalsContent
+from aleph.services.credits.addresses import normalize_address
+from aleph.services.credits.balance import serve_v2_configured
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import (
     AmendTargetNotFound,
     CannotAmendAmend,
+    CannotForgetLedgerInput,
     InternalError,
     InvalidMessageFormat,
     NoAmendTarget,
@@ -196,6 +202,28 @@ def update_credit_balances_transfer(
     )
 
 
+def validate_credit_transfer(
+    content: Optional[Any], sender_address: str
+) -> CreditTransferContent:
+    """
+    Ingest check of a credit transfer when serving the v2 ledger (spec 5.6):
+    the content must be present and well-formed and must not credit the
+    sender. The balance is not checked and nothing is written: the fold of the
+    transfer's confirmation hour settles it, or excludes it as
+    `insufficient_balance`, the same way on every node.
+    """
+    if not content:
+        raise InvalidMessageFormat("Invalid credit transfer content: empty")
+    transfer = _parse_credit_content(CreditTransferContent, content, kind="transfer")
+    sender = normalize_address(sender_address)
+    for entry in transfer.transfer.credits:
+        if normalize_address(entry.address) == sender:
+            raise InvalidMessageFormat(
+                f"Self-transfer not allowed: sender and recipient are both {sender_address}"
+            )
+    return transfer
+
+
 def get_post_content_ref(ref: Optional[Union[ChainRef, str]]) -> Optional[str]:
     return ref.item_hash if isinstance(ref, ChainRef) else ref
 
@@ -329,14 +357,32 @@ class PostMessageHandler(ContentHandler):
             update_balances(session=session, content=content.content)
             LOGGER.info("Done updating balances")
 
-        if (
-            content.type in self.credit_balances_post_types
-            and (
-                not self.credit_balances_channels
-                or message.channel in self.credit_balances_channels
-            )
-            and content.content
-        ):
+        is_credit_post = content.type in self.credit_balances_post_types and (
+            not self.credit_balances_channels
+            or message.channel in self.credit_balances_channels
+        )
+        if is_credit_post and serve_v2_configured():
+            # The v2 ledger is the authority: distribution and expense posts
+            # have no effect (spec 10) and transfers are folded later. Gated
+            # on the flag alone, not on readiness (`serve_v2_active`): the
+            # verdict on a ledger input must not depend on whether this node
+            # has closed its first period yet, or a transfer rejected here
+            # and processed elsewhere would diverge forever.
+            if content.type == CREDIT_TRANSFER_POST_TYPE:
+                validate_credit_transfer(content.content, content.address)
+            elif content.content and content.address in self.credit_balances_addresses:
+                # Schema-checked as on the legacy path, never written.
+                if content.type == "aleph_credit_distribution":
+                    _parse_credit_content(
+                        CreditDistributionContent,
+                        content.content,
+                        kind="distribution",
+                    )
+                elif content.type == "aleph_credit_expense":
+                    _parse_credit_content(
+                        CreditExpenseContent, content.content, kind="expense"
+                    )
+        elif is_credit_post and content.content:
             LOGGER.info("Updating credit balances...")
             if (
                 content.type == "aleph_credit_distribution"
@@ -364,7 +410,7 @@ class PostMessageHandler(ContentHandler):
                     message_hash=message.item_hash,
                     message_timestamp=observed_time,
                 )
-            elif content.type == "aleph_credit_transfer":
+            elif content.type == CREDIT_TRANSFER_POST_TYPE:
                 update_credit_balances_transfer(
                     session=session,
                     content=_parse_credit_content(
@@ -377,14 +423,7 @@ class PostMessageHandler(ContentHandler):
                 )
             LOGGER.info("Done updating credit balances")
 
-        if (
-            content.type == self.attestation_post_type
-            and _is_listed(content.address, self.attestation_addresses)
-            and (
-                not self.attestation_channels
-                or message.channel in self.attestation_channels
-            )
-        ):
+        if self._is_attestation(content, message):
             attestation = _parse_credit_content(
                 ExecutionIntervalsContent, content.content or {}, kind="attestation"
             )
@@ -416,6 +455,39 @@ class PostMessageHandler(ContentHandler):
                 item_hash=message.item_hash,
                 content=content.content,
             )
+
+    def _is_attestation(self, content: PostContent, message: MessageDb) -> bool:
+        return (
+            content.type == self.attestation_post_type
+            and _is_listed(content.address, self.attestation_addresses)
+            and (
+                not self.attestation_channels
+                or message.channel in self.attestation_channels
+            )
+        )
+
+    def is_ledger_input(self, message: MessageDb) -> bool:
+        """
+        Whether the post feeds the credit ledger: an `aleph_credit_transfer`
+        on a credit channel (what the fold's transfer collection reads) or an
+        attestation from a whitelisted attestor.
+        """
+        content = get_post_content(message)
+        if content.type == CREDIT_TRANSFER_POST_TYPE:
+            return (
+                not self.credit_balances_channels
+                or message.channel in self.credit_balances_channels
+            )
+        return self._is_attestation(content, message)
+
+    async def check_forget(self, session: DbSession, message: MessageDb) -> None:
+        """
+        Ledger inputs cannot be forgotten, whether or not the node serves the
+        v2 ledger: periods are folded, and refolded, from these rows, so they
+        must stay identical on every node.
+        """
+        if self.is_ledger_input(message):
+            raise CannotForgetLedgerInput(message.item_hash)
 
     async def process(self, session: DbSession, messages: List[MessageDb]) -> None:
 

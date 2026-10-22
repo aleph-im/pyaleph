@@ -7,10 +7,8 @@ from aleph_message.models import ItemHash, MessageType, PaymentType
 from sqlalchemy import update
 from sqlalchemy.engine import CursorResult
 
-from aleph.db.accessors.balances import (
-    get_credit_balance,
-    get_updated_credit_balance_accounts,
-)
+from aleph.config import get_config
+from aleph.db.accessors.balances import get_updated_credit_balance_accounts
 from aleph.db.accessors.cost import get_total_costs_for_address_grouped_by_message
 from aleph.db.accessors.files import update_file_pin_grace_period
 from aleph.db.accessors.messages import (
@@ -24,6 +22,13 @@ from aleph.db.models.cron_jobs import CronJobDb
 from aleph.db.models.messages import MessageDb, MessageStatusDb
 from aleph.jobs.cron.cron_job import BaseCronJob
 from aleph.services.cost import calculate_storage_size
+from aleph.services.credits.balance import (
+    addresses_with_ledger_activity_since,
+    fold_lag_exceeded,
+    get_credit_balance_any,
+    owners_of_live_credit_resources,
+    serve_v2_active,
+)
 from aleph.toolkit.constants import CREDIT_ONLY_CUTOFF_TIMESTAMP, DAY, MiB
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession, DbSessionFactory
@@ -41,6 +46,19 @@ COMMIT_CHUNK = 500
 # of one runaway tick. The remainder is idempotently handled by the next run.
 MAX_MESSAGES_PER_RUN = 5000
 
+# Serving the v2 ledger, the accounts to check are those with ledger rows in
+# recent periods. A period's rows are written when the fold closes it, up to
+# the attestation grace (3 h by default) plus the top-up finality and the cron
+# cadence after its end, so the scan reaches back this far before the last
+# run. Over-inclusion is harmless: the check is idempotent. Limit: a period
+# closed more than 6 h after the last run (a fold stalled longer than that)
+# writes rows this scan no longer reaches; only accounts with live credit
+# resources (always checked) are then re-examined.
+V2_ACTIVITY_LOOKBACK = dt.timedelta(hours=6)
+
+# Beyond the attestation grace, the fold should close a period within this.
+FOLD_LAG_MARGIN = dt.timedelta(hours=2)
+
 
 class CreditBalanceCronJob(BaseCronJob):
     def __init__(
@@ -53,7 +71,22 @@ class CreditBalanceCronJob(BaseCronJob):
 
     async def run(self, now: dt.datetime, job: CronJobDb) -> bool:
         with self.session_factory() as session:
-            accounts = get_updated_credit_balance_accounts(session, job.last_run)
+            serve_v2 = serve_v2_active(session)
+            if serve_v2:
+                self.check_fold_lag(session, now)
+                # Accounts with recent ledger rows (top-ups, transfers, billed
+                # hours) and accounts with live credit-paid resources, which
+                # keep accruing even when the fold writes nothing.
+                accounts = sorted(
+                    set(
+                        addresses_with_ledger_activity_since(
+                            session, job.last_run - V2_ACTIVITY_LOOKBACK
+                        )
+                    )
+                    | set(owners_of_live_credit_resources(session))
+                )
+            else:
+                accounts = get_updated_credit_balance_accounts(session, job.last_run)
 
             LOGGER.info(
                 f"Checking '{len(accounts)}' updated credit balance accounts..."
@@ -66,6 +99,7 @@ class CreditBalanceCronJob(BaseCronJob):
             # the remainder (the account query is delta-based on last_run).
             budget = MAX_MESSAGES_PER_RUN
             deferred = False
+            checked = 0
 
             for address in accounts:
                 if budget <= 0:
@@ -77,13 +111,16 @@ class CreditBalanceCronJob(BaseCronJob):
                     )
                     break
 
-                remaining_credits = get_credit_balance(session, address)
+                remaining_credits = get_credit_balance_any(session, address)
+                checked += 1
 
                 to_delete = []
                 to_recover = []
 
+                # Ledger addresses are lowercased (EVM): match the costs of
+                # the account whatever case its messages used.
                 credit_costs = get_total_costs_for_address_grouped_by_message(
-                    session, address, PaymentType.credit
+                    session, address, PaymentType.credit, case_insensitive=serve_v2
                 )
 
                 for index, (item_hash, _height, cost, _) in enumerate(
@@ -155,7 +192,29 @@ class CreditBalanceCronJob(BaseCronJob):
 
                 session.commit()
 
+            LOGGER.info(
+                "Checked %d of %d credit balance accounts (%s)",
+                checked,
+                len(accounts),
+                "v2 ledger" if serve_v2 else "legacy",
+            )
             return not deferred
+
+    @staticmethod
+    def check_fold_lag(session: DbSession, now: dt.datetime) -> None:
+        """Log an ERROR (once per run) when the credit fold is stalled."""
+        grace = dt.timedelta(
+            seconds=int(get_config().aleph.credits.attestation.grace_seconds.value)
+        )
+        last_closed = fold_lag_exceeded(session, now, grace + FOLD_LAG_MARGIN)
+        if last_closed is not None:
+            LOGGER.error(
+                "Credit fold is stalled: last closed period %s is more than %s "
+                "behind; balances include a growing provisional accrual and "
+                "removals rely on it",
+                last_closed.isoformat(),
+                grace + FOLD_LAG_MARGIN,
+            )
 
     async def delete_messages(
         self, session: DbSession, messages: List[ItemHash]

@@ -17,10 +17,22 @@ from aleph.types.db_session import DbSession
 from aleph.types.message_status import MessageStatus
 
 
+def _owner_filter(address: str, case_insensitive: bool):
+    """
+    Owner match on account_costs. `case_insensitive` matches an EVM (0x)
+    address in any case (served by ix_account_costs_owner_lower), as the v2
+    credit ledger keys accounts by the lowercased address.
+    """
+    if case_insensitive and address[:2].lower() == "0x":
+        return func.lower(AccountCostsDb.owner) == address.lower()
+    return AccountCostsDb.owner == address
+
+
 def get_total_cost_for_address(
     session: DbSession,
     address: str,
     payment_type: Optional[PaymentType] = PaymentType.hold,
+    case_insensitive: bool = False,
 ) -> Decimal:
     """Get total cost for an address filtered by payment type.
 
@@ -31,6 +43,7 @@ def get_total_cost_for_address(
         session=session,
         address=address,
         payment_type=payment_type,
+        case_insensitive=case_insensitive,
     )
 
     if payment_type == PaymentType.superfluid:
@@ -81,7 +94,9 @@ def get_total_costs_for_address_grouped_by_message(
     session: DbSession,
     address: str,
     payment_type: Optional[PaymentType] = PaymentType.hold,
+    case_insensitive: bool = False,
 ):
+    """`case_insensitive`: see `_owner_filter`."""
     if payment_type == PaymentType.hold:
         total_prop = AccountCostsDb.cost_hold
     elif payment_type == PaymentType.superfluid:
@@ -93,6 +108,8 @@ def get_total_costs_for_address_grouped_by_message(
 
     id_field = func.min(AccountCostsDb.id)
 
+    owner_filter = _owner_filter(address, case_insensitive)
+
     select_stmt = (
         select(
             AccountCostsDb.item_hash, ChainTxDb.height, func.sum(total_prop), id_field
@@ -103,10 +120,7 @@ def get_total_costs_for_address_grouped_by_message(
             message_confirmations.c.item_hash == AccountCostsDb.item_hash,
         )
         .join(ChainTxDb, message_confirmations.c.tx_hash == ChainTxDb.hash)
-        .where(
-            (AccountCostsDb.owner == address)
-            & (AccountCostsDb.payment_type == payment_type)
-        )
+        .where((owner_filter) & (AccountCostsDb.payment_type == payment_type))
         .group_by(AccountCostsDb.item_hash, ChainTxDb.height)
         .order_by(asc(id_field))
     )
@@ -208,6 +222,7 @@ def get_costs_summary(
     address: Optional[str] = None,
     item_hash: Optional[str] = None,
     payment_type: Optional[PaymentType] = None,
+    case_insensitive: bool = False,
 ) -> dict:
     """
     Get aggregated cost summary with optional filtering.
@@ -217,6 +232,7 @@ def get_costs_summary(
         address: Optional filter by owner address
         item_hash: Optional filter by specific resource
         payment_type: Optional filter by payment type (hold, superfluid, credit)
+        case_insensitive: Match an EVM owner address in any case
 
     Returns:
         Dictionary with total_cost_hold, total_cost_stream, total_cost_credit, resource_count
@@ -229,7 +245,7 @@ def get_costs_summary(
     ).select_from(AccountCostsDb)
 
     if address:
-        select_stmt = select_stmt.where(AccountCostsDb.owner == address)
+        select_stmt = select_stmt.where(_owner_filter(address, case_insensitive))
     if item_hash:
         select_stmt = select_stmt.where(AccountCostsDb.item_hash == item_hash)
     if payment_type:

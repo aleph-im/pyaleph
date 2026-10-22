@@ -143,47 +143,41 @@ async def _fix_file_sizes(
         )
 
 
-def _rebuild_credit_lots_for_address(session: DbSession, address: str) -> None:
-    """Replay ``credit_history`` chronologically and replace this address's
-    lot rows with the resulting state.
+def credit_history_records(session: DbSession, address: str) -> list:
+    """The address's ``credit_history`` rows with their observed time, in
+    emission order ``(observed_ts, credit_ref, credit_index)``.
 
-    Idempotent: clears existing lots for the address first, then rebuilds. Safe
-    to interrupt at address granularity (callers commit per-address).
-
-    Replays in emission order ``(observed_time, credit_ref, credit_index)
-    ASC``. ``observed_time`` is re-derived from the referenced message's trusted
-    time (``COALESCE(first_confirmed_at, reception_time)``), not the
-    sender-supplied timestamp stored on the history row, so replay converges to
-    the same result on every node once messages confirm. It falls back to the
-    stored ``message_timestamp`` when the message row is absent (e.g. forgotten).
-    Each positive history row becomes a lot; each negative row drains lots in
-    emission order, skipping any whose expiration is at or before the negative
-    row's observed time (so an expense from the past does not drain a lot that
-    had already expired at that moment).
+    The observed time is re-derived from the referenced message's trusted time,
+    falling back to the stored history timestamp when the message is gone.
     """
-    session.execute(
-        delete(AlephCreditBalanceDb).where(AlephCreditBalanceDb.address == address)
-    )
-
-    # Re-derive the trusted time from the referenced message; fall back to the
-    # stored history timestamp when the message is gone.
     observed_ts = func.coalesce(
         MessageDb.first_confirmed_at,
         MessageDb.reception_time,
         AlephCreditHistoryDb.message_timestamp,
     ).label("observed_ts")
 
-    records = session.execute(
-        select(AlephCreditHistoryDb, observed_ts)
-        .outerjoin(MessageDb, MessageDb.item_hash == AlephCreditHistoryDb.credit_ref)
-        .where(AlephCreditHistoryDb.address == address)
-        .order_by(
-            observed_ts.asc(),
-            AlephCreditHistoryDb.credit_ref.asc(),
-            AlephCreditHistoryDb.credit_index.asc(),
-        )
-    ).all()
+    return list(
+        session.execute(
+            select(AlephCreditHistoryDb, observed_ts)
+            .outerjoin(
+                MessageDb, MessageDb.item_hash == AlephCreditHistoryDb.credit_ref
+            )
+            .where(AlephCreditHistoryDb.address == address)
+            .order_by(
+                observed_ts.asc(),
+                AlephCreditHistoryDb.credit_ref.asc(),
+                AlephCreditHistoryDb.credit_index.asc(),
+            )
+        ).all()
+    )
 
+
+def replay_credit_lots(records: list) -> list[dict]:
+    """Pure FIFO replay of emission-ordered ``(history row, observed time)``
+    pairs: each positive row becomes a lot, each negative row drains lots in
+    emission order, skipping any whose expiration is at or before the negative
+    row's observed time. Returns every lot, drained ones included.
+    """
     lots: list[dict] = []
     for record, record_ts in records:
         if record.amount > 0:
@@ -211,6 +205,33 @@ def _rebuild_credit_lots_for_address(session: DbSession, address: str) -> None:
                 take = min(lot["amount_remaining"], remaining)
                 lot["amount_remaining"] -= take
                 remaining -= take
+    return lots
+
+
+def _rebuild_credit_lots_for_address(session: DbSession, address: str) -> None:
+    """Replay ``credit_history`` chronologically and replace this address's
+    lot rows with the resulting state.
+
+    Idempotent: clears existing lots for the address first, then rebuilds. Safe
+    to interrupt at address granularity (callers commit per-address).
+
+    Replays in emission order ``(observed_time, credit_ref, credit_index)
+    ASC``. ``observed_time`` is re-derived from the referenced message's trusted
+    time (``COALESCE(first_confirmed_at, reception_time)``), not the
+    sender-supplied timestamp stored on the history row, so replay converges to
+    the same result on every node once messages confirm. It falls back to the
+    stored ``message_timestamp`` when the message row is absent (e.g. forgotten).
+    Each positive history row becomes a lot; each negative row drains lots in
+    emission order, skipping any whose expiration is at or before the negative
+    row's observed time (so an expense from the past does not drain a lot that
+    had already expired at that moment).
+    """
+    session.execute(
+        delete(AlephCreditBalanceDb).where(AlephCreditBalanceDb.address == address)
+    )
+
+    records = credit_history_records(session, address)
+    lots = replay_credit_lots(records)
 
     rows = [{"address": address, **lot} for lot in lots if lot["amount_remaining"] > 0]
     if rows:

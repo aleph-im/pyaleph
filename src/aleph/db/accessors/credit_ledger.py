@@ -1,12 +1,29 @@
 import datetime as dt
 from decimal import Decimal
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from aleph_message.models import MessageType, PaymentType
-from sqlalchemy import Row, delete, func, or_, select, update
+from sqlalchemy import (
+    DECIMAL,
+    BigInteger,
+    Integer,
+    Row,
+    String,
+    case,
+    cast,
+    delete,
+    func,
+    literal,
+    null,
+    or_,
+    select,
+    union_all,
+    update,
+)
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm.attributes import set_committed_value
 
+from aleph.db.models.balances import AlephCreditHistoryDb
 from aleph.db.models.credit_ledger import (
     BillingRateDb,
     BillingResourceDb,
@@ -15,10 +32,12 @@ from aleph.db.models.credit_ledger import (
     CreditFoldStateDb,
     CreditLedgerDb,
     CreditLotDb,
+    CreditPeriodQuoteDb,
     CreditTopupDb,
 )
 from aleph.db.models.messages import ForgottenMessageDb, MessageDb
-from aleph.services.credits.periods import floor_hour
+from aleph.services.credits.addresses import normalize_address
+from aleph.services.credits.periods import KIND_ORDER, floor_hour
 from aleph.types.db_session import DbSession
 
 # Credit transfers are fold inputs keyed on their confirmation time.
@@ -126,7 +145,8 @@ def upsert_billing_resource(
     stmt = insert(BillingResourceDb).values(
         item_hash=message.item_hash,
         type=MessageType(message.type),
-        owner=message.owner or content["address"],
+        # Stored in ledger form so every lookup is an indexed equality.
+        owner=normalize_address(message.owner or content["address"]),
         payment_type=payment_type,
         first_confirmed_at=confirmed_at,
         cost_spec=cost_spec,
@@ -858,3 +878,325 @@ def upsert_checkpoint(
             set_={"lots": stmt.excluded.lots, "ledger_hash": stmt.excluded.ledger_hash},
         )
     )
+
+
+# --- API reads (spec 10) ------------------------------------------------------
+#
+# Read-only queries behind the /api/v0/credits endpoints and the v2 paths of the
+# legacy credit endpoints. They read the v2 tables whatever `serve_v2` says, so
+# they also serve the shadow run.
+
+
+def kind_order_expr(kind_column: Any) -> Any:
+    """SQL form of KIND_ORDER for `kind_column` (unknown kinds sort last)."""
+    return case(
+        {kind: rank for kind, rank in KIND_ORDER.items()},
+        value=kind_column,
+        else_=len(KIND_ORDER),
+    )
+
+
+def period_kind_totals(
+    session: DbSession, period_start: dt.datetime
+) -> Dict[str, Tuple[int, int]]:
+    """{kind: (rows, sum of amount)} of the period's ledger rows, exclusions included."""
+    rows = session.execute(
+        select(
+            CreditLedgerDb.kind,
+            func.count().label("rows"),
+            func.coalesce(func.sum(CreditLedgerDb.amount), 0).label("amount"),
+        )
+        .where(CreditLedgerDb.period == period_start)
+        .group_by(CreditLedgerDb.kind)
+    ).all()
+    return {row.kind: (int(row.rows), int(row.amount)) for row in rows}
+
+
+def attestation_sender(session: DbSession, item_hash: str) -> Optional[str]:
+    return session.execute(
+        select(CreditAttestationDb.sender).where(
+            CreditAttestationDb.item_hash == item_hash
+        )
+    ).scalar_one_or_none()
+
+
+def global_checkpoint_hash(
+    session: DbSession, period_start: dt.datetime
+) -> Optional[str]:
+    """The global ('' address) checkpoint hash written for the period, if any."""
+    return session.execute(
+        select(CreditCheckpointDb.ledger_hash).where(
+            CreditCheckpointDb.period == period_start,
+            CreditCheckpointDb.address == "",
+        )
+    ).scalar_one_or_none()
+
+
+def revenue_sums(session: DbSession, start: dt.datetime, end: dt.datetime) -> List[Row]:
+    """
+    (period, kind, node_id, amount) sums of the billed (non-excluded)
+    `execution`, `hold_equivalent` and `storage` rows with
+    `start <= period < end`. Amounts keep their ledger sign.
+    """
+    return list(
+        session.execute(
+            select(
+                CreditLedgerDb.period,
+                CreditLedgerDb.kind,
+                CreditLedgerDb.node_id,
+                func.sum(CreditLedgerDb.amount).label("amount"),
+            )
+            .where(
+                CreditLedgerDb.period >= start,
+                CreditLedgerDb.period < end,
+                CreditLedgerDb.kind.in_(("execution", "hold_equivalent", "storage")),
+                CreditLedgerDb.excluded_reason.is_(None),
+            )
+            .group_by(
+                CreditLedgerDb.period, CreditLedgerDb.kind, CreditLedgerDb.node_id
+            )
+        ).all()
+    )
+
+
+def period_quotes(
+    session: DbSession, start: dt.datetime, end: dt.datetime
+) -> Dict[dt.datetime, Decimal]:
+    """{period: ALEPH per credit} stored for `start <= period < end`."""
+    rows = session.execute(
+        select(CreditPeriodQuoteDb.period, CreditPeriodQuoteDb.aleph_per_credit).where(
+            CreditPeriodQuoteDb.period >= start, CreditPeriodQuoteDb.period < end
+        )
+    ).all()
+    return {row.period: row.aleph_per_credit for row in rows}
+
+
+def _exclusion_filters(
+    period: Optional[dt.datetime], reason: Optional[str], address: Optional[str]
+) -> List[Any]:
+    filters: List[Any] = [CreditLedgerDb.excluded_reason.is_not(None)]
+    if period is not None:
+        filters.append(CreditLedgerDb.period == period)
+    if reason is not None:
+        filters.append(CreditLedgerDb.excluded_reason == reason)
+    if address is not None:
+        filters.append(CreditLedgerDb.address == normalize_address(address))
+    return filters
+
+
+def get_exclusions(
+    session: DbSession,
+    period: Optional[dt.datetime] = None,
+    reason: Optional[str] = None,
+    address: Optional[str] = None,
+    page: int = 1,
+    pagination: int = 100,
+) -> List[CreditLedgerDb]:
+    """Exclusion rows, (period desc, kind order, business key) ordered."""
+    stmt = (
+        select(CreditLedgerDb)
+        .where(*_exclusion_filters(period, reason, address))
+        .order_by(
+            CreditLedgerDb.period.desc(),
+            kind_order_expr(CreditLedgerDb.kind),
+            CreditLedgerDb.business_key,
+        )
+        .offset((page - 1) * pagination)
+        .limit(pagination)
+    )
+    return list(session.execute(stmt).scalars())
+
+
+def count_exclusions(
+    session: DbSession,
+    period: Optional[dt.datetime] = None,
+    reason: Optional[str] = None,
+    address: Optional[str] = None,
+) -> int:
+    return session.execute(
+        select(func.count()).where(*_exclusion_filters(period, reason, address))
+    ).scalar_one()
+
+
+def _topup_address_filter(address: str) -> Any:
+    # from_address is stored checksummed; the table is small (a few rows a day).
+    return func.lower(CreditTopupDb.from_address) == normalize_address(address)
+
+
+def get_topups_by_address(
+    session: DbSession, address: str, page: int = 1, pagination: int = 100
+) -> List[CreditTopupDb]:
+    """The address's indexed top-ups, newest first."""
+    stmt = (
+        select(CreditTopupDb)
+        .where(_topup_address_filter(address))
+        .order_by(
+            CreditTopupDb.block_number.desc(),
+            CreditTopupDb.log_index.desc(),
+            CreditTopupDb.chain_id,
+            CreditTopupDb.tx_hash,
+        )
+        .offset((page - 1) * pagination)
+        .limit(pagination)
+    )
+    return list(session.execute(stmt).scalars())
+
+
+def count_topups_by_address(session: DbSession, address: str) -> int:
+    return session.execute(
+        select(func.count()).where(_topup_address_filter(address))
+    ).scalar_one()
+
+
+# --- /api/v0/credit_balances from the lots ------------------------------------
+
+
+def _lot_balance_query(min_balance: int) -> Any:
+    balance = func.sum(CreditLotDb.amount_remaining).label("balance")
+    return (
+        select(CreditLotDb.address, balance)
+        .where(
+            CreditLotDb.amount_remaining > 0,
+            or_(CreditLotDb.expiration.is_(None), CreditLotDb.expiration > func.now()),
+        )
+        .group_by(CreditLotDb.address)
+        .having(func.sum(CreditLotDb.amount_remaining) >= min_balance)
+    )
+
+
+def get_credit_balances_v2(
+    session: DbSession,
+    page: int = 1,
+    pagination: int = 100,
+    min_balance: int = 0,
+    after_address: Optional[str] = None,
+    cursor_mode: bool = False,
+) -> List[Tuple[str, int]]:
+    """
+    `get_credit_balances` over `credit_lots`: per address, the sum of its
+    unexpired lots as of the last closed period. The provisional accrual of the
+    open hours is not subtracted (it needs every address's live resources and
+    rates; the per-address balance endpoint does it). Only addresses with a
+    positive sum are listed. Same pagination contract as the legacy accessor.
+    """
+    query = _lot_balance_query(min_balance).order_by(CreditLotDb.address.asc())
+    if after_address is not None:
+        query = query.where(CreditLotDb.address > after_address)
+    if after_address is not None or cursor_mode:
+        if pagination:
+            query = query.limit(pagination + 1)
+    else:
+        query = query.offset((page - 1) * pagination)
+        if pagination:
+            query = query.limit(pagination)
+    return [(row.address, int(row.balance)) for row in session.execute(query).all()]
+
+
+def count_credit_balances_v2(session: DbSession, min_balance: int = 0) -> int:
+    sub = _lot_balance_query(min_balance).subquery()
+    return session.execute(select(func.count()).select_from(sub)).scalar_one()
+
+
+# --- credit history from the ledger -------------------------------------------
+
+
+def credit_history_source(address: str, cutover: Optional[dt.datetime]) -> Any:
+    """
+    The credit history of `address` as one UNION ALL subquery with the legacy
+    `credit_history` columns plus `node_id`, `seconds`, `excluded_reason` and
+    two keyset tiebreakers, `tb_ref` (text) and `tb_index` (int):
+
+    - legacy rows with `message_timestamp < cutover` (address compared as
+      given, as the legacy endpoint does), tiebreakers (credit_ref,
+      credit_index);
+    - ledger rows of `normalize_address(address)` with `period >= cutover`,
+      `hold_equivalent` rows left out (a notional amount of a hold-paid VM,
+      not a balance movement). Mapping: payment_method = kind, origin =
+      resource, origin_ref = source_ref, tx_hash = source_ref for top-ups,
+      credit_ref = source_ref (business_key when the row has none),
+      credit_index = 0, message_timestamp = period, expiration_date =
+      expiration, expense_count/size_mib = count/size_mib. Tiebreakers
+      ("{kind order}:{business_key}", 0), so rows of one period sort by
+      (kind order, business key), in the direction of the requested sort.
+
+    `cutover` None (no genesis or start period configured) keeps every row of
+    both tables.
+    """
+    legacy = select(
+        AlephCreditHistoryDb.amount.label("amount"),
+        AlephCreditHistoryDb.price.label("price"),
+        AlephCreditHistoryDb.bonus_amount.label("bonus_amount"),
+        AlephCreditHistoryDb.tx_hash.label("tx_hash"),
+        AlephCreditHistoryDb.token.label("token"),
+        AlephCreditHistoryDb.chain.label("chain"),
+        AlephCreditHistoryDb.provider.label("provider"),
+        AlephCreditHistoryDb.origin.label("origin"),
+        AlephCreditHistoryDb.origin_ref.label("origin_ref"),
+        AlephCreditHistoryDb.payment_method.label("payment_method"),
+        AlephCreditHistoryDb.credit_ref.label("credit_ref"),
+        AlephCreditHistoryDb.credit_index.label("credit_index"),
+        AlephCreditHistoryDb.expiration_date.label("expiration_date"),
+        AlephCreditHistoryDb.message_timestamp.label("message_timestamp"),
+        AlephCreditHistoryDb.expense_count.label("expense_count"),
+        AlephCreditHistoryDb.expense_size_mib.label("expense_size_mib"),
+        cast(null(), String).label("node_id"),
+        cast(null(), Integer).label("seconds"),
+        cast(null(), String).label("excluded_reason"),
+        AlephCreditHistoryDb.credit_ref.label("tb_ref"),
+        AlephCreditHistoryDb.credit_index.label("tb_index"),
+    ).where(AlephCreditHistoryDb.address == address)
+    if cutover is not None:
+        legacy = legacy.where(AlephCreditHistoryDb.message_timestamp < cutover)
+
+    ledger = select(
+        CreditLedgerDb.amount.label("amount"),
+        cast(null(), DECIMAL).label("price"),
+        cast(null(), BigInteger).label("bonus_amount"),
+        case(
+            (CreditLedgerDb.kind == "topup", CreditLedgerDb.source_ref), else_=null()
+        ).label("tx_hash"),
+        cast(null(), String).label("token"),
+        cast(null(), String).label("chain"),
+        cast(null(), String).label("provider"),
+        CreditLedgerDb.resource.label("origin"),
+        CreditLedgerDb.source_ref.label("origin_ref"),
+        CreditLedgerDb.kind.label("payment_method"),
+        func.coalesce(CreditLedgerDb.source_ref, CreditLedgerDb.business_key).label(
+            "credit_ref"
+        ),
+        literal(0, Integer).label("credit_index"),
+        CreditLedgerDb.expiration.label("expiration_date"),
+        CreditLedgerDb.period.label("message_timestamp"),
+        cast(CreditLedgerDb.entry_count, BigInteger).label("expense_count"),
+        cast(CreditLedgerDb.size_mib, DECIMAL).label("expense_size_mib"),
+        CreditLedgerDb.node_id.label("node_id"),
+        CreditLedgerDb.seconds.label("seconds"),
+        CreditLedgerDb.excluded_reason.label("excluded_reason"),
+        func.concat(
+            cast(kind_order_expr(CreditLedgerDb.kind), String),
+            ":",
+            CreditLedgerDb.business_key,
+        ).label("tb_ref"),
+        literal(0, Integer).label("tb_index"),
+    ).where(
+        CreditLedgerDb.address == normalize_address(address),
+        CreditLedgerDb.kind != "hold_equivalent",
+    )
+    if cutover is not None:
+        ledger = ledger.where(CreditLedgerDb.period >= cutover)
+
+    return union_all(legacy, ledger).subquery("credit_history_v2")
+
+
+def consumed_execution_credits(
+    session: DbSession, item_hash: str, since: Optional[dt.datetime]
+) -> int:
+    """Credits the billed `execution` rows of a VM charged, from `since` on."""
+    stmt = select(func.coalesce(func.sum(-CreditLedgerDb.amount), 0)).where(
+        CreditLedgerDb.kind == "execution",
+        CreditLedgerDb.resource == item_hash,
+        CreditLedgerDb.excluded_reason.is_(None),
+    )
+    if since is not None:
+        stmt = stmt.where(CreditLedgerDb.period >= since)
+    return int(session.execute(stmt).scalar_one())

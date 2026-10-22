@@ -2,11 +2,12 @@ from decimal import Decimal
 
 from aleph_message.models import PaymentType
 
-from aleph.db.accessors.balances import get_credit_balance, get_total_balance
+from aleph.db.accessors.balances import get_total_balance
 from aleph.db.accessors.cost import (
     get_post_cutoff_total_cost_for_address,
     get_total_cost_for_address,
 )
+from aleph.services.credits.balance import get_credit_balance_any, serve_v2_active
 from aleph.toolkit.constants import DAY
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import (
@@ -38,11 +39,20 @@ def validate_balance_for_payment(
         InsufficientCreditException: When credit balance is insufficient
     """
     if payment_type == PaymentType.credit:
-        current_credit_balance = get_credit_balance(address=address, session=session)
+        # The v2 ledger under `aleph.credits.serve_v2`, the legacy lots otherwise.
+        serve_v2 = serve_v2_active(session)
+        current_credit_balance = get_credit_balance_any(
+            session=session, address=address
+        )
 
-        # Get current hourly credit cost for all running VMs
+        # Get current hourly credit cost for all running VMs. The v2 balance
+        # belongs to the lowercased EVM address, so the reservation counts
+        # the account's resources whatever case their messages used.
         current_credit_cost = get_total_cost_for_address(
-            session=session, address=address, payment_type=payment_type
+            session=session,
+            address=address,
+            payment_type=payment_type,
+            case_insensitive=serve_v2,
         )
 
         # Calculate total per-second cost (existing VMs + new VM)

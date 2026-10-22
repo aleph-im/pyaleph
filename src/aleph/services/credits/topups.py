@@ -112,11 +112,19 @@ class TopupConfig:
     aleph_bonus: Decimal = Decimal("0.2")
 
     @classmethod
-    def from_config(cls, config: Any) -> "TopupConfig":
+    def from_config(
+        cls, config: Any, require_start_block: bool = True
+    ) -> "TopupConfig":
+        """
+        `require_start_block=False` is for quoting only (the API's
+        `/credits/quote`), which never indexes: a missing start block reads 0.
+        """
         chain = config.aleph.credits.chain
         start_block = chain.start_block.value
         if start_block is None:
-            raise ValueError("aleph.credits.chain.start_block must be set")
+            if require_start_block:
+                raise ValueError("aleph.credits.chain.start_block must be set")
+            start_block = 0
         return cls(
             chain_id=int(config.ethereum.chain_id.value),
             start_block=int(start_block),
@@ -421,3 +429,28 @@ class TopupIndexer:
                 mark_dirty(session, floor_hour(row.block_time))
         session.flush()
         return len(quoted)
+
+
+def build_quote_indexer(config: Any) -> Optional[TopupIndexer]:
+    """
+    A TopupIndexer for quoting only (`GET /api/v0/credits/quote`), on the
+    credits RPC (falling back to ethereum.api_url). None, with a warning, when
+    the configuration cannot build one.
+    """
+    from aleph.chains.ethereum import make_web3_client
+
+    try:
+        rpc_url = (
+            config.aleph.credits.chain.rpc_url.value or config.ethereum.api_url.value
+        )
+        web3 = make_web3_client(
+            rpc_url,
+            int(config.ethereum.chain_id.value),
+            int(config.ethereum.client_timeout.value),
+        )
+        return TopupIndexer(
+            web3, TopupConfig.from_config(config, require_start_block=False)
+        )
+    except Exception as error:
+        LOGGER.warning("Credit quotes are unavailable on this node: %s", error)
+        return None

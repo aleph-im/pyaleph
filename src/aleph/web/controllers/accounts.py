@@ -22,6 +22,11 @@ from aleph.db.accessors.balances import (
     get_total_detailed_balance,
 )
 from aleph.db.accessors.cost import get_total_cost_for_address
+from aleph.db.accessors.credit_ledger import (
+    count_credit_balances_v2,
+    credit_history_source,
+    get_credit_balances_v2,
+)
 from aleph.db.accessors.files import get_address_files_for_api, get_address_files_stats
 from aleph.db.accessors.messages import (
     get_distinct_channels_for_address,
@@ -34,12 +39,14 @@ from aleph.schemas.api.accounts import (
     AddressCreditBalanceResponse,
     CreditBalanceDetailItem,
     CreditHistoryResponseItem,
+    CreditHistoryV2ResponseItem,
     GetAccountBalanceResponse,
     GetAccountChannelsResponse,
     GetAccountCreditHistoryQueryParams,
     GetAccountCreditHistoryResponse,
     GetAccountCreditHistorySummaryQueryParams,
     GetAccountCreditHistorySummaryResponse,
+    GetAccountCreditHistoryV2Response,
     GetAccountFilesQueryParams,
     GetAccountFilesResponse,
     GetAccountFilesResponseItem,
@@ -49,6 +56,11 @@ from aleph.schemas.api.accounts import (
     GetCreditBalancesQueryParams,
     GetResourceConsumedCreditsResponse,
 )
+from aleph.services.credits.balance import (
+    get_credit_balance_details_v2,
+    serve_v2_active,
+)
+from aleph.services.credits.history import consumed_credits_v2, history_cutover
 from aleph.toolkit.cursor import (
     decode_address_cursor,
     decode_address_stats_cursor,
@@ -60,7 +72,10 @@ from aleph.toolkit.cursor import (
     encode_message_cursor,
 )
 from aleph.types.db_session import DbSessionFactory
-from aleph.web.controllers.app_state_getters import get_session_factory_from_request
+from aleph.web.controllers.app_state_getters import (
+    get_config_from_request,
+    get_session_factory_from_request,
+)
 from aleph.web.controllers.utils import (
     get_item_hash_str_from_request,
     validate_cursor_pagination,
@@ -319,6 +334,14 @@ async def get_account_balance(request: web.Request):
           type: boolean
           default: false
         description: Include credit balance breakdown by expiration date (after FIFO consumption)
+      - name: closed_only
+        in: query
+        schema:
+          type: boolean
+          default: false
+        description: >-
+          Serving the v2 ledger only: credit balance as of the last closed
+          period, without the provisional accrual of the open hours
     responses:
       '200':
         description: Account balance details
@@ -344,7 +367,21 @@ async def get_account_balance(request: web.Request):
         total_cost = get_total_cost_for_address(session=session, address=address)
 
         credit_balance_details = None
-        if query_params.include_credit_details:
+        if serve_v2_active(session):
+            credits, detail_items = get_credit_balance_details_v2(
+                session=session,
+                address=address,
+                closed_only=query_params.closed_only,
+            )
+            if query_params.include_credit_details:
+                credit_balance_details = [
+                    CreditBalanceDetailItem(
+                        expiration_date=d.expiration_date,
+                        amount=d.amount,
+                    )
+                    for d in detail_items
+                ]
+        elif query_params.include_credit_details:
             credits, detail_items = get_credit_balance_with_details(
                 session=session, address=address
             )
@@ -492,6 +529,12 @@ async def get_credit_balances_handler(request: web.Request) -> web.Response:
     """
     Get credit balances.
 
+    With `aleph.credits.serve_v2` active: per address, the sum of its
+    unexpired lots in the v2 ledger as of the last closed period (the
+    provisional accrual of the open hours is not subtracted here; the
+    per-address balance endpoint does it). Only addresses with a positive sum
+    are listed.
+
     ---
     summary: Get credit balances
     tags:
@@ -548,7 +591,12 @@ async def get_credit_balances_handler(request: web.Request) -> web.Response:
         find_filters = query_params.model_dump(exclude_none=True, exclude={"cursor"})
 
         with session_factory() as session:
-            credit_balances = get_credit_balances(
+            list_balances = (
+                get_credit_balances_v2
+                if serve_v2_active(session)
+                else get_credit_balances
+            )
+            credit_balances = list_balances(
                 session, after_address=after_address, cursor_mode=True, **find_filters
             )
 
@@ -576,16 +624,21 @@ async def get_credit_balances_handler(request: web.Request) -> web.Response:
     find_filters = query_params.model_dump(exclude_none=True, exclude={"cursor"})
 
     with session_factory() as session:
-        credit_balances = get_credit_balances(session, **find_filters)
+        if serve_v2_active(session):
+            credit_balances = get_credit_balances_v2(session, **find_filters)
+            total_credit_balances = count_credit_balances_v2(
+                session, find_filters.get("min_balance", 0)
+            )
+        else:
+            credit_balances = get_credit_balances(session, **find_filters)
+            total_credit_balances = count_credit_balances(
+                session, find_filters.get("min_balance", 0)
+            )
 
         formatted_credit_balances = [
             AddressCreditBalanceResponse(address=address, credits=credits)
             for address, credits in credit_balances
         ]
-
-        total_credit_balances = count_credit_balances(
-            session, find_filters.get("min_balance", 0)
-        )
 
         pagination_page = query_params.page
         pagination_per_page = query_params.pagination
@@ -743,9 +796,59 @@ async def get_account_files(request: web.Request) -> web.Response:
         return web.json_response(text=response.model_dump_json())
 
 
+def _credit_history_item(entry: Any, v2: bool) -> Dict[str, Any]:
+    item = {
+        "amount": entry.amount,
+        "price": entry.price,
+        "bonus_amount": entry.bonus_amount,
+        "tx_hash": entry.tx_hash,
+        "token": entry.token,
+        "chain": entry.chain,
+        "provider": entry.provider,
+        "origin": entry.origin,
+        "origin_ref": entry.origin_ref,
+        "payment_method": entry.payment_method,
+        "credit_ref": entry.credit_ref,
+        "credit_index": entry.credit_index,
+        "expiration_date": entry.expiration_date,
+        "message_timestamp": entry.message_timestamp,
+        "expense_count": entry.expense_count,
+        "expense_size_mib": entry.expense_size_mib,
+    }
+    if v2:
+        item["node_id"] = entry.node_id
+        item["seconds"] = entry.seconds
+        item["excluded_reason"] = entry.excluded_reason
+    return item
+
+
+def _credit_history_source(request: web.Request, address: str) -> Optional[Any]:
+    """
+    The merged legacy + ledger history source under `serve_v2`, else None
+    (legacy table only).
+    """
+    session_factory: DbSessionFactory = get_session_factory_from_request(request)
+    with session_factory() as session:
+        if not serve_v2_active(session):
+            return None
+    return credit_history_source(
+        address, history_cutover(get_config_from_request(request))
+    )
+
+
 async def get_account_credit_history(request: web.Request) -> web.Response:
     """
     Returns the credit history of an account.
+
+    With `aleph.credits.serve_v2` active, legacy entries before the genesis
+    period and v2 ledger rows from it on, merged in one ordering (exclusion
+    rows included, with `excluded_reason`; `hold_equivalent` rows are not
+    listed). Ledger rows of one period are ordered by kind order then business
+    key, in the requested sort direction. Addresses: legacy rows match the
+    address exactly as stored (as the legacy endpoint always did, so a
+    checksummed legacy row is only found with the checksummed address);
+    ledger rows match the normalized address (EVM addresses lowercased), so
+    any case finds them.
 
     ---
     summary: Get account credit history
@@ -866,6 +969,9 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
 
     cursor = query_params.cursor
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
+    source = _credit_history_source(request, address)
+    v2 = source is not None
+    item_type = CreditHistoryV2ResponseItem if v2 else CreditHistoryResponseItem
 
     if cursor is not None:
         pagination_per_page = validate_cursor_pagination(
@@ -934,6 +1040,7 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
                     after_credit_ref=after_credit_ref,
                     after_credit_index=after_credit_index,
                     cursor_mode=True,
+                    source=source,
                 )
             )
 
@@ -944,27 +1051,9 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
         if has_more:
             cursor_entries = cursor_entries[:pagination_per_page]
 
-        history_adapter = TypeAdapter(list[CreditHistoryResponseItem])
+        history_adapter = TypeAdapter(list[item_type])  # type: ignore[valid-type]
         credit_history_list = [
-            {
-                "amount": entry.amount,
-                "price": entry.price,
-                "bonus_amount": entry.bonus_amount,
-                "tx_hash": entry.tx_hash,
-                "token": entry.token,
-                "chain": entry.chain,
-                "provider": entry.provider,
-                "origin": entry.origin,
-                "origin_ref": entry.origin_ref,
-                "payment_method": entry.payment_method,
-                "credit_ref": entry.credit_ref,
-                "credit_index": entry.credit_index,
-                "expiration_date": entry.expiration_date,
-                "message_timestamp": entry.message_timestamp,
-                "expense_count": entry.expense_count,
-                "expense_size_mib": entry.expense_size_mib,
-            }
-            for entry in cursor_entries
+            _credit_history_item(entry, v2) for entry in cursor_entries
         ]
 
         next_cursor: Optional[str] = None
@@ -975,8 +1064,8 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
                 sort_by=query_params.sort_by.value,
                 sort_value=sort_value,
                 sort_order=int(query_params.sort_order),
-                credit_ref=last_entry.credit_ref,
-                credit_index=last_entry.credit_index,
+                credit_ref=last_entry.tb_ref if v2 else last_entry.credit_ref,
+                credit_index=last_entry.tb_index if v2 else last_entry.credit_index,
             )
 
         response_data = {
@@ -1009,6 +1098,7 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
             resource=query_params.resource,
             sort_by=query_params.sort_by,
             sort_order=query_params.sort_order,
+            source=source,
         )
 
         if not credit_history_entries:
@@ -1031,33 +1121,19 @@ async def get_account_credit_history(request: web.Request) -> web.Response:
             direction=query_params.direction,
             resource_types=query_params.resource_types,
             resource=query_params.resource,
+            source=source,
         )
 
         # Convert to response items
-        history_adapter = TypeAdapter(list[CreditHistoryResponseItem])
+        history_adapter = TypeAdapter(list[item_type])  # type: ignore[valid-type]
         credit_history_list = [
-            {
-                "amount": entry.amount,
-                "price": entry.price,
-                "bonus_amount": entry.bonus_amount,
-                "tx_hash": entry.tx_hash,
-                "token": entry.token,
-                "chain": entry.chain,
-                "provider": entry.provider,
-                "origin": entry.origin,
-                "origin_ref": entry.origin_ref,
-                "payment_method": entry.payment_method,
-                "credit_ref": entry.credit_ref,
-                "credit_index": entry.credit_index,
-                "expiration_date": entry.expiration_date,
-                "message_timestamp": entry.message_timestamp,
-                "expense_count": entry.expense_count,
-                "expense_size_mib": entry.expense_size_mib,
-            }
-            for entry in credit_history_entries
+            _credit_history_item(entry, v2) for entry in credit_history_entries
         ]
 
-        response = GetAccountCreditHistoryResponse(
+        response_type = (
+            GetAccountCreditHistoryV2Response if v2 else GetAccountCreditHistoryResponse
+        )
+        response = response_type(
             address=address,
             credit_history=history_adapter.validate_python(credit_history_list),
             pagination_page=query_params.page,
@@ -1075,7 +1151,9 @@ async def get_account_credit_history_summary(request: web.Request) -> web.Respon
     Accepts the same filters as the credit history listing endpoint and
     aggregates the whole filtered set in a single query. Always returns 200,
     with zeros when no entry matches. total_outgoing keeps its negative sign
-    so that total_amount == total_incoming + total_outgoing.
+    so that total_amount == total_incoming + total_outgoing. With
+    `aleph.credits.serve_v2` active it sums the same merged legacy + ledger
+    entries the listing serves.
 
     ---
     summary: Get account credit history summary
@@ -1171,6 +1249,7 @@ async def get_account_credit_history_summary(request: web.Request) -> web.Respon
         raise web.HTTPUnprocessableEntity(text=e.json())
 
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
+    source = _credit_history_source(request, address)
 
     with session_factory() as session:
         summary = get_address_credit_history_summary(
@@ -1190,6 +1269,7 @@ async def get_account_credit_history_summary(request: web.Request) -> web.Respon
             direction=query_params.direction,
             resource_types=query_params.resource_types,
             resource=query_params.resource,
+            source=source,
         )
 
     response = GetAccountCreditHistorySummaryResponse(
@@ -1207,6 +1287,11 @@ async def get_resource_consumed_credits_controller(
 ) -> web.Response:
     """
     Returns the total credits consumed by a specific resource (item_hash).
+
+    With `aleph.credits.serve_v2` active: legacy expenses before the genesis
+    period, plus the billed ledger execution rows from it on, plus for a
+    credit-paid STORE its storage charge over the closed periods, recomputed
+    per file from the rates (the ledger keeps storage per address).
 
     ---
     summary: Get resource consumed credits
@@ -1231,9 +1316,17 @@ async def get_resource_consumed_credits_controller(
     session_factory: DbSessionFactory = get_session_factory_from_request(request)
 
     with session_factory() as session:
-        consumed_credits = get_resource_consumed_credits(
-            session=session, item_hash=item_hash
-        )
+        if serve_v2_active(session):
+            legacy, execution, storage = consumed_credits_v2(
+                session,
+                item_hash,
+                history_cutover(get_config_from_request(request)),
+            )
+            consumed_credits = legacy + execution + storage
+        else:
+            consumed_credits = get_resource_consumed_credits(
+                session=session, item_hash=item_hash
+            )
 
         response = GetResourceConsumedCreditsResponse(
             item_hash=item_hash,

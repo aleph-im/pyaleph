@@ -262,6 +262,21 @@ class ForgetNotAllowed(InvalidMessageException):
     error_code = ErrorCode.FORGET_NOT_ALLOWED
 
 
+class CannotForgetLedgerInput(InvalidMessageException):
+    """
+    The FORGET targets a credit ledger input (a credit transfer or a
+    whitelisted attestation): the ledger is folded from these messages, so
+    they cannot be forgotten.
+    """
+
+    error_code = ErrorCode.FORGET_NOT_ALLOWED
+
+    def __init__(self, target_hash: str):
+        super().__init__(
+            f"Message {target_hash} is a credit ledger input and cannot be forgotten"
+        )
+
+
 class VmRefNotFound(RetryMessageException):
     """
     The original program specified in the `ref` field could not be found.
