@@ -63,7 +63,8 @@ def get_defaults():
             "scoring": {
                 # Addresses allowed to publish node scoring metrics.
                 "addresses": [
-                    "0x4D52380D3191274a04846c89c069E6C3F2Ed94e4",
+                    "0x289670c1703551198cb16b7608fAb4946181D339",
+                    "0xDBCED11DFc1b95cb6683a89e6c7beF32Facfc0F6",
                 ],
                 # Channel scoring messages are published on.
                 "channel": "aleph-scoring",
