@@ -22,6 +22,7 @@ from aleph.schemas.messages_query_params import DEFAULT_MESSAGES_PER_PAGE
 from aleph.schemas.pending_messages import BasePendingMessage, parse_message
 from aleph.services.ipfs import IpfsService
 from aleph.services.p2p.pubsub import publish as pub_p2p
+from aleph.toolkit.blocklist import is_blocked_sender
 from aleph.toolkit.shield import shielded
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession
@@ -240,11 +241,18 @@ async def mq_read_one_message(
         await mq_queue.cancel(consumer_tag)
 
 
-def validate_message_dict(message_dict: Mapping[str, Any]) -> BasePendingMessage:
+def validate_message_dict(
+    message_dict: Mapping[str, Any], config: Config
+) -> BasePendingMessage:
     try:
-        return parse_message(message_dict)
+        message = parse_message(message_dict)
     except InvalidMessageException as e:
         raise web.HTTPUnprocessableEntity(text=str(e))
+
+    if is_blocked_sender(message.sender, config.aleph.blocked_senders.value):
+        raise web.HTTPForbidden(reason="Sender is blocked by this node")
+
+    return message
 
 
 class PublicationStatus(BaseModel):
