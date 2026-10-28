@@ -6,7 +6,11 @@ import pytest_asyncio
 from aleph_message.models import Chain, ItemHash, ItemType, MessageType, PaymentType
 
 from aleph.db.accessors.cron_jobs import update_cron_job
-from aleph.db.accessors.messages import get_message_status, get_removed_message
+from aleph.db.accessors.messages import (
+    get_message_status,
+    get_removed_message,
+    upsert_removal_snapshot,
+)
 from aleph.db.models import AlephCreditBalanceDb, AlephCreditHistoryDb
 from aleph.db.models.account_costs import AccountCostsDb
 from aleph.db.models.chains import ChainTxDb
@@ -22,6 +26,7 @@ from aleph.jobs.cron.credit_balance_job import CreditBalanceCronJob
 from aleph.toolkit.constants import (
     DAY,
     DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+    REMOVAL_GRACE_PERIOD,
     MiB,
 )
 from aleph.toolkit.timestamp import utc_now
@@ -107,6 +112,38 @@ async def test_credit_balance_job_delete_snapshots_removed_message(
         assert removed_message is not None
         assert removed_message.size == FILE_SIZE
         assert removed_message.removed_at is None
+        # The grace deadline is persisted so the garbage collector keeps the
+        # removal reversible: REMOVING must not be finalized immediately.
+        assert removed_message.remove_after is not None
+        assert removed_message.remove_after > utc_now()
+
+
+@pytest.mark.asyncio
+async def test_removal_snapshot_rewrites_stale_deadline(
+    session_factory: DbSessionFactory,
+):
+    """A stale record left behind by an earlier removal must not shorten a new
+    one: the flip always writes a full window, even over a deadline already in
+    the past."""
+    with session_factory() as session:
+        _add_store_message(session, MessageStatus.PROCESSED)
+        stale = utc_now() - dt.timedelta(days=7)
+        session.add(RemovedMessageDb(item_hash=MESSAGE_HASH, remove_after=stale))
+        session.commit()
+
+        fresh = utc_now() + REMOVAL_GRACE_PERIOD
+        upsert_removal_snapshot(
+            session=session,
+            item_hash=MESSAGE_HASH,
+            remove_after=fresh,
+        )
+        session.commit()
+        session.expire_all()
+
+        removed_message = get_removed_message(session=session, item_hash=MESSAGE_HASH)
+        assert removed_message is not None
+        assert removed_message.remove_after is not None
+        assert removed_message.remove_after > utc_now()
 
 
 @pytest.mark.asyncio

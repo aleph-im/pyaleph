@@ -26,6 +26,7 @@ from sqlalchemy import (
     Table,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -451,6 +452,15 @@ class RemovedMessageDb(Base):
     # alive (NULL for non-STORE messages or when the size could not be
     # resolved).
     size: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    # Earliest time the garbage collector may finalize REMOVING->REMOVED,
+    # stamped by the cron at PROCESSED->REMOVING. REMOVING is reversible (the
+    # cron flips it back once the balance recovers), so this is what gives
+    # every message type the window STORE messages already got from their file
+    # pin grace period. NULL means eligible immediately: legacy REMOVING
+    # messages predating this record have no row here and must not be stranded.
+    remove_after: Mapped[Optional[dt.datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
     # Stamped by the garbage collector at REMOVING->REMOVED. Node-local and
     # NOT deterministic across nodes: each node's GC finalizes removals on
     # its own schedule, and — unlike forgotten_at — there is no
@@ -467,6 +477,14 @@ class RemovedMessageDb(Base):
         # removed_at.
         Index("ix_removed_messages_owner_removed_at", "owner", "removed_at"),
         Index("ix_removed_messages_removed_at", "removed_at"),
+        # The garbage collector looks up the grace deadline on every pass. This
+        # table is append-only, so the index is partial: only rows whose
+        # removal is still in flight are ever read by that query.
+        Index(
+            "ix_removed_messages_remove_after",
+            "remove_after",
+            postgresql_where=text("removed_at IS NULL AND remove_after IS NOT NULL"),
+        ),
     )
 
 
