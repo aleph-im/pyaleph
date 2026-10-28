@@ -29,6 +29,7 @@ from aleph.db.accessors.balances import (
     update_credit_balances_transfer as update_credit_balances_transfer_db,
 )
 from aleph.db.accessors.balances import validate_credit_transfer_balance
+from aleph.db.accessors.credit_ledger import record_attestation
 from aleph.db.accessors.metrics import insert_node_metrics
 from aleph.db.accessors.posts import (
     delete_amends,
@@ -44,6 +45,7 @@ from aleph.schemas.credit_transfer import (
     CreditExpenseContent,
     CreditTransferContent,
 )
+from aleph.schemas.execution_intervals import ExecutionIntervalsContent
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession
 from aleph.types.message_status import (
@@ -58,6 +60,16 @@ from aleph.types.message_status import (
 from .content_handler import ContentHandler
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _address_key(address: str) -> str:
+    """EVM (0x) addresses compare case-insensitively, others exactly."""
+    return address.lower() if address[:2].lower() == "0x" else address
+
+
+def _is_listed(address: str, addresses: List[str]) -> bool:
+    key = _address_key(address)
+    return any(_address_key(listed) == key for listed in addresses)
 
 
 def get_post_content(message: MessageDb) -> PostContent:
@@ -98,7 +110,7 @@ def _parse_credit_content(
     model_cls: Type[T],
     content: Mapping[str, Any],
     *,
-    kind: Literal["distribution", "expense", "transfer"],
+    kind: Literal["distribution", "expense", "transfer", "attestation"],
 ) -> T:
     try:
         return model_cls.model_validate(content)
@@ -215,6 +227,9 @@ class PostMessageHandler(ContentHandler):
         scoring_addresses: List[str],
         scoring_channel: str,
         scoring_metrics_post_type: str,
+        attestation_addresses: Optional[List[str]] = None,
+        attestation_channels: Optional[List[str]] = None,
+        attestation_post_type: str = "aleph-execution-intervals",
     ):
         self.balances_addresses = balances_addresses
         self.balances_post_type = balances_post_type
@@ -224,6 +239,9 @@ class PostMessageHandler(ContentHandler):
         self.scoring_addresses = scoring_addresses
         self.scoring_channel = scoring_channel
         self.scoring_metrics_post_type = scoring_metrics_post_type
+        self.attestation_addresses = attestation_addresses or []
+        self.attestation_channels = attestation_channels or []
+        self.attestation_post_type = attestation_post_type
 
     async def check_dependencies(self, session: DbSession, message: MessageDb):
         content = get_post_content(message)
@@ -358,6 +376,33 @@ class PostMessageHandler(ContentHandler):
                     whitelisted_addresses=self.credit_balances_addresses,
                 )
             LOGGER.info("Done updating credit balances")
+
+        if (
+            content.type == self.attestation_post_type
+            and _is_listed(content.address, self.attestation_addresses)
+            and (
+                not self.attestation_channels
+                or message.channel in self.attestation_channels
+            )
+        ):
+            attestation = _parse_credit_content(
+                ExecutionIntervalsContent, content.content or {}, kind="attestation"
+            )
+            status = record_attestation(
+                session=session,
+                item_hash=message.item_hash,
+                period_start=dt.datetime.fromtimestamp(
+                    attestation.period.start, tz=dt.timezone.utc
+                ),
+                sender=content.address,
+                supersedes=attestation.supersedes,
+            )
+            LOGGER.info(
+                "Recorded attestation %s for period %s as %s",
+                message.item_hash,
+                attestation.period.start,
+                status,
+            )
 
         if (
             content.type == self.scoring_metrics_post_type

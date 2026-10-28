@@ -11,7 +11,11 @@ import datetime as dt
 
 import pytest
 from aleph_message.models import Chain, ItemType, MessageType
-from db_seeds import EXPECTED_CRON_JOB_ROWS, EXPECTED_ERROR_CODE_ROWS
+from db_seeds import (
+    EXPECTED_CREDIT_FOLD_STATE_ROWS,
+    EXPECTED_CRON_JOB_ROWS,
+    EXPECTED_ERROR_CODE_ROWS,
+)
 from sqlalchemy import select, text
 
 from aleph.db.models import ErrorCodeDb, PendingMessageDb, StoredFileDb
@@ -20,6 +24,7 @@ from aleph.types.files import FileType
 
 SEED_COUNTS = {
     "alembic_version": 1,
+    "credit_fold_state": EXPECTED_CREDIT_FOLD_STATE_ROWS,
     "cron_jobs": EXPECTED_CRON_JOB_ROWS,
     "error_codes": EXPECTED_ERROR_CODE_ROWS,
 }

@@ -13,6 +13,11 @@ from sqlalchemy.dialects.postgresql import insert
 from aleph.chains.signature_verifier import SignatureVerifier
 from aleph.db.accessors.chains import get_tx_height
 from aleph.db.accessors.cost import make_costs_upsert_query
+from aleph.db.accessors.credit_ledger import (
+    apply_confirmation_to_billing,
+    mark_transfer_dirty,
+    upsert_billing_resource,
+)
 from aleph.db.accessors.files import insert_content_file_pin, upsert_file
 from aleph.db.accessors.messages import (
     get_forgotten_message,
@@ -36,6 +41,7 @@ from aleph.handlers.content.store import StoreMessageHandler
 from aleph.handlers.content.vm import VmMessageHandler
 from aleph.handlers.content.vprogram import VProgramMessageHandler
 from aleph.schemas.pending_messages import parse_message
+from aleph.services.credits.cost_spec import BILLABLE_MESSAGE_TYPES, build_cost_spec
 from aleph.storage import StorageService
 from aleph.toolkit.timestamp import timestamp_to_datetime
 from aleph.types.db_session import DbSession, DbSessionFactory
@@ -95,6 +101,9 @@ class BaseMessageHandler:
                 scoring_addresses=config.aleph.scoring.addresses.value,
                 scoring_channel=config.aleph.scoring.channel.value,
                 scoring_metrics_post_type=config.aleph.scoring.metrics_post_type.value,
+                attestation_addresses=config.aleph.credits.attestation.addresses.value,
+                attestation_channels=config.aleph.credits.attestation.channels.value,
+                attestation_post_type=config.aleph.credits.attestation.post_type.value,
             ),
             MessageType.program: vm_handler,
             MessageType.store: StoreMessageHandler(
@@ -276,6 +285,18 @@ class MessagePublisher(BaseMessageHandler):
                             item_hash=pending_message.item_hash, tx_hash=tx_hash
                         )
                     )
+                    # The usual way a message gets confirmed: received over
+                    # the API or P2P, processed, then confirmed when chain
+                    # sync replays its tx. The billing hook must run here as
+                    # in confirm_existing_message, in the same transaction.
+                    # Loaded after the upsert, whose trigger maintains
+                    # messages.first_confirmed_at.
+                    existing_message = get_message_by_item_hash(
+                        session, ItemHash(pending_message.item_hash)
+                    )
+                    if existing_message is not None:
+                        session.refresh(existing_message)
+                        apply_confirmation_to_billing(session, existing_message)
                     session.commit()
                     LOGGER.debug(
                         "Message %s has status %s, added confirmation for tx %s",
@@ -369,6 +390,7 @@ class MessageHandler(BaseMessageHandler):
                     item_hash=pending_message.item_hash, tx_hash=tx_hash
                 )
             )
+            apply_confirmation_to_billing(session, existing_message)
 
     @staticmethod
     async def confirm_existing_forgotten_message(
@@ -524,8 +546,14 @@ class MessageHandler(BaseMessageHandler):
 
         if costs:
             await self.insert_costs(session=session, costs=costs, message=message)
+            if message.type in BILLABLE_MESSAGE_TYPES:
+                upsert_billing_resource(
+                    session, message, build_cost_spec(session, message)
+                )
 
         await content_handler.process(session=session, messages=[message])
+        # Billable messages are covered by upsert_billing_resource above.
+        mark_transfer_dirty(session, message)
 
         return ProcessedMessage(
             message=message,

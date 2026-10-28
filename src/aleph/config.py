@@ -60,6 +60,55 @@ def get_defaults():
                 # Allowed channels for credit balance messages.
                 "channels": ["ALEPH_CREDIT"],
             },
+            "credits": {
+                # Serve the in-node credit ledger (v2) instead of the legacy tables.
+                "serve_v2": False,
+                "genesis": {
+                    # Item hash of the genesis balances message, and its period (H0,
+                    # unix seconds).
+                    "hash": None,
+                    "period": None,
+                },
+                "chain": {
+                    # Falls back to ethereum.api_url when unset.
+                    "rpc_url": None,
+                    "start_block": None,
+                    "contract": "0x6b55F32Ea969910838defd03746Ced5E2AE8cB8B",
+                    "usdc": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+                    "aleph": "0x27702a26126e0B3702af63Ee09aC4d1A084EF628",
+                    "chainlink_eth_usd": "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419",
+                    # Uniswap v3 ALEPH/WETH pool used for the ALEPH TWAP quote.
+                    # Operator choice, no default: until it is set, every ALEPH
+                    # top-up is stored `unquoted` (credited by a later re-quote
+                    # once a pool is configured), USDC and ETH are unaffected.
+                    "aleph_weth_pool": None,
+                    # Senders whose transfers to the contract are not top-ups
+                    # (compared lowercase): the Uniswap v4 PoolManager, the
+                    # Uniswap Universal Router the contract swaps through
+                    # (aleph-contract-eth-credit script/Deploy.s.sol), and the
+                    # payment contract itself.
+                    "denylist": [
+                        "0x000000000004444c5dc75cB358380D2e3dE08A90",
+                        "0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af",
+                        "0x6b55F32Ea969910838defd03746Ced5E2AE8cB8B",
+                    ],
+                    "finality_blocks": 64,
+                    "chunk_blocks": 2000,
+                },
+                "topup_bonus": {"aleph": "0.2"},
+                "attestation": {
+                    "addresses": [],
+                    "channels": ["ALEPH-METERING"],
+                    "post_type": "aleph-execution-intervals",
+                    "start_period": None,
+                    "grace_seconds": 10800,
+                },
+                # The fold runs as the `credit_fold` cron job. Its 300 s
+                # interval is a floor: the cron runner itself only ticks every
+                # aleph.jobs.cron.period (30 min by default), so in practice the
+                # fold runs every 30 min.
+                "fold": {"checkpoint_every_hours": 24},
+            },
             "scoring": {
                 # Addresses allowed to publish node scoring metrics.
                 "addresses": [

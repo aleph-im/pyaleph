@@ -342,3 +342,61 @@ async def test_delete_aggregate_two_elements(
         assert element_db.content == element_to_keep.content
         assert element_db.creation_datetime == element_to_keep.creation_datetime
         assert element_db.content == element_to_keep.content
+
+
+def _aggregate_pending(owner: str, key: str, time: float) -> PendingMessageDb:
+    import hashlib
+
+    item_content = json.dumps(
+        {"address": owner, "time": time, "key": key, "content": {"x": 1}}
+    )
+    return PendingMessageDb(
+        item_hash=hashlib.sha256(item_content.encode()).hexdigest(),
+        type=MessageType.aggregate,
+        chain=Chain.ETH,
+        sender=owner,
+        signature="0xsig",
+        item_type=ItemType.inline,
+        item_content=item_content,
+        channel=Channel("TEST"),
+        time=timestamp_to_datetime(time),
+        check_message=False,
+        fetched=True,
+        retries=0,
+        next_attempt=dt.datetime(2023, 1, 1),
+        reception_time=dt.datetime(2023, 1, 1),
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "owner_key, marked",
+    [
+        (("0xFba561a84A537fCaa567bb7A2257e7142701ae2A", "pricing"), True),
+        (("0xFba561a84A537fCaa567bb7A2257e7142701ae2A", "other"), False),
+        (("0x720F319A9c3226dCDd7D8C49163D79EDa1084E98", "pricing"), False),
+    ],
+)
+async def test_backdated_pricing_element_marks_the_credit_fold_dirty(
+    session_factory: DbSessionFactory,
+    message_processor: PendingMessageProcessor,
+    owner_key,
+    marked,
+):
+    from aleph.db.accessors.credit_ledger import get_fold_state
+
+    owner, key = owner_key
+    closed = dt.datetime(2026, 3, 1, 12, tzinfo=dt.timezone.utc)
+    with session_factory() as session:
+        get_fold_state(session).last_closed_period = closed + dt.timedelta(hours=5)
+        session.commit()
+        element_time = closed + dt.timedelta(minutes=17)
+        await process_aggregates_one_by_one(
+            session=session,
+            message_processor=message_processor,
+            aggregates=[_aggregate_pending(owner, key, element_time.timestamp())],
+        )
+        session.commit()
+        state = get_fold_state(session)
+        session.refresh(state)
+        assert state.dirty_from_period == (closed if marked else None)

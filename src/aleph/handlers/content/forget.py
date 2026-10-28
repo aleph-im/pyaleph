@@ -7,6 +7,10 @@ from aleph_message.models import ForgetContent, ItemHash, MessageType
 from sqlalchemy import select
 
 from aleph.db.accessors.aggregates import aggregate_exists
+from aleph.db.accessors.credit_ledger import (
+    get_first_confirmed_at,
+    set_billing_end_of_life,
+)
 from aleph.db.accessors.messages import (
     append_to_forgotten_by,
     forget_message,
@@ -166,9 +170,25 @@ class ForgetMessageHandler(ContentHandler):
         content_handler = self.content_handlers[message.type]
         return await content_handler.forget_message(session=session, message=message)
 
+    @staticmethod
+    def _close_billing(session: DbSession, item_hash: str, forgotten_by: MessageDb):
+        # Never the FORGET's own (sender-controlled) time. The in-memory FORGET
+        # predates its confirmation insert, so read first_confirmed_at back.
+        confirmed_at = forgotten_by.first_confirmed_at or get_first_confirmed_at(
+            session, forgotten_by.item_hash
+        )
+        set_billing_end_of_life(
+            session,
+            item_hash,
+            confirmed_at or forgotten_by.reception_time,
+            "forgotten",
+            provisional=confirmed_at is None,
+        )
+
     async def _forget_message(
         self, session: DbSession, message: MessageDb, forgotten_by: MessageDb
     ):
+        self._close_billing(session, message.item_hash, forgotten_by)
         forget_message(
             session=session,
             item_hash=message.item_hash,
@@ -181,6 +201,7 @@ class ForgetMessageHandler(ContentHandler):
         )
 
         for item_hash in additional_messages_to_forget:
+            self._close_billing(session, item_hash, forgotten_by)
             forget_message(
                 session=session,
                 item_hash=item_hash,

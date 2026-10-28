@@ -4,6 +4,18 @@ import logging
 from aleph.version import __version__
 
 
+def _hour_aligned_timestamp(value: str) -> int:
+    try:
+        timestamp = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value!r} is not a unix timestamp")
+    if timestamp % 3600 != 0:
+        raise argparse.ArgumentTypeError(
+            f"{timestamp} is not aligned on an hour (unix seconds, multiple of 3600)"
+        )
+    return timestamp
+
+
 def parse_args(args):
     """Parse command line parameters
 
@@ -36,6 +48,14 @@ def parse_args(args):
         "Use --no-repair to skip them.",
         action=argparse.BooleanOptionalAction,
         default=True,
+    )
+    parser.add_argument(
+        "--credits-refold-from",
+        dest="credits_refold_from",
+        help="Re-fold the credit ledger from this period (unix seconds, aligned "
+        "on an hour) on the next fold run.",
+        type=_hour_aligned_timestamp,
+        default=None,
     )
     parser.add_argument(
         "-v",

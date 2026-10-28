@@ -3,7 +3,9 @@ Utility functions for pricing model creation and management.
 """
 
 import datetime as dt
-from typing import Dict, List, Union
+import hashlib
+import json
+from typing import Dict, List, Tuple, Union
 
 from aleph.db.accessors.aggregates import (
     get_aggregate_elements,
@@ -103,33 +105,29 @@ def get_pricing_aggregate_history(session: DbSession) -> List[AggregateElementDb
     return list(aggregate_elements)
 
 
-def get_pricing_timeline(
+def _canonical_version(content: dict) -> str:
+    """sha256 of the canonical JSON of an aggregate content."""
+    canonical = json.dumps(content, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def get_pricing_versions(
     session: DbSession,
-) -> List[tuple[dt.datetime, Dict[ProductPriceType, ProductPricing]]]:
+) -> List[Tuple[dt.datetime, str, Dict[ProductPriceType, ProductPricing]]]:
     """
-    Get the complete pricing timeline with timestamps and pricing models.
-
-    This function returns a chronologically ordered list of pricing changes,
-    useful for processing messages in chronological order and applying the
-    correct pricing at each point in time.
-
-    This properly merges aggregate elements up to each point in time to create
-    the cumulative pricing state, similar to how _update_aggregate works.
-
-    Args:
-        session: Database session
-
-    Returns:
-        List of tuples containing (timestamp, pricing_model)
+    Chronological (timestamp, version, pricing_model) triples. The version is
+    "default" for the built-in model, otherwise the sha256 of the canonical JSON
+    of the merged aggregate content in force from that timestamp.
     """
     pricing_elements = get_pricing_aggregate_history(session)
 
-    timeline = []
-
-    # Add default pricing as the initial state
-    timeline.append(
-        (dt.datetime.min.replace(tzinfo=dt.timezone.utc), build_default_pricing_model())
-    )
+    versions: List[Tuple[dt.datetime, str, Dict[ProductPriceType, ProductPricing]]] = [
+        (
+            dt.datetime.min.replace(tzinfo=dt.timezone.utc),
+            "default",
+            build_default_pricing_model(),
+        )
+    ]
 
     # Build cumulative pricing models by merging elements up to each timestamp
     elements_so_far = []
@@ -156,8 +154,48 @@ def get_pricing_timeline(
             for price_type, pricing_data in merged_content.items()
         }
 
-        # Build pricing model from the merged content
-        pricing_model = build_pricing_model_from_aggregate(full_content)
-        timeline.append((element.creation_datetime, pricing_model))
+        versions.append(
+            (
+                element.creation_datetime,
+                _canonical_version(full_content),
+                build_pricing_model_from_aggregate(full_content),
+            )
+        )
 
-    return timeline
+    return versions
+
+
+def get_pricing_timeline(
+    session: DbSession,
+) -> List[tuple[dt.datetime, Dict[ProductPriceType, ProductPricing]]]:
+    """
+    Get the complete pricing timeline with timestamps and pricing models.
+
+    This function returns a chronologically ordered list of pricing changes,
+    useful for processing messages in chronological order and applying the
+    correct pricing at each point in time.
+
+    This properly merges aggregate elements up to each point in time to create
+    the cumulative pricing state, similar to how _update_aggregate works.
+
+    Args:
+        session: Database session
+
+    Returns:
+        List of tuples containing (timestamp, pricing_model)
+    """
+    return [(ts, model) for ts, _version, model in get_pricing_versions(session)]
+
+
+def pricing_model_at(
+    session: DbSession, at: dt.datetime
+) -> Tuple[str, Dict[ProductPriceType, ProductPricing]]:
+    """(version, pricing_model) in force at `at`: the last entry starting <= at."""
+    versions = get_pricing_versions(session)
+    current = versions[0]
+    for entry in versions:
+        if entry[0] <= at:
+            current = entry
+        else:
+            break
+    return current[1], current[2]

@@ -11,6 +11,7 @@ from sqlalchemy.sql.elements import literal
 
 from aleph.db.accessors.address_stats import escape_like_pattern
 from aleph.db.accessors.cost import delete_costs_for_message
+from aleph.db.accessors.credit_ledger import set_billing_end_of_life
 from aleph.db.models.message_counts import MessageCountsDb
 from aleph.toolkit.timestamp import coerce_to_datetime, utc_now
 from aleph.types.channel import Channel
@@ -737,6 +738,8 @@ def remove_message(session: DbSession, item_hash: str, removed_at: dt.datetime) 
         },
     )
     session.execute(upsert_stmt)
+
+    set_billing_end_of_life(session, item_hash, removed_at, "removed")
 
     # Delete the message from the messages table (the trigger handles
     # message_counts; confirmations/costs/metrics cascade).
