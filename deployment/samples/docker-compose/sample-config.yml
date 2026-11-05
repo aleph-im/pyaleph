@@ -28,6 +28,7 @@ storage:
   store_files: true
   engine: filesystem
   folder: /var/lib/pyaleph
+  removal_grace_period_hours: 25
 
 
 ipfs:

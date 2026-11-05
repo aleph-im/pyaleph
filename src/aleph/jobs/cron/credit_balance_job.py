@@ -24,12 +24,7 @@ from aleph.db.models.cron_jobs import CronJobDb
 from aleph.db.models.messages import MessageDb, MessageStatusDb
 from aleph.jobs.cron.cron_job import BaseCronJob
 from aleph.services.cost import calculate_storage_size
-from aleph.toolkit.constants import (
-    CREDIT_ONLY_CUTOFF_TIMESTAMP,
-    DAY,
-    REMOVAL_GRACE_PERIOD,
-    MiB,
-)
+from aleph.toolkit.constants import CREDIT_ONLY_CUTOFF_TIMESTAMP, DAY, MiB
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_status import MessageStatus
@@ -52,9 +47,11 @@ class CreditBalanceCronJob(BaseCronJob):
         self,
         session_factory: DbSessionFactory,
         max_unauthenticated_upload_file_size: int,
+        removal_grace_period: dt.timedelta,
     ):
         self.session_factory = session_factory
         self.max_unauthenticated_upload_file_size = max_unauthenticated_upload_file_size
+        self.removal_grace_period = removal_grace_period
 
     async def run(self, now: dt.datetime, job: CronJobDb) -> bool:
         with self.session_factory() as session:
@@ -198,7 +195,7 @@ class CreditBalanceCronJob(BaseCronJob):
                     continue
 
             now = utc_now()
-            delete_by = now + REMOVAL_GRACE_PERIOD
+            delete_by = now + self.removal_grace_period
 
             if message.type == MessageType.store:
                 update_file_pin_grace_period(

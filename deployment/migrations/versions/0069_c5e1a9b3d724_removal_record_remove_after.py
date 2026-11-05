@@ -51,7 +51,8 @@ down_revision = "d2f4a7c9e1b3"
 branch_labels = None
 depends_on = None
 
-# Matches aleph.toolkit.constants.REMOVAL_GRACE_PERIOD at the time of writing.
+# Matches aleph.toolkit.constants.DEFAULT_REMOVAL_GRACE_PERIOD_HOURS at the
+# time of writing.
 # Kept as a literal: a migration must keep applying the same change even after
 # the application constant is retuned.
 GRACE_PERIOD_HOURS = 24 + 1

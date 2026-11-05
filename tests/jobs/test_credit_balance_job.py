@@ -26,7 +26,7 @@ from aleph.jobs.cron.credit_balance_job import CreditBalanceCronJob
 from aleph.toolkit.constants import (
     DAY,
     DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
-    REMOVAL_GRACE_PERIOD,
+    DEFAULT_REMOVAL_GRACE_PERIOD_HOURS,
     MiB,
 )
 from aleph.toolkit.timestamp import utc_now
@@ -47,6 +47,7 @@ def credit_balance_job(session_factory: DbSessionFactory) -> CreditBalanceCronJo
     return CreditBalanceCronJob(
         session_factory=session_factory,
         max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+        removal_grace_period=dt.timedelta(hours=DEFAULT_REMOVAL_GRACE_PERIOD_HOURS),
     )
 
 
@@ -131,7 +132,7 @@ async def test_removal_snapshot_rewrites_stale_deadline(
         session.add(RemovedMessageDb(item_hash=MESSAGE_HASH, remove_after=stale))
         session.commit()
 
-        fresh = utc_now() + REMOVAL_GRACE_PERIOD
+        fresh = utc_now() + dt.timedelta(hours=DEFAULT_REMOVAL_GRACE_PERIOD_HOURS)
         upsert_removal_snapshot(
             session=session,
             item_hash=MESSAGE_HASH,

@@ -10,6 +10,7 @@ from aleph.db.models.files import FilePinType, MessageFilePinDb, StoredFileDb
 from aleph.db.models.messages import MessageDb, MessageStatusDb, RemovedMessageDb
 from aleph.services.storage.garbage_collector import GarbageCollector
 from aleph.storage import StorageService
+from aleph.toolkit.constants import DEFAULT_REMOVAL_GRACE_PERIOD_HOURS
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.files import FileType
@@ -422,7 +423,7 @@ async def test_removing_message_within_grace_period_is_not_finalized(
     _add_removing_vprogram(
         session_factory,
         vprogram_hash,
-        remove_after=utc_now() + dt.timedelta(hours=25),
+        remove_after=utc_now() + dt.timedelta(hours=DEFAULT_REMOVAL_GRACE_PERIOD_HOURS),
     )
 
     await gc._check_and_update_removing_messages()
@@ -450,7 +451,7 @@ async def test_removing_message_finalized_once_grace_period_elapses(
     _add_removing_vprogram(
         session_factory,
         vprogram_hash,
-        remove_after=utc_now() + dt.timedelta(hours=25),
+        remove_after=utc_now() + dt.timedelta(hours=DEFAULT_REMOVAL_GRACE_PERIOD_HOURS),
     )
 
     await gc._check_and_update_removing_messages()

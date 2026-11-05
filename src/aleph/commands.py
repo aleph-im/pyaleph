@@ -11,6 +11,7 @@ also be used as template for Python modules.
 """
 
 import asyncio
+import datetime as dt
 import logging
 import os
 import sys
@@ -161,16 +162,21 @@ async def main(args: List[str]) -> None:
         garbage_collector = GarbageCollector(
             session_factory=session_factory, storage_service=storage_service
         )
+        removal_grace_period = dt.timedelta(
+            hours=config.storage.removal_grace_period_hours.value
+        )
         cron_job = CronJob(
             session_factory=session_factory,
             jobs={
                 "balance": BalanceCronJob(
                     session_factory=session_factory,
                     max_unauthenticated_upload_file_size=config.storage.max_unauthenticated_upload_file_size.value,
+                    removal_grace_period=removal_grace_period,
                 ),
                 "credit_balance": CreditBalanceCronJob(
                     session_factory=session_factory,
                     max_unauthenticated_upload_file_size=config.storage.max_unauthenticated_upload_file_size.value,
+                    removal_grace_period=removal_grace_period,
                 ),
                 "metrics_partition": MetricsPartitionCronJob(
                     session_factory=session_factory,
