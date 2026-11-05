@@ -442,6 +442,45 @@ async def test_removing_message_within_grace_period_is_not_finalized(
 
 
 @pytest.mark.asyncio
+async def test_removing_message_rechecks_deadline_before_finalizing(
+    session_factory: DbSessionFactory, gc: GarbageCollector, mocker
+):
+    """A recover-then-reflip after the batch snapshot must be honored by the
+    per-message deadline re-check before finalizing a non-STORE message."""
+    vprogram_hash = ItemHash("dead" * 16)
+    _add_removing_vprogram(
+        session_factory,
+        vprogram_hash,
+        remove_after=utc_now() - dt.timedelta(minutes=1),
+    )
+
+    calls = 0
+
+    def fake_get_hashes_within_removal_grace_period(session, now, item_hashes):
+        nonlocal calls
+        calls += 1
+        # The batch snapshot was taken before the reflip; the per-message
+        # re-check sees the fresh deadline.
+        return set() if calls == 1 else {str(vprogram_hash)}
+
+    mocker.patch(
+        "aleph.services.storage.garbage_collector.get_hashes_within_removal_grace_period",
+        side_effect=fake_get_hashes_within_removal_grace_period,
+    )
+
+    await gc._check_and_update_removing_messages()
+
+    with session_factory() as session:
+        status = get_message_status(session=session, item_hash=vprogram_hash)
+        assert status is not None
+        assert status.status == MessageStatus.REMOVING
+        removed_message = get_removed_message(session=session, item_hash=vprogram_hash)
+        assert removed_message is not None
+        assert removed_message.removed_at is None
+        assert session.get(MessageDb, vprogram_hash) is not None
+
+
+@pytest.mark.asyncio
 async def test_removing_message_finalized_once_grace_period_elapses(
     session_factory: DbSessionFactory, gc: GarbageCollector
 ):

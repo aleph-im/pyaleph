@@ -110,6 +110,19 @@ class GarbageCollector:
                     # a failed statement from poisoning the shared
                     # transaction for the remaining messages of the batch.
                     with session.begin_nested():
+                        # Re-check the deadline inside the savepoint: a cron may
+                        # have recovered and re-flipped the message since the
+                        # batch snapshot above, giving it a fresh window. STORE
+                        # messages also have their pin gate below; this keeps
+                        # the two gates symmetric.
+                        still_within_grace = get_hashes_within_removal_grace_period(
+                            session=session,
+                            now=utc_now(),
+                            item_hashes=[item_hash],
+                        )
+                        if still_within_grace:
+                            continue
+
                         # For STORE messages, check if the file is still pinned
                         # We need to get message details to check its type
                         message = get_one_message_by_item_hash(

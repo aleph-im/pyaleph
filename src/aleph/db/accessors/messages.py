@@ -658,7 +658,7 @@ def get_removed_message(
 def upsert_removal_snapshot(
     session: DbSession,
     item_hash: str,
-    remove_after: Optional[dt.datetime] = None,
+    remove_after: dt.datetime,
 ) -> None:
     """
     Snapshot the state a removal needs at PROCESSED->REMOVING: the file size,
