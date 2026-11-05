@@ -82,8 +82,10 @@ class GarbageCollector:
             # finalizing here deletes the messages row for good. Skip the
             # removals whose grace deadline has not passed, so every message
             # type gets the window that STORE messages already got from their
-            # file pin. Resolved in one query for the whole batch rather than
-            # one per message.
+            # file pin. This batch query is a fast-path filter; the per-message
+            # re-check inside the savepoint is the authoritative gate against a
+            # concurrent recover-then-reflip. The loop has no awaits, so that
+            # race is only reachable from another process.
             within_grace_period = get_hashes_within_removal_grace_period(
                 session=session,
                 now=utc_now(),
