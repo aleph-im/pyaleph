@@ -14,6 +14,7 @@ from aleph.db.accessors.files import (
     get_unpinned_files,
 )
 from aleph.db.accessors.messages import (
+    get_hashes_within_removal_grace_period,
     get_matching_hashes,
     get_one_message_by_item_hash,
     make_message_status_upsert_query,
@@ -59,7 +60,7 @@ class GarbageCollector:
     async def _check_and_update_removing_messages(self):
         """
         Check all messages with status REMOVING and update to REMOVED if their resources
-        have been fully deleted.
+        have been fully deleted and their removal grace period has elapsed.
         """
         LOGGER.info("Checking messages with REMOVING status")
 
@@ -76,7 +77,32 @@ class GarbageCollector:
 
             LOGGER.info("Found %d messages with REMOVING status", len(removing_hashes))
 
+            # REMOVING is reversible: the balance/credit-balance crons flip a
+            # message back to PROCESSED once the account can fund it again, and
+            # finalizing here deletes the messages row for good. Skip the
+            # removals whose grace deadline has not passed, so every message
+            # type gets the window that STORE messages already got from their
+            # file pin. This batch query is a fast-path filter; the per-message
+            # re-check inside the savepoint is the authoritative gate against a
+            # concurrent recover-then-reflip. The loop has no awaits, so that
+            # race is only reachable from another process.
+            within_grace_period = get_hashes_within_removal_grace_period(
+                session=session,
+                now=utc_now(),
+                item_hashes=removing_hashes,
+            )
+            if within_grace_period:
+                LOGGER.info(
+                    "Skipping %d of %d message(s) still within the removal "
+                    "grace period",
+                    len(within_grace_period),
+                    len(removing_hashes),
+                )
+
             for item_hash in removing_hashes:
+                if item_hash in within_grace_period:
+                    continue
+
                 try:
                     # One savepoint per message: the status flip, the
                     # metadata snapshot and the messages-row deletion must
@@ -86,6 +112,19 @@ class GarbageCollector:
                     # a failed statement from poisoning the shared
                     # transaction for the remaining messages of the batch.
                     with session.begin_nested():
+                        # Re-check the deadline inside the savepoint: a cron may
+                        # have recovered and re-flipped the message since the
+                        # batch snapshot above, giving it a fresh window. STORE
+                        # messages also have their pin gate below; this keeps
+                        # the two gates symmetric.
+                        still_within_grace = get_hashes_within_removal_grace_period(
+                            session=session,
+                            now=utc_now(),
+                            item_hashes=[item_hash],
+                        )
+                        if still_within_grace:
+                            continue
+
                         # For STORE messages, check if the file is still pinned
                         # We need to get message details to check its type
                         message = get_one_message_by_item_hash(
@@ -101,6 +140,10 @@ class GarbageCollector:
 
                         # If all resources have been deleted, update status to REMOVED
                         if resources_deleted:
+                            # Stamped per message, not per batch: removed_at is
+                            # what the removed-messages API windows and sorts
+                            # on, and this loop can run for a long time on a
+                            # large backlog.
                             now = utc_now()
                             result = session.execute(
                                 make_message_status_upsert_query(

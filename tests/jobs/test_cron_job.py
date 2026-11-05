@@ -4,7 +4,10 @@ import pytest
 
 from aleph.jobs.cron.balance_job import BalanceCronJob
 from aleph.jobs.cron.cron_job import CronJob
-from aleph.toolkit.constants import DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE
+from aleph.toolkit.constants import (
+    DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+    DEFAULT_REMOVAL_GRACE_PERIOD_HOURS,
+)
 from aleph.types.db_session import DbSessionFactory
 
 
@@ -16,6 +19,9 @@ def cron_job(session_factory: DbSessionFactory) -> CronJob:
             "balance": BalanceCronJob(
                 session_factory=session_factory,
                 max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+                removal_grace_period=dt.timedelta(
+                    hours=DEFAULT_REMOVAL_GRACE_PERIOD_HOURS
+                ),
             )
         },
     )

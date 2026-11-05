@@ -21,6 +21,7 @@ from aleph.db.models.messages import MessageDb, MessageStatusDb, RemovedMessageD
 from aleph.jobs.cron.balance_job import BalanceCronJob
 from aleph.toolkit.constants import (
     DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+    DEFAULT_REMOVAL_GRACE_PERIOD_HOURS,
     STORE_AND_PROGRAM_COST_CUTOFF_HEIGHT,
     MiB,
 )
@@ -37,6 +38,7 @@ def balance_job(session_factory: DbSessionFactory) -> BalanceCronJob:
     return BalanceCronJob(
         session_factory=session_factory,
         max_unauthenticated_upload_file_size=DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+        removal_grace_period=dt.timedelta(hours=DEFAULT_REMOVAL_GRACE_PERIOD_HOURS),
     )
 
 
@@ -347,6 +349,9 @@ async def test_balance_job_marks_messages_for_removal(
         assert removed_message is not None
         assert removed_message.size == 30 * MiB
         assert removed_message.removed_at is None
+        assert removed_message.remove_after is not None
+        remove_after_diff = removed_message.remove_after - now
+        assert 24.5 <= remove_after_diff.total_seconds() / 3600 <= 25.5
 
 
 @pytest.mark.asyncio

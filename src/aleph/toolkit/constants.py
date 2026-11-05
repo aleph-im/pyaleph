@@ -9,6 +9,14 @@ MINUTE = 60
 HOUR = 60 * MINUTE
 DAY = 24 * HOUR
 
+# Default for the configurable removal grace period. The balance crons flip a
+# message PROCESSED->REMOVING when the account can no longer fund it and back to
+# PROCESSED once it can again; the garbage collector only makes the removal
+# permanent once this has elapsed. One day, plus an hour of slack so a
+# collection landing on the boundary does not race the deadline. Overridable
+# through storage.removal_grace_period_hours.
+DEFAULT_REMOVAL_GRACE_PERIOD_HOURS = 24 + 1
+
 
 class ProductPriceType(str, Enum):
     STORAGE = "storage"

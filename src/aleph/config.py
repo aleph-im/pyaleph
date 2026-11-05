@@ -1,12 +1,13 @@
 import logging
 
-from configmanager import Config
+from configmanager import Config, Item
 
 from aleph.toolkit.constants import (
     DEFAULT_MAX_FILE_SIZE,
     DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
     DEFAULT_MAX_UPLOAD_CAR_SIZE,
     DEFAULT_MAX_UPLOAD_FILE_SIZE,
+    DEFAULT_REMOVAL_GRACE_PERIOD_HOURS,
 )
 
 
@@ -145,6 +146,12 @@ def get_defaults():
             "garbage_collector_period": 24,
             # Grace period for files, expressed in hours.
             "grace_period": 24,
+            # How long a balance-driven removal stays reversible, in hours.
+            # Override with STORAGE_REMOVAL_GRACE_PERIOD_HOURS.
+            "removal_grace_period_hours": Item(
+                default=DEFAULT_REMOVAL_GRACE_PERIOD_HOURS,
+                envvar="STORAGE_REMOVAL_GRACE_PERIOD_HOURS",
+            ),
             # Maximum file size for authenticated uploads, in bytes.
             "max_file_size": DEFAULT_MAX_FILE_SIZE,
             # Maximum file size for unauthenticated uploads, in bytes.
