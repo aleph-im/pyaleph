@@ -349,6 +349,9 @@ async def test_balance_job_marks_messages_for_removal(
         assert removed_message is not None
         assert removed_message.size == 30 * MiB
         assert removed_message.removed_at is None
+        assert removed_message.remove_after is not None
+        remove_after_diff = removed_message.remove_after - now
+        assert 24.5 <= remove_after_diff.total_seconds() / 3600 <= 25.5
 
 
 @pytest.mark.asyncio

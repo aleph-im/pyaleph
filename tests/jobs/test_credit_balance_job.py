@@ -148,6 +148,40 @@ async def test_removal_snapshot_rewrites_stale_deadline(
 
 
 @pytest.mark.asyncio
+async def test_removal_snapshot_clears_stale_removed_at(
+    session_factory: DbSessionFactory,
+):
+    """A record finalized by an earlier removal must not defeat the grace gate
+    when the message enters REMOVING again."""
+    with session_factory() as session:
+        _add_store_message(session, MessageStatus.PROCESSED)
+        stale = utc_now() - dt.timedelta(days=7)
+        session.add(
+            RemovedMessageDb(
+                item_hash=MESSAGE_HASH,
+                remove_after=stale,
+                removed_at=stale,
+            )
+        )
+        session.commit()
+
+        fresh = utc_now() + dt.timedelta(hours=DEFAULT_REMOVAL_GRACE_PERIOD_HOURS)
+        upsert_removal_snapshot(
+            session=session,
+            item_hash=MESSAGE_HASH,
+            remove_after=fresh,
+        )
+        session.commit()
+        session.expire_all()
+
+        removed_message = get_removed_message(session=session, item_hash=MESSAGE_HASH)
+        assert removed_message is not None
+        assert removed_message.removed_at is None
+        assert removed_message.remove_after is not None
+        assert removed_message.remove_after > utc_now()
+
+
+@pytest.mark.asyncio
 async def test_credit_balance_job_recover_discards_removed_message(
     session_factory: DbSessionFactory, credit_balance_job: CreditBalanceCronJob
 ):

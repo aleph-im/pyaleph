@@ -669,8 +669,9 @@ def upsert_removal_snapshot(
     The size is NULL for non-STORE messages.
 
     ``remove_after`` is the earliest time the collector may finalize the
-    removal. A flip always writes a full window: a stale record left behind by
-    an earlier removal must not shorten the new one.
+    removal. A flip always writes a full window and clears any previous
+    finalization stamp: a stale record left behind by an earlier removal must
+    not shorten or bypass the new one.
     """
     size_subquery = (
         select(StoredFileDb.size)
@@ -690,6 +691,7 @@ def upsert_removal_snapshot(
         set_={
             "size": insert_stmt.excluded.size,
             "remove_after": insert_stmt.excluded.remove_after,
+            "removed_at": None,
         },
     )
     session.execute(upsert_stmt)

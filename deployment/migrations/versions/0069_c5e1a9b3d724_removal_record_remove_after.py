@@ -78,6 +78,8 @@ def upgrade() -> None:
         ).bindparams(grace_hours=GRACE_PERIOD_HOURS)
     )
 
+    # Plain CREATE INDEX is safe here: migrations run at startup before the
+    # application writers connect, so there is no concurrent write traffic.
     op.execute(
         sa.text(
             """
