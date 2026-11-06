@@ -38,6 +38,10 @@ services:
       - pyaleph-local-storage:/var/lib/pyaleph
     environment:
       CCN_CONFIG_API_PORT: 4024
+      # Gunicorn bind addresses (space-separated). Defaults to [::]:PORT when IPv6 is available
+      # (it also accepts IPv4), else 0.0.0.0:PORT. Do not list both families unless
+      # net.ipv6.bindv6only=1, otherwise the second bind fails with EADDRINUSE.
+      # CCN_CONFIG_API_BIND: "[::]:4024"
       CCN_CONFIG_API_NB_WORKERS: 8
     depends_on:
       - pyaleph
