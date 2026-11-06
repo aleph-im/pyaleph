@@ -95,6 +95,20 @@ def get_defaults():
                     # Maximum number of chain/sync events processed at the same time.
                     "max_concurrency": 20,
                 },
+                "heartbeat": {
+                    # Directory where each job subprocess writes its liveness
+                    # heartbeat file. Read by the main process watchdog and by
+                    # `pyaleph-healthcheck`, so it must be local to the node.
+                    "directory": "/tmp/pyaleph-heartbeats",
+                    # A job whose heartbeat is older than this (in seconds) is
+                    # considered stuck: the main process exits non-zero so the
+                    # orchestrator restarts the node. Job loops beat at least
+                    # every few seconds when idle; 5 minutes leaves room for
+                    # slow batches while bounding outages such as a database
+                    # connect that never returns. 0 disables the watchdog (the
+                    # heartbeat files are still written).
+                    "max_age_s": 300,
+                },
                 # Maximum number of unconfirmed messages collected per packing cycle.
                 "max_unconfirmed_messages": 10000,
                 "cron": {

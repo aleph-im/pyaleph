@@ -6,6 +6,7 @@ import asyncio
 import faulthandler
 import logging
 import sys
+from pathlib import Path
 from typing import Dict, Optional, Set
 
 import aio_pika.abc
@@ -21,6 +22,7 @@ from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs.service import IpfsService
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
+from aleph.toolkit.heartbeat import PROCESS_TXS_JOB, Heartbeat
 from aleph.toolkit.lifecycle import closing_quietly, install_signal_handlers
 from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
@@ -83,7 +85,9 @@ class PendingTxProcessor(MqWatcher):
         else:
             LOGGER.debug("TX contains no message")
 
-    async def process_pending_txs(self, max_concurrent_tasks: int):
+    async def process_pending_txs(
+        self, max_concurrent_tasks: int, heartbeat: Optional[Heartbeat] = None
+    ):
         """
         Process chain transactions in the Pending TX queue.
         """
@@ -95,6 +99,10 @@ class PendingTxProcessor(MqWatcher):
         LOGGER.info("handling TXs")
         with self.session_factory() as session:
             for pending_tx in get_pending_txs(session):
+                # A batch of TXs can take a while (IPFS fetches), beat per TX.
+                if heartbeat is not None:
+                    heartbeat.beat()
+
                 # TODO: remove this feature? It doesn't seem necessary.
                 if pending_tx.tx.protocol == ChainSyncProtocol.OFF_CHAIN_SYNC:
                     if pending_tx.tx.content in seen_offchain_hashes:
@@ -119,6 +127,9 @@ class PendingTxProcessor(MqWatcher):
 
 
 async def handle_txs_task(config: Config):
+    heartbeat = Heartbeat(
+        PROCESS_TXS_JOB, Path(config.aleph.jobs.heartbeat.directory.value)
+    )
     max_concurrent_tasks = config.aleph.jobs.pending_txs.max_concurrency.value
 
     engine = make_engine(config=config, application_name="aleph-txs")
@@ -167,9 +178,10 @@ async def handle_txs_task(config: Config):
 
         async with pending_tx_processor:
             while True:
+                heartbeat.beat()
                 try:
                     await pending_tx_processor.process_pending_txs(
-                        max_concurrent_tasks=max_concurrent_tasks
+                        max_concurrent_tasks=max_concurrent_tasks, heartbeat=heartbeat
                     )
                 except Exception:
                     LOGGER.exception("Error in pending txs job")
@@ -182,7 +194,7 @@ async def handle_txs_task(config: Config):
 
 def pending_txs_subprocess(config_values: Dict):
     faulthandler.enable(file=sys.stderr)
-    setproctitle("aleph.jobs.txs_task_loop")
+    setproctitle(PROCESS_TXS_JOB)
     config = prepare_config(config_values)
 
     setup_sentry(config)

@@ -6,7 +6,17 @@ import asyncio
 import faulthandler
 import sys
 from logging import getLogger
-from typing import AsyncIterator, Dict, List, NewType, Sequence, Set, TypedDict
+from pathlib import Path
+from typing import (
+    AsyncIterator,
+    Dict,
+    List,
+    NewType,
+    Optional,
+    Sequence,
+    Set,
+    TypedDict,
+)
 
 import aio_pika.abc
 from configmanager import Config
@@ -24,6 +34,7 @@ from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
+from aleph.toolkit.heartbeat import FETCH_MESSAGES_JOB, Heartbeat
 from aleph.toolkit.lifecycle import closing_quietly, install_signal_handlers
 from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
@@ -203,7 +214,11 @@ class PendingMessageFetcher(MessageJob):
         state["last"] = current
 
     async def fetch_pending_messages(
-        self, config: Config, node_cache: NodeCache, loop: bool = True
+        self,
+        config: Config,
+        node_cache: NodeCache,
+        loop: bool = True,
+        heartbeat: Optional[Heartbeat] = None,
     ) -> AsyncIterator[Sequence[MessageDb]]:
         LOGGER.info("starting fetch job")
 
@@ -221,6 +236,11 @@ class PendingMessageFetcher(MessageJob):
 
         try:
             while True:
+                # The generator only yields when messages were fetched, so it
+                # beats itself to stay alive while idle or waiting on fetches.
+                if heartbeat is not None:
+                    heartbeat.beat()
+
                 # 1. Refill the pool from the DB.
                 slots = max_concurrent_tasks - len(in_flight)
                 for pending_message in self._claim_messages(slots, busy_hashes):
@@ -272,14 +292,18 @@ class PendingMessageFetcher(MessageJob):
         config: Config,
         node_cache: NodeCache,
         loop: bool = True,
+        heartbeat: Optional[Heartbeat] = None,
     ) -> AsyncIterator[Sequence[MessageDb]]:
         fetch_iterator = self.fetch_pending_messages(
-            config=config, node_cache=node_cache, loop=loop
+            config=config, node_cache=node_cache, loop=loop, heartbeat=heartbeat
         )
         return fetch_iterator
 
 
 async def fetch_messages_task(config: Config):
+    heartbeat = Heartbeat(
+        FETCH_MESSAGES_JOB, Path(config.aleph.jobs.heartbeat.directory.value)
+    )
     engine = make_engine(config=config, application_name="aleph-fetch")
     session_factory = make_session_factory(engine)
 
@@ -328,11 +352,13 @@ async def fetch_messages_task(config: Config):
 
         async with fetcher:
             while True:
+                heartbeat.beat()
                 try:
                     fetch_pipeline = fetcher.make_pipeline(
-                        config=config, node_cache=node_cache
+                        config=config, node_cache=node_cache, heartbeat=heartbeat
                     )
                     async for fetched_messages in fetch_pipeline:
+                        heartbeat.beat()
                         for fetched_message in fetched_messages:
                             LOGGER.info(
                                 "Successfully fetched %s", fetched_message.item_hash
@@ -358,7 +384,7 @@ def fetch_pending_messages_subprocess(config_values: Dict):
     """
 
     faulthandler.enable(file=sys.stderr)
-    setproctitle("aleph.jobs.fetch_messages")
+    setproctitle(FETCH_MESSAGES_JOB)
     config = prepare_config(config_values)
 
     setup_sentry(config)

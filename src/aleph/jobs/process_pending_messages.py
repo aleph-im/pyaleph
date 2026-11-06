@@ -6,6 +6,7 @@ import asyncio
 import faulthandler
 import sys
 from logging import getLogger
+from pathlib import Path
 from typing import AsyncIterator, Dict, Sequence
 
 import aio_pika.abc
@@ -21,6 +22,7 @@ from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
 from aleph.storage import StorageService
+from aleph.toolkit.heartbeat import PROCESS_MESSAGES_JOB, Heartbeat
 from aleph.toolkit.lifecycle import install_signal_handlers, safe_async_cleanup
 from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
@@ -166,6 +168,9 @@ class PendingMessageProcessor(MessageJob):
 
 
 async def fetch_and_process_messages_task(config: Config):
+    heartbeat = Heartbeat(
+        PROCESS_MESSAGES_JOB, Path(config.aleph.jobs.heartbeat.directory.value)
+    )
     engine = make_engine(config=config, application_name="aleph-process")
     session_factory = make_session_factory(engine)
 
@@ -204,12 +209,14 @@ async def fetch_and_process_messages_task(config: Config):
 
         async with pending_message_processor:
             while True:
+                heartbeat.beat()
                 with session_factory() as session:
                     try:
                         message_processing_pipeline = (
                             pending_message_processor.make_pipeline()
                         )
                         async for processing_results in message_processing_pipeline:
+                            heartbeat.beat()
                             for result in processing_results:
                                 LOGGER.info(
                                     "Successfully processed %s", result.item_hash
@@ -236,7 +243,7 @@ def pending_messages_subprocess(config_values: Dict):
     """
 
     faulthandler.enable(file=sys.stderr)
-    setproctitle("aleph.jobs.messages_task_loop")
+    setproctitle(PROCESS_MESSAGES_JOB)
     config = prepare_config(config_values)
 
     setup_sentry(config)
