@@ -12,7 +12,7 @@ from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.p2p import init_p2p_client
 from aleph.services.p2p.http import close_sessions
-from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
+from aleph.services.storage.factory import make_storage_engine
 from aleph.storage import StorageService
 from aleph.toolkit.lifecycle import safe_async_cleanup
 from aleph.toolkit.monitoring import setup_sentry
@@ -59,8 +59,9 @@ async def configure_aiohttp_app(
         await node_cache.open()
         ipfs_service = IpfsService.new(config)
 
+        storage_engine = make_storage_engine(config)
         storage_service = StorageService(
-            storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
+            storage_engine=storage_engine,
             ipfs_service=ipfs_service,
             node_cache=node_cache,
         )
@@ -101,6 +102,7 @@ async def configure_aiohttp_app(
             # Closing the p2p client also closes the underlying mq connection.
             await safe_async_cleanup("p2p client", p2p_client.close())
             await safe_async_cleanup("ipfs service", ipfs_service.close())
+            await safe_async_cleanup("storage engine", storage_engine.close())
             await safe_async_cleanup("node cache", node_cache.close())
             await safe_async_cleanup("p2p HTTP sessions", close_sessions())
             engine.dispose()

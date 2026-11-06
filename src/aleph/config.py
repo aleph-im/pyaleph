@@ -137,7 +137,10 @@ def get_defaults():
             "topics": ["ALIVE", "ALEPH-TEST"],
         },
         "storage": {
-            # Folder used to store files on the node.
+            # Where files are kept: "filesystem" (the `folder` below) or "s3"
+            # (an S3-compatible bucket, see the `s3` block).
+            "engine": "filesystem",
+            # Folder used to store files on the node (filesystem engine).
             "folder": "/var/lib/pyaleph",
             # Whether to store files on the node.
             "store_files": True,
@@ -155,6 +158,35 @@ def get_defaults():
             "max_file_size": DEFAULT_MAX_FILE_SIZE,
             # Maximum file size for unauthenticated uploads, in bytes.
             "max_unauthenticated_upload_file_size": DEFAULT_MAX_UNAUTHENTICATED_UPLOAD_FILE_SIZE,
+            # S3-compatible object storage (Garage, MinIO, AWS S3), used when
+            # `engine` is "s3". Requests use path-style addressing.
+            "s3": {
+                # Endpoint URL, e.g. https://s3.garage.svc.
+                "endpoint_url": None,
+                # Region used to sign requests ("garage" for Garage).
+                "region": "garage",
+                # Bucket holding the files. Must exist; checked at first use.
+                "bucket": None,
+                # Prepended to every object key: objects are `<prefix><hash>`.
+                "prefix": "",
+                # Override with STORAGE_S3_ACCESS_KEY_ID.
+                "access_key_id": Item(default=None, envvar="STORAGE_S3_ACCESS_KEY_ID"),
+                # Override with STORAGE_S3_SECRET_ACCESS_KEY.
+                "secret_access_key": Item(
+                    default=None, envvar="STORAGE_S3_SECRET_ACCESS_KEY"
+                ),
+                # File holding the secret key (e.g. a mounted Kubernetes
+                # Secret), read once at startup with trailing whitespace
+                # stripped. Wins over `secret_access_key`; a missing or empty
+                # file is a startup error.
+                # Override with STORAGE_S3_SECRET_ACCESS_KEY_FILE.
+                "secret_access_key_file": Item(
+                    default=None, envvar="STORAGE_S3_SECRET_ACCESS_KEY_FILE"
+                ),
+                # CA bundle (PEM file) used to verify the endpoint certificate.
+                # When unset, the system store (or AWS_CA_BUNDLE) applies.
+                "ca_bundle": None,
+            },
         },
         "nuls2": {
             # NULS2 chain ID.

@@ -19,9 +19,13 @@ from aleph.db.connection import disposing_engine, make_engine, make_session_fact
 from aleph.handlers.message_handler import MessageHandler
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
-from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
+from aleph.services.storage.factory import make_storage_engine
 from aleph.storage import StorageService
-from aleph.toolkit.lifecycle import install_signal_handlers, safe_async_cleanup
+from aleph.toolkit.lifecycle import (
+    closing_quietly,
+    install_signal_handlers,
+    safe_async_cleanup,
+)
 from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
 from aleph.toolkit.rabbitmq import declare_durable_queue, rabbitmq_password
@@ -170,8 +174,10 @@ async def fetch_and_process_messages_task(config: Config):
     engine = make_engine(config=config, application_name="aleph-process")
     session_factory = make_session_factory(engine)
 
+    storage_engine = make_storage_engine(config)
     async with (
         disposing_engine(engine),
+        closing_quietly("storage engine", storage_engine),
         NodeCache(
             redis_host=config.redis.host.value,
             redis_port=config.redis.port.value,
@@ -180,7 +186,7 @@ async def fetch_and_process_messages_task(config: Config):
         IpfsService.new(config) as ipfs_service,
     ):
         storage_service = StorageService(
-            storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
+            storage_engine=storage_engine,
             ipfs_service=ipfs_service,
             node_cache=node_cache,
         )

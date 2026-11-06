@@ -128,6 +128,47 @@ The RabbitMQ password file is read when each process opens its RabbitMQ connecti
 Automatic reconnects reuse that password, so rotating the RabbitMQ password takes a
 restart of the node.
 
+Object storage
+^^^^^^^^^^^^^^
+
+By default the node keeps its files in a local folder (`storage.folder`). It can
+keep them in an S3-compatible bucket instead (`Garage <https://garagehq.deuxfleurs.fr/>`_,
+MinIO, AWS S3), so the files survive the loss of a single disk or machine. Set
+`storage.engine` to `s3` and fill the `storage.s3` block:
+
+.. code-block:: yaml
+
+    storage:
+        engine: s3
+        s3:
+            endpoint_url: https://s3.garage.svc
+            region: garage
+            bucket: aleph-files
+            prefix: ""
+            access_key_id: GK0123456789abcdef
+            secret_access_key_file: /run/secrets/s3-secret-access-key
+            # ca_bundle: /etc/ssl/certs/garage-ca.pem
+
+* Objects are stored under `<prefix><file hash>`; `prefix` (empty by default) lets
+  several nodes share one bucket.
+* Requests use path-style addressing (`https://s3.garage.svc/<bucket>/<key>`), so no
+  wildcard DNS name or certificate is needed for the bucket.
+* The bucket must exist. The node checks it on first use and fails with the S3 error
+  if the bucket is missing or the key is rejected.
+* The access key can be set with `STORAGE_S3_ACCESS_KEY_ID`, the secret key with
+  `STORAGE_S3_SECRET_ACCESS_KEY` or, preferably, read from a file with
+  `secret_access_key_file` (or `STORAGE_S3_SECRET_ACCESS_KEY_FILE`). The file wins over
+  the other two, has its trailing whitespace stripped, and is read once at startup:
+  rotating the S3 key takes a restart.
+* `ca_bundle` is a PEM file used to verify the endpoint certificate (for a private CA).
+  When unset, the system trust store applies, or `AWS_CA_BUNDLE` when it is set.
+* Requests are retried up to 5 attempts (standard retry mode), with a 5 s connect
+  timeout and a 60 s read timeout.
+
+Switching engines does not move existing files: copy the content of `storage.folder`
+into the bucket (under the prefix) before restarting the node with `engine: s3`, for
+example with `rclone copy` or `aws s3 sync`.
+
 Sentry DSN
 ^^^^^^^^^^
 

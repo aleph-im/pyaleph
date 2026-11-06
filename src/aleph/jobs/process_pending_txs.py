@@ -19,7 +19,7 @@ from aleph.db.models import PendingTxDb
 from aleph.handlers.message_handler import MessagePublisher
 from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs.service import IpfsService
-from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
+from aleph.services.storage.factory import make_storage_engine
 from aleph.storage import StorageService
 from aleph.toolkit.lifecycle import closing_quietly, install_signal_handlers
 from aleph.toolkit.logging import setup_logging
@@ -136,8 +136,10 @@ async def handle_txs_task(config: Config):
         config=config, connection=mq_conn, channel=mq_channel
     )
 
+    storage_engine = make_storage_engine(config)
     async with (
         disposing_engine(engine),
+        closing_quietly("storage engine", storage_engine),
         closing_quietly("aleph-txs MQ connection", mq_conn),
         NodeCache(
             redis_host=config.redis.host.value,
@@ -147,7 +149,7 @@ async def handle_txs_task(config: Config):
         IpfsService.new(config) as ipfs_service,
     ):
         storage_service = StorageService(
-            storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
+            storage_engine=storage_engine,
             ipfs_service=ipfs_service,
             node_cache=node_cache,
         )

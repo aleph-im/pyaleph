@@ -19,3 +19,9 @@ class StorageEngine(abc.ABC):
 
     @abc.abstractmethod
     async def exists(self, filename: str) -> bool: ...
+
+    async def close(self) -> None:
+        """Release the resources held by the engine (connections, clients).
+
+        A no-op by default; engines holding network clients override it.
+        """

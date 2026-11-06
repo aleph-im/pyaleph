@@ -40,9 +40,23 @@ postgres:
 
 storage:
   store_files: true
+  # "filesystem" keeps files in `folder`; "s3" keeps them in an S3-compatible
+  # bucket (Garage, MinIO, AWS S3) configured in the `s3` block below.
   engine: filesystem
   folder: /var/lib/pyaleph
   removal_grace_period_hours: 25
+  # s3:
+  #   endpoint_url: https://s3.garage.svc
+  #   region: garage
+  #   bucket: aleph-files
+  #   prefix: ""
+  #  # Also STORAGE_S3_ACCESS_KEY_ID.
+  #   access_key_id: GK0123456789abcdef
+  #  # STORAGE_S3_SECRET_ACCESS_KEY, or a file read once at startup that wins
+  #  # over it (also STORAGE_S3_SECRET_ACCESS_KEY_FILE).
+  #   secret_access_key_file: /run/secrets/s3-secret-access-key
+  #  # PEM bundle for a private CA; unset = system store or AWS_CA_BUNDLE.
+  #  # ca_bundle: /etc/ssl/certs/garage-ca.pem
 
 
 ipfs:
