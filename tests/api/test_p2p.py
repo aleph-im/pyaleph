@@ -1,8 +1,13 @@
+import contextlib
 import copy
 import json
+import logging
+from typing import Any, Dict, Iterator, List
 
 import pytest
 from configmanager import Config
+
+from aleph.web.middlewares.request_log import REQUEST_LOGGER_NAME
 
 P2P_PUB_URI = "/api/v0/p2p/pubsub/pub"
 POST_MESSAGES_URI = "/api/v0/messages"
@@ -101,3 +106,70 @@ async def test_post_message_sync(ccn_api_client, mocker):
 
     # Check that we cleaned up the queue
     mocked_queue.return_value.delete.assert_awaited_once()
+
+
+@contextlib.contextmanager
+def captured_request_log() -> Iterator[List[Dict[str, Any]]]:
+    """Collect the JSON lines written to the aleph.http request logger."""
+    lines: List[Dict[str, Any]] = []
+
+    class _Collect(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            lines.append(json.loads(record.getMessage()))
+
+    handler = _Collect()
+    logger = logging.getLogger(REQUEST_LOGGER_NAME)
+    previous_level = logger.level
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    try:
+        yield lines
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(previous_level)
+
+
+@pytest.mark.asyncio
+async def test_pub_message_sets_sender(ccn_api_client):
+    # Not mocked: broadcast_and_process_message is where the sender is set.
+    with captured_request_log() as lines:
+        response = await ccn_api_client.post(
+            POST_MESSAGES_URI, json={"message": MESSAGE_DICT, "sync": False}
+        )
+        assert response.status == 202, await response.text()
+
+    line = lines[-1]
+    assert line["route"] == POST_MESSAGES_URI
+    assert line["sender"] == MESSAGE_DICT["sender"]
+    assert line["auth"] == "claimed"
+
+
+@pytest.mark.asyncio
+async def test_pub_json_sets_sender(ccn_api_client, mock_config: Config):
+    message_topic = mock_config.aleph.queue_topic.value
+
+    with captured_request_log() as lines:
+        response = await ccn_api_client.post(
+            P2P_PUB_URI,
+            json={"topic": message_topic, "data": json.dumps(MESSAGE_DICT)},
+        )
+        assert response.status == 200, await response.text()
+
+    line = lines[-1]
+    assert line["route"] == P2P_PUB_URI
+    assert line["sender"] == MESSAGE_DICT["sender"]
+    assert line["auth"] == "claimed"
+
+
+@pytest.mark.asyncio
+async def test_rejected_pub_json_is_anonymous(ccn_api_client, mock_config: Config):
+    with captured_request_log() as lines:
+        response = await ccn_api_client.post(
+            P2P_PUB_URI,
+            json={"topic": "random-topic", "data": json.dumps(MESSAGE_DICT)},
+        )
+        assert response.status == 403, await response.text()
+
+    line = lines[-1]
+    assert line["sender"] is None
+    assert line["auth"] == "anonymous"

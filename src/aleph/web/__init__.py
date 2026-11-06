@@ -11,6 +11,8 @@ from aiohttp_swagger3 import SwaggerDocs, SwaggerInfo, SwaggerUiSettings
 
 from aleph.version import get_version
 from aleph.web.controllers.routes import register_routes
+from aleph.web.middlewares.analytics import analytics_middleware, set_request_id_header
+from aleph.web.middlewares.request_log import setup_request_logging
 
 # Default app-wide aiohttp client_max_size, capping every request body read via
 # request.json()/.read()/.post(). Endpoints that accept larger uploads raise it
@@ -43,7 +45,16 @@ def create_aiohttp_app(
     with_swagger: bool = True,
     max_file_size: int = DEFAULT_CLIENT_MAX_SIZE,
 ) -> web.Application:
-    app = web.Application(client_max_size=max_file_size)
+    # The analytics middleware (per-route metrics, X-Request-Id, request log)
+    # is registered on the root app only: aiohttp also runs it for the routes
+    # of sub-apps, and a second registration would count every request twice.
+    app = web.Application(
+        client_max_size=max_file_size, middlewares=[analytics_middleware]
+    )
+    # Adds X-Request-Id to responses the middleware cannot reach before they
+    # are sent: streamed responses, WebSocket handshakes, unhandled-error 500s.
+    app.on_response_prepare.append(set_request_id_header)
+    setup_request_logging()
 
     swagger = None
     if with_swagger:
