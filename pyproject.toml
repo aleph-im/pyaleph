@@ -43,7 +43,7 @@ dependencies = [
   "dataclasses-json==0.6.7",
   "eth-account==0.13.7",
   "eth-typing==6.0.0",
-  "gunicorn==26.0.0",
+  "gunicorn==26.2.0",
   "hexbytes==2.0.0",
   "msgpack==1.2.1",                                                                                                        # required by aiocache
   "multiaddr==0.2.0",                                                                                                      # for libp2p-stubs
