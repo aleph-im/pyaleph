@@ -59,6 +59,10 @@ def check_jobs(
             raise JobDiedError(name, process.exitcode)
 
         age = read_age(name, directory, now=now)
+        if age is not None and now - age < started_at:
+            # Left over from a previous run (a restarted container keeps /tmp):
+            # treat it as missing so the start grace applies.
+            age = None
         if age is None:
             # Jobs spend their first seconds waiting for services before the
             # first beat, so a missing file only counts once the grace is over.

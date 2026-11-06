@@ -348,3 +348,43 @@ async def test_fetch_pending_messages_dedupes_concurrent_hashes(
         pass
 
     assert call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_pending_messages_beats_while_idle(tmp_path, mocker, monkeypatch):
+    """The generator never yields while idle, so it must beat by itself."""
+    from configmanager import Config
+
+    import aleph.toolkit.heartbeat as heartbeat_module
+    from aleph.config import get_defaults
+    from aleph.toolkit.heartbeat import Heartbeat
+
+    class CountingHeartbeat(Heartbeat):
+        beats = 0
+
+        def beat(self) -> None:
+            self.beats += 1
+            super().beat()
+
+    monkeypatch.setattr(heartbeat_module, "MIN_BEAT_INTERVAL_S", 0)
+    config = Config(schema=get_defaults())
+    config.aleph.jobs.pending_messages.idle_timeout.value = 0.05
+
+    idle_fetcher = PendingMessageFetcher(
+        session_factory=mocker.MagicMock(),
+        message_handler=mocker.AsyncMock(),
+        max_retries=3,
+        pending_message_queue=mocker.MagicMock(),
+        pending_message_exchange=mocker.AsyncMock(),
+    )
+    mocker.patch.object(idle_fetcher, "_claim_messages", return_value=[])
+    heartbeat = CountingHeartbeat("aleph.jobs.fetch_messages", tmp_path)
+
+    pipeline = idle_fetcher.fetch_pending_messages(
+        config=config, node_cache=mocker.AsyncMock(), loop=True, heartbeat=heartbeat
+    )
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(pipeline.__anext__(), timeout=0.3)
+
+    assert heartbeat.beats >= 3
+    assert (tmp_path / "aleph.jobs.fetch_messages").exists()
