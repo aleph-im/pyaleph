@@ -84,3 +84,33 @@ async def test_add_pending_message_rejects_null_signature(
         rejected = session.get(RejectedMessageDb, message["item_hash"])
         assert rejected is not None
         assert rejected.error_code == ErrorCode.INVALID_SIGNATURE
+
+
+@pytest.mark.asyncio
+async def test_add_pending_message_drops_blocked_sender(
+    mocker,
+    mock_config: Config,
+    session_factory: DbSessionFactory,
+    test_storage_service: StorageService,
+):
+    message = load_fixture_message("test-data-pending-messaging.json")
+    mock_config.aleph.blocked_senders.value = [message["sender"].lower()]
+
+    message_publisher = MessagePublisher(
+        session_factory=session_factory,
+        storage_service=test_storage_service,
+        config=mock_config,
+        pending_message_exchange=mocker.AsyncMock(),
+    )
+
+    result = await message_publisher.add_pending_message(
+        message_dict=message,
+        reception_time=utc_now(),
+        origin=MessageOrigin.P2P,
+    )
+
+    assert result is None
+
+    with session_factory() as session:
+        assert session.query(PendingMessageDb).count() == 0
+        assert get_message_status(session, message["item_hash"]) is None
