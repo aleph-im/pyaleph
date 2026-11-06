@@ -6,6 +6,7 @@ The metrics live on prometheus_client's process-global default registry, so
 every assertion compares a value after the requests with the value before.
 """
 
+import asyncio
 import re
 from typing import Dict, Optional
 
@@ -17,9 +18,11 @@ from aleph.web.middlewares.analytics import (
     HTTP_REQUESTS,
     REQUEST_ID_HEADER,
     analytics_middleware,
+    set_request_id_header,
 )
 
 ITEMS_ROUTE = "/items/{item_id}"
+REQUEST_ID_RE = re.compile(r"[0-9a-f]{32}")
 
 
 def sample_value(name: str, **labels: str) -> float:
@@ -65,6 +68,22 @@ async def stream_handler(request: web.Request) -> web.StreamResponse:
     return response
 
 
+async def ws_handler(request: web.Request) -> web.WebSocketResponse:
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+    await ws.close()
+    return ws
+
+
+async def slow_handler(request: web.Request) -> web.Response:
+    await asyncio.sleep(30)
+    return web.json_response({"ok": True})
+
+
+async def timeout_handler(request: web.Request) -> web.Response:
+    raise asyncio.TimeoutError()
+
+
 async def req_id_handler(request: web.Request) -> web.Response:
     return web.json_response({"req_id": request["req_id"]})
 
@@ -76,12 +95,16 @@ async def in_flight_handler(request: web.Request) -> web.Response:
 @pytest.fixture
 def app() -> web.Application:
     app = web.Application(middlewares=[analytics_middleware])
+    app.on_response_prepare.append(set_request_id_header)
     app.router.add_get(ITEMS_ROUTE, items_handler)
     app.router.add_get("/boom", boom_handler)
     app.router.add_get("/crash", crash_handler)
     app.router.add_get("/stream", stream_handler)
     app.router.add_get("/req-id", req_id_handler)
     app.router.add_get("/in-flight", in_flight_handler)
+    app.router.add_get("/ws", ws_handler)
+    app.router.add_get("/slow", slow_handler)
+    app.router.add_get("/timeout", timeout_handler)
     return app
 
 
@@ -140,6 +163,7 @@ async def test_unhandled_exception_counts_500_and_reraises(aiohttp_client, app):
     response = await client.get("/crash")
 
     assert response.status == 500
+    assert REQUEST_ID_RE.fullmatch(response.headers[REQUEST_ID_HEADER])
     assert counter_value(**labels) - before == 1
     assert in_flight_value("/crash") == in_flight_before
 
@@ -155,6 +179,7 @@ async def test_stream_response_counts_zero_bytes_without_error(aiohttp_client, a
 
     assert response.status == 200
     assert await response.read() == b"first chunk second chunk"
+    assert REQUEST_ID_RE.fullmatch(response.headers[REQUEST_ID_HEADER])
     assert counter_value(**labels) - before == 1
     # A streamed response has no Content-Length: nothing is added.
     assert (
@@ -241,3 +266,56 @@ async def test_duration_histogram_observed(aiohttp_client, app):
         sample_value("aleph_http_request_duration_seconds_bucket", le="30.0", **labels)
         >= 3
     )
+
+
+@pytest.mark.asyncio
+async def test_websocket_handshake_carries_request_id(aiohttp_client, app):
+    client = await aiohttp_client(app)
+    headers = {
+        "Connection": "Upgrade",
+        "Upgrade": "websocket",
+        "Sec-WebSocket-Version": "13",
+        "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
+        REQUEST_ID_HEADER: "ws-req-1",
+    }
+
+    response = await asyncio.wait_for(client.get("/ws", headers=headers), 5)
+
+    assert response.status == 101
+    assert response.headers[REQUEST_ID_HEADER] == "ws-req-1"
+    response.close()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_request_counts_499_not_500(aiohttp_client, app):
+    client = await aiohttp_client(app)
+    cancelled = dict(route="/slow", method="GET", status="499")
+    errored = dict(route="/slow", method="GET", status="500")
+    before_499 = counter_value(**cancelled)
+    before_500 = counter_value(**errored)
+
+    # The client gives up; the test server cancels the handler on disconnect.
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(client.get("/slow"), 0.2)
+
+    for _ in range(100):
+        if counter_value(**cancelled) - before_499 >= 1:
+            break
+        await asyncio.sleep(0.02)
+
+    assert counter_value(**cancelled) - before_499 == 1
+    assert counter_value(**errored) == before_500
+    assert in_flight_value("/slow") == 0
+
+
+@pytest.mark.asyncio
+async def test_handler_timeout_counts_504(aiohttp_client, app):
+    client = await aiohttp_client(app)
+    labels = dict(route="/timeout", method="GET", status="504")
+    before = counter_value(**labels)
+
+    response = await client.get("/timeout")
+
+    assert response.status == 504
+    assert counter_value(**labels) - before == 1
+    assert counter_value(route="/timeout", method="GET", status="500") == 0
