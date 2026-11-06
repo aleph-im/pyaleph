@@ -161,7 +161,7 @@ async def test_pub_message_sets_sender(ccn_api_client_with_analytics, mocker):
     line = lines[-1]
     assert line["route"] == POST_MESSAGES_URI
     assert line["sender"] == MESSAGE_DICT["sender"]
-    assert line["auth"] == "signed"
+    assert line["auth"] == "claimed"
 
 
 @pytest.mark.asyncio
@@ -178,7 +178,7 @@ async def test_pub_json_sets_sender(ccn_api_client_with_analytics, mock_config: 
     line = lines[-1]
     assert line["route"] == P2P_PUB_URI
     assert line["sender"] == MESSAGE_DICT["sender"]
-    assert line["auth"] == "signed"
+    assert line["auth"] == "claimed"
 
 
 @pytest.mark.asyncio

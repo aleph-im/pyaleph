@@ -75,7 +75,7 @@ async def crash_handler(request: web.Request) -> web.Response:
     raise RuntimeError("crash")
 
 
-async def signed_handler(request: web.Request) -> web.Response:
+async def claimed_sender_handler(request: web.Request) -> web.Response:
     request["aleph_sender"] = "0xabc"
     return web.json_response({"ok": True})
 
@@ -97,7 +97,7 @@ def app() -> web.Application:
     app.router.add_post("/items/{item_id}", items_handler)
     app.router.add_get("/boom", boom_handler)
     app.router.add_get("/crash", crash_handler)
-    app.router.add_get("/signed", signed_handler)
+    app.router.add_get("/claimed", claimed_sender_handler)
     app.router.add_get("/slow", slow_handler)
     app.router.add_get("/timeout", timeout_handler)
     return app
@@ -189,11 +189,11 @@ async def test_ua_truncated_to_256(aiohttp_client, app, records):
 async def test_sender_and_auth_when_handler_sets_it(aiohttp_client, app, records):
     client = await aiohttp_client(app)
 
-    await client.get("/signed")
+    await client.get("/claimed")
 
     line = lines(records)[-1]
     assert line["sender"] == "0xabc"
-    assert line["auth"] == "signed"
+    assert line["auth"] == "claimed"
 
 
 @pytest.mark.asyncio
