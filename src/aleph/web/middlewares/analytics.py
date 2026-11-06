@@ -4,7 +4,9 @@ HTTP API analytics: per-route Prometheus metrics and the X-Request-Id contract.
 Every request is labelled with the template of the route it matched
 (``/api/v0/messages/{item_hash}``), never with its raw path, so the label
 cardinality stays bounded by the number of registered routes. Requests that
-match no route (404, 405) share the ``unmatched`` label.
+match no route (404, 405) share the ``unmatched`` label. The ``method`` label
+is the request method if it is a standard one, else ``OTHER``: the HTTP parser
+accepts any token as a method, so the label would otherwise be unbounded.
 
 The metrics are created on prometheus_client's default registry, as its
 multiprocess mode requires. ``make_registry()`` returns the registry to expose
@@ -42,6 +44,8 @@ from aleph.web.middlewares.request_log import REQUEST_LOGGER_NAME, format_reques
 
 REQUEST_ID_HEADER = "X-Request-Id"
 UNMATCHED_ROUTE = "unmatched"
+OTHER_METHOD = "OTHER"
+KNOWN_METHODS = frozenset(("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"))
 
 _REQUEST_ID_PATTERN = re.compile(r"[A-Za-z0-9._-]{1,64}")
 
@@ -66,8 +70,6 @@ def make_registry() -> CollectorRegistry:
         return registry
     return DEFAULT_REGISTRY
 
-
-REGISTRY = make_registry()
 
 HTTP_REQUESTS = Counter(
     "aleph_http_requests_total",
@@ -97,7 +99,7 @@ HTTP_RESPONSE_BYTES = Counter(
 )
 HTTP_REQUEST_BYTES = Counter(
     "aleph_http_request_bytes_total",
-    "Bytes received in HTTP request bodies with a known length, by route template.",
+    "Bytes received in HTTP request bodies, by route template.",
     labelnames=("route",),
     registry=DEFAULT_REGISTRY,
 )
@@ -109,6 +111,11 @@ def route_label(request: web.Request) -> str:
     if resource is None:
         return UNMATCHED_ROUTE
     return resource.canonical
+
+
+def method_label(method: str) -> str:
+    """The method for the metric labels: standard methods as is, else "OTHER"."""
+    return method if method in KNOWN_METHODS else OTHER_METHOD
 
 
 def request_id_from(request: web.Request) -> str:
@@ -138,7 +145,7 @@ async def analytics_middleware(
 ) -> web.StreamResponse:
     req_id = request_id_from(request)
     route = route_label(request)
-    method = request.method
+    method = method_label(request.method)
     request["req_id"] = req_id
     request["analytics_route"] = route
 
@@ -155,8 +162,10 @@ async def analytics_middleware(
         status = exc.status
         raise
     except asyncio.CancelledError:
-        # The client went away (or the server is shutting down): use the
-        # nginx "client closed request" code so it never counts as a 5xx.
+        # The handler was cancelled: at shutdown, or on client disconnect when
+        # the server runs with handler_cancellation=True (aiohttp's test
+        # server does; gunicorn's aiohttp worker does not). Use the nginx
+        # "client closed request" code so it never counts as a 5xx.
         status = 499
         raise
     except asyncio.TimeoutError:
@@ -177,7 +186,9 @@ async def analytics_middleware(
         HTTP_IN_FLIGHT.labels(route).dec()
         HTTP_REQUEST_DURATION.labels(route, method).observe(duration)
         HTTP_REQUESTS.labels(route, method, str(status)).inc()
-        bytes_in = request.content_length or 0
+        # The body bytes actually received, not the client-declared
+        # Content-Length, which can be anything.
+        bytes_in = request.content.total_bytes
         bytes_out = 0
         HTTP_REQUEST_BYTES.labels(route).inc(bytes_in)
         if response is not None:
