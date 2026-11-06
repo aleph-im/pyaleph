@@ -7,6 +7,7 @@ from sqlalchemy import (
     DECIMAL,
     TIMESTAMP,
     BigInteger,
+    CheckConstraint,
     Index,
     Integer,
     String,
@@ -117,3 +118,25 @@ class AlephCreditBalanceDb(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+
+class CreditRepairStateDb(Base):
+    """Single-row bookkeeping for the boot-time credit repair. ``id`` is always
+    1. ``policy_version`` is the drain-policy version the lot cache was last
+    fully rebuilt under (bump ``aleph.repair.REPAIR_POLICY_VERSION`` when the
+    drain semantics change). ``history_watermark`` is the max
+    ``credit_history.last_update`` up to which out-of-order arrivals have been
+    reconciled."""
+
+    __tablename__ = "credit_repair_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    policy_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    history_watermark: Mapped[dt.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
+    last_run: Mapped[dt.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
+
+    __table_args__ = (CheckConstraint("id = 1", name="credit_repair_state_single_row"),)
