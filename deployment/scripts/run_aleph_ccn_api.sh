@@ -11,6 +11,9 @@
 #                               logger, so the access log is redundant.
 #   PROMETHEUS_MULTIPROC_DIR    Directory for the per-worker Prometheus metric
 #                               files. Defaults to a fresh directory under /tmp.
+#                               A directory you provide must be empty at start:
+#                               files left by a previous run would be read and
+#                               added to the metrics.
 
 set -euo pipefail
 
@@ -41,7 +44,10 @@ ACCESS_LOG="${CCN_CONFIG_API_ACCESS_LOG:-0}"
 
 # Must be exported before gunicorn (and thus prometheus_client) starts, so the
 # workers aggregate their HTTP metrics in this directory.
-export PROMETHEUS_MULTIPROC_DIR="${PROMETHEUS_MULTIPROC_DIR:-$(mktemp -d /tmp/pyaleph-metrics.XXXXXX)}"
+# Assigned, then exported: "export VAR=$(...)" would hide a mktemp failure from
+# set -e.
+PROMETHEUS_MULTIPROC_DIR="${PROMETHEUS_MULTIPROC_DIR:-$(mktemp -d /tmp/pyaleph-metrics.XXXXXX)}"
+export PROMETHEUS_MULTIPROC_DIR
 
 GUNICORN_ARGS=()
 if [ "${ACCESS_LOG}" = "1" ]; then
