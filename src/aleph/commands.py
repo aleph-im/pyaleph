@@ -15,6 +15,7 @@ import datetime as dt
 import logging
 import os
 import sys
+import time
 from contextlib import AsyncExitStack
 from multiprocessing import get_start_method, set_start_method
 from pathlib import Path
@@ -213,6 +214,7 @@ async def main(args: List[str]) -> None:
         runner = JobsRunner()
         if not args.no_jobs:
             LOGGER.debug("Creating jobs")
+            jobs_started_at = time.time()
             runner = start_jobs(
                 config=config,
                 session_factory=session_factory,
@@ -229,6 +231,7 @@ async def main(args: List[str]) -> None:
                         names=runner.job_names,
                         directory=Path(config.aleph.jobs.heartbeat.directory.value),
                         max_age_s=config.aleph.jobs.heartbeat.max_age_s.value,
+                        started_at=jobs_started_at,
                     )
                 )
         stack.push_async_callback(runner.stop)

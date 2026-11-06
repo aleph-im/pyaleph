@@ -2,6 +2,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from multiprocessing import Process
+from pathlib import Path
 from typing import Coroutine, List
 
 from aleph.jobs.fetch_pending_messages import fetch_pending_messages_subprocess
@@ -78,11 +79,15 @@ def start_jobs(
 
     if use_processes:
         config_values = config.dump_values()
+        heartbeat_directory = Path(config.aleph.jobs.heartbeat.directory.value)
         for target, job_name in (
             (fetch_pending_messages_subprocess, FETCH_MESSAGES_JOB),
             (pending_messages_subprocess, PROCESS_MESSAGES_JOB),
             (pending_txs_subprocess, PROCESS_TXS_JOB),
         ):
+            # A heartbeat left by a previous run would make a job that never
+            # starts look alive to `pyaleph-healthcheck`.
+            (heartbeat_directory / job_name).unlink(missing_ok=True)
             p = Process(target=target, args=(config_values,), name=target.__name__)
             p.start()
             runner.processes.append(p)
