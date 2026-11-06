@@ -200,7 +200,6 @@ async def pub_message(request: web.Request):
         raise web.HTTPUnprocessableEntity()
 
     pending_message = validate_message_dict(request_data.message_dict)
-    request[SENDER_KEY] = pending_message.sender
     broadcast_status = await broadcast_and_process_message(
         pending_message=pending_message,
         message_dict=request_data.message_dict,

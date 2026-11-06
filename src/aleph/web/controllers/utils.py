@@ -37,6 +37,7 @@ from aleph.web.controllers.app_state_getters import (
     get_mq_channel_from_request,
     get_p2p_client_from_request,
 )
+from aleph.web.middlewares.request_log import SENDER_KEY
 
 
 @overload
@@ -337,6 +338,9 @@ async def broadcast_and_process_message(
     :param message_dict: The message as a dictionary, if already available. Used for optimization purposes;
                          if not provided, the function will call format_pending_message_dict().
     """
+
+    # Attribute the request to the message's sender in the request log.
+    request[SENDER_KEY] = pending_message.sender
 
     # In sync mode, wait for a message processing event. We need to create the queue
     # before publishing the message on P2P topics in order to guarantee that the event

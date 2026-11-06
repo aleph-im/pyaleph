@@ -7,8 +7,6 @@ from typing import Any, Dict, Iterator, List
 import pytest
 from configmanager import Config
 
-from aleph.types.message_status import MessageStatus
-from aleph.web.controllers.utils import BroadcastStatus, PublicationStatus
 from aleph.web.middlewares.request_log import REQUEST_LOGGER_NAME
 
 P2P_PUB_URI = "/api/v0/p2p/pubsub/pub"
@@ -132,15 +130,8 @@ def captured_request_log() -> Iterator[List[Dict[str, Any]]]:
 
 
 @pytest.mark.asyncio
-async def test_pub_message_sets_sender(ccn_api_client, mocker):
-    mocker.patch(
-        "aleph.web.controllers.p2p.broadcast_and_process_message",
-        return_value=BroadcastStatus(
-            publication_status=PublicationStatus.from_failures([]),
-            message_status=MessageStatus.PENDING,
-        ),
-    )
-
+async def test_pub_message_sets_sender(ccn_api_client):
+    # Not mocked: broadcast_and_process_message is where the sender is set.
     with captured_request_log() as lines:
         response = await ccn_api_client.post(
             POST_MESSAGES_URI, json={"message": MESSAGE_DICT, "sync": False}
