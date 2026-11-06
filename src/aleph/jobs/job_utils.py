@@ -13,6 +13,7 @@ from aleph.db.accessors.messages import reject_existing_pending_message
 from aleph.db.accessors.pending_messages import set_next_retry
 from aleph.db.models import PendingMessageDb
 from aleph.handlers.message_handler import MessageHandler
+from aleph.toolkit.rabbitmq import declare_durable_queue
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSession, DbSessionFactory
 from aleph.types.message_processing_result import RejectedMessage, WillRetryMessage
@@ -40,7 +41,9 @@ async def _make_pending_queue(
         type=aio_pika.ExchangeType.TOPIC,
         auto_delete=False,
     )
-    queue = await channel.declare_queue(name=queue_name, auto_delete=False)
+    queue = await declare_durable_queue(
+        channel=channel, name=queue_name, auto_delete=False
+    )
     await queue.bind(exchange, routing_key=routing_key)
     return queue
 
