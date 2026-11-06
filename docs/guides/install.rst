@@ -150,11 +150,21 @@ MinIO, AWS S3), so the files survive the loss of a single disk or machine. Set
             # ca_bundle: /etc/ssl/certs/garage-ca.pem
 
 * Objects are stored under `<prefix><file hash>`; `prefix` (empty by default) lets
-  several nodes share one bucket.
+  several nodes share one bucket. No separator is added: write `prefix: node-1/` to get
+  `node-1/<file hash>` (`prefix: node-1` gives `node-1<file hash>`).
 * Requests use path-style addressing (`https://s3.garage.svc/<bucket>/<key>`), so no
   wildcard DNS name or certificate is needed for the bucket.
-* The bucket must exist. The node checks it on first use and fails with the S3 error
-  if the bucket is missing or the key is rejected.
+* The bucket must exist. Each node process checks it once, on its first storage
+  operation, and fails with an error naming the bucket and the endpoint if the bucket
+  is missing or the key is rejected. A bucket deleted after that check makes files
+  look absent to existence checks (S3 answers both with a 404) while reads and writes
+  fail.
+* The key needs these permissions on the bucket:
+
+  * Garage: read and write on the bucket (`garage bucket allow --read --write`).
+  * AWS S3 and other IAM-style stores: `s3:ListBucket` (for the bucket check, and so
+    that a missing object answers 404 rather than 403) and `s3:GetObject`,
+    `s3:PutObject`, `s3:DeleteObject` on the objects.
 * The access key can be set with `STORAGE_S3_ACCESS_KEY_ID`, the secret key with
   `STORAGE_S3_SECRET_ACCESS_KEY` or, preferably, read from a file with
   `secret_access_key_file` (or `STORAGE_S3_SECRET_ACCESS_KEY_FILE`). The file wins over

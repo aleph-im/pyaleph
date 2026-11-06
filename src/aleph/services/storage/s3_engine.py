@@ -15,7 +15,7 @@ from aiobotocore.config import AioConfig
 from aiobotocore.session import get_session
 from botocore.exceptions import ClientError
 
-from .engine import StorageEngine
+from .engine import StorageEngine, StorageEngineConfigError
 
 LOGGER = logging.getLogger(__name__)
 
@@ -68,9 +68,15 @@ class S3StorageEngine(StorageEngine):
     async def _get_client(self) -> Any:
         """The S3 client, created on first use.
 
-        The bucket is checked once when the client is created, so a missing
-        bucket or rejected credentials fail loudly instead of every file
-        looking absent.
+        The bucket is checked once when the client is created (so once per
+        process), so a missing bucket or rejected credentials fail loudly
+        instead of every file looking absent. A failed check raises
+        StorageEngineConfigError and is tried again on the next call.
+
+        A bucket deleted after that check is not detected by ``exists``:
+        HeadObject answers a bare 404 for a missing bucket too, so files look
+        absent. ``read`` still raises (GetObject says NoSuchBucket), and so do
+        ``write`` and ``delete``.
         """
         if self._client is not None:
             return self._client
@@ -95,6 +101,14 @@ class S3StorageEngine(StorageEngine):
                         )
                     )
                     await client.head_bucket(Bucket=self.bucket)
+                except ClientError as error:
+                    await exit_stack.aclose()
+                    message = (
+                        f"S3 bucket {self.bucket!r} at {self.endpoint_url} "
+                        f"is not usable: {error}"
+                    )
+                    LOGGER.error(message)
+                    raise StorageEngineConfigError(message) from error
                 except BaseException:
                     await exit_stack.aclose()
                     raise
@@ -143,8 +157,9 @@ class S3StorageEngine(StorageEngine):
             raise
 
         async def _read_iterator(streaming_body) -> AsyncIterator[bytes]:
-            # `async with` releases the HTTP response even when the consumer
-            # stops early (the generator is closed at the yield).
+            # `async with` releases the HTTP response (and its pooled
+            # connection) when the generator is closed or exhausted, including
+            # an aclose() at the yield by a consumer that stops early.
             async with streaming_body as body:
                 buffer = bytearray()
                 while True:

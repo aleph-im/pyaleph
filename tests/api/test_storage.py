@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import datetime as dt
 import json
@@ -522,6 +523,68 @@ async def test_get_raw_hash_streaming(
     assert await response.read() == file_content
 
     storage_service.get_hash_content_iterator.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_raw_hash_streaming_closes_iterator_on_disconnect(
+    api_client, session_factory: DbSessionFactory, mocker
+):
+    """A failed write (client gone) closes the content iterator at once.
+
+    The test holds a reference to the generator, so only an explicit
+    aclose() by the handler (not garbage collection) runs its finally block.
+    """
+    from aiohttp import web
+
+    from aleph.db.accessors.files import upsert_file
+    from aleph.schemas.message_content import ContentSource, StreamContent
+
+    file_content = b"Streaming content"
+    file_hash = "0214e5578f5acb5d36ea62255cbf1157a4bdde7b9612b5db4899b2175e310b6f"
+
+    with session_factory() as session:
+        upsert_file(
+            session=session,
+            file_hash=file_hash,
+            size=len(file_content),
+            file_type=FileType.FILE,
+        )
+        session.commit()
+
+    closed = asyncio.Event()
+
+    async def mock_iterator():
+        try:
+            yield file_content[:5]
+            yield file_content[5:]
+        finally:
+            closed.set()
+
+    iterator = mock_iterator()
+    storage_service = api_client.app[APP_STATE_STORAGE_SERVICE]
+    mocker.patch.object(
+        storage_service,
+        "get_hash_content_iterator",
+        mocker.AsyncMock(
+            return_value=StreamContent(
+                hash=file_hash, value=iterator, source=ContentSource.DB
+            )
+        ),
+    )
+    mocker.patch.object(
+        web.StreamResponse,
+        "write",
+        mocker.AsyncMock(side_effect=ConnectionResetError("client went away")),
+    )
+
+    try:
+        response = await api_client.get(f"{GET_STORAGE_RAW_URI}/{file_hash}")
+        await response.read()
+    except aiohttp.ClientError:
+        pass
+
+    await asyncio.wait_for(closed.wait(), timeout=2)
+    assert iterator is not None
 
 
 @pytest.mark.asyncio

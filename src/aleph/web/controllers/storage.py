@@ -705,8 +705,18 @@ async def get_raw_hash(request):
 
     await response.prepare(request)
 
-    async for chunk in content.value:
-        await response.write(chunk)
+    chunks = content.value
+    try:
+        async for chunk in chunks:
+            await response.write(chunk)
+    finally:
+        # Close the producer (an async generator) right away, also when the
+        # client disconnects mid-download, so it releases what it holds (an
+        # S3 connection from the pool, an IPFS response) instead of waiting
+        # for the garbage collector.
+        aclose = getattr(chunks, "aclose", None)
+        if aclose is not None:
+            await aclose()
 
     return response
 

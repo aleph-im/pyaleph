@@ -45,18 +45,20 @@ storage:
   engine: filesystem
   folder: /var/lib/pyaleph
   removal_grace_period_hours: 25
+  # To use S3: `prefix` is prepended as is to each key ("node-1/" gives
+  # "node-1/<hash>"). access_key_id is also settable with
+  # STORAGE_S3_ACCESS_KEY_ID; the secret with STORAGE_S3_SECRET_ACCESS_KEY or
+  # secret_access_key_file (read once at startup, wins; also
+  # STORAGE_S3_SECRET_ACCESS_KEY_FILE). ca_bundle is a PEM bundle for a private
+  # CA; unset = system store or AWS_CA_BUNDLE.
   # s3:
   #   endpoint_url: https://s3.garage.svc
   #   region: garage
   #   bucket: aleph-files
   #   prefix: ""
-  #  # Also STORAGE_S3_ACCESS_KEY_ID.
   #   access_key_id: GK0123456789abcdef
-  #  # STORAGE_S3_SECRET_ACCESS_KEY, or a file read once at startup that wins
-  #  # over it (also STORAGE_S3_SECRET_ACCESS_KEY_FILE).
   #   secret_access_key_file: /run/secrets/s3-secret-access-key
-  #  # PEM bundle for a private CA; unset = system store or AWS_CA_BUNDLE.
-  #  # ca_bundle: /etc/ssl/certs/garage-ca.pem
+  #   ca_bundle: /etc/ssl/certs/garage-ca.pem
 
 
 ipfs:

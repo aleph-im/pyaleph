@@ -1,15 +1,19 @@
 """S3StorageEngine against an in-process moto S3 server (no Docker, no DB)."""
 
+import asyncio
 import uuid
 from typing import Any, AsyncIterator, Dict, Iterator, List
+from unittest import mock
 
 import boto3
 import moto.settings
 import pytest
 import pytest_asyncio
+from aiobotocore.config import AioConfig
 from botocore.exceptions import ClientError
 from moto.server import ThreadedMotoServer
 
+from aleph.services.storage.engine import StorageEngineConfigError
 from aleph.services.storage.s3_engine import S3StorageEngine
 
 REGION = "garage"
@@ -125,11 +129,18 @@ async def test_exists_raises_on_non_404(
 
 @pytest.mark.asyncio
 async def test_missing_bucket_raises(moto_endpoint: str):
-    s3_engine = _make_engine(moto_endpoint, f"missing-{uuid.uuid4().hex[:12]}")
+    missing_bucket = f"missing-{uuid.uuid4().hex[:12]}"
+    s3_engine = _make_engine(moto_endpoint, missing_bucket)
+    expected = (
+        f"S3 bucket '{missing_bucket}' at {moto_endpoint} is not usable: "
+        ".*HeadBucket"
+    )
     try:
-        with pytest.raises(ClientError):
+        with pytest.raises(StorageEngineConfigError, match=expected) as excinfo:
             await s3_engine.exists(filename="file")
-        with pytest.raises(ClientError):
+        assert isinstance(excinfo.value.__cause__, ClientError)
+        # The failed check is not cached: the next call checks again.
+        with pytest.raises(StorageEngineConfigError, match=expected):
             await s3_engine.read(filename="file")
     finally:
         await s3_engine.close()
@@ -160,16 +171,32 @@ async def test_read_iterator_streams_large_object(engine: S3StorageEngine):
 
 
 @pytest.mark.asyncio
-async def test_read_iterator_stops_early(engine: S3StorageEngine):
-    """A consumer that stops early closes the response; the engine still works."""
-    await engine.write(filename="big", content=b"a" * (3 * 1024))
-    iterator = await engine.read_iterator(filename="big", chunk_size=1024)
-    assert iterator is not None
-    async for chunk in iterator:
-        assert chunk == b"a" * 1024
-        break
-    await iterator.aclose()  # type: ignore[attr-defined]
-    assert await engine.read(filename="big") == b"a" * (3 * 1024)
+async def test_read_iterator_stops_early(moto_endpoint: str, bucket: str):
+    """Closing the iterator early gives its pooled connection back.
+
+    With a pool of one connection, a read after an early aclose() only
+    completes if read_iterator released the response it was streaming.
+    """
+    s3_engine = _make_engine(moto_endpoint, bucket)
+    s3_engine._client_config = s3_engine._client_config.merge(
+        AioConfig(max_pool_connections=1)
+    )
+    content = b"a" * (4 * 1024 * 1024)
+    try:
+        client = await s3_engine._get_client()
+        assert client.meta.config.max_pool_connections == 1
+        await s3_engine.write(filename="big", content=content)
+
+        iterator = await s3_engine.read_iterator(filename="big", chunk_size=1024)
+        assert iterator is not None
+        async for chunk in iterator:
+            assert chunk == b"a" * 1024
+            break
+        await iterator.aclose()
+
+        assert await asyncio.wait_for(s3_engine.read(filename="big"), 3) == content
+    finally:
+        await s3_engine.close()
 
 
 @pytest.mark.asyncio
@@ -216,3 +243,40 @@ def test_client_config_retries_and_path_style():
     assert client_config.retries == {"max_attempts": 5, "mode": "standard"}
     assert client_config.connect_timeout == 5
     assert client_config.read_timeout == 60
+
+
+class _FakeClientContext:
+    def __init__(self):
+        self.client = mock.MagicMock()
+        self.client.head_bucket = mock.AsyncMock()
+
+    async def __aenter__(self):
+        return self.client
+
+    async def __aexit__(self, *exc_info):
+        return None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ca_bundle", [None, "/etc/ssl/garage-ca.pem"])
+async def test_verify_passed_only_with_ca_bundle(
+    ca_bundle, monkeypatch: pytest.MonkeyPatch
+):
+    s3_engine = _make_engine("https://s3.garage.svc", "bucket", ca_bundle=ca_bundle)
+    calls: List[Dict[str, Any]] = []
+
+    def fake_create_client(*args, **kwargs):
+        calls.append(kwargs)
+        return _FakeClientContext()
+
+    monkeypatch.setattr(s3_engine._session, "create_client", fake_create_client)
+    try:
+        await s3_engine._get_client()
+    finally:
+        await s3_engine.close()
+
+    assert len(calls) == 1
+    if ca_bundle is None:
+        assert "verify" not in calls[0]
+    else:
+        assert calls[0]["verify"] == ca_bundle
