@@ -5,12 +5,10 @@ import logging
 from typing import Any, Dict, Iterator, List
 
 import pytest
-import pytest_asyncio
 from configmanager import Config
 
 from aleph.types.message_status import MessageStatus
 from aleph.web.controllers.utils import BroadcastStatus, PublicationStatus
-from aleph.web.middlewares.analytics import analytics_middleware
 from aleph.web.middlewares.request_log import REQUEST_LOGGER_NAME
 
 P2P_PUB_URI = "/api/v0/p2p/pubsub/pub"
@@ -133,17 +131,8 @@ def captured_request_log() -> Iterator[List[Dict[str, Any]]]:
         logger.setLevel(previous_level)
 
 
-@pytest_asyncio.fixture
-async def ccn_api_client_with_analytics(aiohttp_client, ccn_test_aiohttp_app):
-    # The analytics middleware writes the request log line; add it to the test
-    # app unless the app factory already installs it.
-    if analytics_middleware not in ccn_test_aiohttp_app.middlewares:
-        ccn_test_aiohttp_app.middlewares.append(analytics_middleware)
-    return await aiohttp_client(ccn_test_aiohttp_app)
-
-
 @pytest.mark.asyncio
-async def test_pub_message_sets_sender(ccn_api_client_with_analytics, mocker):
+async def test_pub_message_sets_sender(ccn_api_client, mocker):
     mocker.patch(
         "aleph.web.controllers.p2p.broadcast_and_process_message",
         return_value=BroadcastStatus(
@@ -153,7 +142,7 @@ async def test_pub_message_sets_sender(ccn_api_client_with_analytics, mocker):
     )
 
     with captured_request_log() as lines:
-        response = await ccn_api_client_with_analytics.post(
+        response = await ccn_api_client.post(
             POST_MESSAGES_URI, json={"message": MESSAGE_DICT, "sync": False}
         )
         assert response.status == 202, await response.text()
@@ -165,11 +154,11 @@ async def test_pub_message_sets_sender(ccn_api_client_with_analytics, mocker):
 
 
 @pytest.mark.asyncio
-async def test_pub_json_sets_sender(ccn_api_client_with_analytics, mock_config: Config):
+async def test_pub_json_sets_sender(ccn_api_client, mock_config: Config):
     message_topic = mock_config.aleph.queue_topic.value
 
     with captured_request_log() as lines:
-        response = await ccn_api_client_with_analytics.post(
+        response = await ccn_api_client.post(
             P2P_PUB_URI,
             json={"topic": message_topic, "data": json.dumps(MESSAGE_DICT)},
         )
@@ -182,11 +171,9 @@ async def test_pub_json_sets_sender(ccn_api_client_with_analytics, mock_config: 
 
 
 @pytest.mark.asyncio
-async def test_rejected_pub_json_is_anonymous(
-    ccn_api_client_with_analytics, mock_config: Config
-):
+async def test_rejected_pub_json_is_anonymous(ccn_api_client, mock_config: Config):
     with captured_request_log() as lines:
-        response = await ccn_api_client_with_analytics.post(
+        response = await ccn_api_client.post(
             P2P_PUB_URI,
             json={"topic": "random-topic", "data": json.dumps(MESSAGE_DICT)},
         )
