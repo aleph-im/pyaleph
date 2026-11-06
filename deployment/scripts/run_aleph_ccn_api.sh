@@ -1,5 +1,12 @@
 #!/bin/bash
 # Starts an Aleph Core Channel Node API server.
+#
+# Environment variables:
+#   CCN_CONFIG_API_PORT        Listening port (default: 4024)
+#   CCN_CONFIG_API_BIND        Space-separated gunicorn bind addresses, e.g. "[::]:4024".
+#                              Overrides the default: IPv4 and, if available, IPv6 on the port above.
+#   CCN_CONFIG_API_NB_WORKERS  Number of gunicorn workers (default: 4)
+#   CCN_CONFIG_API_TIMEOUT     Worker timeout in seconds (default: 300)
 
 set -euo pipefail
 
@@ -20,17 +27,24 @@ while test $# -gt 0; do
 done
 
 source ${SCRIPT_DIR}/wait_for_services.sh
+source ${SCRIPT_DIR}/api_bind.sh
 wait_for_services "${CONFIG_FILE}"
 
 NB_WORKERS="${CCN_CONFIG_API_NB_WORKERS:-4}"
 PORT=${CCN_CONFIG_API_PORT:-4024}
 TIMEOUT="${CCN_CONFIG_API_TIMEOUT:-300}"
 
-echo "Starting aleph.im CCN API server on port ${PORT} (${NB_WORKERS} workers)"
+read -ra BINDS <<< "$(compute_api_binds "${PORT}")"
+BIND_ARGS=()
+for bind in "${BINDS[@]}"; do
+  BIND_ARGS+=(--bind "${bind}")
+done
+
+echo "Starting aleph.im CCN API server on ${BINDS[*]} (${NB_WORKERS} workers)"
 
 exec gunicorn \
   "aleph.api_entrypoint:create_app" \
-  --bind 0.0.0.0:${PORT} \
+  "${BIND_ARGS[@]}" \
   --worker-class aiohttp.worker.GunicornUVLoopWebWorker \
   --workers ${NB_WORKERS} \
   --timeout ${TIMEOUT} \
