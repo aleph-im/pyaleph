@@ -9,9 +9,11 @@ Each line is a single JSON object with these keys: ``ts``, ``req_id``,
 ``query`` is the raw query string cut to 512 characters, ``ua`` the
 User-Agent cut to 256.
 
-``sender`` is the address a handler established from a signed message: a
-handler that validated one sets ``request["aleph_sender"]``. ``auth`` is
-``signed`` when it did, ``anonymous`` otherwise.
+``sender`` is the address named by a well-formed message the request posted:
+a handler that validated one sets ``request["aleph_sender"]``. ``auth`` is
+``claimed`` when it did, ``anonymous`` otherwise. It is "claimed", not
+"signed": the handlers only check the message's structure; its signature is
+verified later in the processing pipeline (asynchronously for async posts).
 
 ``setup_request_logging()`` sends the lines to stdout with no prefix and stops
 them from reaching the root logger, whose formatter would wrap them.
@@ -89,6 +91,7 @@ def format_request_log(
         "client": _client_address(request),
         "ua": request.headers.get("User-Agent", "")[:MAX_USER_AGENT_LENGTH],
         "sender": sender,
-        "auth": "signed" if sender is not None else "anonymous",
+        # "claimed", not "signed": the signature is verified later, in the pipeline.
+        "auth": "claimed" if sender is not None else "anonymous",
     }
     return orjson.dumps(line)
