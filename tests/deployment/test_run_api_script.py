@@ -73,6 +73,15 @@ def test_explicit_bind_wins(tmp_path: Path, ipv6_file: Path):
     assert binds == ["127.0.0.1:9000", "[::1]:9001"]
 
 
+def test_blank_explicit_bind_falls_back_to_default(tmp_path: Path):
+    empty = tmp_path / "if_inet6"
+    empty.write_text("")
+    binds = compute_binds(
+        4024, CCN_IPV6_PROBE_FILE=str(empty), CCN_CONFIG_API_BIND="  \t "
+    )
+    assert binds == ["0.0.0.0:4024"]
+
+
 def _free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
@@ -118,6 +127,8 @@ def test_gunicorn_serves_ipv4_and_ipv6_with_computed_binds(tmp_path: Path):
     command = [sys.executable, "-m", "gunicorn", "tiny_app:create_app"]
     for bind in binds:
         command += ["--bind", bind]
+    # The script uses the uvloop variant of this worker; the plain one exercises the same
+    # socket handling without making uvloop a requirement of the test.
     command += [
         "--worker-class",
         "aiohttp.worker.GunicornWebWorker",
