@@ -33,6 +33,7 @@ Upgrade the docker-compose file:
 
     mv docker-compose.yml docker-compose-old.yml
     wget "https://raw.githubusercontent.com/aleph-im/pyaleph/|pyaleph_version|/deployment/samples/docker-compose/docker-compose.yml"
+    wget "https://raw.githubusercontent.com/aleph-im/pyaleph/|pyaleph_version|/deployment/samples/docker-compose/rabbitmq.conf"
 
 .. code-block:: bash
 
@@ -86,7 +87,7 @@ The sample docker-compose files now use RabbitMQ 4.3 (``rabbitmq:4.3.7-managemen
 
 RabbitMQ does not support upgrading a 3.11 data directory straight to 4.x (the supported path is
 3.11, 3.12, 3.13, then 4.x, with all stable feature flags enabled at each step). You do not need
-that path for PyAleph: the compose files declare no RabbitMQ volume, and the broker only carries
+that path for PyAleph: the compose files declare no RabbitMQ data volume, and the broker only carries
 wake-up signals, so you can simply recreate the container:
 
 .. code-block:: bash
@@ -104,7 +105,9 @@ queues as durable, and at start it deletes and re-creates, as durable, a queue o
 left over by an older version (a warning is logged). The p2p-service 0.1.x component still
 declares transient queues, so the compose files mount a small ``rabbitmq.conf`` (permitting the
 ``transient_nonexcl_queues`` deprecated feature) into the RabbitMQ container. If you copy only
-``docker-compose.yml`` from the sample, download ``rabbitmq.conf`` next to it as well.
+``docker-compose.yml`` from the sample, also download ``rabbitmq.conf`` next to it (see the
+``wget`` command above): without it Docker creates an empty directory at the mount path and
+RabbitMQ starts without the permit.
 
 PyAleph does not use classic queue mirroring or HA policies, so its removal in RabbitMQ 4 does not
 affect you. If you run your own RabbitMQ with such policies, migrate them to quorum queues first.

@@ -132,7 +132,9 @@ async def handle_txs_task(config: Config):
         type=aio_pika.ExchangeType.TOPIC,
         auto_delete=False,
     )
-    pending_tx_queue = await make_pending_tx_queue(config=config, channel=mq_channel)
+    pending_tx_queue = await make_pending_tx_queue(
+        config=config, connection=mq_conn, channel=mq_channel
+    )
 
     async with (
         disposing_engine(engine),
