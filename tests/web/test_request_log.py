@@ -12,9 +12,16 @@ from typing import Any, Dict, List
 
 import pytest
 from aiohttp import web
+from aiohttp.test_utils import make_mocked_request
+from multidict import CIMultiDict, CIMultiDictProxy
+from yarl import URL
 
 from aleph.web.middlewares.analytics import analytics_middleware, set_request_id_header
-from aleph.web.middlewares.request_log import REQUEST_LOGGER_NAME, setup_request_logging
+from aleph.web.middlewares.request_log import (
+    REQUEST_LOGGER_NAME,
+    format_request_log,
+    setup_request_logging,
+)
 
 LOG_KEYS = {
     "ts",
@@ -153,6 +160,72 @@ async def test_query_is_truncated_and_keys_deduplicated(aiohttp_client, app, rec
     assert line["query_keys"] == ["a", "b", "c"]
     assert len(line["query"]) == 512
     assert line["query"] == query[:512]
+
+
+@pytest.mark.asyncio
+async def test_query_is_logged_raw(aiohttp_client, app, records):
+    client = await aiohttp_client(app)
+
+    await client.get(URL("/items/1?q=100%25&r=a%20b", encoded=True))
+
+    line = lines(records)[-1]
+    assert line["query"] == "q=100%25&r=a%20b"
+    assert line["query_keys"] == ["q", "r"]
+
+
+def test_invalid_utf8_headers_are_replaced(mocker):
+    # aiohttp decodes header bytes with surrogateescape. make_mocked_request
+    # re-encodes headers strictly, so the decoded headers are patched in.
+    request = make_mocked_request("GET", "/items/1")
+    mocker.patch.object(
+        web.Request,
+        "headers",
+        new_callable=mocker.PropertyMock,
+        return_value=CIMultiDictProxy(
+            CIMultiDict(
+                {"User-Agent": "a\udcff", "X-Forwarded-For": "\udcc3(, 1.2.3.4"}
+            )
+        ),
+    )
+
+    line = json.loads(
+        format_request_log(request, status=200, dur_ms=1.0, bytes_in=0, bytes_out=0)
+    )
+
+    assert line["ua"] == "a\ufffd"
+    assert line["client"] == "\ufffd("
+
+
+@pytest.mark.asyncio
+async def test_invalid_utf8_request_still_logs_one_line(aiohttp_client, app, records):
+    client = await aiohttp_client(app)
+    reader, writer = await asyncio.open_connection(
+        client.server.host, client.server.port
+    )
+    writer.write(
+        b"GET /items/1?k=v HTTP/1.1\r\n"
+        b"Host: localhost\r\n"
+        b"User-Agent: bad\xff\xfeagent\r\n"
+        b"X-Forwarded-For: \xc3(, 1.2.3.4\r\n"
+        b"Connection: close\r\n"
+        b"\r\n"
+    )
+    await writer.drain()
+    status_line = await asyncio.wait_for(reader.readline(), 5)
+    await reader.read()
+    writer.close()
+    await writer.wait_closed()
+
+    assert status_line.startswith(b"HTTP/1.1 200")
+    for _ in range(100):
+        if records:
+            break
+        await asyncio.sleep(0.02)
+    assert len(records) == 1
+    line = lines(records)[0]
+    assert line["status"] == 200
+    assert line["ua"] == "bad\ufffd\ufffdagent"
+    assert line["client"] == "\ufffd("
 
 
 @pytest.mark.asyncio

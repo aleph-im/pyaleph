@@ -59,6 +59,15 @@ def _timestamp() -> str:
     return now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"
 
 
+def _clean(value: str) -> str:
+    """
+    Make a string from the request safe to serialise. aiohttp decodes header
+    values with surrogateescape, so bytes that are not UTF-8 arrive as lone
+    surrogates, which orjson refuses: they become U+FFFD instead.
+    """
+    return value.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
+
+
 def _client_address(request: web.Request) -> str:
     """The first X-Forwarded-For address if the header is set, else the peer."""
     forwarded_for = request.headers.get("X-Forwarded-For", "")
@@ -79,17 +88,17 @@ def format_request_log(
     line = {
         "ts": _timestamp(),
         "req_id": request.get("req_id", ""),
-        "method": request.method,
+        "method": _clean(request.method),
         "route": request.get("analytics_route", ""),
-        "path": request.rel_url.path,
-        "query": request.query_string[:MAX_QUERY_LENGTH],
-        "query_keys": list(dict.fromkeys(request.query.keys())),
+        "path": _clean(request.rel_url.path),
+        "query": _clean(request.rel_url.raw_query_string[:MAX_QUERY_LENGTH]),
+        "query_keys": [_clean(key) for key in dict.fromkeys(request.query.keys())],
         "status": status,
         "dur_ms": round(dur_ms, 1),
         "bytes_in": bytes_in,
         "bytes_out": bytes_out,
-        "client": _client_address(request),
-        "ua": request.headers.get("User-Agent", "")[:MAX_USER_AGENT_LENGTH],
+        "client": _clean(_client_address(request)),
+        "ua": _clean(request.headers.get("User-Agent", "")[:MAX_USER_AGENT_LENGTH]),
         "sender": sender,
         # "claimed", not "signed": the signature is verified later, in the pipeline.
         "auth": "claimed" if sender is not None else "anonymous",
