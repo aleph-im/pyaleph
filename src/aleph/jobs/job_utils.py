@@ -31,6 +31,7 @@ MAX_RETRY_INTERVAL: int = 300
 
 
 async def _make_pending_queue(
+    connection: aio_pika.abc.AbstractConnection,
     exchange_name: str,
     queue_name: str,
     routing_key: str,
@@ -42,16 +43,19 @@ async def _make_pending_queue(
         auto_delete=False,
     )
     queue = await declare_durable_queue(
-        channel=channel, name=queue_name, auto_delete=False
+        connection=connection, channel=channel, name=queue_name, auto_delete=False
     )
     await queue.bind(exchange, routing_key=routing_key)
     return queue
 
 
 async def make_pending_tx_queue(
-    config: Config, channel: aio_pika.abc.AbstractChannel
+    config: Config,
+    connection: aio_pika.abc.AbstractConnection,
+    channel: aio_pika.abc.AbstractChannel,
 ) -> aio_pika.abc.AbstractQueue:
     return await _make_pending_queue(
+        connection=connection,
         exchange_name=config.rabbitmq.pending_tx_exchange.value,
         queue_name="pending-tx-queue",
         routing_key="#",
@@ -61,10 +65,12 @@ async def make_pending_tx_queue(
 
 async def make_pending_message_queue(
     config: Config,
+    connection: aio_pika.abc.AbstractConnection,
     routing_key: str,
     channel: aio_pika.abc.AbstractChannel,
 ) -> aio_pika.abc.AbstractQueue:
     return await _make_pending_queue(
+        connection=connection,
         exchange_name=config.rabbitmq.pending_message_exchange.value,
         queue_name="pending_message_queue",
         routing_key=routing_key,

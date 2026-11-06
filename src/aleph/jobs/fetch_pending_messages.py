@@ -287,7 +287,10 @@ async def fetch_messages_task(config: Config):
     mq_channel = await mq_conn.channel()
 
     pending_message_queue = await make_pending_message_queue(
-        config=config, routing_key="fetch.*", channel=mq_channel
+        config=config,
+        connection=mq_conn,
+        routing_key="fetch.*",
+        channel=mq_channel,
     )
 
     # Exchange to notify process job when messages are fetched

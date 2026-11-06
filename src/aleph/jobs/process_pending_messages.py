@@ -88,7 +88,7 @@ class PendingMessageProcessor(MessageJob):
             auto_delete=False,
         )
         pending_message_queue = await declare_durable_queue(
-            channel=channel, name="pending_message_queue"
+            connection=mq_conn, channel=channel, name="pending_message_queue"
         )
         await pending_message_queue.bind(
             pending_message_exchange, routing_key="process.*"
