@@ -77,3 +77,34 @@ Finally, restart your node:
 .. code-block:: bash
 
     docker-compose [-f <docker-compose-file>] up -d
+
+RabbitMQ 4
+==========
+
+The sample docker-compose files now use RabbitMQ 4.3 (``rabbitmq:4.3.7-management``) instead of
+3.11, which is end of life and no longer receives security fixes.
+
+RabbitMQ does not support upgrading a 3.11 data directory straight to 4.x (the supported path is
+3.11, 3.12, 3.13, then 4.x, with all stable feature flags enabled at each step). You do not need
+that path for PyAleph: the compose files declare no RabbitMQ volume, and the broker only carries
+wake-up signals, so you can simply recreate the container:
+
+.. code-block:: bash
+
+    docker-compose [-f <docker-compose-file>] up -d rabbitmq
+
+PyAleph declares its exchanges and queues again when it connects. Messages that were still
+queued at that moment are dropped, which is harmless: each one only carries the ID of a row of the
+pending messages/transactions tables in PostgreSQL, and the fetch, processing and transaction
+jobs also poll the database periodically (every 1 to 5 seconds), so they pick up the pending rows
+on their own.
+
+RabbitMQ 4.3 refuses transient non-exclusive queues by default. PyAleph now declares its work
+queues as durable, and at start it deletes and re-creates, as durable, a queue of the same name
+left over by an older version (a warning is logged). The p2p-service 0.1.x component still
+declares transient queues, so the compose files mount a small ``rabbitmq.conf`` (permitting the
+``transient_nonexcl_queues`` deprecated feature) into the RabbitMQ container. If you copy only
+``docker-compose.yml`` from the sample, download ``rabbitmq.conf`` next to it as well.
+
+PyAleph does not use classic queue mirroring or HA policies, so its removal in RabbitMQ 4 does not
+affect you. If you run your own RabbitMQ with such policies, migrate them to quorum queues first.
