@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Optional
+from urllib.parse import quote
 
 from configmanager import Config
 from sqlalchemy import create_engine
@@ -43,10 +44,12 @@ def make_db_url(
     password = config.postgres.password.value
     database = config.postgres.database.value
 
-    connection_string = f"postgresql+{driver}://{user}:"
+    # Percent-encode credentials so characters such as '@', '/', ':' or '#' in a
+    # password cannot corrupt the URL.
+    connection_string = f"postgresql+{driver}://{quote(str(user), safe='')}:"
 
     if password is not None:
-        connection_string += f"{password}"
+        connection_string += quote(str(password), safe="")
 
     connection_string += "@"
 

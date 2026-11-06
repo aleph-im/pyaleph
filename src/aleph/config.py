@@ -169,7 +169,8 @@ def get_defaults():
             # NULS2 explorer URL.
             "explorer_url": "https://nuls.world",
             # NULS2 private key. Only required if packing_node is set to true.
-            "private_key": None,
+            # Override with NULS2_PRIVATE_KEY.
+            "private_key": Item(default=None, envvar="NULS2_PRIVATE_KEY"),
             # Address of the aleph.im smart contract on NULS2.
             "sync_address": None,
             # Delay in seconds between publication attempts.
@@ -193,7 +194,8 @@ def get_defaults():
             # Ethereum chain ID.
             "chain_id": 1,
             # Ethereum private key. Only required if packing_node is set to true.
-            "private_key": None,
+            # Override with ETHEREUM_PRIVATE_KEY.
+            "private_key": Item(default=None, envvar="ETHEREUM_PRIVATE_KEY"),
             # Address of the aleph.im smart contract on Ethereum.
             "sync_contract": None,
             # Ethereum block height to start from when fetching sync events.
@@ -229,7 +231,10 @@ def get_defaults():
             # Username for the local PostgreSQL database.
             "user": "aleph",
             # Password for the local PostgreSQL database.
-            "password": "decentralize-everything",
+            # Override with POSTGRES_PASSWORD.
+            "password": Item(
+                default="decentralize-everything", envvar="POSTGRES_PASSWORD"
+            ),
             # Maximum number of concurrent connections to the local PostgreSQL database.
             "pool_size": 50,
             # Check if DB connections are still alive before reusing them.
@@ -308,7 +313,8 @@ def get_defaults():
             # Username of the RabbitMQ service.
             "username": "aleph-p2p",
             # Password of the RabbitMQ service.
-            "password": "change-me!",
+            # Override with RABBITMQ_PASSWORD.
+            "password": Item(default="change-me!", envvar="RABBITMQ_PASSWORD"),
             # Name of the exchange used to publish messages from the node to the P2P network.
             "pub_exchange": "p2p-publish",
             # Name of the exchange used to publish messages from the P2P network to the node.
@@ -330,7 +336,8 @@ def get_defaults():
         },
         "sentry": {
             # Sentry DSN.
-            "dsn": None,
+            # Override with SENTRY_DSN.
+            "dsn": Item(default=None, envvar="SENTRY_DSN"),
             # Sentry trace sample rate.
             "traces_sample_rate": None,
         },
