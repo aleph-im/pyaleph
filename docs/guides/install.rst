@@ -86,6 +86,39 @@ Instead of writing secrets in `config.yml`, you can set the `POSTGRES_PASSWORD`,
 `RABBITMQ_PASSWORD`, `SENTRY_DSN`, `NULS2_PRIVATE_KEY` and `ETHEREUM_PRIVATE_KEY`
 environment variables. When set, they override the value from the configuration file.
 
+Passwords from files
+^^^^^^^^^^^^^^^^^^^^
+
+The PostgreSQL and RabbitMQ passwords can also be read from files, for example a
+Kubernetes Secret or a Docker secret mounted in the container. Set
+`postgres.password_file` / `rabbitmq.password_file` in `config.yml`, or the
+`POSTGRES_PASSWORD_FILE` / `RABBITMQ_PASSWORD_FILE` environment variables. A file,
+when set, wins over the inline value and the password environment variable. Trailing
+whitespace (such as a final newline) is stripped. A missing or empty file is an
+error at startup, with the path in the message.
+
+.. code-block:: yaml
+
+    postgres:
+        password_file: /run/secrets/postgres-password
+    rabbitmq:
+        password_file: /run/secrets/rabbitmq-password
+
+The PostgreSQL password file is read again for every new database connection, so the
+password can be rotated without restarting the node, in either order:
+
+* update the file first, then run `ALTER ROLE ... PASSWORD`: while the role still has
+  the old password, the node retries once with the last password that worked and
+  logs a warning;
+* run `ALTER ROLE` first: new connections fail until the file holds the new password,
+  so update the file promptly (the node cannot know the new password before that).
+
+Existing pooled connections are not affected by a password change.
+
+The RabbitMQ password file is read when each process opens its RabbitMQ connection.
+Automatic reconnects reuse that password, so rotating the RabbitMQ password takes a
+restart of the node.
+
 Sentry DSN
 ^^^^^^^^^^
 

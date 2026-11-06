@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, AsyncIterator, Dict, Optional
 from urllib.parse import quote, urlencode
 
@@ -9,6 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from aleph.config import get_config
+from aleph.toolkit.credentials import (
+    PasswordSource,
+    install_password_hook,
+    read_credential,
+)
 from aleph.types.db_session import DbSessionFactory
 
 
@@ -66,6 +72,31 @@ def _connection_query_params(
     return params
 
 
+_PASSWORD_WHAT = "postgres.password_file"
+
+
+def make_password_source(config: Config) -> Optional[PasswordSource]:
+    """The per-connection password source, or None without a password file."""
+    password_file = config.postgres.password_file.value
+    if not password_file:
+        return None
+    return PasswordSource(
+        Path(password_file),
+        fallback=config.postgres.password.value,
+        what=_PASSWORD_WHAT,
+    )
+
+
+def install_password_file_hook(engine: Engine, config: Config) -> None:
+    """Re-read ``postgres.password_file`` for every new psycopg2 connection.
+
+    Does nothing when no password file is configured.
+    """
+    source = make_password_source(config)
+    if source is not None:
+        install_password_hook(engine, source)
+
+
 def make_db_url(
     driver: str, config: Config, application_name: Optional[str] = None
 ) -> str:
@@ -82,7 +113,15 @@ def make_db_url(
     host = config.postgres.host.value
     port = config.postgres.port.value
     user = config.postgres.user.value
-    password = config.postgres.password.value
+    # The file, if set, is read now: a missing or empty one fails here, at
+    # startup. Engines from make_engine / make_async_engine read it again for
+    # each new connection.
+    password = read_credential(
+        config.postgres.password.value,
+        None,
+        config.postgres.password_file.value,
+        what=_PASSWORD_WHAT,
+    )
     database = config.postgres.database.value
 
     # Percent-encode credentials so characters such as '@', '/', ':' or '#' in a
@@ -154,7 +193,7 @@ def make_engine(
     )
     connect_args = {"options": options} if options else {}
 
-    return create_engine(
+    engine = create_engine(
         make_db_url(
             driver="psycopg2", config=config, application_name=application_name
         ),
@@ -164,6 +203,8 @@ def make_engine(
         pool_recycle=config.postgres.pool_recycle.value,
         connect_args=connect_args,
     )
+    install_password_file_hook(engine, config)
+    return engine
 
 
 def make_async_engine(
@@ -181,6 +222,14 @@ def make_async_engine(
         connect_args["timeout"] = config.postgres.connect_timeout_s.value
     if application_name:
         connect_args["server_settings"] = {"application_name": application_name}
+    # asyncpg calls a callable password for each new connection, so a rotated
+    # password file is picked up without a restart. No last-known-good retry
+    # here: the do_connect hook wraps a synchronous connect, which asyncpg is
+    # not. No node process builds this engine today (the worker loops, the
+    # API and migrations all use psycopg2).
+    source = make_password_source(config)
+    if source is not None:
+        connect_args["password"] = source.current
 
     return create_async_engine(
         make_db_url(driver="asyncpg", config=config),

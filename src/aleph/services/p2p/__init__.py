@@ -4,6 +4,7 @@ from aleph_p2p_client import AlephP2PServiceClient, make_p2p_service_client
 from configmanager import Config
 
 from aleph.services.ipfs import IpfsService
+from aleph.toolkit.rabbitmq import rabbitmq_password
 from aleph.types.db_session import DbSessionFactory
 
 from ..cache.node_cache import NodeCache
@@ -16,7 +17,7 @@ async def init_p2p_client(config: Config, service_name: str) -> AlephP2PServiceC
         mq_host=config.p2p.mq_host.value,
         mq_port=config.rabbitmq.port.value,
         mq_username=config.rabbitmq.username.value,
-        mq_password=config.rabbitmq.password.value,
+        mq_password=rabbitmq_password(config),
         mq_pub_exchange_name=config.rabbitmq.pub_exchange.value,
         mq_sub_exchange_name=config.rabbitmq.sub_exchange.value,
         http_host=config.p2p.daemon_host.value,

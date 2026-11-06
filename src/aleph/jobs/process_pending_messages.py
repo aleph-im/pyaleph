@@ -24,7 +24,7 @@ from aleph.storage import StorageService
 from aleph.toolkit.lifecycle import install_signal_handlers, safe_async_cleanup
 from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
-from aleph.toolkit.rabbitmq import declare_durable_queue
+from aleph.toolkit.rabbitmq import declare_durable_queue, rabbitmq_password
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.message_processing_result import MessageProcessingResult
@@ -197,7 +197,7 @@ async def fetch_and_process_messages_task(config: Config):
             mq_host=config.p2p.mq_host.value,
             mq_port=config.rabbitmq.port.value,
             mq_username=config.rabbitmq.username.value,
-            mq_password=config.rabbitmq.password.value,
+            mq_password=rabbitmq_password(config),
             message_exchange_name=config.rabbitmq.message_exchange.value,
             pending_message_exchange_name=config.rabbitmq.pending_message_exchange.value,
             mq_heartbeat=config.rabbitmq.heartbeat.value,

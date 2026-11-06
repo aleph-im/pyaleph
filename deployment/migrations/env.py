@@ -1,9 +1,11 @@
 from logging.config import fileConfig
 from pathlib import Path
+from typing import Optional, Tuple
 
 from alembic import context
 from aleph.config import get_config
-from aleph.db.connection import make_db_url
+from aleph.db.connection import install_password_file_hook, make_db_url
+from configmanager import Config
 from sqlalchemy import create_engine
 
 # this is the Alembic Config object, which provides
@@ -26,12 +28,13 @@ target_metadata = Base.metadata
 # ... etc.
 
 
-def get_db_url() -> str:
+def get_db_url_and_config() -> Tuple[str, Optional[Config]]:
+    """The database URL, plus the node config it came from (None for -x db_url)."""
     cli_args = context.get_x_argument(as_dictionary=True)
     db_url = cli_args.get("db_url")
 
     if db_url:
-        return db_url
+        return db_url, None
 
     config = get_config()
 
@@ -51,7 +54,11 @@ def get_db_url() -> str:
         if user_config_raw:
             config.yaml.loads(user_config_raw)
 
-    return make_db_url(driver="psycopg2", config=config)
+    return make_db_url(driver="psycopg2", config=config), config
+
+
+def get_db_url() -> str:
+    return get_db_url_and_config()[0]
 
 
 def include_object(obj, name, type_, reflected, compare_to):
@@ -94,8 +101,11 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    db_url = get_db_url()
+    db_url, node_config = get_db_url_and_config()
     connectable = create_engine(db_url, echo=False)
+    if node_config is not None:
+        # Same per-connection password file reading as the node's engines.
+        install_password_file_hook(connectable, node_config)
 
     with connectable.connect() as connection:
         context.configure(
