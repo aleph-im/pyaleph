@@ -22,6 +22,8 @@ ethereum:
 
 postgres:
   host: postgres
+  # The PostgreSQL password defaults to a built-in value; set the POSTGRES_PASSWORD
+  # environment variable (or a `password:` key here). The variable overrides the file.
 
 
 storage:
@@ -58,6 +60,7 @@ rabbitmq:
   host: rabbitmq
   port: 5672
   username: aleph-p2p
+  # The RABBITMQ_PASSWORD environment variable, when set, overrides this value.
   password: change-me!
 
 

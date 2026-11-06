@@ -79,6 +79,13 @@ The endpoint should look like:
 
 Edit the `config.yml` file to add the endpoint URL in the field [ethereum > api_url].
 
+Secrets from the environment
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Instead of writing secrets in `config.yml`, you can set the `POSTGRES_PASSWORD`,
+`RABBITMQ_PASSWORD`, `SENTRY_DSN`, `NULS2_PRIVATE_KEY` and `ETHEREUM_PRIVATE_KEY`
+environment variables. When set, they override the value from the configuration file.
+
 Sentry DSN
 ^^^^^^^^^^
 
