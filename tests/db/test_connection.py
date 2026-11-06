@@ -1,5 +1,7 @@
+import contextlib
 import socket
 import time
+from typing import Iterator
 from unittest.mock import MagicMock, patch
 from urllib.parse import parse_qs, urlsplit
 
@@ -17,10 +19,6 @@ from aleph.db.connection import (
     make_db_url,
     make_engine,
 )
-
-# Not routable: SYNs go nowhere and are never answered, like a router whose
-# backend vanished. Without a connect timeout libpq would wait forever.
-UNROUTABLE_HOST = "10.255.255.1"
 
 
 def _fake_config(lock=30000, statement=120000, idle=300000):
@@ -153,7 +151,6 @@ def test_psycopg2_url_carries_connection_settings():
     assert _query(url) == {
         "application_name": "aleph-test",
         "connect_timeout": "10",
-        "sslmode": "prefer",
         "keepalives": "1",
         "keepalives_idle": "60",
         "keepalives_interval": "10",
@@ -184,6 +181,19 @@ def test_psycopg2_url_omits_keepalives_when_all_zero():
     assert "connect_timeout" not in query
 
 
+def test_url_omits_sslmode_when_unset():
+    # Unset must leave PGSSLMODE in charge, so the URL must not pin a mode.
+    config = _default_config()
+    assert "sslmode" not in _query(make_db_url("psycopg2", config))
+    assert _query(make_db_url("asyncpg", config)) == {}
+
+
+def test_psycopg2_url_carries_sslmode_when_set():
+    config = _default_config()
+    config.postgres.sslmode.value = "verify-full"
+    assert _query(make_db_url("psycopg2", config))["sslmode"] == "verify-full"
+
+
 def test_asyncpg_url_carries_only_parameters_asyncpg_accepts():
     config = _default_config()
     config.postgres.sslmode.value = "require"
@@ -194,18 +204,36 @@ def test_asyncpg_url_carries_only_parameters_asyncpg_accepts():
     assert _query(url) == {"ssl": "require"}
 
 
-def test_psycopg2_connect_timeout_bounds_unreachable_host(mock_config):
-    mock_config.postgres.host.value = UNROUTABLE_HOST
-    mock_config.postgres.connect_timeout_s.value = 2
-    engine = make_engine(config=mock_config)
-    start = time.monotonic()
+@contextlib.contextmanager
+def silent_listener() -> Iterator[int]:
+    """A local port that accepts TCP connections and never answers.
+
+    This is what a router with no backend does (the incident this setting
+    fixes): the TCP handshake succeeds, then nothing. Without a connect
+    timeout the client waits forever.
+    """
+    sock = socket.socket()
     try:
-        with pytest.raises(sqlalchemy.exc.OperationalError, match="timeout"):
-            with engine.connect():
-                pass
+        sock.bind(("127.0.0.1", 0))
+        sock.listen()
+        yield sock.getsockname()[1]
     finally:
-        engine.dispose()
-    assert time.monotonic() - start < 6
+        sock.close()
+
+
+def test_psycopg2_connect_timeout_bounds_silent_server(mock_config):
+    with silent_listener() as port:
+        mock_config.postgres.port.value = port
+        mock_config.postgres.connect_timeout_s.value = 2
+        engine = make_engine(config=mock_config)
+        start = time.monotonic()
+        try:
+            with pytest.raises(sqlalchemy.exc.OperationalError, match="timeout"):
+                with engine.connect():
+                    pass
+        finally:
+            engine.dispose()
+        assert time.monotonic() - start < 6
 
 
 def _ssl_in_use(engine) -> bool:
@@ -277,15 +305,16 @@ async def test_async_engine_connects_with_default_settings(mock_config):
 
 
 @pytest.mark.asyncio
-async def test_async_engine_connect_timeout_bounds_unreachable_host(mock_config):
-    mock_config.postgres.host.value = UNROUTABLE_HOST
-    mock_config.postgres.connect_timeout_s.value = 2
-    engine = make_async_engine(config=mock_config)
-    start = time.monotonic()
-    try:
-        with pytest.raises(TimeoutError):
-            async with engine.connect():
-                pass
-    finally:
-        await engine.dispose()
-    assert time.monotonic() - start < 6
+async def test_async_engine_connect_timeout_bounds_silent_server(mock_config):
+    with silent_listener() as port:
+        mock_config.postgres.port.value = port
+        mock_config.postgres.connect_timeout_s.value = 2
+        engine = make_async_engine(config=mock_config)
+        start = time.monotonic()
+        try:
+            with pytest.raises(TimeoutError):
+                async with engine.connect():
+                    pass
+        finally:
+            await engine.dispose()
+        assert time.monotonic() - start < 6
