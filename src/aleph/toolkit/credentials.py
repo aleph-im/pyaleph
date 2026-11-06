@@ -6,10 +6,13 @@ variable. The file is read again every time a new connection is opened, so a
 rotated secret is picked up by the next connection instead of at the next
 restart.
 
-PostgreSQL rotation can happen in either order (Secret first, then
-``ALTER ROLE``, or the reverse with the Secret updated shortly after), so the
-psycopg2 hook keeps the last password that worked and, on an authentication
-failure, retries once with it.
+Recommended PostgreSQL rotation order: update the password file (Secret)
+first, then run ``ALTER ROLE`` promptly. In between, the file holds a password
+the role does not have yet, so the psycopg2 hook keeps the last password that
+worked and, on an authentication failure, retries once with it. A role has a
+single password, so the reverse order fails new connections until the file is
+refreshed, and a process that starts between the file update and ``ALTER
+ROLE`` has no last known good password to fall back to.
 """
 
 import logging
@@ -56,7 +59,7 @@ def read_credential(
     file_path: Optional[str],
     *,
     what: str,
-) -> str:
+) -> Optional[str]:
     """Resolve a credential: file > environment variable > inline value.
 
     The file content has its trailing whitespace (the newline editors and
@@ -66,12 +69,14 @@ def read_credential(
     Settings declared with ``Item(envvar=...)`` already fold the environment
     variable into their value, so callers reading such an item pass it as
     ``inline`` and ``env_value=None``.
+
+    Returns None only when no file is set and both values are None.
     """
     if file_path:
         return _read_file(str(file_path), what)
     if env_value is not None:
         return env_value
-    return inline  # type: ignore[return-value]
+    return inline
 
 
 class PasswordSource:
@@ -92,7 +97,7 @@ class PasswordSource:
         self.what = what
         self.last_good: Optional[str] = None
 
-    def current(self) -> str:
+    def current(self) -> Optional[str]:
         """The configured password, re-reading the file on every call."""
         return read_credential(
             self.fallback,
@@ -113,7 +118,9 @@ def is_authentication_failure(error: BaseException) -> bool:
 
     Uses the SQLSTATE when the driver exposes one (``pgcode``); libpq does not
     report it for errors raised while connecting, so psycopg2 usually leaves it
-    unset there and the server message is matched instead.
+    unset there and the server message is matched instead. That text is the
+    English server message: with a non-English ``lc_messages`` it does not
+    match, and the hook fails safe (the original error, no retry).
     """
     pgcode = getattr(error, "pgcode", None)
     if pgcode:
@@ -134,8 +141,12 @@ def install_password_hook(
     password that worked (when it differs). Whichever succeeds is remembered.
     Any other error, or a second rejection, propagates the first error.
 
-    For drivers called synchronously by the pool (psycopg2). ``_listen`` lets
-    unit tests capture the listener without a real engine.
+    For drivers called synchronously by the pool (psycopg2).
+
+    ``_listen`` is a test seam: it defaults to ``sqlalchemy.event.listen``,
+    and unit tests pass a recorder to get the listener and call it with a fake
+    dialect, exercising the retry without a database. The DB-backed tests in
+    tests/db/test_password_file.py cover the real registration.
     """
     if _listen is None:
         from sqlalchemy import event

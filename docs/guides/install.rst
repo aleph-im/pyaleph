@@ -105,13 +105,22 @@ error at startup, with the path in the message.
         password_file: /run/secrets/rabbitmq-password
 
 The PostgreSQL password file is read again for every new database connection, so the
-password can be rotated without restarting the node, in either order:
+password can be rotated without restarting the node. Rotate in this order:
 
-* update the file first, then run `ALTER ROLE ... PASSWORD`: while the role still has
-  the old password, the node retries once with the last password that worked and
-  logs a warning;
-* run `ALTER ROLE` first: new connections fail until the file holds the new password,
-  so update the file promptly (the node cannot know the new password before that).
+1. update the password file (Secret) first;
+2. then run `ALTER ROLE ... PASSWORD` promptly.
+
+Between the two steps, the role still has the old password: the node retries once with
+the last password that worked and logs a warning. A PostgreSQL role has a single
+password, so the reverse order (`ALTER ROLE` first) fails new connections until the file
+is refreshed, for as long as the file takes to update. A node process that starts
+between the file update and `ALTER ROLE` has no last known good password yet and cannot
+connect until `ALTER ROLE` runs, which is why the second step should follow the first
+promptly.
+
+The retry recognises the rejection by its SQLSTATE or, when the driver does not report
+one, by PostgreSQL's English message. With a non-English `lc_messages` on the server the
+retry does not trigger (the connection fails as it would without it).
 
 Existing pooled connections are not affected by a password change.
 

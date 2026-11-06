@@ -227,6 +227,7 @@ def test_migrations_use_password_file(mock_config, scratch_db, tmp_path):
     """env.py, run from the node config, connects with postgres.password_file."""
     postgres = aleph.config.app_config.postgres
     real_password = postgres.password.value
+    real_database = postgres.database.value
     password_file = tmp_path / "postgres-password"
     password_file.write_text(real_password + "\n")
 
@@ -260,3 +261,4 @@ def test_migrations_use_password_file(mock_config, scratch_db, tmp_path):
     finally:
         postgres.password_file.value = None
         postgres.password.value = real_password
+        postgres.database.value = real_database

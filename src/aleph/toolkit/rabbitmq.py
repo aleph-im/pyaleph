@@ -17,12 +17,19 @@ def rabbitmq_password(config) -> str:
     password it was given for its automatic reconnects, so a rotated RabbitMQ
     password takes effect when the process restarts.
     """
-    return read_credential(
+    password = read_credential(
         config.rabbitmq.password.value,
         None,
         config.rabbitmq.password_file.value,
         what="rabbitmq.password_file",
     )
+    if password is None:
+        # Only when the password was explicitly set to null with no file.
+        raise ValueError(
+            "rabbitmq.password is not set: set it, RABBITMQ_PASSWORD or "
+            "rabbitmq.password_file"
+        )
+    return password
 
 
 async def make_mq_conn(config) -> aio_pika.abc.AbstractConnection:
