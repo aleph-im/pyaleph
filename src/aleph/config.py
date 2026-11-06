@@ -251,13 +251,15 @@ def get_defaults():
             # Give up establishing a connection (TCP, TLS, auth) after this
             # many seconds. Without it, a connection through a router whose
             # backend vanished (e.g. during a failover) blocks the process
-            # forever while it still looks healthy. 0 = no limit (asyncpg then
-            # uses its own 60 s default).
+            # forever while it still looks healthy. Set in the connection
+            # URL, so it overrides a PGCONNECT_TIMEOUT environment variable.
+            # libpq applies it per host/address and treats 1 as 2 (2 s
+            # minimum). 0 = no limit (asyncpg then uses its own 60 s default).
             "connect_timeout_s": 10,
             # TLS mode: disable, allow, prefer, require, verify-ca or
-            # verify-full. "prefer" is the libpq default (TLS if the server
-            # offers it, plaintext otherwise).
-            "sslmode": "prefer",
+            # verify-full. Unset = libpq default (prefer) and PGSSLMODE is
+            # honoured; set here to pin it.
+            "sslmode": None,
             # TCP keepalives, so a server that silently disappears after the
             # connection is established is detected in about
             # idle + interval * count seconds instead of the kernel default

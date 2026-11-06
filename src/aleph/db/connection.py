@@ -41,14 +41,18 @@ def _connection_query_params(
         # keyword argument. asyncpg has no application_name or keepalive
         # arguments and needs a numeric timeout, so only the TLS mode fits
         # here; make_async_engine passes the rest through connect_args.
-        return {"ssl": postgres.sslmode.value}
+        if postgres.sslmode.value:
+            return {"ssl": postgres.sslmode.value}
+        return {}
 
     params: Dict[str, str] = {}
     if application_name:
         params["application_name"] = application_name
     if postgres.connect_timeout_s.value:
         params["connect_timeout"] = str(postgres.connect_timeout_s.value)
-    params["sslmode"] = postgres.sslmode.value
+    # Unset leaves libpq to PGSSLMODE (or its "prefer" default).
+    if postgres.sslmode.value:
+        params["sslmode"] = postgres.sslmode.value
 
     keepalives = {
         "keepalives_idle": postgres.keepalives_idle_s.value,
