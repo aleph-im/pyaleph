@@ -181,6 +181,35 @@ Make sure that no error is displayed in the logs.
 
 You can use `docker-compose logs` and `docker logs` for this purpose.
 
+Liveness
+--------
+
+The three job processes of the node (``aleph.jobs.fetch_messages``, ``aleph.jobs.messages_task_loop``
+and ``aleph.jobs.txs_task_loop``) write a heartbeat file named after themselves in
+``/tmp/pyaleph-heartbeats`` every time their loop makes progress, at least every few seconds.
+The main process checks these files: if a job process dies, or if its heartbeat is older than
+5 minutes (for example a database connection that never returns), the main process logs the cause
+at CRITICAL level and exits with status 2, so that ``restart: always`` or Kubernetes restarts the node.
+Both values are configurable:
+
+.. code-block:: yaml
+
+    aleph:
+      jobs:
+        heartbeat:
+          directory: /tmp/pyaleph-heartbeats
+          max_age_s: 300  # 0 disables the watchdog
+
+The ``pyaleph-healthcheck`` command prints the state of each heartbeat and exits with status 1
+if one is missing or stale. The sample Docker Compose file uses it as the container healthcheck
+(shown by ``docker ps``). On Kubernetes, use it as an exec liveness probe of the ``pyaleph`` container:
+
+.. code-block:: yaml
+
+    livenessProbe:
+      exec: {command: ["pyaleph-healthcheck", "--config", "/opt/pyaleph/config.yml"]}
+      initialDelaySeconds: 300
+
 Check IPFS
 ----------
 
