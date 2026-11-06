@@ -4,7 +4,9 @@
 # Environment variables:
 #   CCN_CONFIG_API_PORT        Listening port (default: 4024)
 #   CCN_CONFIG_API_BIND        Space-separated gunicorn bind addresses, e.g. "[::]:4024".
-#                              Overrides the default: IPv4 and, if available, IPv6 on the port above.
+#                              Overrides the default ([::]:PORT if IPv6 is available, else 0.0.0.0:PORT).
+#                              Do not list both families unless net.ipv6.bindv6only=1: [::] already
+#                              accepts IPv4 and a second bind fails with EADDRINUSE.
 #   CCN_CONFIG_API_NB_WORKERS  Number of gunicorn workers (default: 4)
 #   CCN_CONFIG_API_TIMEOUT     Worker timeout in seconds (default: 300)
 

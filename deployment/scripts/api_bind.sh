@@ -12,9 +12,12 @@ function compute_api_binds() {
   local port="$1"
   local probe_file="${CCN_IPV6_PROBE_FILE:-/proc/net/if_inet6}"
   local v6only_file="${CCN_BINDV6ONLY_FILE:-/proc/sys/net/ipv6/bindv6only}"
+  # Whitespace-only counts as unset: an empty bind list would make gunicorn fall back to 127.0.0.1:8000.
+  local explicit_binds
+  read -ra explicit_binds <<< "${CCN_CONFIG_API_BIND:-}"
 
-  if [ -n "${CCN_CONFIG_API_BIND:-}" ]; then
-    echo "${CCN_CONFIG_API_BIND}"
+  if [ "${#explicit_binds[@]}" -gt 0 ]; then
+    echo "${explicit_binds[*]}"
   # /proc files report a size of 0, so test the content instead of using -s.
   elif [ -r "${probe_file}" ] && grep -q . "${probe_file}"; then
     # Binding 0.0.0.0 and [::] on the same port fails with EADDRINUSE because gunicorn does not
