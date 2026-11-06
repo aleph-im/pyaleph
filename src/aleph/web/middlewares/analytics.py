@@ -10,8 +10,20 @@ The metrics are created on prometheus_client's default registry, as its
 multiprocess mode requires. ``make_registry()`` returns the registry to expose
 on ``/metrics``: the default registry in a single process, or a fresh registry
 aggregating the files of every worker when ``PROMETHEUS_MULTIPROC_DIR`` is set.
+
+``PROMETHEUS_MULTIPROC_DIR`` must be in the environment before anything
+imports prometheus_client: the library picks its value class (in-memory or
+mmap file) when it is first imported. This module also cannot be reloaded:
+re-creating the metrics on the default registry raises a duplicate timeseries
+error. Test multiprocess mode in a fresh interpreter, not with a reload.
+
+The middleware sets X-Request-Id on the responses it sees before they are
+sent. Responses prepared elsewhere (a handler that streams or opens a
+WebSocket, the 500 aiohttp builds for an unhandled exception) need
+``set_request_id_header`` registered on ``app.on_response_prepare``.
 """
 
+import asyncio
 import os
 import re
 import time
@@ -98,6 +110,19 @@ def request_id_from(request: web.Request) -> str:
     return uuid.uuid4().hex
 
 
+async def set_request_id_header(
+    request: web.Request, response: web.StreamResponse
+) -> None:
+    """
+    on_response_prepare signal handler: add X-Request-Id to every response
+    whose headers are about to be sent, including streamed responses,
+    WebSocket handshakes and the 500 aiohttp builds for unhandled errors.
+    """
+    req_id = request.get("req_id")
+    if req_id:
+        response.headers.setdefault(REQUEST_ID_HEADER, req_id)
+
+
 @web.middleware
 async def analytics_middleware(
     request: web.Request, handler: Handler
@@ -120,6 +145,15 @@ async def analytics_middleware(
         response = exc
         status = exc.status
         raise
+    except asyncio.CancelledError:
+        # The client went away (or the server is shutting down): use the
+        # nginx "client closed request" code so it never counts as a 5xx.
+        status = 499
+        raise
+    except asyncio.TimeoutError:
+        # aiohttp answers a handler's TimeoutError with a 504.
+        status = 504
+        raise
     except Exception:
         status = 500
         raise
@@ -139,4 +173,4 @@ async def analytics_middleware(
             HTTP_RESPONSE_BYTES.labels(route).inc(response.content_length or 0)
             # A prepared (streamed) response has already sent its headers.
             if not response.prepared:
-                response.headers[REQUEST_ID_HEADER] = req_id
+                response.headers.setdefault(REQUEST_ID_HEADER, req_id)
