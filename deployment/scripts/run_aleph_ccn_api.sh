@@ -9,6 +9,12 @@
 #                              accepts IPv4 and a second bind fails with EADDRINUSE.
 #   CCN_CONFIG_API_NB_WORKERS  Number of gunicorn workers (default: 4)
 #   CCN_CONFIG_API_TIMEOUT     Worker timeout in seconds (default: 300)
+#   CCN_CONFIG_API_ACCESS_LOG  Set to 1 to enable gunicorn's own access log
+#                              (default 0). The application already logs one
+#                              JSON line per request on the "aleph.http"
+#                              logger, so the access log is redundant.
+#   PROMETHEUS_MULTIPROC_DIR   Directory for the per-worker Prometheus metric
+#                              files. Defaults to a fresh directory under /tmp.
 
 set -euo pipefail
 
@@ -42,6 +48,17 @@ for bind in "${BINDS[@]}"; do
   BIND_ARGS+=(--bind "${bind}")
 done
 
+ACCESS_LOG="${CCN_CONFIG_API_ACCESS_LOG:-0}"
+
+# Must be exported before gunicorn (and thus prometheus_client) starts, so the
+# workers aggregate their HTTP metrics in this directory.
+export PROMETHEUS_MULTIPROC_DIR="${PROMETHEUS_MULTIPROC_DIR:-$(mktemp -d /tmp/pyaleph-metrics.XXXXXX)}"
+
+GUNICORN_ARGS=()
+if [ "${ACCESS_LOG}" = "1" ]; then
+  GUNICORN_ARGS+=(--access-logfile "-")
+fi
+
 echo "Starting aleph.im CCN API server on ${BINDS[*]} (${NB_WORKERS} workers)"
 
 exec gunicorn \
@@ -50,4 +67,5 @@ exec gunicorn \
   --worker-class aiohttp.worker.GunicornUVLoopWebWorker \
   --workers ${NB_WORKERS} \
   --timeout ${TIMEOUT} \
-  --access-logfile "-"
+  -c "${SCRIPT_DIR}/gunicorn_conf.py" \
+  ${GUNICORN_ARGS[@]+"${GUNICORN_ARGS[@]}"}
