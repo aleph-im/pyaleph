@@ -22,6 +22,14 @@ ethereum:
 
 postgres:
   host: postgres
+  # Seconds to establish a connection (TCP, TLS, auth); 0 = no limit.
+  # connect_timeout_s: 10
+  # TLS mode: disable, allow, prefer, require, verify-ca or verify-full.
+  # sslmode: prefer
+  # TCP keepalives (psycopg2 connections only); 0 = keep the OS default.
+  # keepalives_idle_s: 60
+  # keepalives_interval_s: 10
+  # keepalives_count: 5
 
 
 storage:
