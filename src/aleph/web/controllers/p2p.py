@@ -8,6 +8,7 @@ from aleph_p2p_client import AlephP2PServiceClient
 from configmanager import Config
 from pydantic import BaseModel, Field, ValidationError
 
+from aleph.schemas.pending_messages import BasePendingMessage
 from aleph.services.ipfs import IpfsService
 from aleph.services.p2p.pubsub import publish as pub_p2p
 from aleph.toolkit.shield import shielded
@@ -23,17 +24,19 @@ from aleph.web.controllers.utils import (
     broadcast_status_to_http_status,
     validate_message_dict,
 )
+from aleph.web.middlewares.request_log import SENDER_KEY
 
 LOGGER = logging.getLogger(__name__)
 
 
-def _validate_request_data(config: Config, request_data: Dict) -> None:
+def _validate_request_data(config: Config, request_data: Dict) -> BasePendingMessage:
     """
     Validates the content of a JSON pubsub message depending on the channel
     and raises a 422 error if the data does not match the expected format.
 
     :param config: Application configuration.
     :param request_data: Request JSON data, as a dictionary.
+    :return: The validated message.
     """
 
     topic = request_data.get("topic")
@@ -58,7 +61,7 @@ def _validate_request_data(config: Config, request_data: Dict) -> None:
             reason="'data': must be deserializable as JSON."
         )
 
-    validate_message_dict(message_dict)
+    return validate_message_dict(message_dict)
 
 
 async def _pub_on_p2p_topics(
@@ -128,9 +131,10 @@ async def pub_json(request: web.Request):
         description: Invalid data format
     """
     request_data = await request.json()
-    _validate_request_data(
+    pending_message = _validate_request_data(
         config=get_config_from_request(request), request_data=request_data
     )
+    request[SENDER_KEY] = pending_message.sender
 
     ipfs_service = get_ipfs_service_from_request(request)
     p2p_client = get_p2p_client_from_request(request)
@@ -196,6 +200,7 @@ async def pub_message(request: web.Request):
         raise web.HTTPUnprocessableEntity()
 
     pending_message = validate_message_dict(request_data.message_dict)
+    request[SENDER_KEY] = pending_message.sender
     broadcast_status = await broadcast_and_process_message(
         pending_message=pending_message,
         message_dict=request_data.message_dict,

@@ -21,9 +21,13 @@ The middleware sets X-Request-Id on the responses it sees before they are
 sent. Responses prepared elsewhere (a handler that streams or opens a
 WebSocket, the 500 aiohttp builds for an unhandled exception) need
 ``set_request_id_header`` registered on ``app.on_response_prepare``.
+
+Once a request is over, the middleware also writes one JSON line on the
+``aleph.http`` logger (see ``request_log``), whatever the outcome.
 """
 
 import asyncio
+import logging
 import os
 import re
 import time
@@ -34,12 +38,17 @@ from aiohttp import web
 from prometheus_client import REGISTRY as DEFAULT_REGISTRY
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, multiprocess
 
+from aleph.web.middlewares.request_log import REQUEST_LOGGER_NAME, format_request_log
+
 REQUEST_ID_HEADER = "X-Request-Id"
 UNMATCHED_ROUTE = "unmatched"
 
 _REQUEST_ID_PATTERN = re.compile(r"[A-Za-z0-9._-]{1,64}")
 
 Handler = Callable[[web.Request], Awaitable[web.StreamResponse]]
+
+LOGGER = logging.getLogger(__name__)
+REQUEST_LOGGER = logging.getLogger(REQUEST_LOGGER_NAME)
 
 
 def make_registry() -> CollectorRegistry:
@@ -168,9 +177,26 @@ async def analytics_middleware(
         HTTP_IN_FLIGHT.labels(route).dec()
         HTTP_REQUEST_DURATION.labels(route, method).observe(duration)
         HTTP_REQUESTS.labels(route, method, str(status)).inc()
-        HTTP_REQUEST_BYTES.labels(route).inc(request.content_length or 0)
+        bytes_in = request.content_length or 0
+        bytes_out = 0
+        HTTP_REQUEST_BYTES.labels(route).inc(bytes_in)
         if response is not None:
-            HTTP_RESPONSE_BYTES.labels(route).inc(response.content_length or 0)
+            bytes_out = response.content_length or 0
+            HTTP_RESPONSE_BYTES.labels(route).inc(bytes_out)
             # A prepared (streamed) response has already sent its headers.
             if not response.prepared:
                 response.headers.setdefault(REQUEST_ID_HEADER, req_id)
+
+        # An error here must not replace the handler's response or exception.
+        try:
+            REQUEST_LOGGER.info(
+                format_request_log(
+                    request,
+                    status=status,
+                    dur_ms=duration * 1000,
+                    bytes_in=bytes_in,
+                    bytes_out=bytes_out,
+                ).decode()
+            )
+        except Exception:
+            LOGGER.exception("Could not write the request log line")
