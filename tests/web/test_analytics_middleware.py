@@ -10,6 +10,8 @@ import asyncio
 import re
 from typing import Dict, Optional
 
+import aiohttp.http_parser
+import aiohttp.web_protocol
 import pytest
 from aiohttp import web
 from prometheus_client import REGISTRY as DEFAULT_REGISTRY
@@ -18,6 +20,7 @@ from aleph.web.middlewares.analytics import (
     HTTP_REQUESTS,
     REQUEST_ID_HEADER,
     analytics_middleware,
+    method_label,
     set_request_id_header,
 )
 
@@ -294,7 +297,10 @@ async def test_cancelled_request_counts_499_not_500(aiohttp_client, app):
     before_499 = counter_value(**cancelled)
     before_500 = counter_value(**errored)
 
-    # The client gives up; the test server cancels the handler on disconnect.
+    # The client gives up; aiohttp's TestServer runs with
+    # handler_cancellation=True, so it cancels the handler on disconnect.
+    # gunicorn's aiohttp worker leaves it False: in production a disconnect
+    # does not cancel the handler, only a shutdown does.
     with pytest.raises(asyncio.TimeoutError):
         await asyncio.wait_for(client.get("/slow"), 0.2)
 
@@ -319,3 +325,87 @@ async def test_handler_timeout_counts_504(aiohttp_client, app):
     assert response.status == 504
     assert counter_value(**labels) - before == 1
     assert counter_value(route="/timeout", method="GET", status="500") == 0
+
+
+async def raw_request(client, data: bytes) -> bytes:
+    """Send raw bytes on a new connection and return the status line."""
+    reader, writer = await asyncio.open_connection(
+        client.server.host, client.server.port
+    )
+    try:
+        writer.write(data)
+        await writer.drain()
+        return await asyncio.wait_for(reader.readline(), 5)
+    finally:
+        writer.close()
+        await writer.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_request_bytes_are_the_bytes_received_not_content_length(
+    aiohttp_client, app
+):
+    client = await aiohttp_client(app)
+    labels = dict(route=ITEMS_ROUTE, method="GET", status="200")
+    before = counter_value(**labels)
+    in_before = sample_value("aleph_http_request_bytes_total", route=ITEMS_ROUTE)
+
+    status_line = await raw_request(
+        client,
+        b"GET /items/1 HTTP/1.1\r\n"
+        b"Host: localhost\r\n"
+        b"Content-Length: 9223372036854775807\r\n"
+        b"\r\n"
+        b"ab",
+    )
+
+    assert status_line.startswith(b"HTTP/1.1 200")
+    for _ in range(100):
+        if counter_value(**labels) - before >= 1:
+            break
+        await asyncio.sleep(0.02)
+    assert counter_value(**labels) - before == 1
+    assert (
+        sample_value("aleph_http_request_bytes_total", route=ITEMS_ROUTE) - in_before
+        == 2
+    )
+
+
+@pytest.mark.parametrize(
+    "method", ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+)
+def test_standard_methods_are_their_own_label(method):
+    assert method_label(method) == method
+
+
+@pytest.mark.parametrize("method", ["FOOBAR", "PROPFIND", "get", "TRACE", ""])
+def test_other_methods_share_one_label(method):
+    assert method_label(method) == "OTHER"
+
+
+@pytest.mark.asyncio
+async def test_unknown_method_is_labelled_other(aiohttp_client, app, monkeypatch):
+    # aiohttp's C parser answers 400 to unknown methods before the app runs;
+    # its pure-Python parser (used when the extensions are not built) lets
+    # them through. Use the latter so the request reaches the middleware.
+    monkeypatch.setattr(
+        aiohttp.web_protocol,
+        "HttpRequestParser",
+        aiohttp.http_parser.HttpRequestParserPy,
+    )
+    client = await aiohttp_client(app)
+    other = dict(route="unmatched", method="OTHER", status="405")
+    before = counter_value(**other)
+
+    status_line = await raw_request(
+        client,
+        b"FOOBAR /items/1 HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    )
+
+    assert status_line.startswith(b"HTTP/1.1 405")
+    for _ in range(100):
+        if counter_value(**other) - before >= 1:
+            break
+        await asyncio.sleep(0.02)
+    assert counter_value(**other) - before == 1
+    assert counter_value(route="unmatched", method="FOOBAR", status="405") == 0

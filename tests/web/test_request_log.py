@@ -141,7 +141,7 @@ async def test_one_json_line_per_request_with_schema(aiohttp_client, app, record
 
 
 @pytest.mark.asyncio
-async def test_bytes_in_from_content_length(aiohttp_client, app, records):
+async def test_bytes_in_counts_the_body(aiohttp_client, app, records):
     client = await aiohttp_client(app)
 
     await client.post("/items/1", data=b"0123456789")
@@ -212,7 +212,7 @@ async def test_invalid_utf8_request_still_logs_one_line(aiohttp_client, app, rec
     )
     await writer.drain()
     status_line = await asyncio.wait_for(reader.readline(), 5)
-    await reader.read()
+    await asyncio.wait_for(reader.read(), 5)
     writer.close()
     await writer.wait_closed()
 
@@ -226,6 +226,49 @@ async def test_invalid_utf8_request_still_logs_one_line(aiohttp_client, app, rec
     assert line["status"] == 200
     assert line["ua"] == "bad\ufffd\ufffdagent"
     assert line["client"] == "\ufffd("
+
+
+@pytest.mark.asyncio
+async def test_bytes_in_is_the_body_received_not_content_length(
+    aiohttp_client, app, records
+):
+    client = await aiohttp_client(app)
+    reader, writer = await asyncio.open_connection(
+        client.server.host, client.server.port
+    )
+    writer.write(
+        b"GET /items/1 HTTP/1.1\r\n"
+        b"Host: localhost\r\n"
+        b"Content-Length: 9223372036854775807\r\n"
+        b"\r\n"
+        b"ab"
+    )
+    await writer.drain()
+    status_line = await asyncio.wait_for(reader.readline(), 5)
+    writer.close()
+    await writer.wait_closed()
+
+    assert status_line.startswith(b"HTTP/1.1 200")
+    for _ in range(100):
+        if records:
+            break
+        await asyncio.sleep(0.02)
+    assert lines(records)[0]["bytes_in"] == 2
+
+
+def test_path_and_client_are_capped():
+    request = make_mocked_request(
+        "GET",
+        "/items/" + "p" * 3000,
+        headers={"X-Forwarded-For": "c" * 300 + ", 1.2.3.4"},
+    )
+
+    line = json.loads(
+        format_request_log(request, status=404, dur_ms=1.0, bytes_in=0, bytes_out=0)
+    )
+
+    assert line["path"] == ("/items/" + "p" * 3000)[:2048]
+    assert line["client"] == "c" * 256
 
 
 @pytest.mark.asyncio
@@ -322,6 +365,9 @@ async def test_handler_timeout_logged_as_504(aiohttp_client, app, records):
 async def test_cancelled_request_logged_as_499(aiohttp_client, app, records):
     client = await aiohttp_client(app)
 
+    # aiohttp's TestServer runs with handler_cancellation=True, so the client
+    # giving up cancels the handler. gunicorn's aiohttp worker leaves it False:
+    # in production a disconnect does not cancel the handler, a shutdown does.
     with pytest.raises(asyncio.TimeoutError):
         await asyncio.wait_for(client.get("/slow"), 0.2)
 

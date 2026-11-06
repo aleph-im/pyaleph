@@ -6,12 +6,16 @@ Each line is a single JSON object with these keys: ``ts``, ``req_id``,
 ``method``, ``route``, ``path``, ``query``, ``query_keys``, ``status``,
 ``dur_ms``, ``bytes_in``, ``bytes_out``, ``client``, ``ua``, ``sender`` and
 ``auth``. ``route`` is the matched route template (``unmatched`` for 404/405),
-``query`` is the raw query string cut to 512 characters, ``ua`` the
-User-Agent cut to 256.
+``query`` is the raw query string cut to 512 characters, ``path`` is cut to
+2048, ``client`` and ``ua`` (the User-Agent) to 256. ``bytes_in`` is the
+number of request body bytes received, not the declared Content-Length. ``method`` is the real request
+method, even when the metrics label it ``OTHER``.
 
-``sender`` is the address named by a well-formed message the request posted:
-a handler that validated one sets ``request["aleph_sender"]``. ``auth`` is
-``claimed`` when it did, ``anonymous`` otherwise. It is "claimed", not
+``sender`` is the address named by a well-formed message the request posted.
+``broadcast_and_process_message`` (used by every endpoint that broadcasts a
+message, uploads included) and the p2p ``pub`` endpoint set
+``request["aleph_sender"]``. ``auth`` is ``claimed`` when one did,
+``anonymous`` otherwise. It is "claimed", not
 "signed": the handlers only check the message's structure; its signature is
 verified later in the processing pipeline (asynchronously for async posts).
 
@@ -31,6 +35,8 @@ SENDER_KEY = "aleph_sender"
 
 MAX_QUERY_LENGTH = 512
 MAX_USER_AGENT_LENGTH = 256
+MAX_PATH_LENGTH = 2048
+MAX_CLIENT_LENGTH = 256
 
 _HANDLER_MARKER = "_aleph_request_log_handler"
 
@@ -90,14 +96,14 @@ def format_request_log(
         "req_id": request.get("req_id", ""),
         "method": _clean(request.method),
         "route": request.get("analytics_route", ""),
-        "path": _clean(request.rel_url.path),
+        "path": _clean(request.rel_url.path)[:MAX_PATH_LENGTH],
         "query": _clean(request.rel_url.raw_query_string[:MAX_QUERY_LENGTH]),
         "query_keys": [_clean(key) for key in dict.fromkeys(request.query.keys())],
         "status": status,
         "dur_ms": round(dur_ms, 1),
         "bytes_in": bytes_in,
         "bytes_out": bytes_out,
-        "client": _clean(_client_address(request)),
+        "client": _clean(_client_address(request))[:MAX_CLIENT_LENGTH],
         "ua": _clean(request.headers.get("User-Agent", "")[:MAX_USER_AGENT_LENGTH]),
         "sender": sender,
         # "claimed", not "signed": the signature is verified later, in the pipeline.
