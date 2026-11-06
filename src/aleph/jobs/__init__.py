@@ -12,6 +12,11 @@ from aleph.jobs.process_pending_messages import (
 from aleph.jobs.process_pending_txs import handle_txs_task, pending_txs_subprocess
 from aleph.jobs.reconnect_ipfs import reconnect_ipfs_job
 from aleph.services.ipfs import IpfsService
+from aleph.toolkit.heartbeat import (
+    FETCH_MESSAGES_JOB,
+    PROCESS_MESSAGES_JOB,
+    PROCESS_TXS_JOB,
+)
 from aleph.types.db_session import DbSessionFactory
 
 LOGGER = logging.getLogger("jobs")
@@ -21,6 +26,8 @@ LOGGER = logging.getLogger("jobs")
 class JobsRunner:
     processes: List[Process] = field(default_factory=list)
     tasks: List[Coroutine] = field(default_factory=list)
+    # Heartbeat name of each entry of `processes`, in the same order.
+    job_names: List[str] = field(default_factory=list)
 
     async def stop(self, terminate_timeout: float = 10.0) -> None:
         """Send SIGTERM to every child process, then join with timeout.
@@ -71,14 +78,15 @@ def start_jobs(
 
     if use_processes:
         config_values = config.dump_values()
-        for target in (
-            fetch_pending_messages_subprocess,
-            pending_messages_subprocess,
-            pending_txs_subprocess,
+        for target, job_name in (
+            (fetch_pending_messages_subprocess, FETCH_MESSAGES_JOB),
+            (pending_messages_subprocess, PROCESS_MESSAGES_JOB),
+            (pending_txs_subprocess, PROCESS_TXS_JOB),
         ):
             p = Process(target=target, args=(config_values,), name=target.__name__)
             p.start()
             runner.processes.append(p)
+            runner.job_names.append(job_name)
     else:
         runner.tasks.append(fetch_and_process_messages_task(config=config))
         runner.tasks.append(handle_txs_task(config))

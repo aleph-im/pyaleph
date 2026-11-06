@@ -98,6 +98,7 @@ optional-dependencies.testing = [
 urls.Documentation = "https://aleph.im/"
 urls.Homepage = "https://github.com/aleph-im/pyaleph"
 scripts.pyaleph = "aleph.commands:run"
+scripts.pyaleph-healthcheck = "aleph.healthcheck:main"
 dependency_links = [
   "https://github.com/aleph-im/py-libp2p/tarball/0.1.4-1-use-set#egg=libp2p",
 ]

@@ -17,6 +17,7 @@ import os
 import sys
 from contextlib import AsyncExitStack
 from multiprocessing import get_start_method, set_start_method
+from pathlib import Path
 from typing import Coroutine, List
 
 import alembic.command
@@ -35,6 +36,7 @@ from aleph.jobs.cron.balance_job import BalanceCronJob
 from aleph.jobs.cron.credit_balance_job import CreditBalanceCronJob
 from aleph.jobs.cron.cron_job import CronJob, cron_job_task
 from aleph.jobs.cron.metrics_partition_job import MetricsPartitionCronJob
+from aleph.jobs.watchdog import JobsUnhealthyError, watch_jobs
 from aleph.network import listener_tasks
 from aleph.repair import repair_node
 from aleph.services import p2p
@@ -218,6 +220,17 @@ async def main(args: List[str]) -> None:
                 use_processes=True,
             )
             tasks += runner.tasks
+            if runner.processes:
+                # Raises when a job dies or stalls, which ends `main` and lets
+                # the orchestrator restart the node.
+                tasks.append(
+                    watch_jobs(
+                        processes=runner.processes,
+                        names=runner.job_names,
+                        directory=Path(config.aleph.jobs.heartbeat.directory.value),
+                        max_age_s=config.aleph.jobs.heartbeat.max_age_s.value,
+                    )
+                )
         stack.push_async_callback(runner.stop)
         stack.push_async_callback(
             safe_async_cleanup, "p2p HTTP sessions", close_sessions()
@@ -280,6 +293,9 @@ def run():
         asyncio.run(_signal_aware_main(sys.argv[1:]))
     except (KeyNotFoundException, InvalidConfigException):
         sys.exit(1)
+    except JobsUnhealthyError:
+        # Already logged at CRITICAL by the watchdog.
+        sys.exit(2)
 
 
 if __name__ == "__main__":
