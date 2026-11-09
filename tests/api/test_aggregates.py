@@ -113,6 +113,27 @@ async def test_get_aggregates_filter_by_key(
         ), f"Key {key} does not match"
 
 
+@pytest.mark.asyncio
+async def test_get_aggregates_filter_by_key_with_info(
+    ccn_api_client, fixture_aggregate_messages: Sequence[MessageDb]
+):
+    """
+    Tests the 'keys' query parameter with 'with_info=true'.
+    """
+
+    assert fixture_aggregate_messages  # To avoid unused parameter warnings
+
+    address, keys = ADDRESS_1, ["test_target", "test_reference"]
+    except_key = "test_key"
+    aggregates = await get_aggregates_expect_success(
+        ccn_api_client, address=address, keys=",".join(keys), with_info=True
+    )
+    assert aggregates["address"] == address
+    assert except_key not in aggregates["data"]
+    assert set(aggregates["data"]) == set(keys)
+    assert set(aggregates["info"]) == set(keys)
+
+
 @pytest.mark.skip(
     "This test does not make any sense anymore, we do not want to limit aggregates?"
 )

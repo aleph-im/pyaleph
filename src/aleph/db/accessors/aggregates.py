@@ -77,7 +77,8 @@ def get_aggregates_by_owner(session, owner, with_info, keys=None):
                 AggregateElementDb,
                 AggregateDb.last_revision_hash == AggregateElementDb.item_hash,
             )
-            .filter(AggregateDb.owner == owner)
+            .filter(where_clause)
+            .order_by(AggregateDb.key)
         )
     else:
         query = (
