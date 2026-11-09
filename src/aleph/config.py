@@ -34,15 +34,14 @@ def get_defaults():
             },
             "corechannel": {
                 # Address of the corechannel aggregate owner.
-                "address": "0xa1B3bb7d2332383D96b7796B908fB7f7F3c2Be10",
+                "address": "0xF45f6F13BF2A2Eb6Afa83FCC9e530DcF238b5D74",
                 # TTL of the cached CCN peer IDs, in seconds.
                 "cache_ttl": 300,
             },
             "balances": {
                 # Addresses allowed to publish balance updates.
                 "addresses": [
-                    "0xB34f25f2c935bCA437C061547eA12851d719dEFb",
-                    "0xa1B3bb7d2332383D96b7796B908fB7f7F3c2Be10",
+                    "0xF45f6F13BF2A2Eb6Afa83FCC9e530DcF238b5D74",
                 ],
                 # POST message type for balance updates.
                 "post_type": "balances-update",
