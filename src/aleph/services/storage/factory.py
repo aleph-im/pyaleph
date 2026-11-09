@@ -26,7 +26,7 @@ def _make_s3_storage_engine(config: Config) -> S3StorageEngine:
         "storage.s3.secret_access_key": secret_access_key,
     }
     missing = [key for key, value in required.items() if not value]
-    if missing:
+    if missing or secret_access_key is None:
         raise ValueError(f"storage.engine is 's3' but {', '.join(missing)} is not set")
 
     return S3StorageEngine(
