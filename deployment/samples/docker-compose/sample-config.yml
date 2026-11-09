@@ -51,6 +51,12 @@ ipfs:
 
 aleph:
   queue_topic: ALEPH-TEST
+  # Each pyaleph process exits with status 2 when its event loop has not run
+  # for this many seconds (a synchronous call that never returned), so Docker
+  # restarts the container. Keep it above postgres.statement_timeout_ms.
+  # 0 disables it.
+  # watchdog:
+  #   stall_timeout_s: 300
 
 
 p2p:

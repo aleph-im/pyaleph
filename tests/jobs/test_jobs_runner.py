@@ -71,3 +71,50 @@ async def test_stop_kills_stubborn_processes_after_timeout():
 @pytest.mark.asyncio
 async def test_stop_is_safe_with_empty_runner():
     await JobsRunner(processes=[], tasks=[]).stop(terminate_timeout=0.5)
+
+
+def _dying_child(ready, exitcode):
+    ready.set()
+    os._exit(exitcode)
+
+
+@pytest.mark.asyncio
+async def test_wait_for_child_exit_raises_when_a_job_dies():
+    from aleph.jobs import JobDiedError
+
+    ctx = mp.get_context("fork")
+    ready = ctx.Event()
+    proc = ctx.Process(target=_dying_child, args=(ready, 3), name="dying-job")
+    proc.start()
+    runner = JobsRunner(processes=[proc], tasks=[])
+    try:
+        with pytest.raises(JobDiedError) as excinfo:
+            await asyncio.wait_for(runner.wait_for_child_exit(), timeout=5.0)
+    finally:
+        await runner.stop()
+    assert excinfo.value.name == "dying-job"
+    assert excinfo.value.exitcode == 3
+    assert "dying-job" in str(excinfo.value)
+    assert "3" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_wait_for_child_exit_ignores_children_stopped_after_cancel():
+    ctx = mp.get_context("fork")
+    ready = ctx.Event()
+    proc = ctx.Process(target=_graceful_child, args=(ready,), name="live-job")
+    proc.start()
+    runner = JobsRunner(processes=[proc], tasks=[])
+    try:
+        assert ready.wait(timeout=5.0), "child did not signal ready"
+        waiter = asyncio.create_task(runner.wait_for_child_exit())
+        await asyncio.sleep(0.1)
+        assert not waiter.done()
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        # The sentinel is no longer watched: stopping the child is not a death.
+        assert asyncio.get_running_loop().remove_reader(proc.sentinel) is False
+    finally:
+        await runner.stop()
+    assert not proc.is_alive()

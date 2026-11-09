@@ -30,7 +30,7 @@ from aleph.chains.connector import ChainConnector
 from aleph.cli.args import parse_args
 from aleph.db.connection import make_db_url, make_engine, make_session_factory
 from aleph.exceptions import InvalidConfigException, KeyNotFoundException
-from aleph.jobs import JobsRunner, start_jobs
+from aleph.jobs import JobDiedError, JobsRunner, start_jobs
 from aleph.jobs.cron.balance_job import BalanceCronJob
 from aleph.jobs.cron.credit_balance_job import CreditBalanceCronJob
 from aleph.jobs.cron.cron_job import CronJob, cron_job_task
@@ -50,6 +50,7 @@ from aleph.services.storage.garbage_collector import (
 from aleph.storage import StorageService
 from aleph.toolkit.lifecycle import install_signal_handlers, safe_async_cleanup
 from aleph.toolkit.logging import setup_logging
+from aleph.toolkit.loop_watchdog import start_loop_watchdog
 from aleph.toolkit.monitoring import setup_sentry
 
 __author__ = "Moshe Malawach"
@@ -134,6 +135,12 @@ async def main(args: List[str]) -> None:
         set_start_method("spawn")
 
     async with AsyncExitStack() as stack:
+        # Started after the migrations, which legitimately block for as long
+        # as they need.
+        watchdog = start_loop_watchdog(config)
+        if watchdog is not None:
+            stack.callback(watchdog.stop)
+
         engine = make_engine(
             config,
             echo=args.loglevel == logging.DEBUG,
@@ -218,6 +225,10 @@ async def main(args: List[str]) -> None:
                 use_processes=True,
             )
             tasks += runner.tasks
+            if runner.processes:
+                # Ends `main` when a job subprocess dies, so the supervisor
+                # restarts the node instead of running it without its jobs.
+                tasks.append(runner.wait_for_child_exit())
         stack.push_async_callback(runner.stop)
         stack.push_async_callback(
             safe_async_cleanup, "p2p HTTP sessions", close_sessions()
@@ -280,6 +291,9 @@ def run():
         asyncio.run(_signal_aware_main(sys.argv[1:]))
     except (KeyNotFoundException, InvalidConfigException):
         sys.exit(1)
+    except JobDiedError:
+        # Already logged at CRITICAL.
+        sys.exit(2)
 
 
 if __name__ == "__main__":
