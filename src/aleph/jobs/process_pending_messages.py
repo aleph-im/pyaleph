@@ -24,6 +24,7 @@ from aleph.storage import StorageService
 from aleph.toolkit.lifecycle import install_signal_handlers, safe_async_cleanup
 from aleph.toolkit.logging import setup_logging
 from aleph.toolkit.monitoring import setup_sentry
+from aleph.toolkit.rabbitmq import declare_durable_queue
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.db_session import DbSessionFactory
 from aleph.types.message_processing_result import MessageProcessingResult
@@ -86,8 +87,8 @@ class PendingMessageProcessor(MessageJob):
             type=aio_pika.ExchangeType.TOPIC,
             auto_delete=False,
         )
-        pending_message_queue = await channel.declare_queue(
-            name="pending_message_queue"
+        pending_message_queue = await declare_durable_queue(
+            connection=mq_conn, channel=channel, name="pending_message_queue"
         )
         await pending_message_queue.bind(
             pending_message_exchange, routing_key="process.*"

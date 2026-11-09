@@ -128,6 +128,7 @@ Download the Kubo config file script and Docker Compose file that defines how to
 .. parsed-literal::
     wget "https://raw.githubusercontent.com/aleph-im/pyaleph/|pyaleph_version|/deployment/scripts/001-update-ipfs-config.sh"
     wget "https://raw.githubusercontent.com/aleph-im/pyaleph/|pyaleph_version|/deployment/samples/docker-compose/docker-compose.yml"
+    wget "https://raw.githubusercontent.com/aleph-im/pyaleph/|pyaleph_version|/deployment/samples/docker-compose/rabbitmq.conf"
 
 At this stage, you will need your configuration file and your keys.
 Check the configuration section to see how you can generate them.

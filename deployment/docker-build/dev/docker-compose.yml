@@ -97,12 +97,14 @@ services:
 
   rabbitmq:
     restart: always
-    image: rabbitmq:3.11.15-management
+    image: rabbitmq:4.3.7-management
     networks:
       - pyaleph
     environment:
       RABBITMQ_DEFAULT_USER: aleph-p2p
       RABBITMQ_DEFAULT_PASS: decentralize-everything
+    volumes:
+      - ../../samples/docker-compose/rabbitmq.conf:/etc/rabbitmq/conf.d/20-pyaleph.conf:ro
     ports:
       - "127.0.0.1:5672:5672"
       - "127.0.0.1:15672:15672"
