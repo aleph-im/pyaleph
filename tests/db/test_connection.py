@@ -99,3 +99,24 @@ async def test_disposing_engine_disposes_on_exception():
         async with disposing_engine(engine):
             raise RuntimeError("boom")
     engine.dispose.assert_called_once()
+
+
+def test_make_db_url_round_trips_special_characters():
+    from sqlalchemy.engine import make_url
+
+    from aleph.db.connection import make_db_url
+
+    config = MagicMock()
+    config.postgres.host.value = "db.example"
+    config.postgres.port.value = 5432
+    config.postgres.user.value = "us@er"
+    config.postgres.password.value = "p@ss:w/rd#1%?"
+    config.postgres.database.value = "aleph"
+
+    url = make_url(make_db_url("psycopg2", config, application_name="app"))
+
+    assert url.password == "p@ss:w/rd#1%?"
+    assert url.username == "us@er"
+    assert url.host == "db.example"
+    assert url.port == 5432
+    assert url.database == "aleph"
