@@ -24,6 +24,15 @@ postgres:
   host: postgres
   # The PostgreSQL password defaults to a built-in value; set the POSTGRES_PASSWORD
   # environment variable (or a `password:` key here). The variable overrides the file.
+  # Seconds to establish a connection (TCP, TLS, auth); 0 = no limit.
+  # connect_timeout_s: 10
+  # TLS mode: disable, allow, prefer, require, verify-ca or verify-full.
+  # Unset = PGSSLMODE or libpq's default (prefer).
+  # sslmode: require
+  # TCP keepalives (psycopg2 connections only); 0 = keep the OS default.
+  # keepalives_idle_s: 60
+  # keepalives_interval_s: 10
+  # keepalives_count: 5
 
 
 storage:

@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Optional
-from urllib.parse import quote
+from typing import Any, AsyncIterator, Dict, Optional
+from urllib.parse import quote, urlencode
 
 from configmanager import Config
 from sqlalchemy import create_engine
@@ -26,6 +26,46 @@ async def disposing_engine(engine: Engine) -> AsyncIterator[Engine]:
         engine.dispose()
 
 
+def _connection_query_params(
+    driver: str, config: Config, application_name: Optional[str] = None
+) -> Dict[str, str]:
+    """Connection settings to carry in the URL query string for ``driver``.
+
+    Putting them in the URL (rather than in connect_args) means every consumer
+    of make_db_url gets them, including the migrations engine.
+    """
+    postgres = config.postgres
+
+    if driver == "asyncpg":
+        # SQLAlchemy passes each query key to asyncpg.connect() as a string
+        # keyword argument. asyncpg has no application_name or keepalive
+        # arguments and needs a numeric timeout, so only the TLS mode fits
+        # here; make_async_engine passes the rest through connect_args.
+        if postgres.sslmode.value:
+            return {"ssl": postgres.sslmode.value}
+        return {}
+
+    params: Dict[str, str] = {}
+    if application_name:
+        params["application_name"] = application_name
+    if postgres.connect_timeout_s.value:
+        params["connect_timeout"] = str(postgres.connect_timeout_s.value)
+    # Unset leaves libpq to PGSSLMODE (or its "prefer" default).
+    if postgres.sslmode.value:
+        params["sslmode"] = postgres.sslmode.value
+
+    keepalives = {
+        "keepalives_idle": postgres.keepalives_idle_s.value,
+        "keepalives_interval": postgres.keepalives_interval_s.value,
+        "keepalives_count": postgres.keepalives_count.value,
+    }
+    if any(keepalives.values()):
+        params["keepalives"] = "1"
+        params.update({key: str(value) for key, value in keepalives.items() if value})
+
+    return params
+
+
 def make_db_url(
     driver: str, config: Config, application_name: Optional[str] = None
 ) -> str:
@@ -34,7 +74,8 @@ def make_db_url(
 
     :param driver: Driver name. Ex: psycopg2, asyncpg.
     :param config: Configuration. If not specified, the global configuration object is used.
-    :param application_name: Application name.
+    :param application_name: Application name (psycopg2 only, asyncpg takes it
+                             from make_async_engine).
     :returns: The database connection string.
     """
 
@@ -58,8 +99,9 @@ def make_db_url(
 
     connection_string += f"/{database}"
 
-    if application_name:
-        connection_string += f"?application_name={application_name}"
+    query = _connection_query_params(driver, config, application_name)
+    if query:
+        connection_string += f"?{urlencode(query)}"
 
     return connection_string
 
@@ -129,10 +171,22 @@ def make_async_engine(
     echo: bool = False,
     application_name: Optional[str] = None,
 ) -> AsyncEngine:
+    if config is None:
+        config = get_config()
+
+    # asyncpg needs these as typed keyword arguments, which a URL query string
+    # cannot express (see _connection_query_params).
+    connect_args: Dict[str, Any] = {}
+    if config.postgres.connect_timeout_s.value:
+        connect_args["timeout"] = config.postgres.connect_timeout_s.value
+    if application_name:
+        connect_args["server_settings"] = {"application_name": application_name}
+
     return create_async_engine(
-        make_db_url(driver="asyncpg", config=config, application_name=application_name),
+        make_db_url(driver="asyncpg", config=config),
         future=True,
         echo=echo,
+        connect_args=connect_args,
     )
 
 

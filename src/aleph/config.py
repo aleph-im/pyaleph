@@ -253,6 +253,27 @@ def get_defaults():
             # Abort a transaction left open but idle longer than this (ms),
             # reclaiming leaked "idle in transaction" sessions. 0 disables.
             "idle_in_transaction_session_timeout_ms": 300000,
+            # Give up establishing a connection (TCP, TLS, auth) after this
+            # many seconds. Without it, a connection through a router whose
+            # backend vanished (e.g. during a failover) blocks the process
+            # forever while it still looks healthy. Set in the connection
+            # URL, so it overrides a PGCONNECT_TIMEOUT environment variable.
+            # libpq applies it per host/address and treats 1 as 2 (2 s
+            # minimum). 0 = no limit (asyncpg then uses its own 60 s default).
+            "connect_timeout_s": 10,
+            # TLS mode: disable, allow, prefer, require, verify-ca or
+            # verify-full. Unset = libpq default (prefer) and PGSSLMODE is
+            # honoured; set here to pin it.
+            "sslmode": None,
+            # TCP keepalives, so a server that silently disappears after the
+            # connection is established is detected in about
+            # idle + interval * count seconds instead of the kernel default
+            # (2 hours). Applies to the libpq (psycopg2) driver only: the
+            # worker loops, the API and migrations; asyncpg has no keepalive
+            # settings. 0 on any of them = keep the OS default for that knob.
+            "keepalives_idle_s": 60,
+            "keepalives_interval_s": 10,
+            "keepalives_count": 5,
         },
         "ipfs": {
             # Whether to enable storage and communication on IPFS.
