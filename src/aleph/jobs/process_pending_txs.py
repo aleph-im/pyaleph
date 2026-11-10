@@ -23,6 +23,7 @@ from aleph.services.storage.factory import make_storage_engine
 from aleph.storage import StorageService
 from aleph.toolkit.lifecycle import closing_quietly, install_signal_handlers
 from aleph.toolkit.logging import setup_logging
+from aleph.toolkit.loop_watchdog import start_loop_watchdog
 from aleph.toolkit.monitoring import setup_sentry
 from aleph.toolkit.rabbitmq import make_mq_conn
 from aleph.toolkit.timestamp import utc_now
@@ -197,12 +198,16 @@ def pending_txs_subprocess(config_values: Dict):
     )
 
     async def _runner():
+        watchdog = start_loop_watchdog(config)
         task = asyncio.create_task(handle_txs_task(config))
         install_signal_handlers(asyncio.get_running_loop(), task.cancel)
         try:
             await task
         except asyncio.CancelledError:
             LOGGER.info("Pending txs subprocess cancelled by signal")
+        finally:
+            if watchdog is not None:
+                watchdog.stop()
 
     try:
         asyncio.run(_runner())

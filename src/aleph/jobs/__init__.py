@@ -2,7 +2,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from multiprocessing import Process
-from typing import Coroutine, List
+from typing import Coroutine, List, Optional
 
 from aleph.jobs.fetch_pending_messages import fetch_pending_messages_subprocess
 from aleph.jobs.process_pending_messages import (
@@ -17,10 +17,52 @@ from aleph.types.db_session import DbSessionFactory
 LOGGER = logging.getLogger("jobs")
 
 
+class JobDiedError(Exception):
+    """A job subprocess exited while the node was running."""
+
+    def __init__(self, name: str, exitcode: Optional[int]):
+        self.name = name
+        self.exitcode = exitcode
+        super().__init__(f"Job subprocess {name} exited with status {exitcode}")
+
+
 @dataclass
 class JobsRunner:
     processes: List[Process] = field(default_factory=list)
     tasks: List[Coroutine] = field(default_factory=list)
+
+    async def wait_for_child_exit(self) -> None:
+        """Raise JobDiedError as soon as any job subprocess exits.
+
+        Each process sentinel is a file descriptor that becomes readable when
+        the process ends, so the event loop is woken by the kernel: nothing
+        polls. Cancel this coroutine before stopping the children, so that a
+        deliberate shutdown is not reported as a death.
+        """
+        if not self.processes:
+            await asyncio.Event().wait()
+        loop = asyncio.get_running_loop()
+        exited: asyncio.Future = loop.create_future()
+
+        def _on_exit(process: Process) -> None:
+            if not exited.done():
+                exited.set_result(process)
+
+        for process in self.processes:
+            loop.add_reader(process.sentinel, _on_exit, process)
+        try:
+            process = await exited
+        finally:
+            for p in self.processes:
+                loop.remove_reader(p.sentinel)
+        process.join(timeout=0)
+        LOGGER.critical(
+            "Job subprocess %s (pid=%s) exited with status %s",
+            process.name,
+            process.pid,
+            process.exitcode,
+        )
+        raise JobDiedError(process.name, process.exitcode)
 
     async def stop(self, terminate_timeout: float = 10.0) -> None:
         """Send SIGTERM to every child process, then join with timeout.

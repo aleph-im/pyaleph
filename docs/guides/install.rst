@@ -282,6 +282,22 @@ Make sure that no error is displayed in the logs.
 
 You can use `docker-compose logs` and `docker logs` for this purpose.
 
+Stalls and restarts
+-------------------
+
+Each pyaleph process (the main process and the three job subprocesses) watches
+its own event loop from a thread. When the loop has not run for
+``aleph.watchdog.stall_timeout_s`` seconds (default 300), the process writes
+every thread's stack trace to its error output, logs the stall at CRITICAL and
+exits with status 2; the ``restart: always`` policy of the Compose file then
+restarts the container. This bounds a synchronous call that never returns, such
+as a database connection attempt against a half-open connection. The main
+process also exits with status 2 as soon as one of its job subprocesses dies.
+A stack trace ending in a database driver call points at the database or at
+the network between the node and it. Keep the timeout above
+``postgres.statement_timeout_ms``: a synchronous query blocks the loop for its
+whole duration. ``stall_timeout_s: 0`` disables the watchdog.
+
 Check IPFS
 ----------
 

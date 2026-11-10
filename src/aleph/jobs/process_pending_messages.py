@@ -27,6 +27,7 @@ from aleph.toolkit.lifecycle import (
     safe_async_cleanup,
 )
 from aleph.toolkit.logging import setup_logging
+from aleph.toolkit.loop_watchdog import start_loop_watchdog
 from aleph.toolkit.monitoring import setup_sentry
 from aleph.toolkit.rabbitmq import declare_durable_queue, rabbitmq_password
 from aleph.toolkit.timestamp import utc_now
@@ -254,12 +255,16 @@ def pending_messages_subprocess(config_values: Dict):
     )
 
     async def _runner():
+        watchdog = start_loop_watchdog(config)
         task = asyncio.create_task(fetch_and_process_messages_task(config=config))
         install_signal_handlers(asyncio.get_running_loop(), task.cancel)
         try:
             await task
         except asyncio.CancelledError:
             LOGGER.info("Process messages subprocess cancelled by signal")
+        finally:
+            if watchdog is not None:
+                watchdog.stop()
 
     try:
         asyncio.run(_runner())

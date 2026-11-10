@@ -79,6 +79,16 @@ def get_defaults():
                 # falling into the DEFAULT catch-all partition.
                 "partition_lookahead_months": 1,
             },
+            "watchdog": {
+                # Each pyaleph process (the main process and the job
+                # subprocesses) exits with status 2 when its event loop has
+                # not run for this many seconds, so the supervisor restarts
+                # it. Bounds a synchronous call that never returns, such as a
+                # database connect to a half-open connection. Keep it above
+                # postgres.statement_timeout_ms: a synchronous query blocks
+                # the loop for its whole duration. 0 disables the watchdog.
+                "stall_timeout_s": 300,
+            },
             "jobs": {
                 "pending_messages": {
                     # Maximum number of retries for a message.
