@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Set
 
 import aiohttp_jinja2
 from aiohttp import WSCloseCode, WSMsgType, web
+from prometheus_client import generate_latest
 from pydantic import BaseModel, ValidationError
 
 from aleph.db.accessors.metrics import query_metric_ccn, query_metric_crn
@@ -24,6 +25,7 @@ from aleph.web.controllers.metrics import (
     get_metrics,
     get_metrics_with_ws,
 )
+from aleph.web.middlewares.analytics import make_registry
 
 logger = logging.getLogger(__name__)
 
@@ -220,8 +222,15 @@ async def metrics(request: web.Request) -> web.Response:
             schema:
               type: string
     """
+    node_metrics = format_dataclass_for_prometheus(await _get_full_metrics(request))
+    # HTTP API metrics of the analytics middleware. make_registry() aggregates
+    # every gunicorn worker when PROMETHEUS_MULTIPROC_DIR is set, so the
+    # counters do not depend on the worker that serves this request.
+    http_metrics = generate_latest(make_registry()).decode()
     return web.Response(
-        text=format_dataclass_for_prometheus(await _get_full_metrics(request))
+        text=node_metrics + "\n" + http_metrics,
+        content_type="text/plain",
+        charset="utf-8",
     )
 
 

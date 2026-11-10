@@ -43,6 +43,9 @@ services:
       # net.ipv6.bindv6only=1, otherwise the second bind fails with EADDRINUSE.
       # CCN_CONFIG_API_BIND: "[::]:4024"
       CCN_CONFIG_API_NB_WORKERS: 8
+      # Uncomment to enable gunicorn's own access log (the app already logs
+      # one JSON line per request).
+      # CCN_CONFIG_API_ACCESS_LOG: "1"
     depends_on:
       - pyaleph
     networks:
