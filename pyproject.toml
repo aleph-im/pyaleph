@@ -22,6 +22,7 @@ classifiers = [
 dynamic = [ "version" ]
 dependencies = [
   "aio-pika==9.6.2",
+  "aiobotocore==3.10.0",
   "aiocache==0.12.3",
   "aiofiles==25.1.0",
   "aiohttp==3.14.3",
@@ -87,8 +88,10 @@ optional-dependencies.polkadot = [
   "substrate-interface>=0.9.27",
 ]
 optional-dependencies.testing = [
+  "boto3==1.43.117",         # tests drive moto with a plain boto3 client; match aiobotocore's botocore
   "ipfshttpclient==0.8.0a2", # eth/web3 test dependency, for some reason"
   "more-itertools==11.1.0",
+  "moto[server]==5.2.5",
   "pytest==9.1.1",
   "pytest-aiohttp==1.1.1",
   "pytest-asyncio==1.4.0",

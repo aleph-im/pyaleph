@@ -42,7 +42,7 @@ from aleph.services.cache.node_cache import NodeCache
 from aleph.services.ipfs import IpfsService
 from aleph.services.keys import generate_keypair, save_keys
 from aleph.services.p2p.http import close_sessions
-from aleph.services.storage.fileystem_engine import FileSystemStorageEngine
+from aleph.services.storage.factory import make_storage_engine
 from aleph.services.storage.garbage_collector import (
     GarbageCollector,
     garbage_collector_task,
@@ -154,8 +154,12 @@ async def main(args: List[str]) -> None:
         # Reset the cache
         await node_cache.reset()
 
+        storage_engine = make_storage_engine(config)
+        stack.push_async_callback(
+            safe_async_cleanup, "storage engine", storage_engine.close()
+        )
         storage_service = StorageService(
-            storage_engine=FileSystemStorageEngine(folder=config.storage.folder.value),
+            storage_engine=storage_engine,
             ipfs_service=ipfs_service,
             node_cache=node_cache,
         )

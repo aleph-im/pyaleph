@@ -2,6 +2,10 @@ import abc
 from typing import AsyncIterable, Optional
 
 
+class StorageEngineConfigError(Exception):
+    """The storage engine is misconfigured (e.g. the S3 bucket is not usable)."""
+
+
 class StorageEngine(abc.ABC):
     @abc.abstractmethod
     async def read(self, filename: str) -> Optional[bytes]: ...
@@ -19,3 +23,9 @@ class StorageEngine(abc.ABC):
 
     @abc.abstractmethod
     async def exists(self, filename: str) -> bool: ...
+
+    async def close(self) -> None:
+        """Release the resources held by the engine (connections, clients).
+
+        A no-op by default; engines holding network clients override it.
+        """
