@@ -29,6 +29,7 @@ def _fake_config(lock=30000, statement=120000, idle=300000):
     config.postgres.pool_size.value = 5
     config.postgres.pool_pre_ping.value = True
     config.postgres.pool_recycle.value = 3600
+    config.postgres.password_file.value = None
     return config
 
 
@@ -127,6 +128,7 @@ def test_make_db_url_round_trips_special_characters():
     config.postgres.port.value = 5432
     config.postgres.user.value = "us@er"
     config.postgres.password.value = "p@ss:w/rd#1%?"
+    config.postgres.password_file.value = None
     config.postgres.database.value = "aleph"
 
     url = make_url(make_db_url("psycopg2", config, application_name="app"))

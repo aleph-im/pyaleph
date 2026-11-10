@@ -86,6 +86,48 @@ Instead of writing secrets in `config.yml`, you can set the `POSTGRES_PASSWORD`,
 `RABBITMQ_PASSWORD`, `SENTRY_DSN`, `NULS2_PRIVATE_KEY` and `ETHEREUM_PRIVATE_KEY`
 environment variables. When set, they override the value from the configuration file.
 
+Passwords from files
+^^^^^^^^^^^^^^^^^^^^
+
+The PostgreSQL and RabbitMQ passwords can also be read from files, for example a
+Kubernetes Secret or a Docker secret mounted in the container. Set
+`postgres.password_file` / `rabbitmq.password_file` in `config.yml`, or the
+`POSTGRES_PASSWORD_FILE` / `RABBITMQ_PASSWORD_FILE` environment variables. A file,
+when set, wins over the inline value and the password environment variable. Trailing
+whitespace (such as a final newline) is stripped. A missing or empty file is an
+error at startup, with the path in the message.
+
+.. code-block:: yaml
+
+    postgres:
+        password_file: /run/secrets/postgres-password
+    rabbitmq:
+        password_file: /run/secrets/rabbitmq-password
+
+The PostgreSQL password file is read again for every new database connection, so the
+password can be rotated without restarting the node. Rotate in this order:
+
+1. update the password file (Secret) first;
+2. then run `ALTER ROLE ... PASSWORD` promptly.
+
+Between the two steps, the role still has the old password: the node retries once with
+the last password that worked and logs a warning. A PostgreSQL role has a single
+password, so the reverse order (`ALTER ROLE` first) fails new connections until the file
+is refreshed, for as long as the file takes to update. A node process that starts
+between the file update and `ALTER ROLE` has no last known good password yet and cannot
+connect until `ALTER ROLE` runs, which is why the second step should follow the first
+promptly.
+
+The retry recognises the rejection by its SQLSTATE or, when the driver does not report
+one, by PostgreSQL's English message. With a non-English `lc_messages` on the server the
+retry does not trigger (the connection fails as it would without it).
+
+Existing pooled connections are not affected by a password change.
+
+The RabbitMQ password file is read when each process opens its RabbitMQ connection.
+Automatic reconnects reuse that password, so rotating the RabbitMQ password takes a
+restart of the node.
+
 Sentry DSN
 ^^^^^^^^^^
 

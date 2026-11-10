@@ -24,6 +24,9 @@ postgres:
   host: postgres
   # The PostgreSQL password defaults to a built-in value; set the POSTGRES_PASSWORD
   # environment variable (or a `password:` key here). The variable overrides the file.
+  # Or read it from a file (e.g. a mounted secret), re-read for each new connection;
+  # it wins over both. Also settable with POSTGRES_PASSWORD_FILE.
+  # password_file: /run/secrets/postgres-password
   # Seconds to establish a connection (TCP, TLS, auth); 0 = no limit.
   # connect_timeout_s: 10
   # TLS mode: disable, allow, prefer, require, verify-ca or verify-full.
@@ -71,6 +74,9 @@ rabbitmq:
   username: aleph-p2p
   # The RABBITMQ_PASSWORD environment variable, when set, overrides this value.
   password: change-me!
+  # Or read it from a file, which wins over both (also RABBITMQ_PASSWORD_FILE).
+  # Read when the node connects: rotating the RabbitMQ password takes a restart.
+  # password_file: /run/secrets/rabbitmq-password
 
 
 sentry:

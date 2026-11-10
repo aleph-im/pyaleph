@@ -234,6 +234,14 @@ def get_defaults():
             "password": Item(
                 default="decentralize-everything", envvar="POSTGRES_PASSWORD"
             ),
+            # File holding the password (e.g. a mounted Kubernetes Secret),
+            # read with trailing whitespace stripped. Wins over `password` and
+            # POSTGRES_PASSWORD; a missing or empty file is a startup error.
+            # Re-read for every new connection, so a rotated password is used
+            # without a restart; if PostgreSQL rejects it (role not altered
+            # yet), the last password that worked is tried once more.
+            # Override with POSTGRES_PASSWORD_FILE.
+            "password_file": Item(default=None, envvar="POSTGRES_PASSWORD_FILE"),
             # Maximum number of concurrent connections to the local PostgreSQL database.
             "pool_size": 50,
             # Check if DB connections are still alive before reusing them.
@@ -335,6 +343,13 @@ def get_defaults():
             # Password of the RabbitMQ service.
             # Override with RABBITMQ_PASSWORD.
             "password": Item(default="change-me!", envvar="RABBITMQ_PASSWORD"),
+            # File holding the password, read with trailing whitespace
+            # stripped. Wins over `password` and RABBITMQ_PASSWORD; a missing
+            # or empty file is a startup error. Read when a process opens its
+            # RabbitMQ connection: automatic reconnects reuse that password,
+            # so rotating it takes a restart of the node.
+            # Override with RABBITMQ_PASSWORD_FILE.
+            "password_file": Item(default=None, envvar="RABBITMQ_PASSWORD_FILE"),
             # Name of the exchange used to publish messages from the node to the P2P network.
             "pub_exchange": "p2p-publish",
             # Name of the exchange used to publish messages from the P2P network to the node.

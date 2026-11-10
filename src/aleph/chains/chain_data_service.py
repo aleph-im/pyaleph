@@ -30,6 +30,7 @@ from aleph.schemas.chains.tezos_indexer_response import (
 )
 from aleph.storage import StorageService
 from aleph.toolkit.lifecycle import safe_async_cleanup
+from aleph.toolkit.rabbitmq import rabbitmq_password
 from aleph.toolkit.timestamp import utc_now
 from aleph.types.chain_sync import ChainSyncProtocol
 from aleph.types.db_session import DbSession, DbSessionFactory
@@ -274,7 +275,7 @@ class PendingTxPublisher:
             host=config.p2p.mq_host.value,
             port=config.rabbitmq.port.value,
             login=config.rabbitmq.username.value,
-            password=config.rabbitmq.password.value,
+            password=rabbitmq_password(config),
             heartbeat=config.rabbitmq.heartbeat.value,
         )
         channel = await mq_conn.channel()

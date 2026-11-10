@@ -5,7 +5,31 @@ import aio_pika
 import aio_pika.abc
 from aio_pika.exceptions import ChannelPreconditionFailed
 
+from aleph.toolkit.credentials import read_credential
+
 LOGGER = logging.getLogger(__name__)
+
+
+def rabbitmq_password(config) -> str:
+    """The RabbitMQ password: rabbitmq.password_file, else the inline/env value.
+
+    Call it right before connecting. aio-pika's robust connection reuses the
+    password it was given for its automatic reconnects, so a rotated RabbitMQ
+    password takes effect when the process restarts.
+    """
+    password = read_credential(
+        config.rabbitmq.password.value,
+        None,
+        config.rabbitmq.password_file.value,
+        what="rabbitmq.password_file",
+    )
+    if password is None:
+        # Only when the password was explicitly set to null with no file.
+        raise ValueError(
+            "rabbitmq.password is not set: set it, RABBITMQ_PASSWORD or "
+            "rabbitmq.password_file"
+        )
+    return password
 
 
 async def make_mq_conn(config) -> aio_pika.abc.AbstractConnection:
@@ -13,7 +37,7 @@ async def make_mq_conn(config) -> aio_pika.abc.AbstractConnection:
         host=config.p2p.mq_host.value,
         port=config.rabbitmq.port.value,
         login=config.rabbitmq.username.value,
-        password=config.rabbitmq.password.value,
+        password=rabbitmq_password(config),
         heartbeat=config.rabbitmq.heartbeat.value,
     )
     return mq_conn
