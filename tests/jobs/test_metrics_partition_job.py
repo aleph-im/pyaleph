@@ -6,8 +6,11 @@ We test the moving parts by passing custom retention/lookahead values
 that force the job to either create or drop partitions.
 """
 
+import asyncio
 import datetime as dt
 import logging
+import threading
+import time
 
 import pytest
 from aleph_message.models import Chain, ItemType, MessageType
@@ -312,3 +315,120 @@ async def test_cron_defers_table_when_parent_lock_is_contended(
     assert await job.run(now=now, job=_make_cron_row()) is True
     with session_factory() as session:
         assert crn_expected in {n for n, _, _ in _list(session, "crn_metrics")}
+
+
+def _scoring_message(item_hash: str) -> MessageDb:
+    return MessageDb(
+        item_hash=item_hash,
+        type=MessageType.post,
+        chain=Chain.ETH,
+        sender="0x4D52380D3191274a04846c89c069E6C3F2Ed94e4",
+        channel=Channel("aleph-scoring"),
+        signature=None,
+        item_type=ItemType.inline,
+        item_content="{}",
+        content={
+            "type": "aleph-network-metrics",
+            "address": "0x4D52380D3191274a04846c89c069E6C3F2Ed94e4",
+            "content": {},
+            "time": 0.0,
+        },
+        time=dt.datetime(2024, 1, 1, tzinfo=dt.timezone.utc),
+        size=2,
+    )
+
+
+def _wait_for_lock_request(session, relation: str, mode: str, timeout: float) -> bool:
+    """Poll pg_locks until some backend is waiting (not granted) for `mode`
+    on `relation`."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        waiting = session.execute(
+            text(
+                "SELECT count(*) FROM pg_locks "
+                "WHERE NOT granted AND mode = :mode "
+                "AND relation = CAST(:relation AS regclass)"
+            ),
+            {"mode": mode, "relation": relation},
+        ).scalar()
+        if waiting:
+            return True
+        time.sleep(0.05)
+    return False
+
+
+@pytest.mark.asyncio
+async def test_partition_drop_does_not_deadlock_with_message_insert(
+    session_factory: DbSessionFactory,
+):
+    """The metrics partitions carry a FK to `messages`, so dropping one takes
+    an ACCESS EXCLUSIVE lock on `messages` (to remove the RI triggers). The
+    message processor reads `messages` (ACCESS SHARE) before it inserts (ROW
+    EXCLUSIVE) in the same transaction. If the cron takes a weaker lock on
+    `messages` earlier in the same transaction (DETACH creates RI triggers
+    under SHARE ROW EXCLUSIVE), the two lock upgrades form a cycle and
+    PostgreSQL aborts one side. Both sides must succeed."""
+    now = dt.datetime.now(tz=dt.timezone.utc)
+    cutoff = add_months(month_floor(now), -1)
+    with session_factory() as session:
+        to_drop = [
+            name
+            for name, _, upper in _list(session, "crn_metrics")
+            if upper is not None and upper <= cutoff
+        ]
+    assert to_drop, "Expected at least one partition past the new cutoff"
+
+    job = MetricsPartitionCronJob(
+        session_factory=session_factory,
+        retention_months=1,
+        lookahead_months=1,
+    )
+
+    insert_result: dict = {}
+
+    def message_processor():
+        # Same shape as MessageHandler.process(): existence check, then upsert,
+        # in one transaction.
+        with session_factory() as processor:
+            processor.execute(
+                text("SELECT 1 FROM messages WHERE item_hash = :h"),
+                {"h": "msg-deadlock"},
+            )
+            try:
+                # Dropping a partition needs ACCESS EXCLUSIVE on messages (RI
+                # trigger removal). Wait until the cron is queued behind our
+                # ACCESS SHARE before we upgrade to ROW EXCLUSIVE.
+                with session_factory() as watcher:
+                    blocked = _wait_for_lock_request(
+                        watcher, "messages", "AccessExclusiveLock", timeout=10
+                    )
+                insert_result["cron_blocked"] = blocked
+                processor.add(_scoring_message("msg-deadlock"))
+                processor.commit()
+                insert_result["ok"] = True
+            except Exception as err:  # noqa: BLE001 - recorded for the assertion
+                processor.rollback()
+                insert_result["error"] = repr(err)
+
+    thread = threading.Thread(target=message_processor)
+    thread.start()
+    try:
+        result = await asyncio.get_running_loop().run_in_executor(
+            None, lambda: asyncio.run(job.run(now=now, job=_make_cron_row()))
+        )
+    finally:
+        thread.join(timeout=30)
+    assert not thread.is_alive(), "message processor thread hung"
+
+    assert insert_result.get("cron_blocked") is True, "cron never reached DROP"
+    assert insert_result.get("ok") is True, insert_result.get("error")
+    assert result is True
+
+    with session_factory() as session:
+        remaining = {n for n, _, _ in _list(session, "crn_metrics")}
+        inserted = session.execute(
+            text("SELECT count(*) FROM messages WHERE item_hash = 'msg-deadlock'")
+        ).scalar()
+    assert inserted == 1
+    for name in to_drop:
+        assert name not in remaining

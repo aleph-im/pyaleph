@@ -18,11 +18,26 @@ already present and nothing past the cutoff is a no-op.
 
 The DEFAULT partition is left untouched. If it ever contains rows the
 cron logs a warning (operational signal that the lookahead is too
-short or that out-of-range data is arriving)."""
+short or that out-of-range data is arriving).
+
+Locking. The metrics tables carry a foreign key to ``messages``, and every
+partition inherits it, so partition DDL locks ``messages`` too: CREATE
+PARTITION and DETACH create referential-integrity triggers on it (SHARE ROW
+EXCLUSIVE) and DROP removes them (ACCESS EXCLUSIVE). The message processor
+reads ``messages`` (ACCESS SHARE) and then upserts into it (ROW EXCLUSIVE)
+within one transaction. A cron transaction that escalates its own lock on
+``messages`` mid-way therefore forms a lock-upgrade cycle with any in-flight
+processor transaction, and PostgreSQL aborts one of the two. To rule that
+out, partition creation and each partition drop run in their own
+transaction, and the drop transaction takes ACCESS EXCLUSIVE on ``messages``
+as its first statement: a processor transaction that already holds a lock on
+``messages`` is allowed to upgrade past the queued request and commit, after
+which the cron proceeds. Every wait is bounded by ``PARTITION_LOCK_TIMEOUT``."""
 
 import datetime as dt
 import logging
-from typing import Iterable, List, Tuple
+from contextlib import contextmanager
+from typing import Iterable, Iterator, List, Tuple
 
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
@@ -42,12 +57,17 @@ LOGGER = logging.getLogger(__name__)
 
 PARTITIONED_TABLES = ("crn_metrics", "ccn_metrics")
 
-# Bound how long partition DDL may wait for the parent table's ACCESS EXCLUSIVE
-# lock. DETACH/CREATE PARTITION need that lock, and a scoring-metrics INSERT
-# holds ROW EXCLUSIVE; without a cap the maintenance job can queue ahead of — and
-# block — the message-processing INSERT path for a long time, stalling the whole
-# message-processing event loop. If the lock is contended the job defers this
-# table and retries next run (partition maintenance is idempotent).
+# Table the metrics partitions reference through their foreign key. See the
+# module docstring for why partition DDL has to lock it.
+REFERENCED_TABLE = "messages"
+
+# Bound how long partition DDL may wait for a contended lock: the parent
+# table's ACCESS EXCLUSIVE (held off by a scoring-metrics INSERT) or the
+# referenced table's ACCESS EXCLUSIVE (held off by any message-processing
+# transaction). Without a cap the maintenance job can queue ahead of, and
+# block, the message-processing INSERT path for a long time, stalling the
+# whole message-processing event loop. If a lock is contended the job defers
+# this table and retries next run (partition maintenance is idempotent).
 PARTITION_LOCK_TIMEOUT = "5s"
 
 
@@ -78,27 +98,29 @@ class MetricsPartitionCronJob(BaseCronJob):
         # exists, so range becomes [..., now_month + N + 1).
         lookahead_upper = add_months(now_month, self.lookahead_months + 1)
 
-        # One transaction per table so a lock timeout on one does not undo the
-        # other, and each runs under a bounded lock_timeout so maintenance never
-        # blocks the message-processing INSERT path.
+        # Partition creation and each partition drop get their own transaction
+        # so a lock timeout on one does not undo the others, and so no
+        # transaction ever escalates a lock it already holds on the referenced
+        # table (see the module docstring). Each runs under a bounded
+        # lock_timeout so maintenance never blocks the message-processing
+        # INSERT path.
         deferred = False
         for table in PARTITIONED_TABLES:
             try:
-                with self.session_factory() as session:
-                    session.execute(
-                        text(f"SET LOCAL lock_timeout = '{PARTITION_LOCK_TIMEOUT}'")
-                    )
+                with self._maintenance_transaction() as session:
                     self._ensure_partitions(session, table, now_month, lookahead_upper)
-                    self._drop_past_cutoff(session, table, cutoff)
                     self._warn_if_default_has_rows(session, table)
-                    session.commit()
+                    to_drop = _partitions_past_cutoff(session, table, cutoff)
+                for name, upper in to_drop:
+                    with self._maintenance_transaction() as session:
+                        self._drop_partition(session, table, name, upper, cutoff)
             except OperationalError as err:
-                # The parent lock is contended (a scoring INSERT is in flight)
-                # and lock_timeout fired -- or another transient operational
-                # error occurred. Either way, defer this table rather than
-                # blocking the write path. Returning False keeps last_run
-                # unadvanced so the next cron tick retries, instead of waiting a
-                # full interval.
+                # A lock is contended (a scoring INSERT or a message-processing
+                # transaction is in flight) and lock_timeout fired -- or another
+                # transient operational error occurred. Either way, defer this
+                # table rather than blocking the write path. Returning False
+                # keeps last_run unadvanced so the next cron tick retries,
+                # instead of waiting a full interval.
                 deferred = True
                 LOGGER.warning(
                     "Partition maintenance for %s deferred (%s); will retry next run",
@@ -107,6 +129,16 @@ class MetricsPartitionCronJob(BaseCronJob):
                 )
 
         return not deferred
+
+    @contextmanager
+    def _maintenance_transaction(self) -> Iterator[DbSession]:
+        """One committed transaction with the bounded lock_timeout applied."""
+        with self.session_factory() as session:
+            session.execute(
+                text(f"SET LOCAL lock_timeout = '{PARTITION_LOCK_TIMEOUT}'")
+            )
+            yield session
+            session.commit()
 
     @staticmethod
     def _ensure_partitions(
@@ -138,28 +170,36 @@ class MetricsPartitionCronJob(BaseCronJob):
             )
 
     @staticmethod
-    def _drop_past_cutoff(session: DbSession, table: str, cutoff: dt.datetime) -> None:
-        """DETACH + DROP partitions whose upper bound is <= cutoff.
+    def _drop_partition(
+        session: DbSession,
+        table: str,
+        name: str,
+        upper: dt.datetime,
+        cutoff: dt.datetime,
+    ) -> None:
+        """DETACH + DROP one partition, in the caller's transaction.
 
         DETACH briefly takes ACCESS EXCLUSIVE on the parent, then the
         DROP only touches the now-standalone child. Metrics tables are
         not on a latency-sensitive read path so plain DETACH is fine;
         CONCURRENTLY would require autocommit, which the cron's
-        transactional session doesn't offer."""
-        for name, lower, upper in _list_partitions(session, table):
-            if upper is None or lower is None:
-                # The DEFAULT partition has no bounds. Skip.
-                continue
-            if upper <= cutoff:
-                LOGGER.info(
-                    "Dropping partition %s on %s (upper=%s <= cutoff=%s)",
-                    name,
-                    table,
-                    upper.isoformat(),
-                    cutoff.isoformat(),
-                )
-                session.execute(text(f"ALTER TABLE {table} DETACH PARTITION {name}"))
-                session.execute(text(f"DROP TABLE {name}"))
+        transactional session doesn't offer.
+
+        Both statements also lock the referenced table through the
+        partition's foreign key (DETACH: SHARE ROW EXCLUSIVE, DROP: ACCESS
+        EXCLUSIVE). Take the strongest mode first so this transaction never
+        escalates a lock it already holds on it, which would deadlock with
+        the message processor's own read-then-upsert escalation."""
+        LOGGER.info(
+            "Dropping partition %s on %s (upper=%s <= cutoff=%s)",
+            name,
+            table,
+            upper.isoformat(),
+            cutoff.isoformat(),
+        )
+        session.execute(text(f"LOCK TABLE {REFERENCED_TABLE} IN ACCESS EXCLUSIVE MODE"))
+        session.execute(text(f"ALTER TABLE {table} DETACH PARTITION {name}"))
+        session.execute(text(f"DROP TABLE {name}"))
 
     @staticmethod
     def _warn_if_default_has_rows(session: DbSession, table: str) -> None:
@@ -172,6 +212,19 @@ class MetricsPartitionCronJob(BaseCronJob):
                 default_name,
                 result,
             )
+
+
+def _partitions_past_cutoff(
+    session: DbSession, parent: str, cutoff: dt.datetime
+) -> List[Tuple[str, dt.datetime]]:
+    """Return (child_name, upper_bound) for every bounded partition of
+    `parent` whose upper bound is <= cutoff. The DEFAULT partition has no
+    bounds and is never returned."""
+    return [
+        (name, upper)
+        for name, lower, upper in _list_partitions(session, parent)
+        if lower is not None and upper is not None and upper <= cutoff
+    ]
 
 
 def _list_partitions(
