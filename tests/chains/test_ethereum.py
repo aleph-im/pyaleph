@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
@@ -17,6 +18,115 @@ from aleph.db.models import MessageDb
 from aleph.toolkit.timestamp import timestamp_to_datetime, utc_now
 from aleph.types.chain_sync import ChainEventType
 from aleph.types.db_session import DbSessionFactory
+
+
+@pytest.mark.asyncio
+async def test_anchor_unconfirmed_messages_anchors_every_batch(
+    mock_config: Config, mocker
+):
+    mock_config.aleph.jobs.max_unconfirmed_messages.value = 2
+
+    batches = [
+        [
+            SimpleNamespace(item_hash="hash-1", reception_time=1),
+            SimpleNamespace(item_hash="hash-2", reception_time=1),
+        ],
+        [
+            SimpleNamespace(item_hash="hash-3", reception_time=2),
+            SimpleNamespace(item_hash="hash-4", reception_time=2),
+        ],
+        [SimpleNamespace(item_hash="hash-5", reception_time=3)],
+        [],
+    ]
+    get_unconfirmed_messages = mocker.patch(
+        "aleph.chains.ethereum.get_unconfirmed_messages", side_effect=batches
+    )
+
+    connector = object.__new__(EthereumConnector)
+    connector.session_factory = mocker.MagicMock()
+    connector.broadcast_messages = mocker.AsyncMock()
+
+    anchored = await connector._anchor_unconfirmed_messages(
+        config=mock_config,
+        account=None,
+        nonce=0,
+    )
+
+    assert anchored == 5
+    assert connector.broadcast_messages.await_count == 3
+    assert [
+        len(call.kwargs["messages"])
+        for call in connector.broadcast_messages.await_args_list
+    ] == [2, 2, 1]
+    assert [
+        call.kwargs["nonce"] for call in connector.broadcast_messages.await_args_list
+    ] == [0, 1, 2]
+
+    calls = get_unconfirmed_messages.call_args_list
+    assert calls[0].kwargs["after"] is None
+    assert calls[1].kwargs["after"] == (1, "hash-2")
+    assert calls[2].kwargs["after"] == (2, "hash-4")
+    assert calls[3].kwargs["after"] == (3, "hash-5")
+
+
+@pytest.mark.asyncio
+async def test_anchor_unconfirmed_messages_stops_at_max_batches(
+    mock_config: Config, mocker
+):
+    mock_config.aleph.jobs.max_unconfirmed_messages.value = 1
+    mocker.patch("aleph.chains.ethereum.MAX_ANCHOR_BATCHES", 1)
+
+    mocker.patch(
+        "aleph.chains.ethereum.get_unconfirmed_messages",
+        side_effect=[
+            [SimpleNamespace(item_hash="hash-1", reception_time=1)],
+            [SimpleNamespace(item_hash="hash-2", reception_time=2)],
+        ],
+    )
+
+    connector = object.__new__(EthereumConnector)
+    connector.session_factory = mocker.MagicMock()
+    connector.broadcast_messages = mocker.AsyncMock()
+
+    anchored = await connector._anchor_unconfirmed_messages(
+        config=mock_config,
+        account=None,
+        nonce=0,
+    )
+
+    assert anchored == 1
+    assert connector.broadcast_messages.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_anchor_unconfirmed_messages_stops_on_broadcast_error(
+    mock_config: Config, mocker
+):
+    mock_config.aleph.jobs.max_unconfirmed_messages.value = 1
+
+    get_unconfirmed_messages = mocker.patch(
+        "aleph.chains.ethereum.get_unconfirmed_messages",
+        side_effect=[
+            [SimpleNamespace(item_hash="hash-1", reception_time=1)],
+            [SimpleNamespace(item_hash="hash-2", reception_time=2)],
+        ],
+    )
+
+    connector = object.__new__(EthereumConnector)
+    connector.session_factory = mocker.MagicMock()
+    connector.broadcast_messages = mocker.AsyncMock(
+        side_effect=RuntimeError("broadcast failed")
+    )
+
+    with pytest.raises(RuntimeError, match="broadcast failed"):
+        await connector._anchor_unconfirmed_messages(
+            config=mock_config,
+            account=None,
+            nonce=0,
+        )
+
+    assert get_unconfirmed_messages.call_count == 1
+    assert connector.broadcast_messages.await_count == 1
 
 
 @pytest_asyncio.fixture

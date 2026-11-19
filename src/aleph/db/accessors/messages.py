@@ -16,10 +16,12 @@ from typing import (
 from aleph_message.models import Chain, ItemHash, MessageType, PaymentType
 from sqlalchemy import (
     TIMESTAMP,
+    and_,
     delete,
     func,
     nullsfirst,
     nullslast,
+    or_,
     select,
     text,
     update,
@@ -441,15 +443,30 @@ def get_message_stats_by_address(
 # TODO: declare a type that will match the result (something like UnconfirmedMessageDb)
 #       and translate the time field to epoch.
 def get_unconfirmed_messages(
-    session: DbSession, limit: int = 100, offset: int = 0
+    session: DbSession,
+    limit: int = 100,
+    after: Optional[Tuple[dt.datetime, str]] = None,
 ) -> Iterable[MessageDb]:
-    select_stmt = (
-        select(MessageDb)
-        .where(MessageDb.signature.isnot(None) & MessageDb.first_confirmed_at.is_(None))
-        .order_by(MessageDb.reception_time.asc())
+    select_stmt = select(MessageDb).where(
+        MessageDb.signature.isnot(None) & MessageDb.first_confirmed_at.is_(None)
     )
 
-    return (session.execute(select_stmt.limit(limit).offset(offset))).scalars()
+    if after is not None:
+        after_reception_time, after_item_hash = after
+        select_stmt = select_stmt.where(
+            or_(
+                MessageDb.reception_time > after_reception_time,
+                and_(
+                    MessageDb.reception_time == after_reception_time,
+                    MessageDb.item_hash > after_item_hash,
+                ),
+            )
+        )
+
+    select_stmt = select_stmt.order_by(
+        MessageDb.reception_time.asc(), MessageDb.item_hash.asc()
+    ).limit(limit)
+    return session.execute(select_stmt).scalars()
 
 
 def make_message_upsert_query(message: MessageDb) -> Insert:

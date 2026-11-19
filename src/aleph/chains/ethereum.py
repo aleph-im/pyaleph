@@ -1,8 +1,19 @@
 import asyncio
+import datetime as dt
 import importlib.resources
 import json
 import logging
-from typing import Any, AsyncIterator, Dict, List, Self, Tuple, TypedDict, Union
+from typing import (
+    Any,
+    AsyncIterator,
+    Dict,
+    List,
+    Optional,
+    Self,
+    Tuple,
+    TypedDict,
+    Union,
+)
 
 from aleph_message.models import Chain
 from configmanager import Config
@@ -36,6 +47,7 @@ from .indexer_reader import AlephIndexerReader
 LOGGER = logging.getLogger("chains.ethereum")
 LOGGER.setLevel(logging.INFO)
 CHAIN_NAME = "ETH"
+MAX_ANCHOR_BATCHES = 10_000
 
 # JSON-RPC error codes indicating that a getLogs request exceeds the
 # provider's block range limit. Infura used to return -32005 but now
@@ -435,6 +447,55 @@ class EthereumConnector(ChainWriter):
             sync_event_payload.json(),
         )
 
+    async def _anchor_unconfirmed_messages(
+        self,
+        config: Config,
+        account,
+        nonce: Nonce,
+    ) -> int:
+        batch_size = config.aleph.jobs.max_unconfirmed_messages.value
+        if batch_size <= 0:
+            raise ValueError(
+                "aleph.jobs.max_unconfirmed_messages must be greater than 0"
+            )
+
+        after: Optional[Tuple[dt.datetime, str]] = None
+        anchored = 0
+
+        for _batch_index in range(MAX_ANCHOR_BATCHES):
+            with self.session_factory() as session:
+                messages = list(
+                    get_unconfirmed_messages(
+                        session=session,
+                        limit=batch_size,
+                        after=after,
+                    )
+                )
+
+            if not messages:
+                break
+
+            LOGGER.info("Chain sync: %d unconfirmed messages", len(messages))
+            response = await self.broadcast_messages(
+                account=account,
+                messages=messages,
+                nonce=nonce,
+            )
+            LOGGER.info("Broadcast %r on %s" % (response, Chain.ETH.value))
+
+            anchored += len(messages)
+            last_message = messages[-1]
+            after = (last_message.reception_time, last_message.item_hash)
+            nonce = Nonce(nonce + 1)
+        else:
+            LOGGER.warning(
+                "Stopped anchoring after %d batches; remaining messages will be "
+                "retried on the next cycle",
+                MAX_ANCHOR_BATCHES,
+            )
+
+        return anchored
+
     async def packer(self, config: Config):
         pri_key = HexBytes(config.ethereum.private_key.value)
         account = Account.from_key(pri_key)
@@ -459,38 +520,20 @@ class EthereumConnector(ChainWriter):
                     account.address
                 )
 
-                # Collect all unconfirmed messages using pagination
-                max_unconfirmed = config.aleph.jobs.max_unconfirmed_messages.value
-                all_messages = []
-                offset = 0
-                while True:
-                    batch = list(
-                        get_unconfirmed_messages(
-                            session=session,
-                            limit=500,
-                            offset=offset,
-                        )
+            try:
+                anchored = await self._anchor_unconfirmed_messages(
+                    config=config,
+                    account=account,
+                    nonce=nonce,
+                )
+                if anchored:
+                    LOGGER.info(
+                        "Anchored %d unconfirmed messages on %s",
+                        anchored,
+                        Chain.ETH.value,
                     )
-                    if not batch:
-                        break
-                    all_messages.extend(batch)
-                    offset += len(batch)
-                    if len(batch) < 500 or len(all_messages) >= max_unconfirmed:
-                        break
-                all_messages = all_messages[:max_unconfirmed]
-
-            if all_messages:
-                LOGGER.info("Chain sync: %d unconfirmed messages" % len(all_messages))
-
-                try:
-                    response = await self.broadcast_messages(
-                        account=account,
-                        messages=all_messages,
-                        nonce=nonce,
-                    )
-                    LOGGER.info("Broadcast %r on %s" % (response, Chain.ETH.value))
-                except Exception:
-                    LOGGER.exception("Error while broadcasting messages to Ethereum")
+            except Exception:
+                LOGGER.exception("Error while broadcasting messages to Ethereum")
 
             await asyncio.sleep(config.ethereum.commit_delay.value)
             i += 1

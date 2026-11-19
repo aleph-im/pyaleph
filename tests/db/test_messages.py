@@ -382,6 +382,61 @@ async def test_get_unconfirmed_messages(
 
 
 @pytest.mark.asyncio
+async def test_get_unconfirmed_messages_keyset_pagination(
+    session_factory: DbSessionFactory, fixture_message: MessageDb
+):
+    reception_time = dt.datetime(2022, 1, 1, tzinfo=dt.timezone.utc)
+    messages = [
+        MessageDb(
+            item_hash=f"{index:064x}",
+            chain=fixture_message.chain,
+            sender=fixture_message.sender,
+            signature=fixture_message.signature,
+            type=fixture_message.type,
+            item_content=fixture_message.item_content,
+            content=fixture_message.content,
+            item_type=fixture_message.item_type,
+            size=fixture_message.size,
+            time=fixture_message.time,
+            channel=fixture_message.channel,
+            reception_time=reception_time,
+        )
+        for index in range(4)
+    ]
+
+    with session_factory() as session:
+        session.add_all(messages)
+        session.commit()
+
+    with session_factory() as session:
+        first_page = list(get_unconfirmed_messages(session=session, limit=2))
+        assert [message.item_hash for message in first_page] == [
+            messages[0].item_hash,
+            messages[1].item_hash,
+        ]
+
+        # Simulate a message being confirmed between two pages. Offset-based
+        # pagination would now skip messages[2].
+        confirmed_message = get_message_by_item_hash(
+            session=session, item_hash=ItemHash(messages[0].item_hash)
+        )
+        assert confirmed_message is not None
+        confirmed_message.first_confirmed_at = reception_time
+        session.commit()
+
+    after = (first_page[-1].reception_time, first_page[-1].item_hash)
+    with session_factory() as session:
+        second_page = list(
+            get_unconfirmed_messages(session=session, limit=2, after=after)
+        )
+
+    assert [message.item_hash for message in second_page] == [
+        messages[2].item_hash,
+        messages[3].item_hash,
+    ]
+
+
+@pytest.mark.asyncio
 async def test_get_unconfirmed_messages_trusted_messages(
     session_factory: DbSessionFactory, fixture_message: MessageDb
 ):

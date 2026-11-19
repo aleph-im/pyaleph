@@ -104,7 +104,9 @@ def get_defaults():
                     # Maximum number of chain/sync events processed at the same time.
                     "max_concurrency": 20,
                 },
-                # Maximum number of unconfirmed messages collected per packing cycle.
+                # Maximum number of messages included in one anchor transaction.
+                # This is a batch size, not a cycle-wide cap: the packer keeps
+                # sending transactions until all unconfirmed messages are anchored.
                 "max_unconfirmed_messages": 10000,
                 "cron": {
                     # Interval between cron job trackers runs, expressed in hours.
