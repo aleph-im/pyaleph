@@ -1,12 +1,13 @@
 import asyncio
 import base64
+import datetime as dt
 import functools
 import json
 import logging
 import struct
 import time
 from operator import itemgetter
-from typing import AsyncIterator, Dict, Tuple
+from typing import Any, AsyncIterator, Dict, Optional, Tuple
 
 import aiohttp
 from aleph_message.models import Chain
@@ -172,6 +173,78 @@ class Nuls2Connector(ChainWriter):
 
                 await asyncio.sleep(10)
 
+    async def _anchor_unconfirmed_messages(
+        self,
+        *,
+        config: Config,
+        server,
+        address,
+        target_addr,
+        remark: bytes,
+        pri_key: bytes,
+        chain_id: int,
+        nonce: Any,
+    ) -> Tuple[int, Any]:
+        batch_size = config.aleph.jobs.max_unconfirmed_messages.value
+        if batch_size <= 0:
+            raise ValueError(
+                "aleph.jobs.max_unconfirmed_messages must be greater than 0"
+            )
+
+        after: Optional[Tuple[dt.datetime, str]] = None
+        anchored = 0
+
+        while True:
+            with self.session_factory() as session:
+                messages = list(
+                    get_unconfirmed_messages(
+                        session=session,
+                        limit=batch_size,
+                        after=after,
+                    )
+                )
+
+            if not messages:
+                break
+
+            LOGGER.info("Chain sync: %d unconfirmed messages", len(messages))
+
+            try:
+                # This function prepares a chain data file and makes it downloadable from the node.
+                with self.session_factory() as session:
+                    sync_event_payload = (
+                        await self.chain_data_service.prepare_sync_event_payload(
+                            session=session, messages=messages
+                        )
+                    )
+                    # Required to apply update to the files table in get_chaindata
+                    session.commit()
+
+                content = sync_event_payload.json()
+                tx = await prepare_transfer_tx(
+                    address,
+                    [(target_addr, CHEAP_UNIT_FEE)],
+                    nonce,
+                    chain_id=chain_id,
+                    asset_id=1,
+                    raw_tx_data=content.encode("utf-8"),
+                    remark=remark,
+                )
+                await tx.sign_tx(pri_key)
+                tx_hex = (await tx.serialize(update_data=False)).hex()
+                ret = await broadcast(server, tx_hex, chain_id=chain_id)
+                LOGGER.info("Broadcasted %r on %s" % (ret["hash"], CHAIN_NAME))
+                nonce = ret["hash"][-16:]
+            except Exception:
+                LOGGER.exception("Error while broadcasting messages to NULS2")
+                break
+
+            anchored += len(messages)
+            last_message = messages[-1]
+            after = (last_message.reception_time, last_message.item_hash)
+
+        return anchored, nonce
+
     async def packer(self, config: Config):
         server = get_server(config.nuls2.api_url.value)
         target_addr = config.nuls2.sync_address.value
@@ -200,55 +273,22 @@ class Nuls2Connector(ChainWriter):
                     nonce = await get_nonce(server, address, chain_id)
                     i = 0
 
-                # Collect all unconfirmed messages using pagination
-                max_unconfirmed = config.aleph.jobs.max_unconfirmed_messages.value
-                all_messages = []
-                offset = 0
-                while True:
-                    batch = list(
-                        get_unconfirmed_messages(
-                            session=session, limit=500, offset=offset
-                        )
-                    )
-                    if not batch:
-                        break
-                    all_messages.extend(batch)
-                    offset += len(batch)
-                    if len(batch) < 500 or len(all_messages) >= max_unconfirmed:
-                        break
-                all_messages = all_messages[:max_unconfirmed]
-
-            if all_messages:
-                LOGGER.info("Chain sync: %d unconfirmed messages" % len(all_messages))
-
-                try:
-                    # This function prepares a chain data file and makes it downloadable from the node.
-                    with self.session_factory() as session:
-                        sync_event_payload = (
-                            await self.chain_data_service.prepare_sync_event_payload(
-                                session=session, messages=all_messages
-                            )
-                        )
-                        # Required to apply update to the files table in get_chaindata
-                        session.commit()
-
-                    content = sync_event_payload.json()
-                    tx = await prepare_transfer_tx(
-                        address,
-                        [(target_addr, CHEAP_UNIT_FEE)],
-                        nonce,
-                        chain_id=chain_id,
-                        asset_id=1,
-                        raw_tx_data=content.encode("utf-8"),
-                        remark=remark,
-                    )
-                    await tx.sign_tx(pri_key)
-                    tx_hex = (await tx.serialize(update_data=False)).hex()
-                    ret = await broadcast(server, tx_hex, chain_id=chain_id)
-                    LOGGER.info("Broadcasted %r on %s" % (ret["hash"], CHAIN_NAME))
-                    nonce = ret["hash"][-16:]
-                except Exception:
-                    LOGGER.exception("Error while broadcasting messages to NULS2")
+            anchored, nonce = await self._anchor_unconfirmed_messages(
+                config=config,
+                server=server,
+                address=address,
+                target_addr=target_addr,
+                remark=remark,
+                pri_key=pri_key,
+                chain_id=chain_id,
+                nonce=nonce,
+            )
+            if anchored:
+                LOGGER.info(
+                    "Anchored %d unconfirmed messages on %s",
+                    anchored,
+                    CHAIN_NAME,
+                )
 
             await asyncio.sleep(config.nuls2.commit_delay.value)
             i += 1
