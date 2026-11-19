@@ -39,6 +39,7 @@ from .chain_data_service import ChainDataService, PendingTxPublisher
 
 LOGGER = logging.getLogger("chains.nuls2")
 CHAIN_NAME = "NULS2"
+MAX_ANCHOR_BATCHES = 10_000
 
 
 class Nuls2Verifier(Verifier):
@@ -194,7 +195,7 @@ class Nuls2Connector(ChainWriter):
         after: Optional[Tuple[dt.datetime, str]] = None
         anchored = 0
 
-        while True:
+        for _batch_index in range(MAX_ANCHOR_BATCHES):
             with self.session_factory() as session:
                 messages = list(
                     get_unconfirmed_messages(
@@ -242,6 +243,12 @@ class Nuls2Connector(ChainWriter):
             anchored += len(messages)
             last_message = messages[-1]
             after = (last_message.reception_time, last_message.item_hash)
+        else:
+            LOGGER.warning(
+                "Stopped anchoring after %d batches; remaining messages will be "
+                "retried on the next cycle",
+                MAX_ANCHOR_BATCHES,
+            )
 
         return anchored, nonce
 

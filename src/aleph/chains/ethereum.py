@@ -47,6 +47,7 @@ from .indexer_reader import AlephIndexerReader
 LOGGER = logging.getLogger("chains.ethereum")
 LOGGER.setLevel(logging.INFO)
 CHAIN_NAME = "ETH"
+MAX_ANCHOR_BATCHES = 10_000
 
 # JSON-RPC error codes indicating that a getLogs request exceeds the
 # provider's block range limit. Infura used to return -32005 but now
@@ -461,7 +462,7 @@ class EthereumConnector(ChainWriter):
         after: Optional[Tuple[dt.datetime, str]] = None
         anchored = 0
 
-        while True:
+        for _batch_index in range(MAX_ANCHOR_BATCHES):
             with self.session_factory() as session:
                 messages = list(
                     get_unconfirmed_messages(
@@ -486,6 +487,12 @@ class EthereumConnector(ChainWriter):
             last_message = messages[-1]
             after = (last_message.reception_time, last_message.item_hash)
             nonce = Nonce(nonce + 1)
+        else:
+            LOGGER.warning(
+                "Stopped anchoring after %d batches; remaining messages will be "
+                "retried on the next cycle",
+                MAX_ANCHOR_BATCHES,
+            )
 
         return anchored
 

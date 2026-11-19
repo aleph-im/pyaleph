@@ -69,6 +69,66 @@ async def test_anchor_unconfirmed_messages_anchors_every_batch(
     assert calls[3].kwargs["after"] == (3, "hash-5")
 
 
+@pytest.mark.asyncio
+async def test_anchor_unconfirmed_messages_stops_at_max_batches(
+    mock_config: Config, mocker
+):
+    mock_config.aleph.jobs.max_unconfirmed_messages.value = 1
+    mocker.patch("aleph.chains.ethereum.MAX_ANCHOR_BATCHES", 1)
+
+    mocker.patch(
+        "aleph.chains.ethereum.get_unconfirmed_messages",
+        side_effect=[
+            [SimpleNamespace(item_hash="hash-1", reception_time=1)],
+            [SimpleNamespace(item_hash="hash-2", reception_time=2)],
+        ],
+    )
+
+    connector = object.__new__(EthereumConnector)
+    connector.session_factory = mocker.MagicMock()
+    connector.broadcast_messages = mocker.AsyncMock()
+
+    anchored = await connector._anchor_unconfirmed_messages(
+        config=mock_config,
+        account=None,
+        nonce=0,
+    )
+
+    assert anchored == 1
+    assert connector.broadcast_messages.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_anchor_unconfirmed_messages_stops_on_broadcast_error(
+    mock_config: Config, mocker
+):
+    mock_config.aleph.jobs.max_unconfirmed_messages.value = 1
+
+    get_unconfirmed_messages = mocker.patch(
+        "aleph.chains.ethereum.get_unconfirmed_messages",
+        side_effect=[
+            [SimpleNamespace(item_hash="hash-1", reception_time=1)],
+            [SimpleNamespace(item_hash="hash-2", reception_time=2)],
+        ],
+    )
+
+    connector = object.__new__(EthereumConnector)
+    connector.session_factory = mocker.MagicMock()
+    connector.broadcast_messages = mocker.AsyncMock(
+        side_effect=RuntimeError("broadcast failed")
+    )
+
+    with pytest.raises(RuntimeError, match="broadcast failed"):
+        await connector._anchor_unconfirmed_messages(
+            config=mock_config,
+            account=None,
+            nonce=0,
+        )
+
+    assert get_unconfirmed_messages.call_count == 1
+    assert connector.broadcast_messages.await_count == 1
+
+
 @pytest_asyncio.fixture
 async def web3_client(mock_config: Config):
     eth_api_url = mock_config.ethereum.api_url.value
